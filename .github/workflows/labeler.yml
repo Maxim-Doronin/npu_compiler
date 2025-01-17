@@ -1,0 +1,24 @@
+name: "Pull Request Labeler"
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: read-all
+
+jobs:
+  triage:
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Print github repository_owner
+      run: |
+        curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}"
+    - uses: actions/labeler@v5
+      with:
+        repo-token: "${{ secrets.GITHUB_TOKEN }}"
+        configuration-path: '.github/labeler.yml'
+        sync-labels: 'true'
+        dot: 'true'

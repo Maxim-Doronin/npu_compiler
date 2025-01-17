@@ -1,0 +1,16 @@
+'Smart CI: Skip all':
+- changed-files:
+  - any-glob-to-all-files: 
+    - '**/*.md'
+    - 'guides/**/*'
+    - 'src/vpux_compiler/docs/**/*'
+    - '.github/**/*'
+    - '.gitattributes'
+    - '.gitignore'
+    - '.gitignore'
+    - 'CODEOWNERS'
+
+'Smart CI: Skip build':
+- changed-files:
+  - any-glob-to-all-files:
+    - tools/**/*
