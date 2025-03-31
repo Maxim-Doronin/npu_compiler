@@ -1,0 +1,122 @@
+name: Linux Compilation Tests
+on:
+  workflow_call:
+    inputs:
+      test-runner:
+        description: 'Machine on which the tests will run'
+        type: string
+        required: true
+      install-package:
+        description: 'Artifacts name from the build stage. Content varies depending on compiler-type'
+        type: string
+        required: true
+      compiler-type:
+        description: 'MLIR or DRIVER'
+        type: string
+        required: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions: read-all
+
+env:
+  INSTALL_PACKAGE_DIR: ./install_package
+
+jobs:
+  # TODO: This is a demonstration job. It will be separated into downloading and compilation actions and a config.
+  CompilationTests:
+    name: Compilation tests ${{ inputs.compiler-type }}
+    runs-on: ${{ inputs.test-runner }}
+    timeout-minutes: 60
+    env:
+      MODELS_DIR: ./models
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.install-package }}
+          path: ${{ env.INSTALL_PACKAGE_DIR }}
+
+      - name: Unpack Driver artifacts
+        if: ${{ inputs.compiler-type == 'DRIVER' }}
+        run: |
+          cd ${INSTALL_PACKAGE_DIR}
+          dpkg --extract external/intel-driver-compiler-npu_*.deb .
+          dpkg --extract external/intel-level-zero-npu_*.deb .
+          dpkg --extract internal/intel-level-zero_*.deb .
+          dpkg --extract internal/intel-openvino-npu_*.deb .
+          find . -type f
+
+      - name: Install system packages
+        run: |
+          sudo apt update
+          sudo apt install -y libtbb12
+
+      - name: Prepare OpenVINO environment
+        if: ${{ inputs.compiler-type == 'MLIR' }}
+        run: |
+          cat <<'EOF' > prepare_env.sh
+          #!/usr/bin/env bash
+          set -e
+          INSTALL_PACKAGE_ABS_PATH=$(realpath ${INSTALL_PACKAGE_DIR})
+          source ${INSTALL_PACKAGE_ABS_PATH}/setupvars.sh
+          export COMPILE_TOOL=${INSTALL_PACKAGE_ABS_PATH}/tools/compile_tool/compile_tool
+          EOF
+          chmod +x ${INSTALL_PACKAGE_ABS_PATH}/setupvars.sh
+          chmod +x ${INSTALL_PACKAGE_ABS_PATH}/tools/compile_tool/compile_tool
+          chmod +x prepare_env.sh
+
+      - name: Prepare Driver environment
+        if: ${{ inputs.compiler-type == 'DRIVER' }}
+        run: |
+          cat <<'EOF' > prepare_env.sh
+          #!/usr/bin/env bash
+          set -e
+          PLATFORM=${1}
+          INSTALL_PACKAGE_ABS_PATH=$(realpath ${INSTALL_PACKAGE_DIR})
+          export LD_LIBRARY_PATH=${INSTALL_PACKAGE_ABS_PATH}/usr/lib/:$LD_LIBRARY_PATH
+          export ZE_INTEL_NPU_PLATFORM_OVERRIDE=${PLATFORM}
+          export COMPILE_TOOL=${INSTALL_PACKAGE_ABS_PATH}/usr/bin/compile_tool
+          EOF
+          chmod +x prepare_env.sh
+
+      - name: Write config file
+        run: |
+          echo "NPU_COMPILER_TYPE ${{ inputs.compiler-type }}" > common_compilation_config.conf
+
+      - name: Install huggingface_hub
+        run: |
+          python3 -m pip install huggingface_hub
+
+      - name: Download model
+        run: |
+          from huggingface_hub import snapshot_download
+          snapshot_download(repo_id="Qdrant/resnet50-onnx", local_dir="${{ env.MODELS_DIR }}/resnet50-onnx")
+          snapshot_download(repo_id="onnx-community/mobilenet_v2_1.0_224", local_dir="${{ env.MODELS_DIR }}/mobilenet_v2_1.0_224")
+        shell: python
+
+      - name: Compile resnet50-onnx on MTL
+        run: |
+          source prepare_env.sh METEORLAKE
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/resnet50-onnx/model.onnx -d NPU.3720 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
+
+      - name: Compile resnet50-onnx on LNL
+        run: |
+          source prepare_env.sh LUNARLAKE
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/resnet50-onnx/model.onnx -d NPU.4000 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
+
+      - name: Compile mobilenet_v2_1.0_224 on MTL
+        run: |
+          source prepare_env.sh METEORLAKE
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/mobilenet_v2_1.0_224/onnx/model_fp16.onnx -d NPU.3720 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/mobilenet_v2_1.0_224/onnx/model_int8.onnx -d NPU.3720 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/mobilenet_v2_1.0_224/onnx/model_quantized.onnx -d NPU.3720 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
+
+      - name: Compile mobilenet_v2_1.0_224 on LNL
+        run: |
+          source prepare_env.sh LUNARLAKE
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/mobilenet_v2_1.0_224/onnx/model_fp16.onnx -d NPU.4000 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/mobilenet_v2_1.0_224/onnx/model_int8.onnx -d NPU.4000 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
+          ${COMPILE_TOOL} -m ${MODELS_DIR}/mobilenet_v2_1.0_224/onnx/model_quantized.onnx -d NPU.4000 -log_level LOG_INFO -il NCHW -iml NCHW -ol NC -oml NC -c common_compilation_config.conf
