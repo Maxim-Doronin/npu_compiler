@@ -7,19 +7,26 @@ on:
       - develop
 
 concurrency:
-  group: mlir-linux-${{ github.event_name }}-${{ github.ref_name }}-ubuntu-24
+  group: linux-${{ github.event_name }}-${{ github.ref_name }}-ubuntu-24
   cancel-in-progress: true
 
 permissions: read-all
 
 jobs:
-  MLIR:
-    name: MLIR
-    uses: ./.github/workflows/job_mlir_linux.yml
+  #MLIR:
+  #  name: MLIR
+  #  uses: ./.github/workflows/job_mlir_linux.yml
+  #  with:
+  #    os: ubuntu_24_04
+  #    build-runner: ubuntu-latest-32-cores
+  #    test-runner: ubuntu-latest-8-cores
+  #    run-unit-tests: false
+  #    run-lit-tests: false
+  #    run-compilation-tests: true
+
+  DRIVER:
+    name: DRIVER
+    uses: ./.github/workflows/job_driver_linux.yml
     with:
       os: ubuntu_24_04
       build-runner: ubuntu-latest-32-cores
-      test-runner: ubuntu-latest-8-cores
-      run-unit-tests: false
-      run-lit-tests: false
-      run-compilation-tests: true

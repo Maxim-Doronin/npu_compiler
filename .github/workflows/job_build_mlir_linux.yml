@@ -10,7 +10,7 @@ on:
         description: 'Machine on which the builds will run'
         type: string
         required: true
-      openvino-organization:
+      openvino-repository:
         description: 'OpenVINO fork owner to clone'
         type: string
         required: true
@@ -102,7 +102,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         timeout-minutes: 15
         with:
-          repository: ${{ inputs.openvino-organization }}/openvino
+          repository: ${{ inputs.openvino-repository }}
           path: ${{ env.OPENVINO_REPO }}
           submodules: true
           ref: ${{ inputs.openvino-commit }}
@@ -170,11 +170,11 @@ jobs:
             -S ${OPENVINO_REPO} \
             -B ${OPENVINO_BUILD_DIR}
 
-      - name: Cmake build - OpenVINO
+      - name: CMake build - OpenVINO
         run: |
           cmake --build ${OPENVINO_BUILD_DIR} --parallel $(nproc) --config ${{ env.CMAKE_BUILD_TYPE }}
 
-      - name: Cmake install - OpenVINO
+      - name: CMake install - OpenVINO
         run: |
           cmake --install ${OPENVINO_BUILD_DIR} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${OPENVINO_INSTALL_DIR}
           cmake --install ${OPENVINO_BUILD_DIR} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${OPENVINO_INSTALL_DIR} --component python_wheels
@@ -197,11 +197,11 @@ jobs:
             -S ${NPU_COMPILER_REPO} \
             -B ${NPU_COMPILER_BUILD_DIR}
 
-      - name: Cmake build - NPU Compiler
+      - name: CMake build - NPU Compiler
         run: |
           cmake --build ${NPU_COMPILER_BUILD_DIR} --parallel $(nproc) --config ${{ env.CMAKE_BUILD_TYPE }}
 
-      - name: Cmake install - NPU Compiler
+      - name: CMake install - NPU Compiler
         run: |
           cmake --install ${NPU_COMPILER_BUILD_DIR} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${OPENVINO_INSTALL_DIR}
           cmake --install ${NPU_COMPILER_BUILD_DIR} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${OPENVINO_INSTALL_DIR} --component tests
