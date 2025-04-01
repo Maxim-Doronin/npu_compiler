@@ -1,0 +1,32 @@
+name: 'Download Models'
+description: 'Download models from different sources'
+
+inputs:
+  compiler-type:
+    description: 'MLIR|DRIVER'
+    type: string
+    required: true
+  models-config:
+    description: 'Path to a JSON configuration file describing models to validate'
+    type: string
+    required: true
+  models-dir:
+    description: 'Path to a directory where to save models'
+    type: string
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        python3 -m pip install huggingface_hub
+
+    - name: Run downloader script
+      shell: bash
+      run: |
+        python3 ${{ github.action_path }}/download_models.py \
+          --compiler-type "${{ inputs.compiler-type }}" \
+          --models-config "${{ inputs.models-config }}" \
+          --models-dir "${{ inputs.models-dir }}"

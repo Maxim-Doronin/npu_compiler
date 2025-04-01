@@ -1,0 +1,88 @@
+{
+  "models": [
+    {
+      "name": "resnet50-onnx_FP32_LATENCY_MLIR",
+      "repository": "Qdrant/resnet50-onnx",
+      "repository_type": "huggingface",
+      "repository_path": "model.onnx",
+      "category": "MLIR/VPU4000/SILICON",
+      "extra_config": {
+        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_PLATFORM": "VPU4000",
+        "DEVICE_ID": "4000",
+        "PERFORMANCE_HINT": "LATENCY"
+      },
+      "Compile": {
+        "input_precision": "FP16",
+        "output_precision": "FP16",
+        "input_layout": "NCHW",
+        "output_layout": "NC",
+        "model_input_layout": "NCHW",
+        "model_output_layout": "NC"
+      }
+    },
+    {
+      "name": "resnet50-onnx_FP32_LATENCY_DRIVER",
+      "repository": "Qdrant/resnet50-onnx",
+      "repository_type": "huggingface",
+      "repository_path": "model.onnx",
+      "category": "DRIVER/VPU4000/SILICON",
+      "extra_config": {
+        "NPU_COMPILER_TYPE": "DRIVER",
+        "NPU_PLATFORM": "VPU4000",
+        "DEVICE_ID": "4000",
+        "PERFORMANCE_HINT": "LATENCY"
+      },
+      "Compile": {
+        "input_precision": "FP16",
+        "output_precision": "FP16",
+        "input_layout": "NCHW",
+        "output_layout": "NC",
+        "model_input_layout": "NCHW",
+        "model_output_layout": "NC"
+      }
+    },
+    {
+      "name": "resnet50-onnx_FP32_THROUGHPUT_MLIR",
+      "repository": "Qdrant/resnet50-onnx",
+      "repository_type": "huggingface",
+      "repository_path": "model.onnx",
+      "category": "MLIR/VPU4000/SILICON",
+      "extra_config": {
+        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_PLATFORM": "VPU4000",
+        "DEVICE_ID": "4000",
+        "PERFORMANCE_HINT": "THROUGHPUT"
+      },
+      "Compile": {
+        "input_precision": "FP16",
+        "output_precision": "FP16",
+        "input_layout": "NCHW",
+        "output_layout": "NC",
+        "model_input_layout": "NCHW",
+        "model_output_layout": "NC"
+      }
+    },
+    {
+      "name": "resnet50-onnx_FP32_THROUGHPUT_DRIVER",
+      "repository": "Qdrant/resnet50-onnx",
+      "repository_type": "huggingface",
+      "repository_path": "model.onnx",
+      "category": "DRIVER/VPU4000/SILICON",
+      "extra_config": {
+        "NPU_COMPILER_TYPE": "DRIVER",
+        "NPU_PLATFORM": "VPU4000",
+        "DEVICE_ID": "4000",
+        "PERFORMANCE_HINT": "THROUGHPUT"
+      },
+      "Compile": {
+        "input_precision": "FP16",
+        "output_precision": "FP16",
+        "input_layout": "NCHW",
+        "output_layout": "NC",
+        "model_input_layout": "NCHW",
+        "model_output_layout": "NC"
+      }
+    }
+  ]
+}

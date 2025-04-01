@@ -72,8 +72,8 @@ env:
 
 jobs:
   BuildMLIR:
-    name: Build
-    if: ${{ false && inputs.build-mlir }}
+    name: MLIR Build
+    if: ${{ inputs.build-mlir }}
     uses: ./.github/workflows/job_build_mlir_linux.yml
     with:
       os: ${{ inputs.os }}
@@ -85,7 +85,7 @@ jobs:
       with-tests: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
 
   BuildDriver:
-    name: Build
+    name: Driver Build
     if: ${{ inputs.build-driver }}
     uses: ./.github/workflows/job_build_driver_linux.yml
     with:
@@ -96,7 +96,7 @@ jobs:
       build-cache-key-suffix: ${{ inputs.build-cache-key-suffix }}
 
   MLIRUnitTests:
-    name: Tests
+    name: MLIR Unit Tests
     needs: BuildMLIR
     if: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
     uses: ./.github/workflows/job_tests_unit_mlir_linux.yml
@@ -107,7 +107,7 @@ jobs:
       run-lit-tests: ${{ inputs.run-lit-tests }}
 
   MLIRCompilationTests:
-    name: Tests
+    name: MLIR Compilation Tests
     needs: BuildMLIR
     if: ${{ inputs.run-compilation-tests }}
     uses: ./.github/workflows/job_tests_compilation_linux.yml
@@ -117,7 +117,7 @@ jobs:
       compiler-type: MLIR
 
   DriverCompilationTests:
-    name: Tests
+    name: Driver Compilation Tests
     needs: BuildDriver
     if: ${{ inputs.run-compilation-tests }}
     uses: ./.github/workflows/job_tests_compilation_linux.yml

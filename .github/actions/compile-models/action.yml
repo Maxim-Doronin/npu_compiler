@@ -1,0 +1,73 @@
+name: 'Compile Models'
+description: 'Compile models for NPU'
+
+inputs:
+  compiler-type:
+    description: 'MLIR|DRIVER'
+    type: string
+    required: true
+  npu-platform:
+    description: 'NPU.XXXX'
+    type: string
+    required: true
+  install-package-dir:
+    description: 'OV|Driver build artifacts with compile_tool and NPU compiler libs'
+    type: string
+    required: true
+  models-dir:
+    description: 'Path to a directory with downloaded models'
+    type: string
+    required: true
+  models-config:
+    description: 'Path to models config'
+    type: string
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Prepare OpenVINO environment
+      if: ${{ inputs.compiler-type == 'MLIR' }}
+      shell: bash
+      run: |
+        cat <<'EOF' > prepare_env.sh
+        #!/usr/bin/env bash
+        set -e
+        INSTALL_PACKAGE_ABS_PATH=$(realpath ${{ inputs.install-package-dir }})
+        source ${INSTALL_PACKAGE_ABS_PATH}/setupvars.sh
+        export COMPILE_TOOL=${INSTALL_PACKAGE_ABS_PATH}/tools/compile_tool/compile_tool
+        EOF
+        chmod +x ${INSTALL_PACKAGE_ABS_PATH}/setupvars.sh
+        chmod +x ${INSTALL_PACKAGE_ABS_PATH}/tools/compile_tool/compile_tool
+        chmod +x prepare_env.sh
+
+    - name: Prepare Driver environment
+      if: ${{ inputs.compiler-type == 'DRIVER' }}
+      shell: bash
+      run: |
+        cat <<'EOF' > prepare_env.sh
+        #!/usr/bin/env bash
+        set -e
+        if [[ "${{ inputs.npu-platform }}" == "NPU.3720" ]]; then
+          PLATFORM="METEORLAKE"
+        elif [[ "${{ inputs.npu-platform }}" == "NPU.4000" ]]; then
+          PLATFORM="LUNARLAKE"
+        else
+          PLATFORM="not_valid_platform"
+        fi
+        INSTALL_PACKAGE_ABS_PATH=$(realpath ${{ inputs.install-package-dir }})
+        export LD_LIBRARY_PATH=${INSTALL_PACKAGE_ABS_PATH}/usr/lib/:$LD_LIBRARY_PATH
+        export ZE_INTEL_NPU_PLATFORM_OVERRIDE=${PLATFORM}
+        export COMPILE_TOOL=${INSTALL_PACKAGE_ABS_PATH}/usr/bin/compile_tool
+        EOF
+        chmod +x prepare_env.sh
+
+    - name: Compile models for ${{ inputs.npu-platform }} with ${{ inputs.compiler-type }} compiler
+      shell: bash
+      run: |
+        source prepare_env.sh
+        python3 ${{ github.action_path }}/compile_models.py \
+          --compiler-type "${{ inputs.compiler-type }}" \
+          --compile-tool "${COMPILE_TOOL}" \
+          --models-config "${{ inputs.models-config }}" \
+          --models-dir "${{ inputs.models-dir }}"

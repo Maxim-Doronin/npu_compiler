@@ -32,7 +32,7 @@ env:
 
 jobs:
   UnitTests:
-    name: Unit Tests MLIR
+    name: Unit Tests
     if: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
     runs-on: ${{ inputs.test-runner }}
     timeout-minutes: 60

@@ -36,7 +36,7 @@ permissions: read-all
 
 jobs:
   Build:
-    name: Build Driver
+    name: Build
     runs-on: ${{ inputs.build-runner }}
     timeout-minutes: 240
     outputs:
