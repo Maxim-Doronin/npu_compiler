@@ -2,6 +2,10 @@ name: Linux Compilation Tests
 on:
   workflow_call:
     inputs:
+      os:
+        description: 'OS that is used for building in the form of "ubuntu_20_04"'
+        type: string
+        required: true
       test-runner:
         description: 'Machine on which the tests will run'
         type: string
@@ -14,6 +18,11 @@ on:
         description: 'MLIR or DRIVER'
         type: string
         required: true
+      export-blobs:
+        description: 'Whether to upload compiled models as the job artifact'
+        type: boolean
+        required: false
+        default: false
 
 defaults:
   run:
@@ -23,13 +32,18 @@ permissions: read-all
 
 jobs:
   CompilationTests:
-    name: Compilation tests
+    name: Compilation tests ${{ matrix.npu-platform }}
     runs-on: ${{ inputs.test-runner }}
     timeout-minutes: 60
     env:
       INSTALL_PACKAGE_DIR: ./install_package
       MODELS_DIR: ./models
+      BLOBS_DIR: ./blobs
+      BLOBS_ARTIFACT_NAME: l_compile_blobs_${{ inputs.os }}_${{ matrix.npu-platform }}_${{ inputs.compiler-type }}_${{ github.sha }}
+      LOGS_DIR: ./logs
+      LOGS_ARTIFACT_NAME: l_compile_logs_${{ inputs.os }}_${{ matrix.npu-platform }}_${{ inputs.compiler-type }}_${{ github.sha }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - npu-platform: NPU.3720
@@ -76,4 +90,20 @@ jobs:
           npu-platform: ${{ matrix.npu-platform }}
           install-package-dir: ${{ env.INSTALL_PACKAGE_DIR }}
           models-dir: ${{ env.MODELS_DIR }}
+          blobs-dir: ${{ env.BLOBS_DIR }}
           models-config: ${{ matrix.models-config }}
+          logs-dir: ${{ env.LOGS_DIR }}
+
+      - name: Upload logs artifacts
+        if: ${{ always() && env.LOGS_DIR }}
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ env.LOGS_DIR }}
+          name: ${{ env.LOGS_ARTIFACT_NAME }}
+
+      - name: Upload blobs artifacts
+        if: ${{  always() && inputs.export-blobs && env.BLOBS_DIR }}
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ env.BLOBS_DIR }}
+          name: ${{ env.BLOBS_ARTIFACT_NAME }}

@@ -21,7 +21,8 @@ runs:
     - name: Install dependencies
       shell: bash
       run: |
-        python3 -m pip install huggingface_hub
+        python3 -m pip install --upgrade pip
+        python3 -m pip install --upgrade huggingface_hub hf_xet requests
 
     - name: Run downloader script
       shell: bash

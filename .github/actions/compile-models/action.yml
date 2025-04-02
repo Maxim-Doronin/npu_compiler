@@ -18,14 +18,28 @@ inputs:
     description: 'Path to a directory with downloaded models'
     type: string
     required: true
+  blobs-dir:
+    description: 'Path to a directory where to save model compilation logs'
+    type: string
+    required: true
   models-config:
     description: 'Path to models config'
+    type: string
+    required: true
+  logs-dir:
+    description: 'Path to a directory where to save model compilation logs'
     type: string
     required: true
 
 runs:
   using: 'composite'
   steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install --upgrade transformers torch onnx onnxruntime onnxruntime-tools accelerate huggingface_hub pillow requests
+
     - name: Prepare OpenVINO environment
       if: ${{ inputs.compiler-type == 'MLIR' }}
       shell: bash
@@ -70,4 +84,6 @@ runs:
           --compiler-type "${{ inputs.compiler-type }}" \
           --compile-tool "${COMPILE_TOOL}" \
           --models-config "${{ inputs.models-config }}" \
-          --models-dir "${{ inputs.models-dir }}"
+          --models-dir "${{ inputs.models-dir }}" \
+          --blobs-dir "${{ inputs.blobs-dir }}" \
+          --logs-dir "${{ inputs.logs-dir }}"
