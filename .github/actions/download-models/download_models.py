@@ -20,39 +20,15 @@ Downloading AI models from different sources specified in json config with the f
 
 #!/usr/bin/env python3
 
-import argparse
 import json
 import os
 from pathlib import Path
+
 from tqdm import tqdm
 import requests
 from huggingface_hub import hf_hub_download, snapshot_download
 
-
-def parse_arguments():
-    """Parses command line arguments"""
-    parser = argparse.ArgumentParser(description="Download models from various sources")
-    parser.add_argument(
-        "--compiler-type",
-        type=str,
-        required=True,
-        choices=["MLIR", "DRIVER"],
-        help="MLIR|DRIVER",
-    )
-    parser.add_argument(
-        "--models-config",
-        type=Path,
-        required=True,
-        help="Path to a JSON configuration file describing models to validate",
-    )
-    parser.add_argument(
-        "--models-dir",
-        type=Path,
-        required=True,
-        help="Path to a directory where to save models",
-    )
-    args = parser.parse_args()
-    return args
+from common.cli import parse_arguments
 
 
 def download_single_file_from_huggingface(
@@ -62,7 +38,9 @@ def download_single_file_from_huggingface(
     hf_hub_download(repo_id=repository, filename=repository_path, local_dir=target_dir)
 
 
-def download_repository_from_huggingface(repository: str, target_dir: Path):
+def download_repository_from_huggingface(
+    repository: str, target_dir: Path
+):
     """Download a model from HuggingFace"""
     snapshot_download(repo_id=repository, local_dir=target_dir)
 

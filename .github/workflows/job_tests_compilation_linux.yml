@@ -47,9 +47,9 @@ jobs:
       matrix:
         include:
           - npu-platform: NPU.3720
-            models-config: ./validation/public_models_3720.json
+            models-config: ./validation/public_models_3720_${{ inputs.compiler-type }}.json
           - npu-platform: NPU.4000
-            models-config: ./validation/public_models_4000.json
+            models-config: ./validation/public_models_4000_${{ inputs.compiler-type }}.json
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,7 +102,7 @@ jobs:
           name: ${{ env.LOGS_ARTIFACT_NAME }}
 
       - name: Upload blobs artifacts
-        if: ${{  always() && inputs.export-blobs && env.BLOBS_DIR }}
+        if: ${{ always() && inputs.export-blobs && env.BLOBS_DIR }}
         uses: actions/upload-artifact@v4
         with:
           path: ${{ env.BLOBS_DIR }}
