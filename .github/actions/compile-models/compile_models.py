@@ -46,6 +46,7 @@ Compiling AI models from different sources specified in json config with the fol
 import io
 import contextlib
 import subprocess
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
@@ -53,7 +54,7 @@ from tqdm import tqdm
 from common.cli import parse_arguments
 from common.enums import Status
 from common.logger import setup_console_logger, setup_thread_file_logger
-from common.utils import read_models_from_config, print_summary
+from common.utils import read_models_from_config, analyze_results
 from convert_pytorch_to_onnx import convert_pytorch_to_onnx
 from run_compile_tool import compile_model
 from quantize_onnx import quantize_onnx_model
@@ -132,6 +133,9 @@ def main():
     args = parse_arguments()
     logger = setup_console_logger()
     models = read_models_from_config(args.models_config, logger)
+    if not models:
+        logger.warning("No models found in the config %s", args.models_config.resolve())
+        sys.exit(0)
 
     logger.info("Found %s models in %s config", len(models), args.models_config.resolve())
     logger.info("Starting compilation with %s parallel jobs...", args.jobs)
@@ -139,7 +143,9 @@ def main():
     logger.info("Extra compilation configs will be saved in %s", args.configs_dir.resolve())
 
     compilation_results = run_parallel_pipelines(args, models)
-    print_summary(compilation_results, logger)
+    if analyze_results(compilation_results, logger) in Status.get_error_statuses():
+        logger.error("Some models failed. Exiting with error.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ compile-models library helpers
 
 import json
 import logging
-import sys
 from collections import Counter
 from pathlib import Path
 
@@ -16,10 +15,6 @@ def read_models_from_config(models_config: Path, logger: logging.Logger) -> list
     with open(models_config, "r", encoding="utf-8") as f:
         config = json.load(f)
         models = config.get("models", [])
-
-    if not models:
-        logger.warning("No models found in the config %s", models_config.resolve())
-        sys.exit(0)
     return models
 
 
@@ -35,7 +30,7 @@ def write_extra_config(args: dict, model: dict) -> tuple:
     return extra_config_path, content
 
 
-def print_summary(compilation_results: dict, logger: logging.Logger):
+def analyze_results(compilation_results: dict, logger: logging.Logger) -> Status:
     """Prints compile_tool statistics across all configured models"""
     for model_name, result in compilation_results.items():
         if result in Status.get_ok_statuses():
@@ -47,5 +42,5 @@ def print_summary(compilation_results: dict, logger: logging.Logger):
     for status in Status:
         logger.info("\t%s: %d", status.name, counter.get(status, 0))
     if any(counter.get(status, 0) for status in Status.get_error_statuses()):
-        logger.error("Some models failed. Exiting with error.")
-        sys.exit(1)
+        return Status.FAILED
+    return Status.SUCCESS

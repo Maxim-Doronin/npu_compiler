@@ -1,4 +1,4 @@
-name: Linux
+name: Linux (Ubuntu 22.04)
 on:
   workflow_dispatch:
   pull_request:
@@ -7,14 +7,14 @@ on:
       - develop
 
 concurrency:
-  group: linux-${{ github.event_name }}-${{ github.ref_name }}-linux
+  group: linux-${{ github.event_name }}-${{ github.ref_name }}-ubuntu_22_04
   cancel-in-progress: true
 
 permissions: read-all
 
 jobs:
   Ubuntu2204:
-    name: Ubuntu 22.04
+    name: Main Trigger
     uses: ./.github/workflows/job_linux.yml
     with:
       os: ubuntu_22_04
@@ -26,19 +26,4 @@ jobs:
       build-driver: false
       run-unit-tests: true
       run-lit-tests: true
-      run-compilation-tests: true
-
-  Ubuntu2404:
-    name: Ubuntu 24.04
-    uses: ./.github/workflows/job_linux.yml
-    with:
-      os: ubuntu_24_04
-      build-runner: ubuntu-latest-32-cores
-      test-runner: ubuntu-latest-8-cores
-      build-cache: true
-      build-cache-key-suffix: cache_${{ github.ref_name }}
-      build-mlir: false
-      build-driver: true
-      run-unit-tests: false
-      run-lit-tests: false
       run-compilation-tests: true

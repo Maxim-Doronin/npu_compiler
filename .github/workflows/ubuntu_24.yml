@@ -1,0 +1,29 @@
+name: Linux (Ubuntu 24.04)
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - develop
+
+concurrency:
+  group: linux-${{ github.event_name }}-${{ github.ref_name }}-ubuntu_24_04
+  cancel-in-progress: true
+
+permissions: read-all
+
+jobs:
+  Ubuntu2404:
+    name: Main Trigger
+    uses: ./.github/workflows/job_linux.yml
+    with:
+      os: ubuntu_24_04
+      build-runner: ubuntu-latest-32-cores
+      test-runner: ubuntu-latest-8-cores
+      build-cache: true
+      build-cache-key-suffix: cache_${{ github.ref_name }}
+      build-mlir: false
+      build-driver: true
+      run-unit-tests: false
+      run-lit-tests: false
+      run-compilation-tests: true
