@@ -4,7 +4,7 @@
 
 # OpenVINO™ Intel® NPU Compiler
 
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/openvinotoolkit/npu_plugin/badge)](https://scorecard.dev/viewer/?uri=github.com/openvinotoolkit/npu_plugin)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/openvinotoolkit/npu_compiler/badge)](https://scorecard.dev/viewer/?uri=github.com/openvinotoolkit/npu_compiler)
 [![ubuntu_22](https://github.com/openvinotoolkit/npu_compiler/actions/workflows/ubuntu_22.yml/badge.svg?branch=develop&event=push)](https://github.com/openvinotoolkit/npu_compiler/actions/workflows/ubuntu_22.yml?query=event%3Apush)
 [![ubuntu_24](https://github.com/openvinotoolkit/npu_compiler/actions/workflows/ubuntu_24.yml/badge.svg?branch=develop&event=push)](https://github.com/openvinotoolkit/npu_compiler/actions/workflows/ubuntu_24.yml?query=event%3Apush)
 
