@@ -16,14 +16,20 @@ jobs:
   Ubuntu2204:
     name: Main Trigger
     uses: ./.github/workflows/job_linux.yml
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      statuses: read
+      security-events: write
     with:
       os: ubuntu_22_04
       build-runner: ubuntu-22.04-16-cores
       test-runner: ubuntu-22.04-8-cores
       build-cache: false
       build-cache-key-suffix: cache_${{ github.ref_name }}
-      build-mlir: false
-      build-driver: false
+      build-mlir: true
+      build-driver: true
       run-unit-tests: true
       run-lit-tests: true
       run-compilation-tests: true

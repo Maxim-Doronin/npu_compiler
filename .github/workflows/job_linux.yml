@@ -45,6 +45,11 @@ on:
         description: 'Cache package suffix'
         type: string
         required: false
+      with-codeql:
+        description: 'Whether to run CodeQL static C/C++ analyzer'
+        type: boolean
+        required: false
+        default: false
       run-unit-tests:
         description: 'Whether to run NPU Compiler unit tests'
         type: boolean
@@ -65,7 +70,11 @@ defaults:
   run:
     shell: bash
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  statuses: read
 
 env:
   OPENVINO_INSTALL_DIR: ./openvino_install
@@ -75,6 +84,12 @@ jobs:
     name: MLIR / Build
     if: ${{ inputs.build-mlir }}
     uses: ./.github/workflows/job_build_mlir_linux.yml
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      statuses: read
+      security-events: write
     with:
       os: ${{ inputs.os }}
       build-runner: ${{ inputs.build-runner }}
@@ -82,6 +97,7 @@ jobs:
       npu-cmake-options: ${{ inputs.npu-cmake-options }}
       build-cache: ${{ inputs.build-cache }}
       build-cache-key-suffix: ${{ inputs.build-cache-key-suffix }}
+      with-codeql: ${{ inputs.with-codeql }}
       with-tests: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
 
   BuildDriver:

@@ -27,6 +27,11 @@ on:
         description: 'Cache package suffix'
         type: string
         required: false
+      with-codeql:
+        description: 'Whether to run CodeQL static C/C++ analyzer'
+        type: boolean
+        required: false
+        default: false
       with-tests:
         description: 'Whether to build test targets'
         type: boolean
@@ -41,15 +46,25 @@ defaults:
   run:
     shell: bash
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  statuses: read
 
 jobs:
   Build:
     name: Build
     runs-on: ${{ inputs.build-runner }}
     timeout-minutes: 240
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      statuses: read
+      security-events: write
     outputs:
-      build-package: ${{ steps.set-build-package-name.outputs.build-package }} 
+      build-package: ${{ steps.set-build-package-name.outputs.build-package }}
     env:
       DEBIAN_FRONTEND: noninteractive
       CMAKE_BUILD_TYPE: 'Release'
@@ -60,6 +75,8 @@ jobs:
       NPU_COMPILER_BUILD_DIR: ./npu_compiler_build
       OPENVINO_INSTALL_DIR: ./openvino_install
       OPENVINO_BUILD_PACKAGE: l_ov_dyn_${{ inputs.os }}_npu_${{ github.sha }}
+      CODEQL_OUTPUTS: ./codeql_outputs
+      CODEQL_ARTIFACT_NAME: l_codeql_${{ inputs.os }}_npu_${{ github.sha }}
     steps:
       - name: Get cache key
         if: ${{ inputs.build-cache }}
@@ -130,6 +147,14 @@ jobs:
           else
             echo "ENABLE_TESTS_FLAG=OFF" >> $GITHUB_ENV
           fi
+
+      - name: Initialize CodeQL
+        if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
+        uses: github/codeql-action/init@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        with:
+          languages: c-cpp
+          build-mode: manual
+          source-root: ${{ env.NPU_COMPILER_REPO }}
 
       - name: CMake configure - OpenVINO
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
@@ -209,12 +234,51 @@ jobs:
           cmake --install ${NPU_COMPILER_BUILD_DIR} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${OPENVINO_INSTALL_DIR}
           cmake --install ${NPU_COMPILER_BUILD_DIR} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${OPENVINO_INSTALL_DIR} --component tests
 
+      - name: Perform CodeQL Analysis
+        id: codeql-analyze
+        if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
+        uses: github/codeql-action/analyze@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        with:
+          category: "/language:c-cpp"
+          output: ${{ env.CODEQL_OUTPUTS }}
+          upload: failure-only
+          checkout_path: ${{ env.NPU_COMPILER_REPO }}
+
+      - name: Filter CodeQL results
+        id: codeql-filtered-analyze
+        if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
+        uses: advanced-security/filter-sarif@bc96d9fb9338c5b48cc440b1b4d0a350b26a20db # Release 1.0
+        with:
+          input: ${{ env.CODEQL_OUTPUTS }}/cpp.sarif
+          output: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
+          patterns: |
+            +**
+            -thirdparty/flatbuffers/**
+            -thirdparty/gtest-parallel/**
+            -thirdparty/llvm-project/**
+            -thirdparty/yaml-cpp/**
+
+      - name: Upload CodeQL SARIF
+        if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        with:
+          sarif_file: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
+          checkout_path: ${{ env.NPU_COMPILER_REPO }}
+
+      - name: Upload CodeQL loc as a Build Artifact
+        if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.CODEQL_ARTIFACT_NAME }}
+          path: ${{ env.CODEQL_OUTPUTS }}
+          retention-days: 1
+
       - name: Cache artifacts
         if: ${{ inputs.build-cache && !steps.cache-restore.outputs.cache-hit }}
         uses: actions/cache/save@v4
         with:
           path: ${{ env.OPENVINO_INSTALL_DIR }}
-          key: ${{ needs.Cache.outputs.cache-key }}
+          key: ${{ steps.cache-key.outputs.cache-key }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

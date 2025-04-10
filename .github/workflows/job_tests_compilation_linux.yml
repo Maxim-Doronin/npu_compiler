@@ -28,7 +28,11 @@ defaults:
   run:
     shell: bash
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  statuses: read
 
 jobs:
   CompilationTests:

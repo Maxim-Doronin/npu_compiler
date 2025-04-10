@@ -32,7 +32,11 @@ defaults:
   run:
     shell: bash
 
-permissions: read-all
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  statuses: read
 
 jobs:
   Build:
@@ -140,7 +144,7 @@ jobs:
         uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ env.NPU_DRIVER_INSTALL_DIR }}
-          key: ${{ needs.Cache.outputs.cache-key }}
+          key: ${{ steps.cache-key.outputs.cache-key }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
