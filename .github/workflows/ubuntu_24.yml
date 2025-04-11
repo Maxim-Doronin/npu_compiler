@@ -7,19 +7,29 @@ on:
       - develop
 
 concurrency:
-  group: mlir-linux-${{ github.event_name }}-${{ github.ref_name }}-ubuntu-24
+  group: linux-${{ github.event_name }}-${{ github.ref_name }}-ubuntu_24_04
   cancel-in-progress: true
 
 permissions: read-all
 
 jobs:
-  MLIR:
-    name: MLIR
-    uses: ./.github/workflows/job_mlir_linux.yml
+  Ubuntu2404:
+    name: Main Trigger
+    uses: ./.github/workflows/job_linux.yml
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      statuses: read
+      security-events: write
     with:
       os: ubuntu_24_04
       build-runner: ubuntu-latest-32-cores
       test-runner: ubuntu-latest-8-cores
+      build-cache: false
+      build-cache-key-suffix: cache_${{ github.ref_name }}
+      build-mlir: true
+      build-driver: true
       run-unit-tests: false
       run-lit-tests: false
       run-compilation-tests: true

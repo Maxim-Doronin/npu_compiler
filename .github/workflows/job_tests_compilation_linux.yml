@@ -1,0 +1,113 @@
+name: Linux Compilation Tests
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: 'OS that is used for building in the form of "ubuntu_20_04"'
+        type: string
+        required: true
+      test-runner:
+        description: 'Machine on which the tests will run'
+        type: string
+        required: true
+      install-package:
+        description: 'Artifacts name from the build stage. Content varies depending on compiler-type'
+        type: string
+        required: true
+      compiler-type:
+        description: 'MLIR or DRIVER'
+        type: string
+        required: true
+      export-blobs:
+        description: 'Whether to upload compiled models as the job artifact'
+        type: boolean
+        required: false
+        default: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  statuses: read
+
+jobs:
+  CompilationTests:
+    name: Compilation tests ${{ matrix.npu-platform }}
+    runs-on: ${{ inputs.test-runner }}
+    timeout-minutes: 60
+    env:
+      INSTALL_PACKAGE_DIR: ./install_package
+      MODELS_DIR: ./models
+      BLOBS_DIR: ./blobs
+      BLOBS_ARTIFACT_NAME: l_compile_blobs_${{ inputs.os }}_${{ matrix.npu-platform }}_${{ inputs.compiler-type }}_${{ github.sha }}
+      LOGS_DIR: ./logs
+      LOGS_ARTIFACT_NAME: l_compile_logs_${{ inputs.os }}_${{ matrix.npu-platform }}_${{ inputs.compiler-type }}_${{ github.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - npu-platform: NPU.3720
+            models-config: ./validation/public_models_3720_${{ inputs.compiler-type }}.json
+          - npu-platform: NPU.4000
+            models-config: ./validation/public_models_4000_${{ inputs.compiler-type }}.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download artifacts
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          name: ${{ inputs.install-package }}
+          path: ${{ env.INSTALL_PACKAGE_DIR }}
+
+      - name: Unpack Driver artifacts
+        if: ${{ inputs.compiler-type == 'DRIVER' }}
+        run: |
+          cd ${INSTALL_PACKAGE_DIR}
+          dpkg --extract external/intel-driver-compiler-npu_*.deb .
+          dpkg --extract external/intel-level-zero-npu_*.deb .
+          dpkg --extract internal/intel-level-zero_*.deb .
+          dpkg --extract internal/intel-openvino-npu_*.deb .
+          find . -type f
+
+      - name: Install system packages
+        if: ${{ inputs.compiler-type == 'DRIVER' }}
+        run: |
+          sudo apt update
+          sudo apt install -y libtbb12
+
+      - name: Download models for ${{ matrix.npu-platform }}
+        uses: ./.github/actions/download-models
+        with:
+          compiler-type: ${{ inputs.compiler-type }}
+          models-config: ${{ matrix.models-config }}
+          models-dir: ${{ env.MODELS_DIR }}
+
+      - name: Compile models for ${{ matrix.npu-platform }}
+        uses: ./.github/actions/compile-models
+        with:
+          compiler-type: ${{ inputs.compiler-type }}
+          npu-platform: ${{ matrix.npu-platform }}
+          install-package-dir: ${{ env.INSTALL_PACKAGE_DIR }}
+          models-dir: ${{ env.MODELS_DIR }}
+          blobs-dir: ${{ env.BLOBS_DIR }}
+          models-config: ${{ matrix.models-config }}
+          logs-dir: ${{ env.LOGS_DIR }}
+
+      - name: Upload logs artifacts
+        if: ${{ always() && env.LOGS_DIR }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          path: ${{ env.LOGS_DIR }}
+          name: ${{ env.LOGS_ARTIFACT_NAME }}
+
+      - name: Upload blobs artifacts
+        if: ${{ always() && inputs.export-blobs && env.BLOBS_DIR }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          path: ${{ env.BLOBS_DIR }}
+          name: ${{ env.BLOBS_ARTIFACT_NAME }}

@@ -1,0 +1,82 @@
+name: Versions
+description: Parse git versions from config files
+
+outputs:
+  openvino-repository:
+    description: 'OpenVINO Repository full name: fork/openvino'
+    value: ${{ steps.read-openvino-sha.outputs.openvino-repository }}
+  openvino-sha:
+    description: 'OpenVINO commit SHA'
+    value: ${{ steps.read-openvino-sha.outputs.openvino-sha }}
+  npu-compiler-repository:
+    description: 'NPU Compiler Repository full name: fork/npu_compiler'
+    value: ${{ steps.get-npu-sha.outputs.npu-compiler-repository }}
+  npu-compiler-sha:
+    description: 'NPU Compiler commit SHA'
+    value: ${{ steps.get-npu-sha.outputs.npu-compiler-sha }}
+  npu-compiler-tag:
+    description: 'NPU Compiler custom tag to be used in the packages build'
+    value: ${{ steps.create-npu-tag.outputs.npu-compiler-tag }}
+  omz-repository:
+    description: 'Open Model Zoo Repository full name: for/open_model_zoo'
+    value: ${{ steps.read-omz-sha.outputs.omz-repository }}
+  omz-sha:
+    description: 'Open Model Zoo commit SHA'
+    value: ${{ steps.read-omz-sha.outputs.omz-sha }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get NPU original fork and commit sha
+      id: get-npu-sha
+      shell: bash
+      run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          echo "npu-compiler-repository=${{ github.event.pull_request.head.repo.full_name }}" >> $GITHUB_OUTPUT
+          echo "npu-compiler-sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+        else
+          echo "npu-compiler-repository=${{ github.repository }}" >> $GITHUB_OUTPUT
+          echo "npu-compiler-sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create NPU Compiler tag
+      id: create-npu-tag
+      shell: bash
+      run: |
+        NPU_TAG=ci_${GITHUB_SHA:0:7}
+        echo "NPU Compiler tag to be used in NPU Driver Linux build : $NPU_TAG"
+        echo "npu-compiler-tag=$NPU_TAG" >> $GITHUB_OUTPUT
+
+    - name: Fetch and parse OpenVINO config from NPU Compiler
+      id: read-openvino-sha
+      shell: bash
+      run: |
+        NPU_REPO=${{ steps.get-npu-sha.outputs.npu-compiler-repository }}
+        NPU_SHA=${{ steps.get-npu-sha.outputs.npu-compiler-sha }}
+        JSON=$(curl -s \
+          -H "Accept: application/vnd.github.v3.raw" \
+          https://api.github.com/repos/${NPU_REPO}/contents/validation/openvino_config.json?ref=${NPU_SHA} \
+        )
+        OV_ORG=$(echo "$JSON" | jq -r 'to_entries[0].key')
+        OV_SHA=$(echo "$JSON" | jq -r 'to_entries[0].value')
+        echo "OpenVINO orgranization = $OV_ORG"
+        echo "OpenVINO commit sha = $OV_SHA"
+        echo "openvino-repository=$OV_ORG/openvino" >> $GITHUB_OUTPUT
+        echo "openvino-sha=$OV_SHA" >> $GITHUB_OUTPUT
+
+    - name: Fetch and parse OMZ config from OpenVINO
+      id: read-omz-sha
+      shell: bash
+      run: |
+        OV_REPO=${{ steps.read-openvino-sha.outputs.openvino-repository }}
+        OV_SHA=${{ steps.read-openvino-sha.outputs.openvino-sha }}
+        JSON=$(curl -s \
+          -H "Accept: application/vnd.github.v3.raw" \
+          https://api.github.com/repos/${OV_REPO}/contents/src/plugins/intel_npu/tools/omz_version.json?ref=${OV_SHA} \
+        )
+        OMZ_ORG=$(echo "$JSON" | jq -r 'to_entries[0].key')
+        OMZ_SHA=$(echo "$JSON" | jq -r 'to_entries[0].value')
+        echo "Open Model Zoo orgranization = $OMZ_ORG"
+        echo "Open Model Zoo commit sha = $OMZ_SHA"
+        echo "omz-repository=$OMZ_ORG/open_model_zoo" >> $GITHUB_OUTPUT
+        echo "omz-sha=$OMZ_SHA" >> $GITHUB_OUTPUT

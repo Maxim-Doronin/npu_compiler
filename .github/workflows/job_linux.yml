@@ -1,0 +1,145 @@
+name: Linux pipeline
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: 'OS that is used for building in the form of "ubuntu_20_04"'
+        type: string
+        required: true
+      build-runner:
+        description: 'Machine on which the builds will run'
+        type: string
+        required: true
+      test-runner:
+        description: 'Machine on which the tests will run'
+        type: string
+        required: false
+      openvino-cmake-options:
+        description: 'A string of options passed to OpenVINO CMake'
+        type: string
+        required: false
+      npu-cmake-options:
+        description: 'A string of options passed to NPU Compiler CMake'
+        type: string
+        required: false
+      driver-cmake-options:
+        description: 'A string of options passed to NPU Driver CMake'
+        type: string
+        required: false
+      build-mlir:
+        description: 'Whether to build MLIR NPU Compiler'
+        type: boolean
+        required: false
+        default: true
+      build-driver:
+        description: 'Whether to build NPU Driver with Compiler'
+        type: boolean
+        required: false
+        default: true
+      build-cache:
+        description: 'Whether to take previously built OpenVINO/NPU package.'
+        type: boolean
+        required: false
+        default: false
+      build-cache-key-suffix:
+        description: 'Cache package suffix'
+        type: string
+        required: false
+      with-codeql:
+        description: 'Whether to run CodeQL static C/C++ analyzer'
+        type: boolean
+        required: false
+        default: false
+      run-unit-tests:
+        description: 'Whether to run NPU Compiler unit tests'
+        type: boolean
+        required: false
+        default: false
+      run-lit-tests:
+        description: 'Whether to run NPU Compiler LIT tests'
+        type: boolean
+        required: false
+        default: false
+      run-compilation-tests:
+        description: 'Whether to run NPU Compiler compile_tool tests suites'
+        type: boolean
+        required: false
+        default: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  statuses: read
+
+env:
+  OPENVINO_INSTALL_DIR: ./openvino_install
+
+jobs:
+  BuildMLIR:
+    name: MLIR / Build
+    if: ${{ inputs.build-mlir }}
+    uses: ./.github/workflows/job_build_mlir_linux.yml
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      statuses: read
+      security-events: write
+    with:
+      os: ${{ inputs.os }}
+      build-runner: ${{ inputs.build-runner }}
+      openvino-cmake-options: ${{ inputs.openvino-cmake-options }}
+      npu-cmake-options: ${{ inputs.npu-cmake-options }}
+      build-cache: ${{ inputs.build-cache }}
+      build-cache-key-suffix: ${{ inputs.build-cache-key-suffix }}
+      with-codeql: ${{ inputs.with-codeql }}
+      with-tests: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
+
+  BuildDriver:
+    name: Driver / Build
+    if: ${{ inputs.build-driver }}
+    uses: ./.github/workflows/job_build_driver_linux.yml
+    with:
+      os: ${{ inputs.os }}
+      build-runner: ${{ inputs.build-runner }}
+      driver-cmake-options: ${{ inputs.driver-cmake-options }}
+      build-cache: ${{ inputs.build-cache }}
+      build-cache-key-suffix: ${{ inputs.build-cache-key-suffix }}
+
+  MLIRUnitTests:
+    name: MLIR / Unit Tests
+    needs: BuildMLIR
+    if: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
+    uses: ./.github/workflows/job_tests_unit_mlir_linux.yml
+    with:
+      test-runner: ${{ inputs.test-runner }}
+      install-package: ${{ needs.BuildMLIR.outputs.build-package }}
+      run-unit-tests: ${{ inputs.run-unit-tests }}
+      run-lit-tests: ${{ inputs.run-lit-tests }}
+
+  MLIRCompilationTests:
+    name: MLIR / Compilation Tests
+    needs: BuildMLIR
+    if: ${{ inputs.run-compilation-tests }}
+    uses: ./.github/workflows/job_tests_compilation_linux.yml
+    with:
+      os: ${{ inputs.os }}
+      test-runner: ${{ inputs.test-runner }}
+      install-package: ${{ needs.BuildMLIR.outputs.build-package }}
+      compiler-type: MLIR
+
+  DriverCompilationTests:
+    name: Driver / Compilation Tests
+    needs: BuildDriver
+    if: ${{ inputs.run-compilation-tests }}
+    uses: ./.github/workflows/job_tests_compilation_linux.yml
+    with:
+      os: ${{ inputs.os }}
+      test-runner: ${{ inputs.test-runner }}
+      install-package: ${{ needs.BuildDriver.outputs.build-package }}
+      compiler-type: DRIVER

@@ -1,0 +1,91 @@
+name: Linux MLIR Unit Tests
+on:
+  workflow_call:
+    inputs:
+      test-runner:
+        description: 'Machine on which the tests will run'
+        type: string
+        required: true
+      install-package:
+        description: 'OpenVINO/NPU build package name to be downloaded for tests'
+        type: string
+        required: true
+      run-unit-tests:
+        description: 'Whether to run NPU Compiler unit tests'
+        type: boolean
+        required: false
+        default: false
+      run-lit-tests:
+        description: 'Whether to run NPU Compiler LIT tests'
+        type: boolean
+        required: false
+        default: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  statuses: read
+
+env:
+  OPENVINO_INSTALL_DIR: ./openvino_install
+
+jobs:
+  UnitTests:
+    name: Unit Tests
+    if: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
+    runs-on: ${{ inputs.test-runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          name: ${{ inputs.install-package }}
+          path: ${{ env.OPENVINO_INSTALL_DIR }}
+
+      - name: Prepare environment
+        run: |
+          echo "PROF_PARSER_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/prof_parser")" >> $GITHUB_ENV
+          echo "LSP_SERVER_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/npu-lsp-server")" >> $GITHUB_ENV
+          echo "VPUX_OPT_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/vpux-opt")" >> $GITHUB_ENV
+          chmod +x ${OPENVINO_INSTALL_DIR}/setupvars.sh
+          chmod +x ${OPENVINO_INSTALL_DIR}/tests/FileCheck
+          chmod +x ${OPENVINO_INSTALL_DIR}/tests/flatc
+          chmod +x ${OPENVINO_INSTALL_DIR}/tests/not
+          chmod +x ${OPENVINO_INSTALL_DIR}/tools/prof_parser/prof_parser
+          chmod +x ${OPENVINO_INSTALL_DIR}/tools/npu-lsp-server/npu-lsp-server
+          chmod +x ${OPENVINO_INSTALL_DIR}/tools/vpux-opt/vpux-opt
+
+      - name: Run OV NPU Unit tests
+        if: ${{ inputs.run-unit-tests }}
+        run: |
+          source ${OPENVINO_INSTALL_DIR}/setupvars.sh
+          chmod +x ${OPENVINO_INSTALL_DIR}/tests/ov_npu_unit_tests
+          ${OPENVINO_INSTALL_DIR}/tests/ov_npu_unit_tests
+
+      - name: Run NPU Unit tests
+        if: ${{ inputs.run-unit-tests }}
+        run: |
+          source ${OPENVINO_INSTALL_DIR}/setupvars.sh
+          chmod +x ${OPENVINO_INSTALL_DIR}/tests/npuUnitTests
+          ${OPENVINO_INSTALL_DIR}/tests/npuUnitTests
+
+      - name: Run NPU37XX LIT tests
+        if: ${{ inputs.run-lit-tests }}
+        run: |
+          source ${OPENVINO_INSTALL_DIR}/setupvars.sh
+          export PATH=$PATH:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}
+          cd ${OPENVINO_INSTALL_DIR}/tests/lit-tests
+          python3 ./lit-tool/lit.py -v --param arch=NPU37XX NPU/NPU
+
+      - name: Run NPU40XX LIT tests
+        if: ${{ inputs.run-lit-tests }}
+        run: |
+          source ${OPENVINO_INSTALL_DIR}/setupvars.sh
+          export PATH=$PATH:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}
+          cd ${OPENVINO_INSTALL_DIR}/tests/lit-tests
+          python3 ./lit-tool/lit.py -v --param arch=NPU40XX NPU/NPU
