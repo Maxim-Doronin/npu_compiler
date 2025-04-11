@@ -51,6 +51,7 @@ runs:
         source ${INSTALL_PACKAGE_ABS_PATH}/setupvars.sh
         export COMPILE_TOOL=${INSTALL_PACKAGE_ABS_PATH}/tools/compile_tool/compile_tool
         EOF
+        INSTALL_PACKAGE_ABS_PATH=$(realpath ${{ inputs.install-package-dir }})
         chmod +x ${INSTALL_PACKAGE_ABS_PATH}/setupvars.sh
         chmod +x ${INSTALL_PACKAGE_ABS_PATH}/tools/compile_tool/compile_tool
         chmod +x prepare_env.sh
