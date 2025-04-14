@@ -7,6 +7,7 @@ updates:
 
   - package-ecosystem: "pip"
     directories:
+      - "/.github"
       - "/.github/actions/compile-models"
       - "/.github/actions/download-models"
     schedule:

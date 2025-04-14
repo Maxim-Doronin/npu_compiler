@@ -1,0 +1,16 @@
+# Core
+transformers>=4.51.1
+torch>=2.6.0
+torchvision
+onnx>=1.17.0
+onnxruntime>=1.21.0
+onnxruntime-tools>=1.7.0
+
+# Hugging Face Hub
+huggingface_hub>=0.30.2
+
+# Utils
+pillow>=11.1.0
+requests>=2.32.3
+tqdm>=4.67.1
+accelerate>=1.6.0

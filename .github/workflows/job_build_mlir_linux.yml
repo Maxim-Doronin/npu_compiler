@@ -133,11 +133,7 @@ jobs:
       - name: Install python dependencies
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
         run: |
-          python3 -m pip install -r ${OPENVINO_REPO}/src/bindings/python/wheel/requirements-dev.txt
-          python3 -m pip install -r ${OPENVINO_REPO}/src/frontends/onnx/tests/requirements.txt
-          python3 -m pip install -r ${OPENVINO_REPO}/src/frontends/tensorflow/tests/requirements.txt
-          python3 -m pip install -r ${OPENVINO_REPO}/src/frontends/tensorflow_lite/tests/requirements.txt
-          python3 -m pip install -r ${OPENVINO_REPO}/src/frontends/paddle/tests/requirements.txt
+          python3 -m pip install --require-hashes -r ${NPU_COMPILER_REPO}/.github/requirements-dev.txt
 
       - name: Prepare environment
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
