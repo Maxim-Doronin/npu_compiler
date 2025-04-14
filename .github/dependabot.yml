@@ -6,10 +6,17 @@ updates:
       interval: "weekly"
 
   - package-ecosystem: "pip"
-    directories:
-      - "/.github"
-      - "/.github/actions/compile-models"
-      - "/.github/actions/download-models"
+    directory: "/.github"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "pip"
+    directory: "/.github/actions/compile-models"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "pip"
+    directory: "/.github/actions/download-models"
     schedule:
       interval: "weekly"
 
