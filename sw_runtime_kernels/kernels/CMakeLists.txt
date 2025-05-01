@@ -11,6 +11,8 @@ option(ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD "Enable firmware.vpu.client sources 
 
 set(target_binary_dir "${CMAKE_CURRENT_BINARY_DIR}/act_shave_bin")
 file(MAKE_DIRECTORY ${target_binary_dir})
+set(target_asm_dir "${CMAKE_CURRENT_BINARY_DIR}/act_shave_asm")
+file(MAKE_DIRECTORY ${target_asm_dir})
 
 # Establish if we want to build the kernels or just use prebuilts
 if(NOT (ENABLE_SHAVE_BINARIES_BUILD OR ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD))
@@ -20,6 +22,7 @@ else()
 endif()
 
 # Defines section and general use code
+set(asm_suffix ".s")
 set(obj_suffix ".o")
 set(elf_suffix ".elf")
 set(kernel_descrip_dir "${CMAKE_CURRENT_SOURCE_DIR}/descrip/")
@@ -28,6 +31,7 @@ set(act_shave_kernels "")
 
 add_custom_target(act_shave_kernels_ready)
 add_custom_target(act_shave_kernels_build)
+add_custom_target(act_shave_kernels_asm)
 
 # Enable building kernels from separate build folder if needed
 if(ENABLE_MLIR_COMPILER AND build_kernels)
@@ -43,6 +47,7 @@ endif()
 
 # Delete previously build binaries from the build folder to avoid copy of old binaries
 file(REMOVE_RECURSE "${target_binary_dir}/*${elf_suffix}")
+file(REMOVE_RECURSE "${target_asm_dir}/*${asm_suffix}")
 file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/*${obj_suffix}")
 file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/generated_shave_binary_resources.cpp")
 
@@ -77,6 +82,12 @@ endif()
 if(ENABLE_SHAVE_BINARIES_BUILD)
   file(GLOB kernel_list "${kernel_descrip_dir}*.txt")
   list(APPEND kernel_descrip_list ${kernel_list})
+  # Remove MGMT kernels
+  file(GLOB mgmt_kernel_list "${kernel_descrip_dir}nnActEntry_*.txt")
+  list(REMOVE_ITEM kernel_descrip_list ${mgmt_kernel_list})
+  # Remove kernels with firmware sources
+  file(GLOB firmware_kernel_list "${kernel_descrip_dir}*_fw.txt")
+  list(REMOVE_ITEM kernel_descrip_list ${firmware_kernel_list})
 endif()
 
 if(ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
@@ -96,14 +107,14 @@ if(ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
     set(FIRMWARE_VPU_DIR "$ENV{FIRMWARE_VPU_DIR}")
   endif()
 
-  # If we want to build only MGMT kernels we should iterate only through those descrip files
-  if(ENABLE_MANAGEMENT_KERNEL_BUILD AND NOT ENABLE_SHAVE_BINARIES_BUILD)
+  # If we want to build MGMT kernels we should iterate through those descrip files
+  if(ENABLE_MANAGEMENT_KERNEL_BUILD)
     file(GLOB mgmt_kernel_list "${kernel_descrip_dir}nnActEntry_*.txt")
     list(APPEND kernel_descrip_list ${mgmt_kernel_list})
   endif()
 
-  # If we want to build only kernels with firmware sources we should iterate only through those descrip files
-  if(ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD AND NOT ENABLE_SHAVE_BINARIES_BUILD)
+  # If we want to build kernels with firmware sources we should iterate through those descrip files
+  if(ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
     file(GLOB firmware_kernel_list "${kernel_descrip_dir}*_fw.txt")
     list(APPEND kernel_descrip_list ${firmware_kernel_list})
   endif()
@@ -167,9 +178,12 @@ foreach(kernel_descrip ${kernel_descrip_list})
   set(obj_file "${kernel_src}${kernel_cpu_suffix}${obj_suffix}")
   set(elf_file "${kernel_name}${kernel_cpu_suffix}${elf_suffix}")
   set(elf_path "${target_binary_dir}/${elf_file}")
+  set(asm_file "${kernel_name}${kernel_cpu_suffix}${asm_suffix}")
+  set(asm_path "${target_asm_dir}/${asm_file}")
   if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
     set(obj_file_lsu0_wo "${kernel_src}${kernel_cpu_suffix}_lsu0_wo${obj_suffix}")
     set(elf_file_lsu0_wo "${kernel_name}${kernel_cpu_suffix}_lsu0_wo${elf_suffix}")
+    set(asm_file_lsu0_wo "${kernel_name}${kernel_cpu_suffix}_lsu0_wo${asm_suffix}")
     set(cppflags_list_lsu0_wo
       "-mllvm"
       "-shave-lsu-load-policy=use-only-lsu1"
@@ -177,29 +191,20 @@ foreach(kernel_descrip ${kernel_descrip_list})
       "-shave-lsu-store-policy=prefer-lsu0"
     )
     set(elf_path_lsu0_wo "${target_binary_dir}/${elf_file_lsu0_wo}")
+    set(asm_path_lsu0_wo "${target_asm_dir}/${asm_file_lsu0_wo}")
   endif()
 
   if(build_kernels)
     if(rt_kernel STREQUAL "yes")
-     if(NOT ENABLE_MANAGEMENT_KERNEL_BUILD)
-      add_custom_target("${kernel_name}${kernel_cpu_suffix}_kernel_copy"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${target_binary_dir}"
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin/${elf_file}" "${target_binary_dir}"
-      )
-
-      add_dependencies(act_shave_kernels_build "${kernel_name}${kernel_cpu_suffix}_kernel_copy")
-      continue()
-    endif()
-
-    set(kernel_src_path "${kernel_src_file}")
-    # ACT management kernel must be built with Shave preemption checks disabled
-    set(shave_preemption_opt "-mshave-preemption-checks=off")
-    set(link_script_file "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/shave_rt_kernel.ld")
-  else()
-    set(kernel_src_path "${CMAKE_CURRENT_SOURCE_DIR}/${kernel_src_file}")
-      set(shave_preemption_opt "-mshave-preemption-checks=restore")
-      list(APPEND shave_preemption_opt "-mshave-low-impact-preemption" )
-      list(APPEND shave_preemption_opt "-mshave-preemption-max-loop-depth=1")
+      set(kernel_src_path "${kernel_src_file}")
+      # ACT management kernel must be built with Shave preemption checks disabled
+      set(shave_preemption_opt "-mshave-preemption-checks=off")
+      set(link_script_file "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/shave_rt_kernel.ld")
+    else()
+      set(kernel_src_path "${CMAKE_CURRENT_SOURCE_DIR}/${kernel_src_file}")
+        set(shave_preemption_opt "-mshave-preemption-checks=restore")
+        list(APPEND shave_preemption_opt "-mshave-low-impact-preemption" )
+        list(APPEND shave_preemption_opt "-mshave-preemption-max-loop-depth=1")
     endif()
   endif()
 
@@ -211,6 +216,16 @@ foreach(kernel_descrip ${kernel_descrip_list})
     list(TRANSFORM include_dirs_list PREPEND "-I")
     list(TRANSFORM define_symbols_list PREPEND "-D")
 
+    # Compile the kernel and output an assembly file
+    add_custom_command(
+      OUTPUT "${asm_path}"
+      DEPENDS "${kernel_src_file}"
+      COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${optimization_opts} ${cppflags_list} ${include_dirs_list} ${define_symbols_list} ${shave_preemption_opt} -S "${kernel_src_path}" -o "${asm_path}"
+    )
+
+    add_custom_target("${asm_file}" DEPENDS "${asm_path}")
+    add_dependencies(act_shave_kernels_asm "${asm_file}")
+
     # Compile the kernel and output an object file
     add_custom_command(
       OUTPUT "${obj_file}"
@@ -221,6 +236,15 @@ foreach(kernel_descrip ${kernel_descrip_list})
     set(obj_file_list "${obj_file}")
 
     if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
+      add_custom_command(
+        OUTPUT "${asm_path_lsu0_wo}"
+        DEPENDS "${kernel_src_file}"
+        COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${optimization_opts} ${cppflags_list} ${cppflags_list_lsu0_wo} ${include_dirs_list} ${define_symbols_list} ${shave_preemption_opt} -S "${kernel_src_path}" -o "${asm_path_lsu0_wo}"
+      )
+
+      add_custom_target("${asm_file_lsu0_wo}" DEPENDS "${asm_path_lsu0_wo}")
+      add_dependencies(act_shave_kernels_asm "${asm_file_lsu0_wo}")
+
       add_custom_command(
         OUTPUT "${obj_file_lsu0_wo}"
         DEPENDS "${kernel_src_file}"
@@ -331,6 +355,16 @@ if(build_kernels)
   )
   add_dependencies(act_shave_kernels_copy act_shave_kernels_build)
   add_dependencies(act_shave_kernels_ready act_shave_kernels_copy)
+
+  # If we don't rebuild everything, copy the prebuilts for the kernels we haven't built
+  if(NOT (ENABLE_SHAVE_BINARIES_BUILD AND ENABLE_MANAGEMENT_KERNEL_BUILD AND ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD))
+    add_custom_target(update_prebuilt_binaries
+      COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin" "${target_binary_dir}"
+      # Make sure we do this after updating the prebuilts, otherwise we would overwrite the rebuilt binaries
+      DEPENDS act_shave_kernels_copy
+    )
+    add_dependencies(act_shave_kernels_ready update_prebuilt_binaries)
+  endif()
 else()
   add_custom_target(update_prebuilt_binaries
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin" "${target_binary_dir}"

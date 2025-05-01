@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@
 namespace sw_params {
 #endif
 
-struct __attribute__((packed)) RoPEParams : KernelTensors<3, 1> {};
+struct __attribute__((packed)) SDPAParams : KernelTensors<5, 1> {};
 
 #ifdef __cplusplus
 }  // namespace sw_params
