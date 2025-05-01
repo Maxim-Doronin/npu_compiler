@@ -32,16 +32,13 @@ if(NOT ENABLE_CPPLINT)
 endif()
 ov_dependent_option(ENABLE_CPPLINT "Enable cpplint checks during the build" ${ENABLE_CPPLINT} "UNIX;NOT ANDROID" OFF)
 
-# HDDL2 is deprecated
-if(ENABLE_HDDL2 OR ENABLE_HDDL2_TESTS)
-    message (WARNING "ENABLE_HDDL2 and ENABLE_HDDL2_TESTS are deprecated option due to hddl2 removing")
-endif()
-
 ov_option(ENABLE_EXPORT_SYMBOLS "Enable compiler -fvisibility=default and linker -export-dynamic options" OFF)
 
 ov_option(ENABLE_MLIR_COMPILER "Enable compilation of npu_mlir_compiler libraries" ON)
 
 ov_option(BUILD_COMPILER_FOR_DRIVER "Enable build of VPUXCompilerL0" OFF)
+
+ov_option(ENABLE_PRODUCTION_BUILD "Enable production build with extra control" OFF)
 
 ov_dependent_option(ENABLE_DRIVER_COMPILER_ADAPTER "Enable VPUX Compiler inside driver" ON "NOT BUILD_COMPILER_FOR_DRIVER" OFF)
 
