@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -36,6 +36,8 @@ private:
     void safeRunOnFunc() final;
     bool linearizeTasks(std::set<size_t>& linearizationTasks, BarrierInfo& barrierInfo);
     void linearizeBarriers(mlir::DenseSet<VPURT::DeclareVirtualBarrierOp>& barrierOps, BarrierInfo& barrierInfo);
+    int removeUnusedBarriers(mlir::func::FuncOp& funcOp, BarrierInfo& barrierInfo);
+    void verifyFinalBarrier(mlir::func::FuncOp& funcOp, BarrierInfo& barrierInfo);
 
     // When linearizing tasks barriers are being inserted to represent new control flow. During
     // this process already existing dependency might be checked to prevent from barrier insertion.
@@ -225,6 +227,48 @@ void ReduceExceedingActiveCountBarriersPass::linearizeBarriers(
     _log.trace("Linearized = '{0}' producers and consumers", linearized);
 }
 
+int ReduceExceedingActiveCountBarriersPass::removeUnusedBarriers(mlir::func::FuncOp& funcOp, BarrierInfo& barrierInfo) {
+    auto barrierOps = to_small_vector(funcOp.getOps<VPURT::DeclareVirtualBarrierOp>());
+    int removedBars = 0;
+    for (auto& barrierOp : barrierOps) {
+        // remove barriers with no use
+        if (barrierOp.getBarrier().use_empty()) {
+            barrierOp->erase();
+            removedBars++;
+        }
+    }
+    if (removedBars > 0) {
+        // regenerate barrier info based on new IR
+        barrierInfo = vpux::BarrierInfo{funcOp};
+    }
+    _log.trace("Removed {0} unused barriers.", removedBars);
+    return removedBars;
+}
+
+void ReduceExceedingActiveCountBarriersPass::verifyFinalBarrier(mlir::func::FuncOp& funcOp, BarrierInfo& barrierInfo) {
+    // ensure final barrier exists
+    auto finalBarrierAdded = VPURT::addFinalBarrierIfNotExists(funcOp, _log);
+    if (finalBarrierAdded) {
+        _log.trace("Final barrier added.");
+        // update barrier info with the final barrier
+        barrierInfo = vpux::BarrierInfo{funcOp};
+    }
+
+    // if needed, move the final barrier to the end of barrier declarations block
+    VPURT::orderExecutionTasksAndBarriers(funcOp, barrierInfo, _log);
+    // ensure consistency between BarrierInfo and IR.
+    auto barriersOps = funcOp.getOps<VPURT::DeclareVirtualBarrierOp>();
+    auto numVirtualBarriers = static_cast<size_t>(std::distance(barriersOps.begin(), barriersOps.end()));
+    VPUX_THROW_UNLESS(barrierInfo.getNumOfBarrierOps() == numVirtualBarriers,
+                      "Number of indexed barriers ({0}) should match total barrier count ({1})",
+                      barrierInfo.getNumOfBarrierOps(), numVirtualBarriers);
+
+    // assert that final barrier is unique
+    auto finalBarrierCount = VPURT::getFinalBarriersCount(funcOp);
+    VPUX_THROW_UNLESS(finalBarrierCount == 1, "Expected single final barrier. Found {0} final barriers",
+                      finalBarrierCount);
+}
+
 void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
@@ -324,6 +368,11 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
             VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);
         }
 
+        // remove unused barriers before simulation of assigning physical barriers in order to avoid creating batches
+        // that cannot be linearized (eg. containing only final barrier)
+        removeUnusedBarriers(func, barrierInfo);
+        // verify that unique final barrier exists and is in the right place in the IR
+        verifyFinalBarrier(func, barrierInfo);
         barrierSim = VPURT::BarrierSimulator{func, wlmFlag, barrierInfo};
         if (mlir::succeeded(barrierSim.simulateBarriers(barSimLog, numBarriersToUse, true))) {
             _log.trace("Barrier simulation passed with '{0}' barriers, no isses with exceeding barriers count",
@@ -331,6 +380,8 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
             VPUX_THROW_UNLESS(barrierSim.getBarrierBatchesToLegalize().empty(),
                               "Simulation passed, but '{0}' batches to legalize exist",
                               barrierSim.getBarrierBatchesToLegalize().size());
+        } else {
+            _log.trace("Barrier simulation with barrier legalization failed");
         }
         barrierBatchesToLegalize = barrierSim.getBarrierBatchesToLegalize();
 
@@ -374,6 +425,7 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
         }
 
         updateAnalysis();
+
         VPUX_THROW_UNLESS(
                 barrierBatchesToLegalize.empty() || barrierBatchesToLegalize != barrierBatchesFromPrevIteration,
                 "Encountered identical barrier batches as in previous iteration. Cannot reduce active barriers count.");

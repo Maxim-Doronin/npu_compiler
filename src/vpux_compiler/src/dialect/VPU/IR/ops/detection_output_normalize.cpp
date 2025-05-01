@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,7 +14,7 @@ using namespace vpux;
 //
 
 mlir::LogicalResult vpux::VPU::DetectionOutputNormalizeOp::verify() {
-    const auto inType = getPriorBoxes().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getPriorBoxes().getType());
     const auto inputShape = inType.getShape();
 
     if (inputShape.size() != 4) {
@@ -44,7 +44,7 @@ mlir::LogicalResult VPU::DetectionOutputNormalizeOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inputType = normalize.getPriorBoxes().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(normalize.getPriorBoxes().getType());
 
     const auto normalizedBoxSize = 4;
     auto outputShape = inputType.getShape().toValues();

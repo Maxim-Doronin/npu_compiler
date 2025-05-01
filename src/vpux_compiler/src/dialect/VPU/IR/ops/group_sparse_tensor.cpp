@@ -3,8 +3,11 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include <llvm/ADT/ArrayRef.h>
+#include <mlir/IR/MLIRContext.h>
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 using namespace vpux;
 
@@ -92,6 +95,51 @@ mlir::LogicalResult vpux::VPU::GroupSparseTensorOp::inferReturnTypes(
 
 namespace {
 
+std::pair<SmallVector<int64_t>, SmallVector<int64_t>> getUpdatedSliceOffsetsAndShapesForSETable(
+        const int64_t seDepth, mlir::Attribute seSizeAttr, ArrayRef<int64_t> sliceOffsets,
+        ArrayRef<int64_t> sliceSizes) {
+    SmallVector<int64_t> seTableOffsets(sliceOffsets);
+    SmallVector<int64_t> seTableSizes(sliceSizes);
+    seTableOffsets[Dims4D::Act::N.ind()] = 0;
+    seTableSizes[Dims4D::Act::N.ind()] = 1;
+
+    if (seDepth == 1) {
+        seTableOffsets[Dims4D::Act::C.ind()] = 0;
+        seTableSizes[Dims4D::Act::C.ind()] = 1;
+        return std::make_pair(seTableOffsets, seTableSizes);
+    }
+
+    if (auto seSize = mlir::dyn_cast<mlir::IntegerAttr>(seSizeAttr)) {
+        const auto uniformSeSize = seSize.getValue().getSExtValue();
+        const auto seSliceOffset = std::div(sliceOffsets[Dims4D::Act::C.ind()], uniformSeSize);
+        VPUX_THROW_WHEN(seSliceOffset.rem != 0, "Slice over channels offset is not aligned with SE size");
+        seTableOffsets[Dims4D::Act::C.ind()] = seSliceOffset.quot;
+        const auto seSliceSize = std::div(sliceSizes[Dims4D::Act::C.ind()], uniformSeSize);
+        VPUX_THROW_WHEN(seSliceSize.rem != 0, "Slice over channels size is not aligned with SE size");
+        seTableSizes[Dims4D::Act::C.ind()] = seSliceSize.quot;
+        return std::make_pair(seTableOffsets, seTableSizes);
+    }
+
+    auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seSizeAttr));
+    auto offsetRange = irange(seSizes.size());
+    auto offsetIter = llvm::find_if(offsetRange, [&](auto idx) {
+        auto sum = std::accumulate(seSizes.begin(), seSizes.begin() + idx, 0);
+        return sum == sliceOffsets[Dims4D::Act::C.ind()];
+    });
+    VPUX_THROW_WHEN(offsetIter == offsetRange.end(), "Slice over channels offset is not aligned with SE size");
+    seTableOffsets[Dims4D::Act::C.ind()] = static_cast<int64_t>(*offsetIter);
+
+    auto sizeRange = irange(*offsetIter, seSizes.size());
+    auto sizeIter = llvm::find_if(sizeRange, [&](auto idx) {
+        auto sum = std::accumulate(seSizes.begin() + *offsetIter, seSizes.begin() + idx, 0);
+        return sum == sliceSizes[Dims4D::Act::C.ind()];
+    });
+    VPUX_THROW_WHEN(sizeIter == sizeRange.end(), "Slice over channels size is not aligned with SE size");
+
+    seTableSizes[Dims4D::Act::C.ind()] = static_cast<int64_t>(*sizeIter) - *offsetIter;
+    return std::make_pair(seTableOffsets, seTableSizes);
+}
+
 class MoveViewLikeOps final : public mlir::OpRewritePattern<VPU::GroupSparseTensorOp> {
 public:
     using OpRewritePattern::OpRewritePattern;
@@ -159,23 +207,12 @@ mlir::LogicalResult MoveViewLikeOps::matchAndRewrite(VPU::GroupSparseTensorOp or
             // SETable
             mlir::Value newSETableValue = nullptr;
             if (seTableOp != nullptr) {
-                auto seTableOffsets = sliceOffsets;
-                auto seTableSizes = sliceSizes;
-                seTableOffsets[Dims4D::Act::N.ind()] = 0;
-                seTableSizes[Dims4D::Act::N.ind()] = 1;
+                const auto seDepth = getShape(seTableOp.getOutput())[Dims4D::Act::C];
+                const auto [seTableOffsets, seTableSizes] = getUpdatedSliceOffsetsAndShapesForSETable(
+                        seDepth, seTableOp.getSeSize(), sliceOffsets, sliceSizes);
 
-                const auto seSliceOffset = std::div(sliceOffsets[Dims4D::Act::C.ind()], seTableOp.getSeSize());
-                VPUX_THROW_WHEN(seSliceOffset.rem != 0, "Slice over channels offset is not aligned with SE size");
-                seTableOffsets[Dims4D::Act::C.ind()] = seSliceOffset.quot;
-
-                const auto seSliceSize = std::div(sliceSizes[Dims4D::Act::C.ind()], seTableOp.getSeSize());
-                VPUX_THROW_WHEN(seSliceSize.rem != 0, "Slice over channels size is not aligned with SE size");
-                seTableSizes[Dims4D::Act::C.ind()] = seSliceSize.quot;
-
-                auto seTableSliceOp = rewriter.create<VPU::SliceOp>(
-                        sliceUserOp.getLoc(), origOp.getStorageElementTable(), getIntArrayAttr(ctx, seTableOffsets),
-                        getIntArrayAttr(ctx, seTableSizes));
-                newSETableValue = seTableSliceOp.getResult();
+                newSETableValue = rewriter.createOrFold<VPU::SliceOp>(
+                        sliceUserOp.getLoc(), origOp.getStorageElementTable(), seTableOffsets, seTableSizes);
             }
             rewriter.replaceOpWithNewOp<VPU::GroupSparseTensorOp>(sliceUserOp, newDataValue, newSparsityMapValue,
                                                                   newSETableValue, origOp.getIsWeightsAttr(),
@@ -204,7 +241,7 @@ void vpux::VPU::GroupSparseTensorOp::getCanonicalizationPatterns(mlir::RewritePa
 InputTiling vpux::VPU::GroupSparseTensorOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger /*log*/) {
     VPU::StorageElementTableOp seTableOp = nullptr;
     if (auto seTable = getStorageElementTable()) {
-        if (auto blockArg = seTable.dyn_cast<mlir::BlockArgument>()) {
+        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(seTable)) {
             if (auto blockParent = this->getOperation()->getParentOp()) {
                 VPUX_THROW_WHEN(blockParent->getNumOperands() < blockArg.getArgNumber(),
                                 "Number of block operands {0} doesn't match with argument number {1}",
@@ -231,20 +268,11 @@ InputTiling vpux::VPU::GroupSparseTensorOp::backInferTileInfo(const vpux::TileIn
     }
 
     if (seTableOp != nullptr) {
-        Shape seTableOffsets = outputTile.offsets;
-        Shape seTableSizes = outputTile.shape;
-        seTableOffsets[Dims4D::Act::N] = 0;
-        seTableSizes[Dims4D::Act::N] = 1;
+        const auto seDepth = getShape(seTableOp.getOutput())[Dims4D::Act::C];
+        const auto [seTableOffsets, seTableSizes] = getUpdatedSliceOffsetsAndShapesForSETable(
+                seDepth, seTableOp.getSeSize(), outputTile.offsets.raw(), outputTile.shape.raw());
 
-        const auto seSliceOffset = std::div(seTableOffsets[Dims4D::Act::C], seTableOp.getSeSize());
-        VPUX_THROW_WHEN(seSliceOffset.rem != 0, "Slice over channels offset is not aligned with SE size");
-        seTableOffsets[Dims4D::Act::C] = seSliceOffset.quot;
-
-        const auto seSliceSize = std::div(seTableSizes[Dims4D::Act::C], seTableOp.getSeSize());
-        VPUX_THROW_WHEN(seSliceSize.rem != 0, "Slice over channels size is not aligned with SE size");
-        seTableSizes[Dims4D::Act::C] = seSliceSize.quot;
-
-        inputTiles.push_back(TileInfo(seTableSizes, seTableOffsets, Shape(seTableOffsets.size(), 1)));
+        inputTiles.push_back(TileInfo(Shape(seTableSizes), Shape(seTableOffsets), Shape(seTableOffsets.size(), 1)));
     }
     return InputTiling(inputTiles);
 }
@@ -259,7 +287,7 @@ void vpux::VPU::GroupSparseTensorOp::adjustAttrs(const TilingInfo& inputTiling, 
                                     inputTile.shape);
         setSeAttrAttr(seAttr);
 
-        auto dataType = getData().getType().cast<vpux::NDTypeInterface>();
+        auto dataType = mlir::cast<vpux::NDTypeInterface>(getData().getType());
         const auto sparsityMapType = getSparsityMap() != nullptr ? getSparsityMap().getType() : nullptr;
         const auto storageElementTableType =
                 getStorageElementTable() != nullptr ? getStorageElementTable().getType() : nullptr;

@@ -1,16 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <npu_37xx_nnrt.hpp>
 
@@ -57,8 +57,8 @@ public:
     ElfImporter& operator=(ElfImporter&&) = delete;
 
 private:
-    void buildCNNNetworkOp();
-    void parseUserInputsOutputs(OpBuilderLogger& builderLog, IE::CNNNetworkOp& cnnOp);
+    void buildNetworkInfoOp();
+    void parseUserInputsOutputs(OpBuilderLogger& builderLog, net::NetworkInfoOp& cnnOp);
     void buildMainFunc();
 
     void createSectionOp(mlir::OpBuilder& opsBuilder, const size_t sectionIdx, const mlir::Value& inputArg);

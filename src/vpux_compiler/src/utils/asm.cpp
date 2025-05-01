@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -130,7 +130,7 @@ mlir::ParseResult vpux::details::parseOptionalResultTypes(mlir::OpAsmParser& par
         // The output containers are currently populated based on the parsed type
         if (types.size() == 1 && dst.size() == 2) {
             auto type = types.front();
-            if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+            if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
                 if (memref.getElementType().isUnsignedInteger(64)) {
                     *dst[1] = type;
                 } else {

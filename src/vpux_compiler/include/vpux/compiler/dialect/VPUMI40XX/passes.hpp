@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/utils/options.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Pass/Pass.h>
@@ -45,10 +45,14 @@ std::unique_ptr<mlir::Pass> createAddBootstrapOpsPass(Logger log = Logger::globa
 std::unique_ptr<mlir::Pass> createNextSameIdAssignmentPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddPlatformInfoPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDumpStatisticsOfWlmOpsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createAddInitialBarrierConfigurationOps(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddMappedInferenceVersionOpPass(Logger log = Logger::global(),
                                                                   uint32_t versionMajor = 0, uint32_t versionMinor = 0,
                                                                   uint32_t versionPatch = 0);
+std::unique_ptr<mlir::Pass> createAddBarrierConfigurationOps(
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        WorkloadManagementBarrierProgrammingMode WorkloadManagementBarrierProgrammingMode =
+                WorkloadManagementBarrierProgrammingMode::LEGACY,
+        Logger log = Logger::global());
 
 //
 // Registration

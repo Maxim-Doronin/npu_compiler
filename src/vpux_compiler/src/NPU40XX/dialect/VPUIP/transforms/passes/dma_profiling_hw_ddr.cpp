@@ -6,7 +6,9 @@
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -89,8 +91,8 @@ private:
     FirstDMAQueueTracker firstDMATracker;
     LastDMAQueueTracker lastDMATracker;
 
-    void setupStaticProfiling(mlir::MLIRContext* ctx, IE::CNNNetworkOp netOp, mlir::func::FuncOp funcOp);
-    void setupProfiling(mlir::MLIRContext* ctx, mlir::ModuleOp moduleOp, IE::CNNNetworkOp netOp,
+    void setupStaticProfiling(mlir::MLIRContext* ctx, net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp);
+    void setupProfiling(mlir::MLIRContext* ctx, mlir::ModuleOp moduleOp, net::NetworkInfoOp netInfo,
                         mlir::func::FuncOp funcOp);
     VPURT::TaskOp generateBufferCopyAfter(mlir::OpBuilder& builder, VPURT::TaskOp taskOp, int64_t profOutputId,
                                           int64_t profOutputOffset, int64_t bufferSize, int64_t dmaHwpBase,
@@ -106,17 +108,17 @@ void DMATaskProfilingHwDdrPass::safeRunOnModule() {
         _dmaProfilingMode = getDMAProfilingMode(arch, enableDMAProfiling.getValue());
     }
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp funcOp;
-    IE::CNNNetworkOp::getFromModule(moduleOp, netOp, funcOp);
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
 
     switch (_dmaProfilingMode) {
     case DMAProfilingMode::STATIC_HWP: {
-        setupStaticProfiling(ctx, netOp, funcOp);
+        setupStaticProfiling(ctx, netInfo, funcOp);
         break;
     }
     case DMAProfilingMode::DYNAMIC_HWP: {
-        setupProfiling(ctx, moduleOp, netOp, funcOp);
+        setupProfiling(ctx, moduleOp, netInfo, funcOp);
         break;
     }
     case DMAProfilingMode::SW:
@@ -129,7 +131,7 @@ void DMATaskProfilingHwDdrPass::safeRunOnModule() {
     }
 }
 
-void DMATaskProfilingHwDdrPass::setupStaticProfiling(mlir::MLIRContext* ctx, IE::CNNNetworkOp netOp,
+void DMATaskProfilingHwDdrPass::setupStaticProfiling(mlir::MLIRContext* ctx, net::NetworkInfoOp netInfo,
                                                      mlir::func::FuncOp funcOp) {
     uint32_t dmaHwpId = 0;
     funcOp->walk([&](VPURT::TaskOp taskOp) {
@@ -169,7 +171,7 @@ void DMATaskProfilingHwDdrPass::setupStaticProfiling(mlir::MLIRContext* ctx, IE:
 
     // Update network output information with new DMA profiling data
     mlir::OpBuilder builder(&funcOp.getBody().front().front());
-    auto profilingResult = addNewProfilingOutput(ctx, funcOp, netOp, outputResult, profiling::ExecutorType::DMA_HW);
+    auto profilingResult = addNewProfilingOutput(ctx, funcOp, netInfo, outputResult, profiling::ExecutorType::DMA_HW);
     auto returnOp = mlir::dyn_cast_or_null<mlir::func::ReturnOp>(funcOp.getBody().front().getTerminator());
     VPUX_THROW_UNLESS(returnOp != nullptr, "No ReturnOp was found");
     builder.setInsertionPoint(returnOp);
@@ -188,8 +190,8 @@ void DMATaskProfilingHwDdrPass::setupStaticProfiling(mlir::MLIRContext* ctx, IE:
  * --------------------+------------|--------------------------------------------|-------------
  * port=1, channel=DDR:  [ DMA4 ]---/                                             \-----[ DMA8 ]
  */
-void DMATaskProfilingHwDdrPass::setupProfiling(mlir::MLIRContext* ctx, mlir::ModuleOp moduleOp, IE::CNNNetworkOp netOp,
-                                               mlir::func::FuncOp funcOp) {
+void DMATaskProfilingHwDdrPass::setupProfiling(mlir::MLIRContext* ctx, mlir::ModuleOp moduleOp,
+                                               net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp) {
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&(funcOp.getFunctionBody()), &builderLog);
 
@@ -216,13 +218,14 @@ void DMATaskProfilingHwDdrPass::setupProfiling(mlir::MLIRContext* ctx, mlir::Mod
 
     _log.trace("Counted {0} DMA tasks that will be profiled", tasks.size());
 
-    const auto profOutputId = static_cast<int64_t>(netOp.getProfilingOutputsCount());
+    const auto profOutputId = static_cast<int64_t>(netInfo.getProfilingOutputsCount());
 
     // Declare and create additional output from network
     auto recordSize = VPUIP::HW_DMA_PROFILING_SIZE_BYTES_40XX;
     const unsigned outputDdrSize = (tasks.size() + 1) * recordSize;
     const auto outputResultDdr = mlir::MemRefType::get({outputDdrSize}, getUInt8Type(ctx));
-    auto profilingResult = addNewProfilingOutput(ctx, funcOp, netOp, outputResultDdr, profiling::ExecutorType::DMA_HW);
+    auto profilingResult =
+            addNewProfilingOutput(ctx, funcOp, netInfo, outputResultDdr, profiling::ExecutorType::DMA_HW);
     _log.trace("Reserved {0} bytes of profiling output buffer", outputDdrSize);
 
     // get a buffer pointing to DMA profiling reserved memory in DDR
@@ -313,7 +316,7 @@ VPURT::TaskOp DMATaskProfilingHwDdrPass::generateBufferCopyAfter(mlir::OpBuilder
     const auto memKind = IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::DDR));
     auto sourceBuffer = builder.create<VPURT::DeclareBufferOp>(
             mlir::NameLoc::get(mlir::StringAttr::get(ctx, "dmaHwpBase_slice")),
-            getMemRefType({bufferSize}, getUInt8Type(ctx), DimsOrder::C, memKind).cast<vpux::NDTypeInterface>(),
+            mlir::cast<vpux::NDTypeInterface>(getMemRefType({bufferSize}, getUInt8Type(ctx), DimsOrder::C, memKind)),
             VPURT::BufferSection::DDR, dmaHwpBase);
 
     auto targetProfOutputBuffer = builder.create<VPURT::DeclareBufferOp>(

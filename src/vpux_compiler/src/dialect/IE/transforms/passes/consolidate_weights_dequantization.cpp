@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/fake_quantize_utils.hpp"
@@ -33,8 +34,9 @@ mlir::quant::QuantizedType createWeightsQuantizedType(mlir::Type weightsElemType
         // The quantile type represents how the quantiles are stored by HW after the mapping, so it only makes sense to
         // be FP16 or lower. The expressed type maintains the normal precision type of the network (FP16/FP32).
         return mlir::quant::QuantileQuantizedType::get(
-                mlir::quant::QuantizationFlags::Signed, storageType, /*quantileType=*/mlir::Float16Type::get(ctx),
-                expressedType, quantileFloatType.getQuantiles(), scale, zeroPoint, storageMin, storageMax);
+                storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
+                /*quantileType=*/mlir::Float16Type::get(ctx), expressedType, quantileFloatType.getQuantiles(), scale,
+                zeroPoint, storageMin, storageMax);
 
     } else {
         return mlir::quant::UniformQuantizedType::get(
@@ -53,10 +55,9 @@ mlir::quant::QuantizedType createWeightsQuantizedPerAxisType(mlir::Type weightsE
         // The quantile type represents how the quantiles are stored by HW after the mapping, so it only makes sense to
         // be FP16 or lower. The expressed type maintains the normal precision type of the network (FP16/FP32).
         return mlir::quant::QuantileQuantizedPerAxisType::get(
-                mlir::quant::QuantizationFlags::Signed, storageType, /*quantileType=*/mlir::Float16Type::get(ctx),
-                expressedType, quantileFloatType.getQuantiles(), scales, {zeroPoint}, quantizedDimension.ind(),
-                storageMin, storageMax);
-
+                storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
+                /*quantileType=*/mlir::Float16Type::get(ctx), expressedType, quantileFloatType.getQuantiles(), scales,
+                SmallVector<int64_t>(scales.size(), zeroPoint), quantizedDimension.ind(), storageMin, storageMax);
     } else {
         return mlir::quant::UniformQuantizedPerAxisType::get(
                 weightsElemType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,

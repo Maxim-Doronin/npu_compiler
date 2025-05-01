@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,8 +15,8 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/range.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Location.h>
@@ -39,7 +39,7 @@ mlir::LogicalResult vpux::VPU::InterpolateOp::inferReturnTypes(mlir::MLIRContext
     }
 
     auto outShape = IE::calcOutputShapes(interpolate, loc, Logger::global(), ctx);
-    const auto inputType = interpolate.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(interpolate.getInput().getType());
 
     auto outputType =
             mlir::RankedTensorType::get(outShape, inputType.getElementType(), createTensorAttrFromType(inputType));
@@ -86,10 +86,10 @@ void vpux::VPU::InterpolateOp::build(
         /*optional*/ ::mlir::ArrayAttr sizes_attr, /*optional*/ ::mlir::ArrayAttr scales_attr,
         /*optional*/ ::mlir::ArrayAttr axes_attr, /*optional*/ ::mlir::ArrayAttr tile_offset_attr,
         /*optional*/ ::mlir::ArrayAttr initial_input_dims_attr, /*optional*/ ::mlir::ArrayAttr initial_output_dims_attr,
-        vpux::IE::InterpolateAttr attr, ::mlir::IntegerAttr output_channels) {
+        vpux::IE::InterpolateAttr attr, ::mlir::ArrayAttr outputPadding, ::mlir::ArrayAttr inputPadding) {
     build(odsBuilder, odsState, input, sizes, scales, axes, coordinates, lambdas, sizes_attr, scales_attr, axes_attr,
           tile_offset_attr, initial_input_dims_attr, initial_output_dims_attr, nullptr, nullptr, nullptr, attr,
-          output_channels);
+          outputPadding, inputPadding);
 }
 
 //

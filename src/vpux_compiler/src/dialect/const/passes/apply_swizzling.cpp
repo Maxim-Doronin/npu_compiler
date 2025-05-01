@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/utils/passes.hpp"
@@ -31,7 +32,7 @@ void ApplySwizzlingPass::safeRunOnFunc() {
     auto func = getOperation();
 
     func->walk([&](Const::DeclareOp constOp) {
-        auto constType = constOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto constType = mlir::cast<vpux::NDTypeInterface>(constOp.getOutput().getType());
         auto swizzlingScheme = vpux::getSwizzlingSchemeAttr(constType);
         if (swizzlingScheme == nullptr) {
             return;

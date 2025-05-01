@@ -6,9 +6,11 @@
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model_data.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/utils/workload_split.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
@@ -83,12 +85,55 @@ void vpux::VPU::printVPUNNLayerConfig(const VPUNN::DPULayer& layer, const VPUNN:
     log.trace("[VPUNN LOG] Strategy config: {0}", strategyStream.str());
 }
 
+///@brief Print vpunn layers
+void vpux::VPU::printVPUNNLayers(ArrayRef<VPUNN::DPULayer> layers, vpux::Logger log) {
+    for (auto& layer : layers) {
+        std::ostringstream layerStream;
+        layerStream << layer;
+        log.warning("[VPUNN LOG] Layer config: {0}", layerStream.str());
+    }
+}
+
 /// @brief Print vpunn dpu workload for debug
 /// @warning Default logCb is Trace level
 void vpux::VPU::printVPUNNWorkloadConfig(const VPUNN::DPUWorkload& wl, LogCb logCb) {
     std::ostringstream wlStream;
     wlStream << wl;
     logCb(formatv("[VPUNN LOG] DPU workload config: {0}", wlStream.str()));
+}
+
+///@brief Print vpunn workload split info
+void vpux::VPU::printLayerSplitInfo(const VPUNN::LayerSplitInfo& info, const Logger& log) {
+    log.trace("[VPUNN LOG] split info of size {0}", info.size());
+    for (auto item : info) {
+        auto workloadCost = item.best_intra_tile_split;
+        log.nest(1).trace("[VPUNN LOG] cost {0} with MPEMode {1}", checkAndReturnCost(workloadCost.first, log),
+                          getMPEMode(workloadCost.second[0].execution_order));
+        for (auto perClusterSplit : workloadCost.second) {
+            log.nest(2).trace("[VPUNN LOG] split offsets {0}", perClusterSplit.offsets);
+            log.nest(2).trace("[VPUNN LOG] split shape {0}", perClusterSplit.outputs[0].get_shape());
+        }
+    }
+}
+
+///@brief Map VPU::MPEMode from VPUNN::ExecutionMode
+VPU::MPEMode vpux::VPU::getMPEMode(VPUNN::ExecutionMode executionMode) {
+    switch (executionMode) {
+    case VPUNN::ExecutionMode::VECTOR:
+        return MPEMode::VECTOR;
+    case VPUNN::ExecutionMode::MATRIX:
+        return MPEMode::MATRIX;
+    case VPUNN::ExecutionMode::VECTOR_FP16:
+        return MPEMode::VECTOR_FP16;
+    case VPUNN::ExecutionMode::CUBOID_16x16:
+        return MPEMode::CUBOID_16x16;
+    case VPUNN::ExecutionMode::CUBOID_8x16:
+        return MPEMode::CUBOID_8x16;
+    case VPUNN::ExecutionMode::CUBOID_4x16:
+        return MPEMode::CUBOID_4x16;
+    default:  // do not handle __size
+        return MPEMode::NOP;
+    }
 }
 
 float vpux::getWeightsSparsityRatio(vpux::NDTypeInterface weightsType, int64_t compressedSize) {
@@ -113,14 +158,14 @@ float vpux::getWeightsSparsityRatio(vpux::NDTypeInterface weightsType, int64_t c
 /// And the total compressed_size stored in sparsityCompressionAttr, which is calculated by sparsify-weights pass.
 /// So ratio can be calculated by 1 - (compressed_size / total_size)
 float vpux::VPU::getWeightsSparsityRatio(mlir::Value weights) {
-    const auto sparseType = weights.getType().dyn_cast<VPU::SparseTensorType>();
+    const auto sparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(weights.getType());
     VPUX_THROW_WHEN(sparseType == nullptr, "Not a sparse type");
     const auto sparsityCompressionAttr = sparseType.getSparsityCompression();
     VPUX_THROW_WHEN(sparsityCompressionAttr == nullptr, "sparsity_compressionAttr shouldn't be a nullptr");
 
     auto log = vpux::Logger("[calculate-sparstiy-ratio-vpunn]", LogLevel::None);
     log.trace("Calculate weights sparsity ratio for Weights {0}", weights.getLoc());
-    auto weightsType = weights.getType().cast<vpux::NDTypeInterface>();
+    auto weightsType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
     auto elemType = weightsType.getElementType();
     auto compressedSize = sparsityCompressionAttr.getAllocSize(elemType).count();
 
@@ -150,7 +195,7 @@ bool vpux::VPU::isVPUNNSupportedElementType(mlir::Type type) {
         return true;
     } else if (type.isUnsignedInteger(CHAR_BIT * sizeof(int8_t))) {
         return true;
-    } else if (auto qType = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    } else if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         if (qType.getStorageTypeIntegralWidth() == 8) {
             return true;
         } else if (qType.getStorageTypeIntegralWidth() == 4) {
@@ -170,41 +215,45 @@ std::optional<VPUNN::DataType> vpux::VPU::getVPUNNElementType(mlir::Type type) {
         return VPUNN::DataType::INT8;
     } else if (type.isUnsignedInteger(CHAR_BIT * sizeof(int8_t))) {
         return VPUNN::DataType::UINT8;
-    } else if (auto qType = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    } else if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         if (qType.getStorageTypeIntegralWidth() == 8) {
             return qType.isSigned() ? VPUNN::DataType::INT8 : VPUNN::DataType::UINT8;
         } else if (qType.getStorageTypeIntegralWidth() == 4) {
             return qType.isSigned() ? VPUNN::DataType::INT4 : VPUNN::DataType::UINT4;
         }
     } else if (type.isF32()) {
-        // Temporary enablement; follow up E#149202
-        return VPUNN::DataType::BFLOAT16;
+        return VPUNN::DataType::FLOAT32;
+    } else if (type.isFloat8E5M2()) {
+        return VPUNN::DataType::BF8;
+    } else if (type.isFloat8E4M3FN()) {
+        return VPUNN::DataType::HF8;
     }
 
     return std::nullopt;
 }
 
-VPUNN::Layout vpux::VPU::getVPUNNLayout(VPUIPDPU::ODUPermuteDataMode oduPermutation) {
-    switch (oduPermutation) {
-    case VPUIPDPU::ODUPermuteDataMode::PERMUTE_ZXY:
+VPUNN::Layout vpux::VPU::getVPUNNLayout(vpux::DimsOrder vpuxLayout) {
+    if (vpuxLayout == vpux::DimsOrder::NHWC || vpuxLayout == vpux::DimsOrder::GNHWC) {
         return VPUNN::Layout::ZXY;
-    case VPUIPDPU::ODUPermuteDataMode::PERMUTE_ZYX:
+    } else if (vpuxLayout == vpux::DimsOrder::NWHC) {
         return VPUNN::Layout::ZYX;
-    case VPUIPDPU::ODUPermuteDataMode::PERMUTE_YZX:
+    } else if (vpuxLayout == vpux::DimsOrder::NWCH) {
         return VPUNN::Layout::YZX;
-    case VPUIPDPU::ODUPermuteDataMode::PERMUTE_YXZ:
+    } else if (vpuxLayout == vpux::DimsOrder::NCWH) {
         return VPUNN::Layout::YXZ;
-    case VPUIPDPU::ODUPermuteDataMode::PERMUTE_XZY:
+    } else if (vpuxLayout == vpux::DimsOrder::NHCW) {
         return VPUNN::Layout::XZY;
-    case VPUIPDPU::ODUPermuteDataMode::PERMUTE_XYZ:
+    } else if (vpuxLayout == vpux::DimsOrder::NCHW) {
         return VPUNN::Layout::XYZ;
-    default:
-        VPUX_THROW("Unsupported ODU permute mode: '{0}'", oduPermutation);
+    } else {
+        Logger::global().warning("Unsupported vpux layout '{0}' is detected, use default VPUNN Layout 'ZXY'",
+                                 vpuxLayout);
     }
+
+    return VPUNN::Layout::ZXY;
 }
 
-VPUNN::VPUTensor vpux::VPU::getVPUTensor(ShapeRef shape, mlir::Type elemType,
-                                         VPUIPDPU::ODUPermuteDataMode oduPermutation) {
+VPUNN::VPUTensor vpux::VPU::getVPUTensor(ShapeRef shape, mlir::Type elemType, DimsOrder layout) {
     const auto nnType = VPU::getVPUNNElementType(elemType);
     VPUX_THROW_UNLESS(nnType.has_value(), "Unsupported data type: '{0}'", elemType);
 
@@ -216,7 +265,7 @@ VPUNN::VPUTensor vpux::VPU::getVPUTensor(ShapeRef shape, mlir::Type elemType,
                         static_cast<unsigned int>(shape[DimsGroups5D::Act::C]),
                         static_cast<unsigned int>(shape[DimsGroups5D::Act::G] * shape[DimsGroups5D::Act::N]),
                 },
-                nnType.value(), getVPUNNLayout(oduPermutation));
+                nnType.value(), getVPUNNLayout(layout));
     } else if (shape.size() == 4) {
         return VPUNN::VPUTensor(
                 {
@@ -225,7 +274,7 @@ VPUNN::VPUTensor vpux::VPU::getVPUTensor(ShapeRef shape, mlir::Type elemType,
                         static_cast<unsigned int>(shape[Dims4D::Act::C]),
                         static_cast<unsigned int>(shape[Dims4D::Act::N]),
                 },
-                nnType.value(), getVPUNNLayout(oduPermutation));
+                nnType.value(), getVPUNNLayout(layout));
     } else {
         VPUX_THROW("Not supported shape, with number of dimensions = {0}", shape.size());
     }
@@ -277,7 +326,7 @@ inline VPUNN::VPUTilingStrategy getSOKLayerStrategy(vpux::VPU::DistributionMode 
  */
 VPUNN::VPULayerStrategy vpux::VPU::getVPULayerStrategy(VPU::MultiClusterStrategy strategy, size_t nDPUs, size_t nTiles,
                                                        ArchKind arch, size_t nSHVs, bool prefetching,
-                                                       DistributionMode distributionMode) {
+                                                       DistributionMode distributionMode, mlir::Operation* op) {
     VPUNN::VPULayerStrategy VPUNNStrategy;
     VPUNNStrategy.nDPUs = static_cast<unsigned int>(nDPUs);
     VPUNNStrategy.nSHVs = static_cast<unsigned int>(nSHVs);
@@ -291,10 +340,14 @@ VPUNN::VPULayerStrategy vpux::VPU::getVPULayerStrategy(VPU::MultiClusterStrategy
     // TODO:[E-122321] Investigate if VPUNN Cost Model supports multiple batch query.
     // As a workaround, we set SOB MC to SOH tiling strategy for now.
     case VPU::MultiClusterStrategy::SplitOverBatch:
-        VPUNNStrategy.tiling_strategy = VPUNN::VPUTilingStrategy::SOH_Overlapped;
+        VPUNNStrategy.tiling_strategy = mlir::isa_and_nonnull<VPU::NCEPermuteOp>(op)
+                                                ? VPUNN::VPUTilingStrategy::SOW
+                                                : VPUNN::VPUTilingStrategy::SOH_Overlapped;
         return VPUNNStrategy;
     case VPU::MultiClusterStrategy::SplitOverKernel:
-        VPUNNStrategy.tiling_strategy = getSOKLayerStrategy(distributionMode, arch);
+        VPUNNStrategy.tiling_strategy = mlir::isa_and_nonnull<VPU::NCEPermuteOp>(op)
+                                                ? VPUNN::VPUTilingStrategy::SOH_Overlapped
+                                                : getSOKLayerStrategy(distributionMode, arch);
         return VPUNNStrategy;
     case VPU::MultiClusterStrategy::Clustering:
         VPUNNStrategy.tiling_strategy = VPUNN::VPUTilingStrategy::NONE;
@@ -317,6 +370,33 @@ VPUNN::VPULayerStrategy vpux::VPU::getVPULayerStrategy(VPU::MultiClusterStrategy
     }
 }
 
+void correctParamsForNcePermute(Shape& inputShape, Shape& outputShape, PadInfo& padding) {
+    // Bottom_pad is for output channel alignment(align to 4/16) in NCE Permute
+    // workloads. We don't need it in final workloads and must set zero before passing to VPUNN
+    padding.bottom = 0;
+
+    // IC is the true compute shape for NCE Permute workloads
+    // Need keep OC == IC for eltwise workloads check in VPUNN
+    // E.g., nce permute : in {6, 120, 640} out {16, 120, 640}. The real OC = IC = 6
+    auto IH = inputShape[Dims4D::Act::H];
+    auto IW = inputShape[Dims4D::Act::W];
+    auto IC = inputShape[Dims4D::Act::C];
+
+    auto OH = outputShape[Dims4D::Act::H];
+    auto OW = outputShape[Dims4D::Act::W];
+    auto OC = IC;
+
+    // Correct input and output compute shape for NCE.Permute workloads
+    // The original input&output layouts are NCHW->NHWC. We need to use the shape casting
+    // to NHWC->NWCH for VPUNN cost calculation.
+    inputShape[Dims4D::Act::C] = IW;
+    inputShape[Dims4D::Act::H] = IC;
+    inputShape[Dims4D::Act::W] = IH;
+    outputShape[Dims4D::Act::C] = OW;
+    outputShape[Dims4D::Act::H] = OC;
+    outputShape[Dims4D::Act::W] = OH;
+}
+
 VPUNN::DPULayer vpux::VPU::getDPULayer(const VPUIP::WorkloadCostParams& params) {
     VPUX_THROW_WHEN(params.kernelSize.size() < 2, "Kernel array size less than 2");
     const unsigned int KY = checked_cast<unsigned int>(params.kernelSize[Dims4D::Kernel::Y.ind()]);
@@ -328,17 +408,44 @@ VPUNN::DPULayer vpux::VPU::getDPULayer(const VPUIP::WorkloadCostParams& params) 
 
     const auto opType = getOperationType(params.nceTaskType);
 
-    const auto outputTensor = VPU::getVPUTensor(params.outputShape, params.outDataType);
-    const auto inputTensor = VPU::getVPUTensor(params.inputShape, params.inDataType);
+    auto padsConf = params.padInfo;
 
-    auto vpunnLayer = VPUNN::DPULayer(
-            getVPUDeviceType(params.arch), opType, {inputTensor}, {outputTensor}, {KX, KY}, {SX, SY},
-            {static_cast<unsigned int>(params.padInfo.top), static_cast<unsigned int>(params.padInfo.bottom),
-             static_cast<unsigned int>(params.padInfo.left), static_cast<unsigned int>(params.padInfo.right)});
+    const auto OW = params.outputShape[Dims4D::Act::W];
+    const auto OH = params.outputShape[Dims4D::Act::H];
+    auto OC = params.outputShape[Dims4D::Act::C];
+    const auto ON = params.outputShape[Dims4D::Act::N];
+
+    const auto IW = (OW - 1) * SX + KX - padsConf.left - padsConf.right;
+    const auto IH = (OH - 1) * SY + KY - padsConf.top - padsConf.bottom;
+    auto IC = params.inputShape[Dims4D::Act::C];
+    const auto IN = ON;
+
+    auto inputTensorShape = Shape({IN, IC, IH, IW});
+    auto outputTensorShape = Shape({ON, OC, OH, OW});
+
+    // [VPUNN error code fix] Correct pad and align compute shape for NCE.Permute workloads
+    if (params.isNcePermute) {
+        correctParamsForNcePermute(inputTensorShape, outputTensorShape, padsConf);
+    }
+
+    const auto outputTensor = VPU::getVPUTensor(outputTensorShape, params.outDataType, params.outOrder);
+    const auto inputTensor = VPU::getVPUTensor(inputTensorShape, params.inDataType, params.inOrder);
+
+    auto vpunnLayer =
+            VPUNN::DPULayer(getVPUDeviceType(params.arch), opType, {inputTensor}, {outputTensor}, {KX, KY}, {SX, SY},
+                            {static_cast<unsigned int>(padsConf.top), static_cast<unsigned int>(padsConf.bottom),
+                             static_cast<unsigned int>(padsConf.left), static_cast<unsigned int>(padsConf.right)});
+
+    VPUX_THROW_WHEN(params.isWeightsSparsityEnabled && (params.weightsSparsityRatio == 0.),
+                    "Invalid sparsity ratio zero");
     vpunnLayer.set_weight_sparsity(params.isWeightsSparsityEnabled, params.weightsSparsityRatio);
 
     if (params.weightsDataType.has_value()) {
         vpunnLayer.weight_type = getVPUNNElementType(params.weightsDataType.value());
+    }
+
+    if (params.sepInfo.has_value()) {
+        vpunnLayer.sep_activators = getSEPModeInfo(params.sepInfo.value());
     }
 
     // set superdense
@@ -347,6 +454,181 @@ VPUNN::DPULayer vpux::VPU::getDPULayer(const VPUIP::WorkloadCostParams& params) 
     }
 
     return vpunnLayer;
+}
+
+std::vector<VPUNN::DPULayer> vpux::VPU::getPerClusterDPULayers(VPU::NCEOpInterface nceOp,
+                                                               const VPUIP::WorkloadCostParams& params, Logger log) {
+    VPUX_THROW_WHEN(params.kernelSize.size() < 2, "Kernel array size less than 2");
+    const auto KY = params.kernelSize[Dims4D::Kernel::Y.ind()];
+    const auto KX = params.kernelSize[Dims4D::Kernel::X.ind()];
+
+    VPUX_THROW_WHEN(params.kernelStride.size() < 2, "Kernel stride array size less than 2");
+    const auto SY = params.kernelStride[Dims4D::Strides::Y.ind()];
+    const auto SX = params.kernelStride[Dims4D::Strides::X.ind()];
+
+    const auto opType = getOperationType(params.nceTaskType);
+
+    const auto getPerClusterShapes = [&](VPU::DistributedTensorType distributedType,
+                                         bool isOutput = false) -> SmallVector<Shape> {
+        if (distributedType != nullptr) {
+            // For output tensor, compute shape is required to get correct shapes for computation
+            // For input tensor, memory shape is required to ignore HALO region
+            return isOutput ? distributedType.getPerClusterComputeShapes()
+                            : distributedType.getPerClusterMemoryShapes();
+        }
+        return SmallVector({params.outputShape});
+    };
+
+    // OutputTensors and InputTensors
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(nceOp.getOperation());
+    if (clusteredOp == nullptr) {
+        return std::vector<VPUNN::DPULayer>({getDPULayer(params)});
+    }
+    auto outputDistributedType = getDistributedTensor(clusteredOp->getResult(0));
+    auto actInputDistributedType = getDistributedTensor(clusteredOp->getOperand(0));
+    if (outputDistributedType == nullptr || actInputDistributedType == nullptr) {
+        // When the distributedTypes are not created, generate distributedTypes from strategy
+        auto strategy = params.layerStrategy;
+        auto numClusters = params.numTiles;
+        const auto offsets = Shape(params.outputShape.size(), 0);
+        auto outType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
+        if (mlir::isa<VPU::SparseTensorType, VPUIP::SparseBufferType>(outType)) {
+            outType = mlir::cast<vpux::NDTypeInterface>(getEffectiveSparseOutputType(outType));
+        }
+        outType = outType.extractDenseTile(offsets, params.outputShape);
+        outputDistributedType = mlir::cast<VPU::DistributedTensorType>(
+                getDistributedOutputTypeFromOp(clusteredOp, outType, numClusters, strategy));
+        auto inType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
+        if (mlir::isa<VPU::SparseTensorType, VPUIP::SparseBufferType>(inType)) {
+            inType = mlir::cast<vpux::NDTypeInterface>(getEffectiveSparseOutputType(inType));
+        }
+        inType = inType.extractDenseTile(offsets, params.inputShape);
+        actInputDistributedType = mlir::cast<VPU::DistributedTensorType>(
+                getDistributedActivationTypeFromOp(clusteredOp, inType, numClusters, strategy));
+    }
+    auto outputPerClusterShapes = getPerClusterShapes(outputDistributedType, true);
+    auto actInputPerClusterShapes = getPerClusterShapes(actInputDistributedType);
+    auto outputPerClusterPaddings = SmallVector<PadInfo>(outputPerClusterShapes.size(), params.padInfo);
+    const auto numClusters = outputPerClusterShapes.size();
+
+    if (outputDistributedType.getDistribution().getMode().getValue() != VPU::DistributionMode::DUPLICATED) {
+        auto outputPerClusterOffsets = outputDistributedType.getPerClusterComputeShapeOffsets();
+        auto numTiles = vpux::parseIntArrayAttr<int64_t>(outputDistributedType.getDistribution().getNumTiles());
+        auto numTilesShape = Shape(numTiles);
+
+        for (auto index : irange(numClusters)) {
+            TileInfo outputTile(outputPerClusterShapes[index], outputPerClusterOffsets[index], numTilesShape);
+            auto padsTileConf = backInferPadsTile(outputTile, params.fullInputShape, params.padInfo, ArrayRef({KY, KX}),
+                                                  ArrayRef({SY, SX}));
+            outputPerClusterPaddings[index] = padsTileConf;
+        }
+    }
+
+    auto adjustInputOutputShape = [&]() {
+        // For non-conv operations, the compute IC equal to OC
+        // Input memory shapes' IC might be bigger than actual compute IC because of possible broadcast
+        const auto useOCAsIC =
+                (!mlir::isa<VPU::NCEConvolutionOp, VPU::NCECompressConvolutionOp, VPU::NCEPermuteOp>(
+                        nceOp.getOperation())) &&
+                (outputPerClusterShapes[0][Dims4D::Act::C] != actInputPerClusterShapes[0][Dims4D::Act::C]);
+        const auto inputMode = actInputDistributedType.getDistribution().getMode().getValue();
+        // Only have memory shapes for input
+        // Memory shapes could be bigger than actual compute shapes because of possible broadcast
+        // Back infer input shapes from output shapes for these cases
+        const auto useBackInferredHW =
+                inputMode == VPU::DistributionMode::OVERLAPPED || inputMode == VPU::DistributionMode::DUPLICATED;
+        for (auto clusterId : irange(outputPerClusterShapes.size())) {
+            if (useOCAsIC) {
+                actInputPerClusterShapes[clusterId][Dims4D::Act::C] = outputPerClusterShapes[clusterId][Dims4D::Act::C];
+            }
+            if (useBackInferredHW) {
+                actInputPerClusterShapes[clusterId][Dims4D::Act::W] =
+                        (outputPerClusterShapes[clusterId][Dims4D::Act::W] - 1) * SX + KX -
+                        outputPerClusterPaddings[clusterId].left - outputPerClusterPaddings[clusterId].right;
+                actInputPerClusterShapes[clusterId][Dims4D::Act::H] =
+                        (outputPerClusterShapes[clusterId][Dims4D::Act::H] - 1) * SY + KY -
+                        outputPerClusterPaddings[clusterId].top - outputPerClusterPaddings[clusterId].bottom;
+            }
+
+            // [VPUNN error code fix] Correct pad and align compute shape for NCE.Permute workloads
+            if (params.isNcePermute) {
+                auto adjustActInputShape = actInputPerClusterShapes[clusterId];
+                auto adjustOutputShape = outputPerClusterShapes[clusterId];
+                auto adjustPadding = outputPerClusterPaddings[clusterId];
+                correctParamsForNcePermute(adjustActInputShape, adjustOutputShape, adjustPadding);
+                outputPerClusterPaddings[clusterId] = std::move(adjustPadding);
+                actInputPerClusterShapes[clusterId] = std::move(adjustActInputShape);
+                outputPerClusterShapes[clusterId] = std::move(adjustOutputShape);
+            }
+        }
+    };
+
+    adjustInputOutputShape();
+
+    VPUX_THROW_UNLESS(outputPerClusterShapes.size() == outputPerClusterPaddings.size() &&
+                              outputPerClusterShapes.size() == actInputPerClusterShapes.size(),
+                      "Invalid per cluster split, shape size {0} but padding size {1}, act input size {2}",
+                      outputPerClusterShapes.size(), outputPerClusterPaddings.size(), actInputPerClusterShapes.size());
+
+    log.trace("Split op {0} into {1} clusters", nceOp->getName(), numClusters);
+
+    std::vector<VPUNN::VPUTensor> outputTensors;
+    std::vector<VPUNN::VPUTensor> actInputTensors;
+    std::vector<PadInfo> outputPaddings;
+    outputTensors.reserve(numClusters);
+    actInputTensors.reserve(numClusters);
+    outputPaddings.reserve(numClusters);
+
+    for (auto index : irange(numClusters)) {
+        const auto outputOneClusterShape = outputPerClusterShapes[index];
+        auto inputOneClusterShape = actInputPerClusterShapes[index];
+        outputTensors.push_back(VPU::getVPUTensor(outputOneClusterShape, params.outDataType, params.outOrder));
+        actInputTensors.push_back(VPU::getVPUTensor(inputOneClusterShape, params.inDataType, params.inOrder));
+        outputPaddings.push_back(outputPerClusterPaddings[index]);
+    }
+
+    std::vector<VPUNN::DPULayer> vpunnLayers;
+    vpunnLayers.reserve(numClusters);
+
+    // Set VPUNN layer attributes
+    unsigned int outputWriteTiles = 1;  // how many clusters the workload is broadcast to. 1 if no broadcast
+    VPUNN::ISIStrategy isiStrategy = getISIStrategyForType(
+            outputDistributedType, outputWriteTiles);  // if the workload's output needs broadcast per channel
+
+    for (auto index : irange(numClusters)) {
+        auto vpunnLayer =
+                VPUNN::DPULayer(getVPUDeviceType(params.arch), opType, {actInputTensors[index]}, {outputTensors[index]},
+                                {static_cast<unsigned int>(KX), static_cast<unsigned int>(KY)},
+                                {static_cast<unsigned int>(SX), static_cast<unsigned int>(SY)},
+                                {static_cast<unsigned int>(outputPerClusterPaddings[index].top),
+                                 static_cast<unsigned int>(outputPerClusterPaddings[index].bottom),
+                                 static_cast<unsigned int>(outputPerClusterPaddings[index].left),
+                                 static_cast<unsigned int>(outputPerClusterPaddings[index].right)});
+        // act_sparsity is not set in compiler, because the act input sparsity is unknown to compiler
+        // SEP attributes unset. Track E#158943
+        // halo not required for accurate cost, but better to have it. Track E#158946
+        vpunnLayer.set_weight_sparsity(params.isWeightsSparsityEnabled, params.weightsSparsityRatio);
+        vpunnLayer.isi_strategy = isiStrategy;
+        vpunnLayer.output_write_tiles = outputWriteTiles;
+        auto inputTwoType = nceOp->getNumOperands() > 1 ? nceOp->getOperand(1).getType() : nullptr;
+        auto input1Swizzling = getVPUNNSwizzlingKey(actInputDistributedType);
+        auto input2Swizzling = getVPUNNSwizzlingKey(inputTwoType);
+        vpunnLayer.input_swizzling = {input1Swizzling, input2Swizzling};
+        vpunnLayer.output_swizzling = {getVPUNNSwizzlingKey(outputDistributedType)};
+        if (params.weightsDataType.has_value()) {
+            vpunnLayer.weight_type = getVPUNNElementType(params.weightsDataType.value());
+        }
+        if (params.ppeAttr != nullptr) {
+            vpunnLayer.activation_function = getVPUNNActivationFunction(params.ppeAttr);
+        }
+        if (VPU::NCESparsity::isSuperdenseRequired(params.outOrder, outputPerClusterShapes[index],
+                                                   params.outDataType)) {
+            vpunnLayer.superdense_memory = true;
+        }
+
+        vpunnLayers.push_back(std::move(vpunnLayer));
+    }
+    return vpunnLayers;
 }
 
 /// @brief Build VPUNN DPUWorkload
@@ -378,42 +660,21 @@ VPUNN::DPUWorkload vpux::VPU::getDPUWorkload(const VPUIP::WorkloadCostParams& ti
 
     const auto IW = (OW - 1) * SX + KX - padsTileConf.left - padsTileConf.right;
     const auto IH = (OH - 1) * SY + KY - padsTileConf.top - padsTileConf.bottom;
-    auto IC = tileParams.nceTaskType == VPUIP::NCETaskType::CONV ? tileParams.inputShape[Dims4D::Act::C] : OC;
+    auto IC = tileParams.inputShape[Dims4D::Act::C];
     const auto IN = ON;
 
     auto inputTensorShape = Shape({IN, IC, IH, IW});
     auto outputTensorShape = Shape({ON, OC, OH, OW});
 
     // [VPUNN error code fix] Correct pad and align compute shape for NCE.Permute workloads
-    if (tileParams.nceTaskType == VPUIP::NCETaskType::ELTWISE &&
-        tileParams.oduPermutation == VPUIPDPU::ODUPermuteDataMode::PERMUTE_YZX) {
-        // Bottom_pad is for output channel alignment(align to 4/16) in NCE Permute
-        // workloads. We don't need it in final workloads and must set zero before passing to VPUNN
-        padsTileConf.bottom = 0;
-
-        // IC is the true compute shape for NCE Permute workloads
-        // Need keep OC == IC for eltwise workloads check in VPUNN
-        // E.g., nce permute : in {6, 120, 640} out {16, 120, 640}. The real OC = IC = 6
-        IC = tileParams.inputShape[Dims4D::Act::C];
-        OC = IC;
-
-        // Correct input and output compute shape for NCE.Permute workloads
-        // In this case the input&output layouts are NCHW->NHWC. We need to use the shape casting
-        // to NHWC->NWCH for VPUNN cost calculation.
-        if (tileParams.inOrder == DimsOrder::NCHW && tileParams.outOrder == DimsOrder::NHWC) {
-            inputTensorShape[Dims4D::Act::C] = IW;
-            inputTensorShape[Dims4D::Act::H] = IC;
-            inputTensorShape[Dims4D::Act::W] = IH;
-            outputTensorShape[Dims4D::Act::C] = OW;
-            outputTensorShape[Dims4D::Act::H] = OC;
-            outputTensorShape[Dims4D::Act::W] = OH;
-        }
+    if (tileParams.isNcePermute) {
+        correctParamsForNcePermute(inputTensorShape, outputTensorShape, padsTileConf);
     }
 
-    // TODO: Input and output VPUTensor need set corresponding layout & activation sparsity fields once VPUNN support
-    // them. See ticket E#89715 & E#90004
-    const auto inputTensor = getVPUTensor(inputTensorShape, tileParams.inDataType);
-    const auto outputTensor = getVPUTensor(outputTensorShape, tileParams.outDataType, tileParams.oduPermutation);
+    // TODO: Input and output VPUTensor need set corresponding layout & activation sparsity fields once VPUNN
+    // support them. See ticket E#89715 & E#90004
+    const auto inputTensor = getVPUTensor(inputTensorShape, tileParams.inDataType, tileParams.inOrder);
+    const auto outputTensor = getVPUTensor(outputTensorShape, tileParams.outDataType, tileParams.outOrder);
 
     VPUNN::DPUWorkload vpunnDPUWorkload{
             getVPUDeviceType(tileParams.arch),
@@ -468,6 +729,11 @@ VPUNN::DPUWorkload vpux::VPU::getDPUWorkload(const VPUIP::WorkloadCostParams& ti
         vpunnDPUWorkload.activation_function = getVPUNNActivationFunction(tileParams.ppeAttr);
     }
 
+    // set sep
+    if (tileParams.sepInfo.has_value()) {
+        vpunnDPUWorkload.sep_activators = getSEPModeInfo(tileParams.sepInfo.value());
+    }
+
     // set superdense
     if (vpux::VPU::NCESparsity::isSuperdenseRequired(tileParams.outOrder, tileParams.outputShape,
                                                      tileParams.outDataType)) {
@@ -479,8 +745,8 @@ VPUNN::DPUWorkload vpux::VPU::getDPUWorkload(const VPUIP::WorkloadCostParams& ti
 
 VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nceOp, VPU::ArchKind arch, int64_t numDPU,
                                                           int64_t numTiles) {
-    const auto inputType = nceOp->getOperand(0).getType().cast<NDTypeInterface>();
-    const auto outputType = nceOp->getResult(0).getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     const auto inElemType = inputType.getElementType();
     const auto outElemType = outputType.getElementType();
 
@@ -496,7 +762,8 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
     params.inDataType = inElemType;
     params.outDataType = outElemType;
     if (nceOp.getWeightsOperand() != nullptr) {
-        params.weightsDataType = nceOp.getWeightsOperand().getType().cast<NDTypeInterface>().getElementType();
+        params.weightsDataType =
+                mlir::cast<vpux::NDTypeInterface>(nceOp.getWeightsOperand().getType()).getElementType();
     }
     params.inOrder = inputOrder;
     params.outOrder = outputOrder;
@@ -515,6 +782,19 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
     // set ppe for workload activation
     params.ppeAttr = nceOp.getPPE();
 
+    // set sep
+    if (VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
+        auto input = nceOp->getOperand(0);
+        auto inputSparseTensorOp = input.getDefiningOp<VPU::GroupSparseTensorOp>();
+        auto inputs = inputSparseTensorOp.getOperands();
+        auto sepDataShape = mlir::cast<vpux::NDTypeInterface>((*inputs.begin()).getType()).getShape();
+        auto sepTableShape = mlir::cast<vpux::NDTypeInterface>((*std::prev(inputs.end())).getType()).getShape();
+        SmallVector<int64_t> sepDataShapeVec(sepDataShape.begin(), sepDataShape.end());
+        SmallVector<int64_t> sepTableShapeVec(sepTableShape.begin(), sepTableShape.end());
+        params.sepInfo = VPUIP::SEPInfo{vpux::Shape(sepTableShape.begin(), sepTableShape.end()),
+                                        vpux::Shape(sepDataShapeVec.begin(), sepDataShapeVec.end())};
+    }
+
     // set MC strategy
     auto op = nceOp.getOperation();
     if (auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(op)) {
@@ -526,14 +806,18 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
             // It shows this is a cluster tiling op and its MC strategy attribute has been removed
             // We need judge it from the input/ output distributed mode
             auto clusterOp = op->getParentOfType<VPU::NCEClusterTilingOp>();
-            auto inputType = (*clusterOp.getOperands().begin()).getType().cast<VPU::DistributedTypeInterface>();
-            auto outputType = (*clusterOp.getResults().begin()).getType().cast<VPU::DistributedTypeInterface>();
-            auto distributedInput = inputType.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
-            auto distributedOutput = outputType.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
-            VPUX_THROW_WHEN(
-                    distributedInput == nullptr || distributedOutput == nullptr,
-                    "Input or output type should be DistributedTensorType but got input type - {0}, output type - {1}",
-                    inputType, outputType);
+            auto inputType =
+                    mlir::cast<vpux::VPU::DistributedTypeInterface>((*clusterOp.getOperands().begin()).getType());
+            auto outputType =
+                    mlir::cast<vpux::VPU::DistributedTypeInterface>((*clusterOp.getResults().begin()).getType());
+            auto distributedInput =
+                    mlir::cast<vpux::VPU::DistributedTensorType>(inputType.getDistributedTypes().front());
+            auto distributedOutput =
+                    mlir::cast<vpux::VPU::DistributedTensorType>(outputType.getDistributedTypes().front());
+            VPUX_THROW_WHEN(distributedInput == nullptr || distributedOutput == nullptr,
+                            "Input or output type should be DistributedTensorType but got input type - {0}, output "
+                            "type - {1}",
+                            inputType, outputType);
             auto distributionInAttr = distributedInput.getDistribution();
             auto distributionOutAttr = distributedOutput.getDistribution();
             SmallVector<int64_t> numTilesIn = {1, 1, 1, 1}, numTilesOut = {1, 1, 1, 1};
@@ -553,7 +837,7 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
                 (numTilesIn[Dims4D::Act::H.ind()] > 1)) {
                 params.layerStrategy = VPU::MultiClusterStrategy::SplitOverHeight;
             } else if (modeIn == VPU::DistributionMode::OVERLAPPED) {
-                // Set SplitOverHeightOverlapped to be different from SplitOverHeight for VPUNN even on NPU40XX
+                // Set SplitOverHeightOverlapped to be different from SplitOverHeight for VPUNN even on VPUX40XX
                 params.layerStrategy = VPU::MultiClusterStrategy::SplitOverHeightOverlapped;
             } else if (modeOut == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::MULTICASTED)) {
                 params.layerStrategy = VPU::MultiClusterStrategy::HKSwitch;
@@ -566,7 +850,7 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
 
     // Considering weights sparsity. For CONV, DW_CONV ops
     const auto weights = nceOp.getWeightsOperand();
-    if (weights != nullptr && weights.getType().isa<VPU::SparseTensorType>()) {
+    if (weights != nullptr && mlir::isa<vpux::VPU::SparseTensorType>(weights.getType())) {
         params.weightsSparsityRatio = getWeightsSparsityRatio(weights);
         params.isWeightsSparsityEnabled = true;
     }
@@ -603,7 +887,11 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
             // For L2 API, the strategy SOW is not supported by VPUNN, refer to #86188
             .Case<VPU::NCEPermuteOp>([&](VPU::NCEPermuteOp) {
                 params.nceTaskType = VPUIP::NCETaskType::ELTWISE;
-                params.oduPermutation = VPUIPDPU::ODUPermuteDataMode::PERMUTE_YZX;
+                params.isNcePermute = true;
+                // NCEPermuteOp is an intermediate representation of eltwise-add with ODU permute
+                // The input layout is NHWC and output layout is NWCH after lowering to eltwise-add
+                params.inOrder = DimsOrder::NHWC;
+                params.outOrder = DimsOrder::NWCH;
             })
             .Default([](mlir::Operation* op) {
                 VPUX_THROW("Unsupported NCE operation '{0}' at '{1}'", op->getName(), op->getLoc());

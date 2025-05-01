@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -63,7 +64,7 @@ mlir::LogicalResult MemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp origOp,
     }
 
     auto output = layerWithPermute->getResult(0);
-    const auto origType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     if (origType == nullptr) {
         return matchFailed(_log.nest(), rewriter, origOp, "NCE task does not implement vpux::NDTypeInterface");
     }
@@ -86,7 +87,7 @@ mlir::LogicalResult MemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp origOp,
     if (maybeQuantizeCastOp != nullptr) {
         newOutput = rewriter.createOrFold<IE::QuantizeCastOp>(
                 maybeQuantizeCastOp->getLoc(), origOp.getType(), newOutput,
-                maybeQuantizeCastOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType());
+                mlir::cast<vpux::NDTypeInterface>(maybeQuantizeCastOp.getOutput().getType()).getElementType());
     }
 
     rewriter.replaceOp(origOp, newOutput);

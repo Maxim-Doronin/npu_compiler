@@ -27,7 +27,8 @@ static constexpr int64_t DMA_OUTSTANDING_TRANSACTIONS = 64;
 class AddEnqueueOpsPass : public VPUMI40XX::impl::AddEnqueueOpsBase<AddEnqueueOpsPass> {
 public:
     explicit AddEnqueueOpsPass(const WorkloadManagementMode workloadManagementMode, Logger log)
-            : _enabledWlmVpurtEnqueue(workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO) {
+            : _enabledWlmVpurtEnqueue(workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO ||
+                                      workloadManagementMode == WorkloadManagementMode::PWLM_V2_PAGES) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -127,10 +128,8 @@ mlir::LogicalResult verifyEnqueueBarrierIsNotBlockedByFutureTask(
             }
 
             auto firstDmaTaskIdx = mlir::cast<VPURegMapped::IndexType>(dmaTask.getType()).getValue();
-            auto lastDmaTaskIdx = lastDmaWithNoEnqueue[tileIdx][listIdx]
-                                          ->getResult(0)
-                                          .getType()
-                                          .cast<VPURegMapped::IndexType>()
+            auto lastDmaTaskIdx = mlir::cast<vpux::VPURegMapped::IndexType>(
+                                          lastDmaWithNoEnqueue[tileIdx][listIdx]->getResult(0).getType())
                                           .getValue();
 
             log.trace("Process DMAs with no enqueue op - DMA{0}:{1}:{2}-{3}", tileIdx, listIdx, firstDmaTaskIdx,

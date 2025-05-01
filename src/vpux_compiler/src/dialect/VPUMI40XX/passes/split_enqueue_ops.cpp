@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -50,7 +50,6 @@ void SplitEnqueueOpsPass::safeRunOnFunc() {
     }
 
     auto firstEnquOp = mlir::cast<VPURegMapped::EnqueueOp>(firstEnqu.getDefiningOp());
-
     for (auto enqueueOp : llvm::make_early_inc_range(netFunc.getOps<VPURegMapped::EnqueueOp>())) {
         auto start = mlir::cast<VPURegMapped::TaskOpInterface>(enqueueOp.getStart().getDefiningOp());
         auto end = mlir::cast<VPURegMapped::TaskOpInterface>(enqueueOp.getEnd().getDefiningOp());

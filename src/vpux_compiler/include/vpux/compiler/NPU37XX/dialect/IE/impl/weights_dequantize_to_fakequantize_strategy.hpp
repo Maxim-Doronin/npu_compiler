@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,12 +14,9 @@ namespace vpux::IE::arch37xx {
 */
 class WeightsDequantizeToFakeQuantizeStrategy : public IGreedilyPassStrategy {
 public:
-    WeightsDequantizeToFakeQuantizeStrategy(bool enableWDBlockArgumentInput) noexcept;
+    WeightsDequantizeToFakeQuantizeStrategy() noexcept = default;
 
     void addPatterns(mlir::RewritePatternSet& patterns, Logger& log) const override final;
-
-private:
-    const bool _enableWDBlockArgumentInput;
 };
 
 }  // namespace vpux::IE::arch37xx

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/utils/options.hpp"
 #include "vpux/compiler/utils/passes.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Pass/PassOptions.h>
@@ -74,11 +74,6 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
             llvm::cl::desc("Cache will be cleaned to this threshold when reach the memory usage limit"),
             llvm::cl::init(0.8)};
 
-    BoolOption wlmRollback{
-            *this, "wlm-rollback",
-            llvm::cl::desc("When compilation with WLM fails, automatically switches to WLM-disabled pipeline"),
-            llvm::cl::init(true)};
-
     IntOption optimizationLevel{
             *this, "optimization-level",
             llvm::cl::desc("Set compilation optimization level, enabled starting from NPU4."
@@ -95,6 +90,13 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
                                       llvm::cl::init("efficiency")};
 
     BoolOption enableProfiling{*this, "profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
+
+    // This is a temporary option to enable running profiling passes along with outlining passes.
+    // It will be removed after all profiling engines are updated to support outlined functions.
+    // Ticket: E#159100
+    BoolOption enableProfilingWithOutlining{*this, "profiling-with-outlining",
+                                            llvm::cl::desc("Enable profiling with outlining"), llvm::cl::init(false)};
+
     BoolOption enableSWProfiling{*this, "sw-profiling", llvm::cl::desc("Enable SW task profiling"),
                                  llvm::cl::init(true)};
 
@@ -132,6 +134,10 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
                                             llvm::cl::desc("Enable convert-precision-to-fp16 pass"),
                                             llvm::cl::init(true)};
 
+    BoolOption enableConvertNonConstantPadToSliceAndConcat{
+            *this, "enable-convert-non-constant-pad-to-slice-and-concat",
+            llvm::cl::desc("Enable convert-non-constant-pad-to-slice-and-concat pass"), llvm::cl::init(true)};
+
     BoolOption enableControlGraphSplit{*this, "enable-control-graph-split",
                                        llvm::cl::desc("Enable split of control graph to simplify barrier scheduling"),
                                        llvm::cl::init(true)};
@@ -165,15 +171,6 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
             ::llvm::cl::desc("Reserve memory at the end of CMX for SW Kernel data prefetching"),
             ::llvm::cl::init(true)};
 
-    BoolOption enableWDBlockArgumentInput{
-            *this, "enable-wd-blockarg-input",
-            llvm::cl::desc("Enable WeightsDequantizeToFakeQuantizePass on structures with BlockArgument input"),
-            llvm::cl::init(true)};
-
-    BoolOption enableU16FQToScaleShiftConversion{*this, "enable-u16-fake-quantize-to-scale-shift-conversion",
-                                                 llvm::cl::desc("Enable u16 fake quantize to scale shift conversion"),
-                                                 llvm::cl::init(false)};
-
     BoolOption enableGroupedMatMul{*this, "enable-grouped-matmul",
                                    llvm::cl::desc("Enable execution of grouped MatMul as a single operation."),
                                    llvm::cl::init(false)};
@@ -194,8 +191,6 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
     BoolOption enableWeightsDynamicDequantization{*this, "enable-weights-dynamic-dequantization",
                                                   llvm::cl::desc("Enable weights dequantization for weights as input"),
                                                   llvm::cl::init(false)};
-
-    StrOption modelHash{*this, "model-hash", llvm::cl::desc("Hash of model XML architecture"), llvm::cl::init("")};
 
     BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
                                     llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
@@ -221,7 +216,7 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
     bool enableConvertFCToConv = false;
     bool enableAdjustNonZeroFakeQuant = false;
     bool enableAdaptiveStripping = false;
-    bool enableExtraShapeBoundOps = false;
+    bool enableExtraStaticShapeOps = false;
 };
 
 //
@@ -239,12 +234,9 @@ std::string getDefaultValueOfStrSubOption() {
 }
 
 struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase> {
-    BoolOption enableAdaptiveStripping{*this, "enable-adaptive-stripping", llvm::cl::desc("Enable adaptive stripping"),
-                                       llvm::cl::init(false)};
-
     BoolOption enableDPUF16ToF32Convert{*this, "enable-dpu-f16-to-f32-convert",
                                         llvm::cl::desc("Enable running F16 -> F32 converts on DPU."),
-                                        llvm::cl::init(false)};
+                                        llvm::cl::init(true)};
 
     BoolOption enableVerifiers{*this, "enable-verifiers", llvm::cl::desc("Enable verifiers execution after each pass"),
                                llvm::cl::init(isDeveloperBuild())};
@@ -262,22 +254,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase> {
                                                "outlining mode is the fallback mode of the previous one."
                                                "Example: function-outlining=' repeating-blocks=max-num-iterations=30 "
                                                "min-ops-in-block=16, naive=num-parts=2'")};
-
-    StrOption batchCompileMethod{
-            *this, "batch-compile-method",
-            llvm::cl::desc("Preferred method for compilation of batched networks. Supported methods: "
-                           "\"unroll\", \"debatch\". Default is \"debatch\""),
-            llvm::cl::init("unroll")};
-
-    StrOption debatchCompileMethodSettings{
-            *this, "debatcher-settings",
-            llvm::cl::desc("Additional parameters, applied when \"batch-compile-method\" is \"debatch\"."),
-            llvm::cl::init(getDefaultValueOfStrSubOption<DebatcherOptions>())};
-
-    StrOption batchUnrollCompileMethodSettings{
-            *this, "batch-unroll-settings",
-            llvm::cl::desc("Additional parameters, applied when \"batch-compile-method\" is \"unroll\"."),
-            llvm::cl::init(getDefaultValueOfStrSubOption<BatchUnrollOptions>())};
 
     BoolOption enableLoopOutliner{*this, "loop-outlining", llvm::cl::desc("Apply outlining for body of Loop op"),
                                   llvm::cl::init(false)};
@@ -311,11 +287,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase> {
             llvm::cl::desc("Cache will be cleaned to this threshold when reach the memory usage limit"),
             llvm::cl::init(0.8)};
 
-    BoolOption wlmRollback{
-            *this, "wlm-rollback",
-            llvm::cl::desc("When compilation with WLM fails, automatically switches to WLM-disabled pipeline"),
-            llvm::cl::init(true)};
-
     IntOption optimizationLevel{
             *this, "optimization-level",
             llvm::cl::desc("Set compilation optimization level, enabled starting from NPU4."
@@ -332,6 +303,12 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase> {
                                       llvm::cl::init("efficiency")};
 
     BoolOption enableProfiling{*this, "profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
+
+    // This is a temporary option to enable running profiling passes along with outlining passes.
+    // It will be removed after all profiling engines are updated to support outlined functions.
+    // Ticket: E#159100
+    BoolOption enableProfilingWithOutlining{*this, "profiling-with-outlining",
+                                            llvm::cl::desc("Enable profiling with outlining"), llvm::cl::init(false)};
 
     BoolOption enableScheduleTrace{*this, "enable-schedule-trace",
                                    llvm::cl::desc("Enable compile time schedule analysis and trace"),
@@ -386,6 +363,9 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase> {
 
     BoolOption enableVerticalFusionOutlining{*this, "vf-outlining", llvm::cl::desc("Enable vertical fusion outlining"),
                                              llvm::cl::init(true)};
+
+    BoolOption enableSCFTiling{*this, "scf-tiling", llvm::cl::desc("Enable tiling using SCF dialect"),
+                               llvm::cl::init(false)};
 
     // SetupChannelsAutoPadding pass options
     BoolOption enableAutoPaddingODU{*this, "enable-auto-padding-odu",
@@ -476,12 +456,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase> {
                                                llvm::cl::desc("Enable FP16 Compressed convolution op"),
                                                llvm::cl::init(false)};
 
-    StrOption modelHash{*this, "model-hash", llvm::cl::desc("Hash of model XML architecture"), llvm::cl::init("")};
-
-    BoolOption enableMCSideLoadDump{*this, "enable-mc-side-loading-dump",
-                                    llvm::cl::desc("Dump multi-cluster strategies in side-loading format"),
-                                    llvm::cl::init(false)};
-
     BoolOption enableWeightsDynamicDequantization{*this, "enable-weights-dynamic-dequantization",
                                                   llvm::cl::desc("Enable weights dequantization for weights as input"),
                                                   llvm::cl::init(false)};
@@ -491,10 +465,20 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase> {
                            "cost of longer compile time"),
             llvm::cl::init(false)};
 
-    BoolOption enableExtraShapeBoundOps{
-            *this, "enable-extra-shape-bound-ops",
-            llvm::cl::desc("Attach ShapeBoundOp trait to operations that perform faster when their shapes are static."),
+    BoolOption enableExtraStaticShapeOps{
+            *this, "enable-extra-static-shape-ops",
+            llvm::cl::desc("Attach StaticShapeOpInterface trait to operations that perform "
+                           "faster when their shapes are static."),
             llvm::cl::init(true)};
+
+    // TODO: E#159215 Remove this option once external dependencies remove it as well.
+    BoolOption enableWDBlockArgumentInput{
+            *this, "enable-wd-blockarg-input",
+            llvm::cl::desc("This option was deprecated but some external tools pass it, currently it has no effect."),
+            llvm::cl::init(true)};
+
+    BoolOption enableWeightsTableReuse{*this, "enable-weights-table-reuse",
+                                       llvm::cl::desc("Enable weights table reuse"), llvm::cl::init(false)};
 };
 
 //
@@ -533,6 +517,12 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
 
     BoolOption enableProfiling{*this, "profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
 
+    // This is a temporary option to enable running profiling passes along with outlining passes.
+    // It will be removed after all profiling engines are updated to support outlined functions.
+    // Ticket: E#159100
+    BoolOption enableProfilingWithOutlining{*this, "profiling-with-outlining",
+                                            llvm::cl::desc("Enable profiling with outlining"), llvm::cl::init(false)};
+
     // Extended Tiling options - Incremental Pipeline
     BoolOption readStrategyFromJson{*this, "read-strategy-from-json",
                                     llvm::cl::desc("Read the multiclustering and tiling strategy from a JSON file"),
@@ -549,6 +539,9 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
     BoolOption enableOutputPipelining{*this, "output-pipelining", llvm::cl::desc("Enable output pipelining"),
                                       llvm::cl::init(false)};
 
+    BoolOption enableSCFTiling{*this, "scf-tiling", llvm::cl::desc("Enable tiling using SCF dialect"),
+                               llvm::cl::init(false)};
+
     StrOption enableShaveDDRAccessOptimization{
             *this, "enable-shave-ddr-access-optimization",
             llvm::cl::desc("SHAVE DDR access optimization option. (true, false or auto)"), llvm::cl::init("true")};
@@ -558,11 +551,8 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
             llvm::cl::desc("Enable DistributionInfoAttr with explicit per cluster memory/compute shapes & offsets"),
             llvm::cl::init(false)};
 
-    BoolOption enableMCSideLoadDump{*this, "enable-mc-side-loading-dump",
-                                    llvm::cl::desc("Dump multi-cluster strategies in side-loading format"),
-                                    llvm::cl::init(false)};
-
-    StrOption modelHash{*this, "model-hash", llvm::cl::desc("Hash of model architecture XML"), llvm::cl::init("")};
+    BoolOption enableWeightsTableReuse{*this, "enable-weights-table-reuse",
+                                       llvm::cl::desc("Enable weights table reuse"), llvm::cl::init(false)};
 
     MCAndTilingOptionsBase() = default;
 
@@ -578,13 +568,13 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
         vfOutliningTileThreshold = options.vfOutliningTileThreshold;
         enableVerticalFusionOutlining = options.enableVerticalFusionOutlining;
         enableProfiling = options.enableProfiling;
+        enableProfilingWithOutlining = options.enableProfilingWithOutlining;
         enableOutputPipelining = options.enableOutputPipelining;
         enableShaveDDRAccessOptimization = options.enableShaveDDRAccessOptimization;
         readStrategyFromJson = options.readStrategyFromJson;
         writeStrategyToJson = options.writeStrategyToJson;
         enableExplicitDistributionInfoAttr = options.enableExplicitDistributionInfoAttr;
-        modelHash = options.modelHash;
-        enableMCSideLoadDump = options.enableMCSideLoadDump;
+        enableWeightsTableReuse = options.enableWeightsTableReuse;
     }
 };
 
@@ -607,11 +597,20 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
             ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_LCA),
-            ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
+            ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
+                                          "WLM with split into subgraphs (pages)"),
+                               clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
                                           "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                                clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                           "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                           "enqueue algorithm at VPUMI"))};
+
+    mlir::detail::PassOptions::Option<DMAFifoType> workloadManagementDmaFifoType{
+            *this, "workload-management-dma-fifo-type",
+            ::llvm::cl::desc("Option to switch behaviour between software and hardware DMA FIFO types"),
+            ::llvm::cl::init(DMAFifoType::SW),
+            ::llvm::cl::values(clEnumValN(DMAFifoType::SW, "SW", "Enable SW DMA FIFO upfront HW DMA FIFO type"),
+                               clEnumValN(DMAFifoType::HW, "HW", "Use HW DMA FIFO directly"))};
 
     StrOption enableShaveDDRAccessOptimization{
             *this, "enable-shave-ddr-access-optimization",
@@ -629,25 +628,68 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
                     clEnumValN(AllocateShaveStackFrames::ENABLED, "ENABLED",
                                "Allocate DDR buffer to be used as shave stack frames."),
                     clEnumValN(AllocateShaveStackFrames::DISABLED, "DISABLED", "Stack frames allocated by FW."))};
+
+    mlir::detail::PassOptions::Option<WorkloadManagementBarrierProgrammingMode>
+            workloadManagementBarrierProgrammingMode{
+                    *this, "workload-management-barrier-programming-mode",
+                    ::llvm::cl::desc(
+                            "Option for enabling different barrier programming algorithms. To be used only for "
+                            "experiments."),
+                    ::llvm::cl::values(
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::LEGACY, "LEGACY", "Legacy Mode"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED,
+                                       "NO_BARRIER_DMAS_SCHEDULED", "RT handles barrier programming"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED,
+                                       "INITIAL_BARRIER_DMAS_SCHEDULED",
+                                       "Compiler generates DMA to program initial barriers"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
+                                       "ALL_BARRIER_DMAS_SCHEDULED",
+                                       "Compiler generates DMA to program initial barriers"))};
 };
 
-template <typename T>
-struct ShaveCodeGenOptionsBase : mlir::PassPipelineOptions<T> {
-    BoolOption enableProfiling{*this, "profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
-    BoolOption enableSWProfiling{*this, "sw-profiling", llvm::cl::desc("Enable SW task profiling"),
-                                 llvm::cl::init(true)};
+struct BatchCompileOptionsAdapter {
+    BatchCompileOptionsAdapter(mlir::detail::PassOptions& parent);
+    StrOption batchCompileMethod;
+    StrOption debatchCompileMethodSettings;
+    StrOption batchUnrollCompileMethodSettings;
+
+    void updateBatchCompileOptionsFromString(std::string_view strOptions);
+};
+
+struct BatchCompilerOptionsAdapterView {
+    static std::optional<BatchCompilerOptionsAdapterView> tryExtractFromString(std::string_view strOptions);
+    std::string inject(const std::string& originalStrOptions) const;
+    const BatchCompileOptionsAdapter& get() const;
+    std::string print() const;
+    struct Occurence {
+        std::string::size_type pos;
+        std::string::size_type length;
+
+        friend bool operator<(const Occurence& l, const Occurence& r) {
+            // sort by pos only
+            return l.pos < r.pos;
+        }
+    };
+
+private:
+    BatchCompilerOptionsAdapterView() = default;
+    using ScopeGuard = mlir::detail::PassOptions;
+    std::unique_ptr<ScopeGuard> guard;
+    std::unique_ptr<BatchCompileOptionsAdapter> optionDataPtr;
+    std::vector<std::optional<Occurence>> optionDataMemberViews;
 };
 
 struct DebatcherOptions : mlir::PassPipelineOptions<DebatcherOptions> {
-    StrOption debatcherInliningMethod{*this, "debatching-inlining-method",
-                                      llvm::cl::desc("Method for inlinging of debatching-function. Supported methods: "
-                                                     "\"naive\", \"reordering\". Default is \"naive\""),
-                                      llvm::cl::init("naive")};
-    DebatcherOptions() = default;
+    StrOption debatcherInliningMethod;
+    StrOption debatcherIntputCoeffPartitions;
+    IntOption modelOpsNumberEnableThreshold;
+    IntOption maxBatchNumberDisableLimit;
+    DebatcherOptions();
 
-    static std::unique_ptr<DebatcherOptions> create(const DefaultHWOptionsBase& options, Logger log = Logger::global());
-    static bool isAvailable(const DefaultHWOptionsBase& options);
+    static std::unique_ptr<DebatcherOptions> create(const BatchCompileOptionsAdapter& options);
+    static bool isAvailable(const BatchCompileOptionsAdapter& options);
     static std::string getDefaultOptions();
+    static std::string getDefaultDebatchInputCoeffPartitionsValue();
     std::string to_string() const;
 };
 
@@ -656,9 +698,9 @@ struct BatchUnrollOptions : mlir::PassPipelineOptions<BatchUnrollOptions> {
                                llvm::cl::init(false)};
     BatchUnrollOptions() = default;
 
-    static std::unique_ptr<BatchUnrollOptions> create(const DefaultHWOptionsBase& options,
+    static std::unique_ptr<BatchUnrollOptions> create(const BatchCompileOptionsAdapter& options,
                                                       Logger log = Logger::global());
-    static bool isAvailable(const DefaultHWOptionsBase& options);
+    static bool isAvailable(const BatchCompileOptionsAdapter& options);
     static std::string getDefaultOptions();
 };
 

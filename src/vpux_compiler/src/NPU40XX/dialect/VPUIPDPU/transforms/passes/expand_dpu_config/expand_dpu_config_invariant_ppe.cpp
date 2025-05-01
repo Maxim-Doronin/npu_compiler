@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -111,9 +111,9 @@ mlir::LogicalResult configureFpPPE(const Logger&, PPEConfig::FpPPE& config, VPUI
 mlir::LogicalResult getPPEQuantConfig(const Logger& log, mlir::Type type, const PPETask& ppeTask,
                                       SmallVector<int64_t>& quantMult, SmallVector<int64_t>& quantShift,
                                       SmallVector<uint8_t>& quantZero) {
-    if (const auto uniformQuantType = type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
         quantZero.push_back(checked_cast<uint8_t>(uniformQuantType.getZeroPoint()));
-    } else if (const auto uniformQuantPerAxisType = type.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
         auto zp = uniformQuantPerAxisType.getZeroPoints();
         quantZero.resize(zp.size());
         std::transform(zp.begin(), zp.end(), quantZero.begin(), [](int64_t a) {
@@ -228,7 +228,7 @@ mlir::LogicalResult configurePPE(const Logger& log, PPEConfig& config, mlir::Typ
         }
         config.fpPPE.addMultBypass.bypassMode = VPUIPDPU::PPEBypassMode::ON;
         config.fpPPE.convert.convertMode = VPUIPDPU::PPEFpConvertMode::NONE;
-        if (outDataType.isa<mlir::FloatType>()) {
+        if (mlir::isa<mlir::FloatType>(outDataType)) {
             if (!outDataType.isF16()) {
                 log.error("Activation data type conversion from integer to floating point only supported to FP16");
                 return mlir::failure();
@@ -462,14 +462,12 @@ mlir::LogicalResult vpux::VPUIPDPU::arch40xx::buildDPUInvariantPPE(
     }
 
     PPEConfig config;
-    auto inDataType = getInvBlockArg(BlockArg::ACT_IN, invBlock, invBlockArgsPos)
-                              .getType()
-                              .cast<mlir::MemRefType>()
-                              .getElementType();
-    auto outDataType = getInvBlockArg(BlockArg::ACT_OUT, invBlock, invBlockArgsPos)
-                               .getType()
-                               .cast<mlir::MemRefType>()
-                               .getElementType();
+    auto inDataType =
+            mlir::cast<mlir::MemRefType>(getInvBlockArg(BlockArg::ACT_IN, invBlock, invBlockArgsPos).getType())
+                    .getElementType();
+    auto outDataType =
+            mlir::cast<mlir::MemRefType>(getInvBlockArg(BlockArg::ACT_OUT, invBlock, invBlockArgsPos).getType())
+                    .getElementType();
     auto dpuTaskType = origInvOp.getNceTaskType();
 
     auto ppeTask = evalPPETasks(log, origInvOp.getPpe());

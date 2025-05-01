@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -199,7 +199,7 @@ mlir::AffineMap MemRefAttrLayout::getAffineMap(mlir::Attribute attr) const {
 
 mlir::LogicalResult MemRefAttrLayout::verifyLayout(mlir::Attribute attr, ArrayRef<int64_t> shape,
                                                    FuncRef<mlir::InFlightDiagnostic()> emitError) const {
-    const auto desc = attr.dyn_cast<MemRefAttr>();
+    const auto desc = mlir::dyn_cast<vpux::MemRefAttr>(attr);
     if (desc == nullptr) {
         return printTo(emitError(), "Unsupported MemRef layout '{0}'", attr);
     }

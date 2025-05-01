@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -63,9 +64,9 @@ mlir::LogicalResult FusePostOpsRewriter::matchAndRewrite(mlir::Operation* postOp
     if (!producerOp.isSupportedPostOp(postOp, logCb)) {
         return matchFailed(_log, rewriter, postOp, "PostOp producer does not support post-processing for current case");
     }
-    if (producerOp.getPostOp().has_value()) {
+    if (const auto postOpAttr = producerOp.getPostOp()) {
         return matchFailed(_log, rewriter, postOp, "PostOp producer already has post-processing '{0}'",
-                           producerOp.getPostOp());
+                           postOpAttr.getName());
     }
     if (postOp->getNumOperands() != 1) {
         return matchFailed(_log, rewriter, postOp,
@@ -74,8 +75,8 @@ mlir::LogicalResult FusePostOpsRewriter::matchAndRewrite(mlir::Operation* postOp
     }
 
     producerOp.setPostOp(postOp);
-    auto origElemType = postOp->getResult(0).getType().template cast<NDTypeInterface>().getElementType();
-    auto newType = producerOp->getOpResult(0).getType().template cast<NDTypeInterface>();
+    auto origElemType = mlir::cast<vpux::NDTypeInterface>(postOp->getResult(0).getType()).getElementType();
+    auto newType = mlir::cast<vpux::NDTypeInterface>(producerOp->getOpResult(0).getType());
     producerOp->getOpResult(0).setType(newType.changeElemType(origElemType));
     rewriter.replaceOp(postOp, producerOp->getResult(0));
 

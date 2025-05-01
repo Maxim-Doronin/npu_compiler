@@ -1,15 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IERT/ops.hpp"
 #include "vpux/compiler/dialect/IERT/dialect.hpp"
-#include "vpux/compiler/dialect/IERT/types.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/core/IR/attributes.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -49,7 +47,7 @@ mlir::Operation* vpux::IERT::IERTDialect::materializeConstant(mlir::OpBuilder& b
         return nullptr;
     }
 
-    if (!type.isa<mlir::MemRefType>()) {
+    if (!mlir::isa<mlir::MemRefType>(type)) {
         (void)errorAt(loc, "Can't materialize IERT Constant for Type '{0}'", type);
         return nullptr;
     }

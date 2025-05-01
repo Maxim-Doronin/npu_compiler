@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,6 +13,10 @@ def ELF_Dialect : Dialect {
     let name = "ELF";
 
     let cppNamespace = "::vpux::ELF";
+
+    let dependentDialects = [
+        "vpux::VPURT::VPURTDialect"
+    ];
 
     let extraClassDeclaration = [{
         void registerAttributes();

@@ -1,17 +1,18 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -35,12 +36,26 @@ private:
     void safeRunOnFunc() final;
 };
 
+// Checks if IE.Divide op operates on floating point type
+bool isFloatDivision(IE::DivideOp divideOp) {
+    const auto elementType = divideOp.getOutput().getType().getElementType();
+    return mlir::isa<mlir::FloatType>(elementType);
+}
+
+// Checks if the current user is IE.Divide op that operates on floating point type and its second input is origOp
+bool isDivideUser(mlir::Operation* origOp, mlir::Operation* user) {
+    if (auto divideOp = mlir::dyn_cast<IE::DivideOp>(user); divideOp != nullptr) {
+        return divideOp.getInput2().getDefiningOp() == origOp && isFloatDivision(divideOp);
+    }
+    return false;
+}
+
 mlir::Value createNewFQ(mlir::PatternRewriter& rewriter, IE::FakeQuantizeOp origFqOp, mlir::Value input, float inLow,
                         float inHigh, float outLow, float outHigh) {
     auto inLowConstType =
-            origFqOp.getInputLow().getDefiningOp<Const::DeclareOp>().getType().cast<mlir::RankedTensorType>();
+            mlir::cast<mlir::RankedTensorType>(origFqOp.getInputLow().getDefiningOp<Const::DeclareOp>().getType());
     auto outLowConstType =
-            origFqOp.getOutputLow().getDefiningOp<Const::DeclareOp>().getType().cast<mlir::RankedTensorType>();
+            mlir::cast<mlir::RankedTensorType>(origFqOp.getOutputLow().getDefiningOp<Const::DeclareOp>().getType());
 
     rewriter.setInsertionPoint(origFqOp);
     auto newInLowConst = Const::createConst(rewriter, origFqOp->getLoc(), inLowConstType, ArrayRef(inLow));
@@ -48,9 +63,16 @@ mlir::Value createNewFQ(mlir::PatternRewriter& rewriter, IE::FakeQuantizeOp orig
     auto newOutLowConst = Const::createConst(rewriter, origFqOp->getLoc(), inLowConstType, ArrayRef(outLow));
     auto newOutHighConst = Const::createConst(rewriter, origFqOp->getLoc(), outLowConstType, ArrayRef(outHigh));
 
-    auto newFakeQuantizeOp = rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(
-            origFqOp, origFqOp.getType(), input, newInLowConst, newInHighConst, newOutLowConst, newOutHighConst,
-            origFqOp.getLevelsAttr(), origFqOp.getLowFpTypeAttr(), origFqOp.getAutoBroadcastAttr());
+    auto newFakeQuantizeOp = rewriter.create<IE::FakeQuantizeOp>(
+            origFqOp->getLoc(), origFqOp.getType(), input, newInLowConst, newInHighConst, newOutLowConst,
+            newOutHighConst, origFqOp.getLevelsAttr(), origFqOp.getLowFpTypeAttr(), origFqOp.getAutoBroadcastAttr());
+
+    // We replace the old FakeQuantize op with the new one only for Divide users
+    // if their second input is the old FakeQuantize
+    rewriter.replaceUsesWithIf(origFqOp, newFakeQuantizeOp, [&](mlir::OpOperand& opOperand) {
+        return isDivideUser(origFqOp, opOperand.getOwner());
+    });
+
     return newFakeQuantizeOp.getOutput();
 }
 
@@ -109,9 +131,9 @@ mlir::FailureOr<mlir::Value> replaceWithNewFakeQuantizeOp(mlir::PatternRewriter&
                        newOutHighVal);
 }
 
-class ConstRewriter final : public mlir::OpRewritePattern<Const::DeclareOp> {
+class DivideRewriter final : public mlir::OpRewritePattern<Const::DeclareOp> {
 public:
-    ConstRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<Const::DeclareOp>(ctx), _log(log) {
+    DivideRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<Const::DeclareOp>(ctx), _log(log) {
     }
 
 public:
@@ -121,107 +143,111 @@ private:
     Logger _log;
 };
 
-// Checks if all users of the operation are Divide ops,
-// they operate on floating point type and the operation is the second input of the Divide ops
-bool isOpEligible(mlir::Operation* operation) {
-    return llvm::all_of(operation->getUsers(), [&](auto user) {
-        if (auto divideOp = mlir::dyn_cast<IE::DivideOp>(user); divideOp != nullptr) {
-            const auto elementType = divideOp.getOutput().getType().getElementType();
-            const bool floatDivision = mlir::isa<mlir::FloatType>(elementType);
-            return divideOp.getInput2().getDefiningOp() == operation && floatDivision;
-        }
-        return false;
-    });
-}
-
 // Replaces this pattern:
 //
-//            const.Declare
-//           |      |   ..  |
-//  IE.Divide  IE.Divide .. IE.Divide
+//             const.Declare
+//        ____________|_____________
+//       |    ..      |        | .. |
+//  IE.Divide .. IE.Divide    op .. op
 //
 // with
 //
-//       const.Declare' [#const.ScalarMultInverse]
-//         |           |     ..     |
-//  IE.Multiply  IE.Multiply ..  IE.Multiply
+//        const.Declare'         const.Declare
+//  [#const.ScalarMultInverse]         |
+//         ______|______             __|__
+//        |     ..      |           |  .. |
+//  IE.Multiply .. IE.Multiply     op  .. op
 //
-mlir::LogicalResult ConstRewriter::matchAndRewrite(Const::DeclareOp origOp, mlir::PatternRewriter& rewriter) const {
-    _log.trace("Got Const.Declare at '{0}'", origOp->getLoc());
-    if (!isOpEligible(origOp)) {
-        _log.trace("Ignore: IE.Const op has no IE.Divide user that is a floating point division and has IE.Const "
-                   "as a second input");
+// Every IE.Divide op that operates on floating point types is replaced by a IE.Multiply op.
+// The constant input divisor is replaced by its reciprocal.
+//
+mlir::LogicalResult DivideRewriter::matchAndRewrite(Const::DeclareOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got Const.Declare op at '{0}'", origOp->getLoc());
+    // Checks if Const.DeclareOp has at least one IE.Divide user
+    auto noneOfUsersAreDivide = llvm::none_of(origOp->getUsers(), [&](auto user) {
+        return isDivideUser(origOp, user);
+    });
+
+    if (noneOfUsersAreDivide) {
+        _log.trace("Ignore: Const.Declare op has no IE.Divide users");
         return mlir::failure();
     }
+
     auto newCstAttr = origOp.transformContentAttr().scalarMultInverse().get();
     auto newCstOp = rewriter.create<Const::DeclareOp>(origOp->getLoc(), newCstAttr.getType(), std::move(newCstAttr));
+    // We replace the old Const.DeclareOp with the new one only for IE.Divide users
+    rewriter.replaceUsesWithIf(origOp, newCstOp, [&](mlir::OpOperand& opOperand) {
+        return isDivideUser(origOp, opOperand.getOwner());
+    });
 
-    for (auto userOp : origOp->getUsers()) {
+    for (auto userOp : newCstOp->getUsers()) {
+        // Casting is safe because newCstOp has only IE.Divide users
         auto divideOp = mlir::cast<IE::DivideOp>(userOp);
+        rewriter.setInsertionPoint(divideOp);
         rewriter.replaceOpWithNewOp<IE::MultiplyOp>(divideOp, divideOp.getInput1(), newCstOp,
                                                     divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr,
                                                     nullptr);
     }
-    rewriter.eraseOp(origOp);
     return mlir::success();
 }
 
-class ConstFakeQuantizeRewriter final : public mlir::OpRewritePattern<Const::DeclareOp> {
+class FakeQuantizeDivideRewriter final : public mlir::OpRewritePattern<IE::FakeQuantizeOp> {
 public:
-    ConstFakeQuantizeRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<Const::DeclareOp>(ctx), _log(log) {
+    FakeQuantizeDivideRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::FakeQuantizeOp>(ctx), _log(log) {
     }
 
 public:
-    mlir::LogicalResult matchAndRewrite(Const::DeclareOp origOp, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(IE::FakeQuantizeOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;
 };
 
-bool isConstFakeQuantizeEligible(Const::DeclareOp origOp) {
-    if (!origOp->hasOneUse()) {
-        return false;
-    }
-
-    auto fakeQuantize = mlir::dyn_cast<IE::FakeQuantizeOp>(*origOp->getUsers().begin());
-    if (fakeQuantize == nullptr) {
-        return false;
-    }
-    // Checks if origOp is actually the first input of FakeQuantize
-    if (fakeQuantize.getInput().getDefiningOp() != origOp) {
-        return false;
-    }
-
-    return isOpEligible(fakeQuantize);
-}
-
 // Replaces this pattern:
 //
-//            const.Declare
-//                 |
-//           IE.FakeQuantize
-//          |      |     .. |
-//  IE.Divide  IE.Divide .. IE.Divide
+//              const.Declare
+//                    |
+//             IE.FakeQuantize
+//        ____________|____________
+//       |    ..      |       | .. |
+//  IE.Divide .. IE.Divide   op .. op
 //
 // with
 //
-//           const.Declare' [#const.ScalarMultInverse]
-//                     |
-//           IE.FakeQuantize' (with new in/out low/high params)
-//           |         |     ..    |
-//  IE.Multiply  IE.Multiply ..  IE.Multiply
+//           const.Declare'               const.Declare
+//    [#const.ScalarMultInverse]                |
+//                  |                           |
+//           IE.FakeQuantize'            IE.FakeQuantize
+//   (with new in/out low/high params)          |
+//           _______|______                   __|__
+//          |              |                 | ..  |
+//    IE.Multiply .. IE.Multiply            op ..  op
 //
-mlir::LogicalResult ConstFakeQuantizeRewriter::matchAndRewrite(Const::DeclareOp origOp,
-                                                               mlir::PatternRewriter& rewriter) const {
-    _log.trace("Got Const.Declare at '{0}'", origOp->getLoc());
-    if (!isConstFakeQuantizeEligible(origOp)) {
+// Every IE.Divide op that operates on floating point types is replaced by a IE.Multiply op.
+// IE.FakeQuantize input divisor is replaced by the new one with updated in/out low/high params and
+// its constant input is replaced by its reciprocal.
+//
+mlir::LogicalResult FakeQuantizeDivideRewriter::matchAndRewrite(IE::FakeQuantizeOp origOp,
+                                                                mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got IE.FakeQuantizeOp op at '{0}'", origOp->getLoc());
+    // Checks if IE.FakeQuantize has at least one IE.Divide user
+    auto noneOfUsersAreDivide = llvm::none_of(origOp->getUsers(), [&](auto user) {
+        return isDivideUser(origOp, user);
+    });
+
+    if (noneOfUsersAreDivide) {
+        _log.trace("Ignore: IE.FakeQuantize op has no IE.Divide users");
         return mlir::failure();
     }
 
-    // Casting is safe because it was already checked
-    auto fakeQuantize = mlir::cast<IE::FakeQuantizeOp>(*origOp->getUsers().begin());
-    const auto maybeNewFq = replaceWithNewFakeQuantizeOp(rewriter, origOp, fakeQuantize);
+    if (!mlir::isa_and_nonnull<Const::DeclareOp>(origOp.getInput().getDefiningOp())) {
+        _log.trace("Ignore: IE.FakeQuantize op has no constant input");
+        return mlir::failure();
+    }
+
+    auto constOp = mlir::cast<Const::DeclareOp>(origOp.getInput().getDefiningOp());
+    const auto maybeNewFq = replaceWithNewFakeQuantizeOp(rewriter, constOp, origOp);
     if (mlir::failed(maybeNewFq)) {
         _log.trace("Ignore: IE.FakeQuantize input/output low/high params are not splat values");
         return mlir::failure();
@@ -229,6 +255,7 @@ mlir::LogicalResult ConstFakeQuantizeRewriter::matchAndRewrite(Const::DeclareOp 
 
     const auto newFqOp = maybeNewFq.value();
     for (auto userOp : newFqOp.getDefiningOp()->getUsers()) {
+        // Casting is safe because newFqOp has only IE.Divide users (see replaceWithNewFakeQuantizeOp)
         auto divideOp = mlir::cast<IE::DivideOp>(userOp);
         // Insertion point was changed in replaceWithNewFakeQuantizeOp, we have to reset it manually here
         rewriter.setInsertionPoint(divideOp);
@@ -236,7 +263,6 @@ mlir::LogicalResult ConstFakeQuantizeRewriter::matchAndRewrite(Const::DeclareOp 
                                                     divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr,
                                                     nullptr);
     }
-    rewriter.eraseOp(origOp);
     return mlir::success();
 }
 
@@ -249,8 +275,8 @@ void ConvertDivideToMultiplyPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<ConstRewriter>(&ctx, _log);
-    patterns.add<ConstFakeQuantizeRewriter>(&ctx, _log);
+    patterns.add<DivideRewriter>(&ctx, _log);
+    patterns.add<FakeQuantizeDivideRewriter>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
+#include "vpux/utils/core/range.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 
@@ -14,20 +16,18 @@ void inferPermuteReturnTypeComponents(mlir::Value input, mlir::AffineMap mem_per
                                       bool strictInfer) {
     const auto inOrder = DimsOrder::fromValue(input);
     const auto outOrder = DimsOrder::fromAffineMap(dst_order);
-    const auto inType = input.getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(input.getType());
 
     const auto inShape = getShape(input);
     const auto inMemShape = inOrder.toMemoryOrder(inShape);
     const auto outMemShape = applyPerm(inMemShape, mem_perm);
     const auto outShape = outOrder.toLogicalOrder(outMemShape);
 
-    const auto outBoundsAttr =
-            permuteBounds(input.getContext(), inType.cast<vpux::BoundedTypeInterface>(), inOrder, outOrder, mem_perm);
-    const auto outDesc =
-            vpux::getTensorAttr(dst_order, strictInfer ? vpux::getMemorySpace(inType) : nullptr, outBoundsAttr);
+    const auto outDynAttr = permuteDynamicAttribute(inType, inOrder, outOrder, mem_perm);
+    auto outDesc = getTensorAttr(inType, dst_order, strictInfer ? vpux::getMemorySpace(inType) : nullptr, outDynAttr);
 
     auto elemType = inType.getElementType();
-    if (auto perAxisType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         // The code below reflects the shape inference logic.
         // inOrder.toMemoryOrder permutes the dimensions according to the input order:
         // 2x4x6x8 * NCHW = 2x4x6x8, 2x4x6x8 * NHWC = 2x6x8x4, 2x4x6x8 * NCWH = 2x4x8x6
@@ -58,14 +58,21 @@ void inferPermuteReturnTypeComponents(mlir::Value input, mlir::AffineMap mem_per
     inferredReturnShapes.emplace_back(outShape.raw(), elemType, outDesc);
 }
 
-mlir::ArrayAttr permuteBounds(mlir::MLIRContext* ctx, vpux::BoundedTypeInterface boundedTensor, DimsOrder srcOrder,
-                              DimsOrder dstOrder, mlir::AffineMap memPerm) {
-    if (boundedTensor == nullptr || boundedTensor.getBounds() == nullptr) {
-        return nullptr;
+SmallVector<int64_t> permuteDynamicAttribute(const mlir::Type type, const DimsOrder srcOrder, const DimsOrder dstOrder,
+                                             const mlir::AffineMap memPerm) {
+    auto srcAttr = SmallVector<int64_t>();
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
+        srcAttr = boundedType.getBounds().raw();
+    } else if (auto dynamicDimsMaskType = mlir::dyn_cast<Core::DynamicDimsMaskTensorType>(type)) {
+        srcAttr = dynamicDimsMaskType.getDynamicDimsMask().raw();
     }
-    const auto boundValues = parseIntArrayAttr<int64_t>(boundedTensor.getBounds());
-    const auto srcMemBounds = srcOrder.toMemoryOrder(ShapeRef(boundValues));
-    const auto dstMemBounds = applyPerm(srcMemBounds, memPerm);
-    const auto dstBounds = dstOrder.toLogicalOrder(dstMemBounds);
-    return getIntArrayAttr(ctx, dstBounds.raw());
+
+    if (srcAttr.empty()) {
+        return {};
+    }
+
+    const auto srcMemAttr = srcOrder.toMemoryOrder(ShapeRef(srcAttr));
+    const auto dstMemAttr = applyPerm(srcMemAttr, memPerm);
+    const auto dstAttr = dstOrder.toLogicalOrder(dstMemAttr);
+    return to_small_vector(dstAttr);
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::VPU::DesparsifyOp::inferReturnTypes(mlir::MLIRContext*
         return mlir::failure();
     }
 
-    const auto inType = desparsify.getInput().getType().cast<vpux::VPU::SparseTensorType>();
+    const auto inType = mlir::cast<vpux::VPU::SparseTensorType>(desparsify.getInput().getType());
     const auto dataType = inType.getData();
 
     inferredReturnTypes.push_back(dataType);

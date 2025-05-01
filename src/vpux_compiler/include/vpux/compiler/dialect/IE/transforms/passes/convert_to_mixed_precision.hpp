@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,11 +13,12 @@
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
+#include <mlir/IR/IRMapping.h>
+
 namespace vpux {
 namespace IE {
-using CheckPostOpFunctor =
-        llvm::function_ref<bool(IE::LayerWithPostOpInterface layerWithPostOp, bool isPerAxisQuantizedOutput,
-                                bool isFloatInput, mlir::Location loc)>;
+using CheckPostOpFunctor = llvm::function_ref<bool(IE::LayerWithPostOpInterface layerWithPostOp,
+                                                   bool isPerAxisQuantizedOutput, bool isFloatInput)>;
 
 using SupportedMixedPrecisionFunctor = std::function<bool(mlir::Operation*, const bool isPReLUSupported, Logger log)>;
 
@@ -157,16 +158,32 @@ mlir::LogicalResult MixedFloatInQuantWeightsRewriter<ConcreteOp>::matchAndRewrit
         return mlir::failure();
     }
 
-    const auto quantFilterDequantizeType = filterDequantizeType.getType()
-                                                   .template cast<vpux::NDTypeInterface>()
-                                                   .getElementType()
-                                                   .template dyn_cast<mlir::quant::QuantizedType>();
+    const auto quantFilterDequantizeType = mlir::dyn_cast<mlir::quant::QuantizedType>(
+            mlir::cast<vpux::NDTypeInterface>(filterDequantizeType.getType()).getElementType());
     if (quantFilterDequantizeType == nullptr) {
         return mlir::failure();
     }
 
+    const auto isSignedQuantizedType = [](mlir::quant::QuantizedType quantType) {
+        if (mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(quantType)) {
+            mlir::Type quantileType =
+                    mlir::isa<mlir::quant::QuantileQuantizedType>(quantType)
+                            ? mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(quantType).getQuantileType()
+                            : mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(quantType).getQuantileType();
+
+            if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantileType)) {
+                return intType.isSigned();
+            } else {
+                // quantileType is a float type
+                return true;
+            }
+        }
+
+        return quantType.isSigned();
+    };
+
     // Only signed quant is supported for input + wt mixed precision
-    if (!quantFilterDequantizeType.isSigned() || !IE::isSymmetricQuantType(quantFilterDequantizeType)) {
+    if (!isSignedQuantizedType(quantFilterDequantizeType) || !IE::isSymmetricQuantType(quantFilterDequantizeType)) {
         return mlir::failure();
     }
 

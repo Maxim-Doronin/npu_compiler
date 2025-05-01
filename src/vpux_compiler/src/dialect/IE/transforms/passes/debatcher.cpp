@@ -1,15 +1,21 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <stack>
 #include <unordered_set>
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/utils/batch.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/swizzling_utils.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/format.hpp"
 
 namespace vpux::IE {
@@ -30,10 +36,10 @@ struct DowncastedTypeDescription {
 };
 
 DowncastedTypeDescription getDowncastedTypeIfApplicable(mlir::Value operand, const Shape& desiredShape) {
-    auto type = operand.getType().template cast<vpux::NDTypeInterface>();
+    auto type = mlir::cast<vpux::NDTypeInterface>(operand.getType());
     auto originShape = type.getShape();
     bool debatched = false;
-    if (desiredShape[Dims4D::Act::N] == 0 || originShape[Dims4D::Act::N] == 1) {
+    if (desiredShape[Dims4D::Act::N] == 0 || originShape[Dims4D::Act::N] == 1 || originShape == desiredShape) {
         return DowncastedTypeDescription{type, debatched, originShape.raw()};
     }
     type = type.changeShape(desiredShape);
@@ -349,7 +355,8 @@ struct DimensionLimiterConverter : public OpConverter {
             // mlir::OpBuilder builder(origConstDeclareOp);
 
             // 1. Get original constant data type
-            auto constType = op->getOperand(constOperandIndex).getType().cast<NDTypeInterface>().getElementType();
+            auto constType =
+                    mlir::cast<vpux::NDTypeInterface>(op->getOperand(constOperandIndex).getType()).getElementType();
 
             // 2. Set to debatched shape, 'arg.to', following data type of the original constant
             const auto scaleShape =
@@ -382,12 +389,72 @@ private:
     Logger _log;
 };
 
+struct AttributedConstOpConverter : public OpConverter {
+    AttributedConstOpConverter(Logger& log): _log(log) {
+    }
+
+    bool isApplicable(mlir::Operation* op) const override {
+        if (mlir::isa<vpux::Const::DeclareOp>(op)) {
+            return mlir::dyn_cast<vpux::Const::DeclareOp>(op);
+        }
+        return false;
+    }
+
+    void apply(mlir::Operation* op, const std::vector<detail::ConversionDescription>&) const override {
+        _log.trace("Additional processing requires for an operation: {0} as it has a special content attribute",
+                   op->getName().getStringRef());
+        auto constDeclareOp = mlir::dyn_cast<vpux::Const::DeclareOp>(op);
+        VPUX_THROW_UNLESS(constDeclareOp != nullptr, "Expected vpux::Const::DeclareOp, got: {0}",
+                          op->getName().getStringRef());
+        auto attrType = constDeclareOp.getContentAttr().getType();
+        const auto opType = mlir::cast<vpux::NDTypeInterface>(constDeclareOp.getType());
+
+        // For type with swizzling skip the shape check as the content
+        // might have been flattened to accomodate swizzled buffer.
+        if (!vpux::getSwizzlingSchemeAttr(opType)) {
+            if (opType.getShape() != attrType.getShape()) {
+                /* TODO E####-159644
+                 * debatch Constant here, canonize it (so that all unrealized_cast will be put at the block beginning)
+                 * and use it as a function arguments in the similar way as debatched `main` arguments are passed to a
+                 * function Need to teach outliner to recognize such types of unrealized_cast's Until that we will throw
+                 * an exception here. When done, uncomment the further block of code
+                 *
+                 * mlir::OpBuilder builder(constDeclareOp);
+                 * auto operand = op->getResults()[0];
+                 * builder.setInsertionPointAfterValue(operand);
+                 * const auto debatchedArgLoc = appendLoc(operand.getLoc(), "_debatched_const");
+                 * auto unrealized_cast =
+                 *     builder.create<mlir::UnrealizedConversionCastOp>(debatchedArgLoc, opType, operand);
+                 * operand.replaceUsesWithIf(unrealized_cast.getResult(0), [&](mlir::OpOperand& opOperand) {
+                 *     return opOperand.getOwner() != unrealized_cast;
+                 * });
+                 * operand.setType(attrType);
+                 */
+
+                VPUX_THROW("ContentAttr alignment isn't supported yet! Cannot align opType shape: {0} and attrType "
+                           "shape: {1}",
+                           opType.getShape(), attrType.getShape());
+            }
+        }
+    }
+
+    void refineResults(mlir::Operation*, const std::vector<ConversionDescription>&,
+                       DenseMap<mlir::OpResult, Shape>&) const override {
+        // Does nothing
+        return;
+    }
+
+private:
+    Logger _log;
+};
+
 struct OpCastVisitor {
     OpCastVisitor(Logger& log): _log(log.nest()) {
         converters.push_back(std::make_unique<DefaultOpConverter>(log));
         converters.push_back(std::make_unique<ShapeValueAttrOpConverter>(log));
         converters.push_back(std::make_unique<SizesAttrOpConverter>(log));
         converters.push_back(std::make_unique<DimensionLimiterConverter>(log));
+        converters.push_back(std::make_unique<AttributedConstOpConverter>(log));
     }
 
     template <class Converter, class... Args>
@@ -455,7 +522,7 @@ struct OpCastVisitor {
         if (!predictedResultTypes.empty()) {
             for (auto resultPair : zip(deductedResultShapes, predictedResultTypes)) {
                 auto [opResult, calculatedShape] = std::get<0>(resultPair);
-                auto predictedResultType = std::get<1>(resultPair).dyn_cast<vpux::NDTypeInterface>();
+                auto predictedResultType = mlir::dyn_cast<vpux::NDTypeInterface>(std::get<1>(resultPair));
                 (void)opResult;
                 VPUX_THROW_UNLESS(predictedResultType != nullptr,
                                   "predictedResultType has non vpux::NDTypeInterface type '{0}'",
@@ -491,7 +558,7 @@ struct OpCastVisitor {
                                    correctOperandShape, downcastedType.downcastedType);
                         if (downcastedType.isDowncasted) {
                             auto downcastedOperandShape =
-                                    downcastedType.downcastedType.cast<vpux::NDTypeInterface>().getShape();
+                                    mlir::cast<vpux::NDTypeInterface>(downcastedType.downcastedType).getShape();
                             // Set the downcast type as new operand shape
                             oneOperand.setType(downcastedType.downcastedType);
 
@@ -509,7 +576,7 @@ struct OpCastVisitor {
                             // Visit the operandDefiningOp of the operand that we just downcasted
                             this->visit(operandDefiningOp, definingOpOperandsToDebatch, operandsConversionDescription);
                             predictedResultTypes = getPredictedResult(op);
-                            predictedResultType = predictedResultTypes[0].dyn_cast<vpux::NDTypeInterface>();
+                            predictedResultType = mlir::dyn_cast<vpux::NDTypeInterface>(predictedResultTypes[0]);
                         }
                     }
                     // Go to the next operand in the operation
@@ -561,7 +628,7 @@ mlir::LogicalResult DebatcherPass::initializeOptions(StringRef options) {
     if (mlir::failed(Base::initializeOptions(options))) {
         return mlir::failure();
     }
-    _log.trace("{0}: {1}", extraArgs.getArgStr(), extraArgs.getValue());
+    _log.debug("{0}: {1}", debatcherIntputCoeffPartitions.getArgStr(), debatcherIntputCoeffPartitions.getValue());
     _log.trace("initializing of {0} succeeded", getName());
     return mlir::success();
 }
@@ -599,10 +666,14 @@ void DebatcherPass::safeRunOnFunc() {
 
     DenseMap<mlir::Value, detail::ConversionDescription> debatchedOperandStorage;
     DenseMap<mlir::Value, Shape> opResultsToDebatch;
+    _log.debug("Use an option value \"{0}\": {1}", debatcherIntputCoeffPartitions.getArgStr(),
+               debatcherIntputCoeffPartitions.getValue());
+    auto debatchingCoefficients = DebatchCoefficients::create(debatcherIntputCoeffPartitions.getValue());
+    size_t argIndex = 0;
     for (const auto& arg : main.getArguments()) {
         auto originalShape = Shape{vpux::getShape(arg)};
-        auto desiredShape = originalShape;
-        desiredShape[Dims4D::Act::N] = 1;
+        Shape desiredShape = debatchingCoefficients.has_value() ? debatchingCoefficients->apply(originalShape, argIndex)
+                                                                : DebatchCoefficients::applyDefault(originalShape);
         // Put args of main in debatchedOperandStorage as they have already been debatched.
         // It's not true yet, though they will be "unrealized_cast'ed" later.
         // Given that assumption stated, we will leverage a generic algorithm for traversing through
@@ -613,13 +684,14 @@ void DebatcherPass::safeRunOnFunc() {
         // inadvertently which we must not.
         debatchedOperandStorage[arg] = detail::ConversionDescription{originalShape, desiredShape};
         opResultsToDebatch[arg] = desiredShape;
-        _log.trace("arg: {0}, desired shape: {1}", arg, opResultsToDebatch[arg]);
+        _log.trace("Func arg num: {0}, original shape: {1}, desired shape: {2}", argIndex, originalShape,
+                   opResultsToDebatch[arg]);
+        argIndex++;
     }
 
     _log.trace("create builder for inserting an `unrealize_converion_cast` at region boundaries");
     mlir::OpBuilder builder(main);
     builder.setInsertionPointAfter(main);
-    auto ctx = module.getContext();
     auto mainArgs = main.getArguments();
     _log.trace("Enforce cast for `main` arguments count: {0} ", mainArgs.size());
     bool needDebatch = false;
@@ -632,8 +704,9 @@ void DebatcherPass::safeRunOnFunc() {
         }
         needDebatch = true;
         builder.setInsertionPointAfterValue(arg);
+        const auto debatchedArgLoc = appendLoc(arg.getLoc(), "_debatched_arg");
         auto unrealized_cast =
-                builder.create<mlir::UnrealizedConversionCastOp>(arg.getLoc(), descr.downcastedType, arg);
+                builder.create<mlir::UnrealizedConversionCastOp>(debatchedArgLoc, descr.downcastedType, arg);
         _log.trace("apply unrealized_cast");
         arg.replaceUsesWithIf(unrealized_cast.getResult(0), [&](mlir::OpOperand& opOperand) {
             return opOperand.getOwner() != unrealized_cast;
@@ -645,9 +718,11 @@ void DebatcherPass::safeRunOnFunc() {
                                                                  opResultsToDebatch[arg]};
     });
 
-    if (needDebatch) {
-        setCompileMethodDebatch(module);
+    if (!needDebatch) {
+        _log.debug("Debatching is not required");
+        return;
     }
+    setCompileMethodDebatch(module);
     _log.trace("Walk through `main` region and debatch all operations");
     detail::OpCastVisitor transformation(_log);
 
@@ -707,19 +782,20 @@ void DebatcherPass::safeRunOnFunc() {
 
     _log.trace("restoration of original ReturnOps args of 'main'");
     auto resultOriginalTypes = main.getResultTypes();
-    main.walk([&builder, &ctx, &resultOriginalTypes](mlir::func::ReturnOp op) {
+    main.walk([&builder, &resultOriginalTypes](mlir::func::ReturnOp op) {
         auto operands = op->getOperands();
         builder.setInsertionPoint(op);
         for (auto resultOpDescriptor : zip(operands, resultOriginalTypes)) {
             auto& [operand, originalOpType] = resultOpDescriptor;
-            auto casted_type = operand.getType().template cast<vpux::NDTypeInterface>();
-            if (casted_type == originalOpType) {
+            auto castedType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
+            if (castedType == originalOpType) {
                 continue;
             }
-            casted_type.changeShape(originalOpType.template cast<vpux::NDTypeInterface>().getShape().toValues());
-            auto unrealized_cast = builder.create<mlir::UnrealizedConversionCastOp>(mlir::UnknownLoc::get(ctx),
-                                                                                    originalOpType, operand);
-            operand.replaceUsesWithIf(unrealized_cast.getResult(0), [&](mlir::OpOperand& opOperand) {
+            castedType.changeShape(mlir::cast<vpux::NDTypeInterface>(originalOpType).getShape().toValues());
+            const auto debatchedResLoc = appendLoc(operand.getLoc(), "_debatched_arg");
+            auto unrealizedCast =
+                    builder.create<mlir::UnrealizedConversionCastOp>(debatchedResLoc, originalOpType, operand);
+            operand.replaceUsesWithIf(unrealizedCast.getResult(0), [&](mlir::OpOperand& opOperand) {
                 return opOperand.getOwner() == op;
             });
         }

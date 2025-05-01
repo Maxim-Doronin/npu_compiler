@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -39,8 +39,8 @@ mlir::Value VPUIP::ShapeCastOp::getViewSource() {
 
 mlir::LogicalResult vpux::VPUIP::ShapeCastOp::verify() {
     const auto op = getOperation();
-    const auto inType = getSource().getType().cast<vpux::NDTypeInterface>();
-    const auto outType = getResult().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getSource().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(getResult().getType());
 
     if (inType.getDimsOrder() != outType.getDimsOrder()) {
         return errorAt(op, "Input dims order '{0}' doesn't match output dims order '{1}'", inType.getDimsOrder(),
@@ -143,10 +143,10 @@ mlir::LogicalResult VPUIP::ShapeCastOp::inferReturnTypes(mlir::MLIRContext* ctx,
     if (mlir::failed(shapeCast.verify(loc))) {
         return mlir::failure();
     }
-    const auto arch = VPU::getArch(operands[0].isa<mlir::BlockArgument>()
+    const auto arch = VPU::getArch(mlir::isa<mlir::BlockArgument>(operands[0])
                                            ? operands[0].getParentRegion()->getParentOfType<mlir::ModuleOp>()
                                            : operands[0].getDefiningOp());
-    const auto inType = shapeCast.getSource().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getSource().getType());
     const auto outShape = parseIntArrayAttr<int64_t>(shapeCast.getShape());
 
     const auto hasExplicitOutputShapesAndOffsets =
@@ -171,7 +171,7 @@ mlir::LogicalResult VPUIP::ShapeCastOp::inferReturnTypes(mlir::MLIRContext* ctx,
 
     auto getDistType = [&](VPU::DistributedTypeInterface inDistInterface) {
         const auto inDistBufferType =
-                inDistInterface.getDistributedTypes().front().cast<VPUIP::DistributedBufferType>();
+                mlir::cast<vpux::VPUIP::DistributedBufferType>(inDistInterface.getDistributedTypes().front());
         const auto distAttr = hasExplicitOutputShapesAndOffsets
                                       ? inferExplicitDistributedAttr(inDistBufferType.getDistribution())
                                       : VPUIP::getDistributedAttrAfterShapeCast<VPUIP::DistributedBufferType>(

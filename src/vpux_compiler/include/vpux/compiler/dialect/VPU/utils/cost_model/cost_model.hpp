@@ -29,19 +29,25 @@ std::shared_ptr<VPUNN::VPUCostModel> createCostModel(ArchKind arch);
 std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel(ArchKind arch);
 uint32_t checkAndReturnCost(const VPUNN::CyclesInterfaceType& cost, vpux::Logger log, bool beSilent = false);
 void printVPUNNLayerConfig(const VPUNN::DPULayer& layer, const VPUNN::VPULayerStrategy& strategy, vpux::Logger log);
+void printVPUNNLayers(ArrayRef<VPUNN::DPULayer> layers, vpux::Logger log);
 void printVPUNNWorkloadConfig(const VPUNN::DPUWorkload& wl, LogCb logCb = globalLogCb);
+void printLayerSplitInfo(const VPUNN::LayerSplitInfo& info, const Logger& log);
+VPU::MPEMode getMPEMode(VPUNN::ExecutionMode executionMode);
+
 float getWeightsSparsityRatio(mlir::Value weights);
 VPUNN::VPUDevice getVPUDeviceType(VPU::ArchKind archKind);
 bool isVPUNNSupportedElementType(mlir::Type type);
 std::optional<VPUNN::DataType> getVPUNNElementType(mlir::Type type);
-VPUNN::Layout getVPUNNLayout(VPUIPDPU::ODUPermuteDataMode oduPermutation);
-VPUNN::VPUTensor getVPUTensor(ShapeRef shape, mlir::Type elemType,
-                              VPUIPDPU::ODUPermuteDataMode oduPermutation = VPUIPDPU::ODUPermuteDataMode::PERMUTE_ZXY);
+VPUNN::Layout getVPUNNLayout(vpux::DimsOrder vpuxLayout);
+VPUNN::VPUTensor getVPUTensor(ShapeRef shape, mlir::Type elemType, vpux::DimsOrder layout = vpux::DimsOrder::NHWC);
 VPUNN::ExecutionMode getExecutionMode(VPU::MPEMode mpeMode);
 VPUNN::VPULayerStrategy getVPULayerStrategy(VPU::MultiClusterStrategy mcStrategy, size_t nDPUs, size_t nTiles,
                                             ArchKind arch, size_t nSHVs = 1, bool prefetching = false,
-                                            VPU::DistributionMode distributionMode = DistributionMode::NONE);
+                                            VPU::DistributionMode distributionMode = DistributionMode::NONE,
+                                            mlir::Operation* op = nullptr);
 VPUNN::DPULayer getDPULayer(const VPUIP::WorkloadCostParams& params);
+std::vector<VPUNN::DPULayer> getPerClusterDPULayers(VPU::NCEOpInterface nceOp, const VPUIP::WorkloadCostParams& params,
+                                                    Logger log);
 VPUNN::DPUWorkload getDPUWorkload(const VPUIP::WorkloadCostParams& tileParams, const VPUIP::WorkloadTile& wl);
 VPUIP::WorkloadCostParams getWorkloadCostParam(VPU::NCEOpInterface nceOp, VPU::ArchKind arch, int64_t numDPU,
                                                int64_t numTiles = 1);

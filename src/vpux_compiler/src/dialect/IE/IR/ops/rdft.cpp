@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,7 +17,7 @@ mlir::LogicalResult vpux::IE::RDFTOp::inferReturnTypeComponents(
     if (mlir::failed(op.verify(loc))) {
         return mlir::failure();
     }
-    const auto inType = op.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(op.getInput().getType());
     auto outShape = to_small_vector(inType.getShape());
     // RDFT input is real, so rank of input tensor map with parameter rank considered, not need adjustment
     auto params = fftExtractParams(loc, op, false);

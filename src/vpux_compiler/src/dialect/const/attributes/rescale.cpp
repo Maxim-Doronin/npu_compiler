@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -69,14 +69,15 @@ Const::Content vpux::Const::RescaleAttr::transform(vpux::Const::Content& input) 
             Const::Content::allocTempBuffer(inferOutputType(input.getType()), mlir::Float32Type::get(getContext()),
                                             inferOutputSplat(input.isSplat(), input.getType()));
 
-    const auto values = input.getValues<float>();
     auto scaledVals = output.getTempBuf<float>();
 
     const auto scale = static_cast<float>(getScale().getValue().convertToDouble());
 
-    for (size_t i = 0; i < scaledVals.size(); ++i) {
-        scaledVals[i] = values[i] * scale;
-    }
+    input.read([&](auto values) {
+        for (size_t i = 0; i < scaledVals.size(); ++i) {
+            scaledVals[i] = checked_cast<float>(values[i]) * scale;
+        }
+    });
 
     return output;
 }

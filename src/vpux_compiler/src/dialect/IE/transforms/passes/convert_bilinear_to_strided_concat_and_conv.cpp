@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -55,20 +58,23 @@ mlir::Value createAverageConv(mlir::Value input, ShapeRef kernelShape, mlir::Loc
     }
 
     const DimsOrder weightOrder = DimsOrder::OYXI;
-    const auto weightType = mlir::RankedTensorType::get(
-            weightShape.raw(), mlir::cast<NDTypeInterface>(input.getType()).getElementType(),
-            getTensorAttr(rewriter.getContext(), weightOrder, nullptr, nullptr));
+
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(input.getType()), "{0} doesn't support dynamic shapes",
+                      IE::ConvolutionOp::getOperationName());
+    const auto weightType = mlir::RankedTensorType::get(weightShape.raw(),
+                                                        mlir::cast<NDTypeInterface>(input.getType()).getElementType(),
+                                                        getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
     auto weight = Const::buildWeightsConst(rewriter, input.getLoc(), weightType, ArrayRef(weights));
 
     auto newLoc = appendLoc(loc, "interpolate_conv");
 
-    const auto convInType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto convInType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto convOutType = convInType.changeShape(outputShape);
 
     auto averageConv = rewriter.create<IE::ConvolutionOp>(
             newLoc, convOutType, input, weight, /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr,
             /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr,
-            /*staticScaleAttr=*/nullptr, /*output_channelsAttr=*/nullptr, /*input_channelsAttr=*/nullptr);
+            /*staticScaleAttr=*/nullptr, /*outputPaddingAttr=*/nullptr, /*inputPaddingAttr=*/nullptr);
 
     return averageConv.getOutput();
 }
@@ -83,7 +89,7 @@ auto createAverageDWConv(mlir::Value input, ShapeRef kernelShape, mlir::Location
     auto padEndAttr = getIntArrayAttr(rewriter, SmallVector<int32_t>{0, 0});
     auto groupAttr = getIntAttr(rewriter, inShape[Dims4D::Act::C]);
 
-    const auto elemType = input.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
 
     // OC is equal with IC
     const auto weightShape = Shape{inShape[Dims4D::Act::C], 1, kernelShape[Dim(0)], kernelShape[Dim(1)]};
@@ -101,7 +107,7 @@ auto createAverageDWConv(mlir::Value input, ShapeRef kernelShape, mlir::Location
     auto newLoc = appendLoc(loc, "_interpolate_GroupConv_{0}_{1}", kernelShape[Dim(0)], kernelShape[Dim(1)]);
     auto averageDWConv = rewriter.create<IE::GroupConvolutionOp>(
             newLoc, input, weights, /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, groupAttr,
-            /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr, /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+            /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr, /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 
     return averageDWConv.getOutput();
 }
@@ -342,7 +348,7 @@ mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpola
 
     // This solution introduces many dw convs (four) so that channel alignment will lead
     // extra computation overhead and strided dmas by slice ops than original solution
-    const auto elemType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getElementType();
     const auto alignment = VPU::NCEInvariant::getAlignment(elemType);
     if (inputShape[Dims4D::Act::C] % alignment != 0) {
         return mlir::failure();
@@ -381,7 +387,7 @@ mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpola
         return DWConv;
     };
 
-    auto type = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto type = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto module = origOp->getParentOfType<mlir::ModuleOp>();
 
     // The interpolate was divided into 4 conv. for the first concat, output is 1/2 of original output
@@ -654,7 +660,7 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
         // The alignment causes worse performance than SHAVE interpolation
         // For channel size is smaller than channel alignement, it's partially resolved by
         // SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter.
-        const auto elemType = op.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto elemType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getElementType();
         const auto alignment = VPU::NCEInvariant::getAlignment(elemType);
         if (inputShape[Dims4D::Act::C] < alignment) {
             return true;
@@ -758,7 +764,7 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
         const auto coordMode = attrs.getCoordMode().getValue();
         const auto inputShape = getShape(op.getInput());
         const auto outputShape = getShape(op.getOutput());
-        const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
 
         if ((interpMode != IE::InterpolateMode::LINEAR_ONNX && interpMode != IE::InterpolateMode::LINEAR) ||
             antiAlias) {
@@ -766,7 +772,7 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
         }
 
         const auto inputElemType = inputType.getElementType();
-        if (inputElemType.isa<mlir::quant::QuantizedType>()) {
+        if (mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
             // Support of quantized case will be open after E#104698 fix AC issue.
             return true;
         }

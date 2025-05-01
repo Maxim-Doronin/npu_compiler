@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -38,11 +38,12 @@ double VPU::computeQuantScaleWithWeightedOps(mlir::Type inputType, mlir::Type ou
 }
 
 double VPU::computeScale(mlir::Operation* operation) {
-    const auto inputElemType = operation->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto outputElemType = operation->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType()).getElementType();
+    const auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
     if (mlir::isa<IE::ConvolutionOp, IE::GroupConvolutionOp, IE::TransposedConvolutionOp, VPU::TransposedConvolutionOp,
                   IE::MatMulOp>(operation)) {
-        const auto weightsElemType = operation->getOperand(1).getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto weightsElemType =
+                mlir::cast<vpux::NDTypeInterface>(operation->getOperand(1).getType()).getElementType();
         // In case of per axis quantization it is needed to have the scales in scale table
         if (!mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inputElemType) &&
             !mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(weightsElemType) &&

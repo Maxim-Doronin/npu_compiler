@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -145,41 +145,7 @@ mlir::LogicalResult inferTensorTypes(InferTypeComponentsCb componentsCb, mlir::M
 // LayerWithPostOpInterface
 //
 
-template <typename ConcreteOp>
-std::optional<mlir::OperationName> getLayerPostOp(ConcreteOp mainOp) {
-    if (auto postOpInfo = mainOp.getPostOpAttr()) {
-        return mlir::OperationName(postOpInfo.getName().getValue(), mainOp->getContext());
-    }
-
-    return std::nullopt;
-}
-
-template <typename ConcreteOp>
-mlir::DictionaryAttr getLayerPostOpAttrs(ConcreteOp mainOp) {
-    if (auto postOpInfo = mainOp.getPostOpAttr()) {
-        return postOpInfo.getAttrs();
-    }
-
-    return nullptr;
-}
-
-template <typename ConcreteOp>
-void setLayerPostOp(ConcreteOp mainOp, mlir::Operation* postOp) {
-    VPUX_THROW_UNLESS(mainOp.getPostOpAttr() == nullptr, "Operation '{0}' at '{1}' already has a PostOp '{2}'",
-                      mainOp->getName(), mainOp->getLoc(), mainOp.getPostOpAttr());
-    VPUX_THROW_UNLESS(postOp->getNumOperands() == 1,
-                      "Only single input operation can be attached as PostOp via attributes");
-
-    const auto postOpName = mlir::StringAttr::get(mainOp->getContext(), postOp->getName().getStringRef());
-    const auto postOpInfo = IE::PostOpAttr::get(mainOp->getContext(), postOpName, postOp->getAttrDictionary());
-
-    mainOp.setPostOpAttr(postOpInfo);
-}
-
-template <typename ConcreteOp>
-void clearLayerPostOp(ConcreteOp mainOp) {
-    mainOp.removePostOpAttr();
-}
+PostOpAttr attributizePostOp(mlir::Operation* postOp);
 
 //
 // LayoutInfoOpInterface

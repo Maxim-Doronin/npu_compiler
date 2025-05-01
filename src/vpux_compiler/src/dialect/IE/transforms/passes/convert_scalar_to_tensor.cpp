@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -103,7 +104,8 @@ mlir::LogicalResult ConvertScalarToTensorPass::GatherScalarConverter::matchAndRe
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     vpux::IE::GatherOp newOp;
-    if ((origOp.getAxis() != nullptr) && (origOp.getAxis().getType().cast<vpux::NDTypeInterface>().getRank() == 0)) {
+    if ((origOp.getAxis() != nullptr) &&
+        (mlir::cast<vpux::NDTypeInterface>(origOp.getAxis().getType()).getRank() == 0)) {
         const std::array<int64_t, 1> tensorShape = {1};
         const auto shapeAttr = getIntArrayAttr(getContext(), tensorShape);
 
@@ -168,12 +170,12 @@ void ConvertScalarToTensorPass::safeRunOnFunc() {
             return true;
         }
         for (auto operand : op->getOperands()) {
-            if (operand.getType().cast<vpux::NDTypeInterface>().getRank() == 0) {
+            if (mlir::cast<vpux::NDTypeInterface>(operand.getType()).getRank() == 0) {
                 return false;
             }
         }
         for (auto result : op->getResults()) {
-            if (result.getType().cast<vpux::NDTypeInterface>().getRank() == 0) {
+            if (mlir::cast<vpux::NDTypeInterface>(result.getType()).getRank() == 0) {
                 return false;
             }
         }

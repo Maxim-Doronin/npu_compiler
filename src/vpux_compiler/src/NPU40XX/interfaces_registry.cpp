@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,6 +33,8 @@ void InterfacesRegistry40XX::registerInterfaces(mlir::DialectRegistry& registry)
     VPU::arch37xx::registerNCEOpInterface(registry);
     // NB: arch40xx::registerClusterBroadcastingOpInterfaces uses its own logic
     VPU::arch40xx::registerClusterBroadcastingOpInterfaces(registry);
+    // NB: arch40xx::registerSCFTilingOpsInterfaces uses its own logic
+    VPU::arch40xx::registerSCFTilingOpsInterfaces(registry);
     // NB: arch37xx::AlignedChannelsOpModel can be re-used for 40XX
     VPUIP::arch37xx::registerAlignedChannelsOpInterfaces(registry);
     // NB: arch40xx::AlignedWorkloadChannelsOp uses itself logic

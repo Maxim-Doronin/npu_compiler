@@ -1,21 +1,23 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 namespace vpux::IE {
 
-bool hasDynamicShape(const mlir::Value value) {
-    return getShape(value).isDynamic();
+bool hasDynamicShapeAttr(mlir::Value value) {
+    auto type = value.getType();
+    return mlir::isa<Core::BoundedTensorType>(type) || mlir::isa<Core::DynamicDimsMaskTensorType>(type);
 }
 
 bool hasDynamicTensors(mlir::Operation* op) {
-    const auto hasDynamicInputs = llvm::any_of(op->getOperands(), hasDynamicShape);
-    const auto hasDynamicOutputs = llvm::any_of(op->getResults(), hasDynamicShape);
+    const auto hasDynamicInputs = llvm::any_of(op->getOperands(), hasDynamicShapeAttr);
+    const auto hasDynamicOutputs = llvm::any_of(op->getResults(), hasDynamicShapeAttr);
 
     return hasDynamicInputs || hasDynamicOutputs;
 }
@@ -26,7 +28,14 @@ bool hasDynamicTensors(mlir::Operation* op) {
 // DPU cannot adjust the workload size once it is set during the parsing stage.
 // Right now these operations use upper bounds to set the size of workloads.
 bool needsStaticShape(mlir::Operation* op) {
-    return mlir::isa_and_nonnull<ShapeBoundOp>(op);
+    auto requireStaticShape = [&]() {
+        if (auto staticShapeOpInterface = mlir::dyn_cast_or_null<StaticShapeOpInterface>(op)) {
+            return staticShapeOpInterface.requiresStaticShape();
+        }
+        return false;
+    };
+
+    return op ? requireStaticShape() : false;
 }
 
 // Given a dynamic shape and DimsOrder, decide if the dynamic data is contiguous or strided

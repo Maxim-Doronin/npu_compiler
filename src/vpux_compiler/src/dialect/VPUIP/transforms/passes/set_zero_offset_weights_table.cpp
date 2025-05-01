@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -44,11 +45,6 @@ void SetZeroOffsetWeightsTablePass::safeRunOnFunc() {
     func.walk([&](VPUIP::NCEClusterTaskOp nceOp) {
         auto weightsTable = nceOp.getWeightTable();
         if (weightsTable == nullptr) {
-            return;
-        }
-        auto wtShape = getShape(weightsTable);
-        if (wtShape.size() == DimsGroups5D::Filter::numDims) {
-            // TODO: support WT reuse for Group Matmul
             return;
         }
         if (nceOp.getWeightsSparsityMap() != nullptr) {

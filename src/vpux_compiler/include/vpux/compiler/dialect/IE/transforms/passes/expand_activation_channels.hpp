@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,9 +17,11 @@ namespace vpux {
 namespace IE {
 
 mlir::LogicalResult generalRewrite(mlir::Operation* origOp, mlir::PatternRewriter& rewriter,
-                                   FuncRef<mlir::Operation*(mlir::Value, int64_t)> opCreator,
+                                   FuncRef<mlir::Operation*(mlir::Value, int64_t, int64_t)> opCreator,
                                    FuncRef<SmallVector<int64_t>(mlir::Operation*, ShapeRef)> calcOutputSliceOffset,
-                                   FuncRef<void()> autopadAttributeModifier, Logger log);
+                                   Logger log);
+std::pair<mlir::ArrayAttr, mlir::ArrayAttr> getPaddingAttributes(mlir::Operation* op, mlir::Value expandedInput,
+                                                                 int64_t inChanPadEnd, ShapeRef outPadAfter);
 
 //
 // MaxPoolRewriter
@@ -91,17 +93,12 @@ mlir::LogicalResult EltwiseRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp orig
                                                                  mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got eltwise layer at '{1}'", this->getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput1, int64_t outChanPadEnd) -> mlir::Operation* {
+    const auto opCreator = [&](mlir::Value expandedInput1, int64_t inChanPadEnd,
+                               int64_t outChanPadEnd) -> mlir::Operation* {
         mlir::Value expandedInput2;
         if (origOp.getInput1() == origOp.getInput2()) {
             expandedInput2 = expandedInput1;
-        } else if (outChanPadEnd == 0 && !(VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp))) {
+        } else if (outChanPadEnd == 0) {
             expandedInput2 = origOp.getInput2();
         } else {
             _log.trace("Expand second input tensor");
@@ -118,25 +115,21 @@ mlir::LogicalResult EltwiseRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp orig
         }
 
         const Shape outPadBefore(checked_cast<size_t>(origOp.getType().getRank()), 0);
-
         Shape outPadAfter(checked_cast<size_t>(origOp.getType().getRank()), 0);
         outPadAfter[Dims4D::Act::C] = outChanPadEnd;
 
-        const auto ndType = origOp.getType().template cast<vpux::NDTypeInterface>();
-
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), ndType.getShape()[Dims4D::Act::C]);
-        }
-
+        const auto ndType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
         const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
+
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput1, inChanPadEnd, outPadAfter);
 
         return rewriter.create<ConcreteOp>(origOp.getLoc(), newOutputType, expandedInput1, expandedInput2,
                                            origOp.getAutoBroadcast(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                           outChanBeforeAttr, origOp.getInputChannelsAttr());
+                                           outputPaddingAttr, inputPaddingAttr);
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, _log.nest());
 }
 
 //

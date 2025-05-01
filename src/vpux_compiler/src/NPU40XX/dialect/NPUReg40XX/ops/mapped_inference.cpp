@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -80,11 +80,11 @@ void vpux::NPUReg40XX::MappedInferenceOp::serializeCached(elf::writer::BinaryDat
 
     std::optional<uint64_t> stackSize;
     if (getActShaveStacks().has_value()) {
-        auto stackRef = symRefMap.lookupSymbol(getActShaveStacks()->begin()->dyn_cast<mlir::SymbolRefAttr>());
+        auto stackRef = symRefMap.lookupSymbol(mlir::dyn_cast<mlir::SymbolRefAttr>(*getActShaveStacks()->begin()));
         auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stackRef);
         stackSize = stackOp.getStackSize();
     }
-    // NPU40XX does not have stack frames provided by compiler
+    // NPU4 does not have stack frames provided by compiler
     // they are resolved by shave driver when initialized.
 
     auto isActKernelInvocations = getActKernelInvocationsCount().size() > 0;
@@ -126,9 +126,9 @@ namespace {
 size_t getSymRefOffsetForReloc(NPUReg40XX::MappedInferenceOp op, mlir::SymbolRefAttr ref) {
     auto dmaTaskReferenceOffset = offsetof(nn_public::VpuTaskReference<nn_public::VpuDMATask>, address);
     for (size_t dmaEngine = 0; dmaEngine < op.getDmaTasksAttr().size(); dmaEngine++) {
-        auto dmaGroup = op.getDmaTasksAttr()[dmaEngine].cast<mlir::ArrayAttr>();
+        auto dmaGroup = mlir::cast<mlir::ArrayAttr>(op.getDmaTasksAttr()[dmaEngine]);
         auto dmaCounts = op.getDmaCount();
-        auto dmaCountList = parseIntArrayAttr<int64_t>(dmaCounts[dmaEngine].cast<mlir::ArrayAttr>());
+        auto dmaCountList = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(dmaCounts[dmaEngine]));
         auto dmaTaskIdxOffset = (dmaEngine * sizeof(nn_public::VpuTaskReference<nn_public::VpuDMATask>));
 
         // by default we expect that getDmaTasksAttr
@@ -137,7 +137,7 @@ size_t getSymRefOffsetForReloc(NPUReg40XX::MappedInferenceOp op, mlir::SymbolRef
         // index 1 -> CMX dmas
         auto cmxIdx = 1;
         if (dmaCountList[0] != 0) {
-            auto dmaDDR = dmaGroup[0].cast<mlir::SymbolRefAttr>();
+            auto dmaDDR = mlir::cast<mlir::SymbolRefAttr>(dmaGroup[0]);
             if (ref == dmaDDR) {
                 return offsetof(nn_public::VpuMappedInference, dma_tasks_ddr_[0]) + dmaTaskIdxOffset +
                        dmaTaskReferenceOffset;
@@ -149,7 +149,7 @@ size_t getSymRefOffsetForReloc(NPUReg40XX::MappedInferenceOp op, mlir::SymbolRef
         // could be cmx dma
         // if there are no DDR dmas for the current task it means that cmx index would be 0
         if (dmaCountList[1] != 0) {
-            auto dmaCMX = dmaGroup[cmxIdx].cast<mlir::SymbolRefAttr>();
+            auto dmaCMX = mlir::cast<mlir::SymbolRefAttr>(dmaGroup[cmxIdx]);
             if (ref == dmaCMX) {
                 return offsetof(nn_public::VpuMappedInference, dma_tasks_cmx_[0]) + dmaTaskIdxOffset +
                        dmaTaskReferenceOffset;
@@ -278,7 +278,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::MappedInferenceOp::getRelocat
             auto dmaListArrayAttr = dmaList;
             dmaListArrayAttr.walkImmediateSubElements(
                     [&](mlir::Attribute attr) {
-                        if (auto symRef = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+                        if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                             relocs.emplace_back(symRef, targetSection, getSymRefOffsetForReloc(thisMI, symRef),
                                                 ELF::RelocationType::R_VPU_64,
                                                 ELF::getOffsetOfSymRef(symRefMap, symRef),
@@ -293,7 +293,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::MappedInferenceOp::getRelocat
         auto invTasksSubElemIf = invariantTasks;
         invTasksSubElemIf.walkImmediateSubElements(
                 [&](mlir::Attribute attr) {
-                    if (auto symRef = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+                    if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                         relocs.emplace_back(symRef, targetSection, getSymRefOffsetForReloc(thisMI, symRef),
                                             ELF::RelocationType::R_VPU_64, ELF::getOffsetOfSymRef(symRefMap, symRef),
                                             "Invariant task in mapped inference reloc");
@@ -306,7 +306,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::MappedInferenceOp::getRelocat
         auto varTasksSubElemIf = variantTasks;
         varTasksSubElemIf.walkImmediateSubElements(
                 [&](mlir::Attribute attr) {
-                    if (auto symRef = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+                    if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                         relocs.emplace_back(symRef, targetSection, getSymRefOffsetForReloc(thisMI, symRef),
                                             ELF::RelocationType::R_VPU_64, ELF::getOffsetOfSymRef(symRefMap, symRef),
                                             "Variant task in mapped inference reloc");
@@ -319,7 +319,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::MappedInferenceOp::getRelocat
         auto akrTasksSubElemIf = actKernelRanges;
         akrTasksSubElemIf.walkImmediateSubElements(
                 [&](mlir::Attribute attr) {
-                    if (auto symRef = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+                    if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                         relocs.emplace_back(symRef, targetSection, getSymRefOffsetForReloc(thisMI, symRef),
                                             ELF::RelocationType::R_VPU_64, ELF::getOffsetOfSymRef(symRefMap, symRef),
                                             "Act kernel range in mapped inference reloc");
@@ -332,7 +332,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::MappedInferenceOp::getRelocat
         auto akiTasksSubElemIf = actKernelInvos;
         akiTasksSubElemIf.walkImmediateSubElements(
                 [&](mlir::Attribute attr) {
-                    if (auto symRef = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+                    if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                         relocs.emplace_back(symRef, targetSection, getSymRefOffsetForReloc(thisMI, symRef),
                                             ELF::RelocationType::R_VPU_64, ELF::getOffsetOfSymRef(symRefMap, symRef),
                                             "Act kernel invocation in mapped inference reloc");
@@ -363,7 +363,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::MappedInferenceOp::getRelocat
         auto shvStacksTasksSubElemIf = actShaveStacks;
         shvStacksTasksSubElemIf.walkImmediateSubElements(
                 [&](mlir::Attribute attr) {
-                    if (auto symRef = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+                    if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                         auto stacks = symRefMap.lookupSymbol(symRef);
                         auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stacks);
                         auto stackSize = stackOp.getStackSize();

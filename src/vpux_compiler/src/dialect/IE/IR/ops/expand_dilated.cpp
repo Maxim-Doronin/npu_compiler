@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dilated_utils.hpp"
@@ -25,13 +26,13 @@ mlir::LogicalResult vpux::IE::ExpandDilatedOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = expandDilated.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::dyn_cast<vpux::NDTypeInterface>(expandDilated.getInput().getType());
     if (!inType) {
         return mlir::failure();
     }
 
     const auto dilations = parseIntArrayAttr<int64_t>(expandDilated.getDilations());
-    const auto newType = getDilatedType(inType, ShapeRef(dilations)).cast<mlir::RankedTensorType>();
+    const auto newType = mlir::cast<mlir::RankedTensorType>(getDilatedType(inType, ShapeRef(dilations)));
     inferredReturnShapes.emplace_back(newType.getShape(), newType.getElementType(), newType.getEncoding());
 
     return mlir::success();

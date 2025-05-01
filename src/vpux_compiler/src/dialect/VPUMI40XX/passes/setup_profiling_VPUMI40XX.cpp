@@ -1,15 +1,19 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 #include <mlir/IR/Builders.h>
@@ -48,9 +52,8 @@ private:
         VPUX_THROW_UNLESS((dmaSection.getSize() % VPUIP::HW_DMA_PROFILING_SIZE_BYTES_40XX) == 0,
                           "Bad DMA section size");
 
-        const auto outputType = getMemRefType({dmaSection.getSize() / 4}, getUInt32Type(ctx), DimsOrder::C,
-                                              VPURT::BufferSection::ProfilingOutput)
-                                        .cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(getMemRefType(
+                {dmaSection.getSize() / 4}, getUInt32Type(ctx), DimsOrder::C, VPURT::BufferSection::ProfilingOutput));
         const auto profilingOutputType =
                 mlir::MemRefType::get(outputType.getShape().raw(), outputType.getElementType());
 
@@ -72,8 +75,8 @@ private:
                           "Unaligned HWP reserved base address");
 
         const auto memKind = IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::DDR));
-        const auto outputType = getMemRefType({dmaProfMem.getByteSize() / 4}, getUInt32Type(ctx), DimsOrder::C, memKind)
-                                        .cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(
+                getMemRefType({dmaProfMem.getByteSize() / 4}, getUInt32Type(ctx), DimsOrder::C, memKind));
 
         auto dmaHwpBase = builderFunc.create<VPURT::DeclareBufferOp>(
                 mlir::NameLoc::get(mlir::StringAttr::get(ctx, "dmaHwpBase")), outputType, VPURT::BufferSection::DDR,
@@ -92,9 +95,8 @@ private:
 
         const auto ctx = builderFunc.getContext();
         const auto memKind = IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
-        const auto outputType =
-                getMemRefType({VPUIP::HW_DMA_PROFILING_SIZE_BYTES_40XX / 4}, getUInt32Type(ctx), DimsOrder::C, memKind)
-                        .cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(getMemRefType(
+                {VPUIP::HW_DMA_PROFILING_SIZE_BYTES_40XX / 4}, getUInt32Type(ctx), DimsOrder::C, memKind));
 
         auto dmaHwpScratch = builderFunc.create<VPURT::DeclareBufferOp>(
                 mlir::NameLoc::get(mlir::StringAttr::get(ctx, "dmaHwpScratch")), outputType,
@@ -145,9 +147,8 @@ private:
         auto captureSection = maybeCaptureSection.value();
         unsigned pllSizeBytes = captureSection.getSize();
         VPUX_THROW_UNLESS(pllSizeBytes == profiling::WORKPOINT_BUFFER_SIZE, "Bad PLL section size: {0}", pllSizeBytes);
-        const auto outputType = getMemRefType({pllSizeBytes / 4}, getUInt32Type(ctx), DimsOrder::C,
-                                              VPURT::BufferSection::ProfilingOutput)
-                                        .cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(getMemRefType(
+                {pllSizeBytes / 4}, getUInt32Type(ctx), DimsOrder::C, VPURT::BufferSection::ProfilingOutput));
         const auto profilingOutputType =
                 mlir::MemRefType::get(outputType.getShape().raw(), outputType.getElementType());
 
@@ -173,9 +174,9 @@ void SetupProfilingVPUMI40XXPass::safeRunOnModule() {
         return;
     }
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp funcOp;
-    IE::CNNNetworkOp::getFromModule(moduleOp, netOp, funcOp);
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
     mlir::OpBuilder builderFunc(&(funcOp.getFunctionBody()));
 
     auto mpi = VPUMI40XX::getMPI(funcOp);

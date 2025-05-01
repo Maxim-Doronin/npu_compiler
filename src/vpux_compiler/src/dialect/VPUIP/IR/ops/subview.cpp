@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -77,7 +78,7 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
         return mlir::failure();
     }
 
-    const auto origType = subViewOp.getSource().getType().cast<NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(subViewOp.getSource().getType());
 
     const auto subViewShape = parseIntArrayAttr<int64_t>(subViewOp.getStaticSizes());
     const auto subViewOffsets = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets());
@@ -139,14 +140,15 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
                 origDistribution.getEqualMemoryAndComputeView());
     };
 
-    const auto distributedIn = origType.dyn_cast<VPU::DistributedTypeInterface>();
+    const auto distributedIn = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(origType);
     VPU::DistributionInfoAttr possibleDistribution =
             distributedIn != nullptr && distributedIn.containsDistributedTypes()
-                    ? distributedIn.getDistributedTypes().front().cast<VPUIP::DistributedBufferType>().getDistribution()
+                    ? mlir::cast<vpux::VPUIP::DistributedBufferType>(distributedIn.getDistributedTypes().front())
+                              .getDistribution()
                     : nullptr;
     if (possibleDistribution != nullptr) {
         if (hasExplcitOutputShapes || VPU::isDistributedAttrWithExplicitShapesAndOffsets(possibleDistribution)) {
-            if (auto sparseType = distributedIn.dyn_cast<VPUIP::SparseBufferType>()) {
+            if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(distributedIn)) {
                 possibleDistribution = VPU::getExplicitDistrAttrForActualDataFromSparseType(sparseType);
             }
 
@@ -163,7 +165,7 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
         } else {
             // todo: update alignment for non-explict sparseBuffer to enable 37XX unaligned shave tiling
             // ticket E#114487
-            if (auto sparseType = distributedIn.dyn_cast<VPUIP::SparseBufferType>()) {
+            if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(distributedIn)) {
                 const auto subViewType = sparseType.extractViewTile(ShapeRef(subViewOffsets), ShapeRef(subViewShape),
                                                                     ShapeRef(subViewStrides));
                 inferredTypes.push_back(subViewType);
@@ -172,7 +174,7 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
                                                                         ShapeRef(subViewShape), possibleDistribution);
 
                 const auto origBufferType =
-                        distributedIn.getDistributedTypes().front().cast<VPUIP::DistributedBufferType>();
+                        mlir::cast<vpux::VPUIP::DistributedBufferType>(distributedIn.getDistributedTypes().front());
                 auto newBufferType = VPUIP::DistributedBufferType::get(
                         ctx, origBufferType.getShape().raw(), origBufferType.getElementType(),
                         origBufferType.getLayout(), origBufferType.getMemSpace(), newDistribution,
@@ -210,7 +212,7 @@ void adaptSparsityMapConstant(mlir::Value source, Shape& offset, Shape& shape) {
 
     auto getSparistyMapTransIt = std::find_if(transformations.rbegin(), transformations.rend(),
                                               [&](vpux::Const::TransformAttrInterface trans) {
-                                                  return trans.isa<Const::GetSparsityMapAttr>();
+                                                  return mlir::isa<vpux::Const::GetSparsityMapAttr>(trans);
                                               });
     if (getSparistyMapTransIt == transformations.rend()) {
         return;
@@ -224,7 +226,7 @@ void adaptSparsityMapConstant(mlir::Value source, Shape& offset, Shape& shape) {
     VPUX_THROW_UNLESS(zeroWorkloadOffsets, "Offsets with non-zero values for workloads are not supported. Got {0}",
                       offset);
 
-    const auto sparsityMapShape = constParentOp.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto sparsityMapShape = mlir::cast<vpux::NDTypeInterface>(constParentOp.getType()).getShape();
     const auto sparsityMapWorkloadShape = SmallVector<int64_t>(sparsityMapShape.begin() + 1, sparsityMapShape.end());
     const auto shapeWorkloadShape = SmallVector<int64_t>(shape.begin() + 1, shape.end());
     for (auto p : zip(sparsityMapWorkloadShape, shapeWorkloadShape)) {
@@ -235,7 +237,7 @@ void adaptSparsityMapConstant(mlir::Value source, Shape& offset, Shape& shape) {
                           sparsityMapDim, shapeDim);
     }
 
-    auto inputType = constParentOp.getContentAttr().getBaseContent().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(constParentOp.getContentAttr().getBaseContent().getType());
     for (auto idx : irange(transformations.size() - (1 + posFromEnd))) {
         inputType = transformations[idx].inferOutputType(inputType);
     }
@@ -328,8 +330,8 @@ mlir::LogicalResult VPUIP::SubViewOp::verify() {
         logCb(formatv("Can't infer return types"));
         return mlir::failure();
     }
-    const auto expectedStrides = inferredTypes.front().cast<NDTypeInterface>().getStrides();
-    const auto outputStrides = getResult().getType().cast<NDTypeInterface>().getStrides();
+    const auto expectedStrides = mlir::cast<vpux::NDTypeInterface>(inferredTypes.front()).getStrides();
+    const auto outputStrides = mlir::cast<vpux::NDTypeInterface>(getResult().getType()).getStrides();
     if (expectedStrides.size() != outputStrides.size()) {
         logCb(formatv("The output stride size != infered stride size"));
         return mlir::failure();

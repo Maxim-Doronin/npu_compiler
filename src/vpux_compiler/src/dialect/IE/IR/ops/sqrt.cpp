@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@ mlir::LogicalResult vpux::IE::SqrtOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = sqrt.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(sqrt.getInput().getType());
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 
     return mlir::success();

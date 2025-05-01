@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -132,7 +132,7 @@ void VPURT::postProcessBarrierOps(mlir::func::FuncOp func) {
 bool VPURT::verifyBarrierSlots(mlir::func::FuncOp func, Logger log) {
     auto barrierSim = VPURT::BarrierSimulator{func};
     if (mlir::failed(barrierSim.checkProducerAndConsumerCount(log))) {
-        log.error("verifyBarrierSlots failed");
+        log.trace("verifyBarrierSlots failed");
         return false;
     }
     return true;
@@ -273,10 +273,113 @@ void VPURT::orderExecutionTasksAndBarriers(mlir::func::FuncOp funcOp, BarrierInf
 
     // Other passes expect final barrier to be at the end of IR
     if (finalBarOp != nullptr && prevBarrier != finalBarOp) {
+        log.trace("Moving final barrier {0} after barrier {1}", finalBarOp, prevBarrier);
         finalBarOp->moveAfter(prevBarrier);
     }
     log = log.unnest();
 
     // regenerate barrier info based on new order
     barrierInfo = vpux::BarrierInfo{funcOp};
+}
+
+size_t VPURT::getFinalBarriersCount(mlir::func::FuncOp funcOp) {
+    size_t finalBarriersCount = 0;
+    auto barrierOps = to_small_vector(funcOp.getOps<VPURT::DeclareVirtualBarrierOp>());
+
+    for (auto& barrierOp : barrierOps) {
+        if (barrierOp.getIsFinalBarrier()) {
+            finalBarriersCount++;
+        }
+    }
+
+    return finalBarriersCount;
+}
+
+bool VPURT::addFinalBarrierIfNotExists(mlir::func::FuncOp funcOp, Logger log) {
+    auto finalBarriersCount = VPURT::getFinalBarriersCount(funcOp);
+    VPUX_THROW_WHEN(finalBarriersCount > 1, "Found multiple final barriers.");
+    if (finalBarriersCount > 0) {
+        return false;
+    }
+
+    auto findInsertPoint = [&]() {
+        auto barrierOpsIt = funcOp.getOps<VPURT::DeclareVirtualBarrierOp>();
+        if (barrierOpsIt.empty()) {
+            return &funcOp.getBody().front().front();
+        }
+        auto lastBarrierOpIter = barrierOpsIt.begin();
+        std::advance(lastBarrierOpIter, std::distance(barrierOpsIt.begin(), barrierOpsIt.end()) - 1);
+        auto lastBarrierOp = *lastBarrierOpIter;
+        return lastBarrierOp.getOperation();
+    };
+
+    auto hasAnyConsumers = [&](VPURT::DeclareVirtualBarrierOp barrierOp) {
+        auto barrier = barrierOp.getBarrier();
+        for (const auto& user : barrier.getUsers()) {
+            auto taskOp = mlir::dyn_cast<VPURT::TaskOp>(user);
+            VPUX_THROW_WHEN(taskOp == nullptr, "VPURT.TaskOp is expected as user for barrier at '{0}'",
+                            barrier.getLoc());
+            auto waitBarriers = taskOp.getWaitBarriers();
+            if (llvm::find(waitBarriers, barrier) != waitBarriers.end()) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto isNewFinalBarrierOpRequired = [&]() {
+        // If any of the final tasks don't update any barrier then new barrier is required.
+        // This will happen when final barrier has not yet been created.
+        for (auto taskQueueFirstAndLastOp : vpux::VPURT::getTaskQueuesFirstAndLastOp(funcOp)) {
+            auto& lastOpInQueue = taskQueueFirstAndLastOp.second.second;
+            if (lastOpInQueue.getUpdateBarriers().empty()) {
+                return true;
+            }
+        }
+
+        // If final barrier was created but optimizations in legalization passes removed its attribute then
+        // the barrier can be reused as final barrier.
+        return false;
+    };
+
+    if (isNewFinalBarrierOpRequired()) {
+        // create new barrier and update it by FIFO final tasks
+        auto ctx = funcOp.getContext();
+        auto insertPoint = findInsertPoint();
+        mlir::OpBuilder builder(funcOp);
+        builder.setInsertionPointAfter(insertPoint);
+        auto loc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, "finishing_barrier"));
+        auto barrierOp = builder.create<VPURT::DeclareVirtualBarrierOp>(loc, mlir::UnitAttr::get(ctx));
+        auto finalBarrier = barrierOp.getBarrier();
+
+        for (auto taskQueueFirstAndLastOp : vpux::VPURT::getTaskQueuesFirstAndLastOp(funcOp)) {
+            auto& lastOpInQueue = taskQueueFirstAndLastOp.second.second;
+            if (lastOpInQueue.getUpdateBarriers().empty()) {
+                log.trace("Add finishing barrier for {0}", lastOpInQueue->getLoc());
+                lastOpInQueue.getUpdateBarriersMutable().assign(finalBarrier);
+            }
+        }
+    } else {
+        // If FIFO final tasks already update a barrier without any consumers, assign to it the final barrier attribute.
+        // Final tasks on FIFO that update barriers which are not final (i.e. has other consumers) do not need to update
+        // the final barrier. Such connections could have been optimized in the legalization pipeline and do not need to
+        // be created.
+        std::set<VPURT::DeclareVirtualBarrierOp> newFinalBarriers;
+        for (auto taskQueueFirstAndLastOp : vpux::VPURT::getTaskQueuesFirstAndLastOp(funcOp)) {
+            auto& lastOpInQueue = taskQueueFirstAndLastOp.second.second;
+            for (auto bar : lastOpInQueue.getUpdateBarriers()) {
+                auto barrierOp = bar.getDefiningOp<VPURT::DeclareVirtualBarrierOp>();
+                if (!hasAnyConsumers(barrierOp)) {
+                    newFinalBarriers.insert(barrierOp);
+                }
+            }
+        }
+        VPUX_THROW_UNLESS(newFinalBarriers.size() == 1,
+                          "Found multiple final barrier candidates. Will not assign final barrier.");
+        auto finalBarOp = *newFinalBarriers.begin();
+        log.trace("Setting barrier {0} as final barrier", finalBarOp.getLoc());
+        finalBarOp.setIsFinalBarrier(true);
+    }
+
+    return true;
 }

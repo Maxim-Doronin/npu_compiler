@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -100,10 +101,10 @@ Const::DeclareOp ConvolutionRewriter::replaceConstDeclare(Const::DeclareOp origO
                                                           mlir::ConversionPatternRewriter& rewriter) const {
     const auto outputType = origOp.getType();
     const auto origQuantType =
-            outputType.cast<vpux::NDTypeInterface>().getElementType().dyn_cast<mlir::quant::QuantizedType>();
+            mlir::dyn_cast<mlir::quant::QuantizedType>(mlir::cast<vpux::NDTypeInterface>(outputType).getElementType());
 
-    const auto newType = typeConverter->convertType(outputType).cast<vpux::NDTypeInterface>();
-    const auto newQuantType = newType.getElementType().cast<mlir::quant::QuantizedType>();
+    const auto newType = mlir::cast<vpux::NDTypeInterface>(typeConverter->convertType(outputType));
+    const auto newQuantType = mlir::cast<mlir::quant::QuantizedType>(newType.getElementType());
 
     _log.nest().trace("Convert content from '{0}' to '{1}'", origQuantType, newQuantType);
 
@@ -129,7 +130,7 @@ mlir::LogicalResult ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp origO
     rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
             origOp, origOp.getInput(), newDequantizeOp, origOp.getBias(), origOp.getStrides(), origOp.getPadsBegin(),
             origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     return mlir::success();
 }
 
@@ -240,7 +241,7 @@ void ConvertWeightsToI8Pass::safeRunOnFunc() {
 
     // We can't convert any operations that have operands with symmetric and asymmetric zero points, i.e.: IE::Add
     target.addDynamicallyLegalOp<IE::ConvolutionOp>([&](IE::ConvolutionOp op) {
-        auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getElementType();
         // Input should be F16 and should not be FQ
         if (!inputType.isF16()) {
             return true;
@@ -258,7 +259,7 @@ void ConvertWeightsToI8Pass::safeRunOnFunc() {
             return true;
         }
 
-        return isLegalTensor(weightDeclareOp.getOutput().getType().cast<vpux::NDTypeInterface>());
+        return isLegalTensor(mlir::cast<vpux::NDTypeInterface>(weightDeclareOp.getOutput().getType()));
     });
     target.addLegalOp<Const::DeclareOp>();
     target.addLegalOp<IE::DequantizeOp>();

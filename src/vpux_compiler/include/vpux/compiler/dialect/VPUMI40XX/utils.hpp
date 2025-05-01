@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 
 namespace vpux {
 namespace VPUMI40XX {
@@ -90,6 +91,10 @@ MappedInferenceOp getMPI(mlir::func::FuncOp mainFunc);
 
 // Update indexes in list of operations
 size_t reindexList(VPURegMapped::TaskOpInterface head);
+template <typename TaskOpType>
+void reindexList(VPUMI40XX::MappedInferenceOp mpi, TaskOpType firstTask, size_t fetchTaskTileIdx,
+                 size_t fetchTaskListIdx);
+
 VPURegMapped::ExecutionGroupOp getNextGroup(VPURegMapped::ExecutionGroupOp op);
 
 void printIndex(llvm::raw_ostream& os, VPURegMapped::IndexType index, llvm::StringRef head, llvm::StringRef middle,

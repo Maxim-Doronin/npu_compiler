@@ -13,9 +13,9 @@ namespace VPUIPDPU {
 
 IOType getIOType(mlir::Type type) {
     auto baseType = getBaseType(type);
-    if (baseType.isa<mlir::IntegerType>()) {
+    if (mlir::isa<mlir::IntegerType>(baseType)) {
         return IOType::INT;
-    } else if (baseType.isa<mlir::FloatType>()) {
+    } else if (mlir::isa<mlir::FloatType>(baseType)) {
         return IOType::FP;
     }
 
@@ -81,13 +81,14 @@ mlir::BlockArgument getInvBlockArg(BlockArg invBlockArg, mlir::Block* invBlock,
 }
 
 mlir::Type getBaseType(mlir::Type type, bool isPalletModeEnabled) {
-    if (!type.isa<mlir::quant::QuantizedType>()) {
+    if (!mlir::isa<mlir::quant::QuantizedType>(type)) {
         return type;
     }
 
     if (isPalletModeEnabled) {
         VPUX_THROW_UNLESS(
-                type.isa<mlir::quant::QuantileQuantizedType>() || type.isa<mlir::quant::QuantileQuantizedPerAxisType>(),
+                mlir::isa<mlir::quant::QuantileQuantizedType>(type) ||
+                        mlir::isa<mlir::quant::QuantileQuantizedPerAxisType>(type),
                 "Pallet mode requires weights to be of QuantileQuantizedType or QuantileQuantizedPerAxisType, "
                 "containing the quantile look up table");
 
@@ -100,7 +101,7 @@ mlir::Type getBaseType(mlir::Type type, bool isPalletModeEnabled) {
         }
     }
 
-    auto quantType = type.cast<mlir::quant::QuantizedType>();
+    auto quantType = mlir::cast<mlir::quant::QuantizedType>(type);
     auto quantStorageType = quantType.getStorageType();
     if (quantStorageType.isFloat8E5M2()) {
         return mlir::Float8E5M2Type::get(type.getContext());
@@ -156,8 +157,8 @@ mlir::IntegerAttr getI64IntegerAttrOrNull(mlir::OpBuilder& builder, const std::o
 }
 
 VPUIPDPU::ODUDataBitWidth getDataBitWidth(mlir::Type outActType) {
-    auto asIntegerType = outActType.dyn_cast<mlir::IntegerType>();
-    auto asFloatType = outActType.dyn_cast<mlir::FloatType>();
+    auto asIntegerType = mlir::dyn_cast<mlir::IntegerType>(outActType);
+    auto asFloatType = mlir::dyn_cast<mlir::FloatType>(outActType);
     VPUX_THROW_UNLESS(asIntegerType || asFloatType, "Not a Float or Integer Type");
 
     const auto width = asIntegerType ? asIntegerType.getWidth() : asFloatType.getWidth();

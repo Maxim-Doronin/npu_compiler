@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -38,11 +38,11 @@ void vpux::MemLiveRangeInfo::buildRangeInfo(mlir::func::FuncOp funcOp) {
 
     auto isTargetMemType = [&](mlir::Value buf) {
         auto bufType = buf.getType();
-        if (const auto asyncType = bufType.dyn_cast<mlir::async::ValueType>()) {
+        if (const auto asyncType = mlir::dyn_cast<mlir::async::ValueType>(bufType)) {
             bufType = asyncType.getValueType();
         }
 
-        auto bufNDType = bufType.dyn_cast<vpux::NDTypeInterface>();
+        auto bufNDType = mlir::dyn_cast<vpux::NDTypeInterface>(bufType);
 
         if (bufNDType == nullptr) {
             return false;
@@ -74,29 +74,7 @@ void vpux::MemLiveRangeInfo::buildRangeInfo(mlir::func::FuncOp funcOp) {
                 auto* bodyBlock = curExecOp.getBody();
                 for (auto& innerOp : bodyBlock->getOperations()) {
                     if (auto layerOp = mlir::dyn_cast<VPUIP::LayerOpInterface>(innerOp)) {
-                        auto inputs = vpux::to_small_vector(layerOp.getInputs());
-                        if (auto nceTaskOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(innerOp)) {
-                            // in case of NCEClusterTaskOp we need to remove parent outputs from inputs
-                            // in order to make depenendcy calculation work correctly
-                            auto parentOutput = nceTaskOp.getParentOutput();
-                            auto parentOutputSparsityMap = nceTaskOp.getParentOutputSparsityMap();
-                            auto input = nceTaskOp.getInput();
-                            auto inputSparsityMap = nceTaskOp.getInputSparsityMap();
-                            auto weights = nceTaskOp.getWeights();
-                            auto weightsSparsityMap = nceTaskOp.getWeightsSparsityMap();
-                            llvm::SmallVector<mlir::Value> inputsToSanitize{};
-                            inputsToSanitize.swap(inputs);
-                            std::copy_if(inputsToSanitize.begin(), inputsToSanitize.end(), std::back_inserter(inputs),
-                                         [&](mlir::Value value) {
-                                             // For in-place eltwise op it might happen that parentOutput == input.
-                                             // Check those first to make sure they don't get removed.
-                                             if (value == input || value == inputSparsityMap || value == weights ||
-                                                 value == weightsSparsityMap) {
-                                                 return true;
-                                             }
-                                             return (value != parentOutput) && (value != parentOutputSparsityMap);
-                                         });
-                        }
+                        auto inputs = getInputsSanitized(layerOp);
                         auto outputs = layerOp.getOutputs();
 
                         updateConsProdMap(std::move(inputs), _opInputBuffersMap, curExecOp);

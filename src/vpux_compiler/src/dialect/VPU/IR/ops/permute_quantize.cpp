@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -27,7 +27,7 @@ mlir::LogicalResult vpux::VPU::PermuteQuantizeOp::inferReturnTypes(
 
     const auto inOrder = DimsOrder::fromValue(input);
     const auto outOrder = DimsOrder::fromAffineMap(dstOrder);
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
 
     const auto newExpandedInType = inType.pad(ShapeRef(padBegin), ShapeRef(padEnd));
     const auto inShapeExpanded = newExpandedInType.getShape();
@@ -61,8 +61,8 @@ InputTiling vpux::VPU::PermuteQuantizeOp::backInferTileInfo(const vpux::TileInfo
         curTile.offsets[idxOrdIn] = outputTile.offsets[idxOrdOut];
         curTile.axis[idxOrdIn] = outputTile.axis[idxOrdOut];
     }
-    const auto iType = getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto oType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto iType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto oType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     curTile.shape[Dims4D::Act::C] = iType.getShape()[Dims4D::Act::C];
     if (outputTile.shape[Dims4D::Act::C] != oType.getShape()[Dims4D::Act::C]) {

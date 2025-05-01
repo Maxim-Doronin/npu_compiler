@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,7 +26,7 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     // Blob compilation using 'debatcher' method leverages 'outlining' feature so that
     // it will be turned on unless it was already enabled
     bool isOutliningEnabled = options.functionOutlining.hasValue() || DebatcherOptions::isAvailable(options);
-    if (options.enableProfiling) {
+    if (options.enableProfiling && !options.enableProfilingWithOutlining) {
         // TODO: E#140041 enable profiling with outlining
         log.warning("Outlining was disabled due to profiling being enabled");
         isOutliningEnabled = false;
@@ -37,9 +37,8 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
         }
         pm.addPass(mlir::createCanonicalizerPass(grc));
 
-        auto debatcherOptionsPtr = DebatcherOptions::create(options, log);
+        auto debatcherOptionsPtr = DebatcherOptions::create(options);
         if (debatcherOptionsPtr) {
-            log.info("DebatcherOptions: {0}", debatcherOptionsPtr->to_string());
             pm.addPass(IE::createDebatcherPass(*debatcherOptionsPtr, log));
             pm.addPass(IE::createOutlinerPass(options, log));
             pm.addPass(IE::createDeDebatcherPass(*debatcherOptionsPtr, log));
@@ -61,7 +60,7 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
         pm.addPass(IE::createLogOpOptimizationsPass());
     }
 
-    IE::arch37xx::buildDynamicShapeTransformationsPipeline(pm, log);
+    IE::arch37xx::buildDynamicShapeTransformationsPipeline(pm, IE::DynamicShapeTransformOptions(options), log);
     pm.addPass(IE::createReshapeMatMulInputsPass(options.enableGroupedMatMul, log));
     IE::arch37xx::buildInitialLowPrecisionTransformationsPipeline(pm, IE::LowPrecisionTransformOptions(options), log);
     IE::arch37xx::buildInitialTransformationsPipeline(pm, IE::TransformOptions(options), log);
@@ -91,6 +90,7 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     pm.addPass(IE::createConvertSplitConcatToTransposePass(log));
     pm.addPass(IE::createConvertShapeTo4DPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(IE::createConvertGatherElementsToGatherPass(log));
     //  [Tracking number: E#101595]
     // This temporary check is necessary for m2i interpolate functional tests and it will be removed as part of
     // E#101595
@@ -105,7 +105,7 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     pm.addPass(IE::createConvertDivideToMultiplyPass(log));
     // Note: apply FuseStaticScale after ConvertDivideToMultiply to increase
     // the applicability
-    pm.addPass(IE::arch37xx::createFuseStaticScalePass(log, false));
+    pm.addPass(IE::arch37xx::createFuseStaticScalePass(log));
     pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
                                                     isOptionEnabled(options.enableExperimentalSEPtrsOperations),
                                             log));
@@ -129,6 +129,9 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     pm.addPass(IE::createConvertReverseToDWConvPass(log));
 
     IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
+
+    pm.addPass(mlir::createCSEPass());
+
     pm.addPass(Core::createStopLocationVerifierPass(log));
 
     pm.addPass(IE::createHandleExcludePadForAvgPoolPass(log));
@@ -213,10 +216,6 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
 
     IE::arch37xx::buildOptimizeMemPermuteAndActivationChannelsExpandPipeline(
             pm, IE::ExpandActivationChannelsOptions(options), log);
-
-    if (auto batchUnrollOptions = BatchUnrollOptions::create(options, log); batchUnrollOptions != nullptr) {
-        pm.addPass(IE::createUnrollBatchPass(log, isOptionEnabled(batchUnrollOptions->skipUnrollBatch)));
-    }
 
     pm.addPass(IE::createRemoveViewLikeOpsChainPass(log));
     pm.addPass(IE::createOptimizeOpSlicePass(log));
@@ -327,9 +326,9 @@ void vpux::IE::arch40xx::registerIEPipelines() {
                 IE::arch37xx::buildAdjustLayoutPipeline(pm, options);
             });
 
-    mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions>(
+    mlir::PassPipelineRegistration<DynamicShapeTransformOptions>(
             "dynamic-shape-transformations", "[LEGALIZATION] Introduces operation to handle dynamic shapes",
-            [](mlir::OpPassManager& pm) {
-                IE::arch37xx::buildDynamicShapeTransformationsPipeline(pm);
+            [](mlir::OpPassManager& pm, const DynamicShapeTransformOptions& options) {
+                IE::arch37xx::buildDynamicShapeTransformationsPipeline(pm, options);
             });
 }

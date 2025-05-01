@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -115,9 +115,10 @@ bool hasNegativeValues(const Const::Content& content) {
         return content.getSplatValue<double>() < 0.0;
     }
 
-    const auto vals = content.getValues<double>();
-    return std::any_of(vals.begin(), vals.end(), [](double val) {
-        return val < 0.0;
+    return content.read([](auto vals) {
+        return std::any_of(vals.begin(), vals.end(), [](auto val) {
+            return checked_cast<double>(val) < 0.0;
+        });
     });
 }
 
@@ -154,9 +155,9 @@ mlir::Value buildWeightsConst(mlir::OpBuilder& builder, mlir::Location loc, mlir
     Const::ContentSetup contentAttrSetup(dataType);
     VPUX_THROW_WHEN(!(mlir::isa<mlir::quant::QuantizedType, mlir::Float16Type>(origElemType)), "Unsupported type {0}",
                     origElemType);
-    if (auto qElemType = filterElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    if (auto qElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(filterElemType)) {
         contentAttrSetup = contentAttrSetup.castElemType(qElemType);
-    } else if (origElemType.isa<mlir::Float16Type>()) {
+    } else if (mlir::isa<mlir::Float16Type>(origElemType)) {
         contentAttrSetup = contentAttrSetup.castElemType(mlir::Float16Type::get(ctx));
     }
     contentAttrSetup = contentAttrSetup.reorder(mlir::cast<NDTypeInterface>(type).getDimsOrder());
@@ -202,22 +203,21 @@ void foldSingleConstant(Const::DeclareOp& origOp) {
     std::vector<char> tempBuf(bufSize);
     content.copyTo(MutableArrayRef(tempBuf.data(), bufSize));
 
-    auto rankedTensorType = contentType.cast<mlir::RankedTensorType>();
+    auto rankedTensorType = mlir::cast<mlir::RankedTensorType>(contentType);
 
     const auto elemTypeBitSize = contentType.getElemTypeSize().count();
     // As of now sub byte types are not supported as DenseElementsAttr storage, I1 is an exception
     const auto isUnsupportedSubByteStorageType = elemTypeBitSize < CHAR_BIT && elemTypeBitSize > 1;
     if (isUnsupportedSubByteStorageType) {
-        rankedTensorType = contentType
-                                   .changeShapeElemType(Shape({1, 1, 1, checked_cast<int32_t>(bufSize)}),
-                                                        getUInt8Type(contentType.getContext()))
-                                   .cast<mlir::RankedTensorType>();
-    } else if (auto qtype = contentElemType.dyn_cast<mlir::quant::QuantizedType>()) {
-        rankedTensorType = contentType.changeElemType(normalizeQuantStorageType(qtype)).cast<mlir::RankedTensorType>();
+        rankedTensorType = mlir::cast<mlir::RankedTensorType>(contentType.changeShapeElemType(
+                Shape({1, 1, 1, checked_cast<int32_t>(bufSize)}), getUInt8Type(contentType.getContext())));
+    } else if (auto qtype = mlir::dyn_cast<mlir::quant::QuantizedType>(contentElemType)) {
+        rankedTensorType =
+                mlir::cast<mlir::RankedTensorType>(contentType.changeElemType(normalizeQuantStorageType(qtype)));
     }
 
     const auto denseAttr = Const::createConstContent(rankedTensorType, tempBuf);
-    auto origType = origOp.getType().cast<NDTypeInterface>();
+    auto origType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
 
     if (isUnsupportedSubByteStorageType) {
         // Temporary fix to enable compilation.

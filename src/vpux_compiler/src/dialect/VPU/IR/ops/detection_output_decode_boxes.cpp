@@ -22,7 +22,7 @@ mlir::LogicalResult VPU::DetectionOutputDecodeBoxesOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inputType = decodeBoxes.getBoxLogits().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(decodeBoxes.getBoxLogits().getType());
     inferredReturnTypes.push_back(inputType);
 
     return mlir::success();

@@ -11,6 +11,7 @@
 #include <vpux_elf/reader.hpp>
 #include <vpux_headers/serial_metadata.hpp>
 
+#include "vpux/compiler/dialect/ELFNPU37XX/attributes.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/network_description.hpp"
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"

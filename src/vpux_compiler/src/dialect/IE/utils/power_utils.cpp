@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/power_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 namespace vpux {
 namespace IE {

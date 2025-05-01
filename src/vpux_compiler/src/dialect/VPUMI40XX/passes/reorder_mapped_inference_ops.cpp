@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,8 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 #include <npu_40xx_nnrt.hpp>
@@ -66,8 +68,8 @@ bool engineId(VPUMI40XX::NNDMAOp op) {
 
 template <VPURegMapped::TaskType TASK_TYPE>
 auto taskType(size_t tileIndex, size_t listIndex = 0) {
-    auto condition = [tileIndex, listIndex](VPURegMapped::DeclareTaskBufferOp operation) {
-        const auto index = operation.getIndex().getType().cast<VPURegMapped::IndexType>();
+    auto condition = [tileIndex, listIndex](VPUMI40XX::DeclareTaskBufferOp operation) {
+        const auto index = mlir::cast<vpux::VPURegMapped::IndexType>(operation.getIndex().getType());
         return operation.getTaskType() == TASK_TYPE && index.getTileIdx() == tileIndex &&
                index.getListIdx() == listIndex;
     };
@@ -90,18 +92,18 @@ void ReorderMPIOpsPass::safeRunOnFunc() {
     // tile1: DPUInvariant -> DPUVariant -> Ranges -> Invocations -> DMA from DDR -> DMA from CMX
     // ...
     for (auto tileIndex : irange(nn_public::VPU_MAX_TILES)) {
-        linearizeOps<VPURegMapped::DeclareTaskBufferOp>(func, builder,
-                                                        taskType<VPURegMapped::TaskType::DPUInvariant>(tileIndex));
-        linearizeOps<VPURegMapped::DeclareTaskBufferOp>(func, builder,
-                                                        taskType<VPURegMapped::TaskType::DPUVariant>(tileIndex));
-        linearizeOps<VPURegMapped::DeclareTaskBufferOp>(func, builder,
-                                                        taskType<VPURegMapped::TaskType::ActKernelRange>(tileIndex));
-        linearizeOps<VPURegMapped::DeclareTaskBufferOp>(
-                func, builder, taskType<VPURegMapped::TaskType::ActKernelInvocation>(tileIndex));
-        linearizeOps<VPURegMapped::DeclareTaskBufferOp>(func, builder,
-                                                        taskType<VPURegMapped::TaskType::DMA>(tileIndex, 0));
-        linearizeOps<VPURegMapped::DeclareTaskBufferOp>(func, builder,
-                                                        taskType<VPURegMapped::TaskType::DMA>(tileIndex, 1));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
+                                                     taskType<VPURegMapped::TaskType::DPUInvariant>(tileIndex));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
+                                                     taskType<VPURegMapped::TaskType::DPUVariant>(tileIndex));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
+                                                     taskType<VPURegMapped::TaskType::ActKernelRange>(tileIndex));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
+                                                     taskType<VPURegMapped::TaskType::ActKernelInvocation>(tileIndex));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
+                                                     taskType<VPURegMapped::TaskType::DMA>(tileIndex, 0));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
+                                                     taskType<VPURegMapped::TaskType::DMA>(tileIndex, 1));
     }
 
     linearizeOps<Const::DeclareOp>(func, builder);

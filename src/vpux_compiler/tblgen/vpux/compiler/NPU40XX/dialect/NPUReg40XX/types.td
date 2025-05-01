@@ -1,5 +1,6 @@
 //
-// Copyright Intel Corporation.
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
 //
 // LEGAL NOTICE: Your use of this software and any required dependent software
 // (the "Software Package") is subject to the terms and conditions of
@@ -455,8 +456,8 @@ def bf_StartAfter : NPUReg40XX_RegFieldWrapper<"start_after_", 32, 0>;
 def bf_CleanAfter : NPUReg40XX_RegFieldWrapper<"clean_after_", 32, 32>;
 def reg_BarriersSchedulingCfg : NPUReg40XX_RegisterWrapper<"barriers_sched_", 8, 0x148, ["start_after_", "clean_after_"]>;
 
-def bf_ReservedInvariant : NPUReg40XX_RegFieldWrapper<"reserved_inv", 64, 0, "UINT", NPUReg40XX_Version<11, 4, 10>>;
-def reg_ReservedInvariant : NPUReg40XX_RegisterWrapper<"reserved_inv", 8, 0x150, ["reserved_inv"]>;
+def bf_Deprecated0Invariant : NPUReg40XX_RegFieldWrapper<"deprecated0_inv", 64, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def reg_Deprecated0Invariant : NPUReg40XX_RegisterWrapper<"deprecated0_inv", 8, 0x150, ["deprecated0_inv"]>;
 
 def bf_VariantCnt : NPUReg40XX_RegFieldWrapper<"variant_count_", 16, 0>;
 def reg_VariantCnt : NPUReg40XX_RegisterWrapper<"variant_count_", 2, 0x158, ["variant_count_"]>;
@@ -464,8 +465,11 @@ def reg_VariantCnt : NPUReg40XX_RegisterWrapper<"variant_count_", 2, 0x158, ["va
 def bf_ClusterInvariant : NPUReg40XX_RegFieldWrapper<"cluster_invariant_", 8, 0>;
 def reg_ClusterInvariant : NPUReg40XX_RegisterWrapper<"cluster_invariant_", 1, 0x15A, ["cluster_invariant_"]>;
 
-def bf_Pad3 : NPUReg40XX_RegFieldWrapper<"pad_3", 40, 0, "UINT", NPUReg40XX_Version<11, 4, 10>>;
-def reg_Pad3 : NPUReg40XX_RegisterWrapper<"pad_3", 5, 0x15B, ["pad_3"]>;
+def bf_Deprecated1Invariant : NPUReg40XX_RegFieldWrapper<"deprecated1_inv", 16, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def reg_Deprecated1Invariant : NPUReg40XX_RegisterWrapper<"deprecated1_inv", 2, 0x15B, ["deprecated1_inv"]>;
+
+def bf_Pad3 : NPUReg40XX_RegFieldWrapper<"pad_3", 24, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def reg_Pad3 : NPUReg40XX_RegisterWrapper<"pad_3", 3, 0x15D, ["pad_3"]>;
 
 //
 // DPUVariantRegisters
@@ -659,15 +663,17 @@ def reg_Invariant : NPUReg40XX_RegisterWrapper<"invariant_", 8, 0xC0, ["invarian
 def bf_InvariantIndex : NPUReg40XX_RegFieldWrapper<"invariant_index_", 32, 0>;
 def reg_InvariantIndex : NPUReg40XX_RegisterWrapper<"invariant_index_", 4, 0xC8, ["invariant_index_"]>;
 
-// uint8_t pad_[20]
-def bf_Pad_7_1 : NPUReg40XX_RegFieldWrapper<"pad_7_1", 64, 0, "UINT", NPUReg40XX_Version<11, 4, 10>>;
-def reg_Pad_7_1 : NPUReg40XX_RegisterWrapper<"pad_7_1", 8, 0xCC, ["pad_7_1"]>;
+// uint8_t deprecated_[13]
+def bf_Deprecated0Variant : NPUReg40XX_RegFieldWrapper<"deprecated0_var", 64, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def reg_Deprecated0Variant : NPUReg40XX_RegisterWrapper<"deprecated0_var", 8, 0xCC, ["deprecated0_var"]>;
 
-def bf_Pad_2_2 : NPUReg40XX_RegFieldWrapper<"pad_7_2", 64, 0, "UINT", NPUReg40XX_Version<11, 4, 10>>;
-def reg_Pad_7_2 : NPUReg40XX_RegisterWrapper<"pad_7_2", 8, 0xD4, ["pad_7_2"]>;
+def bf_Deprecated1Variant : NPUReg40XX_RegFieldWrapper<"deprecated1_var", 40, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def reg_Deprecated1Variant : NPUReg40XX_RegisterWrapper<"deprecated1_var", 5, 0xD4, ["deprecated1_var"]>;
 
-def bf_Pad_2_3 : NPUReg40XX_RegFieldWrapper<"pad_7_3", 32, 0, "UINT", NPUReg40XX_Version<11, 4, 10>>;
-def reg_Pad_7_3 : NPUReg40XX_RegisterWrapper<"pad_7_3", 4, 0xDC, ["pad_7_3"]>;
+// uint8_t pad_[7]
+def bf_Pad_7_1 : NPUReg40XX_RegFieldWrapper<"pad_7_1", 56, 0, "UINT", NPUReg40XX_Version<11, 7, 10>>;
+def reg_Pad_7_1 : NPUReg40XX_RegisterWrapper<"pad_7_1", 7, 0xD9, ["pad_7_1"]>;
+
 
 //
 // RegMapped Specialization
@@ -691,7 +697,7 @@ def reg_mapped_DpuInvariantRegister : NPUReg40XX_RegMappedWrapper<"DpuInvariantR
     "pallet0", "pallet1", "pallet2", "pallet3", "pallet4", "pallet5", "pallet6", "pallet7",
     "se_addr1", "sparsity_addr1", "se_addr2", "sparsity_addr2", "se_addr3", "sparsity_addr3", "se_sp_size1", "se_sp_size2",
     "barriers_wait_mask_hi_", "barriers_wait_mask_lo_", "barriers_post_mask_hi_", "barriers_post_mask_lo_", "barriers_group_mask_",
-    "barriers_sched_", "reserved_inv", "variant_count_", "cluster_invariant_", "pad_3"
+    "barriers_sched_", "deprecated0_inv", "variant_count_", "cluster_invariant_", "deprecated1_inv", "pad_3"
     ]>;
 
 // DPUVariantRegister
@@ -706,7 +712,7 @@ def reg_mapped_DpuVariantRegister : NPUReg40XX_RegMappedWrapper<"DpuVariantRegis
     "halo_region5A", "halo_region5B", "halo_region5C", "halo_region5D",
     "dpu_cfg", "te_beg0", "te_beg1", "te_end0", "te_end1",
     "weight_size", "weight_num", "weight_start",
-    "invariant_", "invariant_index_", "pad_7_1", "pad_7_2", "pad_7_3"
+    "invariant_", "invariant_index_", "deprecated0_var", "deprecated1_var", "pad_7_1"
     ]>;
 
 // DMADescriptor
@@ -1155,8 +1161,8 @@ def reg_TextWindowBase : NPUReg40XX_RegisterWrapper<"text_window_base", 8, 0x10,
 def bf_CodeSize : NPUReg40XX_RegFieldWrapper<"code_size", 32, 0>;
 def reg_CodeSize : NPUReg40XX_RegisterWrapper<"code_size", 4, 0x18, ["code_size"]>;
 
-def bf_ReservedAkr : NPUReg40XX_RegFieldWrapper<"reserved_akr", 32, 0, "UINT", NPUReg40XX_Version<11, 4, 10>>;
-def reg_ReservedAkr : NPUReg40XX_RegisterWrapper<"reserved_akr", 4, 0x1C, ["reserved_akr"]>;
+def bf_DeprecatedAkr : NPUReg40XX_RegFieldWrapper<"deprecated_akr", 32, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def reg_DeprecatedAkr : NPUReg40XX_RegisterWrapper<"deprecated_akr", 4, 0x1C, ["deprecated_akr"]>;
 
 def bf_KernelInvoCount : NPUReg40XX_RegFieldWrapper<"kernel_invo_count", 32, 0>;
 def reg_KernelInvoCount : NPUReg40XX_RegisterWrapper<"kernel_invo_count", 4, 0x20, ["kernel_invo_count"]>;
@@ -1166,7 +1172,7 @@ def reg_Pad1_4 : NPUReg40XX_RegisterWrapper<"pad1_4", 4, 0x24, ["pad1_4"]>;
 
 // ActKernelRange descriptor
 def reg_mapped_ActKernelRangeDescriptor : NPUReg40XX_RegMappedWrapper<"VpuActKernelRange",
-    ["type", "kernel_entry", "text_window_base", "code_size", "reserved_akr", "kernel_invo_count", "pad1_4"]>;
+    ["type", "kernel_entry", "text_window_base", "code_size", "deprecated_akr", "kernel_invo_count", "pad1_4"]>;
 
 //
 // ActKernelInvocation registers
@@ -1202,8 +1208,8 @@ def reg_BarrierGroupMaskAct : NPUReg40XX_RegisterWrapper<"barriers_group_mask_ac
 
 def reg_SchedulingBarrierConfig : NPUReg40XX_RegisterWrapper<"act_invo_barriers_sched", 8, 0x48, ["start_after_", "clean_after_"]>;
 
-def bf_ReservedAki : NPUReg40XX_RegFieldWrapper<"reserved_aki", 32, 0, "UINT", NPUReg40XX_Version<11, 4, 10>>;
-def reg_ReservedAki : NPUReg40XX_RegisterWrapper<"reserved_aki", 4, 0x50, ["reserved_aki"]>;
+def bf_DeprecatedAki : NPUReg40XX_RegFieldWrapper<"invo_index", 32, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_DeprecatedAki : NPUReg40XX_RegisterWrapper<"invo_index", 4, 0x50, ["invo_index"]>;
 
 def bf_InvoTile : NPUReg40XX_RegFieldWrapper<"invo_tile", 32, 0>;
 def reg_InvoTile : NPUReg40XX_RegisterWrapper<"invo_tile", 4, 0x54, ["invo_tile"]>;
@@ -1218,7 +1224,7 @@ def reg_NexrAkiWlAddr : NPUReg40XX_RegisterWrapper<"next_aki_wl_addr", 4, 0x5C, 
 def reg_mapped_ActKernelInvocationDescriptor : NPUReg40XX_RegMappedWrapper<"VpuActKernelInvocation",
     ["range", "kernel_args", "data_window_base", "perf_packet_out",
     "barriers_wait_mask_hi_act", "barriers_wait_mask_lo_act", "barriers_post_mask_hi_act", "barriers_post_mask_lo_act", "barriers_group_mask_act",
-    "act_invo_barriers_sched", "reserved_aki", "invo_tile", "kernel_range_index", "next_aki_wl_addr"]>;
+    "act_invo_barriers_sched", "invo_index", "invo_tile", "kernel_range_index", "next_aki_wl_addr"]>;
 
 //
 // M2I registers
@@ -2550,104 +2556,114 @@ def reg_taskReferenceCount_MMI_inference_info : NPUReg40XX_RegisterWrapper<"task
 def bf_MMI_barrier_configuration_stride : NPUReg40XX_RegFieldWrapper<"MMI_barrier_configuration_stride", 32, 0, "UINT">;
 def reg_MMI_barrier_configuration_stride : NPUReg40XX_RegisterWrapper<"MMI_barrier_configuration_stride", 4, 0x1C8, ["MMI_barrier_configuration_stride"]>;
 
-// uint8_t pad1_[236]
-def bf_MMI_pad1_0 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_0", 64, 0, "UINT">;
-def reg_MMI_pad1_0 : NPUReg40XX_RegisterWrapper<"MMI_pad1_0", 8, 0x1CC, ["MMI_pad1_0"]>;
+// inference_feature_cfg
+def bf_MMI_DisableDmaSwFifo : NPUReg40XX_RegFieldWrapper<"MMI_DisableDmaSwFifo", 1, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def bf_MMI_ReservedInferenceConfig : NPUReg40XX_RegFieldWrapper<"MMI_ReservedInferenceConfig", 7, 1, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def reg_MMI_inference_feature_cfg : NPUReg40XX_RegisterWrapper<"MMI_inference_feature_cfg", 1, 0x1CC, ["MMI_DisableDmaSwFifo", "MMI_ReservedInferenceConfig"]>;
 
-def bf_MMI_pad1_1 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_1", 64, 0, "UINT">;
-def reg_MMI_pad1_1 : NPUReg40XX_RegisterWrapper<"MMI_pad1_1", 8, 0x1D4, ["MMI_pad1_1"]>;
+// uint8_t pad1_[3]
+def bf_MMI_pad1_ : NPUReg40XX_RegFieldWrapper<"MMI_pad1_", 24, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad1_ : NPUReg40XX_RegisterWrapper<"MMI_pad1_", 3, 0x1CD, ["MMI_pad1_"]>;
 
-def bf_MMI_pad1_2 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_2", 64, 0, "UINT">;
-def reg_MMI_pad1_2 : NPUReg40XX_RegisterWrapper<"MMI_pad1_2", 8, 0x1DC, ["MMI_pad1_2"]>;
+// uint32_t model_identifier
+def bf_MMI_model_identifier : NPUReg40XX_RegFieldWrapper<"MMI_model_identifier", 32, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_model_identifier : NPUReg40XX_RegisterWrapper<"MMI_model_identifier", 4, 0x1D0, ["MMI_model_identifier"]>;
 
-def bf_MMI_pad1_3 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_3", 64, 0, "UINT">;
-def reg_MMI_pad1_3 : NPUReg40XX_RegisterWrapper<"MMI_pad1_3", 8, 0x1E4, ["MMI_pad1_3"]>;
+// uint8_t pad2_[228]
+def bf_MMI_pad2_0 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_0", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_0 : NPUReg40XX_RegisterWrapper<"MMI_pad2_0", 8, 0x1D4, ["MMI_pad2_0"]>;
 
-def bf_MMI_pad1_4 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_4", 64, 0, "UINT">;
-def reg_MMI_pad1_4 : NPUReg40XX_RegisterWrapper<"MMI_pad1_4", 8, 0x1EC, ["MMI_pad1_4"]>;
+def bf_MMI_pad2_1 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_1", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_1 : NPUReg40XX_RegisterWrapper<"MMI_pad2_1", 8, 0x1DC, ["MMI_pad2_1"]>;
 
-def bf_MMI_pad1_5 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_5", 64, 0, "UINT">;
-def reg_MMI_pad1_5 : NPUReg40XX_RegisterWrapper<"MMI_pad1_5", 8, 0x1F4, ["MMI_pad1_5"]>;
+def bf_MMI_pad2_2 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_2", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_2 : NPUReg40XX_RegisterWrapper<"MMI_pad2_2", 8, 0x1E4, ["MMI_pad2_2"]>;
 
-def bf_MMI_pad1_6 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_6", 64, 0, "UINT">;
-def reg_MMI_pad1_6 : NPUReg40XX_RegisterWrapper<"MMI_pad1_6", 8, 0x1FC, ["MMI_pad1_6"]>;
+def bf_MMI_pad2_3 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_3", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_3 : NPUReg40XX_RegisterWrapper<"MMI_pad2_3", 8, 0x1EC, ["MMI_pad2_3"]>;
 
-def bf_MMI_pad1_7 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_7", 64, 0, "UINT">;
-def reg_reg_MMI_pad1_7 : NPUReg40XX_RegisterWrapper<"MMI_pad1_7", 8, 0x204, ["MMI_pad1_7"]>;
+def bf_MMI_pad2_4 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_4", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_4 : NPUReg40XX_RegisterWrapper<"MMI_pad2_4", 8, 0x1F4, ["MMI_pad2_4"]>;
 
-def bf_MMI_pad1_8 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_8", 64, 0, "UINT">;
-def reg_MMI_pad1_8 : NPUReg40XX_RegisterWrapper<"MMI_pad1_8", 8, 0x20C, ["MMI_pad1_8"]>;
+def bf_MMI_pad2_5 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_5", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_5 : NPUReg40XX_RegisterWrapper<"MMI_pad2_5", 8, 0x1FC, ["MMI_pad2_5"]>;
 
-def bf_MMI_pad1_9 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_9", 64, 0, "UINT">;
-def reg_MMI_pad1_9 : NPUReg40XX_RegisterWrapper<"MMI_pad1_9", 8, 0x214, ["MMI_pad1_9"]>;
+def bf_MMI_pad2_6 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_6", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_6 : NPUReg40XX_RegisterWrapper<"MMI_pad2_6", 8, 0x204, ["MMI_pad2_6"]>;
 
-def bf_MMI_pad1_10 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_10", 64, 0, "UINT">;
-def reg_MMI_pad1_10 : NPUReg40XX_RegisterWrapper<"MMI_pad1_10", 8, 0x21C, ["MMI_pad1_10"]>;
+def bf_MMI_pad2_7 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_7", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_7 : NPUReg40XX_RegisterWrapper<"MMI_pad2_7", 8, 0x20C, ["MMI_pad2_7"]>;
 
-def bf_MMI_pad1_11 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_11", 64, 0, "UINT">;
-def reg_MMI_pad1_11 : NPUReg40XX_RegisterWrapper<"MMI_pad1_11", 8, 0x224, ["MMI_pad1_11"]>;
+def bf_MMI_pad2_8 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_8", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_8 : NPUReg40XX_RegisterWrapper<"MMI_pad2_8", 8, 0x214, ["MMI_pad2_8"]>;
 
-def bf_MMI_pad1_12 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_12", 64, 0, "UINT">;
-def reg_MMI_pad1_12 : NPUReg40XX_RegisterWrapper<"MMI_pad1_12", 8, 0x22C, ["MMI_pad1_12"]>;
+def bf_MMI_pad2_9 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_9", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_9 : NPUReg40XX_RegisterWrapper<"MMI_pad2_9", 8, 0x21C, ["MMI_pad2_9"]>;
 
-def bf_MMI_pad1_13 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_13", 64, 0, "UINT">;
-def reg_MMI_pad1_13 : NPUReg40XX_RegisterWrapper<"MMI_pad1_13", 8, 0x234, ["MMI_pad1_13"]>;
+def bf_MMI_pad2_10 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_10", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_10 : NPUReg40XX_RegisterWrapper<"MMI_pad2_10", 8, 0x224, ["MMI_pad2_10"]>;
 
-def bf_MMI_pad1_14 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_14", 64, 0, "UINT">;
-def reg_MMI_pad1_14 : NPUReg40XX_RegisterWrapper<"MMI_pad1_14", 8, 0x23C, ["MMI_pad1_14"]>;
+def bf_MMI_pad2_11 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_11", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_11 : NPUReg40XX_RegisterWrapper<"MMI_pad2_11", 8, 0x22C, ["MMI_pad2_11"]>;
 
-def bf_MMI_pad1_15 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_15", 64, 0, "UINT">;
-def reg_MMI_pad1_15 : NPUReg40XX_RegisterWrapper<"MMI_pad1_15", 8, 0x244, ["MMI_pad1_15"]>;
+def bf_MMI_pad2_12 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_12", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_12 : NPUReg40XX_RegisterWrapper<"MMI_pad2_12", 8, 0x234, ["MMI_pad2_12"]>;
 
-def bf_MMI_pad1_16 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_16", 64, 0, "UINT">;
-def reg_MMI_pad1_16 : NPUReg40XX_RegisterWrapper<"MMI_pad1_16", 8, 0x24C, ["MMI_pad1_16"]>;
+def bf_MMI_pad2_13 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_13", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_13 : NPUReg40XX_RegisterWrapper<"MMI_pad2_13", 8, 0x23C, ["MMI_pad2_13"]>;
 
-def bf_MMI_pad1_17 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_17", 64, 0, "UINT">;
-def reg_MMI_pad1_17 : NPUReg40XX_RegisterWrapper<"MMI_pad1_17", 8, 0x254, ["MMI_pad1_17"]>;
+def bf_MMI_pad2_14 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_14", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_14 : NPUReg40XX_RegisterWrapper<"MMI_pad2_14", 8, 0x244, ["MMI_pad2_14"]>;
 
-def bf_MMI_pad1_18 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_18", 64, 0, "UINT">;
-def reg_MMI_pad1_18 : NPUReg40XX_RegisterWrapper<"MMI_pad1_18", 8, 0x25C, ["MMI_pad1_18"]>;
+def bf_MMI_pad2_15 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_15", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_15 : NPUReg40XX_RegisterWrapper<"MMI_pad2_15", 8, 0x24C, ["MMI_pad2_15"]>;
 
-def bf_MMI_pad1_19 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_19", 64, 0, "UINT">;
-def reg_MMI_pad1_19 : NPUReg40XX_RegisterWrapper<"MMI_pad1_19", 8, 0x264, ["MMI_pad1_19"]>;
+def bf_MMI_pad2_16 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_16", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_16 : NPUReg40XX_RegisterWrapper<"MMI_pad2_16", 8, 0x254, ["MMI_pad2_16"]>;
 
-def bf_MMI_pad1_20 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_20", 64, 0, "UINT">;
-def reg_MMI_pad1_20 : NPUReg40XX_RegisterWrapper<"MMI_pad1_20", 8, 0x26C, ["MMI_pad1_20"]>;
+def bf_MMI_pad2_17 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_17", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_17 : NPUReg40XX_RegisterWrapper<"MMI_pad2_17", 8, 0x25C, ["MMI_pad2_17"]>;
 
-def bf_MMI_pad1_21 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_21", 64, 0, "UINT">;
-def reg_MMI_pad1_21 : NPUReg40XX_RegisterWrapper<"MMI_pad1_21", 8, 0x274, ["MMI_pad1_21"]>;
+def bf_MMI_pad2_18 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_18", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_18 : NPUReg40XX_RegisterWrapper<"MMI_pad2_18", 8, 0x264, ["MMI_pad2_18"]>;
 
-def bf_MMI_pad1_22 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_22", 64, 0, "UINT">;
-def reg_MMI_pad1_22 : NPUReg40XX_RegisterWrapper<"MMI_pad1_22", 8, 0x27C, ["MMI_pad1_22"]>;
+def bf_MMI_pad2_19 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_19", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_19 : NPUReg40XX_RegisterWrapper<"MMI_pad2_19", 8, 0x26C, ["MMI_pad2_19"]>;
 
-def bf_MMI_pad1_23 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_23", 64, 0, "UINT">;
-def reg_MMI_pad1_23 : NPUReg40XX_RegisterWrapper<"MMI_pad1_23", 8, 0x284, ["MMI_pad1_23"]>;
+def bf_MMI_pad2_20 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_20", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_20 : NPUReg40XX_RegisterWrapper<"MMI_pad2_20", 8, 0x274, ["MMI_pad2_20"]>;
 
-def bf_MMI_pad1_24 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_24", 64, 0, "UINT">;
-def reg_MMI_pad1_24 : NPUReg40XX_RegisterWrapper<"MMI_pad1_24", 8, 0x28C, ["MMI_pad1_24"]>;
+def bf_MMI_pad2_21 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_21", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_21 : NPUReg40XX_RegisterWrapper<"MMI_pad2_21", 8, 0x27C, ["MMI_pad2_21"]>;
 
-def bf_MMI_pad1_25 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_25", 64, 0, "UINT">;
-def reg_MMI_pad1_25 : NPUReg40XX_RegisterWrapper<"MMI_pad1_25", 8, 0x294, ["MMI_pad1_25"]>;
+def bf_MMI_pad2_22 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_22", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_22 : NPUReg40XX_RegisterWrapper<"MMI_pad2_22", 8, 0x284, ["MMI_pad2_22"]>;
 
-def bf_MMI_pad1_26 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_26", 64, 0, "UINT">;
-def reg_MMI_pad1_26 : NPUReg40XX_RegisterWrapper<"MMI_pad1_26", 8, 0x29C, ["MMI_pad1_26"]>;
+def bf_MMI_pad2_23 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_23", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_23 : NPUReg40XX_RegisterWrapper<"MMI_pad2_23", 8, 0x28C, ["MMI_pad2_23"]>;
 
-def bf_MMI_pad1_27 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_27", 64, 0, "UINT">;
-def reg_MMI_pad1_27 : NPUReg40XX_RegisterWrapper<"MMI_pad1_27", 8, 0x2A4, ["MMI_pad1_27"]>;
+def bf_MMI_pad2_24 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_24", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_24 : NPUReg40XX_RegisterWrapper<"MMI_pad2_24", 8, 0x294, ["MMI_pad2_24"]>;
 
-def bf_MMI_pad1_28 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_28", 64, 0, "UINT">;
-def reg_MMI_pad1_28 : NPUReg40XX_RegisterWrapper<"MMI_pad1_28", 8, 0x2AC, ["MMI_pad1_28"]>;
+def bf_MMI_pad2_25 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_25", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_25 : NPUReg40XX_RegisterWrapper<"MMI_pad2_25", 8, 0x29C, ["MMI_pad2_25"]>;
 
-def bf_MMI_pad1_29 : NPUReg40XX_RegFieldWrapper<"MMI_pad1_29", 32, 0, "UINT">;
-def reg_MMI_pad1_29 : NPUReg40XX_RegisterWrapper<"MMI_pad1_29", 4, 0x2B4, ["MMI_pad1_29"]>;
+def bf_MMI_pad2_26 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_26", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_26 : NPUReg40XX_RegisterWrapper<"MMI_pad2_26", 8, 0x2A4, ["MMI_pad2_26"]>;
+
+def bf_MMI_pad2_27 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_27", 64, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_27 : NPUReg40XX_RegisterWrapper<"MMI_pad2_27", 8, 0x2AC, ["MMI_pad2_27"]>;
+
+def bf_MMI_pad2_28 : NPUReg40XX_RegFieldWrapper<"MMI_pad2_28", 32, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def reg_MMI_pad2_28 : NPUReg40XX_RegisterWrapper<"MMI_pad2_28", 4, 0x2B4, ["MMI_pad2_28"]>;
 
 // uint32_t bootstrap_workitems_count
 def bf_MMI_bootstrap_workitems_count : NPUReg40XX_RegFieldWrapper<"MMI_bootstrap_workitems_count", 32, 0, "UINT">;
 def reg_MMI_bootstrap_workitems_count : NPUReg40XX_RegisterWrapper<"MMI_bootstrap_workitems_count", 4, 0x2B8, ["MMI_bootstrap_workitems_count"]>;
 
-// uint8_t pad2_[4]
-def bf_MMI_pad2_ : NPUReg40XX_RegFieldWrapper<"MMI_pad2_", 32, 0, "UINT">;
-def reg_MMI_pad2_ : NPUReg40XX_RegisterWrapper<"MMI_pad2_", 4, 0x2BC, ["MMI_pad2_"]>;
+// uint8_t pad3_[4]
+def bf_MMI_pad3_ : NPUReg40XX_RegFieldWrapper<"MMI_pad3_", 32, 0, "UINT">;
+def reg_MMI_pad3_ : NPUReg40XX_RegisterWrapper<"MMI_pad3_", 4, 0x2BC, ["MMI_pad3_"]>;
 
 def reg_mapped_VpuManagedMappedInferenceDescriptor : NPUReg40XX_RegMappedWrapper<"VpuManagedMappedInference",
     [
@@ -2664,10 +2680,10 @@ def reg_mapped_VpuManagedMappedInferenceDescriptor : NPUReg40XX_RegMappedWrapper
         "taskReferenceR1_MMI_nnrt_config", "taskReferenceR2_MMI_nnrt_config", "taskReferenceR3_MMI_nnrt_config", "taskReferenceAddr_MMI_nnrt_config", "taskReferenceCount_MMI_nnrt_config",
         "MMI_actshv_used", "MMI_dpu_used", "MMI_media_used", "MMI_dma_from_ddr_used", "MMI_dma_from_cmx_used", "MMI_pad0_", "MMI_barrier_programming_mode",
         "taskReferenceR1_MMI_inference_info", "taskReferenceR2_MMI_inference_info", "taskReferenceR3_MMI_inference_info", "taskReferenceAddr_MMI_inference_info", "taskReferenceCount_MMI_inference_info",
-        "MMI_barrier_configuration_stride", "MMI_pad1_0", "MMI_pad1_1", "MMI_pad1_2", "MMI_pad1_3", "MMI_pad1_4", "MMI_pad1_5", "MMI_pad1_6", "MMI_pad1_7",
-        "MMI_pad1_8", "MMI_pad1_9", "MMI_pad1_10", "MMI_pad1_11", "MMI_pad1_12", "MMI_pad1_13", "MMI_pad1_14", "MMI_pad1_15", "MMI_pad1_16", "MMI_pad1_17",
-        "MMI_pad1_18", "MMI_pad1_19", "MMI_pad1_20", "MMI_pad1_21", "MMI_pad1_22", "MMI_pad1_23", "MMI_pad1_24", "MMI_pad1_25", "MMI_pad1_26", "MMI_pad1_27",
-        "MMI_pad1_28", "MMI_pad1_29", "MMI_bootstrap_workitems_count", "MMI_pad2_"
+        "MMI_barrier_configuration_stride", "MMI_inference_feature_cfg", "MMI_pad1_", "MMI_model_identifier", "MMI_pad2_0", "MMI_pad2_1", "MMI_pad2_2", "MMI_pad2_3", "MMI_pad2_4", "MMI_pad2_5", "MMI_pad2_6", "MMI_pad2_7",
+        "MMI_pad2_8", "MMI_pad2_9", "MMI_pad2_10", "MMI_pad2_11", "MMI_pad2_12", "MMI_pad2_13", "MMI_pad2_14", "MMI_pad2_15", "MMI_pad2_16", "MMI_pad2_17",
+        "MMI_pad2_18", "MMI_pad2_19", "MMI_pad2_20", "MMI_pad2_21", "MMI_pad2_22", "MMI_pad2_23", "MMI_pad2_24", "MMI_pad2_25", "MMI_pad2_26", "MMI_pad2_27",
+        "MMI_pad2_28", "MMI_bootstrap_workitems_count", "MMI_pad3_"
     ]>;
 
 #endif

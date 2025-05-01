@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,15 +9,20 @@
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 #include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <mlir/Dialect/Arith/Utils/Utils.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/IR/PatternMatch.h>
 
 #include <numeric>
 #include <unordered_set>
@@ -81,12 +86,14 @@ namespace {
 using GetShapeFunc = std::function<Shape(const mlir::Value)>;
 
 Shape getDynamicShape(const mlir::Value val) {
-    return val.getType().cast<vpux::NDTypeInterface>().getShape().toValues();
+    return mlir::cast<vpux::NDTypeInterface>(val.getType()).getShape().toValues();
 }
 
 Shape getUpperBounds(const mlir::Value val) {
-    auto outBounds = val.getType().cast<vpux::BoundedTypeInterface>().getBounds();
-    return Shape(parseIntArrayAttr<int64_t>(outBounds));
+    auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(val.getType());
+    VPUX_THROW_UNLESS(boundedType != nullptr, "Failed to cast {0} to BoundedTensorType at {1}", val.getType(),
+                      val.getLoc());
+    return Shape(boundedType.getBounds().raw());
 }
 
 mlir::FailureOr<Shape> inferOutShapeWithAxis(IE::ConcatOpAdaptor concat, const GetShapeFunc& getShapeFunctor,
@@ -142,7 +149,7 @@ mlir::FailureOr<Shape> inferReturnShapeWithOffsets(IE::ConcatOpAdaptor concat, c
                        staticOffsets.size(), concat.getInputs().size());
     }
 
-    const auto inType = concat.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(concat.getInputs().front().getType());
     const auto allOffsets = staticOffsets.getAsRange<mlir::ArrayAttr>();
 
     Shape outShape(checked_cast<size_t>(inType.getRank()), 0);
@@ -182,7 +189,7 @@ mlir::FailureOr<Shape> inferReturnShapeWithOffsets(IE::ConcatOpAdaptor concat, c
 mlir::FailureOr<mlir::Type> inferReturnElemTypeWithAxis(IE::ConcatOpAdaptor concat, mlir::Location loc) {
     SmallVector<mlir::Type> types;
     const auto getElemTypeFromValue = [](mlir::Value operand) {
-        return operand.getType().cast<vpux::NDTypeInterface>().getElementType();
+        return mlir::cast<vpux::NDTypeInterface>(operand.getType()).getElementType();
     };
     std::transform(concat.getOperands().begin(), concat.getOperands().end(), std::back_inserter(types),
                    getElemTypeFromValue);
@@ -198,7 +205,7 @@ mlir::FailureOr<mlir::Type> inferReturnElemTypeWithOffsets(IE::ConcatOpAdaptor c
                                                            mlir::Location loc) {
     SmallVector<mlir::Type> types;
     const auto getElemTypeFromValue = [](mlir::Value operand) {
-        return operand.getType().cast<vpux::NDTypeInterface>().getElementType();
+        return mlir::cast<vpux::NDTypeInterface>(operand.getType()).getElementType();
     };
     std::transform(concat.getOperands().begin(), concat.getOperands().end(), std::back_inserter(types),
                    getElemTypeFromValue);
@@ -234,14 +241,14 @@ mlir::LogicalResult vpux::IE::ConcatOp::inferReturnTypeComponents(
         return errorAt(loc, "Only one attribute ('per_axis' or 'static_offsets') should be provided");
     }
 
-    const auto inType = concat.getInputs().front().getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(concat.getInputs().front().getType());
 
     // Check consistent tensor attributes
 
     const auto inDesc = vpux::getTensorAttr(inType);
 
     for (const auto val : concat.getInputs().drop_front()) {
-        const auto curType = val.getType().cast<mlir::RankedTensorType>();
+        const auto curType = mlir::cast<mlir::RankedTensorType>(val.getType());
         const auto curDesc = vpux::getTensorAttr(curType);
 
         if (curDesc != inDesc) {
@@ -279,8 +286,8 @@ mlir::LogicalResult vpux::IE::ConcatOp::inferReturnTypeComponents(
         }
 
         // Return inferred components
-        const auto outDesc = vpux::getTensorAttr(inDesc.getOrder(), inDesc.getMemSpace(),
-                                                 getIntArrayAttr(ctx, outBounds.value().raw()));
+        const auto outDesc =
+                vpux::getTensorAttr(ctx, inDesc.getOrder(), inDesc.getMemSpace(), Bounds(outBounds.value().raw()));
         inferredReturnShapes.emplace_back(outShape.value().raw(), outElemType.value(), outDesc);
     }
     return mlir::success();
@@ -310,9 +317,9 @@ mlir::LogicalResult ConvertPerAxisToOffsets::matchAndRewrite(IE::ConcatOp origOp
         return mlir::failure();
     }
 
-    const auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto axis = origOp.getPerAxisAttr().getAxis().getValue().getSExtValue();
-    auto rank = origOp.getInputs().front().getType().cast<vpux::NDTypeInterface>().getRank();
+    auto rank = mlir::cast<vpux::NDTypeInterface>(origOp.getInputs().front().getType()).getRank();
     // Negative value means counting dimension from the end
     if (axis < 0) {
         axis += rank;
@@ -369,7 +376,7 @@ mlir::LogicalResult FuseConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::Patte
     }
 
     // Skip fuse multi-concat for dynamic case
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     if (!outputType.getShape().isStatic()) {
         return mlir::failure();
     }
@@ -440,7 +447,7 @@ mlir::LogicalResult FuseConstConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::
     }
     const auto axisValue = *axis.begin();
 
-    auto outNdInterface = origOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto outNdInterface = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto output = Const::Content::allocTempBuffer(outNdInterface, outNdInterface.getElementType(), false);
     auto outBuf = output.getRawTempBuf();
 
@@ -471,11 +478,11 @@ mlir::LogicalResult FuseConstConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::
     });
 
     const auto contentElemType = outNdInterface.getElementType();
-    auto rankedTensorType = outNdInterface.cast<mlir::RankedTensorType>();
+    auto rankedTensorType = mlir::cast<mlir::RankedTensorType>(outNdInterface);
     auto [denseAttr, contentAttrSetup] = [&]() -> std::pair<mlir::DenseElementsAttr, Const::ContentSetup> {
-        if (auto qtype = contentElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+        if (auto qtype = mlir::dyn_cast<mlir::quant::QuantizedType>(contentElemType)) {
             rankedTensorType =
-                    outNdInterface.changeElemType(normalizeQuantStorageType(qtype)).cast<mlir::RankedTensorType>();
+                    mlir::cast<mlir::RankedTensorType>(outNdInterface.changeElemType(normalizeQuantStorageType(qtype)));
             return {Const::createConstContent(rankedTensorType, output.getRawStorageBuf()),
                     Const::ContentSetup(rankedTensorType).castElemType(qtype)};
         } else {
@@ -667,7 +674,7 @@ mlir::Attribute dispatchStaticDim(mlir::OpBuilder& builder, const int64_t dimIdx
 mlir::Value dispatchDynamicDim(mlir::OpBuilder& builder, const int64_t dimIdx, const mlir::ValueRange operands) {
     // Concatenation over static dimension.
     // Apply DimOp to any dynamic input.
-    const auto firstDynOpIter = std::find_if(operands.begin(), operands.end(), IE::hasDynamicShape);
+    const auto firstDynOpIter = std::find_if(operands.begin(), operands.end(), IE::hasDynamicShapeAttr);
     if (firstDynOpIter == operands.end()) {
         return nullptr;
     }

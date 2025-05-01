@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -31,7 +31,7 @@ mlir::FailureOr<FFTParams> fftExtractParams(mlir::Location loc, T op, bool compl
         if (mlir::failed(axes)) {
             return errorAt(loc, "Only constant input is supported for axes");
         }
-        auto inType = op.getInput().getType().template dyn_cast<mlir::ShapedType>();
+        auto inType = mlir::dyn_cast<mlir::ShapedType>(op.getInput().getType());
         const auto inRank = inType.getRank();
         auto axesVal = axes.value();
         // DFT, IDFT and IRDFT contain complex data type, represented as tensor with 1 more dimension not consider in

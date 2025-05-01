@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/constant_transformations_control.hpp"
 #include "vpux/compiler/dialect/const/utils/const_logger.hpp"
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_cache.hpp"
 #include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
@@ -31,8 +33,6 @@
 #include <mlir/Transforms/InliningUtils.h>
 
 #include <cstring>
-#include <exception>
-#include <numeric>
 #include <utility>
 
 using namespace vpux;
@@ -76,14 +76,36 @@ public:
     ValueType getRawDataAndSplatness(mlir::DenseResourceElementsAttr denseResource);
 };
 
-SplatnessCache& getSplatnessCache(mlir::MLIRContext* ctx) {
+template <typename Cache>
+Cache& getCache(mlir::MLIRContext* ctx) {
     auto* dialect = ctx->getOrLoadDialect<vpux::Const::ConstDialect>();
     assert(dialect != nullptr && "ConstDialect must be present in the context");
 
-    auto* iface = dialect->getRegisteredInterface<SplatnessCache>();
-    assert(iface != nullptr && "SplatnessCache must be registered in the context");
+    auto* iface = dialect->getRegisteredInterface<Cache>();
+    assert(iface != nullptr && "The requested cache must be registered in the context");
     return *iface;
 }
+
+/// @brief Caches LazyFoldingOptions inside of the MLIRContext to be able to
+/// access them throughout the folding procedure.
+class LazyFoldingCache final : public mlir::DialectInterface::Base<LazyFoldingCache> {
+    Const::LazyFoldingOptions _options;
+
+public:
+    // required by MLIR's internal type-id infrastructure:
+    MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LazyFoldingCache)
+
+    LazyFoldingCache(mlir::Dialect* dialect): Base(dialect) {
+    }
+
+    const Const::LazyFoldingOptions& getOptions() const {
+        return _options;
+    }
+
+    void setOptions(Const::LazyFoldingOptions options) {
+        _options = std::move(options);
+    }
+};
 
 }  // namespace
 
@@ -110,7 +132,7 @@ void vpux::Const::ConstDialect::initialize() {
             >();
 
     addInterfaces<ConstInlinerInterface>();
-    addInterfaces<SplatnessCache>();
+    addInterfaces<SplatnessCache, LazyFoldingCache>();
 }
 
 //
@@ -279,7 +301,7 @@ std::pair<mlir::ArrayRef<char>, bool> getRawDataAndSplatness(mlir::ElementsAttr 
     }
 
     auto denseResource = mlir::cast<mlir::DenseResourceElementsAttr>(baseContent);
-    return getSplatnessCache(baseContent.getContext()).getRawDataAndSplatness(denseResource);
+    return getCache<SplatnessCache>(baseContent.getContext()).getRawDataAndSplatness(denseResource);
 }
 
 void SplatnessCache::cacheRawDataAndSplatness(mlir::DenseResourceElementsAttr denseResource) {
@@ -313,7 +335,7 @@ Const::Content wrapBaseContent(mlir::ElementsAttr baseContent) {
 
     std::tie(data, isSplat) = getRawDataAndSplatness(baseContent);
 
-    return Const::Content::fromRawBuffer(baseContent.getShapedType().cast<vpux::NDTypeInterface>(), data,
+    return Const::Content::fromRawBuffer(mlir::cast<vpux::NDTypeInterface>(baseContent.getShapedType()), data,
                                          baseContent.getShapedType().getElementType(), isSplat);
 }
 
@@ -332,7 +354,7 @@ mlir::DenseResourceElementsAttr Const::createExternalConstContent(mlir::ShapedTy
     // the key to change, so that there are no collisions - thus, the blob is never overwritten here
     auto res =
             mlir::DenseResourceElementsAttr::get(type, builtinDialectManager.insert(resourcePrefix, std::move(blob)));
-    getSplatnessCache(type.getContext()).cacheRawDataAndSplatness(res);
+    getCache<SplatnessCache>(type.getContext()).cacheRawDataAndSplatness(res);
     return res;
 }
 
@@ -459,7 +481,7 @@ mlir::Attribute vpux::Const::ContentAttr::parse(::mlir::AsmParser& parser, ::mli
 
         transformations.reserve(arrayAttr.size());
         for (const auto attr : arrayAttr.getValue()) {
-            const auto trAttr = attr.dyn_cast<Const::TransformAttrInterface>();
+            const auto trAttr = mlir::dyn_cast<vpux::Const::TransformAttrInterface>(attr);
             VPUX_THROW_WHEN(trAttr == nullptr, "Got non transformation attribute : '{0}'", attr);
             transformations.push_back(trAttr);
         }
@@ -555,33 +577,12 @@ void vpux::Const::detail::ContentSetupBase::addTransformation(TransformAttrInter
     auto insertionPosition = llvm::upper_bound(_transformations, newTransformation, comp);
     insertionPosition = _transformations.insert(insertionPosition, newTransformation);
 
-    using OptimizationFunc = FuncRef<std::pair<details::optimization::TransformAttrPos, bool>(
-            SmallVector<Const::TransformAttrInterface>&, details::optimization::TransformAttrPos&)>;
+    const auto& options = getCache<LazyFoldingCache>(getContext()).getOptions();
+    const auto optimizations = options.getFoldingSequenceOptimizations(_baseType);
 
-    auto baseType = _baseType;
-    auto moveSubViewBefore = [=](SmallVector<Const::TransformAttrInterface>& transformations,
-                                 details::optimization::TransformAttrPos& currPos) {
-        return details::moveSubViewBefore(transformations, currPos, baseType);
-    };
-    auto moveReshapeBefore = [=](SmallVector<Const::TransformAttrInterface>& transformations,
-                                 details::optimization::TransformAttrPos& currPos) {
-        return details::moveReshapeBefore(transformations, currPos, baseType);
-    };
-    auto fuseConsecutiveTransformations = [=](SmallVector<Const::TransformAttrInterface>& transformations,
-                                              details::optimization::TransformAttrPos& currPos) {
-        return details::fuseConsecutiveTransformations(transformations, currPos, baseType);
-    };
-    auto foldTransformation = [=](SmallVector<Const::TransformAttrInterface>& transformations,
-                                  details::optimization::TransformAttrPos& currPos) {
-        return details::foldTransformation(transformations, currPos, baseType);
-    };
-
-    OptimizationFunc optimizations[] = {fuseConsecutiveTransformations, foldTransformation, moveSubViewBefore,
-                                        moveReshapeBefore, details::moveTransformationIntoFuse};
-
-    bool optimized = true;
+    bool optimized = false;
     auto currentPos = insertionPosition;
-    while (optimized) {
+    do {
         for (auto& optimize : optimizations) {
             std::tie(insertionPosition, optimized) = optimize(_transformations, currentPos);
             if (optimized) {
@@ -589,11 +590,15 @@ void vpux::Const::detail::ContentSetupBase::addTransformation(TransformAttrInter
                 break;
             }
         }
-    }
+    } while (optimized);
 
     // check single LAST requirement
     bool lastRequirementViolated =
             _transformations.size() >= 2 &&
             (_transformations.end() - 2)->getPositionRequirement() == details::PositionRequirement::LAST;
     VPUX_THROW_WHEN(lastRequirementViolated, "At most 1 attribute with LAST requirement allowed!");
+}
+
+void vpux::Const::setLazyFoldingOptions(mlir::MLIRContext* ctx, const LazyFoldingOptions& options) {
+    getCache<LazyFoldingCache>(ctx).setOptions(options);
 }

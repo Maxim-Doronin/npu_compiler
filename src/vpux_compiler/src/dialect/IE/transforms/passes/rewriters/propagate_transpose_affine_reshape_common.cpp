@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,7 @@
 #include <optional>
 #include <tuple>
 #include <utility>
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -19,8 +20,8 @@ namespace vpux {
 namespace IE {
 
 bool doesAffineReshapeChangeRank(IE::AffineReshapeOp reshape) {
-    auto inputType = reshape.getInput().getType().cast<NDTypeInterface>();
-    auto outputType = reshape.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(reshape.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(reshape.getOutput().getType());
     return inputType.getRank() != outputType.getRank();
 }
 
@@ -404,7 +405,7 @@ mlir::LogicalResult MoveTransposeAffineReshapeThroughAdd::matchAndRewrite(IE::Ad
         return mlir::failure();
     }
 
-    auto inputType = transposeOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(transposeOp.getInput().getType());
     const auto inputShape = inputType.getShape();
     const auto alignment = VPU::NCEInvariant::getAlignment(inputType.getElementType());
     if (inputShape[Dims4D::Act::C] % alignment || inputShape[Dims4D::Act::N] > 1) {
@@ -448,23 +449,23 @@ mlir::LogicalResult MoveTransposeAffineReshapeThroughAdd::matchAndRewrite(IE::Ad
 
     auto input1 = getInputValue(input1Op);
     auto input2 = getInputValue(input2Op);
-    auto origOutputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto outElemType = origOutputType.getElementType();
-    auto newAddOutType = mlir::RankedTensorType::get(inputShape, outElemType).cast<NDTypeInterface>();
+    auto newAddOutType = mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(inputShape, outElemType));
     newAddOutType = newAddOutType.changeDimsOrder(origOutputType.getDimsOrder());
     auto outputVal =
             rewriter.create<IE::AddOp>(origOp.getLoc(), newAddOutType, input1, input2, origOp.getAutoBroadcastAttr(),
-                                       origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputChannelsAttr(),
-                                       origOp.getInputChannelsAttr())
+                                       origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+                                       origOp.getInputPaddingAttr())
                     .getOutput();
 
     auto postQuantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(*origOp.getOutput().user_begin());
     if (postQuantizeCastOp != nullptr && origOp->hasOneUse()) {
-        outputVal =
-                rewriter.create<IE::QuantizeCastOp>(
-                                postQuantizeCastOp.getLoc(), outputVal,
-                                postQuantizeCastOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType())
-                        .getOutput();
+        outputVal = rewriter.create<IE::QuantizeCastOp>(
+                                    postQuantizeCastOp.getLoc(), outputVal,
+                                    mlir::cast<vpux::NDTypeInterface>(postQuantizeCastOp.getOutput().getType())
+                                            .getElementType())
+                            .getOutput();
     }
 
     auto newTransposeOp = rewriter.create<IE::TransposeOp>(transposeOp.getLoc(), outputVal, transposeOp.getOrder(),

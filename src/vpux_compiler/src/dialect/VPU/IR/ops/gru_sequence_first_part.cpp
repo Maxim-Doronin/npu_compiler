@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,8 +18,8 @@ mlir::LogicalResult vpux::VPU::GRUSequenceFirstPartOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inputDataType = gru.getInputData().getType().cast<vpux::NDTypeInterface>();
-    const auto weightsType = gru.getWeights().getType().cast<vpux::NDTypeInterface>();
+    const auto inputDataType = mlir::cast<vpux::NDTypeInterface>(gru.getInputData().getType());
+    const auto weightsType = mlir::cast<vpux::NDTypeInterface>(gru.getWeights().getType());
     const auto inputDataShape = inputDataType.getShape().raw();
     const auto weightsShape = weightsType.getShape().raw();
     const auto seqLength = gru.getSeqLength();

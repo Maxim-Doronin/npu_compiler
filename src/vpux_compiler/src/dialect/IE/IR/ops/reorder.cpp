@@ -1,9 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -22,11 +26,9 @@ mlir::LogicalResult vpux::IE::ReorderOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = reorder.getInput().getType().cast<mlir::RankedTensorType>();
-
-    const auto outDesc = vpux::getTensorAttr(reorder.getDstOrder(), /*memSpace=*/nullptr, getBounds(inType));
-
-    inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), outDesc);
+    const auto inType = mlir::cast<mlir::RankedTensorType>(reorder.getInput().getType());
+    const auto tensorAttr = vpux::getTensorAttr(ctx, reorder.getDstOrder(), /*memSpace=*/nullptr, getBounds(inType));
+    inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), tensorAttr);
 
     return mlir::success();
 }

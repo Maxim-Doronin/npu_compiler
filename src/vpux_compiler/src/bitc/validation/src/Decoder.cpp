@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -102,7 +102,7 @@ void Decoder::Impl::init() {
             &Decoder::Impl::decode_signshftaddproc;
     algorithm_decoder_[static_cast<uint32_t>(DecoderAlgorithm::ADDPROC)] = &Decoder::Impl::decode_addproc;
     algorithm_decoder_[static_cast<uint32_t>(DecoderAlgorithm::SIGNSHFTADDBLK)] =
-            &Decoder::Impl::decode_signshftaddblk;  // NPU40XX only
+            &Decoder::Impl::decode_signshftaddblk;  // NPU4/5 only
     algorithm_decoder_[static_cast<uint32_t>(DecoderAlgorithm::BINEXPPROC)] = &Decoder::Impl::decode_binexpproc;
     algorithm_decoder_[static_cast<uint32_t>(DecoderAlgorithm::LFTSHFTPROC)] = &Decoder::Impl::decode_lftshftproc;
     algorithm_decoder_[static_cast<uint32_t>(DecoderAlgorithm::BTEXPPROC)] = &Decoder::Impl::decode_btexpproc;

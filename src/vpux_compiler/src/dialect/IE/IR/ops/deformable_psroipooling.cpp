@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,8 +22,8 @@ mlir::LogicalResult vpux::IE::DeformablePSROIPoolingOp::inferReturnTypeComponent
     const auto outputDim = deformablepsroiPooling.getOutputDim();
     const auto groupSize =
             deformablepsroiPooling.getGroupSize().has_value() ? deformablepsroiPooling.getGroupSize().value() : 1;
-    const auto inTypeFeatureMap = deformablepsroiPooling.getInputScoreMaps().getType().cast<mlir::ShapedType>();
-    const auto inTypeCoord = deformablepsroiPooling.getInputRois().getType().cast<mlir::ShapedType>();
+    const auto inTypeFeatureMap = mlir::cast<mlir::ShapedType>(deformablepsroiPooling.getInputScoreMaps().getType());
+    const auto inTypeCoord = mlir::cast<mlir::ShapedType>(deformablepsroiPooling.getInputRois().getType());
     const auto inShapeCoord = inTypeCoord.getShape();
 
     if (outputDim <= 0) {
@@ -39,7 +39,7 @@ mlir::LogicalResult vpux::IE::DeformablePSROIPoolingOp::inferReturnTypeComponent
 
     if (deformablepsroiPooling.getInputTransformations() != nullptr) {
         const auto inTransformationsCoord =
-                deformablepsroiPooling.getInputTransformations().getType().cast<mlir::ShapedType>();
+                mlir::cast<mlir::ShapedType>(deformablepsroiPooling.getInputTransformations().getType());
         const auto inShapeTransCoord = inTransformationsCoord.getShape();
 
         if (inShapeTransCoord.size() != 4) {

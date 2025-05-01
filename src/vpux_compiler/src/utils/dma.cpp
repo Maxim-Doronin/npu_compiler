@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -51,7 +51,11 @@ int64_t vpux::getDMAQueueIdEncoding(VPU::MemoryKind srcMemKind, VPU::ArchKind ar
     return getDMAQueueIdEncoding(VPUIP::DmaChannelType::CMX);
 }
 
-VPUIP::DmaChannelType vpux::getDMAQueueTypeFromEncodedId(int64_t dmaQueueIdEncoding, VPU::ArchKind arch) {
+int64_t vpux::getDMAPortFromEncodedId(int64_t dmaQueueIdEncoding) {
+    return dmaQueueIdEncoding / (VPUIP::getMaxEnumValForDmaChannelType() + 1);
+}
+
+VPUIP::DmaChannelType vpux::getDMAChannelTypeFromEncodedId(int64_t dmaQueueIdEncoding, VPU::ArchKind arch) {
     if (arch <= VPU::ArchKind::NPU37XX) {
         return VPUIP::DmaChannelType::NOT_SPECIFIED;
     }
@@ -72,5 +76,5 @@ std::string vpux::getDMAChannelTypeAsString(int64_t dmaQueueIdEncoding, VPU::Arc
         return "";
     }
 
-    return stringifyEnum(getDMAQueueTypeFromEncodedId(dmaQueueIdEncoding, arch)).str();
+    return stringifyEnum(getDMAChannelTypeFromEncodedId(dmaQueueIdEncoding, arch)).str();
 }

@@ -16,9 +16,13 @@ namespace vpux::utils {
     found in IR.
 
     This data structure is a fairly simple representation of a tree with nodes
-    being abstract (templated). By carefully choosing which data the node
-    stores, one could make the tree "non-owning" (when data is a non-owning
-    pointer), or make every node "virtual" (when data is a virtual interface).
+    being abstract (templated). By carefully choosing the data type, one could
+    define what the tree stores and how it stores it, for example:
+    * AbstractTree<mlir::Operation*> stores MLIR operations but does not "own"
+      them (the operations are owned by the MLIR context)
+    * AbstractTree<Const::TransformAttrInterface> stores constant
+      transformations and allows to generically work with such transformations
+      via the interface (without knowing the specific type of a transformation)
 
     @note As this class stores multiple roots, this is technically not a tree
     but rather a "forest", yet it is called a tree for the sake of simplicity.

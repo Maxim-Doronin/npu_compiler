@@ -1,17 +1,19 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -121,7 +123,7 @@ mlir::LogicalResult ConvertAvgPoolToDWConvPass::AvgPoolOpConverter::matchAndRewr
     const auto kernelX = kernel[1];
     const float weightsScaleFactor = 1.0f / static_cast<float>(kernelY * kernelX);
 
-    const auto elemType = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getElementType();
     const SmallVector<int64_t> weightShape = {OC, 1, kernelY, kernelX};
     const auto dataStorageType = mlir::RankedTensorType::get(weightShape, elemType);
 
@@ -144,7 +146,7 @@ mlir::LogicalResult ConvertAvgPoolToDWConvPass::AvgPoolOpConverter::matchAndRewr
                                                         origOp.getStridesAttr(), origOp.getPadsBeginAttr(),
                                                         origOp.getPadsEndAttr(), dilationsAttr, getIntAttr(ctx, OC),
                                                         /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr,
-                                                        origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                                        origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }

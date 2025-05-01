@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
@@ -75,8 +76,8 @@ bool vpux::VPU::NCEAveragePoolOp::isSupported(IE::AvgPoolOp op, LogCb logCb, boo
         return false;
     }
 
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     if (inputType.getElementType().isSignedInteger() || outputType.getElementType().isSignedInteger() ||
         inputType.getElementType().isUnsignedInteger() || outputType.getElementType().isUnsignedInteger()) {
@@ -158,7 +159,10 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inShape = getShape(op.getInput()).raw();
+    auto inShape = SmallVector<int64_t>(getShape(op.getInput()).raw());
+    if (mlir::failed(IE::unpadInputShape(inShape, op.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
 
     const auto windowShape = parseIntArrayAttr<int64_t>(op.getKernelSize());
     const auto windowStrides = parseIntArrayAttr<int64_t>(op.getStrides());
@@ -171,15 +175,15 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::inferReturnTypes(
     const auto dataPaddingBelow = SmallVector<int64_t>({padTop, padLeft});
     const auto dataPaddingAbove = SmallVector<int64_t>({padBottom, padRight});
 
-    auto shapeI64 = inferAvgPoolOutputShape(inShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape);
+    auto outShape = inferAvgPoolOutputShape(inShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape);
 
-    if (op.getOutputChannels().has_value()) {
-        shapeI64[Dims4D::Act::C.ind()] = op.getOutputChannels().value();
+    if (mlir::failed(IE::padOutputShape(outShape, op.getOutputPaddingAttr(), loc))) {
+        return mlir::failure();
     }
 
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto outputType =
-            mlir::RankedTensorType::get(shapeI64, inputType.getElementType(), createTensorAttrFromType(inputType));
+            mlir::RankedTensorType::get(outShape, inputType.getElementType(), createTensorAttrFromType(inputType));
 
     inferredReturnTypes.push_back(outputType);
     return mlir::success();
@@ -215,7 +219,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEAveragePoolOp::getTilingStrategy(Til
 
 bool vpux::VPU::NCEAveragePoolOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
     const auto arch = VPU::getArch(getOperation());
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
     if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
@@ -254,7 +258,7 @@ bool VPU::NCEAveragePoolOp::isOperationSplitOverHeightCompatible(const vpux::Til
 
     auto nceOp = mlir::cast<NCEAveragePoolOp>(getOperation());
     Shape inputShape = getShape(nceOp.getInput()).toValues();
-    auto inputType = nceOp.getInput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
     // If has custom output shape, infer the input shape
     if (outputShape != getShape(nceOp->getResult(0))) {
         VPUX_THROW_UNLESS(offset != ShapeRef() && axis != ShapeRef(),
@@ -289,7 +293,7 @@ bool VPU::NCEAveragePoolOp::doesLayerChangeOutputAlignmentFitIntoCMX(
         VPU::MultiClusterStrategy strategy, VPU::DistributedTypeInterface newDistributedTensorType) {
     auto nceOp = mlir::cast<NCEAveragePoolOp>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
-            nceOp, nceOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape(), strategy);
+            nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
     auto distributedInputType =
             getDistributedActivationTypeFromOp(nceOp, nceOp.getInput().getType(), numClusters, strategy);
     return fitIntoCMX(distributedInputType, newDistributedTensorType);
@@ -300,7 +304,7 @@ vpux::NDTypeInterface vpux::VPU::NCEAveragePoolOp::getDistributedTypeForOpOperan
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
     auto origOp = mlir::cast<NCEAveragePoolOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
     auto* ctx = clusteredOp->getContext();
     mlir::ArrayAttr activationAlignmentAttr = nullptr;
@@ -328,7 +332,7 @@ vpux::NDTypeInterface vpux::VPU::NCEAveragePoolOp::getDistributedTypeForOpOperan
 
 vpux::VPU::SparsitySupport vpux::VPU::NCEAveragePoolOp::sparsitySupport() {
     // Super-dense mode does not support ODU sparsity
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     auto excludeMode = VPU::NCESparsity::bitwiseNot(VPU::SparsitySupport::NONE);
     if (VPU::NCESparsity::isSuperdenseRequired(outputType.getDimsOrder(), outputType.getShape(),
                                                outputType.getElementType())) {
@@ -340,7 +344,7 @@ vpux::VPU::SparsitySupport vpux::VPU::NCEAveragePoolOp::sparsitySupport() {
 mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::verifyKernel(IE::AvgPoolOp origOp, Logger log) {
     log.setName("NCEInvariant");
 
-    if (origOp.getInput().getType().cast<vpux::NDTypeInterface>().getRank() != 4) {
+    if (mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getRank() != 4) {
         return mlir::failure();
     }
 

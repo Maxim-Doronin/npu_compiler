@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,22 +33,6 @@ private:
     Logger _log;
     void safeRunOnFunc() final;
 };
-
-void reindexList(VPUMI40XX::MappedInferenceOp mpi, VPURegMapped::FetchTaskOp firstFetch, const size_t fetchTaskTileIdx,
-                 const size_t fetchTaskListIdx) {
-    auto ctx = mpi.getContext();
-    auto oldHead = mpi.getListHead(VPURegMapped::TaskType::DMA, fetchTaskTileIdx, fetchTaskListIdx);
-    oldHead.replaceUsesWithIf(firstFetch, [](mlir::OpOperand& opOperand) {
-        return mlir::isa<VPUMI40XX::OpRanges>(opOperand.getOwner());
-    });
-    mpi.getListHeadMutable(VPURegMapped::TaskType::DMA, fetchTaskTileIdx, fetchTaskListIdx).assign(firstFetch);
-    auto newCount = VPUMI40XX::reindexList(mlir::cast<VPURegMapped::TaskOpInterface>(
-            mpi.getListHead(VPURegMapped::TaskType::DMA, fetchTaskTileIdx, fetchTaskListIdx).getDefiningOp()));
-
-    auto dmaCount = parseIntArrayOfArrayAttr<int64_t>(mpi.getDmaCount());
-    dmaCount[fetchTaskTileIdx][fetchTaskListIdx] = newCount;
-    mpi.setDmaCountAttr(getIntArrayOfArray(ctx, dmaCount));
-}
 
 bool dmaComp(mlir::Operation* lhs, mlir::Operation* rhs) {
     auto lhsDma = mlir::cast<VPUMI40XX::NNDMAOp>(lhs);
@@ -212,12 +196,15 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const int64_
         size_t groupIdx = 0;
 
         auto uint64Type = getUInt64Type(ctx);
+        // wlmPage is not assigned for first Fetch on each tile as technically they don't belong to a page rather than
+        // bootstrap
         auto firstFetch = builder.create<VPURegMapped::FetchTaskOp>(
                 firstGroup.getLoc(), dummyIndexType,
                 nullptr,  // no previous
                 firstGroup.getStartIndexes()[0], firstGroup.getEndIndexes()[0], firstGroup.getStartIndexes()[1],
                 firstGroup.getEndIndexes()[1], VPURegMapped::TaskTypeAttr::get(builder.getContext(), taskType),
-                mlir::IntegerAttr::get(uint64Type, tileIdx), mlir::IntegerAttr::get(uint64Type, groupIdx));
+                mlir::IntegerAttr::get(uint64Type, tileIdx), mlir::IntegerAttr::get(uint64Type, groupIdx),
+                mlir::IntegerAttr::get(uint64Type, -1));
         firstDmaTaskOp.setPreviousTask(firstFetch);
 
         VPURegMapped::ExecutionGroupOp parentGroup = firstGroup;
@@ -228,30 +215,22 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const int64_
         ++groupIdx;
         while (travelingGroup) {
             // In case grandParentGroup is nullptr that means the parentGroup is only second Execution group and we can
-            // allow it to use firstDMA as insertion point for Fetch This is because the first execution group goes to
-            // ping section in metadata
+            // allow it to use firstDmaTaskOp in case findLastDma for parentGroup returns nullptr, as insertion point
+            // for Fetch This is because the first execution group goes to ping section in metadata
             auto lastDma = findLastDma(parentGroup, 0, 0);
             auto parentGroupLastDma = lastDma != nullptr ? lastDma : firstDmaTaskOp;
 
-            // Use getOperation() to compare the underlying operations safely
-            if (parentGroupLastDma.getOperation() == firstDmaTaskOp.getOperation() && grandParentGroup) {
-                log.warning("Could not find a maximum DMA producer for parentGroup {0}", parentGroup);
-                return mlir::failure();
-            }
-
+            // In case grandParentGroup is not null and findFirstDma for grandParentGroup returns a nullptr we throw
+            // exception In theory this exception should not happen and is used as fail safe mechanism. The reason is
+            // that during legalization we ensure every group has an update barrier and hence we must find a DMA through
+            // barrier BFS which can act as min DMA consumer for grandParentGroup
             auto insertionDma = grandParentGroup ? findFirstDma(grandParentGroup, 0, 0) : parentGroupLastDma;
             if (grandParentGroup && insertionDma == nullptr) {
                 log.warning("Could not find a minimum DMA consumer for grandParentGroup {0}", grandParentGroup);
                 return mlir::failure();
             }
 
-            lastDma = findLastDma(travelingGroup, 0, 0);
-            if (lastDma == nullptr) {
-                log.warning("Could not find a maximum DMA producer for travelingGroup {0}", travelingGroup);
-                return mlir::failure();
-            }
-
-            // set the insertion point after the finalDMA
+            // set the insertion point after the insertionDma
             builder.setInsertionPointAfter(insertionDma.getOperation());
 
             auto fetchTaskOp = builder.create<VPURegMapped::FetchTaskOp>(
@@ -259,7 +238,7 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const int64_
                     travelingGroup.getStartIndexes()[0], travelingGroup.getEndIndexes()[0],
                     travelingGroup.getStartIndexes()[1], travelingGroup.getEndIndexes()[1],
                     VPURegMapped::TaskTypeAttr::get(ctx, taskType), mlir::IntegerAttr::get(uint64Type, tileIdx),
-                    mlir::IntegerAttr::get(uint64Type, groupIdx));
+                    mlir::IntegerAttr::get(uint64Type, groupIdx), insertionDma.getWlmPageAttr());
 
             // set the previousIdx to the fetchOp
             insertionDma.getResult().replaceAllUsesExcept(fetchTaskOp.getIndex(), fetchTaskOp.getOperation());
@@ -271,7 +250,7 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const int64_
             travelingGroup = VPUMI40XX::getNextGroup(travelingGroup);
             ++groupIdx;
         }
-        reindexList(mpi, firstFetch, fetchTaskTileIdx, fetchTaskListIdx);
+        VPUMI40XX::reindexList<VPURegMapped::FetchTaskOp>(mpi, firstFetch, fetchTaskTileIdx, fetchTaskListIdx);
     }
 
     return mlir::success();

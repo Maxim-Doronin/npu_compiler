@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@ mlir::LogicalResult vpux::IE::GRUSequenceLastPartOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto initialStateType = gru.getInitialHiddenState().getType().cast<mlir::ShapedType>();
+    const auto initialStateType = mlir::cast<mlir::ShapedType>(gru.getInitialHiddenState().getType());
     const auto outputStateShape = initialStateType.getShape();
     const auto seqLength = gru.getSeqLength();
     SmallVector<int64_t> middleStateShape = {outputStateShape[0], outputStateShape[1], seqLength, outputStateShape[2]};

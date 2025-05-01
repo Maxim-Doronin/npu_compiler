@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IERT/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -68,7 +69,7 @@ mlir::LogicalResult vpux::IERT::SubViewOp::inferReturnTypes(mlir::MLIRContext* c
         return mlir::failure();
     }
 
-    const auto origType = subViewOp.getSource().getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(subViewOp.getSource().getType());
 
     const auto subViewShape = parseIntArrayAttr<int64_t>(subViewOp.getStaticSizes());
     const auto subViewOffsets = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets());

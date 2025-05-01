@@ -1,26 +1,27 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/compiler.hpp"
 
-#include "intel_npu/config/common.hpp"
-#include "intel_npu/config/compiler.hpp"
+#include "intel_npu/config/options.hpp"
 #include "intel_npu/profiling.hpp"
 
-#include "vpux/compiler/NPU37XX/pipeline_strategy.hpp"
-#include "vpux/compiler/NPU37XX/pipelines.hpp"
+#include "vpux/compiler/NPU37XX/backend_pipeline_strategy.hpp"
+#include "vpux/compiler/NPU37XX/dialect_pipeline_strategy.hpp"
+#include "vpux/compiler/NPU40XX/backend_pipeline_strategy.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/export.hpp"
-#include "vpux/compiler/NPU40XX/pipeline_strategy.hpp"
-#include "vpux/compiler/NPU40XX/pipelines.hpp"
+#include "vpux/compiler/NPU40XX/dialect_pipeline_strategy.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/network_description.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_in_background.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
+#include "vpux/compiler/frontend/ov_batch_detection.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
 #include "vpux/compiler/options_mapper.hpp"
@@ -29,6 +30,7 @@
 #include "vpux/compiler/utils/locations_verifier.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/memory_usage_collector.hpp"
+#include "vpux/compiler/utils/pipeline_strategies.hpp"
 
 #include "vpux/utils/IE/itt.hpp"
 #include "vpux/utils/IE/private_properties.hpp"
@@ -87,15 +89,47 @@ void checkPlatformSupportedForCompilation(const std::string_view platform) {
 constexpr uint32_t SUPPORTED_OPSET = 11;
 
 //
-// createPipelineStrategy
+// createDialectPipelineStrategyFn
 //
 
-std::unique_ptr<IPipelineStrategy> createPipelineStrategy(VPU::ArchKind arch) {
+StrategyFactoryFn createDialectPipelineStrategyFn(const intel_npu::Config& config) {
+    auto arch = getArchKind(config);
     switch (arch) {
     case VPU::ArchKind::NPU37XX:
-        return std::make_unique<PipelineStrategy37XX>();
+        return [&](VPU::CompilationMode compilationMode) {
+            return createDialectPipelineStrategy37XX(compilationMode, config);
+        };
     case VPU::ArchKind::NPU40XX:
-        return std::make_unique<PipelineStrategy40XX>();
+        return [&](VPU::CompilationMode compilationMode) {
+            return createDialectPipelineStrategy40XX(compilationMode, config);
+        };
+    default:
+        VPUX_THROW("Unsupported arch kind: {0}", arch);
+    }
+}
+
+//
+// buildPipeline
+//
+
+void buildPipeline(const intel_npu::Config& config, mlir::PassManager& pm, Logger log) {
+    auto pipelineStrategyFn = createDialectPipelineStrategyFn(config);
+
+    const auto compilationMode = getCompilationMode(config);
+    auto pipelineFactory = createPipelineFactory(compilationMode, std::move(pipelineStrategyFn), log);
+    pipelineFactory->buildPipeline(pm);
+}
+
+//
+// createBackendPipelineStrategy
+//
+
+std::unique_ptr<IBackendPipelineStrategy> createBackendPipelineStrategy(VPU::ArchKind arch) {
+    switch (arch) {
+    case VPU::ArchKind::NPU37XX:
+        return std::make_unique<BackendPipelineStrategy37XX>();
+    case VPU::ArchKind::NPU40XX:
+        return std::make_unique<BackendPipelineStrategy40XX>();
     default:
         VPUX_THROW("Unsupported arch kind: {0}", arch);
     }
@@ -407,7 +441,8 @@ NetworkDescriptionView exportNetwork(mlir::ModuleOp module, Logger log, BlobAllo
             blobView, VPUMI37XX::getNetworkMetadata(mlir::ArrayRef(blobView.ptr, static_cast<size_t>(blobView.size))));
 }
 
-std::optional<size_t> getBatchSize(const std::shared_ptr<ov::Model>& model, const intel_npu::Config& config) {
+std::optional<size_t> getModelBatchPartitionIfPossible(const std::shared_ptr<ov::Model>& model,
+                                                       const intel_npu::Config& config) {
     std::set<ov::Output<const ov::Node>> batchedInputs;
     std::set<ov::Output<const ov::Node>> batchedOutputs;
     std::set<size_t> sBatchSize;
@@ -415,11 +450,16 @@ std::optional<size_t> getBatchSize(const std::shared_ptr<ov::Model>& model, cons
     vpux::Logger logger("getBatchSize", getLogLevel(config));
 
     if (!config.has<intel_npu::BATCH_MODE>()) {
-        return 1;
+        return std::make_optional<size_t>(1);
     }
 
     if (config.get<intel_npu::BATCH_MODE>() == ov::intel_npu::BatchMode::COMPILER) {
-        return 1;
+        return std::make_optional<size_t>();
+    }
+
+    std::stringstream sstreamInconsistencyDescr;
+    if (!checkCfgOnBatchOptionConsistency(config, sstreamInconsistencyDescr)) {
+        VPUX_THROW("Incompatible options have been detected: {0}", sstreamInconsistencyDescr.str());
     }
 
     std::shared_ptr<ov::Model> testBatchModel = model->clone();
@@ -500,10 +540,7 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
     devConf.setup(pm, config);
 
-    auto pipelineFactory = createPipelineStrategy(arch);
-
-    // TODO: somehow protect non-target cases
-    pipelineFactory->buildPipeline(pm, config, rootTiming, log);
+    buildPipeline(config, pm, log);
 
 #ifdef BACKGROUND_FOLDING_ENABLED
     const auto foldingConfig = getConstantFoldingInBackground(config);
@@ -532,7 +569,8 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
     devConf.setup(elfPm, config);
     auto wlmStatus = vpux::VPUIP::getWlmStatus(module.get());
     auto wlmStillEnabled = wlmStatus == vpux::VPUIP::WlmStatus::ENABLED;
-    pipelineFactory->buildELFPipeline(elfPm, config, rootTiming, log, wlmStillEnabled);
+    auto backendPipelineStrategy = createBackendPipelineStrategy(arch);
+    backendPipelineStrategy->buildELFPipeline(elfPm, config, rootTiming, log, wlmStillEnabled);
     if (getWlmRollback(config).value_or(false)) {
         auto backup_module = mlir::OwningOpRef<mlir::ModuleOp>(module.get().clone());
         // We moved away from the exception-based fallback mechanism because the MLIRContext remained in an invalid
@@ -546,7 +584,7 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
             module = std::move(backup_module);
             mlir::PassManager simpleElfPm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
             devConf.setup(simpleElfPm, config, /*isSubPipeline=*/true);
-            pipelineFactory->buildELFPipeline(simpleElfPm, config, rootTiming, log, /*useWlm=*/false);
+            backendPipelineStrategy->buildELFPipeline(simpleElfPm, config, rootTiming, log, /*useWlm=*/false);
             vpux::VPUIP::setWlmStatus(module.get(), vpux::VPUIP::WlmStatus::DISABLED);
             VPUX_THROW_UNLESS(mlir::succeeded(compileNetwork(module.get(), simpleElfPm, rootTiming)),
                               "Compilation failed");
@@ -575,75 +613,10 @@ struct CompilationResult {
     }
 };
 
-// leave reference to const std::shared_ptr<ov::Model> instead of taking std::shared_ptr<ov::Model> by value
-// as in case of batching we don't copy pointer to ov::Model, we clone it and use clone afterwards
-// taking by-value would mean extra copy of std::shared_ptr for no reason in this case, even though
-// it's fine for "regular" scenario without batching (just 1 copy anyway)
-CompilationResult compileImpl(mlir::MLIRContext& ctx, const std::shared_ptr<ov::Model>& model,
-                              const intel_npu::Config& config, Logger& log) {
-    checkPlatformSupportedForCompilation(config.get<intel_npu::PLATFORM>());
-
-    DeveloperConfig devConf(log);
-
-    mlir::DefaultTimingManager tm;
-    devConf.setup(tm);
-
-    OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "compileImpl");
-
-    addLogging(ctx, log);
-    auto rootTiming = tm.getRootScope();
-
-    // Save the original model parameters and results before batching
-    const auto originalParameters = IE::buildOVParams(model);
-    const auto originalResults = IE::buildOVResults(model);
-
-    try {
-        auto batchSize = getBatchSize(model, config);
-
-        if (batchSize.has_value()) {
-            if (*batchSize > 1) {
-                // When batching is handled by the plugin we need to modify performance_mode property to Throughput mode
-                auto configPerformanceMode = config;
-                if (configPerformanceMode.get<intel_npu::PERFORMANCE_HINT>() == ov::hint::PerformanceMode::LATENCY) {
-                    log.info("Override performance mode to THROUGHPUT");
-                    std::stringstream strStream;
-                    strStream << ov::hint::PerformanceMode::THROUGHPUT;
-                    configPerformanceMode.update({{ov::hint::performance_mode.name(), strStream.str()}});
-                }
-
-                // If fallback and handle batching on the compiler is needed we will use the original model
-                auto batchModel = model->clone();
-                ov::set_batch(batchModel, 1);
-
-                auto moduleOp = compileModel(ctx, batchModel, originalParameters, originalResults, devConf, rootTiming,
-                                             configPerformanceMode, log);
-                return CompilationResult{std::move(moduleOp), std::move(batchModel)};
-            }
-        } else {
-            const auto& batchType = config.get<intel_npu::BATCH_MODE>();
-            if (batchType == ov::intel_npu::BatchMode::AUTO) {
-                log.info("Batching is handled by the compiler");
-            } else if (batchType == ov::intel_npu::BatchMode::PLUGIN) {
-                VPUX_THROW("This model is not supported when handling batching on the plugin.");
-            }
-        }
-    } catch (const std::exception& ex) {
-        const auto& batchType = config.get<intel_npu::BATCH_MODE>();
-        if (batchType == ov::intel_npu::BatchMode::AUTO) {
-            log.info("An error occurred during network compilation so fallback on compiler batch mode {0}", ex.what());
-        } else {
-            VPUX_THROW(ex.what());
-        }
-    }
-
-    auto moduleOp = compileModel(ctx, model, originalParameters, originalResults, devConf, rootTiming, config, log);
-    return CompilationResult{std::move(moduleOp), model};
-}
-
 auto createContext(mlir::DialectRegistry& registry, const intel_npu::Config& config) {
     auto interfacesRegistry = createInterfacesRegistry(getArchKind(config));
     interfacesRegistry->registerInterfaces(registry);
-    return mlir::MLIRContext(registry, mlir::MLIRContext::Threading::DISABLED);
+    return std::make_unique<mlir::MLIRContext>(registry, mlir::MLIRContext::Threading::DISABLED);
 }
 
 auto enableMultithreading(mlir::MLIRContext& context, const intel_npu::Config& config)
@@ -669,6 +642,122 @@ auto enableMultithreading(mlir::MLIRContext& context, const intel_npu::Config& c
     return threadPool;
 }
 
+struct CompilerSetup {
+    mlir::DialectRegistry registry;
+    std::unique_ptr<mlir::MLIRContext> ctx;
+    std::unique_ptr<llvm::ThreadPool> threadPool;
+
+    static std::unique_ptr<CompilerSetup> create(const intel_npu::Config& config);
+    ~CompilerSetup() = default;
+
+    CompilerSetup(CompilerSetup&&) = default;
+    CompilerSetup& operator=(CompilerSetup&&) = default;
+
+private:
+    CompilerSetup(const intel_npu::Config& config);
+    CompilerSetup(const CompilerSetup&) = delete;
+    CompilerSetup& operator=(const CompilerSetup&) = delete;
+    CompilerSetup& operator()(const CompilerSetup&) = delete;
+};
+
+std::unique_ptr<CompilerSetup> CompilerSetup::create(const intel_npu::Config& config) {
+    return std::unique_ptr<CompilerSetup>(new CompilerSetup(config));
+}
+
+CompilerSetup::CompilerSetup(const intel_npu::Config& config) {
+    registry = createDialectRegistry(getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED));
+    ctx = createContext(registry, config);
+    threadPool = enableMultithreading(*ctx, config);
+}
+
+// leave reference to const std::shared_ptr<ov::Model> instead of taking std::shared_ptr<ov::Model> by value
+// as in case of batching we don't copy pointer to ov::Model, we clone it and use clone afterwards
+// taking by-value would mean extra copy of std::shared_ptr for no reason in this case, even though
+// it's fine for "regular" scenario without batching (just 1 copy anyway)
+CompilationResult compileImpl(std::unique_ptr<CompilerSetup>& setup, const std::shared_ptr<ov::Model>& model,
+                              const intel_npu::Config& config, Logger& log) {
+    checkPlatformSupportedForCompilation(config.get<intel_npu::PLATFORM>());
+
+    DeveloperConfig devConf(log);
+
+    mlir::DefaultTimingManager tm;
+    devConf.setup(tm);
+
+    OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "compileImpl");
+
+    addLogging(*setup->ctx, log);
+    auto rootTiming = tm.getRootScope();
+
+    // Save the original model parameters and results before batching
+    const auto originalParameters = IE::buildOVParams(model);
+    const auto originalResults = IE::buildOVResults(model);
+
+    try {
+        auto partitionCount = getModelBatchPartitionIfPossible(model, config);
+        if (partitionCount.has_value()) {
+            if (*partitionCount > 1) {
+                // When batching is handled by the plugin we need to modify performance_mode property to Throughput mode
+                auto configPerformanceMode = config;
+                if (configPerformanceMode.get<intel_npu::PERFORMANCE_HINT>() == ov::hint::PerformanceMode::LATENCY) {
+                    log.info("Override performance mode to THROUGHPUT");
+                    std::stringstream strStream;
+                    strStream << ov::hint::PerformanceMode::THROUGHPUT;
+                    configPerformanceMode.update({{ov::hint::performance_mode.name(), strStream.str()}});
+                }
+
+                // If fallback and handle batching on the compiler is needed we will use the original model
+                auto batchModel = model->clone();
+                ov::set_batch(batchModel, 1);
+
+                auto moduleOp = compileModel(*setup->ctx, batchModel, originalParameters, originalResults, devConf,
+                                             rootTiming, configPerformanceMode, log);
+                return CompilationResult{std::move(moduleOp), std::move(batchModel)};
+            }
+        } else {
+            const auto& batchType = config.get<intel_npu::BATCH_MODE>();
+            if (batchType == ov::intel_npu::BatchMode::AUTO) {
+                log.info("Batching is handled by the compiler");
+            } else if (batchType == ov::intel_npu::BatchMode::PLUGIN) {
+                VPUX_THROW("This model is not supported when handling batching on the plugin.");
+            }
+        }
+    } catch (const std::exception& ex) {
+        const auto& batchType = config.get<intel_npu::BATCH_MODE>();
+        if (batchType == ov::intel_npu::BatchMode::AUTO) {
+            log.info("An error occurred during network compilation so fallback on compiler batch mode {0}", ex.what());
+        } else {
+            VPUX_THROW(ex.what());
+        }
+    }
+
+    auto [newConfig, autoBatchingEnabled] = autoDetectBatchedModelIfPossible(model, config);
+    if (autoBatchingEnabled) {
+        try {
+            // Try method "debatch" at first, because it supports more real models providing better performance numbers
+            // than "unroll"
+            auto moduleOp = compileModel(*setup->ctx, model, originalParameters, originalResults, devConf, rootTiming,
+                                         newConfig, log);
+            if (!moduleOp) {
+                throw std::runtime_error("unknown error(a result model is empty)");
+            }
+            return CompilationResult{std::move(moduleOp), model};
+        } catch (const std::exception& ex) {
+            log.warning(
+                    "Cannot compile a model using auto-batch compiler detection method, error: {0}\nTrying default...",
+                    ex.what());
+            // TODO E####-160706
+            // For simplicity we create a new MLIRContext as the old one may be spoiled and inconsisted as it is not
+            // exception safety
+            setup = CompilerSetup::create(config);
+            auto moduleOp = compileModel(*setup->ctx, model, originalParameters, originalResults, devConf, rootTiming,
+                                         config, log);
+            return CompilationResult{std::move(moduleOp), model};
+        }
+    }
+    auto moduleOp =
+            compileModel(*setup->ctx, model, originalParameters, originalResults, devConf, rootTiming, config, log);
+    return CompilationResult{std::move(moduleOp), model};
+}
 }  // namespace
 
 CompilerImpl::CompilerImpl() {
@@ -693,14 +782,9 @@ NetworkDescription CompilerImpl::compile(const std::shared_ptr<ov::Model>& model
 
     Logger log("vpux-compiler", getLogLevel(config));
 
-    const auto enableExtraShapeBoundOps = getEnableExtraShapeBoundOps(config);
-    auto registry = createDialectRegistry(getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED),
-                                          enableExtraShapeBoundOps);
-    auto ctx = createContext(registry, config);
-    auto threadPool = enableMultithreading(ctx, config);
-
+    auto setup = CompilerSetup::create(config);
     auto peakMemStart = getPeakMemoryUsage();
-    auto compilationResult = compileImpl(ctx, model, config, log);
+    auto compilationResult = compileImpl(setup, model, config, log);
 
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "exportNetwork");
     auto networkDescription = exportNetwork(compilationResult.moduleOp.get(), log);
@@ -722,14 +806,9 @@ NetworkDescriptionView CompilerImpl::compile(const std::shared_ptr<ov::Model>& m
 
     Logger log("vpux-compiler", getLogLevel(config));
 
-    const auto enableExtraShapeBoundOps = getEnableExtraShapeBoundOps(config);
-    auto registry = createDialectRegistry(getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED),
-                                          enableExtraShapeBoundOps);
-    auto ctx = createContext(registry, config);
-    auto threadPool = enableMultithreading(ctx, config);
-
+    auto setup = CompilerSetup::create(config);
     auto peakMemStart = getPeakMemoryUsage();
-    auto compilationResult = compileImpl(ctx, model, config, log);
+    auto compilationResult = compileImpl(setup, model, config, log);
 
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "exportNetwork");
     auto allocatedCompliedNetwork = exportNetwork(compilationResult.moduleOp.get(), log, allocator);

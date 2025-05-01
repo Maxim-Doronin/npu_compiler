@@ -1,14 +1,17 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -23,7 +26,7 @@ mlir::LogicalResult vpux::IE::PadOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = pad.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(pad.getInput().getType());
     const auto inputShape = inType.getShape();
 
     auto padBegin = IE::extractPads(loc, pad.getPadsBegin(), pad.getPadsBeginAttr(), inputShape);
@@ -39,7 +42,7 @@ mlir::LogicalResult vpux::IE::PadOp::inferReturnTypeComponents(
     }
 
     const auto newType = inType.pad(ShapeRef(padBegin.value()), ShapeRef(padEnd.value()));
-    const auto newTensorType = newType.cast<mlir::RankedTensorType>();
+    const auto newTensorType = mlir::cast<mlir::RankedTensorType>(newType);
     inferredReturnShapes.emplace_back(newTensorType.getShape(), newTensorType.getElementType(),
                                       getTensorAttr(newTensorType));
 
@@ -66,7 +69,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
         return mlir::failure();
     }
 
-    const auto inType = padOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(padOp.getInput().getType());
     const auto inputShape = inType.getShape();
 
     // convert pads_begin
@@ -88,7 +91,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
     // convert pad_value
 
     if (padOp.getPadValue() != nullptr) {
-        const auto padValueType = padOp.getPadValue().getType().cast<mlir::ShapedType>();
+        const auto padValueType = mlir::cast<mlir::ShapedType>(padOp.getPadValue().getType());
         if (padValueType.getNumElements() != 1) {
             return errorAt(padOp.getLoc(), "'pad_value' should have only 1 element, while it has {0}",
                            padValueType.getNumElements());
@@ -108,11 +111,12 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
         const auto padValueAttr = getFPAttr(padOp.getContext(), padValue);
 
         rewriter.replaceOpWithNewOp<IE::PadOp>(padOp, padOp.getInput(), nullptr, nullptr, nullptr, padsBeginAttr,
-                                               padsEndAttr, padValueAttr, padOp.getMode(),
-                                               padOp.getOutputChannelsAttr());
+                                               padsEndAttr, padValueAttr, padOp.getMode(), padOp.getOutputPaddingAttr(),
+                                               padOp.getInputPaddingAttr());
     } else {
         rewriter.replaceOpWithNewOp<IE::PadOp>(padOp, padOp.getInput(), nullptr, nullptr, nullptr, padsBeginAttr,
-                                               padsEndAttr, nullptr, padOp.getMode(), padOp.getOutputChannelsAttr());
+                                               padsEndAttr, nullptr, padOp.getMode(), padOp.getOutputPaddingAttr(),
+                                               padOp.getInputPaddingAttr());
     }
     return mlir::success();
 }

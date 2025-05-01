@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_ADJUSTMEMORYSPACE
@@ -32,7 +34,7 @@ mlir::LogicalResult insertCmxCopies(mlir::Operation* origOp, mlir::PatternRewrit
     for (auto& inputOperand : origOp->getOpOperands()) {
         auto origInputValue = inputOperand.get();
         // No need to copy the data if due to some reason it's in CMX already
-        const auto inputMemSpace = origInputValue.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+        const auto inputMemSpace = mlir::cast<vpux::NDTypeInterface>(origInputValue.getType()).getMemSpace();
         if (inputMemSpace == memSpaceCMX) {
             continue;
         }
@@ -55,7 +57,7 @@ mlir::LogicalResult insertCmxCopies(mlir::Operation* origOp, mlir::PatternRewrit
     }
 
     auto origOutput = origOp->getResult(0);
-    const auto origOutType = origOutput.getType().cast<vpux::NDTypeInterface>();
+    const auto origOutType = mlir::cast<vpux::NDTypeInterface>(origOutput.getType());
     const auto origOutMemSpace = origOutType.getMemSpace();
     if (origOutMemSpace != memSpaceCMX) {
         // Leave the original operation but change it in-place and add a Copy after it
@@ -142,7 +144,7 @@ void AdjustMemorySpacePass::safeRunOnFunc() {
     const auto isLegalOp = [](mlir::Operation* op) {
         if (mlir::isa<VPU::NCEOpInterface, VPU::M2ITaskOp>(op)) {
             const auto verifyLocationInCmx = [](mlir::Value operand) {
-                return operand.getType().cast<vpux::NDTypeInterface>().getMemoryKind() == MemoryKind::CMX_NN;
+                return mlir::cast<vpux::NDTypeInterface>(operand.getType()).getMemoryKind() == MemoryKind::CMX_NN;
             };
             return llvm::all_of(op->getOperands(), verifyLocationInCmx) &&
                    llvm::all_of(op->getResults(), verifyLocationInCmx);

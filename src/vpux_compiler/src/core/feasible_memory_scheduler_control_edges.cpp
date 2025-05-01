@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -173,53 +173,30 @@ void vpux::updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneRes
     SmallVector<mlir::Value> inputOperands;
     SmallVector<mlir::Value> outputOperands;
 
+    auto populateTargetBuffers = [&](const mlir::ValueRange& buffers, SmallVector<mlir::Value>& targetVec) {
+        for (const auto& buffer : buffers) {
+            const auto type = mlir::dyn_cast<vpux::NDTypeInterface>(buffer.getType());
+            if (type == nullptr || type.getMemoryKind() != memKind) {
+                continue;
+            }
+            targetVec.push_back(buffer);
+        }
+    };
+
     // Get operation buffers for all operands. Go through each layer op and
     // store in a set all root buffers
     auto* bodyBlock = execOp.getBody();
     for (auto& innerOp : bodyBlock->getOperations()) {
-        if (!mlir::isa<VPUIP::LayerOpInterface>(innerOp)) {
+        auto layerOp = mlir::dyn_cast<VPUIP::LayerOpInterface>(innerOp);
+        if (layerOp == nullptr) {
             continue;
         }
 
-        auto inputs = vpux::to_small_vector(mlir::dyn_cast<VPUIP::LayerOpInterface>(innerOp).getInputs());
-        if (auto nceTaskOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(innerOp)) {
-            // in case of NCEClusterTaskOp we need to remove parent outputs from inputs
-            // in order to make depenendcy calculation work correctly
-            auto parentOutput = nceTaskOp.getParentOutput();
-            auto parentOutputSparsityMap = nceTaskOp.getParentOutputSparsityMap();
-            auto input = nceTaskOp.getInput();
-            auto inputSparsityMap = nceTaskOp.getInputSparsityMap();
-            auto weights = nceTaskOp.getWeights();
-            auto weightsSparsityMap = nceTaskOp.getWeightsSparsityMap();
-            llvm::SmallVector<mlir::Value> inputsToSanitize{};
-            inputsToSanitize.swap(inputs);
-            std::copy_if(inputsToSanitize.begin(), inputsToSanitize.end(), std::back_inserter(inputs),
-                         [&](mlir::Value value) {
-                             // For in-place eltwise op it might happen that parentOutput == input.
-                             // Check those first to make sure they don't get removed.
-                             if (value == input || value == inputSparsityMap || value == weights ||
-                                 value == weightsSparsityMap) {
-                                 return true;
-                             }
-                             return (value != parentOutput) && (value != parentOutputSparsityMap);
-                         });
-        }
-        for (const auto& input : inputs) {
-            const auto type = input.getType().dyn_cast<vpux::NDTypeInterface>();
-            if (type == nullptr || type.getMemoryKind() != memKind) {
-                continue;
-            }
-            inputOperands.push_back(input);
-        }
+        const auto inputs = getInputsSanitized(layerOp);
+        populateTargetBuffers(inputs, inputOperands);
 
-        auto outputs = mlir::dyn_cast<VPUIP::LayerOpInterface>(innerOp).getOutputs();
-        for (const auto& output : outputs) {
-            const auto type = output.getType().dyn_cast<vpux::NDTypeInterface>();
-            if (type == nullptr || type.getMemoryKind() != memKind) {
-                continue;
-            }
-            outputOperands.push_back(output);
-        }
+        const auto outputs = layerOp.getOutputs();
+        populateTargetBuffers(outputs, outputOperands);
     }
 
     // For all identified buffers used by operation create separate entries with information
@@ -233,8 +210,8 @@ void vpux::updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneRes
 
             std::optional<ScheduledOpOneResource::ResourceView> resView = std::nullopt;
 
-            auto operandSize =
-                    static_cast<size_t>(operand.getType().cast<vpux::NDTypeInterface>().getCompactAllocSize().count());
+            auto operandSize = static_cast<size_t>(
+                    mlir::cast<vpux::NDTypeInterface>(operand.getType()).getCompactAllocSize().count());
             auto allocSize = scan.handler().getSize(buf);
             if (operandSize < allocSize) {
                 // Check chain of connections from operand to root buffer and look
@@ -266,7 +243,8 @@ void vpux::updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneRes
                             subViewOp.getStaticStrides().has_value()
                                     ? parseIntArrayAttr<int64_t>(subViewOp.getStaticStrides().value())
                                     : SmallVector<int64_t>(
-                                              subViewOp.getSource().getType().cast<vpux::NDTypeInterface>().getRank(),
+                                              mlir::cast<vpux::NDTypeInterface>(subViewOp.getSource().getType())
+                                                      .getRank(),
                                               1);
 
                     resView = ScheduledOpOneResource::ResourceView(

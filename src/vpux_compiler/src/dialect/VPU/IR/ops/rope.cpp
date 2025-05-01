@@ -89,18 +89,17 @@ InputTiling vpux::VPU::RoPEOp::backInferTileInfo(const vpux::TileInfo& outputTil
     TileInfo cosTile(getShape(getInputCos()));
     TileInfo sinTile(getShape(getInputSin()));
     auto inTile = outputTile;
-
-    cosTile.shape[Dim(Dims4D::Act::H)] = inTile.shape[Dim(Dims4D::Act::H)];
-    cosTile.offsets[Dim(Dims4D::Act::W)] = inTile.offsets[Dim(Dims4D::Act::W)];
-    cosTile.offsets[Dim(Dims4D::Act::H)] = inTile.offsets[Dim(Dims4D::Act::H)];
-    cosTile.offsets[Dim(Dims4D::Act::C)] = inTile.offsets[Dim(Dims4D::Act::C)];
-    cosTile.offsets[Dim(Dims4D::Act::N)] = inTile.offsets[Dim(Dims4D::Act::C)];
-
-    sinTile.shape[Dim(Dims4D::Act::H)] = inTile.shape[Dim(Dims4D::Act::H)];
-    sinTile.offsets[Dim(Dims4D::Act::W)] = inTile.offsets[Dim(Dims4D::Act::W)];
-    sinTile.offsets[Dim(Dims4D::Act::H)] = inTile.offsets[Dim(Dims4D::Act::H)];
-    sinTile.offsets[Dim(Dims4D::Act::C)] = inTile.offsets[Dim(Dims4D::Act::C)];
-    sinTile.offsets[Dim(Dims4D::Act::N)] = inTile.offsets[Dim(Dims4D::Act::C)];
+    // The number of channels for the Cosine and Sine operations can either match the input number of channels or be set
+    // to 1, depending on the specific requirements of the operation.
+    if (cosTile.shape[Dim(Dims4D::Act::C)] > 1) {
+        cosTile = inTile;
+        sinTile = inTile;
+    } else {
+        sinTile.shape[Dim(Dims4D::Act::H)] = inTile.shape[Dim(Dims4D::Act::H)];
+        cosTile.shape[Dim(Dims4D::Act::H)] = inTile.shape[Dim(Dims4D::Act::H)];
+        sinTile.offsets[Dim(Dims4D::Act::H)] = inTile.offsets[Dim(Dims4D::Act::H)];
+        cosTile.offsets[Dim(Dims4D::Act::H)] = inTile.offsets[Dim(Dims4D::Act::H)];
+    }
 
     return TilingInfo{{std::move(inTile), std::move(cosTile), std::move(sinTile)}};
 }

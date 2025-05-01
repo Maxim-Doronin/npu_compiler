@@ -1,168 +1,93 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
+#include <algorithm>
+#include <cassert>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/Hashing.h>
+#include <llvm/ADT/bit.h>
+#include <mlir/IR/OpImplementation.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Support/LogicalResult.h>
+
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 
+#include "vpux/utils/core/string_ref.hpp"
 #include "vpux/utils/core/type/bfloat16.hpp"
 #include "vpux/utils/core/type/float16.hpp"
 #include "vpux_elf/utils/version.hpp"
 
+#include <mlir/IR/OpImplementation.h>
+
 namespace vpux::VPURegMapped::detail {
+
+std::pair<mlir::ParseResult, std::optional<elf::Version>> parseVersion(mlir::AsmParser&);
+
+namespace {
+
+constexpr auto FLOAT16_BIT_SIZE = sizeof(uint16_t) * CHAR_BIT;
+constexpr auto FLOAT32_BIT_SIZE = sizeof(float) * CHAR_BIT;
+constexpr auto FLOAT64_BIT_SIZE = sizeof(double) * CHAR_BIT;
 
 template <class... Registers>
 struct Union {
-    static constexpr auto start = vpux::Byte{std::min({
-            vpux::Byte{},
-            Registers::_offset...,
+    static constexpr auto START = vpux::Byte{};
+    static constexpr auto END = vpux::Byte{std::max({
+            Registers::OFFSET + Registers::SIZE...,
     })};
-    static constexpr auto end = vpux::Byte{std::max({
-            Registers::_offset + Registers::_size...,
-    })};
-    static_assert(end >= start, "Invalid registers pack");
-    static constexpr auto size = end - start;
+    static_assert(END >= START, "Invalid registers pack");
+    static constexpr auto SIZE = END - START;
 };
 
 template <auto subject, auto... candidates>
-constexpr auto is_any_of() {
+constexpr auto isAnyOf() {
     return ((subject == candidates) || ...);
 }
 
 template <auto subject, auto... candidates>
-constexpr auto is_none_of() {
-    return !is_any_of(subject, candidates...);
+constexpr auto isNoneOf() {
+    return !isAnyOf(subject, candidates...);
 }
 
 template <class Field>
-constexpr auto is_integral_impl() {
-    return is_any_of<Field::_type, ::vpux::VPURegMapped::RegFieldDataType::UINT,
-                     ::vpux::VPURegMapped::RegFieldDataType::SINT>();
+constexpr auto isIntegralImpl() {
+    return isAnyOf<Field::TYPE, ::vpux::VPURegMapped::RegFieldDataType::UINT,
+                   ::vpux::VPURegMapped::RegFieldDataType::SINT>();
 }
 
 template <class Field>
-constexpr auto is_floating_point_impl() {
-    return is_any_of<Field::_type, ::vpux::VPURegMapped::RegFieldDataType::FP,
-                     ::vpux::VPURegMapped::RegFieldDataType::BF>();
+constexpr auto isFloatingPointImpl() {
+    return isAnyOf<Field::TYPE, ::vpux::VPURegMapped::RegFieldDataType::FP,
+                   ::vpux::VPURegMapped::RegFieldDataType::BF>();
 }
 
 template <class Field>
-static constexpr auto is_integral = is_integral_impl<Field>();
+constexpr auto IS_INTEGRAL = isIntegralImpl<Field>();
 
 template <class Field>
-static constexpr auto is_floating_point = is_floating_point_impl<Field>();
+constexpr auto IS_FLOATING_POINT = isFloatingPointImpl<Field>();
 
-template <class Target, class Candidates>
-struct contains;
 template <class Target, class... Candidates>
-struct contains<Target, std::tuple<Candidates...>> : std::disjunction<std::is_same<Target, Candidates>...> {};
-
-template <class Tuple, template <class, auto, auto> class Functor, class... CallArgs>
-struct Mapper;
-
-template <class... Ts, template <class, auto, auto> class Functor, class... CallArgs>
-struct Mapper<std::tuple<Ts...>, Functor, CallArgs...> {
-    template <class... Args>
-    static mlir::LogicalResult map(Args&&... args) {
-        return impl(std::make_index_sequence<sizeof...(Ts)>(), std::forward<Args>(args)...);
-    }
-
-private:
-    template <size_t... indexes, class... Args>
-    static mlir::LogicalResult impl(std::index_sequence<indexes...> sequence, Args&&... args) {
-        return mlir::LogicalResult::success(
-                (Functor<Ts, sequence.size(), indexes>::template call<CallArgs...>(std::forward<Args>(args)...)
-                         .succeeded() &&
-                 ...));
-    }
-};
-
-std::pair<mlir::ParseResult, std::optional<elf::Version>> parseVersion(mlir::AsmParser&);
-template <const char* name, class ParentRegisters, size_t offsetInBits, size_t sizeInBits,
-          ::vpux::VPURegMapped::RegFieldDataType type, uint32_t major, uint32_t minor, uint32_t patch>
-struct FieldTemplate {
-    static constexpr auto _name = std::string_view{name};
-    using Registers = ParentRegisters;
-    static constexpr auto _offset = vpux::Bit{int64_t{offsetInBits}};
-    static constexpr auto _size = vpux::Bit{int64_t{sizeInBits}};
-    static constexpr auto _type = type;
-    static constexpr auto _defaultVersion = elf::Version{major, minor, patch};
-
-    static_assert(_size.count() != 0, "Field of zero size is unsupported");
-    static_assert(_size.count() <= sizeof(uint64_t) * CHAR_BIT, "Field of size more than 8 bytes is unsupported");
-    static_assert((_type != ::vpux::VPURegMapped::RegFieldDataType::SINT) || _size.count() > 1,
-                  "Signed field must have more than one bit");
-    static_assert((_type != ::vpux::VPURegMapped::RegFieldDataType::FP) || _size.count() == 16 || _size.count() == 32 ||
-                          _size.count() == 64,
-                  "Floating-point field must have size of 16, 32 or 64 bits");
-    static_assert((_type != ::vpux::VPURegMapped::RegFieldDataType::BF) || _size.count() == 16,
-                  "bfloat16 field must have size of 16 bits");
-};
-
-// The register level provides the opportunity to reuse field definitions
-// across multiple generations, making it worthwhile to preserve.
-template <const char* name, class ParentDescriptors, size_t offsetInBytes, size_t sizeInBytes, class... FieldsPack>
-struct RegisterTemplate {
-    static constexpr auto _name = std::string_view{name};
-    using Descriptors = ParentDescriptors;
-    static constexpr auto _offset = vpux::Byte{offsetInBytes};
-    static constexpr auto _size = vpux::Byte{sizeInBytes};
-    // until C++26 there's no indexing of parameter pack
-    // use std::tuple and std::tuple_element_t to index pack
-    using Fields = std::tuple<FieldsPack...>;
-};
-
-template <class Field, size_t size = 1, size_t index = 0>
-struct FieldPrinter {
-    template <class Register, class Descriptor>
-    static auto call(mlir::AsmPrinter& printer, const Descriptor& descriptor) {
-        static_assert(contains<Register, typename Field::Registers>::value,
-                      "Given register doesn't contain this field");
-        static_assert(contains<Descriptor, typename Register::Descriptors>::value,
-                      "Given descriptor doesn't contain this register");
-
-        printer.printNewline();
-        printer << vpux::VPURegMapped::stringifyEnum(Field::_type) << " " << Field::_name << " = "
-                << getFormattedValue(descriptor.template read<Register, Field>());
-
-        if constexpr (index < size - 1) {
-            printer << ',';
-        }
-
-        return mlir::success();
-    }
-};
-
-template <class Field, size_t size = 1, size_t index = 0>
-struct FieldVersion {
-    template <class Register, class Descriptor>
-    static auto call(std::optional<elf::Version>& maxVersion, const Descriptor& descriptor) {
-        static_assert(contains<Register, typename Field::Registers>::value,
-                      "Given register doesn't contain this field");
-        static_assert(contains<Descriptor, typename Register::Descriptors>::value,
-                      "Given descriptor doesn't contain this register");
-
-        if (descriptor.template read<Register, Field>()) {
-            maxVersion = std::max(maxVersion.value_or(Field::_defaultVersion), Field::_defaultVersion);
-        }
-
-        return mlir::success();
-    }
-};
-
-template <class Register, size_t size = 1, size_t index = 0>
-struct RegisterVersion {
-    template <class Descriptor>
-    static auto call(std::optional<elf::Version>& maxVersion, const Descriptor& descriptor) {
-        static_assert(contains<Descriptor, typename Register::Descriptors>::value,
-                      "Given descriptor doesn't contain this register");
-
-        return Mapper<typename Register::Fields, FieldVersion, Register>::map(maxVersion, descriptor);
-    }
-};
+struct Contains : std::bool_constant<(std::is_same_v<Target, Candidates> || ...)> {};
+template <class Target, class... Candidates>
+struct Contains<Target, std::tuple<Candidates...>> : Contains<Target, Candidates...> {};
 
 template <class T, class = void>
 struct TypeExtractor {
@@ -174,172 +99,234 @@ struct TypeExtractor<T, std::enable_if_t<std::is_enum_v<T>>> {
     using type = std::underlying_type_t<T>;
 };
 
-template <class Field, size_t fieldsCount = 1, size_t index = 0>
-struct FieldParser {
+template <class SpecificField, const char* name, class ParentRegisters, size_t offsetInBits, size_t sizeInBits,
+          ::vpux::VPURegMapped::RegFieldDataType type, uint32_t major, uint32_t minor, uint32_t patch>
+struct FieldTemplate {
+    static constexpr auto NAME = std::string_view{name};
+    using Registers = ParentRegisters;
+    static constexpr auto OFFSET = vpux::Bit{int64_t{offsetInBits}};
+    static constexpr auto SIZE = vpux::Bit{int64_t{sizeInBits}};
+    static constexpr auto TYPE = type;
+    static constexpr auto DEFAULT_VERSION = elf::Version{major, minor, patch};
+
+    static_assert(SIZE.count() != 0, "Field of zero size is unsupported");
+    static_assert(SIZE.count() <= sizeof(uint64_t) * CHAR_BIT, "Field of size more than 8 bytes is unsupported");
+    static_assert((TYPE != ::vpux::VPURegMapped::RegFieldDataType::SINT) || SIZE.count() > 1,
+                  "Signed field must have more than one bit");
+    static_assert((TYPE != ::vpux::VPURegMapped::RegFieldDataType::FP) || SIZE.count() == FLOAT16_BIT_SIZE ||
+                          SIZE.count() == FLOAT32_BIT_SIZE || SIZE.count() == FLOAT64_BIT_SIZE,
+                  "Floating-point field must have size of 16, 32 or 64 bits");
+    static_assert((TYPE != ::vpux::VPURegMapped::RegFieldDataType::BF) || SIZE.count() == FLOAT16_BIT_SIZE,
+                  "bfloat16 field must have size of 16 bits");
+
     template <class Register, class Descriptor>
-    static auto call(Descriptor& result, mlir::AsmParser& parser) {
-        if (std::string type; parser.parseKeywordOrString(&type).failed()) {
-            return mlir::failure();
-        } else if (const auto maybeType = vpux::VPURegMapped::symbolizeRegFieldDataType(type);
-                   !maybeType.has_value() || maybeType.value() != Field::_type) {
-            parser.emitError(parser.getCurrentLocation())
-                    << "unknown field data type \"" << type << "\", expected "
-                    << vpux::VPURegMapped::stringifyRegFieldDataType(Field::_type);
-            return mlir::failure();
+    static void print(mlir::AsmPrinter& printer, const Descriptor& descriptor) {
+        static_assert(Contains<SpecificField, typename Register::Fields>::value,
+                      "Given register doesn't contain this field");
+        static_assert(Contains<Register, typename Descriptor::Registers>::value,
+                      "Given descriptor doesn't contain this register");
+
+        printer.printNewline();
+        printer << vpux::VPURegMapped::stringifyEnum(TYPE) << " " << NAME << " = "
+                << getFormattedValue(descriptor.template read<Register, SpecificField>());
+
+        // print comma at the end of field unconditionally (even for the last field in a register)
+        // ex.:
+        // R0 {
+        //     F0,
+        //     F1,
+        // },
+        // the reason is mlir::AsmPrinter ignores whitespaces including newline characters
+        // if we print no commas and there're optional components in the Field format
+        // (e.g. required version), when you will check if version is there you will see
+        // name of the next field on the next line and fail with something like: got
+        // unexpected keyword "<F1-name>" instead of "requires"
+        printer << ',';
+    }
+
+    template <class Register, class Descriptor>
+    static std::optional<elf::Version> getVersion(const Descriptor& descriptor) {
+        std::optional<elf::Version> maybeFieldVersion;
+        if (descriptor.template read<Register, SpecificField>()) {
+            maybeFieldVersion = DEFAULT_VERSION;
+        }
+        return maybeFieldVersion;
+    }
+
+    template <class Register, class Descriptor>
+    static std::pair<mlir::ParseResult, std::ostringstream> parse(mlir::AsmParser& parser, Descriptor& descriptor) {
+        using namespace std::string_literals;
+        using ResultType = std::pair<mlir::ParseResult, std::ostringstream>;
+
+        if (std::string parsedType; parser.parseKeywordOrString(&parsedType).failed()) {
+            return ResultType{mlir::failure(), "failed to parse field name"s};
+        } else if (const auto maybeType = symbolizeRegFieldDataType(parsedType);
+                   !maybeType.has_value() || maybeType.value() != TYPE) {
+            return ResultType{mlir::failure(), std::ostringstream{"invalid field type \""}
+                                                       << parsedType << "\", expected " << stringifyEnum(TYPE).str()};
         }
 
-        if (std::string name; parser.parseKeywordOrString(&name).failed()) {
-            return mlir::failure();
-        } else if (name != Field::_name) {
-            parser.emitError(parser.getCurrentLocation())
-                    << "unknown field name \"" << name << "\", expected " << Field::_name;
-            return mlir::failure();
+        if (std::string parsedName; parser.parseKeywordOrString(&parsedName).failed()) {
+            return ResultType{mlir::failure(), "failed to parse field name"s};
+        } else if (parsedName != NAME) {
+            return ResultType{mlir::failure(),
+                              std::ostringstream{"invalid field name \""} << parsedName << "\", expected " << NAME};
         }
 
         if (parser.parseEqual().failed()) {
-            return mlir::failure();
+            return ResultType{mlir::failure(), "failed to parse '='"s};
         }
 
         auto value = uint64_t{};
         if (parser.parseInteger(value).failed()) {
-            return mlir::failure();
+            return ResultType{mlir::failure(), "failed to parse field value"s};
         }
 
-        const auto [status, maybeVersion] = parseVersion(parser);
-        if (status.failed()) {
-            return mlir::failure();
+        if (parser.parseComma().failed()) {
+            return ResultType{mlir::failure(), "failed to parse ','"s};
         }
 
-        if constexpr (index < fieldsCount - 1) {
-            if (parser.parseComma().failed()) {
-                return mlir::failure();
-            }
-        }
-
-        result.template write<Register, Field>(value);
-        return mlir::success();
+        descriptor.template write<Register, SpecificField>(value);
+        return ResultType{mlir::success(), ""s};
     }
 };
 
-template <class Register, size_t size = 1, size_t index = 0>
-struct RegisterPrinter {
+// The register level provides the opportunity to reuse field definitions
+// across multiple generations, making it worthwhile to preserve.
+template <class SpecificRegister, const char* name, size_t offsetInBytes, size_t sizeInBytes, class... FieldsPack>
+struct RegisterTemplate {
+    static constexpr auto NAME = std::string_view{name};
+    static constexpr auto OFFSET = vpux::Byte{offsetInBytes};
+    static constexpr auto SIZE = vpux::Byte{sizeInBytes};
+    // until C++26 there's no indexing of parameter pack
+    // use std::tuple and std::tuple_element_t to index pack
+    using Fields = std::tuple<FieldsPack...>;
+
     template <class Descriptor>
-    static auto call(mlir::AsmPrinter& printer, const Descriptor& descriptor) {
-        static_assert(contains<Descriptor, typename Register::Descriptors>::value,
-                      "Given descriptor doesn't contain this register");
+    static void print(mlir::AsmPrinter& printer, const Descriptor& descriptor) {
+        static_assert(Contains<SpecificRegister, typename Descriptor::Registers>::value);
 
         printer.printNewline();
 
-        constexpr auto bitSize = Register::_size.template to<vpux::Bit>();
+        constexpr auto bitSize = SIZE.template to<vpux::Bit>();
 
-        printer << Register::_name;
+        printer << NAME;
 
-        using FirstFieldType = std::tuple_element_t<0, typename Register::Fields>;
-        if constexpr (Register::_name == FirstFieldType::_name && bitSize == FirstFieldType::_size) {
-            printer << " = " << vpux::VPURegMapped::stringifyEnum(FirstFieldType::_type) << ' '
-                    << getFormattedValue(descriptor.template read<Register, FirstFieldType>());
+        using FirstFieldType = std::tuple_element_t<0, Fields>;
+        if constexpr (NAME == FirstFieldType::NAME && bitSize == FirstFieldType::SIZE) {
+            printer << " = " << vpux::VPURegMapped::stringifyEnum(FirstFieldType::TYPE) << ' '
+                    << getFormattedValue(descriptor.template read<SpecificRegister, FirstFieldType>());
+            // see Field printer for why comma is needed here
+            printer << ',';
         } else {
             printer << " {";
             printer.increaseIndent();
-            if (Mapper<typename Register::Fields, FieldPrinter, Register>::map(printer, descriptor).failed()) {
-                assert(false && "printer unexpectedly failed");
-            }
+            (FieldsPack::template print<SpecificRegister>(printer, descriptor), ...);
             printer.decreaseIndent();
             printer.printNewline();
             printer << "}";
         }
-
-        if constexpr (index < size - 1) {
-            printer << ',';
-        }
-
-        return mlir::success();
     }
-};
 
-template <class Register, size_t registersCount = 1, size_t index = 0>
-struct RegisterParser {
     template <class Descriptor>
-    static auto call(Descriptor& result, mlir::AsmParser& parser) {
-        if (std::string name; parser.parseKeywordOrString(&name).failed()) {
-            return mlir::failure();
-        } else if (name != Register::_name) {
-            parser.emitError(parser.getCurrentLocation())
-                    << "invalid register name \"" << name << "\", expected " << Register::_name;
+    static std::optional<elf::Version> getVersion(const Descriptor& descriptor) {
+        std::optional<elf::Version> maybeRegisterVersion;
+
+        (
+                [&] {
+                    const auto maybeFieldVersion = FieldsPack::template getVersion<SpecificRegister>(descriptor);
+                    if (maybeFieldVersion.has_value()) {
+                        maybeRegisterVersion = std::max(maybeRegisterVersion.value_or(maybeFieldVersion.value()),
+                                                        maybeFieldVersion.value());
+                    }
+                }(),
+                ...);
+
+        return maybeRegisterVersion;
+    }
+
+    template <class Descriptor>
+    static std::pair<mlir::ParseResult, std::ostringstream> parse(mlir::AsmParser& parser, Descriptor& descriptor) {
+        using namespace std::string_literals;
+        using ResultType = std::pair<mlir::ParseResult, std::ostringstream>;
+
+        if (std::string parsedName; parser.parseKeywordOrString(&parsedName).failed()) {
+            return ResultType{mlir::failure(), "failed to parse register name"s};
+        } else if (parsedName != NAME) {
+            return ResultType{mlir::failure(),
+                              std::ostringstream{"invalid register name \""} << name << "\", expected " << NAME};
         }
 
         StringRef keyword;
         if (parser.parseOptionalKeyword(&keyword).succeeded()) {
             if (keyword != "allowOverlap") {
-                parser.emitError(parser.getCurrentLocation())
-                        << "unknown keyword \"" << keyword << "\", expected \"allowOverlap\"";
-                return mlir::failure();
+                return ResultType{mlir::failure(), std::ostringstream{"unknown keyword \""}
+                                                           << keyword.str() << R"(", expected "allowOverlap")"};
             }
             // ignoring the keyword for now
         }
 
         if (parser.parseOptionalEqual().succeeded()) {
-            assert(std::tuple_size_v<typename Register::Fields> == 1);
-            using SingleFieldType = std::tuple_element_t<0, typename Register::Fields>;
+            assert(sizeof...(FieldsPack) == 1);
+            using SingleFieldType = std::tuple_element_t<0, Fields>;
 
             if (std::string type; parser.parseKeywordOrString(&type).failed()) {
-                return mlir::failure();
-            } else if (const auto maybeType =
-                               vpux::VPURegMapped::symbolizeEnum<vpux::VPURegMapped::RegFieldDataType>(type);
-                       !maybeType.has_value() || maybeType.value() != SingleFieldType::_type) {
-                parser.emitError(parser.getCurrentLocation())
-                        << "invalid field data type \"" << type << "\", expected "
-                        << vpux::VPURegMapped::stringifyRegFieldDataType(SingleFieldType::_type);
-                return mlir::failure();
+                return ResultType{mlir::failure(), "failed to parse field type"s};
+            } else if (const auto maybeType = symbolizeEnum<RegFieldDataType>(type);
+                       !maybeType.has_value() || maybeType.value() != SingleFieldType::TYPE) {
+                return ResultType{mlir::failure(), std::ostringstream{"invalid field data type \""}
+                                                           << type << "\", expected "
+                                                           << stringifyEnum(SingleFieldType::TYPE).str()};
             }
 
             auto value = uint64_t{};
             if (parser.parseInteger(value).failed()) {
-                return mlir::failure();
+                return ResultType{mlir::failure(), "failed to parse field value"s};
             }
 
-            const auto [parsingStatus, maybeVersion] = parseVersion(parser);
-            if (parsingStatus.failed()) {
-                return mlir::failure();
+            if (parser.parseComma().failed()) {
+                return ResultType{mlir::failure(), "failed to parse ','"s};
             }
 
-            result.template write<Register, SingleFieldType>(value);
+            descriptor.template write<SpecificRegister, SingleFieldType>(value);
         } else {
             if (parser.parseLBrace().failed()) {
-                return mlir::failure();
+                return ResultType{mlir::failure(), "failed to parse '{'"s};
             }
 
-            if (Mapper<typename Register::Fields, FieldParser, Register>::map(result, parser).failed()) {
-                return mlir::failure();
+            auto status = mlir::ParseResult::success();
+            std::ostringstream errorMessage;
+            ([&] {
+                std::tie(status, errorMessage) = FieldsPack::template parse<SpecificRegister>(parser, descriptor);
+                return status.succeeded();
+            }() &&
+             ...);
+
+            if (status.failed()) {
+                return ResultType{status, std::move(errorMessage)};
             }
 
             if (parser.parseRBrace().failed()) {
-                return mlir::failure();
+                return ResultType{mlir::failure(), "failed to parse '}'"s};
             }
         }
 
-        if constexpr (index < registersCount - 1) {
-            if (parser.parseComma().failed()) {
-                return mlir::failure();
-            }
-        }
-
-        return mlir::success();
+        return ResultType{mlir::success(), ""s};
     }
 };
 
 template <class Descriptor, const char* name, class... RegistersPack>
 class DescriptorTemplate {
 public:
-    static constexpr auto _name = std::string_view{name};
+    static constexpr auto NAME = std::string_view{name};
     using Registers = std::tuple<RegistersPack...>;
 
     DescriptorTemplate() {
-        storage.resize(Union<RegistersPack...>::size.count());
+        _storage.resize(Union<RegistersPack...>::SIZE.count());
     }
 
     size_t size() const {
-        return storage.size();
+        return _storage.size();
     }
 
     template <class Register, class Field, class U>
@@ -347,60 +334,59 @@ public:
         using ::vpux::VPURegMapped::RegFieldDataType;
         using namespace ::vpux::type;
 
-        static_assert(is_any_of<Field::_type, RegFieldDataType::SINT, RegFieldDataType::UINT, RegFieldDataType::FP,
-                                RegFieldDataType::BF>());
+        static_assert(isAnyOf<Field::TYPE, RegFieldDataType::SINT, RegFieldDataType::UINT, RegFieldDataType::FP,
+                              RegFieldDataType::BF>());
 
         // decay in case U is const or reference type, otherwise is_same would fail
         using X = std::decay_t<U>;
 
-        static_assert(contains<Register, Registers>::value, "Given register isn't a part of the descriptor");
-        static_assert(contains<Descriptor, typename Register::Descriptors>::value,
-                      "Given register isn't a part of the descriptor");
-        static_assert(contains<Register, typename Field::Registers>::value, "Given field isn't a part of the register");
+        static_assert(Contains<Register, Registers>::value, "Given register isn't a part of the descriptor");
+        static_assert(Contains<Field, typename Register::Fields>::value, "Given field isn't a part of the register");
 
-        constexpr auto size = Field::_size.count();
+        constexpr auto size = Field::SIZE.count();
 
         if constexpr (std::is_same_v<uint64_t, X>) {
             // uint64_t as argument is a special case since it's used by printer/parser
             // temporarily trust the input without checks and just forward bits to storage
             // E#137584
-            write<Register::_offset.count(), Field::_offset.count(), size>(userValue);
+            write<Register::OFFSET.count(), Field::OFFSET.count(), size>(userValue);
         } else if constexpr (std::is_floating_point_v<X> || std::is_same_v<float16, X> || std::is_same_v<bfloat16, X>) {
-            static_assert(is_floating_point<Field>, "floating-point value can be set to floating-point field only");
+            static_assert(IS_FLOATING_POINT<Field>, "floating-point value can be set to floating-point field only");
             if constexpr (std::is_floating_point_v<X>) {
-                static_assert(Field::_type == RegFieldDataType::FP,
+                static_assert(Field::TYPE == RegFieldDataType::FP,
                               "floating-point to bfloat conversion is unsupported");
-                static_assert(size == 64 || (size == 32 && std::is_same_v<float, X>), "value can't fit into field");
+                static_assert(size == FLOAT64_BIT_SIZE || (size == FLOAT32_BIT_SIZE && std::is_same_v<float, X>),
+                              "value can't fit into field");
             } else {
-                static_assert((std::is_same_v<float16, X> && Field::_type == RegFieldDataType::FP) ||
-                                      (std::is_same_v<bfloat16, X> && Field::_type == RegFieldDataType::BF),
+                static_assert((std::is_same_v<float16, X> && Field::TYPE == RegFieldDataType::FP) ||
+                                      (std::is_same_v<bfloat16, X> && Field::TYPE == RegFieldDataType::BF),
                               "floating-point/bfloat value and type mismatch");
-                static_assert(size == 16, "floating-point upcast for fp16 and bf16 is unsupported");
+                static_assert(size == FLOAT16_BIT_SIZE, "floating-point upcast for fp16 and bf16 is unsupported");
             }
 
-            if constexpr (size == 64) {
+            if constexpr (size == FLOAT64_BIT_SIZE) {
                 // upcast to double to handle float argument
-                write<Register::_offset.count(), Field::_offset.count(), size>(
+                write<Register::OFFSET.count(), Field::OFFSET.count(), size>(
                         llvm::bit_cast<uint64_t>(static_cast<double>(userValue)));
-            } else if constexpr (size == 32) {
-                write<Register::_offset.count(), Field::_offset.count(), size>(llvm::bit_cast<uint32_t>(userValue));
-            } else if constexpr (size == 16) {
-                write<Register::_offset.count(), Field::_offset.count(), size>(userValue.to_bits());
+            } else if constexpr (size == FLOAT32_BIT_SIZE) {
+                write<Register::OFFSET.count(), Field::OFFSET.count(), size>(llvm::bit_cast<uint32_t>(userValue));
+            } else if constexpr (size == FLOAT16_BIT_SIZE) {
+                write<Register::OFFSET.count(), Field::OFFSET.count(), size>(userValue.to_bits());
             }
         } else if constexpr (std::is_enum_v<X> || std::is_integral_v<X>) {
-            static_assert((!std::is_same_v<bool, X> && !std::is_enum_v<X>) || is_integral<Field>,
+            static_assert((!std::is_same_v<bool, X> && !std::is_enum_v<X>) || IS_INTEGRAL<Field>,
                           "bool or enum to floating-point field is unsupported");
 
             if constexpr (std::is_same_v<bool, X>) {
                 // no boundary check in case of bool value
                 // boundary check for bool emits warning bool is always less than 1
-                write<Register::_offset.count(), Field::_offset.count(), size>(userValue);
+                write<Register::OFFSET.count(), Field::OFFSET.count(), size>(userValue);
             } else {
                 [[maybe_unused]] constexpr auto max = getIntegralFieldMaxValue<Field>();
                 // to cover both enum and not enum cases
                 using BackboneT = typename TypeExtractor<X>::type;
 
-                if constexpr (std::is_unsigned_v<BackboneT> || Field::_type == RegFieldDataType::UINT) {
+                if constexpr (std::is_unsigned_v<BackboneT> || Field::TYPE == RegFieldDataType::UINT) {
                     assert(static_cast<uint64_t>(userValue) <= max);
                 } else {
                     // avoid cast to uint64_t if value maybe negative
@@ -413,13 +399,13 @@ public:
                     assert(static_cast<int64_t>(userValue) >= getIntegralFieldMinValue<Field>());
                 }
 
-                if constexpr (Field::_type == RegFieldDataType::SINT) {
+                if constexpr (Field::TYPE == RegFieldDataType::SINT) {
                     const auto bitCasted = llvm::bit_cast<uint64_t>(static_cast<int64_t>(userValue));
                     // mask before writing in case if value was negative due to 2's complement format
-                    const auto masked = bitCasted & getBitsSet<Field::_size.count()>();
-                    write<Register::_offset.count(), Field::_offset.count(), size>(masked);
+                    const auto masked = bitCasted & getBitsSet<Field::SIZE.count()>();
+                    write<Register::OFFSET.count(), Field::OFFSET.count(), size>(masked);
                 } else {
-                    write<Register::_offset.count(), Field::_offset.count(), size>(static_cast<uint64_t>(userValue));
+                    write<Register::OFFSET.count(), Field::OFFSET.count(), size>(static_cast<uint64_t>(userValue));
                 }
             }
         } else {
@@ -438,16 +424,15 @@ public:
     uint64_t read() const {
         // see write implementation about part0, part1 and part2 patterns
 
-        static_assert(contains<Descriptor, typename Register::Descriptors>::value,
-                      "Given register isn't a part of the descriptor");
-        static_assert(contains<Register, typename Field::Registers>::value, "Given field isn't a part of the register");
+        static_assert(Contains<Register, Registers>::value, "Given register isn't a part of the descriptor");
+        static_assert(Contains<Field, typename Register::Fields>::value, "Given field isn't a part of the register");
 
-        // don't convert Field::_offset from Bit to Byte via to<vpux::Byte> as it'll throw
-        // if Field::_offset isn't divisible by CHAR_BIT
-        const auto address = storage.data() + Register::_offset.count() + Field::_offset.count() / CHAR_BIT;
-        constexpr auto inByteFieldOffset = Field::_offset.count() % CHAR_BIT;
-        constexpr auto part0Size = std::min(Field::_size.count(), CHAR_BIT - inByteFieldOffset);
-        constexpr auto part1n2Size = Field::_size.count() - part0Size;
+        // don't convert Field::OFFSET from Bit to Byte via to<vpux::Byte> as it'll throw
+        // if Field::OFFSET isn't divisible by CHAR_BIT
+        const auto address = _storage.data() + Register::OFFSET.count() + Field::OFFSET.count() / CHAR_BIT;
+        constexpr auto inByteFieldOffset = Field::OFFSET.count() % CHAR_BIT;
+        constexpr auto part0Size = std::min(Field::SIZE.count(), CHAR_BIT - inByteFieldOffset);
+        constexpr auto part1n2Size = Field::SIZE.count() - part0Size;
 
         auto value = uint64_t{};
         if constexpr (part0Size != 0) {
@@ -456,18 +441,18 @@ public:
             value |= part0Value;
         }
 
-        constexpr auto part2Size = part1n2Size % 8;
+        constexpr auto part2Size = part1n2Size % CHAR_BIT;
         constexpr auto part1Size = part1n2Size - part2Size;
-        static_assert(part1Size % 8 == 0);
+        static_assert(part1Size % CHAR_BIT == 0);
         // seems like some compilers (e.g. clang) may complain variable isn't used
         // if both "if constexpr" below evaluate to false
         [[maybe_unused]] constexpr auto part0ByteOffset = size_t{1};
-        [[maybe_unused]] constexpr auto part1ByteCount = part1Size / 8;
+        [[maybe_unused]] constexpr auto part1ByteCount = part1Size / CHAR_BIT;
 
         if constexpr (part1Size != 0) {
             for (size_t i = 0; i < part1ByteCount; ++i) {
                 const auto part1Value = static_cast<uint64_t>(address[part0ByteOffset + i]);
-                value |= part1Value << (part0Size + i * 8);
+                value |= part1Value << (part0Size + i * CHAR_BIT);
             }
         }
 
@@ -490,23 +475,21 @@ public:
     bool operator==(const Descriptor& rhs) const {
         // no need to take into account custom versions
         // if values are the same, version will be as well
-        return storage == rhs.storage;
+        return _storage == rhs._storage;
     }
 
     llvm::ArrayRef<uint8_t> getStorage() const {
-        return storage;
+        return _storage;
     }
 
     void print(mlir::AsmPrinter& printer) const {
         printer << '<';
         printer.increaseIndent();
         printer.printNewline();
-        printer << _name << " {";
+        printer << NAME << " {";
         printer.increaseIndent();
 
-        if (Mapper<Registers, RegisterPrinter>::map(printer, static_cast<const Descriptor&>(*this)).failed()) {
-            assert(false && "printer unexpectedly failed");
-        }
+        (RegistersPack::print(printer, static_cast<const Descriptor&>(*this)), ...);
 
         printer.decreaseIndent();
         printer.printNewline();
@@ -530,9 +513,9 @@ public:
 
         if (std::string parsedName; parser.parseKeywordOrString(&parsedName).failed()) {
             return {};
-        } else if (parsedName != Descriptor::_name) {
+        } else if (parsedName != Descriptor::NAME) {
             parser.emitError(parser.getCurrentLocation())
-                    << "invalid descriptor name \"" << parsedName << "\", expected " << Descriptor::_name;
+                    << "invalid descriptor name \"" << parsedName << "\", expected " << Descriptor::NAME;
             return {};
         }
 
@@ -542,7 +525,16 @@ public:
             return {};
         }
 
-        if (Mapper<typename Descriptor::Registers, RegisterParser>::map(result, parser).failed()) {
+        auto status = mlir::ParseResult::success();
+        std::ostringstream errorMessage;
+        ([&] {
+            std::tie(status, errorMessage) = RegistersPack::parse(parser, result);
+            return status.succeeded();
+        }() &&
+         ...);
+
+        if (status.failed()) {
+            parser.emitError(parser.getCurrentLocation()) << errorMessage.str();
             return {};
         }
 
@@ -550,8 +542,8 @@ public:
             return {};
         }
 
-        const auto [status, maybeVersion] = parseVersion(parser);
-        if (status.failed()) {
+        const auto [versionParsing, maybeVersion] = parseVersion(parser);
+        if (versionParsing.failed()) {
             return {};
         }
 
@@ -563,18 +555,22 @@ public:
     }
 
     std::optional<elf::Version> getDescriptorVersion() const {
-        std::optional<elf::Version> maxVersion;
+        std::optional<elf::Version> maybeDescriptorVersion;
 
-        if (Mapper<typename Descriptor::Registers, RegisterVersion>::map(maxVersion,
-                                                                         static_cast<const Descriptor&>(*this))
-                    .failed()) {
-            return std::nullopt;
-        }
+        (
+                [&] {
+                    const auto maybeRegisterVersion = RegistersPack::getVersion(static_cast<const Descriptor&>(*this));
+                    if (maybeRegisterVersion.has_value()) {
+                        maybeDescriptorVersion = std::max(maybeDescriptorVersion.value_or(maybeRegisterVersion.value()),
+                                                          maybeRegisterVersion.value());
+                    }
+                }(),
+                ...);
 
-        return maxVersion;
+        return maybeDescriptorVersion;
     }
 
-    llvm::hash_code hash_value() const {
+    llvm::hash_code hashValue() const {
         return llvm::hash_value(getStorage());
     }
 
@@ -620,7 +616,9 @@ private:
         // function basically matches P0, P1 and P2 in the value with corresponding positions
         // in the descriptor
 
-        auto address = storage.data() + registerOffsetInBytes + fieldOffsetInBits / CHAR_BIT;
+        // NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic): pointer arithmetic is required by algorithm
+
+        auto address = _storage.data() + registerOffsetInBytes + fieldOffsetInBits / CHAR_BIT;
         constexpr auto inByteFieldOffset = fieldOffsetInBits % CHAR_BIT;
         constexpr auto part0Size = std::min(fieldSizeInBits, CHAR_BIT - inByteFieldOffset);
         constexpr auto part1n2Size = fieldSizeInBits - part0Size;
@@ -637,7 +635,7 @@ private:
 
         constexpr auto part2Size = part1n2Size % 8;
         constexpr auto part1Size = part1n2Size - part2Size;
-        static_assert(part1Size % 8 == 0);
+        static_assert(part1Size % CHAR_BIT == 0);
         [[maybe_unused]] constexpr auto part0ByteOffset = size_t{1};
         [[maybe_unused]] constexpr auto part1ByteCount = part1Size / 8;
 
@@ -655,15 +653,18 @@ private:
 
             for (size_t i = 0; i < part1ByteCount; ++i) {
                 address[part0ByteOffset + i] = static_cast<uint8_t>(value);
-                value >>= 8;
+                value >>= CHAR_BIT;
             }
         }
+
+        // NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     }
 
     template <size_t size>
     static constexpr uint64_t getBitsSet() {
-        static_assert(size <= 64, "No support for more than 64 bits");
-        if constexpr (size == 64) {
+        constexpr auto maxBitSize = sizeof(uint64_t) * CHAR_BIT;
+        static_assert(size <= maxBitSize, "No support for more than 64 bits");
+        if constexpr (size == maxBitSize) {
             return llvm::bit_cast<uint64_t>(int64_t{-1});
         } else {
             return (uint64_t{1} << size) - 1;
@@ -674,22 +675,23 @@ private:
     // uint64_t and int64_t
     template <class Field>
     static constexpr uint64_t getIntegralFieldMaxValue() {
-        static_assert(Field::_size.count() <= 64, "No support for more than 64 bits");
-        static_assert(is_integral<Field>, "No support for non-integral types");
+        constexpr auto maxBitSize = sizeof(uint64_t) * CHAR_BIT;
+        static_assert(Field::SIZE.count() <= maxBitSize, "No support for more than 64 bits");
+        static_assert(IS_INTEGRAL<Field>, "No support for non-integral types");
 
         using ::vpux::VPURegMapped::RegFieldDataType;
 
-        if constexpr (Field::_size.count() == 64) {
-            if constexpr (Field::_type == RegFieldDataType::UINT) {
+        if constexpr (Field::SIZE.count() == maxBitSize) {
+            if constexpr (Field::TYPE == RegFieldDataType::UINT) {
                 return std::numeric_limits<uint64_t>::max();
             } else {
                 return uint64_t{std::numeric_limits<int64_t>::max()};
             }
         } else {
-            if constexpr (Field::_type == RegFieldDataType::UINT) {
-                return getBitsSet<Field::_size.count()>();
+            if constexpr (Field::TYPE == RegFieldDataType::UINT) {
+                return getBitsSet<Field::SIZE.count()>();
             } else {
-                return getBitsSet<Field::_size.count() - 1>();
+                return getBitsSet<Field::SIZE.count() - 1>();
             }
         }
     }
@@ -698,10 +700,11 @@ private:
     // uint64_t and int64_t
     template <class Field>
     static constexpr int64_t getIntegralFieldMinValue() {
-        static_assert(Field::_size.count() <= 64, "No support for more than 64 bits");
-        static_assert(is_integral<Field>, "No support for non-integral types");
+        constexpr auto maxBitSize = sizeof(uint64_t) * CHAR_BIT;
+        static_assert(Field::SIZE.count() <= maxBitSize, "No support for more than 64 bits");
+        static_assert(IS_INTEGRAL<Field>, "No support for non-integral types");
 
-        if constexpr (Field::_type == ::vpux::VPURegMapped::RegFieldDataType::UINT) {
+        if constexpr (Field::TYPE == ::vpux::VPURegMapped::RegFieldDataType::UINT) {
             return 0;
         } else {
             // conversion to int64_t here is safe since Field is signed
@@ -709,12 +712,14 @@ private:
         }
     }
 
-    mlir::SmallVector<std::uint8_t> storage;
+    mlir::SmallVector<std::uint8_t> _storage;
 };
 
 template <class Descriptor>
+// NOLINTNEXTLINE(readability-identifier-naming): hash_value is required by MLIR
 llvm::hash_code hash_value(const Descriptor& descriptor) {
-    return descriptor.hash_value();
+    return descriptor.hashValue();
 }
 
+}  // namespace
 }  // namespace vpux::VPURegMapped::detail

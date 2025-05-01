@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
@@ -13,6 +14,7 @@
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
@@ -56,15 +58,15 @@ mlir::LogicalResult FusePermuteQuantizeBase::matchAndRewrite(IE::ReorderOp origO
     }
 
     auto opNce = *origOp.getOutput().getUsers().begin();
-    const auto inType = opNce->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto outType = opNce->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (!(inType.isF16() && outType.isa<mlir::quant::QuantizedType>())) {
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(opNce->getOperand(0).getType()).getElementType();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(opNce->getResult(0).getType()).getElementType();
+    if (!(inType.isF16() && mlir::isa<mlir::quant::QuantizedType>(outType))) {
         return mlir::failure();
     }
 
     // check uniform quantize
-    const auto qType = outType.cast<mlir::quant::QuantizedType>();
-    if (!qType.isa<mlir::quant::UniformQuantizedType>()) {
+    const auto qType = mlir::cast<mlir::quant::QuantizedType>(outType);
+    if (!mlir::isa<mlir::quant::UniformQuantizedType>(qType)) {
         return mlir::failure();
     }
 
@@ -79,8 +81,8 @@ mlir::LogicalResult FusePermuteQuantizeBase::matchAndRewrite(IE::ReorderOp origO
         return mlir::failure();
     }
 
-    const auto iExpType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto oExpType = opNce->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto iExpType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto oExpType = mlir::cast<vpux::NDTypeInterface>(opNce->getResult(0).getType());
     if (!((iExpType.getRank() == 4) && (oExpType.getRank() == 4))) {
         return mlir::failure();
     }
@@ -108,7 +110,7 @@ mlir::LogicalResult FusePermuteQuantizeBase::matchAndRewrite(IE::ReorderOp origO
     const auto& ctx = origOp.getContext();
 
     auto permQuantOutType = getNceOutType(opNce);
-    const auto permQuantElemType = permQuantOutType.cast<vpux::NDTypeInterface>().getElementType();
+    const auto permQuantElemType = mlir::cast<vpux::NDTypeInterface>(permQuantOutType).getElementType();
     const auto dstElemTypeAttr = mlir::TypeAttr::get(permQuantElemType);
     const auto permQuantLoc = appendLoc(origOp->getLoc(), "PermuteQuantize");
     auto permuteQuantizeOp = rewriter.create<IE::PermuteQuantizeOp>(
@@ -196,14 +198,14 @@ void FusePermuteQuantizeForAvgPool::replaceByNewOp(mlir::Operation* opNce, mlir:
 }
 
 bool FusePermuteQuantizeBase::isCompatibleWithDPU(mlir::Type addInput, mlir::Type addOutput) const {
-    auto inType = addInput.cast<vpux::NDTypeInterface>();
-    auto outType = addOutput.cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(addInput);
+    auto outType = mlir::cast<vpux::NDTypeInterface>(addOutput);
     const auto inElemType = inType.getElementType();
     if (!inElemType.isF16()) {
         return false;
     }
     const auto outElemType = outType.getElementType();
-    if (!outElemType.isF16() && !outElemType.isa<mlir::quant::UniformQuantizedType>()) {
+    if (!outElemType.isF16() && !mlir::isa<mlir::quant::UniformQuantizedType>(outElemType)) {
         return false;
     }
     const ShapeRef inShape = inType.getShape();

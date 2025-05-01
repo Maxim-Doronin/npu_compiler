@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@ mlir::LogicalResult vpux::VPU::NonMaxSuppressionOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inType = nms.getInBoxScores().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(nms.getInBoxScores().getType());
     const auto sInt32Type = inType.changeElemType(mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed));
 
     int64_t maxOutputBoxesPerClass = nms.getMaxOutputBoxesPerClassValueAttr().getValue().getSExtValue();

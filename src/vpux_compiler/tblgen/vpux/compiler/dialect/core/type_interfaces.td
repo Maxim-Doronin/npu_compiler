@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -172,31 +172,6 @@ def GroupedTypeInterface : TypeInterface<"GroupedTypeInterface"> {
     }];
 
     let cppNamespace = "vpux";
-}
-
-//
-// BoundedTypeInterface
-//
-
-def BoundedTypeInterface :
-        TypeInterface<
-            "BoundedTypeInterface"
-        > {
-    let description = [{
-        Interface for extracting, setting and changing upper bounds for bounded dynamism support.
-    }];
-
-    let cppNamespace = "vpux";
-    let methods = [
-        InterfaceMethod<
-            "Returns upper bounds for a dynamic shape",
-            "mlir::ArrayAttr", "getBounds", (ins)
-        >,
-        InterfaceMethod<
-            "Returns the type with new upper bounds",
-            "vpux::BoundedTypeInterface", "changeBounds", (ins "mlir::ArrayAttr":$bounds)
-        >
-    ];
 }
 
 #endif

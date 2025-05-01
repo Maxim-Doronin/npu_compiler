@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,12 +12,13 @@
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/allocate_buffers.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h>
 using namespace vpux;
@@ -49,7 +50,7 @@ std::pair<mlir::DenseSet<size_t>, mlir::DenseSet<size_t>> getOptimalCMXPlacement
 
     SmallVector<Byte> ioCmxSizes;
     for (const auto& val : mergedVals) {
-        ioCmxSizes.push_back(val.getType().cast<vpux::NDTypeInterface>().getTotalAllocSize());
+        ioCmxSizes.push_back(mlir::cast<vpux::NDTypeInterface>(val.getType()).getTotalAllocSize());
     }
 
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? VPU::getTotalCMXSize(module).count()
@@ -101,7 +102,7 @@ std::pair<mlir::DenseSet<size_t>, mlir::DenseSet<size_t>> getOptimalCMXPlacement
         SmallVector<Byte> bufferSizes;
         bufferSizes.reserve(idxVec.size());
         for (const auto& idx : idxVec) {
-            bufferSizes.push_back(mergedVals[idx].getType().cast<vpux::NDTypeInterface>().getTotalAllocSize());
+            bufferSizes.push_back(mlir::cast<vpux::NDTypeInterface>(mergedVals[idx].getType()).getTotalAllocSize());
         }
         p.second = vpux::calculateAlignedBuffersMemoryRequirement(bufferSizes, defaultCMXOffsetAlignment,
                                                                   defaultCMXSizeAlignment)
@@ -231,7 +232,7 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
         cmxOperands.reserve(swKernelOperands.size());
         if (idxForCMX.first.size() != swKernelOp.getInputs().size()) {
             for (const auto& operand : swKernelOperands) {
-                if (operand.getType().cast<vpux::NDTypeInterface>().getMemSpace() == memSpaceCMX) {
+                if (mlir::cast<vpux::NDTypeInterface>(operand.getType()).getMemSpace() == memSpaceCMX) {
                     cmxOperands.push_back(operand);
                 } else {
                     const auto outputBuffer = allocateBuffer(log, operand.getLoc(), rewriter, operand, memSpaceCMX);
@@ -248,9 +249,9 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
         if (idxForCMX.second.size() != swKernelOp.getResults().size()) {
             for (const auto& result : swKernelResults) {
                 cmxResults.push_back(result);
-                if (result.getType().cast<vpux::NDTypeInterface>().getMemSpace() != memSpaceCMX) {
+                if (mlir::cast<vpux::NDTypeInterface>(result.getType()).getMemSpace() != memSpaceCMX) {
                     cmxResults.back().setType(
-                            result.getType().cast<vpux::NDTypeInterface>().changeMemSpace(memSpaceCMX));
+                            mlir::cast<vpux::NDTypeInterface>(result.getType()).changeMemSpace(memSpaceCMX));
                 }
             }
         } else {
@@ -287,7 +288,7 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
 
     SmallVector<mlir::Value> finalResults;
     for (auto&& result : swKernelOp.getResults()) {
-        if (result.getType().cast<vpux::NDTypeInterface>().getMemSpace() == memSpaceCMX) {
+        if (mlir::cast<vpux::NDTypeInterface>(result.getType()).getMemSpace() == memSpaceCMX) {
             // Copy outputs that were mapped to CMX back to DDR
             log.trace("Create DDR buffer for output: {0}", result.getLoc());
             const auto outputBuffer = allocateBuffer(log, op->getLoc(), rewriter, result, nullptr);
@@ -304,12 +305,12 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
 }
 
 //
-// bufferizeSWLayerOpInNceClusterTiling
+// bufferizeDistributedSWLayerOp
 //
 
-mlir::LogicalResult vpux::bufferizeSWLayerOpInNceClusterTiling(mlir::RewriterBase& rewriter, mlir::ModuleOp module,
-                                                               mlir::Operation* op, ArrayRef<mlir::Value> newOperands,
-                                                               vpux::Logger log) {
+mlir::LogicalResult vpux::bufferizeDistributedSWLayerOp(mlir::RewriterBase& rewriter, mlir::ModuleOp module,
+                                                        mlir::Operation* op, ArrayRef<mlir::Value> newOperands,
+                                                        vpux::Logger log) {
     auto layerOp = mlir::cast<VPU::LayerOpInterface>(op);
     auto swLayerOp = mlir::cast<VPUIP::SoftwareLayerOpInterface>(op);
 
@@ -317,7 +318,7 @@ mlir::LogicalResult vpux::bufferizeSWLayerOpInNceClusterTiling(mlir::RewriterBas
 
     auto outputBuffers = allocateBuffers(log, op->getLoc(), rewriter, op->getResults(),
                                          /*individualBuffers=*/true);
-    // actual tile index will be corrected as part of unroll NCEClusterTiling pass, this index will be dropped
+    // The actual tile index will be corrected as part of unroll NCEClusterTiling pass; this index will be dropped
     const int64_t tileIndex = 0;
     auto genericSwLayerOp = mlir::dyn_cast<VPU::GenericSwLayerOp>(op);
     auto builtInFunction = genericSwLayerOp ? genericSwLayerOp.getCallee()
@@ -345,8 +346,8 @@ public:
 };
 
 bool isLegalConcatOp(VPU::ConcatOp concatOp) {
-    const auto outputType = concatOp.getOutput().getType().cast<vpux::NDTypeInterface>();
-    return outputType.getShape().isStatic();
+    auto outType = concatOp.getOutput().getType();
+    return !mlir::isa<Core::DynamicDimsMaskTensorType>(outType);
 }
 
 mlir::LogicalResult ConcatOpBufferizeModel::bufferizeImpl(VPU::ConcatOp origOp, mlir::RewriterBase& rewriter,
@@ -432,9 +433,10 @@ public:
 };
 
 bool isLegalPermuteCastOp(VPU::PermuteCastOp op) {
-    const auto inputShape = getShape(op.getInput());
-    const auto outputShape = getShape(op.getOutput());
-    return inputShape.isStatic() && outputShape.isStatic();
+    const auto inputType = op.getInput().getType();
+    const auto outputType = op.getOutput().getType();
+    return !mlir::isa<Core::DynamicDimsMaskTensorType>(inputType) &&
+           !mlir::isa<Core::DynamicDimsMaskTensorType>(outputType);
 }
 
 mlir::LogicalResult PermuteCastOpBufferizeModel::bufferizeImpl(VPU::PermuteCastOp origOp, mlir::RewriterBase& rewriter,
@@ -592,6 +594,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::EmbeddingBagOffsetsSumOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::EmbeddingBagOffsetsSumOp>>(
                 *ctx);
         VPU::GRUSequenceOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GRUSequenceOp>>(*ctx);
+        VPU::GRUGatesOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GRUGatesOp>>(*ctx);
         VPU::EmbeddingBagPackedSumOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::EmbeddingBagPackedSumOp>>(
                 *ctx);
         VPU::GRUSequenceFirstPartOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GRUSequenceFirstPartOp>>(*ctx);
@@ -635,6 +638,8 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::PopulateWeightTableOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::PopulateWeightTableOp>>(*ctx);
         VPU::GenericSwLayerOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GenericSwLayerOp>>(*ctx);
         VPU::RoPEOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::RoPEOp>>(*ctx);
+        VPU::SDPAOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::SDPAOp>>(*ctx);
+        VPU::DynamicDataMaskOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicDataMaskOp>>(*ctx);
     });
     mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
 }

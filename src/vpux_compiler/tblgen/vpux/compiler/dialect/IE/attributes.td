@@ -9,6 +9,7 @@
 include "mlir/IR/OpBase.td"
 include "vpux/compiler/dialect/core/attributes.td"
 include "vpux/compiler/dialect/IE/dialect.td"
+include "vpux/compiler/dialect/IE/attr_interfaces.td"
 include "vpux/compiler/dialect/core/type_interfaces.td"
 
 //
@@ -522,15 +523,75 @@ def IE_RNNSequenceDirectionAttr : IE_EnumAttr<IE_RNNSequenceDirection, "rnn_seq_
 // PostOp
 //
 
-def IE_PostOpAttr : IE_Attr<"PostOp"> {
-    let parameters = (ins
-        "mlir::StringAttr":$name,
-        "mlir::DictionaryAttr":$attrs
-    );
+class IE_PostOpAttrBase<Pred condition, string summary> : Attr<condition, summary> {
+    let storageType = [{ vpux::IE::PostOpAttr }];
+    let returnType = [{ vpux::IE::PostOpAttr }];
+    let convertFromStorage = "$_self";
+}
 
-    let extraClassDeclaration = [{
-        bool isChannelAgnostic() const;
-    }];
+def IE_PostOpAttr : IE_PostOpAttrBase<CPred<"mlir::isa<vpux::IE::PostOpAttr>($_self)">,
+                                      "Post-Op Attribute"> {
+    string cppType = "vpux::IE::PostOpAttr";
+}
+
+def IE_ReluAttr : IE_Attr<"Relu", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
+        IE_ChannelAgnosticAttr
+    ] > {
+}
+
+def IE_ClampAttr : IE_Attr<"Clamp", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
+        IE_ChannelAgnosticAttr
+    ] > {
+    let parameters = (ins
+        "mlir::FloatAttr":$min,
+        "mlir::FloatAttr":$max
+    );
+}
+
+def IE_LeakyReluAttr : IE_Attr<"LeakyRelu", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
+        IE_ChannelAgnosticAttr
+    ] > {
+    let parameters = (ins
+        "mlir::FloatAttr":$negative_slope
+    );
+}
+
+def IE_PReluAttr : IE_Attr<"PRelu", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>
+    ] > {
+    let parameters = (ins
+        "mlir::ArrayAttr":$negative_slope
+    );
+}
+
+def IE_TanhAttr : IE_Attr<"Tanh", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
+        IE_ChannelAgnosticAttr
+    ] > {
+}
+
+def IE_SigmoidAttr : IE_Attr<"Sigmoid", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
+        IE_ChannelAgnosticAttr
+    ] > {
+}
+
+def IE_SwishAttr : IE_Attr<"Swish", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
+        IE_ChannelAgnosticAttr
+    ] > {
+    let parameters = (ins
+        "mlir::FloatAttr":$beta
+    );
+}
+
+def IE_GeluAttr : IE_Attr<"Gelu", [
+        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
+        IE_ChannelAgnosticAttr
+    ] > {
 }
 
 //
@@ -710,7 +771,6 @@ def IE_ScatterElementsUpdateReductionType :
 }
 
 def IE_ScatterElementsUpdateReductionTypeAttr : IE_EnumAttr<IE_ScatterElementsUpdateReductionType, "scatter_elements_update_reduction_type">;
-
 
 //
 // PortMapAttr

@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <mlir/Transforms/DialectConversion.h>
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
@@ -122,7 +123,7 @@ bool doesSliceMeetRequirement(IE::SliceOp sliceOp, IE::TileOp tileOp, ArrayRef<i
 }
 
 bool doesTransposeMeetRequirement(IE::TransposeOp transposeOp, ArrayRef<int64_t> mergeDim) {
-    const auto inType = transposeOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(transposeOp.getInput().getType());
     const auto inOrder = inType.getDimsOrder();
     const auto orderAttr = transposeOp.getOrderValueAttr();
     const auto transposeOrder = DimsOrder::fromAffineMap(orderAttr.getValue());

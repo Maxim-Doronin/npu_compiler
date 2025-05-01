@@ -1,10 +1,10 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace type {
@@ -94,34 +94,38 @@ mlir::Type QuantileFloatType::parse(mlir::AsmParser& parser) {
     return getQuantileFloat(parser.getContext(), width, quantiles);
 }
 
+const SmallVector<double> NF4Type::specQuantiles{-1.0,
+                                                 -0.6961928009986877,
+                                                 -0.5250730514526367,
+                                                 -0.39491748809814453,
+                                                 -0.28444138169288635,
+                                                 -0.18477343022823334,
+                                                 -0.09105003625154495,
+                                                 0.0,
+                                                 0.07958029955625534,
+                                                 0.16093020141124725,
+                                                 0.24611230194568634,
+                                                 0.33791524171829224,
+                                                 0.44070982933044434,
+                                                 0.5626170039176941,
+                                                 0.7229568362236023,
+                                                 1.0};
+
 NF4Type NF4Type::get(mlir::MLIRContext* ctx, unsigned width, ArrayRef<double> quantiles) {
     if (!quantiles.empty()) {
         VPUX_THROW_UNLESS(quantiles.size() == std::pow(2, width), "quantiles array size needs to be equal to 2^width");
         return Base::get(ctx, width, quantiles);
     }
 
-    SmallVector<double> defaultQuantiles{-1.0f,
-                                         -0.6961928009986877f,
-                                         -0.5250730514526367f,
-                                         -0.39491748809814453f,
-                                         -0.28444138169288635f,
-                                         -0.18477343022823334f,
-                                         -0.09105003625154495f,
-                                         0.0f,
-                                         0.07958029955625534f,
-                                         0.16093020141124725f,
-                                         0.24611230194568634f,
-                                         0.33791524171829224f,
-                                         0.44070982933044434f,
-                                         0.5626170039176941f,
-                                         0.7229568362236023f,
-                                         1.0f};
-
-    return Base::get(ctx, width, defaultQuantiles);
+    return Base::get(ctx, width, NF4Type::specQuantiles);
 }
 
 unsigned NF4Type::getWidth() const {
     return 4;
+}
+
+ArrayRef<double> NF4Type::getSpecQuantiles() {
+    return NF4Type::specQuantiles;
 }
 
 ArrayRef<double> NF4Type::getQuantiles() const {

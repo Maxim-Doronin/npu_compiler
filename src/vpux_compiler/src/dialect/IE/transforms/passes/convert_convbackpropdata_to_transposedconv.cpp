@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -72,7 +74,7 @@ mlir::LogicalResult ConvolutionBackpropDataConversion::matchAndRewrite(IE::Convo
     auto filterOp = filterTensor.getDefiningOp<Const::DeclareOp>();
     if (filterOp == nullptr) {
         // Create transposeOp
-        auto filterTensorType = filterTensor.getType().cast<NDTypeInterface>();
+        auto filterTensorType = mlir::cast<vpux::NDTypeInterface>(filterTensor.getType());
         auto permutation = to_small_vector(filterTensorType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
                                                return checked_cast<uint32_t>(dim.ind());
                                            }));
@@ -94,8 +96,9 @@ mlir::LogicalResult ConvolutionBackpropDataConversion::matchAndRewrite(IE::Convo
         rewriter.replaceOpWithNewOp<IE::TransposedConvolutionOp>(
                 origOp, origOp.getInput(), newFilter, origOp.getOutputShape(), /*bias*/ nullptr,
                 origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-                origOp.getOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr, /*output_channels=*/nullptr,
-                /*input_channels=*/nullptr);
+                origOp.getSpatialOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr,
+                /*outputPadding=*/nullptr,
+                /*inputPadding=*/nullptr);
 
         return mlir::success();
     }
@@ -116,7 +119,7 @@ mlir::LogicalResult ConvolutionBackpropDataConversion::matchAndRewrite(IE::Convo
         return DimsOrder::fromPermutation(permutation);
     };
 
-    auto filterType = filterOp.getType().cast<NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(filterOp.getType());
     auto newDimsOrder = getNewFilterDimsOrder(filterType.getRank());
     auto filterDimOC = Dim(1);
     auto contentAttr = filterOp.transformContentAttr().reverse(filterDimOC).transpose(newDimsOrder).get();
@@ -130,7 +133,7 @@ mlir::LogicalResult ConvolutionBackpropDataConversion::matchAndRewrite(IE::Convo
     newFilter = newFilterConstant.getOutput();
 
     const auto transposeFqInput = [&](mlir::Value fqInput, StringRef locSuffix) -> mlir::Value {
-        auto fqInputType = fqInput.getType().cast<NDTypeInterface>();
+        auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
         if (fqInputType.getNumElements() == 1) {
             return fqInput;
         }
@@ -165,8 +168,8 @@ mlir::LogicalResult ConvolutionBackpropDataConversion::matchAndRewrite(IE::Convo
     rewriter.replaceOpWithNewOp<IE::TransposedConvolutionOp>(
             origOp, origOp.getInput(), newFilter, origOp.getOutputShape(), /*bias*/ nullptr, origOp.getStridesAttr(),
             origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-            origOp.getOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr, /*output_channels=*/nullptr,
-            /*input_channels=*/nullptr);
+            origOp.getSpatialOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
+            /*inputPadding=*/nullptr);
 
     return mlir::success();
 }
@@ -234,7 +237,7 @@ mlir::LogicalResult GroupConvolutionBackpropDataConversion::matchAndRewrite(IE::
         }
         return DimsOrder::fromPermutation(permutation);
     };
-    auto filterType = filterOp.getType().cast<NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(filterOp.getType());
     auto newDimsOrder = getNewFilterDimsOrder(filterType.getRank());
     auto filterDimOC = Dim(2);
     auto contentAttr = filterOp.transformContentAttr().reverse(filterDimOC).transpose(newDimsOrder).get();
@@ -249,7 +252,7 @@ mlir::LogicalResult GroupConvolutionBackpropDataConversion::matchAndRewrite(IE::
     auto newFilter = newFilterConstant.getOutput();
 
     const auto transposeFqInput = [&](mlir::Value fqInput, StringLiteral locSuffix) -> mlir::Value {
-        auto fqInputType = fqInput.getType().cast<NDTypeInterface>();
+        auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
         if (fqInputType.getNumElements() == 1) {
             return fqInput;
         }
@@ -285,8 +288,8 @@ mlir::LogicalResult GroupConvolutionBackpropDataConversion::matchAndRewrite(IE::
     rewriter.replaceOpWithNewOp<IE::GroupTransposedConvolutionOp>(
             origOp, origOp.getInput(), newFilter, origOp.getOutputShape(), origOp.getStridesAttr(),
             origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-            origOp.getOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr, /*outputChannels=*/nullptr,
-            /*outputChannels=*/nullptr);
+            origOp.getSpatialOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
+            /*inputPadding=*/nullptr);
 
     return mlir::success();
 }

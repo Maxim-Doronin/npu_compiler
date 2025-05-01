@@ -50,7 +50,7 @@ void insertProposalBuffer(Logger& log, VPU::ProposalOp origOp) {
 
     constexpr int32_t proposalBoxSize = 10;         // see: sw_runtime_kernels/kernels/src/proposal.cpp (proposalBox)
     constexpr int32_t anchorsBuffElementSize = 16;  // see: sw_runtime_kernels / kernels / src / proposal.cpp (anchors)
-    const auto inType = origOp.getClassProbs().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getClassProbs().getType());
 
     const auto inShape = inType.getShape().raw();
     // [ num_batches, 2 * K, H, W ]
@@ -170,6 +170,34 @@ void insertExperimentalDetectronROIFeatureExtractorBuffer(Logger& log,
 }
 
 //
+// AddSDPABuffer
+//
+
+void insertSDPABuffer(Logger& log, VPU::SDPAOp origOp) {
+    log.trace("Found SDPA Operation '{0}'", origOp->getLoc());
+
+    const auto inputKType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputK().getType());
+    const auto inputShape = inputKType.getShape();
+    const auto numHeads = inputShape[Dim(1)];
+    const auto H = inputShape[Dim(2)];
+    const int bufferSize = 4 * H * numHeads;
+    const SmallVector<int64_t> shape({1, numHeads, 1, 4 * H});
+    const auto sdpaBufferType = mlir::RankedTensorType::get(shape, getUInt8Type(origOp.getContext()));
+    std::vector<uint8_t> values(bufferSize, 0.0f);
+
+    mlir::OpBuilder builder(origOp);
+
+    auto sdpaBuffer =
+            Const::createConst(builder, mlir::UnknownLoc::get(origOp.getContext()), sdpaBufferType, ArrayRef(values));
+
+    auto newSDPAOp = builder.create<VPU::SDPAOp>(origOp->getLoc(), origOp.getInputQ(), origOp.getInputK(),
+                                                 origOp.getInputV(), origOp.getInputMask(), sdpaBuffer);
+
+    origOp.replaceAllUsesWith(newSDPAOp.getOperation());
+    origOp->erase();
+}
+
+//
 // safeRunOnFunc
 //
 
@@ -192,6 +220,12 @@ void AddSwOpAuxiliaryBufferPass::safeRunOnFunc() {
         if (origOp.getReorderedRois() == nullptr && origOp.getOriginalRoiMap() == nullptr &&
             origOp.getOutputRoisFeaturesTemp() == nullptr && origOp.getLevels() == nullptr) {
             insertExperimentalDetectronROIFeatureExtractorBuffer(_log, origOp);
+        }
+    });
+
+    func.walk([&](VPU::SDPAOp origOp) {
+        if (origOp.getDataStorage() == nullptr) {
+            insertSDPABuffer(_log, origOp);
         }
     });
 }

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -122,7 +123,7 @@ mlir::LogicalResult AdjustForEltwise::matchAndRewrite(IE::LayerOpInterface origO
         return matchFailed(rewriter, origOp, "LayerOp is not Eltwise");
     }
 
-    const auto outType = origOp->getResult(0).getType().cast<NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     const auto outOrder = outType.getDimsOrder();
     const auto rank = outType.getRank();
     const auto idMap = mlir::AffineMap::getMultiDimIdentityMap(checked_cast<unsigned>(rank), getContext());
@@ -213,7 +214,7 @@ mlir::LogicalResult AdjustForEltwise::matchAndRewrite(IE::LayerOpInterface origO
 
     // change output type of layerOp
     auto output = origOp->getOpResult(0);
-    const auto origType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     const auto newType = inferNewTypeWithMemPerm(origType, bestMemPerm, newOrder);
     output.setType(newType);
 
@@ -260,7 +261,7 @@ mlir::LogicalResult AdjustForTile::matchAndRewrite(IE::TileOp origOp, mlir::Patt
         return matchFailed(rewriter, origOp, "No MemPermuteOp found");
     }
 
-    auto tileInType = origOp.getInput().getType().cast<NDTypeInterface>();
+    auto tileInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     auto tileInMemShape = tileInType.getMemShape();
 
     auto memPerm = outputPermuteOp.getMemPerm();
@@ -342,7 +343,7 @@ mlir::LogicalResult AdjustForConvert::matchAndRewrite(IE::ConvertOp origOp, mlir
     auto newConvertOp =
             rewriter.create<IE::ConvertOp>(origOp->getLoc(), inputPermuteCastOp.getInput(), origOp.getDstElemType());
 
-    auto origPermuteCastOutType = inputPermuteCastOp.getOutput().getType().cast<NDTypeInterface>();
+    auto origPermuteCastOutType = mlir::cast<vpux::NDTypeInterface>(inputPermuteCastOp.getOutput().getType());
     auto newPermuteCastOutType = origPermuteCastOutType.changeElemType(origOp.getDstElemType());
     auto newPermuteCastOp =
             rewriter.create<IE::PermuteCastOp>(origOp->getLoc(), newPermuteCastOutType, newConvertOp.getOutput(),

@@ -22,18 +22,18 @@ mlir::LogicalResult VPU::DetectionOutputNmsCaffeOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto confidenceType = nmsCaffe.getConfidence().getType().cast<NDTypeInterface>();
+    const auto confidenceType = mlir::cast<vpux::NDTypeInterface>(nmsCaffe.getConfidence().getType());
     const auto confidenceShape = confidenceType.getShape();
     const auto numClasses = confidenceShape[Dims4D::Act::H];
     const auto topK = nmsCaffe.getTopK();
 
-    const auto boxesType = nmsCaffe.getBoxes().getType().cast<NDTypeInterface>();
+    const auto boxesType = mlir::cast<vpux::NDTypeInterface>(nmsCaffe.getBoxes().getType());
     const auto boxesShape = boxesType.getShape();
     const auto outBoxesShape =
             SmallVector<int64_t>{boxesShape[Dims4D::Act::N], numClasses, topK, boxesShape[Dims4D::Act::W]};
     const auto outBoxesType = boxesType.changeShape(Shape(outBoxesShape));
 
-    const auto sizesType = nmsCaffe.getSizes().getType().cast<NDTypeInterface>();
+    const auto sizesType = mlir::cast<vpux::NDTypeInterface>(nmsCaffe.getSizes().getType());
 
     inferredReturnTypes.push_back(confidenceType);
     inferredReturnTypes.push_back(outBoxesType);
@@ -127,7 +127,7 @@ OutputTiling vpux::VPU::DetectionOutputNmsCaffeOp::getOutputTiling(const vpux::T
     const auto offsetClasses = firstOutputTile.offsets[Dims4D::Act::H];
     const auto axisClasses = firstOutputTile.axis[Dims4D::Act::H];
 
-    const auto boxesType = getOutBoxes().getType().cast<vpux::NDTypeInterface>();
+    const auto boxesType = mlir::cast<vpux::NDTypeInterface>(getOutBoxes().getType());
     const auto boxesShape = boxesType.getShape();
     auto boxesTile = TileInfo(boxesShape);
     boxesTile.shape[Dims4D::Act::C] = shapeClasses;

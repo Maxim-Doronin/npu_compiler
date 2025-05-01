@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -39,18 +41,35 @@ namespace {
 //                         \                   /
 //                        IE.Multiply (1x32x1x1024)
 
-class MoveMultiplyPostMatmul final : public mlir::OpRewritePattern<IE::MultiplyOp> {
+template <typename ConcreteOp>
+class MoveMultiplyPostLayerGeneric final : public mlir::OpRewritePattern<IE::MultiplyOp> {
 public:
-    MoveMultiplyPostMatmul(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::MultiplyOp>(ctx), _log(log) {
-        setDebugName("MoveMultiplyPostMatmul");
+    MoveMultiplyPostLayerGeneric(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx), _log(log) {
+        setDebugName("MoveMultiplyPostLayerGeneric");
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MultiplyOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    bool isLegalTransformation(ConcreteOp op) const;
     Logger _log;
 };
+
+template <typename ConcreteOp>
+bool MoveMultiplyPostLayerGeneric<ConcreteOp>::isLegalTransformation(ConcreteOp op) const {
+    // IE::MatMulOp should not have post op
+    if constexpr (std::is_same_v<ConcreteOp, IE::MatMulOp>) {
+        return op.getPostOpAttr() == nullptr;
+    }
+    // IE::FullyConnectedOp should not have bias
+    else if constexpr (std::is_same_v<ConcreteOp, IE::FullyConnectedOp>) {
+        return op.getBias() == nullptr;
+    }
+
+    return false;
+}
 
 bool isBeneficialToConvert(ShapeRef inShape, ShapeRef outShape) {
     return inShape.totalSize() > outShape.totalSize();
@@ -72,52 +91,62 @@ mlir::Value getSingleDataInput(IE::MultiplyOp multiplyOp) {
     return nullptr;
 }
 
-mlir::LogicalResult MoveMultiplyPostMatmul::matchAndRewrite(IE::MultiplyOp origOp,
-                                                            mlir::PatternRewriter& rewriter) const {
+template <typename ConcreteOp>
+mlir::LogicalResult MoveMultiplyPostLayerGeneric<ConcreteOp>::matchAndRewrite(IE::MultiplyOp origOp,
+                                                                              mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got multiply layer at '{1}'", origOp->getName(), origOp->getLoc());
     if (!origOp->hasOneUse()) {
-        return matchFailed(rewriter, origOp, "multiply has more than one user");
+        return matchFailed(_log, rewriter, origOp, "multiply has more than one user");
     }
 
     if (origOp.getPostOpAttr() != nullptr) {
-        return matchFailed(rewriter, origOp, "multiply has post op attr");
+        return matchFailed(_log, rewriter, origOp, "multiply has post op attr");
     }
 
     if (origOp.getClampAttr() != nullptr) {
-        return matchFailed(rewriter, origOp, "multiply has clamp attr");
+        return matchFailed(_log, rewriter, origOp, "multiply has clamp attr");
     }
 
     auto singleDataInput = getSingleDataInput(origOp);
     if (singleDataInput == nullptr) {
-        return matchFailed(rewriter, origOp, "multiply doesn't have single data input");
+        return matchFailed(_log, rewriter, origOp, "multiply doesn't have single data input");
     }
 
-    const auto nonSingleDataOperand = origOp.getInput1() == singleDataInput ? origOp.getInput2() : origOp.getInput1();
+    const mlir::Value nonSingleDataOperand =
+            origOp.getInput1() == singleDataInput ? origOp.getInput2() : origOp.getInput1();
 
-    auto matmulOp = mlir::dyn_cast<IE::MatMulOp>(*origOp.getOutput().getUsers().begin());
-    if (matmulOp == nullptr) {
-        return matchFailed(rewriter, origOp, "multiply user is not a matmul");
+    auto layerOp = mlir::dyn_cast<ConcreteOp>(*origOp.getOutput().getUsers().begin());
+    if (layerOp == nullptr) {
+        return matchFailed(_log, rewriter, origOp, "invalid multiply user");
     }
 
-    if (!isBeneficialToConvert(getShape(origOp.getOutput()), getShape(matmulOp.getOutput()))) {
-        return matchFailed(rewriter, origOp, "not benefical to swap multiply with matmul");
+    if (!isLegalTransformation(layerOp)) {
+        return matchFailed(_log, rewriter, origOp, "illegal to swap multiply with layerOp");
     }
 
-    rewriter.setInsertionPoint(matmulOp);
-    auto matmulInput1 = matmulOp.getInput1().getDefiningOp() == origOp ? nonSingleDataOperand : matmulOp.getInput1();
-    auto matmulInput2 = matmulOp.getInput2().getDefiningOp() == origOp ? nonSingleDataOperand : matmulOp.getInput2();
-    auto newMatMul =
-            rewriter.create<IE::MatMulOp>(matmulOp->getLoc(), matmulInput1, matmulInput2, matmulOp.getTransposeA(),
-                                          matmulOp.getTransposeB(), matmulOp.getPostOpAttr());
+    if (!isBeneficialToConvert(getShape(origOp.getOutput()), getShape(layerOp.getOutput()))) {
+        return matchFailed(_log, rewriter, origOp, "not benefical to swap multiply with layerOp");
+    }
 
-    auto multiplyInput1 = origOp.getInput1() == singleDataInput ? origOp.getInput1() : newMatMul.getOutput();
-    auto multiplyInput2 = origOp.getInput2() == singleDataInput ? origOp.getInput2() : newMatMul.getOutput();
+    rewriter.setInsertionPoint(layerOp);
+    auto origLhs = layerOp->getOperand(0);
+    auto origRhs = layerOp->getOperand(1);
+    mlir::Value newLhs = origLhs.getDefiningOp() == origOp ? nonSingleDataOperand : origLhs;
+    mlir::Value newRhs = origRhs.getDefiningOp() == origOp ? nonSingleDataOperand : origRhs;
+    SmallVector<mlir::Value> newOperands = {newLhs, newRhs};
+    mlir::IRMapping mapper;
+    mapper.map(layerOp->getOperands(), newOperands);
+    auto newLayerOp = rewriter.clone(*layerOp, mapper);
+    mlir::Value newLayerOpOutput = newLayerOp->getResult(0);
+
+    auto multiplyInput1 = origOp.getInput1() == singleDataInput ? origOp.getInput1() : newLayerOpOutput;
+    auto multiplyInput2 = origOp.getInput2() == singleDataInput ? origOp.getInput2() : newLayerOpOutput;
 
     auto newMultiply = rewriter.create<IE::MultiplyOp>(
             origOp->getLoc(), multiplyInput1, multiplyInput2, origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
-            origOp.getClampAttr(), origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
-    rewriter.replaceOp(matmulOp, newMultiply.getOutput());
-    _log.trace("Successfully swap multiply with matmul");
+            origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+    rewriter.replaceOp(layerOp, newMultiply.getOutput());
+    _log.trace("Successfully swap multiply with layerOp");
 
     return mlir::success();
 }
@@ -156,7 +185,7 @@ bool isOptimizableMultiplyOp(IE::MultiplyOp multiplyOp) {
     }
 
     if (multiplyOp.getPostOpAttr() != nullptr || multiplyOp.getClampAttr() != nullptr ||
-        multiplyOp.getOutputChannelsAttr() != nullptr || multiplyOp.getInputChannelsAttr() != nullptr) {
+        multiplyOp.getOutputPaddingAttr() != nullptr || multiplyOp.getInputPaddingAttr() != nullptr) {
         return false;
     }
 
@@ -269,7 +298,8 @@ void MoveMultiplyPostOpPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<MoveMultiplyPostMatmul>(&ctx, _log);
+    patterns.add<MoveMultiplyPostLayerGeneric<IE::MatMulOp>>(&ctx, _log);
+    patterns.add<MoveMultiplyPostLayerGeneric<IE::FullyConnectedOp>>(&ctx, _log);
     patterns.add<MoveMultiplyPostConcat>(&ctx, _log);
 
     auto func = getOperation();

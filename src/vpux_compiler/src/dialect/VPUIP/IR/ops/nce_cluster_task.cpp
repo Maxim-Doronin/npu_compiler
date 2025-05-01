@@ -657,7 +657,8 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
                                inputBatch, getNumTilesUsed(module));
             }
             if (auto nceTilingParent = op->getParentOfType<VPUIP::NCEClusterTilingOp>()) {
-                auto outputType = nceTilingParent->getResult(0).getType().cast<VPUIP::DistributedBufferType>();
+                auto outputType =
+                        mlir::cast<vpux::VPUIP::DistributedBufferType>(nceTilingParent->getResult(0).getType());
                 const auto numClusters = outputType.getDistribution().getNumClusters().getInt();
                 if (inputBatch != numClusters) {
                     return errorAt(op, "Got unsupported input batch '{0}' expected '{1}'", inputBatch, numClusters);
@@ -679,7 +680,7 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
 
     const auto checkMemoryKind = [&op](mlir::ValueRange operands, EnumSet<VPU::MemoryKind> acceptedMemoryKinds) {
         for (const auto& val : operands) {
-            const auto type = val.getType().cast<vpux::NDTypeInterface>();
+            const auto type = mlir::cast<vpux::NDTypeInterface>(val.getType());
 
             const auto mem = type.getMemoryKind();
             if (llvm::find(acceptedMemoryKinds, mem) == acceptedMemoryKinds.end())
@@ -696,7 +697,7 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
     // TODO revisit memory checks for parent operands
 
     for (const auto& val : getOperands()) {
-        const auto type = val.getType().cast<vpux::NDTypeInterface>();
+        const auto type = mlir::cast<vpux::NDTypeInterface>(val.getType());
         const auto strideReqs = StrideReqs().add(DimStrideReq::compact(MemDim(type.getRank() - 1)));
 
         if (!strideReqs.checkStrides(val)) {
@@ -705,7 +706,7 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
     }
 
     if (arch >= VPU::ArchKind::NPU40XX) {
-        auto outputType = getOutput().getType().dyn_cast<VPUIP::ITIBufferType>();
+        auto outputType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(getOutput().getType());
         auto outputItiBuffs = getOutput_ITIBuff();
 
         if (outputType == nullptr && !outputItiBuffs.empty()) {
@@ -713,13 +714,13 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
         }
 
         for (const auto itiOutput : outputItiBuffs) {
-            if (!itiOutput.getType().isa<VPUIP::ITIBufferType>()) {
+            if (!mlir::isa<vpux::VPUIP::ITIBufferType>(itiOutput.getType())) {
                 return errorAt(op, "ITI Output is not of VPUIP::ITIBufferType: {0}", itiOutput);
             }
         }
 
         if (getOutputSparsityMap() != nullptr && outputType != nullptr) {
-            if (!getOutputSparsityMap().getType().isa<ITIBufferType>()) {
+            if (!mlir::isa<vpux::VPUIP::ITIBufferType>(getOutputSparsityMap().getType())) {
                 return errorAt(op, "Output is of VPUIP::ITIBufferType, but output sparsity map is not.");
             }
         }

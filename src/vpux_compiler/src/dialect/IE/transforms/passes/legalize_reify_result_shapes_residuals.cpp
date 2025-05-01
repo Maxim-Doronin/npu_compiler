@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <utility>
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -93,8 +94,8 @@ mlir::Operation* buildAddOp(const mlir::Location loc, const mlir::Value lhs, con
     return rewriter.create<IE::AddOp>(appendLoc(loc, "add"), lhs, rhs, IE::AutoBroadcastType::NONE_OR_EXPLICIT,
                                       /*post_op=*/nullptr,
                                       /*clamp=*/nullptr,
-                                      /*output_channels=*/nullptr,
-                                      /*input_channels=*/nullptr);
+                                      /*outputPadding=*/nullptr,
+                                      /*inputPadding=*/nullptr);
 }
 
 //

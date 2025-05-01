@@ -11,9 +11,9 @@
 #include "vpux/compiler/utils/options.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/string_ref.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -100,6 +100,9 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
                                               llvm::cl::desc("Enable vertical fusion pipelining"),
                                               llvm::cl::init(false)};
 
+    BoolOption enableSCFTiling{*this, "scf-tiling", llvm::cl::desc("Enable tiling using SCF dialect"),
+                               llvm::cl::init(false)};
+
     IntOption opTilingCacheThreshold{
             *this, "op-tiling-cache-threshold",
             llvm::cl::desc("threshold for number of clustered ops for tiling cache optimization"),
@@ -119,6 +122,8 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
                                              llvm::cl::init(true)};
 
     BoolOption enableProfiling{*this, "profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
+    BoolOption enableProfilingWithOutlining{*this, "profiling-with-outlining",
+                                            llvm::cl::desc("Enable profiling with outlining"), llvm::cl::init(false)};
 
     StrOption enableShaveDDRAccessOptimization{
             *this, "enable-shave-ddr-access-optimization",
@@ -133,8 +138,6 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
                                    llvm::cl::desc("Write the multiclustering and tiling strategy to a JSON file"),
                                    llvm::cl::init(false)};
 
-    StrOption modelHash{*this, "model-hash", llvm::cl::desc("Hash of model XML architecture"), llvm::cl::init("")};
-
     TilingOptions() = default;
 
     template <class OtherOptions>
@@ -148,11 +151,12 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
         vfOutliningTileThreshold = options.vfOutliningTileThreshold;
         enableVerticalFusionOutlining = options.enableVerticalFusionOutlining;
         enableProfiling = options.enableProfiling;
+        enableProfilingWithOutlining = options.enableProfilingWithOutlining;
         enableVerticalFusionPipelining = options.enablePipelining;
         enableShaveDDRAccessOptimization = options.enableShaveDDRAccessOptimization;
         readStrategyFromJson = options.readStrategyFromJson;
         writeStrategyToJson = options.writeStrategyToJson;
-        modelHash = options.modelHash;
+        enableSCFTiling = options.enableSCFTiling;
     }
 };
 
@@ -179,7 +183,7 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
                                         llvm::cl::desc("Enable partial workload management"), llvm::cl::init(true)};
     BoolOption wlmRollback{
             *this, "wlm-rollback",
-            llvm::cl::desc("When compilation with WLM fails, automatically switches to WLM-disabled pipeline"),
+            llvm::cl::desc("When compilation with WLM fails, automatically switch to WLM-disabled pipeline"),
             llvm::cl::init(true)};
 
     // SetupChannelsAutoPadding pass options
@@ -221,6 +225,15 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
     BoolOption enableAdaptiveStripping{*this, "enable-adaptive-stripping", llvm::cl::desc("Enable adaptive stripping"),
                                        llvm::cl::init(false)};
 
+    BoolOption enableExtraStaticShapeOps{
+            *this, "enable-extra-static-shape-ops",
+            llvm::cl::desc("Attach StaticShapeOpInterface trait to operations that perform "
+                           "faster when their shapes are static."),
+            llvm::cl::init(true)};
+
+    BoolOption enableWeightsTableReuse{*this, "enable-weights-table-reuse",
+                                       llvm::cl::desc("Enable weights table reuse"), llvm::cl::init(false)};
+
     InitCompilerOptions() = default;
 
     template <class OtherOptions>
@@ -244,7 +257,8 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
                         std::optional<bool> enableExperimentalSEPtrsOperationsParam = std::nullopt,
                         std::optional<bool> enableReduceOperationsParam = std::nullopt,
                         std::optional<bool> compilerDynamicQuantizationParam = std::nullopt,
-                        std::optional<bool> enableAdaptiveStrippingParam = std::nullopt) {
+                        std::optional<bool> enableAdaptiveStrippingParam = std::nullopt,
+                        std::optional<bool> enableExtraStaticShapeOpsParam = std::nullopt) {
         arch = std::string(VPU::stringifyEnum(archParam));
         compilationMode = std::string(VPU::stringifyEnum(compilationModeParam));
 
@@ -261,6 +275,8 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
         maybeSetValue(enableIsReduceSupported, enableReduceOperationsParam);
         maybeSetValue(enableWeightsDynamicDequantization, compilerDynamicQuantizationParam);
         maybeSetValue(enableAdaptiveStripping, enableAdaptiveStrippingParam);
+        maybeSetValue(enableExtraStaticShapeOps, enableExtraStaticShapeOpsParam);
+        maybeSetValue(enableWeightsTableReuse, compilerDynamicQuantizationParam);
     }
 
 public:
@@ -307,22 +323,20 @@ std::unique_ptr<mlir::Pass> createAdjustDistributedTensorAroundOpsPass(Logger lo
 std::unique_ptr<mlir::Pass> createWrapDistributedOpsInNCEClusterTiling(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdjustMemorySpacePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMultiClusterStrategyAssignmentPass(
-        bool enablePrefetchTiling = true, bool enableMcSideLoadingDump = false,
-        const int clusteredOpThreshold = CLUSTERED_OP_THRESHOLD_FOR_TILING_CACHE,
-        StringRef mcOptimizationScope = "subgraph", StringRef modelHash = "", Logger log = Logger::global());
+        bool enablePrefetchTiling = true, const int clusteredOpThreshold = CLUSTERED_OP_THRESHOLD_FOR_TILING_CACHE,
+        StringRef mcOptimizationScope = "subgraph", Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass();
 std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(bool writeStrategyToJSON,
                                                           StringRef writeStrategyFileLocation = "strategy_out.json",
                                                           bool readStrategyFromJSON = false,
                                                           StringRef readStrategyFileLocation = "strategy_in.json",
-                                                          bool enableSideLoadDump = false, StringRef modelHash = "",
+
                                                           Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(bool writeStrategyToJSON,
                                                           StringRef writeStrategyFileLocation = "strategy_out.json",
                                                           bool readStrategyFromJSON = false,
                                                           StringRef readStrategyFileLocation = "strategy_in.json",
                                                           bool updateStrategyForOutputPipelining = false,
-                                                          bool enableSideLoadDump = false, StringRef modelHash = "",
                                                           Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createDetectionOutputDecompositionPass(Logger log = Logger::global());
@@ -333,6 +347,7 @@ std::unique_ptr<mlir::Pass> createAdjustLSTMCellInputsPass(Logger log = Logger::
 std::unique_ptr<mlir::Pass> createComputeInterpolateCoordinatesPass(bool enableExplicitDistributionInfoAttr = false,
                                                                     Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createRelocateWeightTableForReusePass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createCorrectStorageElementTableSeSizeForSEPDWConvPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDetectInPlaceEltwisePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseNCEInterpolateConsumersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddExplicitPaddingBeforeNCEPermutePass(Logger log = Logger::global());
@@ -343,6 +358,7 @@ std::unique_ptr<mlir::Pass> createConvertConstArgsToMultiConstantsPass(Logger lo
 std::unique_ptr<mlir::Pass> createConcatRepeatingBlocksOutliningPass(int64_t minSeqLength = 1,
                                                                      const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createOutlineEntireMainContentPass(const Logger& log = Logger::global());
+std::unique_ptr<mlir::Pass> createBoundedTensorsToDynamicDimsMaskPass(Logger log = Logger::global());
 
 void buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::InitCompilerOptions& options,
                                Logger log = Logger::global());
@@ -379,6 +395,7 @@ std::unique_ptr<mlir::Pass> createSplitSEOpsPass(const bool seOpsEnabled = false
 std::unique_ptr<mlir::Pass> createLowerOpsToSENCEPass(const bool seOpsEnabled = false,
                                                       const bool enableExperimentalSEPtrsOperations = false,
                                                       Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createConvertNCEInterpolateToDWPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createConvertOpToDMAForPerformantExecutionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createTileGatherPass(Logger log = Logger::global());
@@ -391,7 +408,7 @@ std::unique_ptr<mlir::Pass> createTilingStrategyAssignmentPass(bool enablePrefet
                                                                bool enableVpunnCostForTiling = false,
                                                                StringRef enableShaveDDRAccessOptimization = "true",
                                                                Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createApplyTilingPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createApplyTilingPass(bool enableSCFTiling = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWrapVerticalFusionRegionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveViewOpsToVerticalFusionPass(Logger log = Logger::global());
 // Tracking number [E#76838]
@@ -488,7 +505,11 @@ std::unique_ptr<mlir::Pass> createSetupEnableSEPtrsOperationsPass(const InitComp
 // Weights separation
 //
 
+std::unique_ptr<mlir::Pass> createQueryWSInfoPass(const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createIntroduceInitFunctionPass(const Logger& log = Logger::global());
+std::unique_ptr<mlir::Pass> createIntroduceInitFunctionPass(const DefaultHWOptionsBase& options,
+                                                            const Logger& log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnpackNestedModulesPass(const Logger& log = Logger::global());
 
 //
 // Adaptive Stripping
@@ -497,6 +518,14 @@ std::unique_ptr<mlir::Pass> createIntroduceInitFunctionPass(const Logger& log = 
 std::unique_ptr<mlir::Pass> createSetupEnableAdaptiveStrippingPass();
 std::unique_ptr<mlir::Pass> createSetupEnableAdaptiveStrippingPass(const InitCompilerOptions& initCompilerOptions,
                                                                    Logger log = Logger::global());
+
+//
+// Extra StaticShape ops
+//
+
+std::unique_ptr<mlir::Pass> createSetupEnableExtraStaticShapeOpsPass();
+std::unique_ptr<mlir::Pass> createSetupEnableExtraStaticShapeOpsPass(const InitCompilerOptions& initCompilerOptions,
+                                                                     Logger log = Logger::global());
 
 //
 // DefaultHWOptions(for all devices)
@@ -540,6 +569,11 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
     StrOption enableShaveDDRAccessOptimization{
             *this, "enable-shave-ddr-access-optimization",
             llvm::cl::desc("SHAVE DDR access optimization option (true, false or auto)"), llvm::cl::init("true")};
+
+    StrOption wsExtractionMode{
+            *this, "ws-extraction-mode",
+            llvm::cl::desc("Can be one of the following values: 'gen-init', 'gen-main' or 'gen-all'"),
+            llvm::cl::init("")};
 };
 
 //

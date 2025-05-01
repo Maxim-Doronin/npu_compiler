@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -36,7 +36,7 @@
 using namespace vpux;
 
 namespace {
-constexpr size_t MAX_ATTR_STR_SIZE = 80;
+constexpr size_t MAX_ATTR_STR_SIZE = 100;
 
 // This is a optimized for VPUX copy of the LLVM GraphWriter (llvm/Support/GraphWriter.h).
 class GraphWriter final {
@@ -308,9 +308,9 @@ std::string GraphWriter::getNodeLabel(mlir::Operation* op) {
 
         // Print resultant types
         for (const auto type : op->getResultTypes()) {
-            if (const auto ndType = type.dyn_cast<vpux::NDTypeInterface>()) {
+            if (const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(type)) {
                 appendShapeLabel(os, ndType.getShape().raw(), ndType.getElementType(), ndType.getDimsOrder());
-                if (const auto memref = type.dyn_cast<mlir::MemRefType>()) {
+                if (const auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
                     if (memref.getMemorySpace() != nullptr) {
                         os << " at " << memref.getMemorySpace();
                     }
@@ -343,7 +343,7 @@ std::string GraphWriter::getNodeLabel(mlir::Operation* op) {
             os << '\n' << attr.getName() << ": ";
         }
 
-        if (const auto map = attr.getValue().dyn_cast<mlir::AffineMapAttr>()) {
+        if (const auto map = mlir::dyn_cast<mlir::AffineMapAttr>(attr.getValue())) {
             DimsOrder::fromAffineMap(map.getValue()).printFormat(os);
         } else {
             std::string temp_str;

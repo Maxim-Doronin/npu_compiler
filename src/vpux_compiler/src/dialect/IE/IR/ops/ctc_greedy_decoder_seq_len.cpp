@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,14 +20,14 @@ mlir::LogicalResult vpux::IE::CTCGreedyDecoderSeqLenOp::inferReturnTypeComponent
         return mlir::failure();
     }
 
-    const auto inType = ctc.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(ctc.getInput().getType());
     const auto inShape = inType.getShape();
 
     if (inShape.size() != 3) {
         return errorAt(loc, "First input tensor should have 3 dimensions");
     }
 
-    const auto outElemType = ctc.getSequenceLength().getType().cast<mlir::ShapedType>().getElementType();
+    const auto outElemType = mlir::cast<mlir::ShapedType>(ctc.getSequenceLength().getType()).getElementType();
 
     SmallVector<int64_t> outputShape{inShape[0], inShape[1]};
     SmallVector<int64_t> outputLengthShape{inShape[0]};

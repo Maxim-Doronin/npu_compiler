@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -167,5 +167,25 @@ def VPURegMapped_TaskGroupAttr : VPURegMapped_Attr<"TaskGroup"> {
 
     let assemblyFormat = "`<` `dynamicTaskListSize` `(` $dynamicSize `)` `,` `staticTaskListSize` `(` $staticSize `)` `,` `startOffset` `(` $offset `)` `,` `binaryTaskSize` `(` $binaryElementSize `)` `>`";
 }
+
+//
+// WorkloadManagementBarrierProgrammingMode
+//
+
+def VPURegMapped_WorkloadManagementBarrierProgrammingMode :
+    VPURegMapped_I64EnumAttr<
+        "WorkloadManagementBarrierProgrammingMode",
+        "The type of the relevant processing code of the VPU for the task",
+        [
+            I64EnumAttrCase<"LEGACY",                           0>,
+            I64EnumAttrCase<"NO_BARRIER_DMAS_SCHEDULED",        1>,
+            I64EnumAttrCase<"INITIAL_BARRIER_DMAS_SCHEDULED",   2>,
+            I64EnumAttrCase<"ALL_BARRIER_DMAS_SCHEDULED",       3>,
+            I64EnumAttrCase<"UNKNOWN",                          255>
+        ]
+    > {
+}
+
+def VPURegMapped_WorkloadManagementBarrierProgrammingModeAttr : VPURegMapped_EnumAttr<VPURegMapped_WorkloadManagementBarrierProgrammingMode, "workload_management_barrier_programming_mode">;
 
 #endif

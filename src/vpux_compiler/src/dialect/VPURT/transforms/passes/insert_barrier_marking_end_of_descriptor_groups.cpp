@@ -50,25 +50,17 @@ class InsertBarrierToMarkTheEndOfDescriptorGroupPass final :
                 InsertBarrierToMarkTheEndOfDescriptorGroupPass> {
 public:
     explicit InsertBarrierToMarkTheEndOfDescriptorGroupPass(
-            std::optional<size_t> workloadManagementBarrierCountThreshold,
-            std::optional<WorkloadManagementMode> workloadManagementMode, Logger log)
-            : _workloadManagementBarrierCountThreshold(workloadManagementBarrierCountThreshold),
-              _workloadManagementMode(workloadManagementMode) {
+            std::optional<size_t> workloadManagementBarrierCountThreshold, Logger log)
+            : _workloadManagementBarrierCountThreshold(workloadManagementBarrierCountThreshold) {
         Base::initLogger(log, Base::getArgumentName());
-
-        if (workloadManagementMode.has_value()) {
-            _legalizeEachTileSeparately = workloadManagementMode.value() != WorkloadManagementMode::PWLM_V0_LCA;
-        }
     }
 
-    void insertBarriersForWorkloadManagementMode(mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap,
-                                                 BarrierInfo& barrierInfo, const size_t& maxTiles,
-                                                 const BlockRange& blockRange, size_t& numOfBarriersInserted,
-                                                 VPURT::TaskQueueType queueType, size_t iterTile = 0);
+    void insertBarriersFortile(mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap,
+                               BarrierInfo& barrierInfo, const BlockRange& blockRange, size_t& numOfBarriersInserted,
+                               VPURT::TaskQueueType queueType, size_t iterTile = 0);
     void insertUpdateBarriersForLastTask(mlir::OpBuilder& builder, ExecutionGroupList& executionGroupList,
                                          ExecutionGroup& executionGroup, BarrierInfo& barrierInfo,
-                                         const size_t& groupIdx, const size_t& maxTiles, const BlockRange& blockRange,
-                                         size_t iterTile);
+                                         const size_t& groupIdx, const BlockRange& blockRange, size_t iterTile);
     void insertBarrierDependency(mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap,
                                  VPU::ExecutorKind executorKind, BarrierInfo& barrierInfo, const size_t& maxTiles,
                                  const BlockRange& blockRange, size_t& numOfBarriersInserted);
@@ -76,8 +68,6 @@ public:
 
 private:
     std::optional<size_t> _workloadManagementBarrierCountThreshold;
-    std::optional<WorkloadManagementMode> _workloadManagementMode;
-    bool _legalizeEachTileSeparately = true;
     void safeRunOnFunc() final;
 };
 
@@ -151,16 +141,15 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::legalizeScheduleForNonWlm(m
  * for tasks starting from the next task (task-index 6) and checks for either update
  * barriers or wait barriers.
  *
- * If a non DMA task on iterTile(based on legalizeEachTileSeparately) with either a wait or update barrier is found, it
+ * If a non DMA task on iterTile with either a wait or update barrier is found, it
  * is returned; otherwise, the search continues. If no such task exists, the function returns `nullptr`.
  */
-VPURT::TaskOp getAdjacentTaskWithBarriers(BarrierInfo& barrierInfo, size_t currentTaskIdx,
-                                          bool legalizeEachTileSeparately, size_t iterTile) {
+VPURT::TaskOp getAdjacentTaskWithBarriers(BarrierInfo& barrierInfo, size_t currentTaskIdx, size_t iterTile) {
     auto isNonDMAOnSpecificTile = [&](mlir::Operation* op) -> bool {
         auto taskOp = mlir::dyn_cast<VPURT::TaskOp>(op);
         if (taskOp != nullptr && taskOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
             size_t queueId = VPURT::getTaskQueueType(taskOp, false).id;
-            if ((legalizeEachTileSeparately && queueId == iterTile) || (!legalizeEachTileSeparately && queueId == 0)) {
+            if (queueId == iterTile) {
                 return true;
             }
         }
@@ -215,8 +204,7 @@ VPURT::TaskOp getAdjacentTaskWithBarriers(BarrierInfo& barrierInfo, size_t curre
 
 void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertUpdateBarriersForLastTask(
         mlir::OpBuilder& builder, ExecutionGroupList& executionGroupList, ExecutionGroup& executionGroup,
-        BarrierInfo& barrierInfo, const size_t& groupIdx, const size_t& maxTiles, const BlockRange& blockRange,
-        size_t iterTile) {
+        BarrierInfo& barrierInfo, const size_t& groupIdx, const BlockRange& blockRange, size_t iterTile) {
     auto nextExecutionGroup = executionGroupList[groupIdx + 1];
     auto newBarrierOp = createNewBarrier(builder, barrierInfo, nullptr, nullptr, nullptr);
 
@@ -225,26 +213,12 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertUpdateBarriersForLast
 
     // If we cannot insert dependency between task of consecutive groups use the next available task with barriers
     if (!inSameTaskBlock(producerTaskIdx, consumerTaskIdx, blockRange)) {
-        auto nextTaskWithUpdateBarriers =
-                getAdjacentTaskWithBarriers(barrierInfo, producerTaskIdx, _legalizeEachTileSeparately, iterTile);
+        auto nextTaskWithUpdateBarriers = getAdjacentTaskWithBarriers(barrierInfo, producerTaskIdx, iterTile);
         consumerTaskIdx = barrierInfo.getIndex(nextTaskWithUpdateBarriers);
     }
 
-    if (_legalizeEachTileSeparately) {
-        barrierInfo.addProducer(newBarrierOp, producerTaskIdx);
-        barrierInfo.addConsumer(newBarrierOp, consumerTaskIdx);
-    } else {
-        for (size_t tile = 0; tile < maxTiles; ++tile) {
-            auto siblingProducerIdxOnTile = getSiblingTaskOpOnTile(producerTaskIdx, barrierInfo, maxTiles, tile);
-            auto siblingConsumerIdxOnTile = getSiblingTaskOpOnTile(consumerTaskIdx, barrierInfo, maxTiles, tile);
-            if (siblingProducerIdxOnTile != SIZE_MAX) {
-                barrierInfo.addProducer(newBarrierOp, siblingProducerIdxOnTile);
-            }
-            if (siblingConsumerIdxOnTile != SIZE_MAX) {
-                barrierInfo.addConsumer(newBarrierOp, siblingConsumerIdxOnTile);
-            }
-        }
-    }
+    barrierInfo.addProducer(newBarrierOp, producerTaskIdx);
+    barrierInfo.addConsumer(newBarrierOp, consumerTaskIdx);
 }
 
 void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarrierDependency(
@@ -254,24 +228,16 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarrierDependency(
     queueType.type = executorKind;
     queueType.id = 0;
 
-    if (_legalizeEachTileSeparately) {
-        for (size_t iterTile = 0; iterTile < maxTiles; ++iterTile) {
-            queueType.id = iterTile;
-            insertBarriersForWorkloadManagementMode(builder, executionGroupListMap, barrierInfo, maxTiles, blockRange,
-                                                    numOfBarriersInserted, queueType, iterTile);
-        }
-    } else {
-        // We start with tile 0, the functions insertWaitBarriersForFirstTask & insertUpdateBarriersForLastTask are self
-        // sufficient to adjust the dependencies for sibling task as well
-        insertBarriersForWorkloadManagementMode(builder, executionGroupListMap, barrierInfo, maxTiles, blockRange,
-                                                numOfBarriersInserted, queueType);
+    for (size_t iterTile = 0; iterTile < maxTiles; ++iterTile) {
+        queueType.id = iterTile;
+        insertBarriersFortile(builder, executionGroupListMap, barrierInfo, blockRange, numOfBarriersInserted, queueType,
+                              iterTile);
     }
 }
 
-void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersForWorkloadManagementMode(
+void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersFortile(
         mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap, BarrierInfo& barrierInfo,
-        const size_t& maxTiles, const BlockRange& blockRange, size_t& numOfBarriersInserted,
-        VPURT::TaskQueueType queueType, size_t iterTile) {
+        const BlockRange& blockRange, size_t& numOfBarriersInserted, VPURT::TaskQueueType queueType, size_t iterTile) {
     auto executionGroupListForTile = executionGroupListMap[queueType];
 
     for (size_t groupIdx = 0; groupIdx < executionGroupListForTile.size(); ++groupIdx) {
@@ -282,7 +248,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersForWorkloadMa
         if (!lastTaskHasUpdateBarriers && groupIdx != executionGroupListForTile.size() - 1) {
             ++numOfBarriersInserted;
             insertUpdateBarriersForLastTask(builder, executionGroupListForTile, executionGroup, barrierInfo, groupIdx,
-                                            maxTiles, blockRange, iterTile);
+                                            blockRange, iterTile);
         }
     }
 }
@@ -308,11 +274,6 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
     auto module = netFunc->getParentOfType<mlir::ModuleOp>();
     auto isWlmEnabled = (vpux::VPUIP::getWlmStatus(module) == vpux::VPUIP::WlmStatus::ENABLED) &&
                         !isArchVPUX3XXX(VPU::getArch(module));
-
-    // For all WLM modes except PWLM_V0_LCA perform legalization per tile
-    if (workloadManagementModeOpt.hasValue()) {
-        _legalizeEachTileSeparately = workloadManagementModeOpt.getValue() != WorkloadManagementMode::PWLM_V0_LCA;
-    }
 
     if (!isWlmEnabled) {
         legalizeScheduleForNonWlm(netFunc);
@@ -379,10 +340,8 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
 
     execGroupAnalysis = ExecutionGroupAnalysis(netFunc);
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
-    VPUX_THROW_UNLESS(barrierInfo.verifyBarriersForTaskDescriptorFetch(
-                              _legalizeEachTileSeparately ? execGroupAnalysis.getExecutionGroups()
-                                                          : execGroupAnalysis.getExecutionGroupsForTile(0),
-                              /* wlmEnabled */ true),
+    VPUX_THROW_UNLESS(barrierInfo.verifyBarriersForTaskDescriptorFetch(execGroupAnalysis.getExecutionGroups(),
+                                                                       /* wlmEnabled */ true),
                       "Encountered execution group without required barrier for task descriptor fetch.");
     barrierInfo.clearAttributes();
     VPURT::postProcessBarrierOps(netFunc);
@@ -395,8 +354,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
-        std::optional<size_t> workloadManagementBarrierCountThreshold,
-        std::optional<WorkloadManagementMode> workloadManagementMode, Logger log) {
+        std::optional<size_t> workloadManagementBarrierCountThreshold, Logger log) {
     return std::make_unique<InsertBarrierToMarkTheEndOfDescriptorGroupPass>(workloadManagementBarrierCountThreshold,
-                                                                            workloadManagementMode, log);
+                                                                            log);
 }

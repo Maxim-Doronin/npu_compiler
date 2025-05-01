@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
@@ -330,10 +331,9 @@ mlir::LogicalResult MoveTransposeThroughMultiply::processMultiplyOpWithBroadCast
                                                               mlir::AffineMapAttr::get(inversePermutation));
     }
 
-    auto newMultiply = rewriter.create<IE::MultiplyOp>(origOp.getLoc(), transposeOp.getInput(), anotherInput,
-                                                       origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
-                                                       origOp.getClampAttr(), origOp.getOutputChannelsAttr(),
-                                                       origOp.getInputChannelsAttr());
+    auto newMultiply = rewriter.create<IE::MultiplyOp>(
+            origOp.getLoc(), transposeOp.getInput(), anotherInput, origOp.getAutoBroadcastAttr(),
+            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     rewriter.replaceOpWithNewOp<IE::TransposeOp>(origOp, newMultiply.getOutput(), nullptr,
                                                  transposeOp.getOrderValueAttr());
     _log.debug("Successfully moved Transpose through Multiply.");
@@ -380,7 +380,7 @@ mlir::LogicalResult MoveTransposeThroughMultiply::matchAndRewrite(IE::MultiplyOp
     auto newOutputType = origOutputType.changeShape(getShape(input1));
     auto newMultiplyOp = rewriter.create<IE::MultiplyOp>(
             origOp.getLoc(), newOutputType, input1, input2, origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
-            origOp.getClampAttr(), origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     rewriter.replaceOpWithNewOp<IE::TransposeOp>(origOp, newMultiplyOp.getOutput(), transpose1Op.getOrder(),
                                                  transpose1Op.getOrderValueAttr());

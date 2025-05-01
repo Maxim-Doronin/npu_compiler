@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -72,7 +72,7 @@ void vpux::ELF::DataSectionOp::preserialize(elf::Writer& writer, vpux::ELF::Sect
     size_t sectionSize = 0;
     auto block = getBody();
     for (auto& op : block->getOperations()) {
-        if (op.hasTrait<ELF::BinaryOpInterface::Trait>()) {
+        if (op.hasTrait<ELF::BinarySizeOpInterface::Trait>()) {
             auto binaryOp = mlir::cast<ELF::BinaryOpInterface>(op);
             // getting the BinarySize using VPU::ArchKind::UNKNOWN is OK at this point because the binaryOps should
             // already all be in their arch-specific form or are arch-independent

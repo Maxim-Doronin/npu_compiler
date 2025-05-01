@@ -7,7 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/utils/passes.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Bufferization/IR/Bufferization.h>

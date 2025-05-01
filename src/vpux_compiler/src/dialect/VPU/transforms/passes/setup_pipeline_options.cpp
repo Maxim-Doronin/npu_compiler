@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,20 +21,6 @@ namespace vpux::VPU {
 using namespace vpux;
 
 namespace {
-
-static std::mutex& getPpeFactoryMutex() {
-    static std::mutex mtx;
-    return mtx;
-}
-
-template <typename ConcreteFactoryT>
-static void registerPpeFactory() {
-    // Note: Multi-threaded compilation tests will concurrently call SetupPipelineOptions in the same
-    // compile_tool instance with alternating PPE versions. A mutex prevents data races, but also allows switches
-    // between versions.
-    std::lock_guard lock(getPpeFactoryMutex());
-    VPU::PpeVersionConfig::setFactory<ConcreteFactoryT>();
-}
 
 //
 // SetupPipelineOptionsPass
@@ -85,11 +71,11 @@ void SetupPipelineOptionsPass::initializeFromOptions() {
     const auto& ppeVersion = ppeVersionOpt.getValue();
     if (ppeVersion == "Auto") {
         if (_arch == VPU::ArchKind::NPU37XX || _arch == VPU::ArchKind::NPU40XX) {
-            registerPpeFactory<VPU::arch37xx::PpeFactory>();
+            VPU::PpeVersionConfig::setFactory<VPU::arch37xx::PpeFactory>();
             _log.info("Auto target PPE version set to: 'IntPPE'");
         }
     } else if (ppeVersion == "IntPPE") {
-        registerPpeFactory<VPU::arch37xx::PpeFactory>();
+        VPU::PpeVersionConfig::setFactory<VPU::arch37xx::PpeFactory>();
     } else {
         _log.error("Unknown PPE version name: '{0}'", ppeVersion);
     }

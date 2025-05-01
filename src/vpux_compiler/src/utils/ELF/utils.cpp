@@ -10,6 +10,7 @@
 #include <vpux_elf/reader.hpp>
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 ArrayRef<uint8_t> vpux::ELF::getDataAndSizeOfElfSection(ArrayRef<uint8_t> elfBlob,
                                                         ArrayRef<StringRef> possibleSecNames) {
@@ -22,7 +23,7 @@ ArrayRef<uint8_t> vpux::ELF::getDataAndSizeOfElfSection(ArrayRef<uint8_t> elfBlo
     bool secFound = false;
 
     for (size_t i = 0; i < elfReader.getSectionsNum(); ++i) {
-        auto section = elfReader.getSection(i);
+        const auto& section = elfReader.getSection(i);
         const auto secName = section.getName();
         const auto sectionHeader = section.getHeader();
 
@@ -53,17 +54,17 @@ size_t vpux::ELF::math::lcm(size_t a, size_t b) {
 
 size_t vpux::ELF::getOffsetOfSymRef(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr symRef) {
     auto referencedOp = symRefMap.lookupSymbol(symRef);
-    auto binaryOp = mlir::dyn_cast<ELF::BinaryOpInterface>(referencedOp);
+    auto binarySizeOp = mlir::dyn_cast<ELF::BinarySizeOpInterface>(referencedOp);
 
-    VPUX_THROW_UNLESS(binaryOp, "The relocInfo can't be retrieved for a non-binaryOpIf type reference");
+    VPUX_THROW_UNLESS(binarySizeOp, "The relocInfo can't be retrieved for a non-binaryOpIf type reference");
 
-    return binaryOp.getMemoryOffset();
+    return binarySizeOp.getMemoryOffset();
 }
 
 vpux::ELF::MainOp vpux::ELF::getElfMainOp(mlir::ModuleOp moduleOp) {
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(moduleOp, netOp, netFunc);
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
     return getElfMainOp(netFunc);
 }
 
@@ -215,11 +216,14 @@ mlir::SymbolRefAttr vpux::ELF::moveOpToSection(mlir::Operation* op, SectionMappe
 
             return mlir::cast<ELF::ElfSectionInterface>(sec.getOperation());
         } else {
-            auto sec = builder.create<ELF::LogicalSectionOp>(builder.getUnknownLoc(),
-                                                             signature.getName(),  // llvm::StringRef secName
-                                                             opAling,              // int64_t secAddrAlign
-                                                             signature.getType(),  // ELFVPUX40XX secType
-                                                             signature.getFlags()  // ELFVPUX40XX secFlags
+            auto sec = builder.create<ELF::LogicalSectionOp>(
+                    builder.getUnknownLoc(),
+                    signature.getName(),                                                 // llvm::StringRef secName
+                    opAling,                                                             // int64_t secAddrAlign
+                    signature.getType(),                                                 // ELFVPUX40XX secType
+                    signature.getFlags(),                                                // ELFVPUX40XX secFlags
+                    mlir::dyn_cast<ELF::BufferLocationInterface>(op).getMemorySection()  // section location
+
             );
 
             return mlir::cast<ELF::ElfSectionInterface>(sec.getOperation());

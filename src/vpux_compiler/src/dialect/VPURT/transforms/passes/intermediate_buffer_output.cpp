@@ -1,11 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include <limits>
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
 #include "vpux/compiler/utils/strings.hpp"
@@ -118,7 +118,7 @@ VPURT::ConfigureBarrierOp insertNewFinalBarrierOp(VPURT::TaskOp insertionTaskOp,
 
     mlir::OpBuilder builder(lastBarOp.getOperation());
     auto idForFinalBarrier = findFreePhysicalBarrierId(insertionTaskOp);
-    return builder.create<VPURT::ConfigureBarrierOp>(lastBarOp.getLoc(), idForFinalBarrier, true);
+    return builder.create<VPURT::ConfigureBarrierOp>(lastBarOp.getLoc(), idForFinalBarrier, true, false, nullptr);
 }
 
 mlir::Type insertNewCopyOut(mlir::Value targetBuffer, VPURT::TaskOp insertionTaskOp,
@@ -127,7 +127,7 @@ mlir::Type insertNewCopyOut(mlir::Value targetBuffer, VPURT::TaskOp insertionTas
     // create new output buffer
     builder.setInsertionPoint(targetBuffer.getDefiningOp());
     auto memAttr = IndexedSymbolAttr::get(insertionTaskOp.getContext(), stringifyEnum(VPU::MemoryKind::DDR));
-    const auto bufferType = targetBuffer.getType().cast<vpux::NDTypeInterface>();
+    const auto bufferType = mlir::cast<vpux::NDTypeInterface>(targetBuffer.getType());
     auto newType = mlir::MemRefType::get(bufferType.getShape(), bufferType.getElementType(),
                                          bufferType.getDimsOrder().toAffineMap(builder.getContext()), memAttr);
     // create new output buffer
@@ -203,19 +203,19 @@ void updateOutputType(mlir::Type newOutType, mlir::func::FuncOp funcOp) {
 
     // update module output
     auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
-    auto netOps = to_small_vector(moduleOp.getOps<IE::CNNNetworkOp>());
-    if (netOps.empty()) {
+    auto netInfoOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
+    if (netInfoOps.empty()) {
         return;
     }
 
-    auto newOutTypeND = newOutType.cast<vpux::NDTypeInterface>();
+    auto newOutTypeND = mlir::cast<vpux::NDTypeInterface>(newOutType);
     // precision must be float or integer
     mlir::Type elementType = mlir::FloatType::getF32(funcOp.getContext());
     if (newOutTypeND.getElementType().isF32()) {
         elementType = mlir::FloatType::getF16(funcOp.getContext());
     } else if (newOutTypeND.getElementType().isF16()) {
         elementType = mlir::FloatType::getF16(funcOp.getContext());
-    } else if (auto integerInput = newOutTypeND.getElementType().dyn_cast<mlir::IntegerType>()) {
+    } else if (auto integerInput = mlir::dyn_cast<mlir::IntegerType>(newOutTypeND.getElementType())) {
         elementType =
                 mlir::IntegerType::get(funcOp.getContext(), integerInput.getWidth(), integerInput.getSignedness());
     } else if (mlir::isa<mlir::quant::QuantizedType>(newOutTypeND.getElementType())) {
@@ -225,15 +225,15 @@ void updateOutputType(mlir::Type newOutType, mlir::func::FuncOp funcOp) {
     }
     const auto newOutTensorType = mlir::RankedTensorType::get(newOutTypeND.getShape(), elementType);
 
-    IE::CNNNetworkOp netOp;
-    IE::CNNNetworkOp::getFromModule(moduleOp, netOp, funcOp);
-    auto outputsInfo = to_small_vector(netOp.getOutputsInfo().getOps<IE::DataInfoOp>());
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
+    auto outputsInfo = to_small_vector(netInfo.getOutputsInfo().getOps<net::DataInfoOp>());
     for (auto p : outputsInfo | indexed) {
         auto outputIdx = p.index();
         auto outputInfo = p.value();
 
         if (outputIdx == 0) {
-            outputInfo.setUserType(newOutTensorType.cast<mlir::TensorType>());
+            outputInfo.setUserType(mlir::cast<mlir::TensorType>(newOutTensorType));
         } else {
             outputInfo.erase();
         }

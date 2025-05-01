@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/feasible_memory_scheduler.hpp"
 
 #include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma.hpp"
+#include "vpux/compiler/utils/stl_extras.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
 #include "vpux/utils/core/range.hpp"
@@ -68,6 +71,9 @@ bool compareHeapOrderWhenCycleMatch(const FeasibleMemoryScheduler::HeapElement& 
     }
     if (!a.isPrefetched() && b.isPrefetched()) {
         return false;
+    }
+    if (a.spillBuffer_ != nullptr && b.spillBuffer_ != nullptr && a.spillBuffer_ != b.spillBuffer_) {
+        return ValueOrderCmp::compare(a.spillBuffer_, b.spillBuffer_);
     }
     return a.op_ < b.op_;
 }
@@ -197,7 +203,7 @@ FeasibleMemoryScheduler::QueueType FeasibleMemoryScheduler::getQueueType(operati
 // function determines if based on buffer type execution would require
 // multiple ports
 bool areMultipleDmaPortsNeeded(mlir::Value buffer) {
-    if (auto distType = buffer.getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(buffer.getType())) {
         auto mode = distType.getDistribution().getMode().getValue();
         if (mode == VPU::DistributionMode::SEGMENTED || mode == VPU::DistributionMode::OVERLAPPED) {
             return true;
@@ -391,7 +397,8 @@ size_t FeasibleMemoryScheduler::operationCycleCost(operationIdxType opIdx) {
         return 1;
     }
 
-    return checked_cast<size_t>(execOp->getAttr(cycleCostAttrName).cast<mlir::IntegerAttr>().getValue().getSExtValue());
+    return checked_cast<size_t>(
+            mlir::cast<mlir::IntegerAttr>(execOp->getAttr(cycleCostAttrName)).getValue().getSExtValue());
 }
 
 bool FeasibleMemoryScheduler::isDataOp(operationIdxType opIdx) {
@@ -418,12 +425,42 @@ bool FeasibleMemoryScheduler::isDataOp(operationIdxType opIdx) {
 
     if (auto dmaTask = getDmaTypeOp(_depsInfo.getExecuteOpAtIndex(opIdx))) {
         // DMA from DDR to NN_CMX
-        auto srcMemSpace = dmaTask.getInput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
-        auto dstMemSpace = dmaTask.getOutput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+        auto srcMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaTask.getInput().getType()).getMemoryKind();
+        auto dstMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaTask.getOutput().getType()).getMemoryKind();
         return (_memKind == dstMemSpace && _memKind != srcMemSpace);
     }
 
     return false;
+}
+
+// Compute operation that depends only on constants and function inputs.
+bool FeasibleMemoryScheduler::isNoInputDepComputeOp(operationIdxType opIdx) {
+    // #E163065 - hang to be investigated. Limit to SW dequantize only.
+    auto execOp = _depsInfo.getExecuteOpAtIndex(opIdx);
+    if (VPUIP::VPUIPDialect::getExecutorKind(execOp) != VPU::ExecutorKind::SHAVE_ACT) {
+        return false;
+    }
+    auto isSWDequant = false;
+    execOp.getBody()->walk([&](mlir::Operation* op) {
+        if (auto swKernelOp = mlir::dyn_cast_or_null<VPUIP::SwKernelOp>(op)) {
+            if (getSwKernelEntryName(swKernelOp) == "dequantize") {
+                isSWDequant = true;
+            }
+        }
+    });
+    if (!isSWDequant) {
+        return false;
+    }
+
+    auto opDeps = _depsInfo.getOpDeps(opIdx);
+    for (auto& dep : opDeps) {
+        // Depends on data op which has no other dependencies
+        if (!_isDataOp[dep] || !_depsInfo.getOpDeps(dep).empty()) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void FeasibleMemoryScheduler::identifyDataOps() {
@@ -912,8 +949,13 @@ void FeasibleMemoryScheduler::scheduleComputeOps() {
     SmallVector<std::pair<operationIdxType, size_t>> scheduledOps;
     mlir::DenseSet<mlir::Value> buffersToAllocate;
     SmallVector<operationIdxType> computeOpIdxToSchedule;
-    // find compute ops to schedule
 
+    // Ops with dependencies on other compute ops
+    SmallVector<std::pair<operationIdxType, FeasibleMemoryScheduler::QueueType>> computeOps;
+    // Ops which depend on constants or function inputs have lower priority
+    SmallVector<std::pair<operationIdxType, FeasibleMemoryScheduler::QueueType>> noInputDepComputeOps;
+
+    // find compute ops to schedule
     for (auto& queue : _computeOpOrder) {
         auto firstOpInQueue = queue.second.begin();
         if (firstOpInQueue == queue.second.end()) {
@@ -929,18 +971,41 @@ void FeasibleMemoryScheduler::scheduleComputeOps() {
             continue;
         }
 
-        auto operationBuffers = getBuffersToAllocateForOp(*firstOpInQueue);
-        operationBuffers.insert(buffersToAllocate.begin(), buffersToAllocate.end());
-        if (!canAllocBuffers(operationBuffers)) {
-            // operation does not fit in memory
-            continue;
+        if (isNoInputDepComputeOp(*firstOpInQueue)) {
+            _log.trace("Compute op '{0}' depends only on constants so added to lower prio queue", *firstOpInQueue);
+            noInputDepComputeOps.push_back({*firstOpInQueue, queue.first});
+        } else {
+            // Store compute ops with dependencies to higher prio queue
+            computeOps.push_back({*firstOpInQueue, queue.first});
         }
+    }
 
-        // op will be scheduled
-        buffersToAllocate = std::move(operationBuffers);
-        computeOpIdxToSchedule.push_back(*firstOpInQueue);
-        _log.trace("Compute op to schedule: '{0}'", *firstOpInQueue);
-        queue.second.erase(firstOpInQueue);
+    // Check if compute ops satisfy buffer allocation constraints and select them for scheduling
+    auto selectOpsToSchedule = [&](SmallVector<std::pair<operationIdxType, FeasibleMemoryScheduler::QueueType>>& ops) {
+        for (auto opIter = ops.begin(); opIter != ops.end();) {
+            auto operationBuffers = getBuffersToAllocateForOp(opIter->first);
+            operationBuffers.insert(buffersToAllocate.begin(), buffersToAllocate.end());
+            if (!canAllocBuffers(operationBuffers)) {
+                // operation does not fit in memory
+                opIter++;
+                continue;
+            }
+
+            // op will be scheduled
+            buffersToAllocate = std::move(operationBuffers);
+            computeOpIdxToSchedule.push_back(opIter->first);
+            _log.trace("Compute op to schedule: '{0}'", opIter->first);
+            auto& scheduledQueue = _computeOpOrder[opIter->second];
+            scheduledQueue.erase(scheduledQueue.begin());
+            opIter = ops.erase(opIter);
+        }
+    };
+
+    selectOpsToSchedule(computeOps);
+    if (computeOps.empty()) {
+        // Schedule noInputDepComputeOps as close as possible to its consumers.
+        // Do not schedule them if there are other ready ops which do not fit into CMX yet.
+        selectOpsToSchedule(noInputDepComputeOps);
     }
 
     // schedule compute ops

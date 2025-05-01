@@ -1,9 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -46,13 +48,13 @@ mlir::LogicalResult vpux::IE::ExpandOp::inferReturnTypeComponents(
     const auto padBegin = parseIntArrayAttr<int64_t>(expand.getPadsBegin());
     const auto padEnd = parseIntArrayAttr<int64_t>(expand.getPadsEnd());
 
-    const auto inType = expand.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(expand.getInput().getType());
     if (!inType) {
         return mlir::failure();
     }
 
     const auto newType = inType.pad(ShapeRef(padBegin), ShapeRef(padEnd));
-    const auto newTensorType = newType.cast<mlir::RankedTensorType>();
+    const auto newTensorType = mlir::cast<mlir::RankedTensorType>(newType);
     inferredReturnShapes.emplace_back(newTensorType.getShape(), newTensorType.getElementType(),
                                       newTensorType.getEncoding());
 
@@ -78,8 +80,8 @@ mlir::OpFoldResult vpux::IE::ExpandOp::fold(FoldAdaptor adaptor) {
         // So that we can utilize AdjustInputShapeForEltwise pass to optimize the 2nd Add.
         if (this->getResult().hasOneUse()) {
             auto childOp = *getOutput().getUsers().begin();
-            auto unExpandedShape = getInput().getType().cast<vpux::NDTypeInterface>().getShape().toValues();
-            auto expandedShape = getOutput().getType().cast<vpux::NDTypeInterface>().getShape().toValues();
+            auto unExpandedShape = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getShape().toValues();
+            auto expandedShape = mlir::cast<vpux::NDTypeInterface>(getOutput().getType()).getShape().toValues();
             if (beneficialToKeepExpand(unExpandedShape, expandedShape, childOp)) {
                 return nullptr;
             }

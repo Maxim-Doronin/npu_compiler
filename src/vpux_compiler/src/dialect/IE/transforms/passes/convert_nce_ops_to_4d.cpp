@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -56,7 +58,7 @@ mlir::Value extendTensor(mlir::PatternRewriter& rewriter, mlir::Location loc, ml
         return nullptr;
     }
 
-    const auto shape = input.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto shape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
     auto newShape = to_small_vector(shape);
     newShape.insert(newShape.end() - nonTrivialAxis.ind(), 1);
 
@@ -74,7 +76,7 @@ mlir::Value composeTensorOnCD(mlir::PatternRewriter& rewriter, mlir::Location lo
     if (!input) {
         return nullptr;
     }
-    const auto shape = input.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto shape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
     SmallVector<int64_t> newShape{shape[Dims5D::Act::N], shape[Dims5D::Act::C] * shape[Dims5D::Act::D],
                                   shape[Dims5D::Act::H], shape[Dims5D::Act::W]};
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
@@ -135,8 +137,8 @@ mlir::LogicalResult ConvGeneralExpansion<ConcreteOp>::matchAndRewrite(ConcreteOp
     newConvOp->setAttr("dilations", newDilations);
 
     if (auto transposedConv = mlir::dyn_cast<IE::TransposedConvolutionOp>(origOp.getOperation())) {
-        const auto newOutputPadding = append(ctx, transposedConv.getOutputPadding(), 0, nonTrivialAxis);
-        newConvOp->setAttr("output_padding", newOutputPadding);
+        const auto newOutputPadding = append(ctx, transposedConv.getSpatialOutputPadding(), 0, nonTrivialAxis);
+        newConvOp->setAttr("spatial_output_padding", newOutputPadding);
     }
 
     // Note: only infer shape (and layout because it is related to shape).
@@ -144,7 +146,7 @@ mlir::LogicalResult ConvGeneralExpansion<ConcreteOp>::matchAndRewrite(ConcreteOp
     // invalid IR being produced because this pass only "legalizes" shape.
     vpux::inferReturnTypes(newConvOp, vpux::InferShapedTypeMode::SHAPE | vpux::InferShapedTypeMode::LAYOUT);
 
-    const auto outputType = origOp.getOutput().getType().template dyn_cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShapeAttr = getIntArrayAttr(ctx, outputType.getShape());
     auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), nullptr, false,
                                                                  outputShapeAttr);
@@ -213,7 +215,7 @@ mlir::LogicalResult PoolingGeneralExpansion<ConcreteOp>::matchAndRewrite(Concret
     // invalid IR being produced because this pass only "legalizes" shape.
     vpux::inferReturnTypes(newPoolingOp, vpux::InferShapedTypeMode::SHAPE | vpux::InferShapedTypeMode::LAYOUT);
 
-    const auto outputType = origOp.getOutput().getType().template dyn_cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShapeAttr = getIntArrayAttr(ctx, outputType.getShape());
     auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newPoolingOp->getResult(0), nullptr, false,
                                                                  outputShapeAttr);
@@ -267,12 +269,12 @@ void ConvertNceOpsTo4DPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     const auto isLegalNceOp = [&](mlir::Operation* op) {
-        const auto inputShape = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto inputShape = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape();
         return inputShape.size() != 3;
     };
 
     const auto isLegalGroupConvOp = [&](IE::GroupConvolutionOp groupConv) {
-        const auto inputShape = groupConv.getFilter().getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto inputShape = mlir::cast<vpux::NDTypeInterface>(groupConv.getFilter().getType()).getShape();
         const auto hasGroups = groupConv.getGroups().value_or(0) != 0;
         return (inputShape.size() + hasGroups) != 4;
     };

@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -104,7 +105,7 @@ mlir::LogicalResult FuseConstantPadWithConv::matchAndRewrite(IE::ConvolutionOp o
                                                              mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Convolution layer at '{1}'", getDebugName(), origConvolutionOp->getLoc());
 
-    const auto kernelSize = origConvolutionOp.getFilter().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto kernelSize = mlir::cast<vpux::NDTypeInterface>(origConvolutionOp.getFilter().getType()).getShape();
     const auto kernelSizeAttr = getIntArrayAttr(getContext(), kernelSize);
 
     return generalFusion(
@@ -114,7 +115,7 @@ mlir::LogicalResult FuseConstantPadWithConv::matchAndRewrite(IE::ConvolutionOp o
                         origConvolutionOp, origPadInput, origConvolutionOp.getFilter(), origConvolutionOp.getBias(),
                         origConvolutionOp.getStridesAttr(), newPadsBegin, newPadsEnd,
                         origConvolutionOp.getDilationsAttr(), nullptr, nullptr, origConvolutionOp.getStaticScaleAttr(),
-                        origConvolutionOp.getOutputChannelsAttr(), origConvolutionOp.getInputChannelsAttr());
+                        origConvolutionOp.getOutputPaddingAttr(), origConvolutionOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -142,7 +143,7 @@ mlir::LogicalResult FuseConstantPadWithGroupConv::matchAndRewrite(IE::GroupConvo
                                                                   mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got GroupConvolution layer at '{1}'", getDebugName(), origGroupConvolutionOp->getLoc());
 
-    const auto kernelSize = origGroupConvolutionOp.getFilter().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto kernelSize = mlir::cast<vpux::NDTypeInterface>(origGroupConvolutionOp.getFilter().getType()).getShape();
     const auto kernelSizeAttr = getIntArrayAttr(getContext(), kernelSize);
 
     return generalFusion(
@@ -154,7 +155,7 @@ mlir::LogicalResult FuseConstantPadWithGroupConv::matchAndRewrite(IE::GroupConvo
                         origGroupConvolutionOp.getBias(), origGroupConvolutionOp.getStridesAttr(), newPadsBegin,
                         newPadsEnd, origGroupConvolutionOp.getDilationsAttr(), origGroupConvolutionOp.getGroupsAttr(),
                         origGroupConvolutionOp.getPostOpAttr(), origGroupConvolutionOp.getClampAttr(),
-                        origGroupConvolutionOp.getOutputChannelsAttr(), origGroupConvolutionOp.getInputChannelsAttr());
+                        origGroupConvolutionOp.getOutputPaddingAttr(), origGroupConvolutionOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -189,8 +190,8 @@ mlir::LogicalResult FuseConstantPadWithMaxpool::matchAndRewrite(IE::MaxPoolOp or
                 rewriter.replaceOpWithNewOp<IE::MaxPoolOp>(
                         origMaxPoolOp, origPadInput, origMaxPoolOp.getKernelSizeAttr(), origMaxPoolOp.getStridesAttr(),
                         newPadsBegin, newPadsEnd, origMaxPoolOp.getRoundingType(), origMaxPoolOp.getPostOpAttr(),
-                        origMaxPoolOp.getClampAttr(), origMaxPoolOp.getOutputChannelsAttr(),
-                        origMaxPoolOp.getInputChannelsAttr());
+                        origMaxPoolOp.getClampAttr(), origMaxPoolOp.getOutputPaddingAttr(),
+                        origMaxPoolOp.getInputPaddingAttr());
             },
             _log.nest());
 }

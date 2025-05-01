@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -70,7 +70,7 @@ def ReorderMPIOps : PassBase<"reorder-mapped-inference-ops", "vpux::FunctionPass
     let constructor = "vpux::VPUMI40XX::reorderMappedInferenceOpsPass()";
 }
 
-def ResolveTaskLocation : PassBase<"resolve-task-location", "vpux::VPURegMapped::ResolveTaskLocationPass"> {
+def ResolveTaskLocation : PassBase<"resolve-task-location", "vpux::FunctionPass"> {
     let summary = [{ 40xx-specific version of resolve task location pass }];
 
     let constructor = "vpux::VPUMI40XX::createResolveTaskLocationPass()";
@@ -267,10 +267,101 @@ def DumpStatisticsOfWlmOps : PassBase<"dump-statistics-of-wlm-ops", "vpux::Funct
 
 }
 
-def AddInitialBarrierConfigurationOps : PassBase<"add-initial-barrier-confuguration-ops", "vpux::FunctionPass"> {
-    let summary = "Prepare information for initial barrier configuration";
+def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux::FunctionPass"> {
+    let summary = "Prepare information and ops for initial barrier configuration";
 
-    let constructor = "vpux::VPUMI40XX::createAddInitialBarrierConfigurationOps()";
+    let constructor = "vpux::VPUMI40XX::createAddBarrierConfigurationOps()";
+    
+    let description = [{
+        This pass creates the barrier configuration constants and DMAs to help RT program the barriers during inference
+        WorkloadManagementBarrierProgrammingMode::LEGACY
+            This pass returns early without modifying the IR
+        WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED
+            Pass creates stride constant and raw barrier configurations to help runtime program the barriers.
+            Stride constant is a 1D constant/array of size nPhysBarr. Index of the array are considered to be pid and values at index represent usage of the pid
+            e.g. [1,2,4,2,5] pid 0 is used once, pid 1 is used 2 times, pid 3 is used 4 times and so on
+
+            RawBarrierConfiguration is a 1D constant/array of size nPhysBarr x (max(barrierWithMaximumUsage, BARRIER_FIFO_DEPTH) + BARRIER_FIFO_DEPTH - 1)
+            TODO: Explain reason for (max(barrierWithMaximumUsage, BARRIER_FIFO_DEPTH) + BARRIER_FIFO_DEPTH - 1)
+
+            Assuming 16 Physical Barriers such that barrierWithMaximumUsage = 1 and BARRIER_FIFO_DEPTH=4
+            Shape of RawBarrierConfiguration is 16 x (max(1, 4) + 4 - 1) => 16 x 7 = 112
+            Such shape means for every pid we will have 7 configurations stored in this constant
+
+            e.g.
+            [Pid0_Usage0, 0, 0, 0, 0 ,0 , 0, 0, Pid1_Usage0, 0, 0, 0, 0, 0, 0 ......]
+
+        WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED
+            This mode does everything done at WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED plus creates a DMA at bootstrap
+            which will push barrier configurations to FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR register. In this case runtime doesn't need to program initial barriers
+            "Initial barriers reprogramming" refer to programming BARRIER_FIFO_DEPTH usages of each physical barriers
+
+            Take following barriers used in network as example compiling on single cluster(nPhysBarr = 16)
+            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} pid0
+            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 2 : ui8} pid1
+            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} pid2
+            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} pid3
+            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, isFinalBarrier, producer_count = 1 : ui8} pid4
+
+            For each barrier usage, DMA writes 32bits in total where each 8 bits represents the following
+
+                7 6 5 4 3 2 1 0                15 14 13 12 11 10 9 8           23 22 21 20 19 18 17 16      31  30 29 28 27 26 25 24
+                0 0 0 0 0 0 0 1                 0  0  0  0  0  0 0 0            0 0  0  0  0  0  0  1       0   0  0  0  0  0  0  1
+            <----------8bit----------->     <----------8bit----------->     <----------8bit----------->     <----------8bit----------->
+            [   producer_count,             producer_interrupt_enabled,            consumer_count,          consumer_interrupt_enabled]
+
+            e.g for pid0 first usage in above example we will have the value 0x01010001 which translates to
+            Producer Count: 1, Producer Interrupt: 0, Consumer Count: 1, Consumer Interrupt: 1
+            Since pid0 has only single use the other 3 entries are all 0s. Similarly the whole constant for above barriers as example looks like this
+
+                [
+            pid0    0x01010001, 0x0, 0x0, 0x0,
+            pid1    0x01010002, 0x0, 0x0, 0x0,
+            pid2    0x01010001, 0x0, 0x0, 0x0,
+            pid3    0x01010001, 0x0, 0x0, 0x0,
+            pid4    0x00010101, 0x0, 0x0, 0x0,
+            pid5         0x0, 0x0, 0x0, 0x0,
+            pid6         0x0, 0x0, 0x0, 0x0,
+            pid7         0x0, 0x0, 0x0, 0x0,
+            pid8         0x0, 0x0, 0x0, 0x0,
+            pid9         0x0, 0x0, 0x0, 0x0,
+            pid10        0x0, 0x0, 0x0, 0x0,
+            pid11        0x0, 0x0, 0x0, 0x0,
+            pid12        0x0, 0x0, 0x0, 0x0,
+            pid13        0x0, 0x0, 0x0, 0x0,
+            pid14        0x0, 0x0, 0x0, 0x0,
+            pid15        0x0, 0x0, 0x0, 0x0,
+                ]
+
+            Similarly other constant can be deduced to have below unpacked values(only explaining non zero)
+            Producer Count: 1, Producer Interrupt: 0, Consumer Count: 1, Consumer Interrupt: 1
+            Producer Count: 2, Producer Interrupt: 0, Consumer Count: 1, Consumer Interrupt: 1
+            Producer Count: 1, Producer Interrupt: 0, Consumer Count: 1, Consumer Interrupt: 1
+            Producer Count: 1, Producer Interrupt: 0, Consumer Count: 1, Consumer Interrupt: 1
+            Producer Count: 1, Producer Interrupt: 1, Consumer Count: 1, Consumer Interrupt: 0
+
+        WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED
+            This mode does everything done at WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED plus creates DMAs in the schedule at right place 
+            which will push barrier configurations to FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR register. In this case runtime doesn't need to program any barriers
+    }];
+
+    let options = [
+        Option<
+            "workloadManagementBarrierProgrammingModeOpt", "workload-management-barrier-programming-mode",
+            "vpux::WorkloadManagementBarrierProgrammingMode", "",
+            "Setting which controls mode of barrier programming",
+            [{::llvm::cl::values(
+            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::LEGACY, "LEGACY",
+                "Runtime handles barrier programming independently"),
+            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED, "NO_BARRIER_DMAS_SCHEDULED",
+                "Compiler only creates constants to aid runtime in barrier programming"),
+            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED, "INITIAL_BARRIER_DMAS_SCHEDULED", 
+                "Compiler creates DMA to program initial barrier and constant to aid runtime in barrier programming"),
+            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED, "ALL_BARRIER_DMAS_SCHEDULED", 
+                "Compiler creates DMAs to program all barriers")
+          )}]
+        >
+    ];
 }
 
 def AddMappedInferenceVersionOp : PassBase<"add-mapped-inference-version-op", "vpux::FunctionPass"> {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -48,7 +48,7 @@ mlir::OpFoldResult vpux::VPU::ReduceMinOp::fold(FoldAdaptor) {
 //
 
 vpux::InputTiling vpux::VPU::ReduceMinOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger /*log*/) {
-    const auto inShape = getInput().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto inShape = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getShape();
     const auto axesValue = getAxesValue();
     const auto keepDims = getKeepDims();
 
@@ -67,7 +67,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::ReduceMinOp::getTilingStrategy(TilingMo
         const auto axes = parseIntArrayAttr<int64_t>(getAxesValueAttr());
         maxNumTiles = getMaxNumTilesWithAxesExclusion(op, axes);
     } else {
-        const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
         const auto outputShape = outputType.getShape();
         maxNumTiles = to_small_vector(outputShape);
     }

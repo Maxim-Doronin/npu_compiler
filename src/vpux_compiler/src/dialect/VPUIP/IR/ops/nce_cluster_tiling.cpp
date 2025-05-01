@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -131,23 +131,33 @@ void vpux::VPUIP::NCEClusterTilingOp::build(mlir::OpBuilder& builder, mlir::Oper
     auto& bodyBlock = bodyRegion->emplaceBlock();
     for (auto operand : operands) {
         auto type = operand.getType();
-        if (auto distributedType = type.dyn_cast<DistributedBufferType>()) {
+        if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
             type = distributedType.getCompactType();
-        } else if (auto sparseType = type.dyn_cast<SparseBufferType>()) {
-            if (auto distDataType = sparseType.getData().dyn_cast<DistributedBufferType>()) {
+        } else if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(type)) {
+            if (auto distDataType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(sparseType.getData())) {
                 mlir::MemRefType dataType = distDataType.getCompactType();
                 mlir::MemRefType smType = nullptr;
                 if (sparseType.getSparsityMap() != nullptr &&
-                    sparseType.getSparsityMap().isa<DistributedBufferType>()) {
-                    smType = sparseType.getSparsityMap().cast<DistributedBufferType>().getCompactType();
+                    mlir::isa<vpux::VPUIP::DistributedBufferType>(sparseType.getSparsityMap())) {
+                    smType = mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseType.getSparsityMap())
+                                     .getCompactType();
                 }
                 mlir::MemRefType seType = nullptr;
                 if (sparseType.getStorageElementTable() != nullptr &&
-                    sparseType.getStorageElementTable().isa<DistributedBufferType>()) {
-                    seType = sparseType.getStorageElementTable().cast<DistributedBufferType>().getCompactType();
+                    mlir::isa<vpux::VPUIP::DistributedBufferType>(sparseType.getStorageElementTable())) {
+                    seType = mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseType.getStorageElementTable())
+                                     .getCompactType();
                 }
                 type = SparseBufferType::get(dataType, smType, seType, sparseType.getIsWeights(),
                                              sparseType.getSparsityCompression(), sparseType.getSeAttr());
+            }
+        } else if (auto boundedType = mlir::dyn_cast<vpux::VPUIP::BoundedBufferType>(type)) {
+            if (auto distributedDataType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(boundedType.getData())) {
+                mlir::MemRefType dataType = distributedDataType.getCompactType();
+                mlir::MemRefType dynamicShapeType =
+                        mlir::cast<vpux::VPUIP::DistributedBufferType>(boundedType.getDynamicShape()).getCompactType();
+
+                type = vpux::VPUIP::BoundedBufferType::get(dataType, dynamicShapeType);
             }
         }
 
@@ -191,7 +201,7 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTilingOp::verify() {
     const auto checkShape = [&](mlir::ValueRange operands) {
         for (auto operand : operands) {
             auto operandType = operand.getType();
-            if (auto ndType = operand.getType().dyn_cast<vpux::NDTypeInterface>()) {
+            if (auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(operand.getType())) {
                 auto rank = ndType.getRank();
                 if (rank != 5 && rank != 4 && rank != 1 && isNceClusterTaskType) {
                     return errorAt(op->getLoc(), "Only 5D/4D/1D tensors are supported. Got {0}", rank);

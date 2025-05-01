@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,10 +7,10 @@
 
 #include "vpux/compiler/NPU37XX/conversion.hpp"
 #include "vpux/compiler/NPU40XX/conversion.hpp"
-#include "vpux/compiler/NPU40XX/pipelines.hpp"
+#include "vpux/compiler/NPU40XX/pipeline_options.hpp"
 #include "vpux/compiler/dialect/VPU/utils/dry_run_utils.hpp"
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace arch40xx {
@@ -30,9 +30,11 @@ void buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
 
 void elfSubsetPipelineVPUMI(mlir::OpPassManager& pm, bool workloadManagementEnable,
                             WorkloadManagementMode workloadManagementMode, bool enableDumpStatisticsOfWlmOps,
+                            WorkloadManagementBarrierProgrammingMode WorkloadManagementBarrierProgrammingMode,
                             const Logger& log);
 
-void elfSubsetPipelineVPUASM(mlir::OpPassManager& pm, bool workloadManagementEnable, const Logger& log);
+void elfSubsetPipelineVPUASM(mlir::OpPassManager& pm, bool workloadManagementEnable, bool disableDmaSwFifo,
+                             const Logger& log);
 
 //
 // Registration

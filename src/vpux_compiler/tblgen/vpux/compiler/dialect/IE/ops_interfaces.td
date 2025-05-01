@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -62,53 +62,53 @@ def IE_LayerWithPostOpInterface : OpInterface<"LayerWithPostOpInterface"> {
 
     let methods = [
         InterfaceMethod<
-            "Get the post-processing operation",
-            "std::optional<mlir::OperationName>", "getPostOp", (ins),
+            "Returns the post-processing operation attribute",
+            "vpux::IE::PostOpAttr", "getPostOp", (ins),
             [{}],
             [{
-                return vpux::IE::getLayerPostOp($_op);
-            }]
-        >,
-
-        InterfaceMethod<
-            "Get the post-processing operation attributes",
-            "mlir::DictionaryAttr", "getPostOpAttrs", (ins),
-            [{}],
-            [{
-                return vpux::IE::getLayerPostOpAttrs($_op);
+                return $_op.getPostOpAttr();
             }]
         >,
 
         InterfaceMethod<
             "Set post-processing operation attribute",
+            "void", "setPostOpAttr", (ins "vpux::IE::PostOpAttr":$postOpAttr),
+            [{}],
+            [{
+                $_op.setPostOpAttr(postOpAttr);
+            }]
+        >,
+
+        InterfaceMethod<
+            "Set post-processing operation attribute from an operation",
             "void", "setPostOp", (ins "mlir::Operation*":$postOp),
             [{}],
             [{
-                vpux::IE::setLayerPostOp($_op, postOp);
+                $_op.setPostOpAttr(vpux::IE::attributizePostOp(postOp));
             }]
         >,
 
         InterfaceMethod<
-            "Set post-processing operation attribute",
+            "Clears the post-processing operation attribute",
             "void", "clearPostOp", (ins),
             [{}],
             [{
-                vpux::IE::clearLayerPostOp($_op);
+                $_op.removePostOpAttr();
             }]
         >,
 
         InterfaceMethod<
-            "Set post-processing operation attribute",
+            "Checks if the operation supports a given post-processing operation",
             "bool", "isSupportedPostOp", (ins "mlir::Operation*":$postOp, "const FuncRef<void(const formatv_object_base&)>&":$logCb)
         >,
 
         InterfaceMethod<
-            "Set clamp operation attribute",
+            "Set secondary post-processing operation attribute",
             "void", "setLayerClampOp", (ins "mlir::Operation*":$clamp)
         >,
 
         InterfaceMethod<
-            "Set clamp operation attribute",
+            "Checks if the operation supports a secondary post-processing operation",
             "bool", "isSupportedClampOp", (ins "mlir::Operation*":$clamp, "const FuncRef<void(const formatv_object_base&)>&":$logCb)
         >
     ];

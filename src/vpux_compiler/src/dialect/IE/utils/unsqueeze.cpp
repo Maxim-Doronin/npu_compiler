@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/unsqueeze.hpp"
 
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/utils/core/range.hpp"
 
 namespace vpux {
 namespace IE {
@@ -44,20 +46,39 @@ mlir::FailureOr<SmallVector<int64_t>> propagateShape(mlir::Location loc, ArrayRe
     return outShape;
 }
 
-mlir::FailureOr<mlir::ArrayAttr> propagateBoundsAttr(mlir::MLIRContext* ctx, mlir::Location loc, mlir::Value value,
-                                                     ArrayRef<int64_t> axes) {
-    const auto boundsAttr = vpux::getBounds(value);
-    if (boundsAttr == nullptr) {
-        return mlir::ArrayAttr(nullptr);
+mlir::FailureOr<SmallVector<int64_t>> propagateDynamicAttr(mlir::Location loc, mlir::Value value,
+                                                           ArrayRef<int64_t> axes) {
+    auto type = value.getType();
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
+        const auto bounds = boundedType.getBounds();
+        const auto outBounds = vpux::IE::propagateShape(loc, bounds.raw(), axes);
+        if (mlir::failed(outBounds)) {
+            return mlir::failure();
+        }
+        return outBounds.value();
     }
 
-    const auto bounds = parseIntArrayAttr<int64_t>(boundsAttr);
-    const auto outBounds = vpux::IE::propagateShape(loc, bounds, axes);
-    if (mlir::failed(outBounds)) {
-        return mlir::failure();
+    if (auto dynamicDimsMaskType = mlir::dyn_cast<Core::DynamicDimsMaskTensorType>(type)) {
+        const auto dynamicDimsMask = dynamicDimsMaskType.getDynamicDimsMask();
+
+        const auto invertDimsMask = [](int64_t dim) {
+            return int64_t{dim == 0};
+        };
+
+        // propagateShape will put '1' into unsqueezed dimensions. Those dimensions will be static.
+        // To re-use the function for dynamicDimsMask, we first invert the mask to swap dim representation
+        // (1 - static dim, 0 - dynamic dim) and then after the unsqueeze invert them back
+        const auto invertedMask = to_small_vector(dynamicDimsMask | transformed(invertDimsMask));
+        const auto outInvertedDimsMask = vpux::IE::propagateShape(loc, invertedMask, axes);
+        if (mlir::failed(outInvertedDimsMask)) {
+            return mlir::failure();
+        }
+
+        auto outDimsMask = to_small_vector(outInvertedDimsMask.value() | transformed(invertDimsMask));
+        return outDimsMask;
     }
 
-    return getIntArrayAttr(ctx, outBounds.value());
+    return SmallVector<int64_t>{};
 }
 
 }  // namespace IE

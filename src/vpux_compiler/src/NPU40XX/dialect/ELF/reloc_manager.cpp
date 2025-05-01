@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -82,8 +82,8 @@ void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::RelocationIn
     auto offset = relocInfo.offset;
 
     if (relocInfo.isOffsetRelative) {
-        auto baseBinaryOp = mlir::cast<ELF::BinaryOpInterface>(op);
-        offset += baseBinaryOp.getMemoryOffset();
+        auto baseBinarySizeOp = mlir::cast<ELF::BinarySizeOpInterface>(op);
+        offset += baseBinarySizeOp.getMemoryOffset();
     }
 
     relocBuilder.create<ELF::RelocOp>(relocSection.getLoc(), offset, symForReloc, relocInfo.relocType, relocInfo.addend,

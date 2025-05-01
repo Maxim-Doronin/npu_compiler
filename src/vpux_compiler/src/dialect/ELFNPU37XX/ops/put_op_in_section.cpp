@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -28,7 +28,7 @@ size_t vpux::ELFNPU37XX::PutOpInSectionOp::getBinarySize() {
 
     if (llvm::dyn_cast<vpux::VPURT::DeclareBufferOp>(inputArgDefOp) != nullptr) {
         // VPURT::DeclareBufferOp is a simple logical operation with no data to serialize.
-        auto ndTypeInterface = getInputArg().getType().cast<vpux::NDTypeInterface>();
+        auto ndTypeInterface = mlir::cast<vpux::NDTypeInterface>(getInputArg().getType());
         return ndTypeInterface.getTotalAllocSize().count();
     }
 

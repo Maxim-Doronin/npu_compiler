@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ using namespace vpux;
 //
 
 bool vpux::VPU::DepthToSpaceOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t numTiles) {
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inShape = inputType.getShape();
 
     if (strategy == VPU::MultiClusterStrategy::Clustering) {
@@ -98,12 +98,12 @@ mlir::LogicalResult vpux::VPU::DepthToSpaceOp::inferReturnTypes(
     }
 
     const auto inShape = getShape(depthToSpace.getInput());
-    const auto inType = depthToSpace.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(depthToSpace.getInput().getType());
     const auto block_size = depthToSpace.getBlockSize();
 
     const auto elemType = inType.getElementType();
     if (!(elemType.isF16() || elemType.isF32() || elemType.isUnsignedInteger(8) ||
-          elemType.isa<mlir::quant::QuantizedType>())) {
+          mlir::isa<mlir::quant::QuantizedType>(elemType))) {
         return errorAt(loc, "DepthToSpace only support FP16, FP32, U8 data type");
     }
 
@@ -170,7 +170,7 @@ mlir::FailureOr<OutputTiling> getD2STilingStrategy(mlir::Operation* op, TilingMo
     auto origOp = mlir::dyn_cast<VPU::DepthToSpaceOp>(op);
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
 
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     const auto outputShape = outputType.getShape();
 
     int64_t blockSize = 0;
@@ -178,6 +178,11 @@ mlir::FailureOr<OutputTiling> getD2STilingStrategy(mlir::Operation* op, TilingMo
         blockSize = origOp.getBlockSizeAttr().getValue().getSExtValue();
     }
     VPUX_THROW_WHEN(blockSize == 0, "BlockSize is zero and used as a divisor");
+
+    auto newShape = to_small_vector(outputShape);
+    newShape[Dims4D::Act::H.ind()] /= blockSize;
+    newShape[Dims4D::Act::W.ind()] /= blockSize;
+    auto outputShapeReducedHW = ShapeRef(newShape);
 
     Shape nTilesOnDimforDepthToSpace(outputShape.size(), 1);
     tilingMode = TilingMode::ISOLATED;
@@ -190,10 +195,12 @@ mlir::FailureOr<OutputTiling> getD2STilingStrategy(mlir::Operation* op, TilingMo
 
     const auto isSupportedTileSize = [op, &tilingInfo, outputShape, log](ShapeRef nTilesOnDim,
                                                                          TilingMode tilingMode) -> bool {
-        const auto tiles = fillDividedTiles(op, nTilesOnDim, outputShape);
+        auto tiles = fillDividedTiles(op, nTilesOnDim, outputShape);
+
         if (mlir::failed(tiles)) {
             return false;
         }
+
         return tilingInfo.isSupportedTiling(tiles.value(), tilingMode, log);
     };
 
@@ -201,14 +208,10 @@ mlir::FailureOr<OutputTiling> getD2STilingStrategy(mlir::Operation* op, TilingMo
 
     while (tileDimIter < tileDimOrder.end()) {
         if (dimToTile == Dims4D::Act::H || dimToTile == Dims4D::Act::W) {
-            while (((maxTile * blockSize) <= outputShape[dimToTile]) &&
+            while ((maxTile <= outputShapeReducedHW[dimToTile]) &&
                    (!isSupportedTileSize(nTilesOnDimforDepthToSpace, tilingModeToCheck))) {
-                if (outputShape[dimToTile] % (maxTile * blockSize) == 0) {
-                    nTilesOnDimforDepthToSpace[dimToTile] = maxTile;
-                    maxTile++;
-                } else {
-                    maxTile++;
-                }
+                nTilesOnDimforDepthToSpace[dimToTile] = maxTile;
+                maxTile++;
             }
             dimToTile = *(++tileDimIter);
             maxTile = 1;

@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/async_deps_info.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
 #include <mlir/IR/Visitors.h>

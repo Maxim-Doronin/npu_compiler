@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -95,6 +95,10 @@ vpux::NDTypeInterface getDistributedTypeFromInput(VPU::ClusteredOpInterface clus
                                                   mlir::ArrayAttr alignment, VPU::MultiClusterStrategy strategy,
                                                   const bool hasExplicitDistributedAttr,
                                                   SiblingOpsAnalysis& siblingsAnalysis);
+
+vpux::NDTypeInterface getSwDistributedTypeForOpOperand(VPU::ClusteredOpInterface clusteredOp, mlir::OpOperand& operand,
+                                                       SiblingOpsAnalysis& siblingsAnalysis,
+                                                       bool hasExplicitDistributedAttr);
 
 bool getUniformDistributedSegments(VPU::ClusteredOpInterface clusteredOp, ArrayRef<int64_t> shape,
                                    VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
@@ -210,7 +214,7 @@ mlir::Value getDistributedOperandFromNCEClusterTiling(T clusterOp, mlir::Value i
     if (innerOperand == nullptr) {
         return nullptr;
     }
-    auto blockArg = innerOperand.dyn_cast<mlir::BlockArgument>();
+    auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(innerOperand);
     if (blockArg == nullptr) {
         return nullptr;
     }
@@ -316,6 +320,19 @@ vpux::NDTypeInterface getDistributedTypeFromDistributionMap(vpux::NDTypeInterfac
                                                             const TensorDistributionMap& distributionMap);
 
 TensorDistributionMap getDistributionMapFromDistributedType(vpux::NDTypeInterface type);
+
+/**
+ * @brief SEP DW.Conv has strict channel restrictions. A SEP DW.Conv workload must have 16/32/64
+ *        channel size and workload must start from 0 offset in cluster.
+ *        As such, when dividing channels for SOK multiclustering purposes, each individual
+ *        cluster must respect the above mentioned conditions. This util ensures that.
+ *
+ *        E.g. 144 channels divided into 3 clusters:
+ *                * non-SEP DW.Conv would have [48, 48, 48] as a valid distribution;
+ *                * SEP DW.Conv must have [64, 64, 16] to be legal.
+ */
+mlir::FailureOr<OverlapDistributionParams> getSupportedPerClusterShapesAndOffsetsForSEPDWConv(
+        VPU::ClusteredOpInterface clusteredOp, ShapeRef shape, int64_t numClusters, Dim tileDim, bool isBroadcasted);
 
 }  // namespace VPU
 }  // namespace vpux

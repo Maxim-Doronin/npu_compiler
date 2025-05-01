@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/profiling/common.hpp"
@@ -39,7 +39,7 @@ public:
     }
 
     mlir::Location getUniqueLoc(mlir::Location baseLoc) {
-        VPUX_THROW_WHEN(baseLoc.isa<mlir::UnknownLoc>(), "Unknown location");
+        VPUX_THROW_WHEN(mlir::isa<mlir::UnknownLoc>(baseLoc), "Unknown location");
         std::string strLoc = stringifyPrimaryLocation(baseLoc);
         if (_counter.count(strLoc) == 0) {
             _counter[strLoc] = 1;
@@ -74,8 +74,9 @@ struct TaskSignature {
     }
 };
 
-mlir::BlockArgument addNewProfilingOutput(mlir::MLIRContext* ctx, mlir::func::FuncOp& netFunc, IE::CNNNetworkOp& netOp,
-                                          mlir::MemRefType outputType, profiling::ExecutorType execType);
+mlir::BlockArgument addNewProfilingOutput(mlir::MLIRContext* ctx, mlir::func::FuncOp& netFunc,
+                                          net::NetworkInfoOp& netOp, mlir::MemRefType outputType,
+                                          profiling::ExecutorType execType);
 
 /**
  * @brief utility function to check if a given task belongs to a set of profiled DMA operations,
@@ -102,7 +103,7 @@ bool isDmaHwpUsedInVPURT(mlir::func::FuncOp& func);
  * @brief check whether HWP argument was used in any profiled DMA operation
  * dma_hwp_id attribute set
  *
- * @return false for architectures < NPU40XX.
+ * @return false for architectures < VPUX40XX.
  * For other architectures true if at least one profiled DMA operation has dma_hwp_id argument set,
  * false otherwise.
  *
@@ -110,12 +111,12 @@ bool isDmaHwpUsedInVPURT(mlir::func::FuncOp& func);
 bool isDmaHwpUsedInVPURT(mlir::ModuleOp& module);
 
 /**
- * @brief check whether CNNNetworkOp defines profiling outputs
+ * @brief check whether NetworkInfoOp defines profiling outputs
  *
  * @return true, if there are profiling outputs defined, false - otherwise
  *
  */
-bool isProfilingEnabled(IE::CNNNetworkOp netOp);
+bool isProfilingEnabled(net::NetworkInfoOp netOp);
 
 /**
  * @brief return profiling section of specific type extracted from module's DataInfoOps

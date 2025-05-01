@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -99,22 +100,22 @@ bool areDistributedTypesConcatenable(VPU::DistributedTensorType firstType, VPU::
 
 NDTypeInterface getConcatDistributedType(VPU::DistributedTypeInterface origType, ShapeRef shape,
                                          mlir::Type elementType) {
-    auto distributedDataType = origType.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+    auto distributedDataType = mlir::cast<vpux::VPU::DistributedTensorType>(origType.getDistributedTypes().front());
     const auto typeComponents = TypeComponents().setShape(shape).setElementType(elementType);
 
     if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(distributedDataType.getDistribution())) {
         auto distribution = distributedDataType.getDistribution();
-        if (auto sparseType = origType.dyn_cast<VPU::SparseTensorType>()) {
+        if (auto sparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(origType)) {
             distribution = VPU::getExplicitDistrAttrForActualDataFromSparseType(sparseType);
         }
 
         auto newDistributedAttr =
                 getConcatExplicitDistributedAttrForNewShape(distribution, shape, origType.getContext());
-        return origType.changeTypeComponentsForExplicitDistribution(typeComponents, newDistributedAttr)
-                .cast<NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(
+                origType.changeTypeComponentsForExplicitDistribution(typeComponents, newDistributedAttr));
     }
 
-    return origType.cast<NDTypeInterface>().changeTypeComponents(typeComponents);
+    return mlir::cast<vpux::NDTypeInterface>(origType).changeTypeComponents(typeComponents);
 }
 
 size_t getSize(vpux::NDTypeInterface type) {
@@ -257,7 +258,7 @@ bool InputConcatPattern::inputConcatOnlyMeetRequirement(size_t cmxSize) {
         return false;
     }
 
-    const auto concatType = _concat.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto concatType = mlir::cast<vpux::NDTypeInterface>(_concat.getOutput().getType());
     auto newConcatType = getNewConcatType();
 
     // Find the target user op through view like ops
@@ -271,7 +272,7 @@ bool InputConcatPattern::inputConcatOnlyMeetRequirement(size_t cmxSize) {
         // If they are compatible, do cmx-concat and insert new copy after concat because the inserted copy will be
         // optimized with the user copy.
         if (auto copyOp = mlir::dyn_cast<VPU::CopyOp>(user)) {
-            auto dstType = copyOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+            auto dstType = mlir::cast<vpux::NDTypeInterface>(copyOp.getOutput().getType());
             auto srcMemoryShape = newConcatType.getMemShape();
             auto dstMemoryShape = dstType.getMemShape();
 
@@ -284,9 +285,9 @@ bool InputConcatPattern::inputConcatOnlyMeetRequirement(size_t cmxSize) {
             if ((srcDistributedIf != nullptr) && (srcDistributedIf.containsDistributedTypes()) &&
                 (dstDistributedIf != nullptr) && (dstDistributedIf.containsDistributedTypes())) {
                 const auto srcDistrType =
-                        srcDistributedIf.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+                        mlir::cast<vpux::VPU::DistributedTensorType>(srcDistributedIf.getDistributedTypes().front());
                 const auto dstDistrType =
-                        dstDistributedIf.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+                        mlir::cast<vpux::VPU::DistributedTensorType>(dstDistributedIf.getDistributedTypes().front());
 
                 if (mlir::failed(areDistributionAttrsCompatible(srcDistrType, dstDistrType))) {
                     continue;
@@ -320,7 +321,7 @@ void InputConcatPattern::insertCopyAfterConcat() {
     mlir::OpBuilder builder(_concat);
 
     builder.setInsertionPointAfter(_concat);
-    const auto concatType = _concat.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto concatType = mlir::cast<vpux::NDTypeInterface>(_concat.getOutput().getType());
     const auto memSpace = concatType.getMemSpace();
 
     auto newConcatType = getNewConcatType();
@@ -389,7 +390,7 @@ void InputConcatPattern::rewrite() {
     for (auto p : _inputParts | indexed) {
         const auto& operandIdx = p.index();
         auto& inputPart = p.value();
-        auto origType = inputPart.concatOperand.getType().cast<NDTypeInterface>();
+        auto origType = mlir::cast<vpux::NDTypeInterface>(inputPart.concatOperand.getType());
         auto inputCopyOp = _concat.getOperand(operandIdx).getDefiningOp<VPU::CopyOp>();
 
         if (inputPart.isMultiCluster()) {
@@ -399,28 +400,28 @@ void InputConcatPattern::rewrite() {
             _log.trace("Removing clustered input Copy from NNCMX to DDR '{0}' at '{1}'",
                        inputPart.getCopyOp()->getName(), inputPart.getCopyOp()->getLoc());
 
-            auto concatOutputType = _concat.getOutput().getType().cast<VPU::DistributedTypeInterface>();
+            auto concatOutputType = mlir::cast<vpux::VPU::DistributedTypeInterface>(_concat.getOutput().getType());
             auto newConcatInputType =
                     getConcatDistributedType(concatOutputType, origType.getShape(), origType.getElementType());
 
-            auto concatInPatternMode = newConcatInputType.cast<VPU::DistributedTypeInterface>()
-                                               .getDistributedTypes()
-                                               .front()
-                                               .cast<VPU::DistributedTensorType>()
+            auto concatInPatternMode = mlir::cast<vpux::VPU::DistributedTensorType>(
+                                               mlir::cast<vpux::VPU::DistributedTypeInterface>(newConcatInputType)
+                                                       .getDistributedTypes()
+                                                       .front())
                                                .getDistribution()
                                                .getMode()
                                                .getValue();
 
             auto nceProducerOutput = inputCopyOp->getOperand(0);
-            auto nceDistributedType = nceProducerOutput.getType().cast<VPU::DistributedTypeInterface>();
+            auto nceDistributedType = mlir::cast<vpux::VPU::DistributedTypeInterface>(nceProducerOutput.getType());
 
             auto copyPatternType =
                     getConcatDistributedType(nceDistributedType, origType.getShape(), origType.getElementType());
 
-            auto copyPatternMode = copyPatternType.cast<VPU::DistributedTypeInterface>()
-                                           .getDistributedTypes()
-                                           .front()
-                                           .cast<VPU::DistributedTensorType>()
+            auto copyPatternMode = mlir::cast<vpux::VPU::DistributedTensorType>(
+                                           mlir::cast<vpux::VPU::DistributedTypeInterface>(copyPatternType)
+                                                   .getDistributedTypes()
+                                                   .front())
                                            .getDistribution()
                                            .getMode()
                                            .getValue();
@@ -453,7 +454,8 @@ void InputConcatPattern::rewrite() {
 
         VPUX_THROW_WHEN(nceIt == _inputParts.end(), "Failed to get memory space");
         auto ncePart = *nceIt;
-        const auto memSpace = ncePart.getNceOp()->getOperand(0).getType().cast<NDTypeInterface>().getMemSpace();
+        const auto memSpace =
+                mlir::cast<vpux::NDTypeInterface>(ncePart.getNceOp()->getOperand(0).getType()).getMemSpace();
 
         if (multiclusterIt == _inputParts.end()) {
             _log.trace("Insert Copy from DDR to CMX for constant input '{0}'", inputPart.concatOperand);
@@ -465,7 +467,7 @@ void InputConcatPattern::rewrite() {
 
         auto multiclusterPart = *multiclusterIt;
 
-        auto distributedConcatOutType = _concat.getOutput().getType().cast<VPU::DistributedTypeInterface>();
+        auto distributedConcatOutType = mlir::cast<vpux::VPU::DistributedTypeInterface>(_concat.getOutput().getType());
         auto newType =
                 getConcatDistributedType(distributedConcatOutType, origType.getShape(), origType.getElementType());
 
@@ -517,14 +519,13 @@ bool isSupportedAndBeneficialToInsertNCEOp(InputConcatPart concatPart) {
         return false;
     }
 
-    auto nceDistributedType = copyOutOp->getOperand(0).getType().cast<VPU::DistributedTypeInterface>();
+    auto nceDistributedType = mlir::cast<vpux::VPU::DistributedTypeInterface>(copyOutOp->getOperand(0).getType());
 
-    auto nceDistributionMode = nceDistributedType.getDistributedTypes()
-                                       .front()
-                                       .cast<VPU::DistributedTensorType>()
-                                       .getDistribution()
-                                       .getMode()
-                                       .getValue();
+    auto nceDistributionMode =
+            mlir::cast<vpux::VPU::DistributedTensorType>(nceDistributedType.getDistributedTypes().front())
+                    .getDistribution()
+                    .getMode()
+                    .getValue();
 
     // It's not beneficial to insert an Average Pooling with DUPLICATED distribution
     return !(VPU::bitEnumContainsAny(nceDistributionMode, VPU::DistributionMode::DUPLICATED) ||
@@ -595,7 +596,7 @@ bool InputConcatPattern::insertNCEOperation() {
             const auto origPPETask = nceOpIface.getPPE();
             const auto& clampAdapter = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterClamp>();
             ppeAttr = clampAdapter.updateClamps(ppeAttr, origPPETask);
-            const auto elemType = newOperandType.cast<vpux::NDTypeInterface>().getElementType();
+            const auto elemType = mlir::cast<vpux::NDTypeInterface>(newOperandType).getElementType();
             if (mlir::isa<mlir::quant::QuantizedType>(elemType)) {
                 if (const auto quantParamsAdapter =
                             VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterQuantParams*>()) {
@@ -609,13 +610,17 @@ bool InputConcatPattern::insertNCEOperation() {
 
             const auto padAttr = VPU::getPaddingAttr(ctx, PadInfo(padBeginAttr, padEndAttr));
 
-            auto outputChannelsAttr = nceOp->hasAttr(VPU::outChanAttrName)
-                                              ? nceOp->getAttr(VPU::outChanAttrName).cast<mlir::IntegerAttr>()
-                                              : nullptr;
+            auto inputPaddingAttr = nceOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)
+                                            ? mlir::cast<mlir::ArrayAttr>(nceOp->getAttr(VPU::INPUT_PADDING_ATTR_NAME))
+                                            : nullptr;
+            auto outputPaddingAttr =
+                    nceOp->hasAttr(VPU::OUTPUT_PADDING_ATTR_NAME)
+                            ? mlir::cast<mlir::ArrayAttr>(nceOp->getAttr(VPU::OUTPUT_PADDING_ATTR_NAME))
+                            : nullptr;
 
-            return builder.create<VPU::NCEAveragePoolOp>(loc, newOperandType, newOperands[0], kernelSizeAttr,
-                                                         stridesAttr, padAttr, ppeAttr,
-                                                         /*multi_cluster_strategyAttr=*/nullptr, outputChannelsAttr);
+            return builder.create<VPU::NCEAveragePoolOp>(
+                    loc, newOperandType, newOperands[0], kernelSizeAttr, stridesAttr, padAttr, ppeAttr,
+                    /*multi_cluster_strategyAttr=*/nullptr, outputPaddingAttr, inputPaddingAttr);
         };
 
         mlir::Operation* newAvgPoolOp = nullptr;
@@ -644,8 +649,7 @@ bool InputConcatPattern::insertNCEOperation() {
 
 bool InputConcatPattern::isMemConsistentPerCluster() {
     // CMX Concat is not supported when the memory is inconsistent for each single cluster
-    // when distributed tensors are SEGMENTED or OVERLAPPED over the dim which also
-    // concatenates on.
+    // when distributed tensors are SEGMENTED or OVERLAPPED over the dim which is not higher than concat dim
 
     auto hasMultiCluster = llvm::any_of(_inputParts, [](InputConcatPart concatPart) {
         return concatPart.isMultiCluster();
@@ -664,12 +668,10 @@ bool InputConcatPattern::isMemConsistentPerCluster() {
         if (!concatPart.isMultiCluster()) {
             continue;
         }
-        const auto disType = concatPart.nceOp->getResult(0)
-                                     .getType()
-                                     .cast<VPU::DistributedTypeInterface>()
-                                     .getDistributedTypes()
-                                     .front()
-                                     .cast<VPU::DistributedTensorType>();
+        const auto disType = mlir::cast<vpux::VPU::DistributedTensorType>(
+                mlir::cast<vpux::VPU::DistributedTypeInterface>(concatPart.nceOp->getResult(0).getType())
+                        .getDistributedTypes()
+                        .front());
         const auto disMode = disType.getDistribution().getMode().getValue();
         if (disMode != VPU::DistributionMode::SEGMENTED && disMode != VPU::DistributionMode::OVERLAPPED) {
             continue;
@@ -681,8 +683,32 @@ bool InputConcatPattern::isMemConsistentPerCluster() {
         tilingAxes.insert(getDistributedTilingAxis(tilingScheme));
     }
 
-    auto intersection = llvm::set_intersection(concatAxes, tilingAxes);
-    return intersection.empty();
+    if (tilingAxes.empty()) {
+        return true;
+    }
+
+    auto dimsMemPermutation = DimsOrder::fromValue(_concat.getResult()).toPermutation();
+
+    auto getAxis = [&](mlir::DenseSet<int64_t> axes, bool findHighest) -> int64_t {
+        auto axis = std::distance(dimsMemPermutation.begin(), llvm::find(dimsMemPermutation, Dim(*axes.begin())));
+        for (auto iter = axes.begin(); iter != axes.end(); iter++) {
+            auto curAxis = std::distance(dimsMemPermutation.begin(), llvm::find(dimsMemPermutation, Dim(*iter)));
+            if (findHighest) {
+                if (curAxis < axis) {
+                    axis = curAxis;
+                }
+            } else {
+                if (curAxis > axis) {
+                    axis = curAxis;
+                }
+            }
+        }
+        return axis;
+    };
+
+    // To ensure highest axis of concatAxes is lower than lowest axis of tilingAxes
+    // TODO(E#160341): support feasibleAllocation and strideDMA when concatAxes is higher
+    return getAxis(std::move(concatAxes), true) > getAxis(std::move(tilingAxes), false);
 }
 
 bool InputConcatPattern::areDistributionTypesConsistent() {
@@ -697,12 +723,12 @@ bool InputConcatPattern::areDistributionTypesConsistent() {
     auto& multiclusterPart = *it;
 
     const auto distributedTypeInterfaceOutput =
-            multiclusterPart.nceOp->getResult(0).getType().cast<VPU::DistributedTypeInterface>();
+            mlir::cast<vpux::VPU::DistributedTypeInterface>(multiclusterPart.nceOp->getResult(0).getType());
     if (!distributedTypeInterfaceOutput.containsDistributedTypes()) {
         return false;
     }
     const auto firstDistrType =
-            distributedTypeInterfaceOutput.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+            mlir::cast<vpux::VPU::DistributedTensorType>(distributedTypeInterfaceOutput.getDistributedTypes().front());
 
     for (auto& part : _inputParts) {
         if (part.isBlockArgOrConsant) {
@@ -716,12 +742,12 @@ bool InputConcatPattern::areDistributionTypesConsistent() {
         }
 
         const auto distributedTypeInterfaceInput =
-                part.nceOp->getResult(0).getType().cast<VPU::DistributedTypeInterface>();
+                mlir::cast<vpux::VPU::DistributedTypeInterface>(part.nceOp->getResult(0).getType());
         if (!distributedTypeInterfaceInput.containsDistributedTypes()) {
             return false;
         }
-        const auto curType =
-                distributedTypeInterfaceInput.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+        const auto curType = mlir::cast<vpux::VPU::DistributedTensorType>(
+                distributedTypeInterfaceInput.getDistributedTypes().front());
 
         if (!areDistributedTypesConcatenable(firstDistrType, curType)) {
             _log.trace("Not matching distributed tensor attributes between concat inputs: `{0}` and `{1}`",
@@ -924,23 +950,23 @@ bool OutputConcatPattern::outputPatternCanBeCMXed(size_t cmxSize) {
         return true;
     }
 
-    const auto distributedTypeInterfaceInput =
-            _outputParts[0].nceOp->getOperand(_outputParts[0].nceInput).getType().cast<VPU::DistributedTypeInterface>();
+    const auto distributedTypeInterfaceInput = mlir::cast<vpux::VPU::DistributedTypeInterface>(
+            _outputParts[0].nceOp->getOperand(_outputParts[0].nceInput).getType());
     if (!distributedTypeInterfaceInput.containsDistributedTypes()) {
         return true;
     }
     auto inTypeDistributed =
-            distributedTypeInterfaceInput.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+            mlir::cast<vpux::VPU::DistributedTensorType>(distributedTypeInterfaceInput.getDistributedTypes().front());
 
     if (inTypeDistributed != nullptr) {
         for (auto concatPart : ArrayRef(_outputParts).drop_front()) {
-            const auto distributedTypeInterfaceOutput =
-                    concatPart.nceOp->getOperand(concatPart.nceInput).getType().cast<VPU::DistributedTypeInterface>();
+            const auto distributedTypeInterfaceOutput = mlir::cast<vpux::VPU::DistributedTypeInterface>(
+                    concatPart.nceOp->getOperand(concatPart.nceInput).getType());
             if (!distributedTypeInterfaceOutput.containsDistributedTypes()) {
                 return false;
             }
-            const auto curType =
-                    distributedTypeInterfaceOutput.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+            const auto curType = mlir::cast<vpux::VPU::DistributedTensorType>(
+                    distributedTypeInterfaceOutput.getDistributedTypes().front());
 
             if (!areDistributedTypesConcatenable(inTypeDistributed, curType)) {
                 _log.trace("Not matching distributed tensor attributes between concat outputs: `{0}` and `{1}`",
@@ -958,7 +984,7 @@ bool OutputConcatPattern::outputPatternCanBeCMXed(size_t cmxSize) {
 void OutputConcatPattern::moveConcatToCMX() {
     mlir::OpBuilder builder(_concat);
     builder.setInsertionPointAfter(_concat);
-    const auto concatType = _concat.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto concatType = mlir::cast<vpux::NDTypeInterface>(_concat.getOutput().getType());
     _log.trace("Moving output to NNCMX for '{0}' at '{1}'", _concat->getName(), _concat->getLoc());
     if (!_outputParts[0].isMultiCluster()) {
         const auto memSpaceCMX = IndexedSymbolAttr::get(builder.getContext(), stringifyEnum(MemoryKind::CMX_NN), 0);
@@ -968,7 +994,8 @@ void OutputConcatPattern::moveConcatToCMX() {
     }
     // If the outputPattern has MC layer, set the same distribution for Concat output as for the following consumer
 
-    auto outputCopyType = _outputParts.front().copyOp->getResult(0).getType().cast<VPU::DistributedTypeInterface>();
+    auto outputCopyType =
+            mlir::cast<vpux::VPU::DistributedTypeInterface>(_outputParts.front().copyOp->getResult(0).getType());
     auto newConcatOutputType =
             getConcatDistributedType(outputCopyType, concatType.getShape(), concatType.getElementType());
     _concat.getOutput().setType(newConcatOutputType);
@@ -1024,14 +1051,14 @@ mlir::FailureOr<InputConcatPattern> CMXConcatPass::getInputPattern(VPU::ConcatOp
     llvm::SmallPtrSet<mlir::Value, 4> nceInputs;
 
     const auto getBlockArgOrConstant = [](mlir::Value input) -> mlir::Value {
-        if (input.isa<mlir::BlockArgument>() || input.getDefiningOp<Const::DeclareOp>() != nullptr) {
+        if (mlir::isa<mlir::BlockArgument>(input) || input.getDefiningOp<Const::DeclareOp>() != nullptr) {
             return input;
         }
 
         auto viewLike = input.getDefiningOp<VPU::ViewLikeOpInterface>();
         while (viewLike != nullptr) {
             auto maybeBlockArg = viewLike.getOperation()->getOperand(0);
-            if (viewLike.getOperation()->getOperand(0).isa<mlir::BlockArgument>()) {
+            if (mlir::isa<mlir::BlockArgument>(viewLike.getOperation()->getOperand(0))) {
                 return maybeBlockArg;
             }
 
@@ -1172,7 +1199,7 @@ bool CMXConcatPass::isSplitSupportedOnDPU(VPU::SliceOp sliceOp) {
     const auto inputTypeShape = getShape(sliceOp.getOperand()).raw();
     const auto outputType = sliceOp.getResult().getType();
 
-    auto shapedType = outputType.cast<vpux::NDTypeInterface>();
+    auto shapedType = mlir::cast<vpux::NDTypeInterface>(outputType);
     const auto outputTypeShape = shapedType.getShape().raw();
 
     if (inputTypeShape.size() != outputTypeShape.size()) {
@@ -1270,18 +1297,14 @@ bool CMXConcatPass::areInputOutputPatternsCompatible(InputConcatPattern& inputPa
     });
 
     if (inputHasDistributed && outputHasDistributed) {
-        const auto inputType = (*inIt).nceOp->getResult(0)
-                                       .getType()
-                                       .cast<VPU::DistributedTypeInterface>()
-                                       .getDistributedTypes()
-                                       .front()
-                                       .cast<VPU::DistributedTensorType>();
-        const auto outputType = (*outIt).nceOp->getOperand(0)
-                                        .getType()
-                                        .cast<VPU::DistributedTypeInterface>()
-                                        .getDistributedTypes()
-                                        .front()
-                                        .cast<VPU::DistributedTensorType>();
+        const auto inputType = mlir::cast<vpux::VPU::DistributedTensorType>(
+                mlir::cast<vpux::VPU::DistributedTypeInterface>((*inIt).nceOp->getResult(0).getType())
+                        .getDistributedTypes()
+                        .front());
+        const auto outputType = mlir::cast<vpux::VPU::DistributedTensorType>(
+                mlir::cast<vpux::VPU::DistributedTypeInterface>((*outIt).nceOp->getOperand(0).getType())
+                        .getDistributedTypes()
+                        .front());
 
         if (!areDistributedTypesConcatenable(inputType, outputType)) {
             _log.trace("Distributed tensor attributes for concat input and output do not match: `{0}` and `{1}`",
@@ -1292,7 +1315,7 @@ bool CMXConcatPass::areInputOutputPatternsCompatible(InputConcatPattern& inputPa
         // Only Slices on one axis is supported by pass
         auto getSplitAxis = [](VPU::SliceOp slice) -> size_t {
             const auto inputShape = getShape(slice.getOperand()).raw();
-            const auto outputShape = slice.getResult().getType().cast<NDTypeInterface>().getShape().raw();
+            const auto outputShape = mlir::cast<vpux::NDTypeInterface>(slice.getResult().getType()).getShape().raw();
 
             for (size_t dim = 0; dim < inputShape.size(); dim++) {
                 if (inputShape[dim] != outputShape[dim]) {

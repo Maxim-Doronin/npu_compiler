@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -79,9 +79,9 @@ void SetOpOffsetsPass::safeRunOnFunc() {
         uint64_t tracker = 0;
         for (auto& operation : block->getOperations()) {
             auto offsetAttr = mlir::IntegerAttr::get(u64Type, mlir::APInt(64, tracker, false));
-            if (auto binaryOperation = mlir::dyn_cast_or_null<ELF::BinaryOpInterface>(&operation)) {
-                tracker += binaryOperation.getBinarySizeCached(symRefMap, arch);
-                binaryOperation.setMemoryOffset(offsetAttr);
+            if (auto binarySizeOperation = mlir::dyn_cast_or_null<ELF::BinarySizeOpInterface>(&operation)) {
+                tracker += binarySizeOperation.getBinarySizeCached(symRefMap, arch);
+                binarySizeOperation.setMemoryOffset(offsetAttr);
             }
         }
     }

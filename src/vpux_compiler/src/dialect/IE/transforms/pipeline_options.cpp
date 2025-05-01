@@ -38,10 +38,10 @@ std::unique_ptr<DebatcherOpReorderingOptions> DebatcherOpReorderingOptions::crea
     return std::make_unique<DebatcherOpReorderingOptions>();
 }
 
-std::unique_ptr<DebatcherOpReorderingOptions> DebatcherOpReorderingOptions::create(const DefaultHWOptionsBase& options,
-                                                                                   Logger log) {
+std::unique_ptr<DebatcherOpReorderingOptions> DebatcherOpReorderingOptions::create(
+        const BatchCompileOptionsAdapter& options, Logger log) {
     std::unique_ptr<DebatcherOpReorderingOptions> ret;
-    if (auto debatcherOptionsPtr = DebatcherOptions::create(options, log); debatcherOptionsPtr != nullptr) {
+    if (auto debatcherOptionsPtr = DebatcherOptions::create(options); debatcherOptionsPtr != nullptr) {
         ret = DebatcherOpReorderingOptions::create(*debatcherOptionsPtr, log);
     }
     return ret;

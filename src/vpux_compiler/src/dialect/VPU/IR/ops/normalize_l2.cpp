@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,7 +33,7 @@ mlir::LogicalResult vpux::VPU::NormalizeL2Op::inferReturnTypes(mlir::MLIRContext
         return mlir::failure();
     }
 
-    const auto inType = normalizeL2.getData().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(normalizeL2.getData().getType());
     inferredReturnTypes.push_back(inType);
 
     return mlir::success();
@@ -44,7 +44,7 @@ mlir::LogicalResult vpux::VPU::NormalizeL2Op::inferReturnTypes(mlir::MLIRContext
 //
 
 mlir::LogicalResult vpux::VPU::NormalizeL2Op::verify() {
-    const auto inRank = getData().getType().cast<vpux::NDTypeInterface>().getRank();
+    const auto inRank = mlir::cast<vpux::NDTypeInterface>(getData().getType()).getRank();
     auto axesVec = parseIntArrayAttr<int64_t>(getAxesValueAttr());
 
     for (auto& axis : axesVec) {
@@ -62,7 +62,7 @@ mlir::LogicalResult vpux::VPU::NormalizeL2Op::verify() {
 }
 
 bool vpux::VPU::NormalizeL2Op::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto inputType = getData().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getData().getType());
     const auto inShape = inputType.getShape();
 
     auto axesVec = parseIntArrayAttr<int64_t>(getAxesValueAttr());

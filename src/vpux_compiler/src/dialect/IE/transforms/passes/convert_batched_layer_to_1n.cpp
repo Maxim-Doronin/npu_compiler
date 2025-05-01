@@ -1,15 +1,17 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -196,10 +198,10 @@ void EltwiseLayerConverter<ConcreteOp>::reshapeForEltwiseOp(ConcreteOp eltwiseOp
     auto inShapeCast2 = rewriter.create<IE::ShapeCastOp>(eltwiseOp->getLoc(), eltwiseOp.getInput2(),
                                                          getIntArrayAttr(ctx, newInShape2));
 
-    auto newEltwiseOp = rewriter.create<ConcreteOp>(
-            eltwiseOp->getLoc(), resultType, inShapeCast1.getResult(), inShapeCast2.getResult(),
-            eltwiseOp.getAutoBroadcastAttr(), eltwiseOp.getPostOpAttr(), eltwiseOp.getClampAttr(),
-            eltwiseOp.getOutputChannelsAttr(), eltwiseOp.getInputChannelsAttr());
+    auto newEltwiseOp = rewriter.create<ConcreteOp>(eltwiseOp->getLoc(), resultType, inShapeCast1.getResult(),
+                                                    inShapeCast2.getResult(), eltwiseOp.getAutoBroadcastAttr(),
+                                                    eltwiseOp.getPostOpAttr(), eltwiseOp.getClampAttr(),
+                                                    eltwiseOp.getOutputPaddingAttr(), eltwiseOp.getInputPaddingAttr());
 
     rewriter.replaceOpWithNewOp<IE::ShapeCastOp>(eltwiseOp, newEltwiseOp.getOutput(),
                                                  getIntArrayAttr(ctx, outputShape));
@@ -290,9 +292,12 @@ mlir::LogicalResult ConvLayerConverter::layerSpecificRewriter(IE::ConvolutionOp 
                                                      convOp.getPadsBeginAttr(), convOp.getPadsEndAttr(),
                                                      convOp.getDilationsAttr(), convOp.getPostOpAttr(),
                                                      convOp.getClampAttr(), convOp.getStaticScaleAttr(),
-                                                     convOp.getOutputChannelsAttr(), convOp.getInputChannelsAttr())
+                                                     convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr())
                           .getOutput();
 
+    auto parentOpOutputType = mlir::cast<NDTypeInterface>(output.getType());
+    auto outElemType = mlir::cast<NDTypeInterface>(convOp.getOutput().getType()).getElementType();
+    output.getDefiningOp()->getResult(0).setType(parentOpOutputType.changeElemType(outElemType));
     _log.trace("Insert new layer without batch: {0}", output);
     auto outTranspose = rewriter.replaceOpWithNewOp<IE::TransposeOp>(convOp, output, nullptr, transPermAttr);
     outTranspose->setLoc(appendLoc(convOp->getLoc(), "_transpose_output"));
@@ -338,7 +343,7 @@ mlir::LogicalResult GroupConvLayerConverter::layerSpecificRewriter(IE::GroupConv
                                   groupConvOp.getBias(), groupConvOp.getStridesAttr(), groupConvOp.getPadsBeginAttr(),
                                   groupConvOp.getPadsEndAttr(), groupConvOp.getDilationsAttr(),
                                   groupConvOp.getGroupsAttr(), groupConvOp.getPostOpAttr(), groupConvOp.getClampAttr(),
-                                  groupConvOp.getOutputChannelsAttr(), groupConvOp.getInputChannelsAttr())
+                                  groupConvOp.getOutputPaddingAttr(), groupConvOp.getInputPaddingAttr())
                           .getOutput();
 
     _log.trace("Insert new layer without batch: {0}", output);
@@ -376,7 +381,7 @@ void GroupConvLayerConverter::reshapeForGroupConv(IE::GroupConvolutionOp groupCo
             groupConvOp->getLoc(), inShapeCast.getResult(), newFilter.getOutput(), groupConvOp.getBias(),
             groupConvOp.getStridesAttr(), groupConvOp.getPadsBeginAttr(), groupConvOp.getPadsEndAttr(),
             groupConvOp.getDilationsAttr(), getIntAttr(ctx, group), groupConvOp.getPostOpAttr(),
-            groupConvOp.getClampAttr(), groupConvOp.getOutputChannelsAttr(), groupConvOp.getInputChannelsAttr());
+            groupConvOp.getClampAttr(), groupConvOp.getOutputPaddingAttr(), groupConvOp.getInputPaddingAttr());
 
     rewriter.replaceOpWithNewOp<IE::ShapeCastOp>(groupConvOp, newGroupConvOp.getOutput(),
                                                  getIntArrayAttr(ctx, getShape(groupConvOp.getOutput())));
@@ -435,6 +440,14 @@ bool isLegalPoolOp(ConcreteOp op) {
     return true;
 }
 
+bool isLegalImplicitOp(mlir::Operation* op) {
+    auto hasPerAxisQuantization = isPerAxisQuant(op->getOperand(0)) || isPerAxisQuant(op->getResult(0));
+    auto inShape = getShape(op->getOperand(0));
+
+    return !isShapeRankEq4(op->getOperand(0)) || isEqualToOne(op->getOperand(0), Dims4D::Act::N) ||
+           hasPerAxisQuantization || inShape.isDynamic() || op->getNumOperands() != 1 || op->getNumResults() != 1;
+}
+
 template <class ConcreteOp>
 bool isLegalEltwiseOp(ConcreteOp op) {
     if (op->getNumOperands() < 2) {
@@ -467,25 +480,26 @@ bool isLegalEltwiseOp(ConcreteOp op) {
 };
 
 //
-// SigmoidConverter
+// ImplicitLayerConverter
 //
 
-class SigmoidConverter final : public mlir::OpRewritePattern<IE::SigmoidOp> {
+template <class ConcreteOp>
+class ImplicitLayerConverter final : public mlir::OpRewritePattern<ConcreteOp> {
 public:
-    SigmoidConverter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::SigmoidOp>(ctx), _log(log) {
+    ImplicitLayerConverter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<ConcreteOp>(ctx), _log(log) {
     }
 
 public:
-    mlir::LogicalResult matchAndRewrite(IE::SigmoidOp origOp, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;
 };
 
 IE::AffineReshapeOp buildAffineReshape(mlir::Location loc, mlir::Value input, ArrayRef<int64_t> targetShape,
-                                       mlir::PatternRewriter& rewriter, IE::SigmoidOp replacedOp) {
+                                       mlir::PatternRewriter& rewriter, mlir::Operation* replacedOp) {
     const auto ctx = rewriter.getContext();
-    const auto srcType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto dstType = srcType.changeShape(ShapeRef(targetShape));
 
     SmallVector<SmallVector<int64_t>> inDimMapping{{Dims4D::Act::N.ind(), Dims4D::Act::C.ind()},
@@ -515,29 +529,33 @@ IE::AffineReshapeOp affineReshapeInput(mlir::Location loc, mlir::Value input, Sh
     targetShape[Dims4D::Act::C] *= targetShape[Dims4D::Act::N];
     targetShape[Dims4D::Act::N] = 1;
 
-    const auto reshapedLoc = appendLoc(loc, "reshape input for Sigmoid");
+    const auto reshapedLoc = appendLoc(loc, "reshape input for implicit layer");
     return buildAffineReshape(reshapedLoc, input, ArrayRef(targetShape.raw()), rewriter, nullptr);
 }
 
-IE::AffineReshapeOp affineReshapeOutput(IE::SigmoidOp origOp, mlir::Value sigmoidOutput,
-                                        mlir::PatternRewriter& rewriter) {
-    const Shape origShape = getShape(origOp.getOutput()).toValues();
+IE::AffineReshapeOp affineReshapeOutput(mlir::Operation* origOp, mlir::Value output, mlir::PatternRewriter& rewriter) {
+    const Shape origShape = getShape(origOp->getResult(0)).toValues();
     const SmallVector<int64_t> targetShape = origShape.raw();
 
-    const auto reshapedLoc = appendLoc(origOp.getLoc(), "reshape output for Sigmoid");
-    return buildAffineReshape(reshapedLoc, sigmoidOutput, ArrayRef(targetShape), rewriter, origOp);
+    const auto reshapedLoc = appendLoc(origOp->getLoc(), "reshape output for implicit layer");
+    return buildAffineReshape(reshapedLoc, output, ArrayRef(targetShape), rewriter, origOp);
 }
 
-mlir::LogicalResult SigmoidConverter::matchAndRewrite(IE::SigmoidOp origOp, mlir::PatternRewriter& rewriter) const {
+template <class ConcreteOp>
+mlir::LogicalResult ImplicitLayerConverter<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
+                                                                        mlir::PatternRewriter& rewriter) const {
     // Create affineReshapeOp for input
-    const auto sigmoidInShape = getShape(origOp.getInput());
-    auto reshapeIn = affineReshapeInput(origOp.getLoc(), origOp.getInput(), sigmoidInShape, rewriter);
+    const auto inShape = getShape(origOp.getOperand());
+    auto reshapeIn = affineReshapeInput(origOp.getLoc(), origOp.getOperand(), inShape, rewriter);
 
-    // Create new sigmoidOp
-    auto newSigmoidOp = rewriter.create<IE::SigmoidOp>(origOp.getLoc(), reshapeIn);
+    // Create new concreteOp
+    mlir::IRMapping mapper;
+    mapper.map(origOp.getOperand(), reshapeIn);
+    auto* newOp = rewriter.clone(*origOp.getOperation(), mapper);
+    vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ALL);
 
     // Create affineReshapeOp for output
-    affineReshapeOutput(origOp, newSigmoidOp.getOutput(), rewriter);
+    affineReshapeOutput(origOp, newOp->getResult(0), rewriter);
 
     return mlir::success();
 }
@@ -571,13 +589,8 @@ void ConvertBatchedLayerTo1NPass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<IE::AddOp>(isLegalEltwiseOp<IE::AddOp>);
     target.addDynamicallyLegalOp<IE::MultiplyOp>(isLegalEltwiseOp<IE::MultiplyOp>);
     target.addDynamicallyLegalOp<IE::SubtractOp>(isLegalEltwiseOp<IE::SubtractOp>);
-    target.addDynamicallyLegalOp<IE::SigmoidOp>([&](IE::SigmoidOp op) -> bool {
-        auto hasPerAxisQuantization = isPerAxisQuant(op.getInput()) || isPerAxisQuant(op.getOutput());
-        if (!isShapeRankEq4(op.getInput()) || isEqualToOne(op.getInput(), Dims4D::Act::N) || hasPerAxisQuantization) {
-            return true;
-        }
-        return false;
-    });
+    target.addDynamicallyLegalOp<IE::SigmoidOp>(isLegalImplicitOp);
+    target.addDynamicallyLegalOp<IE::ConvertOp>(isLegalImplicitOp);
 
     target.addLegalOp<IE::TransposeOp>();
     target.addLegalOp<IE::ShapeCastOp>();
@@ -593,7 +606,8 @@ void ConvertBatchedLayerTo1NPass::safeRunOnFunc() {
     patterns.add<EltwiseLayerConverter<IE::AddOp>>(&ctx, _log);
     patterns.add<EltwiseLayerConverter<IE::MultiplyOp>>(&ctx, _log);
     patterns.add<EltwiseLayerConverter<IE::SubtractOp>>(&ctx, _log);
-    patterns.add<SigmoidConverter>(&ctx, _log);
+    patterns.add<ImplicitLayerConverter<IE::SigmoidOp>>(&ctx, _log);
+    patterns.add<ImplicitLayerConverter<IE::ConvertOp>>(&ctx, _log);
 
     auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {

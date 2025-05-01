@@ -51,8 +51,8 @@ mlir::OpFoldResult vpux::VPUIP::PermuteCastOp::fold(FoldAdaptor adaptor) {
 
 mlir::LogicalResult vpux::VPUIP::PermuteCastOp::verify() {
     const auto op = getOperation();
-    auto distributedInType = getSource().getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto distributedOutType = getResult().getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedInType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getSource().getType());
+    auto distributedOutType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getResult().getType());
     if (distributedInType && distributedOutType) {
         auto outputDistribution = distributedOutType.getDistribution();
 
@@ -72,8 +72,8 @@ mlir::LogicalResult vpux::VPUIP::PermuteCastOp::verify() {
         }
     }
 
-    const auto inType = getSource().getType().cast<vpux::NDTypeInterface>();
-    const auto outType = getResult().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getSource().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(getResult().getType());
 
     if (inType.getNumElements() != outType.getNumElements()) {
         return errorAt(op, "PermuteCast input and output must have the same number of elements");

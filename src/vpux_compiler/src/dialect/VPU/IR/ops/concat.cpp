@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
 
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -95,16 +96,18 @@ namespace {
 using GetShapeFunc = std::function<Shape(const mlir::Value)>;
 
 Shape getDynamicShape(const mlir::Value val) {
-    return val.getType().cast<vpux::NDTypeInterface>().getShape().toValues();
+    return mlir::cast<vpux::NDTypeInterface>(val.getType()).getShape().toValues();
 }
 
 Shape getUpperBounds(const mlir::Value val) {
-    auto outBounds = val.getType().cast<vpux::BoundedTypeInterface>().getBounds();
-    return Shape(parseIntArrayAttr<int64_t>(outBounds));
+    auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(val.getType());
+    VPUX_THROW_UNLESS(boundedType != nullptr, "Expected to get BoundedTensorType at {0}", val.getLoc());
+
+    return Shape(boundedType.getBounds().raw());
 }
 
 Dim normalizeAxis(VPU::ConcatOpAdaptor concat) {
-    const auto inType = concat.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(concat.getInputs().front().getType());
     const auto inRank = inType.getRank();
 
     auto axisInd = concat.getPerAxis().value().getAxis().getValue().getSExtValue();
@@ -169,7 +172,7 @@ mlir::FailureOr<Shape> inferOutShapeWithOffsets(VPU::ConcatOpAdaptor concat, con
                        staticOffsets.size(), concat.getInputs().size());
     }
 
-    const auto inType = concat.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(concat.getInputs().front().getType());
     const auto allOffsets = staticOffsets.getAsRange<mlir::ArrayAttr>();
 
     const auto dummyStridesAttr = getIntArrayAttr(ctx, SmallVector<int64_t>(inType.getRank(), 1));
@@ -224,10 +227,10 @@ mlir::FailureOr<Shape> inferOutShapeWithOffsets(VPU::ConcatOpAdaptor concat, con
 }
 
 mlir::FailureOr<mlir::Type> inferOutElemTypeWithAxis(VPU::ConcatOpAdaptor concat, mlir::Location loc) {
-    const auto inType = concat.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(concat.getInputs().front().getType());
     const auto inElemType = inType.getElementType();
 
-    const auto perAxisQType = inElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inElemType);
     SmallVector<mlir::quant::UniformQuantizedPerAxisType> inPerAxisQTypes;
 
     if (perAxisQType != nullptr) {
@@ -239,7 +242,7 @@ mlir::FailureOr<mlir::Type> inferOutElemTypeWithAxis(VPU::ConcatOpAdaptor concat
     }
 
     for (const auto val : concat.getInputs().drop_front()) {
-        const auto curType = val.getType().cast<vpux::NDTypeInterface>();
+        const auto curType = mlir::cast<vpux::NDTypeInterface>(val.getType());
         const auto curElemType = curType.getElementType();
 
         if (inPerAxisQTypes.empty()) {
@@ -247,7 +250,7 @@ mlir::FailureOr<mlir::Type> inferOutElemTypeWithAxis(VPU::ConcatOpAdaptor concat
                 return errorAt(loc, "Misaligned element types : '{0}' vs '{1}'", curElemType, inElemType);
             }
         } else {
-            const auto curPerAxisQType = curElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+            const auto curPerAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(curElemType);
 
             if (curPerAxisQType == nullptr) {
                 return errorAt(loc,
@@ -293,10 +296,10 @@ std::unordered_set<Dim> getConcatAxesFromOffsets(VPU::ConcatOpAdaptor concat, Sh
 
 mlir::FailureOr<mlir::Type> inferOutElemTypeWithOffsets(VPU::ConcatOpAdaptor concat, ShapeRef outShape,
                                                         mlir::Location loc) {
-    const auto inType = concat.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(concat.getInputs().front().getType());
     const auto inElemType = inType.getElementType();
 
-    const auto perAxisQType = inElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inElemType);
 
     const auto isConcatOverPerAxisQuantization = [&]() {
         if (perAxisQType == nullptr) {
@@ -311,7 +314,7 @@ mlir::FailureOr<mlir::Type> inferOutElemTypeWithOffsets(VPU::ConcatOpAdaptor con
 
     if (!isConcatOverPerAxisQuantization) {
         for (const auto val : concat.getInputs().drop_front()) {
-            const auto curType = val.getType().cast<vpux::NDTypeInterface>();
+            const auto curType = mlir::cast<vpux::NDTypeInterface>(val.getType());
             const auto curElemType = curType.getElementType();
 
             if (curElemType != inElemType) {
@@ -330,9 +333,9 @@ mlir::FailureOr<mlir::Type> inferOutElemTypeWithOffsets(VPU::ConcatOpAdaptor con
     for (const auto p : zip(concat.getInputs(), allOffsets)) {
         const auto curVal = std::get<0>(p);
 
-        const auto curType = curVal.getType().cast<vpux::NDTypeInterface>();
+        const auto curType = mlir::cast<vpux::NDTypeInterface>(curVal.getType());
         const auto curElemType = curType.getElementType();
-        const auto curPerAxisQType = curElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+        const auto curPerAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(curElemType);
 
         if (curPerAxisQType == nullptr) {
             return errorAt(loc, "Misaligned element types : not all of them are per-axis quantized : '{0}' vs '{1}'",
@@ -392,10 +395,11 @@ mlir::LogicalResult vpux::VPU::ConcatOp::inferReturnTypes(mlir::MLIRContext* ctx
     }
 
     const auto inType = concat.getInputs().front().getType();
-    const auto distributedIn = inType.dyn_cast<VPU::DistributedTypeInterface>();
+    const auto distributedIn = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(inType);
     VPU::DistributionInfoAttr possibleDistribution =
             distributedIn != nullptr && distributedIn.containsDistributedTypes()
-                    ? distributedIn.getDistributedTypes().front().cast<VPU::DistributedTensorType>().getDistribution()
+                    ? mlir::cast<vpux::VPU::DistributedTensorType>(distributedIn.getDistributedTypes().front())
+                              .getDistribution()
                     : nullptr;
 
     if (possibleDistribution != nullptr && VPU::isDistributedAttrWithExplicitShapesAndOffsets(possibleDistribution)) {
@@ -409,7 +413,7 @@ mlir::LogicalResult vpux::VPU::ConcatOp::inferReturnTypes(mlir::MLIRContext* ctx
             const auto typeComponents =
                     TypeComponents().setShape(Shape(outShape.value())).setElementType(outElemType.value());
 
-            const auto outputType = inType.cast<NDTypeInterface>().changeTypeComponents(typeComponents);
+            const auto outputType = mlir::cast<vpux::NDTypeInterface>(inType).changeTypeComponents(typeComponents);
             inferredTypes.emplace_back(outputType);
         } else {
             // Infer output bounds
@@ -422,8 +426,8 @@ mlir::LogicalResult vpux::VPU::ConcatOp::inferReturnTypes(mlir::MLIRContext* ctx
             const auto typeComponents = TypeComponents()
                                                 .setShape(Shape(outShape.value()))
                                                 .setElementType(outElemType.value())
-                                                .setBounds(getIntArrayAttr(ctx, outBounds.value().raw()));
-            const auto outputType = inType.cast<NDTypeInterface>().changeTypeComponents(typeComponents);
+                                                .setBounds(Bounds(outBounds.value().raw()));
+            const auto outputType = mlir::cast<vpux::NDTypeInterface>(inType).changeTypeComponents(typeComponents);
 
             inferredTypes.emplace_back(outputType);
         }
@@ -447,7 +451,7 @@ public:
 };
 
 const mlir::ArrayAttr inferOffsetsAttrWithAxis(VPU::ConcatOp origOp, const int64_t& axis) {
-    auto rank = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getRank();
+    auto rank = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getRank();
 
     SmallVector<SmallVector<int64_t>> finalOffsets;
     finalOffsets.push_back(SmallVector<int64_t>(rank, 0));
@@ -478,7 +482,7 @@ mlir::LogicalResult ConvertPerAxisToOffsets::matchAndRewrite(VPU::ConcatOp origO
         return mlir::failure();
     }
 
-    const auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto axis = origOp.getPerAxisAttr().getAxis().getValue().getSExtValue();
     const auto finalOffsetsAttr = inferOffsetsAttrWithAxis(origOp, axis);
 
@@ -840,23 +844,23 @@ mlir::LogicalResult vpux::VPU::ConcatOp::verify() {
         input1DataType = input1SparseType.getData();
     }
 
-    if (const auto inTypeRanked = input1DataType.dyn_cast<mlir::RankedTensorType>()) {
+    if (const auto inTypeRanked = mlir::dyn_cast<mlir::RankedTensorType>(input1DataType)) {
         // Check consistent tensor attributes
 
         const auto inDesc = vpux::getTensorAttr(inTypeRanked);
 
         for (const auto val : getInputs().drop_front()) {
-            if (!val.getType().isa<mlir::RankedTensorType, VPU::SparseTensorType>()) {
+            if (!mlir::isa<mlir::RankedTensorType, vpux::VPU::SparseTensorType>(val.getType())) {
                 return errorAt(loc, "Misaligned tensor type for '{0}' inputs", getOperationName());
             }
 
-            const auto curType =
-                    (input1SparseType != nullptr)
-                            ? val.getType().cast<VPU::SparseTensorType>().getData().cast<mlir::RankedTensorType>()
-                            : val.getType().cast<mlir::RankedTensorType>();
+            const auto curType = (input1SparseType != nullptr)
+                                         ? mlir::cast<mlir::RankedTensorType>(
+                                                   mlir::cast<vpux::VPU::SparseTensorType>(val.getType()).getData())
+                                         : mlir::cast<mlir::RankedTensorType>(val.getType());
             const auto curDesc = vpux::getTensorAttr(curType);
 
-            if (val.getType().cast<NDTypeInterface>().getShape().isStatic()) {
+            if (mlir::cast<vpux::NDTypeInterface>(val.getType()).getShape().isStatic()) {
                 if (curDesc != inDesc) {
                     return errorAt(loc, "Misaligned TensorType attributes for '{0}' inputs", getOperationName());
                 }
@@ -868,7 +872,7 @@ mlir::LogicalResult vpux::VPU::ConcatOp::verify() {
                 }
             }
         }
-    } else if (const auto inTypeDistributed = input1DataType.dyn_cast<VPU::DistributedTensorType>()) {
+    } else if (const auto inTypeDistributed = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(input1DataType)) {
         const auto inOrder = inTypeDistributed.getOrder();
         const auto inMemSpace = inTypeDistributed.getMemSpace();
         const auto inDistribution = inTypeDistributed.getDistribution();
@@ -885,14 +889,14 @@ mlir::LogicalResult vpux::VPU::ConcatOp::verify() {
         }
 
         for (const auto val : getInputs().drop_front()) {
-            if (!val.getType().isa<VPU::DistributedTensorType, VPU::SparseTensorType>()) {
+            if (!mlir::isa<vpux::VPU::DistributedTensorType, vpux::VPU::SparseTensorType>(val.getType())) {
                 return errorAt(loc, "Misaligned tensor type for '{0}' inputs", getOperationName());
             }
 
-            const auto curType =
-                    (input1SparseType != nullptr)
-                            ? val.getType().cast<VPU::SparseTensorType>().getData().cast<VPU::DistributedTensorType>()
-                            : val.getType().cast<VPU::DistributedTensorType>();
+            const auto curType = (input1SparseType != nullptr)
+                                         ? mlir::cast<vpux::VPU::DistributedTensorType>(
+                                                   mlir::cast<vpux::VPU::SparseTensorType>(val.getType()).getData())
+                                         : mlir::cast<vpux::VPU::DistributedTensorType>(val.getType());
 
             if (curType.getOrder() != inOrder || curType.getMemSpace() != inMemSpace) {
                 return errorAt(loc, "Misaligned DistributedTensorType attributes for '{0}' inputs", getOperationName());
@@ -976,10 +980,10 @@ mlir::LogicalResult vpux::VPU::ConcatOp::verify() {
 bool vpux::VPU::ConcatOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
     // cmx_concat has accuracy issue with SOH inputs and Height concatenate. Add a workaround here to avoid
     // it happens in strategy manager pass.
-    auto outputType = getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
         auto outputShape = outputType.getShape();
-        auto inputDataType = getInputs().front().getType().cast<NDTypeInterface>();
+        auto inputDataType = mlir::cast<vpux::NDTypeInterface>(getInputs().front().getType());
         auto inputShape = inputDataType.getShape();
 
         if (inputShape[Dims4D::Act::H] != outputShape[Dims4D::Act::H]) {
@@ -1049,7 +1053,7 @@ bool VPU::ConcatOp::isOperationSplitOverKernelCompatible(ShapeRef outputShape, S
 bool VPU::ConcatOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, SiblingOpsAnalysis& siblingsAnalysis,
                                         Byte reservedMem) {
     auto concatOp = mlir::cast<VPU::ConcatOp>(getOperation());
-    const auto outputType = concatOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(concatOp->getResult(0).getType());
     auto numClusters = VPU::getOptimalNumClusters(concatOp, outputType.getShape(), strategy);
 
     SmallVector<Byte> buffersSize{VPU::getTotalAllocSizeWithDistribution(

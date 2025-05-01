@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IERT/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -40,8 +41,8 @@ SmallVector<mlir::Value> allocateResults(mlir::Location loc, mlir::OpBuilder& bu
     return to_small_vector(origResults | transformed([&](mlir::Value origVal) -> mlir::Value {
                                auto origType = origVal.getType();
                                auto memRefType = typeConverter.convertType(origType);
-                               auto allocOp =
-                                       builder.create<mlir::memref::AllocOp>(loc, memRefType.cast<mlir::MemRefType>());
+                               auto allocOp = builder.create<mlir::memref::AllocOp>(
+                                       loc, mlir::cast<mlir::MemRefType>(memRefType));
                                return allocOp.getMemref();
                            }));
 }
@@ -152,7 +153,7 @@ mlir::LogicalResult SplitRewrite::matchAndRewrite(IE::SplitOp origOp, OpAdaptor 
         return matchFailed(rewriter, origOp, "Got non constant axis");
     }
 
-    const auto inputType = newArgs.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(newArgs.getInput().getType());
     const auto inputShape = inputType.getShape();
 
     const auto axis = Dim(origOp.getAxisValue().value());
@@ -169,7 +170,7 @@ mlir::LogicalResult SplitRewrite::matchAndRewrite(IE::SplitOp origOp, OpAdaptor 
     const auto offsetStep = inputShape[axis] / origOp.getNumSplits();
 
     for (auto i : irange(origOp->getNumResults())) {
-        const auto origOutputType = origOp.getResult(i).getType().cast<vpux::NDTypeInterface>();
+        const auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult(i).getType());
         const auto svSizes = origOutputType.getShape().raw();
 
         _log.trace("Create SubView for output #'{0}'", i);
@@ -238,7 +239,7 @@ SmallVector<mlir::Value> ConcatRewrite::rewriteWithAxis(IE::ConcatOp origOp, OpA
 
     for (auto i : irange(origOp->getNumOperands())) {
         const auto newInput = newArgs.getInputs()[i];
-        const auto newInputType = newInput.getType().cast<vpux::NDTypeInterface>();
+        const auto newInputType = mlir::cast<vpux::NDTypeInterface>(newInput.getType());
         const auto svSizes = newInputType.getShape().raw();
 
         _log.trace("Create SubView for input #'{0}'", i);
@@ -270,7 +271,7 @@ SmallVector<mlir::Value> ConcatRewrite::rewriteWithOffsets(IE::ConcatOp origOp, 
     for (const auto p : zip(newArgs.getInputs(), allOffsets)) {
         const auto newInput = std::get<0>(p);
 
-        const auto curShape = newInput.getType().cast<vpux::NDTypeInterface>().getShape().raw();
+        const auto curShape = mlir::cast<vpux::NDTypeInterface>(newInput.getType()).getShape().raw();
         const auto curOffsets = parseIntArrayAttr<int64_t>(std::get<1>(p));
 
         auto subViewOp = rewriter.create<IERT::SubViewOp>(origOp->getLoc(), allocatedBufs[0], curOffsets, curShape);
@@ -360,7 +361,7 @@ mlir::LogicalResult ExpandRewrite::matchAndRewrite(IE::ExpandOp origOp, OpAdapto
     VPUX_THROW_UNLESS(typeConverter != nullptr, "ExpandRewrite: failed to get type converter");
 
     auto expandedBuffer = allocateResults(origOp->getLoc(), rewriter, *typeConverter, origOp.getOutput());
-    const auto inputType = newArgs.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(newArgs.getInput().getType());
 
     auto subOffsetsBegin = parseIntArrayAttr<int64_t>(origOp.getPadsBegin());
     auto subShape = to_small_vector(inputType.getShape());
@@ -538,11 +539,11 @@ mlir::LogicalResult ReverseSequenceRewrite::matchAndRewrite(IE::ReverseSequenceO
     const auto* typeConverter = getTypeConverter();
     VPUX_THROW_UNLESS(typeConverter != nullptr, "TypeConverter is not set");
 
-    auto origSeqLengthShapeType = origOp.getSeqLength().getType().cast<mlir::ShapedType>();
+    auto origSeqLengthShapeType = mlir::cast<mlir::ShapedType>(origOp.getSeqLength().getType());
     auto newSeqLengthShapeType =
             origSeqLengthShapeType.clone(origSeqLengthShapeType.getShape(), mlir::Float16Type::get(getContext()));
     auto memRefType = typeConverter->convertType(newSeqLengthShapeType);
-    auto allocOp = rewriter.create<mlir::memref::AllocOp>(origOp->getLoc(), memRefType.cast<mlir::MemRefType>());
+    auto allocOp = rewriter.create<mlir::memref::AllocOp>(origOp->getLoc(), mlir::cast<mlir::MemRefType>(memRefType));
 
     auto convertOp = rewriter.create<IERT::ConvertOp>(origOp->getLoc(), newArgs.getSeqLength(), allocOp.getMemref());
 
@@ -1626,7 +1627,7 @@ void BufferizeIEPass::safeRunOnFunc() {
     target.addDynamicallyLegalDialect<Const::ConstDialect>(isLegalOp);
     target.addLegalDialect<IERT::IERTDialect>();
     target.addIllegalDialect<IE::IEDialect>();
-    target.addLegalOp<IE::CNNNetworkOp, IE::DataInfoOp>();
+    target.addLegalOp<net::NetworkInfoOp, net::DataInfoOp>();
     target.addLegalOp<mlir::memref::AllocOp>();
     target.addLegalOp<Const::DeclareOp>();
 

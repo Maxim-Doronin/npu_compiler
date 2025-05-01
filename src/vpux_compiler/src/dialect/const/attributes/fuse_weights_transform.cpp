@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,7 +33,7 @@ Const::Content Const::FuseWeightsAttr::transform(Const::Content& input) const {
             continue;
         }
         auto foldedContent = content.fold();
-        auto contentType = foldedContent.getType().cast<vpux::NDTypeInterface>();
+        auto contentType = mlir::cast<vpux::NDTypeInterface>(foldedContent.getType());
         auto elemType = contentType.getElementType();
 
         if (elemType.isInteger(1)) {

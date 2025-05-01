@@ -8,19 +8,15 @@
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
 #include "vpux/compiler/core/profiling_metadata.hpp"
-#include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
-#include "vpux/compiler/dialect/VPUMI37XX/blob_writer.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/llvm_to_binary.hpp"
-#include "vpux/utils/profiling/metadata.hpp"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -28,7 +24,6 @@
 
 #include <llvm/Support/FileSystem.h>
 
-#include <iostream>
 #include <vector>
 
 namespace vpux {
@@ -55,7 +50,7 @@ private:
     void safeRunOnModule() final;
 
     llvm::SmallVector<mlir::Value> unrollDistributedBuff(mlir::OpBuilder builder, mlir::Value output) {
-        auto distributedOutput = output.getType().dyn_cast<VPUIP::DistributedBufferType>();
+        auto distributedOutput = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
         if (!distributedOutput) {
             return {output};
         }
@@ -82,7 +77,8 @@ private:
             for (int64_t cluster = 0; cluster < totalClusters; cluster++) {
                 VPURT::DeclareBufferOp res;
 
-                auto currMemLocation = compactType.getMemorySpace().cast<IndexedSymbolAttr>().getLeafNameAttr();
+                auto currMemLocation =
+                        mlir::cast<vpux::IndexedSymbolAttr>(compactType.getMemorySpace()).getLeafNameAttr();
                 auto newMemSpace = vpux::IndexedSymbolAttr::get(currMemLocation, static_cast<size_t>(cluster));
                 auto memType = mlir::MemRefType::get(compactType.getShape(), compactType.getElementType(),
                                                      compactType.getLayout(), newMemSpace);
@@ -786,13 +782,13 @@ private:
 
     void createProfilingMetadataOp(mlir::MLIRContext* ctx, mlir::ModuleOp moduleOp, mlir::func::FuncOp funcOp,
                                    Logger _log) {
-        auto netOps = to_small_vector(moduleOp.getOps<IE::CNNNetworkOp>());
+        auto netOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
         if (netOps.size() != 1) {
             return;
         }
-        IE::CNNNetworkOp netOp = netOps.front();
+        net::NetworkInfoOp netInfo = netOps.front();
 
-        if (netOp.getProfilingOutputsInfo().empty()) {
+        if (netInfo.getProfilingOutputsInfo().empty()) {
             return;
         }
         _log.trace("VPUIP_VPUMI37XX pass: createProfilingMetadataOp()");
@@ -800,7 +796,7 @@ private:
         mlir::OpBuilder builderFunc(&(funcOp.getBody().front().back()));
         // Collect profiling metadata from all operations of function and pack them into FB, which will be serialized as
         // separate section. VPUMI37XX::ProfilingMetadataOp stores content of this section
-        auto buffer = vpux::buildProfilingMetadataBuffer(netOp, funcOp, _log);
+        auto buffer = vpux::buildProfilingMetadataBuffer(netInfo, funcOp, _log);
         llvm::ArrayRef<char> rawMetadata{reinterpret_cast<const char*>(buffer.data()), buffer.size()};
         long int bufferSize = buffer.size();
 

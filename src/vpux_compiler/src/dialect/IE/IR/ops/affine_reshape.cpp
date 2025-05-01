@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,9 @@
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -34,8 +36,8 @@ mlir::LogicalResult vpux::IE::AffineReshapeOp::inferReturnTypeComponents(
 
     const auto outShape = parseIntArrayAttr<int64_t>(affineReshape.getShapeValue());
     const auto input = affineReshape.getInput();
-    const auto inType = input.getType().cast<mlir::RankedTensorType>();
-    const auto ndInType = inType.cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(input.getType());
+    const auto ndInType = mlir::cast<vpux::NDTypeInterface>(inType);
     const auto inOrder = DimsOrder::fromValue(input);
 
     const auto outputLayout =
@@ -44,6 +46,8 @@ mlir::LogicalResult vpux::IE::AffineReshapeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(ndInType), "{0} doesn't support dynamic shapes",
+                      IE::AffineReshapeOp::getOperationName());
     const auto outDesc = vpux::getTensorAttr(ctx, outputLayout.value(), ndInType.getMemSpace());
 
     const auto elemTypeInferResult = inferElemTypeAffineReshape(affineReshape, ndInType.getElementType());
@@ -61,8 +65,8 @@ mlir::LogicalResult vpux::IE::AffineReshapeOp::inferReturnTypeComponents(
 //
 
 mlir::LogicalResult vpux::IE::AffineReshapeOp::verify() {
-    const auto inType = getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     auto inNumElem = inType.getNumElements();
     auto outNumElem = outType.getNumElements();
@@ -82,8 +86,8 @@ mlir::LogicalResult vpux::IE::AffineReshapeOp::verify() {
 
 mlir::OpFoldResult vpux::IE::AffineReshapeOp::fold(FoldAdaptor adaptor) {
     auto operands = adaptor.getOperands();
-    auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     if (inputType == outputType) {
         return getInput();
     }
@@ -126,14 +130,14 @@ mlir::LogicalResult FuseAffineReshapes::matchAndRewrite(IE::AffineReshapeOp orig
         return mlir::failure();
     }
 
-    auto inputType = prevOp.getInput().getType().cast<NDTypeInterface>();
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(prevOp.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const auto inputDimsOrder = inputType.getDimsOrder();
     const auto outputDimsOrder = outputType.getDimsOrder();
 
-    const auto inputShape = inputType.cast<mlir::ShapedType>().getShape();
-    const auto outputShape = outputType.cast<mlir::ShapedType>().getShape();
+    const auto inputShape = mlir::cast<mlir::ShapedType>(inputType).getShape();
+    const auto outputShape = mlir::cast<mlir::ShapedType>(outputType).getShape();
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
 
     // Fusing AffineReshape with any of the above mentioned ops might result in another AffineReshape or not,

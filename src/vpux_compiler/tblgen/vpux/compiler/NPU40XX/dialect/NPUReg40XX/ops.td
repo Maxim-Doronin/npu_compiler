@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -30,7 +30,7 @@ class NPUReg40XX_ExecutableTaskOp<string mnemonic, list<Trait> traits = []> :
             !listconcat(
                 traits,
                 [
-                    DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
+                    DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 ]
             )
         > {
@@ -395,7 +395,8 @@ def NPUReg40XX_WorkItemOp :
 def MappedInferenceVersionOp :
         NPUReg40XX_Op<"MappedInferenceVersion",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 Symbol,
                 DeclareOpInterfaceMethods<VPURegMapped_SerializedVersionInterface>
             ]

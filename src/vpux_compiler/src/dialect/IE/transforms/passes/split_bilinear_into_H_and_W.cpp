@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
@@ -63,7 +64,7 @@ bool isLegalOpToConvertToSliceAndConv(IE::InterpolateOp op, LogCb logCb) {
     const auto coordMode = attrs.getCoordMode().getValue();
     const auto inputShape = getShape(op.getInput());
     const auto outShape = getShape(op.getOutput());
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
 
     if (!VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
                                             /*checkBatch=*/false)) {
@@ -75,7 +76,7 @@ bool isLegalOpToConvertToSliceAndConv(IE::InterpolateOp op, LogCb logCb) {
     }
 
     const auto inputElemType = inputType.getElementType();
-    if (inputElemType.isa<mlir::quant::QuantizedType>()) {
+    if (mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
         // Support of quantized case will be open after E#104698 fix AC issue.
         return false;
     }
@@ -197,8 +198,8 @@ mlir::LogicalResult SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter::m
     auto newSizesAttrAttr = origOp.getSizesAttrAttr();
     auto newScalesAttrAttr = origOp.getScalesAttrAttr();
     auto inputShape = getShape(origOp.getInput());
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto axes = IE::getInterpAxesVal(origOp.getLoc(), origOp.getAxes(), origOp.getAxesAttrAttr(), inputType);
 
     auto dimPtr = std::find(axes.begin(), axes.end(), Dims4D::Act::H.ind());
@@ -230,7 +231,7 @@ mlir::LogicalResult SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter::m
             appendLoc(loc, "_interpolateOnH"), interpolateHOutputType, origOp.getInput(), origOp.getSizes(),
             origOp.getScales(), origOp.getAxes(), newSizesAttrAttr, newScalesAttrAttr, origOp.getAxesAttrAttr(),
             origOp.getTileOffsetAttrAttr(), origOp.getInitialInputDimsAttrAttr(), origOp.getInitialOutputDimsAttrAttr(),
-            origOp.getAttr(), origOp.getOutputChannelsAttr());
+            origOp.getAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     auto interpOnWLoc = appendLoc(loc, "_interpolateOnW");
 
@@ -268,7 +269,7 @@ mlir::LogicalResult SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter::m
     const DimsOrder weightOrder = DimsOrder::OYXI;
     const auto weightType = mlir::RankedTensorType::get(
             weightShape.raw(), mlir::cast<NDTypeInterface>(interpolateOnH.getOutput().getType()).getElementType(),
-            getTensorAttr(rewriter.getContext(), weightOrder, nullptr, nullptr));
+            getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
     auto weight =
             Const::buildWeightsConst(rewriter, interpolateOnH.getOutput().getLoc(), weightType, ArrayRef(weights));
 

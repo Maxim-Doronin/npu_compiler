@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include <mlir/IR/PatternMatch.h>
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/utils/attributes_properties_conversion.hpp"
@@ -60,13 +61,13 @@ mlir::LogicalResult RemoveIdentityPool<ConcreteOp>::matchAndRewrite(ConcreteOp o
 }
 
 bool isIdentityAvgPoolWithPostOp(IE::AvgPoolOp avgPoolOp) {
-    if (avgPoolOp.getPostOpAttr() == nullptr) {
+    const auto postOp = avgPoolOp.getPostOpAttr();
+    if (postOp == nullptr) {
         return false;
     }
 
-    auto postOpAttrName = avgPoolOp.getPostOpAttr().getName().getValue();
-    if (postOpAttrName != IE::ClampOp::getOperationName() && postOpAttrName != IE::LeakyReluOp::getOperationName() &&
-        postOpAttrName != IE::ReLUOp::getOperationName()) {
+    // TODO: E#159161 What about other post-ops?
+    if (!mlir::isa<IE::ReluAttr, IE::LeakyReluAttr, IE::ClampAttr>(postOp)) {
         return false;
     }
 
@@ -133,24 +134,20 @@ mlir::LogicalResult FuseIdentityAvgPoolWithPostOp::matchAndRewrite(IE::AvgPoolOp
         return mlir::failure();
     }
 
-    if (producerOp.getPostOp().has_value()) {
+    if (producerOp.getPostOp() != nullptr) {
         _log.nest().trace("avgPoolOp producer already has post-processing!");
         return mlir::failure();
     }
 
     auto postOp = avgPoolOp->getResult(0).getDefiningOp();
-    auto postOpAttrName = avgPoolOp.getPostOpAttr().getName().getValue();
-    if (postOpAttrName == IE::ClampOp::getOperationName()) {
-        IE::ClampOp::Adaptor clamp(std::nullopt, nullptr,
-                                   toProperties<IE::ClampOp>(avgPoolOp.getPostOpAttr().getAttrs()));
-        postOp = rewriter.create<IE::ClampOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(), clamp.getMinAttr(),
-                                              clamp.getMaxAttr());
-    } else if (postOpAttrName == IE::LeakyReluOp::getOperationName()) {
-        IE::LeakyReluOp::Adaptor leakyRelu(std::nullopt, nullptr,
-                                           toProperties<IE::LeakyReluOp>(avgPoolOp.getPostOpAttr().getAttrs()));
+    const auto postOpAttr = avgPoolOp.getPostOpAttr();
+    if (const auto clamp = mlir::dyn_cast<IE::ClampAttr>(postOpAttr)) {
+        postOp =
+                rewriter.create<IE::ClampOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(), clamp.getMin(), clamp.getMax());
+    } else if (const auto leakyRelu = mlir::dyn_cast<IE::LeakyReluAttr>(postOpAttr)) {
         postOp = rewriter.create<IE::LeakyReluOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(),
-                                                  leakyRelu.getNegativeSlopeAttr());
-    } else if (postOpAttrName == IE::ReLUOp::getOperationName()) {
+                                                  leakyRelu.getNegativeSlope());
+    } else if (mlir::isa<IE::ReluAttr>(postOpAttr)) {
         postOp = rewriter.create<IE::ReLUOp>(avgPoolOp->getLoc(), avgPoolOp.getInput());
     }
 
@@ -165,7 +162,7 @@ mlir::LogicalResult FuseIdentityAvgPoolWithPostOp::matchAndRewrite(IE::AvgPoolOp
     rewriter.eraseOp(postOp);
 
     // Set postOp for producer and then replace the avgPoolOp
-    producerOp->setAttr("post_op", avgPoolOp.getPostOpAttr());
+    producerOp.setPostOpAttr(avgPoolOp.getPostOpAttr());
     rewriter.replaceOp(avgPoolOp, producerOp->getResult(0));
 
     return mlir::success();
@@ -207,7 +204,7 @@ mlir::LogicalResult FuseIdentityQuantizedAvgPool::matchAndRewrite(IE::AvgPoolOp 
         return mlir::failure();
     }
 
-    origOp->setAttr("post_op", parentPoolOp.getPostOpAttr());
+    origOp.setPostOpAttr(parentPoolOp.getPostOpAttr());
     origOp.setOperand(parentPoolOp.getInput());
     rewriter.eraseOp(parentPoolOp);
 
@@ -254,17 +251,14 @@ mlir::LogicalResult FuseIdentityWithQuantizedAdd::matchAndRewrite(IE::AddOp orig
         return mlir::failure();
     }
 
-    mlir::Operation* postOp;
-    auto postOpAttrName = parentPoolOp.getPostOpAttr().getName().getValue();
-    if (postOpAttrName == IE::LeakyReluOp::getOperationName()) {
-        IE::LeakyReluOp::Adaptor leakyRelu(std::nullopt, nullptr,
-                                           toProperties<IE::LeakyReluOp>(parentPoolOp.getPostOpAttr().getAttrs()));
-        postOp = rewriter.create<IE::LeakyReluOp>(parentPoolOp->getLoc(), parentPoolOp.getInput(),
-                                                  leakyRelu.getNegativeSlopeAttr());
-    } else {
+    const auto leakyRelu = mlir::dyn_cast<IE::LeakyReluAttr>(parentPoolOp.getPostOpAttr());
+    if (leakyRelu == nullptr) {
         _log.trace("No Prelu post op");
         return mlir::failure();
     }
+
+    const auto postOp = rewriter.create<IE::LeakyReluOp>(parentPoolOp->getLoc(), parentPoolOp.getInput(),
+                                                         leakyRelu.getNegativeSlope());
 
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
@@ -276,7 +270,7 @@ mlir::LogicalResult FuseIdentityWithQuantizedAdd::matchAndRewrite(IE::AddOp orig
     }
     rewriter.eraseOp(postOp);
 
-    origOp->setAttr("post_op", parentPoolOp.getPostOpAttr());
+    origOp.setPostOpAttr(parentPoolOp.getPostOpAttr());
     origOp.setOperand(0, parentPoolOp.getInput());
     origOp.setOperand(1, parentPoolOp.getInput());
     rewriter.eraseOp(parentPoolOp);

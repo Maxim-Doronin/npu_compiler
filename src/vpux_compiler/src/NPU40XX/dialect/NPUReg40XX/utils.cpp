@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,19 +7,6 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
-
-uint32_t vpux::NPUReg40XX::getTileSelectMaskForBuffer(VPUASM::DeclareBufferOp buffer) {
-    auto bufferLocation = buffer.getBufferType().getLocation();
-    if (bufferLocation.getSection() != VPURT::BufferSection::CMX_NN) {
-        return 0;
-    }
-
-    return VPUMI40XX::generateTileMask({static_cast<uint32_t>(bufferLocation.getSectionIndex())});
-}
-
-uint32_t vpux::NPUReg40XX::getTileSelectMaskForBuffer(VPUASM::DeclareTaskBufferOp taskBuffer) {
-    return VPUMI40XX::generateTileMask({static_cast<uint32_t>(taskBuffer.getTileIndex())});
-}
 
 template <class OpType>
 OpType vpux::NPUReg40XX::getOpFrom(vpux::ELF::SymbolReferenceMap& _symRefMap, std::optional<mlir::SymbolRefAttr> attr) {

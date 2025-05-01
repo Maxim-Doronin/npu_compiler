@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
@@ -182,21 +183,6 @@ std::pair<VPURT::TaskOp, VPURT::DeclareVirtualBarrierOp> getFirstDmaAndStartBarr
     return std::make_pair(firstDmaOp, startBarrierCandidateOp);
 }
 
-VPURT::TaskOp createSyncDMA(mlir::OpBuilder& builder, mlir::Operation* insertPoint, mlir::Value input,
-                            mlir::Value outputBuf, mlir::ValueRange updateBarriers) {
-    auto ctx = builder.getContext();
-    auto syncDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, "sync_dma"));
-    auto zeroAttr = vpux::getIntAttr(ctx, 0);
-
-    VPUX_THROW_WHEN(insertPoint == nullptr, "Invaild insert point");
-    builder.setInsertionPoint(insertPoint);
-    auto syncDMATask = VPURT::wrapIntoTaskOp<VPUIP::SyncDMAOp>(
-            builder, {}, updateBarriers, syncDmaLoc, input, outputBuf, /*port*/ zeroAttr,
-            /*isOutOfOrder*/ nullptr, /*isCritical*/ nullptr, /*dmaHwpId*/ nullptr,
-            /*dmaProfilingMetaData*/ nullptr);
-    return syncDMATask->getParentOfType<VPURT::TaskOp>();
-}
-
 class AddStartBarrierPass final : public VPUIP::arch40xx::impl::AddStartBarrierBase<AddStartBarrierPass> {
 public:
     explicit AddStartBarrierPass(Logger log) {
@@ -244,11 +230,13 @@ void AddStartBarrierPass::safeRunOnFunc() {
         VPUX_THROW_WHEN(taskOps.empty(), "Can not find TaskOp");
         auto firstTaskOp = *taskOps.begin();
         _log.trace("Add Sync DMA that will consume start barrier");
-        firstDmaOp = createSyncDMA(builder, firstTaskOp, inBuffer, outBuffer, {});
+        builder.setInsertionPoint(firstTaskOp);
+        firstDmaOp = VPUIP::createSyncDMA(builder, inBuffer, outBuffer, 0, {}, {});
     }
 
     _log.trace("Add Sync DMA that will update start barrier consumed by DMA {0}", firstDmaOp->getLoc());
-    createSyncDMA(builder, firstDmaOp, inBuffer, outBuffer, {barrierOp.getBarrier()});
+    builder.setInsertionPoint(firstDmaOp);
+    VPUIP::createSyncDMA(builder, inBuffer, outBuffer, 0, {}, {barrierOp.getBarrier()}, "start_barrier_sync_dma");
     firstDmaOp.getWaitBarriersMutable().append(barrierOp.getBarrier());
 
     VPURT::verifyBarrierSlots(func, _log);

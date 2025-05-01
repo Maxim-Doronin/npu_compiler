@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 
 #include <numeric>
@@ -23,7 +24,7 @@ std::unordered_map<MultiClusterStrategy, MultiClusterStrategy> strategyMatch = {
         {MultiClusterStrategy::SplitOverKernel, MultiClusterStrategy::Clustering},
         {MultiClusterStrategy::SplitOverHeightOverlapped, MultiClusterStrategy::SplitOverHeight},
         {MultiClusterStrategy::SplitOverHeightOverlapped, MultiClusterStrategy::HKSwitch}};
-// TODO: add NPU40XX related strategies
+// TODO: add VPU4 related strategies
 
 OperationStrategy DefaultStateProvider::randomOperation(ArrayRef<mlir::Operation*> operations) {
     std::uniform_int_distribution<> opDistribution(0, operations.size() - 1);

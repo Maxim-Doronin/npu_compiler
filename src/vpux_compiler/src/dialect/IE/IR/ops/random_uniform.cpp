@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,7 +15,7 @@ using namespace vpux;
 mlir::LogicalResult vpux::IE::RandomUniformOp::verify() {
     int64_t numElements = 0;
     const auto hasOneElement = [&](mlir::Value tensor) {
-        numElements = tensor.getType().cast<vpux::NDTypeInterface>().getNumElements();
+        numElements = mlir::cast<vpux::NDTypeInterface>(tensor.getType()).getNumElements();
         return numElements == 1;
     };
 

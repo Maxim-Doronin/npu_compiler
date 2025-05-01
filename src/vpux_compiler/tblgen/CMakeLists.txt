@@ -4,6 +4,7 @@
 #
 
 add_subdirectory(vpux/compiler/dialect/core)
+add_subdirectory(vpux/compiler/dialect/net)
 add_subdirectory(vpux/compiler/conversion)
 add_subdirectory(vpux/compiler/ShaveCodeGen)
 add_subdirectory(vpux/compiler/dialect/const)

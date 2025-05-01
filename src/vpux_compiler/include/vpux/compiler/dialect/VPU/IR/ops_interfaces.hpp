@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -109,6 +109,19 @@ public:
 //
 
 mlir::LogicalResult verifyNCEOp(mlir::Operation* op);
+
+//
+// ClusteredOpInterface
+//
+
+vpux::NDTypeInterface getDistributedTypeForOpOperand(mlir::Operation* op, mlir::OpOperand& operand,
+                                                     bool hasExplicitDistributedAttr,
+                                                     SiblingOpsAnalysis& siblingsAnalysis);
+
+vpux::NDTypeInterface getDistributedTypeForOpResult(mlir::Operation* op, mlir::Value result,
+                                                    VPU::MultiClusterStrategy strategy,
+                                                    SiblingOpsAnalysis& siblingsAnalysis,
+                                                    bool hasExplicitDistributedAttr);
 
 //
 // isPureViewOp

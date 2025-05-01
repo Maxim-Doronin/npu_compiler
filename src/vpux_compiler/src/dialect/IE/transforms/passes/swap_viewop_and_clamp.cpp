@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -40,16 +41,10 @@ private:
 };
 
 bool isSupportedQuantizeCast(IE::QuantizeCastOp quantizeCastOp) {
-    auto inType = quantizeCastOp.getInput()
-                          .getType()
-                          .cast<vpux::NDTypeInterface>()
-                          .getElementType()
-                          .dyn_cast<mlir::quant::UniformQuantizedType>();
-    auto outType = quantizeCastOp.getOutput()
-                           .getType()
-                           .cast<vpux::NDTypeInterface>()
-                           .getElementType()
-                           .dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto inType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(
+            mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getInput().getType()).getElementType());
+    auto outType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(
+            mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getOutput().getType()).getElementType());
     if (inType == nullptr || outType == nullptr) {
         return false;
     }
@@ -79,7 +74,7 @@ bool parentCanFuseClamp(mlir::Operation* parentOp, IE::ClampOp origOp, Logger lo
                 return false;
             }
         }
-        if (parentOp->getOperand(0).isa<mlir::BlockArgument>()) {
+        if (mlir::isa<mlir::BlockArgument>(parentOp->getOperand(0))) {
             return false;
         }
         return parentCanFuseClamp(parentOp->getOperand(0).getDefiningOp(), origOp, log);
@@ -90,7 +85,7 @@ bool parentCanFuseClamp(mlir::Operation* parentOp, IE::ClampOp origOp, Logger lo
         const auto logCb = [&](const formatv_object_base& msg) {
             log.trace("{0}", msg.str());
         };
-        if (!layerWithPostOp.getPostOp().has_value() && layerWithPostOp.isSupportedPostOp(origOp, logCb)) {
+        if (layerWithPostOp.getPostOp() == nullptr && layerWithPostOp.isSupportedPostOp(origOp, logCb)) {
             return true;
         }
     }
@@ -99,7 +94,7 @@ bool parentCanFuseClamp(mlir::Operation* parentOp, IE::ClampOp origOp, Logger lo
 }
 
 bool isBenefitToSwap(IE::ClampOp origOp, Logger log) {
-    if (origOp.getInput().isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(origOp.getInput())) {
         return false;
     }
 
@@ -121,16 +116,10 @@ mlir::LogicalResult LayerRewriter::matchAndRewrite(IE::ClampOp origOp, mlir::Pat
     auto clampMax = origOp.getMaxAttr();
     // for quantizeCast, we need to re-calculate the min max for clamp
     if (auto quantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(parentOp)) {
-        auto inType = quantizeCastOp.getInput()
-                              .getType()
-                              .cast<vpux::NDTypeInterface>()
-                              .getElementType()
-                              .dyn_cast<mlir::quant::UniformQuantizedType>();
-        auto outType = quantizeCastOp.getOutput()
-                               .getType()
-                               .cast<vpux::NDTypeInterface>()
-                               .getElementType()
-                               .dyn_cast<mlir::quant::UniformQuantizedType>();
+        auto inType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(
+                mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getInput().getType()).getElementType());
+        auto outType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(
+                mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getOutput().getType()).getElementType());
 
         auto inScale = inType.getScale();
         auto outScale = outType.getScale();

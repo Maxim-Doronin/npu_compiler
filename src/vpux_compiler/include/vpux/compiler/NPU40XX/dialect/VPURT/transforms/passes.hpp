@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -16,8 +16,13 @@ namespace vpux::VPURT::arch40xx {
 
 std::unique_ptr<mlir::Pass> createInsertSyncTasksPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeSyncTasksPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createFindWlmEnqueueBarrierPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createFindWlmEnqueueBarrierPass(bool disableDmaSwFifo = false,
+                                                            Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOrderBarriersForWlmPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWlmSplitGraphToPagesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWlmLegalizeSplitGraphToPagesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWlmLegalizePagesForBarrierDmasPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWlmInsertDummyDmasInPagesPass(Logger log = Logger::global());
 
 //
 // Registration

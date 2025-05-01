@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -107,7 +107,7 @@ void vpux::VPUMI37XX::MappedInferenceOp::serialize(elf::writer::BinaryDataSectio
         mi.shv_rt_configs.stack_size = 0;
         for (auto actShaveStack : getActShaveStacks()) {
             mi.shv_rt_configs.stack_size += checked_cast<uint32_t>(
-                    actShaveStack.getType().cast<vpux::NDTypeInterface>().getTotalAllocSize().count());
+                    mlir::cast<vpux::NDTypeInterface>(actShaveStack.getType()).getTotalAllocSize().count());
         }
     }
 

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -19,29 +20,6 @@ using namespace vpux;
 
 namespace {
 
-// Set the types of the inner arguments to correspond to the individual buffer types
-// and reinfers the return types of the inner ops, now that they no longer receive
-// sparse buffers
-void adaptNCEClusterTilingBody(VPUIP::NCEClusterTilingOp tilingOp, ArrayRef<mlir::Value> individualOperands) {
-    auto& body = tilingOp.getBody();
-    for (auto p : body.getArguments() | indexed) {
-        auto arg = p.value();
-        const auto argIndex = p.index();
-        if (arg.getType().isa<VPUIP::SparseBufferType>()) {
-            auto operandType = individualOperands[argIndex].getType();
-            if (auto distOperandType = operandType.dyn_cast<VPUIP::DistributedBufferType>()) {
-                operandType = distOperandType.getCompactType();
-            }
-            arg.setType(operandType);
-        }
-    }
-
-    auto& block = body.front();
-    for (auto& op : block.getOperations()) {
-        vpux::inferReturnTypes(&op, vpux::InferShapedTypeMode::ALL);
-    }
-}
-
 mlir::Operation* createUngroupedOp(Logger& log, mlir::OpBuilder& builder, mlir::Operation* op,
                                    ArrayRef<mlir::Value> sparseOperands, ArrayRef<mlir::Value> individualOperands,
                                    ArrayRef<mlir::Type> individualResultTypes) {
@@ -56,14 +34,10 @@ mlir::Operation* createUngroupedOp(Logger& log, mlir::OpBuilder& builder, mlir::
     mapper.map(sparseOperands, individualOperands);
     auto individualOp = builder.clone(*op, mapper);
 
-    if (auto tilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(individualOp)) {
-        adaptNCEClusterTilingBody(tilingOp, individualOperands);
-    }
-
     if (!individualResultTypes.empty()) {
         int64_t sparseResultIdx = 0;
         for (auto result : individualOp->getResults()) {
-            if (!result.getType().isa<VPUIP::SparseBufferType>()) {
+            if (!mlir::isa<vpux::VPUIP::SparseBufferType>(result.getType())) {
                 continue;
             }
             result.setType(individualResultTypes[sparseResultIdx++]);
@@ -97,7 +71,7 @@ void ungroupOperation(Logger& log, mlir::OpBuilder& builder, mlir::Operation* op
     SmallVector<VPUIP::SparsityCompressionAttr> sparsityCompressions;
     SmallVector<VPU::SEAttr> seAttrs;
     for (auto result : sparseResults) {
-        auto sparseType = result.getType().cast<VPUIP::SparseBufferType>();
+        auto sparseType = mlir::cast<vpux::VPUIP::SparseBufferType>(result.getType());
         dataResultTypes.push_back(sparseType.getData());
         if (sparseType.getSparsityMap() != nullptr) {
             smResultTypes.push_back(sparseType.getSparsityMap());
@@ -175,7 +149,7 @@ void UngroupSparseBuffers::safeRunOnFunc() {
     const auto getSparseValues = [](mlir::ValueRange values) -> SmallVector<mlir::Value> {
         SmallVector<mlir::Value> sparseValues;
         for (auto value : values) {
-            if (value.getType().isa<VPUIP::SparseBufferType>()) {
+            if (mlir::isa<vpux::VPUIP::SparseBufferType>(value.getType())) {
                 sparseValues.push_back(value);
             }
         }
@@ -185,12 +159,6 @@ void UngroupSparseBuffers::safeRunOnFunc() {
     // Insert group / ungroup operations around each instance of sparse types
     for (auto& op : llvm::make_early_inc_range(func.getOps())) {
         if (mlir::isa<VPUIP::GroupSparseBufferOp, VPUIP::UngroupSparseBufferOp>(op)) {
-            continue;
-        }
-
-        // Operations that are found inside NCEClusterTiling will be treated separately,
-        // when treating the parent operation
-        if (op.getParentOfType<VPUIP::NCEClusterTilingOp>() != nullptr) {
             continue;
         }
 

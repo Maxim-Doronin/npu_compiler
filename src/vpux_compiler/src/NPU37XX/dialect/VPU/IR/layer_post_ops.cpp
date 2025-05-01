@@ -9,7 +9,10 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layer_post_ops_utils.hpp"
+#include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/utils/core/custom_float.hpp"
 #include "vpux/utils/core/numeric.hpp"
+#include "vpux/utils/core/type/float16.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -63,10 +66,13 @@ bool isSupportedHWPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const
                     return false;
                 }
 
-                const auto inElemType = mainOp->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-                const auto outElemType = mainOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+                const auto inElemType =
+                        mlir::cast<vpux::NDTypeInterface>(mainOp->getOperand(0).getType()).getElementType();
+                const auto outElemType =
+                        mlir::cast<vpux::NDTypeInterface>(mainOp->getResult(0).getType()).getElementType();
                 // Because of the convert to float, the prelu shift will be bypassed. Check PPE diagram
-                if (inElemType.isa<mlir::quant::QuantizedType>() && !outElemType.isa<mlir::quant::QuantizedType>()) {
+                if (mlir::isa<mlir::quant::QuantizedType>(inElemType) &&
+                    !mlir::isa<mlir::quant::QuantizedType>(outElemType)) {
                     logCb(llvm::formatv("{0} does not support fusing with {1} for this HW platform at `{2}`",
                                         mainOp->getName(), postOp->getName(), postOp->getLoc()));
                     return false;

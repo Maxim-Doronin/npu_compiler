@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -49,7 +49,7 @@ public:
     explicit SimplifiedTensorLayout(mlir::Value value) {
         VPUX_THROW_UNLESS(value, "Encountered nullptr value");
 
-        auto ndType = value.getType().cast<vpux::NDTypeInterface>();
+        auto ndType = mlir::cast<vpux::NDTypeInterface>(value.getType());
         const auto sizes = ndType.getShape();
         const auto strides = ndType.getStrides();
         auto dims = static_cast<unsigned int>(sizes.size());
@@ -181,7 +181,7 @@ void vpux::VPUMI37XX::NNDMAOp::serialize(elf::writer::BinaryDataSection<uint8_t>
     uint32_t size = src_layout.total_length();
 
     const auto getPlaneStride = [&](mlir::Value value, unsigned int dim) -> uint32_t {
-        const auto ndType = value.getType().cast<vpux::NDTypeInterface>();
+        const auto ndType = mlir::cast<vpux::NDTypeInterface>(value.getType());
         const auto memStride = ndType.getMemStrides();
         const auto reversedDim = ndType.getRank() - 1 - dim;
         return checked_cast<uint32_t>(Byte(memStride[MemDim(reversedDim)]).count());

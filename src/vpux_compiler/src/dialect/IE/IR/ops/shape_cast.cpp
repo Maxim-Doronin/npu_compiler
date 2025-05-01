@@ -1,9 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 using namespace IE;
@@ -20,8 +24,10 @@ mlir::LogicalResult vpux::IE::ShapeCastOp::inferReturnTypeComponents(
     }
 
     const auto outShape = parseIntArrayAttr<int64_t>(shapeCast.getShape());
-
     const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getSource().getType());
+
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
+                      IE::ShapeCastOp::getOperationName());
     const auto outDesc = vpux::getTensorAttr(ctx, inType.getDimsOrder(), inType.getMemSpace());
     inferredReturnTypes.emplace_back(outShape, inType.getElementType(), outDesc);
     return mlir::success();
@@ -66,8 +72,8 @@ mlir::LogicalResult FuseWithShapeCastOrAffineReshape::matchAndRewrite(IE::ShapeC
         return mlir::failure();
     }
 
-    auto inputType = prevOp->getOperand(0).getType().cast<NDTypeInterface>();
-    auto outputType = origOp.getResult().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(prevOp->getOperand(0).getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
     const auto inputDimsOrder = inputType.getDimsOrder();
     const auto outputDimsOrder = outputType.getDimsOrder();
     if (inputDimsOrder != outputDimsOrder) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,12 +20,13 @@ bool hasIoSectionFlags(ELF::SectionFlagsAttr flags) {
 size_t ELF::LogicalSectionOp::getTotalSize(vpux::ELF::SymbolReferenceMap& symRefMap) {
     size_t totalSize = 0;
     auto calcSpan = [&](mlir::Operation& op) {
-        auto binaryOp = mlir::dyn_cast<ELF::BinaryOpInterface>(&op);
+        auto binarySizeOp = mlir::dyn_cast<ELF::BinarySizeOpInterface>(&op);
 
-        if (binaryOp) {
-            // getting the BinarySize using VPU::ArchKind::UNKNOWN is OK at this point because the binaryOps should
+        if (binarySizeOp) {
+            // getting the BinarySize using VPU::ArchKind::UNKNOWN is OK at this point because the binarySizeOps should
             // already all be in their arch-specific form or are arch-independent
-            auto span = binaryOp.getBinarySizeCached(symRefMap, VPU::ArchKind::UNKNOWN) + binaryOp.getMemoryOffset();
+            auto span = binarySizeOp.getBinarySizeCached(symRefMap, VPU::ArchKind::UNKNOWN) +
+                        binarySizeOp.getMemoryOffset();
             totalSize = std::max(totalSize, span);
         }
     };

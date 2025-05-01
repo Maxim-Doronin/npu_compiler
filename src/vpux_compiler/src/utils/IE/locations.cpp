@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,7 +10,7 @@
 #include "vpux/utils/core/small_vector.hpp"
 
 #include "vpux/compiler/core/developer_build_utils.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -44,7 +44,7 @@ mlir::Location vpux::IE::getValueLocation(mlir::Value val) {
         VPUX_THROW("Unsupported number of results");
     }
     // value is a block argument, so a function argument
-    if (auto arg = val.dyn_cast<mlir::BlockArgument>()) {
+    if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(val)) {
         const size_t inputNum = arg.getArgNumber();
 
         const auto ownerOp = mlir::dyn_cast<mlir::func::FuncOp>(arg.getOwner()->getParentOp());
@@ -52,8 +52,8 @@ mlir::Location vpux::IE::getValueLocation(mlir::Value val) {
                         "Invalid type of parent operation, expected to get mlir::func::FuncOp, but got {0}",
                         arg.getOwner()->getParentOp());
         auto moduleOp = getModuleOp(ownerOp);
-        auto netOps = to_small_vector(moduleOp.getOps<IE::CNNNetworkOp>());
-        if (netOps.size() != 1) {
+        auto netInfoOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
+        if (netInfoOps.size() != 1) {
             if constexpr (vpux::isDeveloperBuild()) {
                 vpux::Logger::global().warning("Can't get location for input. If it isn't a test, please, debug this.");
                 const std::string inputName = "generated_input_" + std::to_string(inputNum);
@@ -63,9 +63,9 @@ mlir::Location vpux::IE::getValueLocation(mlir::Value val) {
             }
         }
 
-        IE::CNNNetworkOp cnnNetworkOp;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, cnnNetworkOp, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         if (ownerOp != netFunc) {
             // Note: one cannot provably deduce a single location as a
@@ -74,7 +74,7 @@ mlir::Location vpux::IE::getValueLocation(mlir::Value val) {
             return appendLoc(ownerOp->getLoc(), "arg_{0}", arg.getArgNumber());
         }
 
-        auto inputsInfo = to_small_vector(cnnNetworkOp.getInputsInfo().getOps<IE::DataInfoOp>());
+        auto inputsInfo = to_small_vector(netInfo.getInputsInfo().getOps<net::DataInfoOp>());
 
         return inputsInfo[inputNum]->getLoc();
     }

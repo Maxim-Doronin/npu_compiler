@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -29,9 +29,9 @@ mlir::LogicalResult vpux::VPU::ConvolutionOp::inferReturnTypes(mlir::MLIRContext
         return mlir::failure();
     }
 
-    const auto inType = conv.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(conv.getInput().getType());
     const auto inShape = inType.getShape().raw();
-    const auto filterShape = conv.getFilter().getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    const auto filterShape = mlir::cast<vpux::NDTypeInterface>(conv.getFilter().getType()).getShape().raw();
 
     const auto dataPaddingBelow = parseIntArrayAttr<int64_t>(conv.getPadsEnd());
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(conv.getPadsBegin());

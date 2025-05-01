@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,5 +15,10 @@ namespace vpux {
 int64_t getSparsifyValue(mlir::Type& inputElementType);
 int64_t getValuesPerSparsityBit(mlir::Type& elementType);
 SmallVector<int64_t> countNonSparseElementsPerOC(const Const::Content& content, mlir::Type elementType);
+
+/*
+ * Check if any of the activation input and output is sparse tensor type
+ */
+bool isActSparseOp(mlir::Operation* op);
 
 }  // namespace vpux

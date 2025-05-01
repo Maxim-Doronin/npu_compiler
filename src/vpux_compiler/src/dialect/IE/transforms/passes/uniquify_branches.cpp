@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -312,7 +313,7 @@ bool MoveReorderBeforeSlice::isBeneficialTransformation(IE::SliceOp sliceOp, IE:
         parallelReordersTotalSize +=
                 isTrivialReorder(reorder)
                         ? 0
-                        : reorder.getOutput().getType().cast<NDTypeInterface>().getTotalAllocSize().count();
+                        : mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType()).getTotalAllocSize().count();
     }
 
     auto root = sliceOp.getSource();
@@ -322,7 +323,7 @@ bool MoveReorderBeforeSlice::isBeneficialTransformation(IE::SliceOp sliceOp, IE:
 
     const auto newReorderSize = isTrivialReorder(srcOrder, dstOrder, rootShape)
                                         ? 0
-                                        : root.getType().cast<NDTypeInterface>().getTotalAllocSize().count();
+                                        : mlir::cast<vpux::NDTypeInterface>(root.getType()).getTotalAllocSize().count();
 
     if (newReorderSize > parallelReordersTotalSize) {
         _log.trace("Root tensor size '{0}' is larger than total size of parallel Reorder(s): '{1}'. ", newReorderSize,
@@ -527,7 +528,7 @@ SmallVector<int64_t> MoveAffineReshapeBeforeSlice::getNewOffsets(IE::SliceOp sli
     auto sliceOffset = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
     auto sliceSize = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
     VPUX_THROW_UNLESS(sliceAxes.size() == 1, "Unexpected slice axes for {0}", sliceOp);
-    auto outType = layerOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
     auto outShape = outType.getShape();
     const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(layerOp.getDimMapping());
     auto mappedSliceDim = dimMapping[sliceAxes[0]];
@@ -554,7 +555,7 @@ SmallVector<int64_t> MoveAffineReshapeBeforeSlice::getNewOffsets(IE::SliceOp sli
 
 mlir::Operation* MoveAffineReshapeBeforeSlice::createNewLayerOp(IE::AffineReshapeOp layerOp, IE::SliceOp sliceOp,
                                                                 mlir::PatternRewriter& rewriter) const {
-    auto outType = layerOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
     auto outShape = outType.getShape();
     const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(layerOp.getDimMapping());
     const auto sliceAxes = getSliceAxes(sliceOp);

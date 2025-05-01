@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
@@ -20,11 +21,11 @@ mlir::LogicalResult vpux::IE::SpaceToDepthOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inputType = spd.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(spd.getInput().getType());
 
     const auto elementType = inputType.getElementType();
     if (!(elementType.isF16() || elementType.isF32() || elementType.isUnsignedInteger(8) ||
-          elementType.isa<mlir::quant::QuantizedType>())) {
+          mlir::isa<mlir::quant::QuantizedType>(elementType))) {
         return errorAt(loc, "SpaceToDepth only supports FP16, FP32, U8 or Quantized input data type");
     }
 
@@ -55,6 +56,9 @@ mlir::LogicalResult vpux::IE::SpaceToDepthOp::inferReturnTypeComponents(
     const auto outW = inputShape[W.ind()] / block_size;
 
     SmallVector<int64_t> outShape{outN, outC, outH, outW};
+
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inputType), "{0} doesn't support dynamic shapes",
+                      IE::SpaceToDepthOp::getOperationName());
     const auto outDesc = vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace());
     inferredReturnShapes.emplace_back(outShape, inputType.getElementType(), outDesc);
 

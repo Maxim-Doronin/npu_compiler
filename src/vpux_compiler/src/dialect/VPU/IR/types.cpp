@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -53,12 +54,16 @@ VPU::DistributionInfoAttr VPU::DistributedTensorType::getDistribution() const {
     return getImpl()->distribution;
 }
 
+Const::OpaqueI64ElementsAttr VPU::DistributedTensorType::getDynamicDimsMask() const {
+    return getImpl()->dynamicDimsMask;
+}
+
 VPU::DistributedTensorType VPU::DistributedTensorType::cloneWith(std::optional<mlir::ArrayRef<int64_t>> shape,
                                                                  mlir::Type elementType) const {
     if (!shape.has_value()) {
-        return changeElemType(elementType).cast<VPU::DistributedTensorType>();
+        return mlir::cast<vpux::VPU::DistributedTensorType>(changeElemType(elementType));
     }
-    return changeShapeElemType(ShapeRef(shape.value()), elementType).cast<VPU::DistributedTensorType>();
+    return mlir::cast<vpux::VPU::DistributedTensorType>(changeShapeElemType(ShapeRef(shape.value()), elementType));
 }
 
 //
@@ -68,7 +73,7 @@ VPU::DistributedTensorType VPU::DistributedTensorType::cloneWith(std::optional<m
 VPU::SparseTensorType VPU::SparseTensorType::cloneWith(std::optional<mlir::ArrayRef<int64_t>> shape,
                                                        mlir::Type elementType) const {
     if (!shape.has_value()) {
-        return changeElemType(elementType).cast<VPU::SparseTensorType>();
+        return mlir::cast<vpux::VPU::SparseTensorType>(changeElemType(elementType));
     }
-    return changeShapeElemType(ShapeRef(shape.value()), elementType).cast<VPU::SparseTensorType>();
+    return mlir::cast<vpux::VPU::SparseTensorType>(changeShapeElemType(ShapeRef(shape.value()), elementType));
 }

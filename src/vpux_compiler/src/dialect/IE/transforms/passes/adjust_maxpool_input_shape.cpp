@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -137,7 +138,7 @@ mlir::LogicalResult ReshapeMaxPoolOutput1x1::matchAndRewrite(IE::MaxPoolOp origO
     auto newMaxPoolOp = rewriter.replaceOpWithNewOp<IE::MaxPoolOp>(
             origOp, origOp.getOutput().getType(), newInput.getOutput(), newMaxPoolKernelAttr, origOp.getStridesAttr(),
             origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getRoundingType(), origOp.getPostOpAttr(),
-            origOp.getClampAttr(), origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     _log.trace("Replace with new maxpool '{0}' ", newMaxPoolOp);
 
@@ -288,7 +289,7 @@ mlir::LogicalResult ReshapeMaxPoolInputWithStride::matchAndRewrite(IE::MaxPoolOp
             inputShape[Dims4D::Act::H] == 1 ? outputShape[Dims4D::Act::W] / VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT
                                             : VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT});
 
-    auto newOutputType = newMaxPoolOp.getOutput().getType().template cast<vpux::NDTypeInterface>();
+    auto newOutputType = mlir::cast<vpux::NDTypeInterface>(newMaxPoolOp.getOutput().getType());
     newOutputType = newOutputType.changeShape(newOutputShape);
     newMaxPoolOp.getOutput().setType(mlir::cast<mlir::RankedTensorType>(newOutputType));
     const auto outShape = getShape(origOp.getOutput()).raw();

@@ -1,10 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/schedule_analysis_utils.hpp"
-
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/utils/profiling/reports/ted.hpp"
 
 #include <iomanip>
@@ -166,8 +166,8 @@ void vpux::printScheduleStatistics(mlir::func::FuncOp& netFunc, AsyncDepsInfo& d
             continue;
         }
         const auto executor = VPUIP::VPUIPDialect::getExecutor(execOp);
-        auto opCycleStart = execOp->getAttr(cycleBegin).cast<mlir::IntegerAttr>().getValue().getSExtValue();
-        auto opCycleEnd = execOp->getAttr(cycleEnd).cast<mlir::IntegerAttr>().getValue().getSExtValue();
+        auto opCycleStart = mlir::cast<mlir::IntegerAttr>(execOp->getAttr(cycleBegin)).getValue().getSExtValue();
+        auto opCycleEnd = mlir::cast<mlir::IntegerAttr>(execOp->getAttr(cycleEnd)).getValue().getSExtValue();
         pipelineEndCycle = std::max(pipelineEndCycle, opCycleEnd);
 
         // generic analysis
@@ -191,7 +191,7 @@ void vpux::printScheduleStatistics(mlir::func::FuncOp& netFunc, AsyncDepsInfo& d
                         continue;
                     }
                     auto depOpCycleEnd =
-                            depExecOp->getAttr(cycleEnd).cast<mlir::IntegerAttr>().getValue().getSExtValue();
+                            mlir::cast<mlir::IntegerAttr>(depExecOp->getAttr(cycleEnd)).getValue().getSExtValue();
                     eraliestExecutionStartCycle = std::max(eraliestExecutionStartCycle, depOpCycleEnd);
                 }
                 if (opCycleStart > eraliestExecutionStartCycle) {
@@ -209,7 +209,7 @@ void vpux::printScheduleStatistics(mlir::func::FuncOp& netFunc, AsyncDepsInfo& d
                             continue;
                         }
                         auto conOpCycleStart =
-                                conExecOp->getAttr(cycleBegin).cast<mlir::IntegerAttr>().getValue().getSExtValue();
+                                mlir::cast<mlir::IntegerAttr>(conExecOp->getAttr(cycleBegin)).getValue().getSExtValue();
                         if (conOpCycleStart < consumerStartCycle) {
                             consumerIdx = conIdx;
                             consumerStartCycle = conOpCycleStart;

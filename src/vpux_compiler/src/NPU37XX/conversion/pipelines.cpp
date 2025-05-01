@@ -3,15 +3,17 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/NPU37XX/pipelines.hpp"
 #include "vpux/compiler/NPU37XX/conversion.hpp"
 #include "vpux/compiler/conversion.hpp"
 
 #include "vpux/compiler/dialect/ELFNPU37XX/passes.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include "vpux/compiler/NPU37XX/pipeline_options.hpp"
 
 #include <mlir/Transforms/Passes.h>
 
@@ -43,6 +45,7 @@ void vpux::arch37xx::buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, bool e
         pm.addPass(createInPlaceBufferizationAnalyzePass());
     }
     pm.addPass(createOneShotBufferizeVPU2VPUIPPass());
+    pm.addPass(VPUIP::createWrapVPUIPOpsInNCEClusterTilingPass(log));
     pm.addPass(VPUIP::createUngroupBoundedBuffersAsFuncArgsPass(log));
     pm.addPass(createAddBuffersForNetResults(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));

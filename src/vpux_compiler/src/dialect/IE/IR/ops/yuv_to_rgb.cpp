@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -19,7 +21,7 @@ mlir::LogicalResult vpux::IE::YuvToRgbOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = colorConv.getInput1().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(colorConv.getInput1().getType());
     const auto shape = inType.getShape();
     if (shape[3] != 1) {
         return errorAt(loc, "Incorrect input shape format: '{0}'", shape);
@@ -57,22 +59,28 @@ mlir::LogicalResult ConvertToMultiInputs::matchAndRewrite(IE::YuvToRgbOp yuvToRg
     if (yuvToRgbOp.getInput2() == nullptr) {
         const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(yuvToRgbOp).to<Byte>().count();
 
-        const auto outputByteSize =
-                yuvToRgbOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElemTypeSize().to<Byte>().count();
+        const auto outputByteSize = mlir::cast<vpux::NDTypeInterface>(yuvToRgbOp.getOutput().getType())
+                                            .getElemTypeSize()
+                                            .to<Byte>()
+                                            .count();
         const auto outputSizeBytes =
-                yuvToRgbOp.getOutput().getType().cast<NDTypeInterface>().getShape().totalSize() * outputByteSize;
+                mlir::cast<vpux::NDTypeInterface>(yuvToRgbOp.getOutput().getType()).getShape().totalSize() *
+                outputByteSize;
 
-        const auto inputByteSize =
-                yuvToRgbOp.getInput1().getType().cast<vpux::NDTypeInterface>().getElemTypeSize().to<Byte>().count();
+        const auto inputByteSize = mlir::cast<vpux::NDTypeInterface>(yuvToRgbOp.getInput1().getType())
+                                           .getElemTypeSize()
+                                           .to<Byte>()
+                                           .count();
         const auto inputSizeBytes =
-                yuvToRgbOp.getInput1().getType().cast<NDTypeInterface>().getShape().totalSize() * inputByteSize;
+                mlir::cast<vpux::NDTypeInterface>(yuvToRgbOp.getInput1().getType()).getShape().totalSize() *
+                inputByteSize;
         auto requiredCMX = outputSizeBytes + inputSizeBytes;
         if (requiredCMX < cmxAvailableBytes) {
             return mlir::success();
         }
 
-        auto inputShape = yuvToRgbOp.getInput1().getType().cast<NDTypeInterface>().getShape();
-        const auto inShapeType = yuvToRgbOp.getInput1().getType().cast<mlir::ShapedType>().getShape();
+        auto inputShape = mlir::cast<vpux::NDTypeInterface>(yuvToRgbOp.getInput1().getType()).getShape();
+        const auto inShapeType = mlir::cast<mlir::ShapedType>(yuvToRgbOp.getInput1().getType()).getShape();
         const auto sliceOpLoc = yuvToRgbOp.getLoc();
         auto* ctx = rewriter.getContext();
         enum { N = 0, H = 1, W = 2, C = 3 };

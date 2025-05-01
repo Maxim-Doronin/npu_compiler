@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -19,7 +22,7 @@ mlir::LogicalResult vpux::IE::LRNOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = lrn.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(lrn.getInput().getType());
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 
     return mlir::success();
@@ -51,7 +54,7 @@ mlir::FailureOr<SmallVector<int64_t>> getAxes(IE::LRNOpAdaptor LRN, mlir::Locati
     const auto axesContent = axesConst.getContent();
     auto axes = to_small_vector(axesContent.getValues<int64_t>());
 
-    const auto inType = LRN.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(LRN.getInput().getType());
     const auto inRank = inType.getRank();
 
     for (auto& axis : axes) {

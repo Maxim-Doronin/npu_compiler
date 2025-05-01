@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -69,8 +69,10 @@ mlir::LogicalResult DynamicQuantToVPUNCE::matchAndRewrite(IE::ConvolutionOp orig
 
     rewriter.replaceOpWithNewOp<VPU::NCEConvolutionOp>(
             origOp, origOp.getType(), origOp.getInput(), alignedFilter, weightsTable->getResult(0),
-            origOp.getStridesAttr(), padAttr, ppeAttr, mpeEngineAttr, rawFilterShape,
-            /*multi_cluster_strategyAttr=*/nullptr, origOp.getOutputChannelsAttr());
+            /*weight_table_data_ptr=*/nullptr,
+            /*weight_table_sp_ptr=*/nullptr, /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr,
+            /*weight_zero_points=*/nullptr, origOp.getStridesAttr(), padAttr, ppeAttr, mpeEngineAttr, rawFilterShape,
+            /*multi_cluster_strategyAttr=*/nullptr, origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     rewriter.eraseOp(dynamicDequant);
     return mlir::success();

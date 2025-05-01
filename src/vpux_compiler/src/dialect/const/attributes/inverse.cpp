@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -27,13 +27,15 @@ Const::Content vpux::Const::ScalarMultInverseAttr::transform(Const::Content& inp
     auto output =
             Const::Content::allocTempBuffer(inferOutputType(input.getType()), mlir::Float32Type::get(getContext()),
                                             inferOutputSplat(input.isSplat(), input.getType()));
-    const auto vals = input.getValues<float>();
     auto inversedVals = output.getTempBuf<float>();
 
-    for (size_t i = 0; i < inversedVals.size(); ++i) {
-        VPUX_THROW_WHEN(!std::isnormal(vals[i]), "Taking inverse of a non-normal (e.g. zero/nan/...) float");
-        inversedVals[i] = 1.f / vals[i];
-    }
+    input.read([&](auto vals) {
+        for (size_t i = 0; i < inversedVals.size(); ++i) {
+            auto val = checked_cast<float>(vals[i]);
+            VPUX_THROW_WHEN(!std::isnormal(val), "Taking inverse of a non-normal (e.g. zero/nan/...) float");
+            inversedVals[i] = 1.f / val;
+        }
+    });
 
     return output;
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -41,7 +41,7 @@ mlir::FailureOr<SmallVector<int64_t>> getAxes(VPU::SqueezeOpAdaptor squeeze, mli
     auto axes = to_small_vector(axesContent.getValues<int64_t>());
     std::sort(axes.begin(), axes.end());
 
-    const auto inType = squeeze.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(squeeze.getInput().getType());
     const auto inRank = inType.getRank();
 
     for (auto& axis : axes) {
@@ -72,7 +72,7 @@ mlir::LogicalResult vpux::VPU::SqueezeOp::inferReturnTypes(mlir::MLIRContext* ct
     }
 
     const auto input = squeeze.getInput();
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto inShape = inType.getShape().raw();
     const auto inOrder = DimsOrder::fromValue(input);
 

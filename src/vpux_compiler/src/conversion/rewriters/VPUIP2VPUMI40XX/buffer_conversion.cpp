@@ -75,7 +75,7 @@ mlir::Value extractFromDistributedBuffer(mlir::OpBuilder builder, mlir::Value bu
         VPUX_THROW_WHEN(clusters_tileIndex == clusters.end(),
                         "Tile index '{0}' not found in distributed buffer section index array", tileIndex);
 
-        auto currMemLocation = compactType.getMemorySpace().cast<IndexedSymbolAttr>().getLeafNameAttr();
+        auto currMemLocation = mlir::cast<vpux::IndexedSymbolAttr>(compactType.getMemorySpace()).getLeafNameAttr();
         auto newMemSpace = vpux::IndexedSymbolAttr::get(currMemLocation, static_cast<size_t>(tileIndex));
         auto memType = mlir::MemRefType::get(compactType.getShape(), compactType.getElementType(),
                                              compactType.getLayout(), newMemSpace);

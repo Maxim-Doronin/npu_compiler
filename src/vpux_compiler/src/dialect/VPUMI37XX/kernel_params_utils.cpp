@@ -6,12 +6,13 @@
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
 #include "vpux/compiler/dialect/IERT/ops.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 
 namespace vpux {
 namespace VPUMI37XX {
 
 sw_params::DataType KernelParamsSerializer::getDataTypeFromMlirType(mlir::Type type) {
-    if (auto floatType = type.dyn_cast<mlir::FloatType>()) {
+    if (auto floatType = mlir::dyn_cast<mlir::FloatType>(type)) {
         auto typeWidth = floatType.getWidth();
         switch (typeWidth) {
         case 64:
@@ -26,7 +27,7 @@ sw_params::DataType KernelParamsSerializer::getDataTypeFromMlirType(mlir::Type t
         case 8:
             return sw_params::DataType::NN_FP8;
         }
-    } else if (auto integerType = type.dyn_cast<mlir::IntegerType>()) {
+    } else if (auto integerType = mlir::dyn_cast<mlir::IntegerType>(type)) {
         if (integerType.isSigned()) {
             auto typeWidth = integerType.getWidth();
             switch (typeWidth) {
@@ -80,16 +81,29 @@ sw_params::DataType KernelParamsSerializer::getDataTypeFromMlirType(mlir::Type t
                 return sw_params::DataType::NN_BIN;
             }
         }
-    } else if (auto quantizeType = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    } else if (auto quantizeType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         const auto isSigned = quantizeType.isSigned();
         auto bitWidth = quantizeType.getStorageTypeIntegralWidth();
+        auto isQuantileType =
+                mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(quantizeType);
+        auto isFloatStorage = mlir::isa<mlir::FloatType>(quantizeType.getStorageType());
         switch (bitWidth) {
         case 8:
-            return isSigned ? sw_params::DataType::NN_I8 : sw_params::DataType::NN_U8;
+            if (!isQuantileType && !isFloatStorage) {
+                return isSigned ? sw_params::DataType::NN_I8 : sw_params::DataType::NN_U8;
+            }
+            break;
         case 4:
-            return isSigned ? sw_params::DataType::NN_I4 : sw_params::DataType::NN_U4;
+            if (!isQuantileType && !isFloatStorage) {
+                return isSigned ? sw_params::DataType::NN_I4 : sw_params::DataType::NN_U4;
+            }
+            if (isNF4SpecQuantized(quantizeType)) {
+                return sw_params::DataType::NN_NF4;
+            }
+            break;
         }
     }
+    VPUX_THROW("Conversion to sw_params::DataType failed for {0}", type);
     return sw_params::DataType::NN_UNDEFINED;
 }
 
@@ -195,7 +209,7 @@ void KernelParamsSerializer::addTensorArgToVector(SmallVector<uint8_t>& vec, mli
     memrefData.dimsOrder = inOrder.invertedCode();
 
     auto type = value.getType();
-    auto ndType = type.cast<vpux::NDTypeInterface>();
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
 
     memrefData.dataType = getDataTypeFromMlirType(ndType.getElementType());
     memrefData.location = getSwParamsLocationFromMemKind(ndType.getMemoryKind());
@@ -248,10 +262,10 @@ SmallVector<uint8_t> KernelParamsSerializer::createKernelParams(VPUIP::SwKernelO
                                   kernelOpArgsCount);
 
                 auto blockArgType = blockArg.getType();
-                auto blockArgNdTypeIf = blockArgType.cast<vpux::NDTypeInterface>();
+                auto blockArgNdTypeIf = mlir::cast<vpux::NDTypeInterface>(blockArgType);
                 auto ioType = blockId < insSize ? swKernelOp.getInputs()[blockId].getType()
                                                 : swKernelOp.getOutputBuffs()[blockId - insSize].getType();
-                auto ioNdTypeIf = ioType.cast<vpux::NDTypeInterface>();
+                auto ioNdTypeIf = mlir::cast<vpux::NDTypeInterface>(ioType);
                 VPUX_THROW_UNLESS(blockArgNdTypeIf != nullptr || ioNdTypeIf != nullptr,
                                   "createKernelParams: sw kernel I/O does not implement NDTypeInterface");
                 // The types can differ w.r.t. the address space (e.g., memref<1x1000xf16> and memref<1x1000xf16, @DDR>)
@@ -280,10 +294,10 @@ SmallVector<uint8_t> KernelParamsSerializer::createKernelParams(VPUIP::SwKernelO
                                       kernelOpArgsCount);
 
                     auto blockArgType = blockArg.getType();
-                    auto blockArgNdTypeIf = blockArgType.cast<vpux::NDTypeInterface>();
+                    auto blockArgNdTypeIf = mlir::cast<vpux::NDTypeInterface>(blockArgType);
                     auto ioType = blockId < insSize ? swKernelOp.getInputs()[blockId].getType()
                                                     : swKernelOp.getOutputBuffs()[blockId - insSize].getType();
-                    auto ioNdTypeIf = ioType.cast<vpux::NDTypeInterface>();
+                    auto ioNdTypeIf = mlir::cast<vpux::NDTypeInterface>(ioType);
                     VPUX_THROW_UNLESS(blockArgNdTypeIf != nullptr || ioNdTypeIf != nullptr,
                                       "createKernelParams: sw kernel I/O does not implement NDTypeInterface");
                     VPUX_THROW_UNLESS(vpux::areTypesCompatible(blockArgType, ioType,

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -90,9 +90,9 @@ def DotInterface : OpInterface<"DotInterface"> {
     ];
 }
 
-def ShapeBoundOp : OpInterface<"ShapeBoundOp"> {
+def StaticShapeOpInterface : OpInterface<"StaticShapeOpInterface"> {
     let description = [{
-        Operations can enforce bounded shape constraints.
+        Operations can enforce static shape constraints.
         One example of such operations is a DPU task.
         DPU tasks support only static shapes.
         DPU cannot adjust any workload size at runtime once it is set by the compiler.
@@ -101,7 +101,22 @@ def ShapeBoundOp : OpInterface<"ShapeBoundOp"> {
         Transposition with static shapes is mapped either to DPU or to DMA.
         In most cases, DPU transposition is faster than the activation shave implementation.
     }];
+
     let cppNamespace = "vpux";
+
+    let methods = [
+        InterfaceMethod<
+            "Returns whether the operation supports only static shapes",
+            "bool", "requiresStaticShape", (ins),
+            [{}],
+            [{return true;}]
+        >
+    ];
 }
+
+class Core_HasChild<list<string> ops> : PredOpTrait<
+    "all operations in the body are of types '" # !interleave(ops, ",") # "'",
+    CPred<"::llvm::all_of(getBody().getOps(), [](::mlir::Operation& op) { return ::llvm::isa<" # !interleave(ops, ",")  # ">(op); })">
+>;
 
 #endif

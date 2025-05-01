@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,8 +9,8 @@
 using namespace vpux;
 
 mlir::LogicalResult vpux::IE::DynamicDequantizeOp::verify() {
-    const auto inputShape = to_small_vector(getInput().getType().cast<mlir::ShapedType>().getShape());
-    const auto scaleShape = to_small_vector(getScale().getType().cast<mlir::ShapedType>().getShape());
+    const auto inputShape = to_small_vector(mlir::cast<mlir::ShapedType>(getInput().getType()).getShape());
+    const auto scaleShape = to_small_vector(mlir::cast<mlir::ShapedType>(getScale().getType()).getShape());
     if (scaleShape.size() > inputShape.size()) {
         return errorAt(*this, "Scale tensor has rank greater than input tensor.");
     }
@@ -46,7 +46,7 @@ mlir::LogicalResult vpux::IE::DynamicDequantizeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = dynamicDequantize.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(dynamicDequantize.getInput().getType());
     const auto dstElemType = dynamicDequantize.getDstElemType();
     const auto outDesc = vpux::getTensorAttr(inType);
 

@@ -6,8 +6,10 @@
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -199,8 +201,8 @@ std::map<CompressSpillDmaPass::SpillDataKey, CompressSpillDmaPass::SpillDataVal>
         const auto portValue = port.value();
 
         const auto spillId = dmaOp.getSpillId().value();
-        const auto inType = dmaOp.getInput().getType().cast<vpux::NDTypeInterface>();
-        const auto outType = dmaOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutput().getType());
 
         auto isCompactType = [](vpux::NDTypeInterface origType) {
             const auto shape = origType.getShape();
@@ -348,8 +350,8 @@ void CompressSpillDmaPass::identifySafeDeallocIndexForSpills(const SmallVector<V
                 const auto port = dmaTypeOp.getPortVal();
                 VPUX_THROW_UNLESS(port.has_value(), "DMA port has not been set");
 
-                const auto inType = dmaTypeOp.getInput().getType().cast<vpux::NDTypeInterface>();
-                const auto outType = dmaTypeOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+                const auto inType = mlir::cast<vpux::NDTypeInterface>(dmaTypeOp.getInput().getType());
+                const auto outType = mlir::cast<vpux::NDTypeInterface>(dmaTypeOp.getOutput().getType());
 
                 if (inType.getMemoryKind() == VPU::MemoryKind::CMX_NN &&
                     outType.getMemoryKind() == VPU::MemoryKind::DDR) {
@@ -516,9 +518,9 @@ void CompressSpillDmaPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp func;
-    IE::CNNNetworkOp::getFromModule(module, netOp, func);
+    net::NetworkInfoOp::getFromModule(module, netInfo, func);
     mlir::OpBuilder builder(&func.getBody().front().front());
 
     auto tileOp = IE::getTileExecutor(module);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::VPU::LSTMCellOp::inferReturnTypes(mlir::MLIRContext* c
         return mlir::failure();
     }
 
-    const auto inType = lstm.getInitialHiddenState().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(lstm.getInitialHiddenState().getType());
 
     inferredReturnTypes.push_back(inType);  // outputHiddenState
     inferredReturnTypes.push_back(inType);  // outputCellState

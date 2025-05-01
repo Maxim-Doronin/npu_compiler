@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,8 +8,8 @@
 #pragma once
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/small_string.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"

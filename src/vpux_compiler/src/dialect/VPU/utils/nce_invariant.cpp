@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -205,7 +205,7 @@ bool vpux::VPU::NCEInvariant::checkLayouts(mlir::TypeRange operandTypes, mlir::T
     VPUX_UNUSED(arch);
 
     for (unsigned opIdx = 0; opIdx < numInputOperands; opIdx++) {
-        const auto actualInLayout = operandTypes[opIdx].cast<vpux::NDTypeInterface>().getDimsOrder();
+        const auto actualInLayout = mlir::cast<vpux::NDTypeInterface>(operandTypes[opIdx]).getDimsOrder();
         const auto& expectedInLayout = DimsOrder::NHWC;
         if (actualInLayout != expectedInLayout) {
             logCb(formatv("Unsupported input layout. Expected: {0}, got: {1}", expectedInLayout, actualInLayout));
@@ -283,6 +283,20 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Lo
                     }));
 }
 
+bool vpux::VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt([[maybe_unused]] VPU::ArchKind arch, const int64_t KX,
+                                                                const int64_t SX, ArrayRef<int64_t> workloadOutSz,
+                                                                const bool isFp16Input,
+                                                                [[maybe_unused]] const int64_t KY,
+                                                                [[maybe_unused]] const int64_t padLeft) {
+    // L1Opt can be enabled when kernelX = 3 and strideX = 1
+    if (KX != 3 || SX != 1) {
+        return false;
+    }
+
+    return isFp16Input ? workloadOutSz[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT
+                       : workloadOutSz[Dims4D::Act::C.ind()] % VPU_CHANNEL_SIZE_FOR_L1OPT == 0;
+}
+
 bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(const VPU::ArchKind arch, mlir::Operation* op) {
     // TODO: E#96201, attach concrete implementation of NCEOpInterface depending on the type of device
     if (arch == VPU::ArchKind::NPU37XX) {
@@ -293,7 +307,7 @@ bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(const VPU::Arch
     }
     auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
     // Skip Sparse Ops
-    if (nceOp->getResult(0).getType().dyn_cast<VPU::SparseTensorType>() != nullptr) {
+    if (mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceOp->getResult(0).getType()) != nullptr) {
         return false;
     }
 

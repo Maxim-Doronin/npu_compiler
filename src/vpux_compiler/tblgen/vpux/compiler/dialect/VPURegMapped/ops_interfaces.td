@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -119,6 +119,20 @@ def VPURegMapped_TaskOpInterface : OpInterface<"TaskOpInterface"> {
             "bool", "supportsTaskLink", (ins), [{}], [{
                 return false;
             }]
+        >,
+        
+        InterfaceMethod<
+            "Returns wlmPageAttr",
+            "mlir::IntegerAttr", "getWlmPageAttr", (ins), [{}], [{
+                return $_op.getWlmPageAttr();
+            }]
+        >,
+
+        InterfaceMethod<
+            "Returns wlmPage",
+            "std::optional<int>", "getWlmPage", (ins), [{}], [{
+                return $_op.getWlmPage();
+            }]
         >
     ];
 }
@@ -157,8 +171,21 @@ def VPURegMapped_SerializedVersionInterface : OpInterface<"SerializedVersionInte
         InterfaceMethod<
             "Set new version for the current op.",
             "void",
-            "setVersion", (ins "const elf::Version&":$version), [{}]
-        >,
+            "setVersion", (ins "const elf::Version&":$version)
+        >
+    ];
+}
+
+def VPURegMapped_DMATypeOpInterface : OpInterface<"DMATypeOpInterface"> {
+    let description = "Interface for DMA type layers";
+    let cppNamespace = "vpux::VPURegMapped";
+    let methods = [
+        InterfaceMethod<
+            "Set the previous task of this Op",
+            "void", "setPreviousTaskForOp", (ins "mlir::Value":$previousTask), [{}], [{
+                $_op.getPreviousTaskMutable().assign(previousTask);
+            }]
+        >
     ];
 }
 

@@ -1,11 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
+
+#include <mlir/Dialect/Quant/QuantOps.h>
 
 using namespace vpux;
 

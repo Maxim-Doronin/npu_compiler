@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,8 +12,13 @@
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reify_shape.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/error.hpp"
 
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
+
+#include <openvino/util/common_util.hpp>
 #include <utility>
 
 using namespace vpux;
@@ -95,12 +100,17 @@ mlir::Value vpux::repackDynamicTensor(mlir::OpBuilder& builder, mlir::Operation*
         dynReshapeOperand = sliceOp.getOutput();
     }
 
+    auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(producer->getResult(0).getType());
+    VPUX_THROW_UNLESS(boundedType != nullptr, "Expected to get BoundedTensorType at {0}",
+                      producer->getResult(0).getLoc());
+    auto bounds = boundedType.getBounds();
+
     // Reshape is required because strided slice infers all dimensions as dynamic
     // [Track number: S#154699]
     auto reshape = builder.create<IE::DynamicReshapeOp>(appendLoc(producer->getLoc(), "reshape"),
                                                         /*data=*/dynReshapeOperand,
                                                         /*shape=*/newShapeValue.getOutput(),
                                                         /*output_shape=*/getIntArrayAttr(ctx, operandShape.raw()),
-                                                        /*output_bounds=*/getBounds(producer->getResult(0)));
+                                                        /*output_bounds=*/getIntArrayAttr(ctx, bounds));
     return reshape.getOutput();
 }

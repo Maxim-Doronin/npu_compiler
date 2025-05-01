@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SWAPCONVERTWITHTRANSPOSERESHAPE
@@ -64,8 +67,8 @@ mlir::LogicalResult SwapConvertWithTransposeReshape::OpSwapConverter::matchAndRe
         IE::ConvertOp origOp, mlir::PatternRewriter& rewriter) const {
     auto swapOp = *origOp.getOutput().getUsers().begin();
     if (isReshapeKindOp(swapOp)) {
-        const auto origDataType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-        auto swapDataType = swapOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto origDataType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+        auto swapDataType = mlir::cast<vpux::NDTypeInterface>(swapOp->getResult(0).getType());
         const auto newDataType = swapDataType.changeElemType(origDataType.getElementType());
 
         rewriter.setInsertionPointAfter(swapOp);
@@ -97,7 +100,7 @@ void SwapConvertWithTransposeReshape::safeRunOnFunc() {
             // dequantize pass and fuse convert with quantize pass, will be needed to propagate the quantizeCast
             // quantParams to Transpose. We want to avoid this. Also in the end this Transpose will be done as
             // PermuteCast.
-            return !op.getInput().isa<mlir::BlockArgument>();
+            return !mlir::isa<mlir::BlockArgument>(op.getInput());
         }
 
         return true;

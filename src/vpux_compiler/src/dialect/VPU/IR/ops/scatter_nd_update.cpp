@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,19 +19,7 @@ mlir::LogicalResult vpux::VPU::ScatterNDUpdateOp::inferReturnTypes(
     }
 
     const auto inType = scatter.getInput().getType();
-    const auto outShape = inType.cast<vpux::NDTypeInterface>().getShape().toValues();
-
-    auto outType = inType;
-    if (outShape.isDynamic()) {
-        const auto inputBoundsAttr = vpux::getBounds(outType.cast<mlir::RankedTensorType>());
-        const auto bounds = parseIntArrayAttr<int64_t>(inputBoundsAttr);
-        if (bounds.empty()) {
-            return errorAt(loc, "VPU::ScatterNDUpdateOp::inferReturnTypes. Got empty bounds array");
-        }
-
-        outType = outType.cast<vpux::BoundedTypeInterface>().changeBounds(inputBoundsAttr);
-    }
-    inferredReturnTypes.push_back(outType);
+    inferredReturnTypes.push_back(inType);
 
     return mlir::success();
 }

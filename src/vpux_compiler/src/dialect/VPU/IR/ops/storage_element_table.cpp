@@ -1,9 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -14,7 +16,8 @@ void vpux::VPU::StorageElementTableOp::build(mlir::OpBuilder& odsBuilder, mlir::
                                              ArrayRef<int64_t> dataShape, mlir::Type dataElemType, int64_t seSize,
                                              int64_t seDepth, VPU::SEAttr seAttr) {
     auto dataShapeAttr = getIntArrayAttr(odsBuilder.getContext(), dataShape);
-    build(odsBuilder, odsState, dataShapeAttr, dataElemType, seSize, seDepth, seAttr, nullptr, nullptr);
+    auto seSizeAttr = getIntAttr(odsBuilder.getContext(), seSize);
+    build(odsBuilder, odsState, dataShapeAttr, dataElemType, seSizeAttr, seDepth, seAttr, nullptr, nullptr);
 }
 
 mlir::LogicalResult vpux::VPU::StorageElementTableOp::inferReturnTypes(
@@ -51,7 +54,7 @@ mlir::LogicalResult vpux::VPU::StorageElementTableOp::verify() {
     using namespace VPU::NCESparsity;
 
     if (auto seAttrValue = getSeAttr().value_or(nullptr)) {
-        if (!seAttrValue.isa<VPU::SEAttr>()) {
+        if (!mlir::isa<vpux::VPU::SEAttr>(seAttrValue)) {
             return errorAt(setOp->getLoc(), "Only VPU::SEAttr is supported for Storage Element Table");
         }
     }
@@ -61,7 +64,7 @@ mlir::LogicalResult vpux::VPU::StorageElementTableOp::verify() {
     }
 
     const auto opBasePtrs = getBasePtrs().value().getValues<int32_t>();
-    const auto expectedNumPtrs = getOutput().getType().cast<vpux::NDTypeInterface>().getNumElements();
+    const auto expectedNumPtrs = mlir::cast<vpux::NDTypeInterface>(getOutput().getType()).getNumElements();
     if (static_cast<size_t>(expectedNumPtrs) != opBasePtrs.size()) {
         return errorAt(setOp->getLoc(), "StorageElementTable expects to have {0}, but got {1}", expectedNumPtrs,
                        opBasePtrs.size());
@@ -97,17 +100,40 @@ mlir::LogicalResult FuseChildSliceOps::matchAndRewrite(VPU::StorageElementTableO
 
             auto effectiveOutputOffsets = sliceOffsets;
             auto effectiveOutputSizes = sliceSizes;
-            effectiveOutputOffsets[Dims4D::Act::C.ind()] *= origOp.getSeSize();
-            effectiveOutputSizes[Dims4D::Act::C.ind()] *= origOp.getSeSize();
 
-            const auto inputDataShape = Shape(parseIntArrayAttr<int64_t>(origOp.getDataShape()));
-            auto inputTileShape = Shape(inputDataShape.size());
-            auto inputTileOffset = inputTileShape;
-            auto newSeAttr = seAttr.extractTile(Shape(effectiveOutputOffsets), Shape(effectiveOutputSizes),
-                                                inputDataShape, inputTileOffset, inputTileShape);
-            rewriter.replaceOpWithNewOp<VPU::StorageElementTableOp>(sliceUserOp, inputTileShape.raw(),
-                                                                    origOp.getDataElemType(), origOp.getSeSize(),
-                                                                    sliceSizes[Dims4D::Act::C.ind()], newSeAttr);
+            if (auto seSize = mlir::dyn_cast<mlir::IntegerAttr>(origOp.getSeSize())) {
+                const auto uniformSeSize = seSize.getValue().getSExtValue();
+                effectiveOutputOffsets[Dims4D::Act::C.ind()] *= uniformSeSize;
+                effectiveOutputSizes[Dims4D::Act::C.ind()] *= uniformSeSize;
+                const auto inputDataShape = Shape(parseIntArrayAttr<int64_t>(origOp.getDataShape()));
+                auto inputTileShape = Shape(inputDataShape.size());
+                auto inputTileOffset = inputTileShape;
+                auto newSeAttr = seAttr.extractTile(Shape(effectiveOutputOffsets), Shape(effectiveOutputSizes),
+                                                    inputDataShape, inputTileOffset, inputTileShape);
+                rewriter.replaceOpWithNewOp<VPU::StorageElementTableOp>(sliceUserOp, inputTileShape.raw(),
+                                                                        origOp.getDataElemType(), uniformSeSize,
+                                                                        sliceSizes[Dims4D::Act::C.ind()], newSeAttr);
+            } else {
+                auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(origOp.getSeSize()));
+                effectiveOutputOffsets[Dims4D::Act::C.ind()] =
+                        std::accumulate(seSizes.begin(), seSizes.begin() + sliceOffsets[Dims4D::Act::C.ind()], 0);
+                effectiveOutputSizes[Dims4D::Act::C.ind()] = std::accumulate(
+                        seSizes.begin() + sliceOffsets[Dims4D::Act::C.ind()],
+                        seSizes.begin() + sliceOffsets[Dims4D::Act::C.ind()] + sliceSizes[Dims4D::Act::C.ind()], 0);
+                const auto inputDataShape = Shape(parseIntArrayAttr<int64_t>(origOp.getDataShape()));
+                auto inputTileShape = Shape(inputDataShape.size());
+                auto inputTileOffset = inputTileShape;
+                auto newSeAttr = seAttr.extractTile(Shape(effectiveOutputOffsets), Shape(effectiveOutputSizes),
+                                                    inputDataShape, inputTileOffset, inputTileShape);
+                SmallVector<int64_t> seSizesVec(
+                        seSizes.begin() + sliceOffsets[Dims4D::Act::C.ind()],
+                        seSizes.begin() + sliceOffsets[Dims4D::Act::C.ind()] + sliceSizes[Dims4D::Act::C.ind()]);
+                auto newSeSizeAttr = getIntArrayAttr(rewriter.getContext(), seSizesVec);
+                auto dataShapeAttr = getIntArrayAttr(rewriter.getContext(), inputTileShape);
+                rewriter.replaceOpWithNewOp<VPU::StorageElementTableOp>(
+                        sliceUserOp, dataShapeAttr, origOp.getDataElemType(), newSeSizeAttr,
+                        sliceSizes[Dims4D::Act::C.ind()], newSeAttr, nullptr, nullptr);
+            }
         }
     }
     return mlir::success();

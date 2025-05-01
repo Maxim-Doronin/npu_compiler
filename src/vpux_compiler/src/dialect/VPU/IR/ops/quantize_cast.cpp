@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/cast_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 

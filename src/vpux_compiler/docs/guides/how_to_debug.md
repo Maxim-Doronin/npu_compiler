@@ -171,10 +171,16 @@ The compiler contains a pass which can generate a Dot Graph representation of th
 - Using the compiler pipeline, by manually adding the `PrintDot` pass where desired and rebuilding the project
   - example: `pm.addPass(createPrintDot(<FileName>, <Options>));`
 
+## Memory usage visualization
+
+Memory usage plotter is a visualization tool to plot DDR heap utilization over time from logs added in the StaticAllocation pass. 
+
+Detailed description of the script and how to use it can be found [here](../../../../tools/memory-usage-plotter/README.md).
+
 ## Debugging barrier dependencies
 
-At several stages of compilation the structure of the control graph may change due to adding new tasks,
-reordering tasks, optimizing tasks dependencies etc. It is possible to check what exactly has changed after applying some
+At several stages of compilation the structure of the control graph may change due to adding new tasks, 
+reordering tasks, optimizing tasks dependencies etc. It is possible to check what exactly has changed after applying some 
 transformations either across several passes, within single pass or some individual routine. BarrierInfo class
 offers methods to dump actual state of barrier dependencies at any stage of compilation where the concept of barriers is defined (i.e. in the VPUIP and VPURT dialects). This is typically done
 as follows:

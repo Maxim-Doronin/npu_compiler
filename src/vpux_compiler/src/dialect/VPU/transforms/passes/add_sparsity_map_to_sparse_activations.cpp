@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -85,7 +85,7 @@ void AddSparsityMapToSparseActivationsPass::safeRunOnFunc() {
 
             const auto sparsityMapElementType = mlir::IntegerType::get(&ctx, 1, mlir::IntegerType::Signless);
 
-            auto dataType = sparseType.getData().cast<vpux::NDTypeInterface>();
+            auto dataType = mlir::cast<vpux::NDTypeInterface>(sparseType.getData());
             auto sparsityMapType = dataType.changeElemType(sparsityMapElementType);
 
             const auto updatedSparseType = VPU::SparseTensorType::get(dataType, sparsityMapType);

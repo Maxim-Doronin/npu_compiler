@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
@@ -49,6 +50,9 @@ mlir::LogicalResult TileSliceRewriter::matchAndRewrite(IE::SliceOp origOp, mlir:
     if (tileOp == nullptr) {
         return mlir::failure();
     }
+    if (!tileOp->hasOneUse()) {
+        return mlir::failure();
+    }
     auto repeatsValue = parseIntArrayAttr<int64_t>(tileOp.getRepeatsValuesAttr());
     const auto nonOneRepeatsValueNum = llvm::count_if(repeatsValue, [](auto repeat) {
         return repeat != 1;
@@ -77,6 +81,10 @@ mlir::LogicalResult TileSliceRewriter::matchAndRewrite(IE::SliceOp origOp, mlir:
 
     int64_t newRepeatValue = 0;
     if (!hasReshape) {
+        // If there is not reshape operation present, tile and slice axis need to be the same
+        if (tileAxis.value() != sliceAxis.value()) {
+            return mlir::failure();
+        }
         newRepeatValue = sliceSize[sliceAxis.value().ind()];
     } else {
         const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(reshapeOp.getDimMapping());
@@ -112,7 +120,7 @@ mlir::LogicalResult TileSliceRewriter::matchAndRewrite(IE::SliceOp origOp, mlir:
 
     auto repeatsOnNewShape = std::move(repeatsValue);
     repeatsOnNewShape[tileAxis.value().ind()] = newRepeatValue;
-    const auto outputType = tileOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(tileOp.getOutput().getType());
     auto tileOpInputShape = getShape(tileOp.getInput());
     Shape newShape(tileOpInputShape.raw());
     newShape[tileAxis.value()] = newRepeatValue;
@@ -160,7 +168,7 @@ mlir::LogicalResult ConcatSliceRewriter::matchAndRewrite(IE::SliceOp origOp, mli
     // Previously the rewriter is before adjust layout, which only handle NCHW compatible layout.
     // After add the rewriter to run after adjust layout, we see some performance regression for
     // some very small model, acutally caused by runtime idle. #E135787
-    auto outType = origOp.getResult().getType().cast<vpux::NDTypeInterface>();
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
     if (outType.getDimsOrder() != DimsOrder::fromNumDims(outType.getShape().size())) {
         return mlir::failure();
     }
@@ -350,7 +358,7 @@ mlir::LogicalResult SliceConcatRewriter::matchAndRewrite(IE::SliceOp origOp, mli
 
     // if concat axis is different with slice axis, try to add a permuteCastOp.
     if (concatAxis.value() != refSliceAxis.value()) {
-        const auto inType = sliceParent.getType().cast<vpux::NDTypeInterface>();
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(sliceParent.getType());
         const auto dimsOrder = inType.getDimsOrder();
         auto permVec = to_small_vector(dimsOrder.toPermutation() | transformed([](Dim dim) {
                                            return checked_cast<int64_t>(dim.ind());

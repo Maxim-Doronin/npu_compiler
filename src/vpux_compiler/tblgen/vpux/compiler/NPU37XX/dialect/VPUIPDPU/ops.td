@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -1194,8 +1194,8 @@ def VPUIPDPU_ODUOutActivationsOp :
 Data type specification:
 | attr name  | value range                                | vpu arch |
 |:-----------|:-------------------------------------------|:---------|
-| data_type  | fp16, u8f, g8, i8, i32, i4, i2, log, bin   | NPU37XX  |
-| data_width | 1-bit, 2-bit, 4-bit, 8-bit, 16-bit, 32-bit | NPU40XX  |
+| data_type  | fp16, u8f, g8, i8, i32, i4, i2, log, bin   | VPU2.7   |
+| data_width | 1-bit, 2-bit, 4-bit, 8-bit, 16-bit, 32-bit | VPU4     |
 If data_type/data_width is not specified then ODU output data type should be inferred from %out_activations.
         }];
 

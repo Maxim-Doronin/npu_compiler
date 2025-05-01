@@ -42,7 +42,8 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
         auto numClusters = VPU::getOptimalNumClusters(
                 clusteredOp, outputTileType.getShape(),
-                clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue());
         return {std::make_pair(inputTileType,
                                VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
                                                                         siblingsAnalysis, nullptr, tiles[0])),
@@ -84,7 +85,8 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
         auto numClusters = VPU::getOptimalNumClusters(
                 clusteredOp, outputTileType.getShape(),
-                clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue());
         return {std::make_pair(inputTileType,
                                VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
                                                                         siblingsAnalysis, nullptr, tiles[0])),
@@ -230,7 +232,8 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
         auto numClusters = VPU::getOptimalNumClusters(
                 clusteredOp, outputTileType.getShape(),
-                clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue());
         return {std::make_pair(inputTileType,
                                VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
                                                                         siblingsAnalysis, nullptr, tiles[0])),
@@ -266,7 +269,8 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
         auto numClusters = VPU::getOptimalNumClusters(
                 clusteredOp, outputTileType.getShape(),
-                clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue());
         return {std::make_pair(inputTileType,
                                VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
                                                                         siblingsAnalysis, nullptr, tiles[0])),
@@ -306,7 +310,8 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
         auto numClusters = VPU::getOptimalNumClusters(
                 clusteredOp, outputTileType.getShape(),
-                clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue());
         return {std::make_pair(inputTileType,
                                VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
                                                                         siblingsAnalysis, nullptr, tiles[0])),
@@ -325,7 +330,7 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributionsCommon(
         mlir::Operation* origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
         const std::optional<InputTiling>& inputTiles) {
-    const auto outputType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
 
     SmallVector<vpux::TileInfo> inTiles{outTile};
     if (!inputTiles.has_value()) {
@@ -346,7 +351,7 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
                       origOp->getOperands().size());
 
     for (const auto& input : origOp->getOperands() | indexed) {
-        const auto inputType = input.value().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.value().getType());
         auto inputTileType = inputType.extractDenseTile(inTiles[input.index()].offsets, inTiles[input.index()].shape);
         inputTileTypes.push_back(std::make_pair(inputTileType, TensorDistributionMap{}));
     }
@@ -514,7 +519,8 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::DepthToSpaceOp origOp, cons
 
         auto numClusters = VPU::getOptimalNumClusters(
                 clusteredOp, outputTileType.getShape(),
-                clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue());
         return {VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, nullptr, tiles[0]),
                 VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outTile)};
     }
@@ -524,7 +530,7 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::DepthToSpaceOp origOp, cons
 
 SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, const TileInfo& outTile,
                                                       const std::optional<InputTiling>& inputTiles) {
-    const auto outputType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
 
     SmallVector<vpux::TileInfo> inTiles{outTile};
     if (!inputTiles.has_value()) {
@@ -545,7 +551,7 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
                       origOp->getOperands().size());
 
     for (const auto& input : origOp->getOperands() | indexed) {
-        const auto inputType = input.value().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.value().getType());
         inputTileTypes.push_back(
                 inputType.extractDenseTile(inTiles[input.index()].offsets, inTiles[input.index()].shape));
     }
@@ -566,12 +572,12 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
     for (const auto& inputTileType : inputTileTypes) {
         auto inDistributedType =
                 VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, outputTileType);
-        distributedTensorTypes.push_back(inDistributedType.cast<vpux::NDTypeInterface>());
+        distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
     }
 
     auto outDistributedType =
             VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, inputTileTypes);
-    distributedTensorTypes.push_back(outDistributedType.cast<vpux::NDTypeInterface>());
+    distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(outDistributedType));
 
     return distributedTensorTypes;
 }
@@ -1232,7 +1238,7 @@ Byte getRequiredCMXSizeForNCEOps(ArrayRef<std::pair<NDTypeInterface, TensorDistr
 Byte getRequiredCMXSizeForDefaultOps(mlir::Operation* op) {
     SmallVector<vpux::NDTypeInterface> operands;
     auto getTypeFromValue = [](mlir::Value operand) {
-        return operand.getType().cast<vpux::NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(operand.getType());
     };
     std::transform(op->getOperands().begin(), op->getOperands().end(), std::back_inserter(operands), getTypeFromValue);
     std::transform(op->getResults().begin(), op->getResults().end(), std::back_inserter(operands), getTypeFromValue);
@@ -1276,7 +1282,7 @@ OutputTiling getUniqueShapeTilingCandidates(mlir::Operation* op, const OutputTil
                     if (auto sparseTensor = mlir::dyn_cast<VPU::SparseTensorType>(operand.getType())) {
                         if (sparseTensor.getSeAttr() != nullptr) {
                             seAttr = sparseTensor.getSeAttr();
-                            data = sparseTensor.getData().cast<NDTypeInterface>();
+                            data = mlir::cast<vpux::NDTypeInterface>(sparseTensor.getData());
                             break;
                         }
                     }

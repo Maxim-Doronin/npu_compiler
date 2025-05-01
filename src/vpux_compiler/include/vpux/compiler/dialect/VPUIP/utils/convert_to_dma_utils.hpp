@@ -9,6 +9,7 @@
 #include <mlir/IR/PatternMatch.h>
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 
 namespace vpux {

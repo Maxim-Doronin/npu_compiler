@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -27,10 +27,10 @@ mlir::LogicalResult vpux::Const::ExpandDilatedAttr::verify(FuncRef<mlir::InFligh
     }
 
     for (const auto dimDilationAttr : dilations.getValue()) {
-        if (!dimDilationAttr.isa<mlir::IntegerAttr>()) {
+        if (!mlir::isa<mlir::IntegerAttr>(dimDilationAttr)) {
             return printTo(emitError(), "Got non-integer value in 'dilations' for 'ExpandDilatedAttr'");
         }
-        if (dimDilationAttr.cast<mlir::IntegerAttr>().getInt() <= 0) {
+        if (mlir::cast<mlir::IntegerAttr>(dimDilationAttr).getInt() <= 0) {
             return printTo(emitError(), "Got unsupported dimension value '{0}' in 'shape' for 'ExpandDilatedAttr'",
                            dimDilationAttr);
         }
@@ -76,7 +76,7 @@ mlir::Attribute vpux::Const::ExpandDilatedAttr::parse(mlir::AsmParser& parser, m
 
 vpux::NDTypeInterface vpux::Const::ExpandDilatedAttr::inferOutputType(vpux::NDTypeInterface input) const {
     const auto dilations = parseIntArrayAttr<int64_t>(getDilations());
-    auto tensor = input.cast<vpux::NDTypeInterface>();
+    auto tensor = mlir::cast<vpux::NDTypeInterface>(input);
     return getDilatedType(tensor, ShapeRef(dilations));
 }
 

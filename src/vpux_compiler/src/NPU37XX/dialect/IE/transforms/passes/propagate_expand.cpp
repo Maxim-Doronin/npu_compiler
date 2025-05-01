@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/empty_node.hpp"
@@ -149,8 +150,7 @@ mlir::LogicalResult EltwiseShapeCastRewriter::matchAndRewrite(IE::ExpandOp expan
 
     // F16 case would be beneficial to be executed as Concat + Const.
     auto inputTensor = expandOp.getInput();
-    if (inputTensor.getType()
-                .cast<vpux::NDTypeInterface>()
+    if (mlir::cast<vpux::NDTypeInterface>(inputTensor.getType())
                 .getElementType()
                 .dyn_cast_or_null<mlir::quant::QuantizedType>() == nullptr) {
         return mlir::failure();
@@ -199,8 +199,9 @@ mlir::LogicalResult EltwiseShapeCastRewriter::matchAndRewrite(IE::ExpandOp expan
             !equalInputs ? getExpandedInput(rewriter, secondInput, expandOp, expandedShape.value()) : expandedInput1;
     rewriter.setInsertionPoint(expandOp);
 
-    auto outputType = expandedInput1.getType().cast<vpux::NDTypeInterface>().changeElemType(
-            addOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType());
+    auto outputType =
+            mlir::cast<vpux::NDTypeInterface>(expandedInput1.getType())
+                    .changeElemType(mlir::cast<vpux::NDTypeInterface>(addOp.getOutput().getType()).getElementType());
     auto newEltwise = rewriter.create<IE::AddOp>(addOp.getLoc(), outputType, expandedInput1, expandedInput2,
                                                  addOp.getAutoBroadcast(), nullptr, nullptr, nullptr, nullptr);
 
@@ -265,8 +266,8 @@ mlir::LogicalResult DepthToSpaceSliceRewriter::matchAndRewrite(IE::ExpandOp expa
     if (!mlir::isa_and_nonnull<IE::AlignedChannelsOpInterface>(slice.getSource().getDefiningOp())) {
         return mlir::failure();
     }
-    const auto sliceElemType = slice.getSource().getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (sliceElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    const auto sliceElemType = mlir::cast<vpux::NDTypeInterface>(slice.getSource().getType()).getElementType();
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(sliceElemType)) {
         return mlir::failure();
     }
 
@@ -330,25 +331,25 @@ mlir::Value DepthToSpaceSliceRewriter::getConcatResult(mlir::PatternRewriter& re
     auto inputShape = getShape(input);
     float zeroValue = 0.f;
 
-    const auto elemType = inputType.cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(inputType).getElementType();
 
-    if (auto qInputElemType = elemType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (auto qInputElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elemType)) {
         const auto zeroPoint = qInputElemType.getZeroPoint();
         zeroValue = static_cast<float>(zeroPoint);
     }
 
     auto filterTensorAttr = vpux::getTensorAttr(getContext(), DimsOrder::NHWC, nullptr);
-    auto filterType =
-            mlir::RankedTensorType::get(inputShape.raw(), elemType, filterTensorAttr).cast<vpux::NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(
+            mlir::RankedTensorType::get(inputShape.raw(), elemType, filterTensorAttr));
     auto dataStorageType =
             mlir::RankedTensorType::get(inputShape.raw(), mlir::Float32Type::get(filterType.getContext()));
 
     auto dataAttr = Const::createConstContent(dataStorageType, ArrayRef(zeroValue));
     Const::ContentSetup contentAttrSetup(dataStorageType);
 
-    if (auto qElemType = elemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    if (auto qElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
         contentAttrSetup = contentAttrSetup.castElemType(qElemType);
-    } else if (elemType.isa<mlir::Float16Type>()) {
+    } else if (mlir::isa<mlir::Float16Type>(elemType)) {
         contentAttrSetup = contentAttrSetup.castElemType(mlir::Float16Type::get(filterType.getContext()));
     } else {
         VPUX_THROW("Unsupported type {0}", elemType);
@@ -387,7 +388,7 @@ mlir::Value DepthToSpaceSliceRewriter::createConvFilter(mlir::PatternRewriter& r
     SmallVector<float> weights(weightShape.totalSize(), .0f);
 
     auto channelStride = KX * KY;
-    const auto dimsOrder = inputTensor.getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto dimsOrder = mlir::cast<vpux::NDTypeInterface>(inputTensor.getType()).getDimsOrder();
     auto outMemShape = dimsOrder.toMemoryOrder(ShapeRef(weightShape.raw()));
     const auto halfOC = OC / 2;
     for (auto i = 0; i < OC; ++i) {
@@ -414,7 +415,7 @@ mlir::Value DepthToSpaceSliceRewriter::createConvFilter(mlir::PatternRewriter& r
     const DimsOrder weightOrder = DimsOrder::OYXI;
     const auto weightType = mlir::RankedTensorType::get(
             weightShape.raw(), mlir::cast<NDTypeInterface>(inputTensor.getType()).getElementType(),
-            getTensorAttr(rewriter.getContext(), weightOrder, nullptr, nullptr));
+            getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
     return Const::buildWeightsConst(rewriter, inputTensor.getLoc(), weightType, ArrayRef(weights));
 }
 
@@ -426,9 +427,9 @@ mlir::Value DepthToSpaceSliceRewriter::createConvforD2S(mlir::PatternRewriter& r
     auto newPadsBegin = getIntArrayAttr(getContext(), ov::CoordinateDiff{1, 0});  // Top Pad = 1
     auto newPadsEnd = getIntArrayAttr(getContext(), ov::CoordinateDiff{0, 0});
     auto newDilations = getIntArrayAttr(getContext(), ov::Strides{1, 1});
-    auto outputType = expandOp.getType().cast<NDTypeInterface>();
-    auto newInputShape = input.getType().cast<NDTypeInterface>().getShape().toValues().raw();
-    auto filterShape = convFilter.getType().cast<mlir::ShapedType>().getShape();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(expandOp.getType());
+    auto newInputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape().toValues().raw();
+    auto filterShape = mlir::cast<mlir::ShapedType>(convFilter.getType()).getShape();
 
     const auto op =
             ov::op::v1::Convolution(std::make_shared<ov::op::v0::Parameter>(
@@ -496,7 +497,7 @@ mlir::Value SpaceToDepthSliceRewriter::createConvFilter(mlir::PatternRewriter& r
     const DimsOrder weightOrder = DimsOrder::OYXI;
     const auto weightType = mlir::RankedTensorType::get(
             weightShape.raw(), mlir::cast<NDTypeInterface>(activation.getType()).getElementType(),
-            getTensorAttr(rewriter.getContext(), weightOrder, nullptr, nullptr));
+            getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
     return Const::buildWeightsConst(rewriter, activation.getLoc(), weightType, ArrayRef(weights));
 }
 
@@ -518,7 +519,7 @@ mlir::Value SpaceToDepthSliceRewriter::createDPUOperation(mlir::PatternRewriter&
     Shape outPadAfter(checked_cast<size_t>(s2dOp.getType().getRank()), 0);
     outPadAfter[Dims4D::Act::C] = inputShape[Dims4D::Act::C] * blockSize * blockSize - s2dOutShape[Dims4D::Act::C];
 
-    const auto ndType = s2dOp.getType().cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::cast<vpux::NDTypeInterface>(s2dOp.getType());
     const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
 
     return rewriter.create<IE::ConvolutionOp>(s2dOp.getLoc(), newOutputType, input, convFilter, nullptr, newStrides,
@@ -546,10 +547,9 @@ void SpaceToDepthSliceRewriter::createPaddedConvolution(mlir::PatternRewriter& r
                     .reshape(newFilterShape)
                     .get();
 
-    const auto origFilterType = filter.getType().cast<vpux::NDTypeInterface>();
-    const auto outAllocType =
-            mlir::RankedTensorType::get(to_small_vector(newFilterShape), origFilterType.getElementType())
-                    .cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(filter.getType());
+    const auto outAllocType = mlir::cast<vpux::NDTypeInterface>(
+            mlir::RankedTensorType::get(to_small_vector(newFilterShape), origFilterType.getElementType()));
     const auto outAllocTypeNHWC = outAllocType.changeDimsOrder(DimsOrder::NHWC);
     auto paddedFilter =
             rewriter.create<Const::DeclareOp>(filterConst.getLoc(), outAllocTypeNHWC, std::move(newContentAttr));

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@ mlir::LogicalResult vpux::VPU::EmbeddingSegmentsSumOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inType = embeddingSegmentsSum.getEmbTable().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(embeddingSegmentsSum.getEmbTable().getType());
 
     auto outShape = to_small_vector(inType.getShape().raw());
 

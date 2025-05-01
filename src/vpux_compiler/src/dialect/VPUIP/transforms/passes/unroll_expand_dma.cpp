@@ -4,9 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
@@ -73,7 +75,7 @@ vpux::NDTypeInterface changeShape(vpux::NDTypeInterface originType, ShapeRef out
     // The channel size need align with the input
     inShape[Dims4D::Act::C.ind()] = originType.getShape()[Dims4D::Act::C];
     const auto elemType = originType.getElementType();
-    if (auto qType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto newQType = tileScalesAndZP(qType, Shape(inShape), offset);
         return originType.changeShapeElemType(Shape(inShape), newQType);
     }
@@ -88,7 +90,7 @@ void ExpandDMARewriter::unrollSegmentedOrOverlapped(mlir::Location loc, VPUIP::E
                                                     mlir::PatternRewriter& rewriter) const {
     const auto input = expandDmaOp.getInput();
     const auto output = expandDmaOp.getOutputBuff();
-    const auto inputType = input.getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto outputType = distributedType.getCompactType();
 
     const auto distributionAttr = distributedType.getDistribution();
@@ -213,8 +215,8 @@ void ExpandDMARewriter::unrollDuplicated(mlir::Location loc, VPUIP::ExpandDMAOp 
     _log.trace("Insert new CMX buffer declaration: '{0}'", newCMXBuffer);
 
     const auto newLoc = appendLoc(loc, "_broadcast_copy_to_CMX[{0},{1}]", clusters.front(), clusters.back());
-    auto expandInType = expandDmaOp.getInput().getType().dyn_cast<NDTypeInterface>();
-    auto expandOutType = expandDmaOp.getOutput().getType().dyn_cast<NDTypeInterface>();
+    auto expandInType = mlir::dyn_cast<vpux::NDTypeInterface>(expandDmaOp.getInput().getType());
+    auto expandOutType = mlir::dyn_cast<vpux::NDTypeInterface>(expandDmaOp.getOutput().getType());
     Byte elemTypeSize = expandInType.getElemTypeSize();
     auto dmaDescriptor = dmaDescriptorGenerator.generate(expandInType, expandOutType, expandDmaOp.getPadsBeginAttr(),
                                                          expandDmaOp.getPadsEndAttr(), elemTypeSize.count());
@@ -263,7 +265,7 @@ void ExpandDMARewriter::createTilesForLargeSize(VPUIP::ExpandDMAOp origOp,
     Byte inputOffset{inputDeclBuff.getByteOffset()};
     Byte outputOffset{outputDeclBuff.getByteOffset()};
 
-    const auto expandInputType = origOp.getInput().getType().cast<NDTypeInterface>();
+    const auto expandInputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const Byte elemTypeSize = expandInputType.getElemTypeSize();
 
     auto vpurtTask = origOp->getParentOfType<VPURT::TaskOp>();
@@ -281,7 +283,7 @@ void ExpandDMARewriter::createTilesForLargeSize(VPUIP::ExpandDMAOp origOp,
         currentTileOutShape[tileDim] = std::min(numPlanesPerTile, planesLeftToCopy);
 
         // Create new input buffer
-        auto inputNewType = inputDeclBuff.getType().cast<NDTypeInterface>().changeShape(currentTileInShape);
+        auto inputNewType = mlir::cast<vpux::NDTypeInterface>(inputDeclBuff.getType()).changeShape(currentTileInShape);
         auto inputNewBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(
                 rewriter, inputInsertionPoint, tileLoc, inputNewType, inputDeclBuff.getSection(), inputOffset.count());
         inputInsertionPoint = inputNewBuffer.getResult().getDefiningOp();
@@ -295,8 +297,8 @@ void ExpandDMARewriter::createTilesForLargeSize(VPUIP::ExpandDMAOp origOp,
         outputOffset += Byte(currentTileOutShape.totalSize() * elemTypeSize.count());
 
         // Create Descriptor
-        auto expandInType = origOp.getInput().getType().dyn_cast<NDTypeInterface>();
-        auto expandOutType = origOp.getOutput().getType().dyn_cast<NDTypeInterface>();
+        auto expandInType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+        auto expandOutType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
         auto dmaDescriptor = dmaDescriptorGenerator.generate(expandInType.changeShape(currentTileInShape),
                                                              expandOutType, origOp.getPadsBeginAttr(),
                                                              origOp.getPadsEndAttr(), elemTypeSize.count());
@@ -334,9 +336,10 @@ mlir::LogicalResult ExpandDMARewriter::matchAndRewrite(VPUIP::ExpandDMAOp expand
     const auto output = expandDmaOp.getOutputBuff();
     const auto inputType = input.getType();
     const auto outputType = output.getType();
-    VPUX_THROW_WHEN(inputType.isa<VPUIP::DistributedBufferType>(), "Cannot unroll input DistributedBuffer type.");
+    VPUX_THROW_WHEN(mlir::isa<vpux::VPUIP::DistributedBufferType>(inputType),
+                    "Cannot unroll input DistributedBuffer type.");
 
-    const auto distributedType = outputType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
 
     if (distributedType == nullptr) {
         _log.trace("ExpandDMA's result is not DistributedBufferType");
@@ -351,8 +354,8 @@ mlir::LogicalResult ExpandDMARewriter::matchAndRewrite(VPUIP::ExpandDMAOp expand
             return mlir::success();
         }
 
-        auto expandInType = expandDmaOp.getInput().getType().dyn_cast<NDTypeInterface>();
-        auto expandOutType = expandDmaOp.getOutput().getType().dyn_cast<NDTypeInterface>();
+        auto expandInType = mlir::dyn_cast<vpux::NDTypeInterface>(expandDmaOp.getInput().getType());
+        auto expandOutType = mlir::dyn_cast<vpux::NDTypeInterface>(expandDmaOp.getOutput().getType());
         Byte elemTypeSize = expandInType.getElemTypeSize();
         auto dmaDescriptor =
                 dmaDescriptorGenerator.generate(expandInType, expandOutType, expandDmaOp.getPadsBeginAttr(),

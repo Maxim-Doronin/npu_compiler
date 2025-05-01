@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -157,7 +158,7 @@ mlir::Value ReduceSumToConvRewriter::createConvFilter(mlir::Value activation, ml
     const DimsOrder weightOrder = DimsOrder::OIYX;
     const auto weightType = mlir::RankedTensorType::get(
             weightShape.raw(), mlir::cast<NDTypeInterface>(activation.getType()).getElementType(),
-            getTensorAttr(rewriter.getContext(), weightOrder, nullptr, nullptr));
+            getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
     return Const::buildWeightsConst(rewriter, activation.getLoc(), weightType, ArrayRef(weights));
 }
 

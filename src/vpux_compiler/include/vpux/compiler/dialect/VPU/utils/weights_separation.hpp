@@ -6,6 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/abstract_tree.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -59,6 +60,27 @@ struct IoBoundaryAdapter {
  */
 enum class WeightsSeparationSchedule { Init, Main };
 
+using CallChainData = std::pair<mlir::func::CallOp, mlir::func::FuncOp>;
+using CallChainTree = utils::AbstractTree<CallChainData>;
+
+/** @brief Returns a "call chain" tree constructed from the starting function.
+
+    Returns a weights-separation-specific tree that represents the outlining
+    structure. An example of such a tree is:
+    ```
+    |- {nullptr, main}
+       |- {"call foo1", foo1}
+          |- {"call foo2", foo2}
+       |- {"call foo3", foo3}
+    ```
+    where "call fooX" is a CallOp operation inside the respective function and
+    fooX is a standalone function produced by the outlining.
+
+    @note This tree is the basic data structure used by weights separation to
+    construct init and main schedules.
+*/
+CallChainTree getOutliningRepresentation(mlir::func::FuncOp startFunc);
+
 /** @brief Splits constant transformations into Init and Main schedule parts.
 
     The list of transformations of a particular DeclareOp can be split into two
@@ -108,9 +130,50 @@ public:
     }
 };
 
+//! @brief A stable operator<(). Stability is achieved by relying on a
+//! combination of constant's name and stable transformation hashes.
+bool operator<(const TransformationsSplit& x, const TransformationsSplit& y);
+
+namespace detail {
+// Semi-private utility used in implementation and in tests.
+vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x);
+}  // namespace detail
+
 //! @brief Collects all constant operations that are worth moving to the Init
 //! schedule, and returns them as transformation splits.
-SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(mlir::func::FuncOp mainFunc);
+SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log, mlir::func::FuncOp mainFunc);
+
+//! @brief A "local" sorting function that sorts the transformation splits.
+using LocalSortingFunc = FuncRef<void(SmallVector<TransformationsSplit>&)>;
+
+//! @brief Collects all constant operations that are worth moving to the Init
+//! schedule across the full IR (represented as a call-chain tree).
+SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log, const CallChainTree& tree,
+                                                                        LocalSortingFunc sort);
+
+/** @brief Slices the collected transformations splits according to the
+    threshold.
+
+    Applies a slicing algorithm to the specified constant operations
+    (represented as transformations splits), using memory limit as a hint. The
+    memory limit is a rough estimate of how much combined memory (input buffers
+    size + output buffers size) each slice should use. The produced slices could
+    be used independently of one another.
+
+    The algorithm ensures that no base content is shared across different
+    slices. That is, even if a given slice exceeds the memory limit, but that
+    slice only contains transformations for a single base content, the slice
+    would remain intact (i.e. not split into more slices). This is done
+    intentionally to maintain the following property: when transformations in
+    the slice are applied to a constant, the constant (by def. of this
+    algorithm) is guaranteed to no longer be needed (by any other slice).
+
+    @note The algorithm requires transformation splits to be sorted according to
+    the operator<(const TransformationsSplit&, const TransformationsSplit&).
+*/
+SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const Logger& log,
+                                                                           ArrayRef<TransformationsSplit> splits,
+                                                                           vpux::Byte memoryLimit);
 
 //! @brief Represents a weights-separation specific argument cache entry.
 struct ConstArg {
@@ -142,7 +205,6 @@ class ConstOpConverter {
     // Note: operation cache is pimpl-ed to not expose it as a public class.
     class OperationCache;
     std::unique_ptr<OperationCache> _operationCache;
-    std::vector<std::tuple<mlir::Value, Const::ContentAttr>> _convertedConsts;
 
     // IR building function with internal caching semantics.
     std::tuple<ArrayRef<Const::TransformAttrInterface>, mlir::Value> createMatchingOperation(
@@ -161,15 +223,25 @@ public:
         return _func;
     }
 
-    ArrayRef<std::tuple<mlir::Value, Const::ContentAttr>> getConvertedConsts() const {
-        return _convertedConsts;
-    }
-
     //! @brief Returns a result of the chain of IR operations, created from the
     //! corresponding const transformations.
     mlir::Value convertToIrForm(mlir::Location baseLoc, const VPU::TransformationsSplit::Projection& split,
                                 mlir::BlockArgument arg, const IoBoundaryAdapter& ioAdaptor,
                                 WeightsSeparationSchedule scheduleKind);
+};
+
+/** @brief A callable that tells whether a particular FuncOp was already
+           visited.
+*/
+class FuncOpVisitor {
+    mlir::DenseSet<mlir::func::FuncOp> _cache;
+
+public:
+    // Returns whether the function was already seen.
+    bool operator()(mlir::func::FuncOp op) {
+        const bool firstOccurrence = _cache.insert(op).second;
+        return !firstOccurrence;
+    }
 };
 
 }  // namespace vpux::VPU

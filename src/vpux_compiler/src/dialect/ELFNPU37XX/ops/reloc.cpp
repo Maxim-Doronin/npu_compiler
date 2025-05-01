@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -29,7 +29,7 @@ void vpux::ELFNPU37XX::RelocOp::serialize(elf::writer::Relocation* relocation,
     if (actualSymbolOp.getIsBuiltin()) {
         auto symInputValue = actualSymbolOp.getInputArg();
         auto const_val = llvm::cast<mlir::arith::ConstantOp>(symInputValue.getDefiningOp());
-        auto symValue = const_val.getValue().cast<mlir::IntegerAttr>().getInt();
+        auto symValue = mlir::cast<mlir::IntegerAttr>(const_val.getValue()).getInt();
 
         relocation->setSpecialSymbol(static_cast<elf::Elf_Word>(symValue));
     } else {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -119,7 +119,7 @@ OverlapDistributionParams getOutputOverlappedParams(VPU::ClusteredOpInterface cl
 OverlapDistributionParams getOutputOverlappedParamsNoHalo(VPU::ClusteredOpInterface clusteredOp,
                                                           ArrayRef<int64_t> outputTensorNumTiles);
 
-bool outputOverlappedParamsIsHaloSupported(VPU::ClusteredOpInterface clusteredOp);
+bool outputOverlappedParamsIsHaloSupported(mlir::Operation* op);
 
 }  // namespace VPU
 }  // namespace vpux

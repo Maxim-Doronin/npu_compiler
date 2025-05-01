@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -47,7 +48,7 @@ mlir::LogicalResult ConvertQuantizeRewriter::matchAndRewrite(IE::QuantizeOp quan
         return mlir::failure();
     }
 
-    auto inElemType = convertOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto inElemType = mlir::cast<vpux::NDTypeInterface>(convertOp.getInput().getType()).getElementType();
     if (!inElemType.isInteger(CHAR_BIT)) {
         return mlir::failure();
     }
@@ -56,12 +57,12 @@ mlir::LogicalResult ConvertQuantizeRewriter::matchAndRewrite(IE::QuantizeOp quan
     const int64_t inDataZP = 0;
     mlir::quant::QuantizedType dstType;
     auto originDstType = quantizeOp.getDstElemType();
-    if (const auto uniformType = originDstType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(originDstType)) {
         dstType = mlir::quant::UniformQuantizedType::getChecked(
                 quantizeOp.getLoc(), uniformType.isSigned(), uniformType.getStorageType(),
                 uniformType.getExpressedType(), inDataScale, inDataZP, uniformType.getStorageTypeMin(),
                 uniformType.getStorageTypeMax());
-    } else if (const auto perAxisType = originDstType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(originDstType)) {
         dstType = mlir::quant::UniformQuantizedPerAxisType::getChecked(
                 quantizeOp.getLoc(), perAxisType.isSigned(), perAxisType.getStorageType(),
                 perAxisType.getExpressedType(), SmallVector<double>(perAxisType.getScales().size(), inDataScale),
@@ -99,7 +100,7 @@ mlir::LogicalResult DequantizeConvertRewriter::matchAndRewrite(IE::ConvertOp con
         return mlir::failure();
     }
 
-    auto outElemType = convertOp.getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto outElemType = mlir::cast<vpux::NDTypeInterface>(convertOp.getType()).getElementType();
     if (!outElemType.isUnsignedInteger(CHAR_BIT)) {
         return mlir::failure();
     }

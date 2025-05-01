@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -80,6 +81,12 @@ void RunF16ToF32ConvertOnDPUPass::safeRunOnFunc() {
         }
 
         if (!parentCheck->isFusionToParentDPUOpSupported(parentOp, nestedLog)) {
+            continue;
+        }
+
+        const auto inputShape = getShape(parentOp->getOperand(0));
+        // This will cause an error, because of EnsureNCEOpsSizeRequirementsPass.
+        if (inputShape[Dims4D::Act::C] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
             continue;
         }
 

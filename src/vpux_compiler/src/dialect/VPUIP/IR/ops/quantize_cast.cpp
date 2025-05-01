@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -53,8 +53,8 @@ void VPUIP::QuantizeCastOp::getCanonicalizationPatterns(mlir::RewritePatternSet&
 
 mlir::LogicalResult vpux::VPUIP::QuantizeCastOp::verify() {
     const auto op = getOperation();
-    auto distributedInType = getInput().getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto distributedOutType = getOutput().getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedInType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getInput().getType());
+    auto distributedOutType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getOutput().getType());
     if (distributedInType && distributedOutType) {
         auto inputDistribution = distributedInType.getDistribution();
         auto outputDistribution = distributedOutType.getDistribution();
@@ -77,7 +77,7 @@ mlir::LogicalResult vpux::VPUIP::QuantizeCastOp::verify() {
                        outputShape);
     }
 
-    auto inElemType = getInput().getType().cast<NDTypeInterface>().getElementType();
-    auto outElemType = getOutput().getType().cast<NDTypeInterface>().getElementType();
+    auto inElemType = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getElementType();
+    auto outElemType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType()).getElementType();
     return vpux::isQuantizeCastValid(getLoc(), inElemType, outElemType);
 }

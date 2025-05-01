@@ -1,15 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
-#include "vpux/utils/core/type/float16.hpp"
 
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -121,7 +119,7 @@ T parseIntAttr(mlir::Attribute attr) {
 template <typename T>
 SmallVector<T> parseIntArrayAttr(mlir::ArrayAttr arr) {
     return to_small_vector(arr.getValue() | transformed([](mlir::Attribute attr) {
-                               const auto intAttr = attr.dyn_cast_or_null<mlir::IntegerAttr>();
+                               const auto intAttr = mlir::dyn_cast_or_null<mlir::IntegerAttr>(attr);
                                VPUX_THROW_UNLESS(intAttr != nullptr, "Got non Integer Attribute '{0}' in Array", attr);
 
                                if (intAttr.getType().isUnsignedInteger()) {
@@ -135,7 +133,7 @@ SmallVector<T> parseIntArrayAttr(mlir::ArrayAttr arr) {
 template <typename T>
 SmallVector<T> parseFPArrayAttr(mlir::ArrayAttr arr) {
     return to_small_vector(arr.getValue() | transformed([](mlir::Attribute attr) {
-                               const auto fpAttr = attr.dyn_cast_or_null<mlir::FloatAttr>();
+                               const auto fpAttr = mlir::dyn_cast_or_null<mlir::FloatAttr>(attr);
                                VPUX_THROW_UNLESS(fpAttr != nullptr, "Got non fpAttr Attribute '{0}' in Array", attr);
 
                                return checked_cast<T>(fpAttr.getValueAsDouble());
@@ -149,7 +147,7 @@ SmallVector<T> parseFPArrayAttr(mlir::ArrayAttr arr) {
 template <typename T>
 SmallVector<T> parseCustomAttrArray(mlir::ArrayAttr arr) {
     return to_small_vector(arr.getValue() | transformed([](mlir::Attribute attr) {
-                               const auto customAttr = attr.dyn_cast_or_null<T>();
+                               const auto customAttr = mlir::dyn_cast_or_null<T>(attr);
                                VPUX_THROW_UNLESS(customAttr != nullptr, "Got non-required Attribute '{0}' in Array",
                                                  attr);
                                return customAttr;
@@ -166,7 +164,7 @@ SmallVector<SmallVector<T>> parseIntArrayOfArrayAttr(mlir::ArrayAttr arr) {
     arrayOfArray.reserve(arr.size());
 
     for (const auto attr : arr) {
-        const auto arrAttr = attr.dyn_cast_or_null<mlir::ArrayAttr>();
+        const auto arrAttr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr);
         VPUX_THROW_UNLESS(arrAttr != nullptr, "Got non Array Attribute '{0}' in Array", attr);
 
         arrayOfArray.push_back(parseIntArrayAttr<T>(arrAttr));
@@ -181,7 +179,7 @@ SmallVector<SmallVector<T>> parseFPArrayOfArrayAttr(mlir::ArrayAttr arr) {
     arrayOfArray.reserve(arr.size());
 
     for (const auto attr : arr) {
-        const auto arrAttr = attr.dyn_cast_or_null<mlir::ArrayAttr>();
+        const auto arrAttr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr);
         VPUX_THROW_UNLESS(arrAttr != nullptr, "Got non Array Attribute '{0}' in Array", attr);
 
         arrayOfArray.push_back(parseFPArrayAttr<T>(arrAttr));

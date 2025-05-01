@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
@@ -10,11 +11,11 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
 #include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
+#include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
@@ -131,8 +132,8 @@ mlir::LogicalResult UseQuantDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
 
     innerLog.trace("Try to use Quantize/[QuantizeCast]/Dequantize operations");
 
-    const auto realType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto realElemType = realType.getElementType().cast<mlir::FloatType>();
+    const auto realType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
 
     auto isSigned = false;
     mlir::Value value = origOp.getInput();
@@ -145,17 +146,17 @@ mlir::LogicalResult UseQuantDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
     }
     if (op != nullptr && mlir::isa<IE::ConvertOp>(op)) {
         value = *op->getOperands().begin();
-        if (!value.isa<mlir::BlockArgument>()) {
+        if (!mlir::isa<mlir::BlockArgument>(value)) {
             op = value.getDefiningOp();
             while (op != nullptr && mlir::isa<IE::ViewLikeOpInterface>(op)) {
                 value = *op->getOperands().begin();
                 op = value.getDefiningOp();
             }
         }
-        if (value.isa<mlir::BlockArgument>()) {
-            auto valueElemType = value.getType().cast<vpux::NDTypeInterface>().getElementType();
+        if (mlir::isa<mlir::BlockArgument>(value)) {
+            auto valueElemType = mlir::cast<vpux::NDTypeInterface>(value.getType()).getElementType();
             if (mlir::isa<mlir::IntegerType>(valueElemType)) {
-                isSigned = valueElemType.cast<mlir::IntegerType>().isSigned();
+                isSigned = mlir::cast<mlir::IntegerType>(valueElemType).isSigned();
             }
         }
     }
@@ -256,7 +257,7 @@ mlir::LogicalResult UseConstDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
     const auto inHighContent = inHighConst.getContent();
 
     // TODO: make this check more reliable
-    if (!inBaseElemType.isa<mlir::IntegerType>()) {
+    if (!mlir::isa<mlir::IntegerType>(inBaseElemType)) {
         if (!inLowContent.isSplat() || !inHighContent.isSplat()) {
             innerLog.warning("Legacy model, original input values are not integer");
 
@@ -294,8 +295,8 @@ mlir::LogicalResult UseConstDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
 
     innerLog.trace("Try to use constant dequantize");
 
-    const auto realType = inConstAttr.getType().cast<vpux::NDTypeInterface>();
-    const auto realElemType = realType.getElementType().cast<mlir::FloatType>();
+    const auto realType = mlir::cast<vpux::NDTypeInterface>(inConstAttr.getType());
+    const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
 
     const auto multiZeroPoint = !IE::hasFQSameZeroPoint(origOp);
 
@@ -335,13 +336,12 @@ mlir::LogicalResult UseConstDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
                     const auto inConstContent = inConst.getContent();
                     const auto inVals = inConstContent.getValues<float>();
                     SmallVector<float> quantizedVals(inVals.size());
-                    float fLevels = checked_cast<float>(levels.value());
                     for (size_t i = 0; i < inVals.size(); ++i) {
-                        quantizedVals[i] = fakeQuantize(inVals[i], inLow, inHigh, qLow, qHigh, fLevels);
+                        quantizedVals[i] = fakeQuantize(inVals[i], inLow, inHigh, qLow, qHigh, levels.value());
                     }
 
                     // Generate the Const::ContentAttr with the adjusted constant content
-                    const auto inConstStorageType = inConstContent.getType().dyn_cast<mlir::RankedTensorType>();
+                    const auto inConstStorageType = mlir::dyn_cast<mlir::RankedTensorType>(inConstContent.getType());
                     const auto quantizedConstElementVal =
                             Const::createConstContent(inConstStorageType, ArrayRef(quantizedVals));
                     inConstAttr = Const::ContentAttr::get(quantizedConstElementVal);
@@ -412,8 +412,8 @@ void SplitFakeQuantPass::safeRunOnFunc() {
         auto inHighConst = fqOp.getInputHigh().getDefiningOp<Const::DeclareOp>();
         auto outLowConst = fqOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
         auto outHighConst = fqOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
-        const auto realType = fqOp.getInput().getType().cast<vpux::NDTypeInterface>();
-        const auto realElemType = realType.getElementType().cast<mlir::FloatType>();
+        const auto realType = mlir::cast<vpux::NDTypeInterface>(fqOp.getInput().getType());
+        const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
 
         // Although HW could not support multi Zero Point, but if the input is const, we can fuse the fq to const
         // So here ignore multi Zero Point check for const input

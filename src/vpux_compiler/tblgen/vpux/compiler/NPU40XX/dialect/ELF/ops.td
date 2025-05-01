@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,6 +11,7 @@ include "vpux/compiler/NPU40XX/dialect/ELF/attributes.td"
 include "vpux/compiler/NPU40XX/dialect/ELF/dialect.td"
 include "vpux/compiler/dialect/VPUIP/dialect.td"
 include "vpux/compiler/dialect/VPURT/types.td"
+include "vpux/compiler/dialect/VPURT/attributes.td"
 include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.td"
 
 include "mlir/IR/RegionKindInterface.td"
@@ -50,7 +51,8 @@ def DataSectionOp :
         SymbolNameAttr:$sym_name,
         UI64Attr:$secAddrAlign,
         DefaultValuedAttr<ELF_SectionTypeAttr,"SectionTypeAttr::SHT_PROGBITS">:$secType,
-        DefaultValuedAttr<ELF_SectionFlagsAttr,"SectionFlagsAttr::SHF_ALLOC">:$secFlags
+        DefaultValuedAttr<ELF_SectionFlagsAttr,"SectionFlagsAttr::SHF_ALLOC">:$secFlags,
+        DefaultValuedAttr<VPURT_BufferSectionAttr,"VPURT::BufferSection::DDR">:$secLocation
     );
 
     let regions = (region
@@ -63,6 +65,7 @@ def DataSectionOp :
         `aligned` `(` $secAddrAlign `)`
         `secType` `(` $secType `)`
         `secFlags` `(` $secFlags `)`
+        `secLocation` `(` $secLocation `)`
         $content
     }];
 }
@@ -89,7 +92,8 @@ def LogicalSectionOp :
         SymbolNameAttr:$sym_name,
         UI64Attr:$secAddrAlign,
         DefaultValuedAttr<ELF_SectionTypeAttr,"SectionTypeAttr::SHT_NOBITS">:$secType,
-        DefaultValuedAttr<ELF_SectionFlagsAttr,"SectionFlagsAttr::SHF_ALLOC">:$secFlags
+        DefaultValuedAttr<ELF_SectionFlagsAttr,"SectionFlagsAttr::SHF_ALLOC">:$secFlags,
+        VPURT_BufferSectionAttr:$secLocation
     );
 
     let regions = (region
@@ -102,6 +106,7 @@ def LogicalSectionOp :
         `aligned` `(` $secAddrAlign `)`
         `secType` `(` $secType `)`
         `secFlags` `(` $secFlags `)`
+        `secLocation` `(` $secLocation `)`
         $content
     }];
 
@@ -156,7 +161,8 @@ def PerformanceMetricsOp :
         ELF_Op<"PerformanceMetricsSection",
             [
                 Symbol,
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>
             ]
         > {
@@ -384,7 +390,8 @@ def RelocOp :
 def PadOp :
         ELF_Op<"Pad",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize"]>
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize"]>,
             ]
         > {
     let summary = "Padding for inner section alignment";
@@ -407,7 +414,8 @@ def PadOp :
 def ABIVersionOp :
         ELF_Op<"ABIVersion",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
                 Symbol
             ]

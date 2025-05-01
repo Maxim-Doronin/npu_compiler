@@ -48,21 +48,21 @@ bool isCacheHandlingOp(mlir::Operation* op) {
 }
 
 std::string stringifyPrimaryLocationChecked(mlir::Location loc) {
-    VPUX_THROW_WHEN(loc.isa<mlir::UnknownLoc>(), "Trying to serialize UnknownLoc");
+    VPUX_THROW_WHEN(mlir::isa<mlir::UnknownLoc>(loc), "Trying to serialize UnknownLoc");
     const auto str = stringifyPrimaryLocation(loc);
     VPUX_THROW_WHEN(str.empty(), "Trying to serialize empty operation name");
     return str;
 }
 
 struct ProfilingConfiguration {
-    ProfilingConfiguration(IE::CNNNetworkOp netOp) {
+    ProfilingConfiguration(net::NetworkInfoOp netInfo) {
         using profiling::ExecutorType;
 
-        auto profilingOutputsInfo = netOp.getProfilingOutputsInfo();
+        auto profilingOutputsInfo = netInfo.getProfilingOutputsInfo();
         VPUX_THROW_WHEN(profilingOutputsInfo.size() != 1,
                         "Unexpected number of profiling outputs (expected 1, got {0})", profilingOutputsInfo.size());
 
-        IE::DataInfoOp profilingOutputInfo = *profilingOutputsInfo.front().getOps<IE::DataInfoOp>().begin();
+        net::DataInfoOp profilingOutputInfo = *profilingOutputsInfo.front().getOps<net::DataInfoOp>().begin();
         totalOutputSize = getProfilingOutputSize(profilingOutputInfo);
 
         const auto& sectionsRange =
@@ -96,8 +96,8 @@ private:
     }
 
     // returns total profiling output size in bytes
-    size_t getProfilingOutputSize(IE::DataInfoOp profilingOutputInfo) {
-        const auto profilingType = profilingOutputInfo.getUserType().cast<vpux::NDTypeInterface>();
+    size_t getProfilingOutputSize(net::DataInfoOp profilingOutputInfo) {
+        const auto profilingType = mlir::cast<vpux::NDTypeInterface>(profilingOutputInfo.getUserType());
         const auto shape = profilingType.getShape();
 
         VPUX_THROW_WHEN(shape.size() != 1, "Invalid profiling output shape '{0}'. Must be 1D tensor");
@@ -204,12 +204,13 @@ struct RtDialectProvider {
 
     template <class DPUInvariant, class DPUVariant>
     static std::vector<uint32_t> getWorkloadIds(DPUInvariant dpuOp) {
-        std::vector<uint32_t> workloadIds;
+        std::set<uint32_t> workloadIdSet;
         for (DPUVariant variant : dpuOp.getVariants().template getOps<DPUVariant>()) {
             if (variant.getWorkloadId().has_value()) {
-                workloadIds.push_back(variant.getWorkloadId().value());
+                workloadIdSet.insert(variant.getWorkloadId().value());
             }
         }
+        std::vector<uint32_t> workloadIds(workloadIdSet.begin(), workloadIdSet.end());
         return workloadIds;
     }
 
@@ -427,13 +428,14 @@ flatbuffers::Offset<ProfilingFB::Platform> createPlatformOffset(VPU::ArchKind ar
 
 template <typename DialectProvider, class BarrierOp, class DmaType, class DpuInvariantType, class DpuVariantType,
           class SwType, class M2iType>
-flatbuffers::DetachedBuffer buildProfilingMetaGeneric(IE::CNNNetworkOp netOp, mlir::func::FuncOp funcOp, Logger log) {
+flatbuffers::DetachedBuffer buildProfilingMetaGeneric(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp,
+                                                      Logger log) {
     log.trace("building Profiling Metadata");
 
     flatbuffers::FlatBufferBuilder builder;
 
     const auto barriers = getBarriers<BarrierOp>(funcOp);
-    ProfilingConfiguration profilingCfg(netOp);
+    ProfilingConfiguration profilingCfg(netInfo);
     const auto arch = VPU::getArch(funcOp);
 
     auto dmaOffset = getDmaTasksOffset<DialectProvider, DmaType>(
@@ -457,26 +459,27 @@ flatbuffers::DetachedBuffer buildProfilingMetaGeneric(IE::CNNNetworkOp netOp, ml
 }
 
 template <typename VPURTDialectProvider>
-flatbuffers::DetachedBuffer buildProfilingMetaVPURTGeneral(IE::CNNNetworkOp netOp, mlir::func::FuncOp funcOp,
+flatbuffers::DetachedBuffer buildProfilingMetaVPURTGeneral(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp,
                                                            Logger log) {
     return buildProfilingMetaGeneric<VPURTDialectProvider, VPURT::ConfigureBarrierOp, VPUIP::DMATypeOpInterface,
                                      VPUIP::NCEClusterTaskOp, VPUIP::DPUTaskOp, VPUIP::SwKernelOp, VPUIP::M2ITaskOp>(
-            netOp, funcOp, log);
+            netInfo, funcOp, log);
 }
 
-flatbuffers::DetachedBuffer buildProfilingMeta(IE::CNNNetworkOp netOp, mlir::func::FuncOp funcOp, Logger log) {
+flatbuffers::DetachedBuffer buildProfilingMeta(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp, Logger log) {
     const auto arch = VPU::getArch(funcOp);
     switch (arch) {
     case VPU::ArchKind::NPU37XX:
-        return ::buildProfilingMetaVPURTGeneral<RtDialectProvider37XX>(netOp, funcOp, log);
+        return ::buildProfilingMetaVPURTGeneral<RtDialectProvider37XX>(netInfo, funcOp, log);
     default:
-        return ::buildProfilingMetaVPURTGeneral<RtDialectProvider40XX>(netOp, funcOp, log);
+        return ::buildProfilingMetaVPURTGeneral<RtDialectProvider40XX>(netInfo, funcOp, log);
     }
 }
 
 };  // namespace
 
-std::vector<uint8_t> vpux::buildProfilingMetadataBuffer(IE::CNNNetworkOp netOp, mlir::func::FuncOp funcOp, Logger log) {
-    flatbuffers::DetachedBuffer buffer = buildProfilingMeta(netOp, funcOp, log);
+std::vector<uint8_t> vpux::buildProfilingMetadataBuffer(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp,
+                                                        Logger log) {
+    flatbuffers::DetachedBuffer buffer = buildProfilingMeta(netInfo, funcOp, log);
     return vpux::profiling::constructProfilingSectionWithHeader(std::move(buffer));
 }

@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
 #include "vpux/utils/core/array_ref.hpp"
@@ -20,13 +21,9 @@ struct ShapeInfo {
     static ShapeInfo fromNDType(NDTypeInterface type) {
         // NB: empty bounds means that the shape is static
         auto boundVals = [&type] {
-            const auto boundedType = mlir::dyn_cast<BoundedTypeInterface>(type);
-            // TODO(E#141756): we should fail cast if the type is not bounded
-            if (boundedType != nullptr) {
+            if (const auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
                 const auto bounds = boundedType.getBounds();
-                if (bounds != nullptr) {
-                    return parseIntArrayAttr<int64_t>(bounds);
-                }
+                return to_small_vector(bounds);
             }
             return SmallVector<int64_t>{};
         }();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -42,9 +42,9 @@ mlir::LogicalResult FuseNCEInterpolateConsumers::matchAndRewrite(VPU::NCEInterpo
                                                                  mlir::PatternRewriter& rewriter) const {
     _log.trace("Found NCEInterpolate: {0}", interpOp->getLoc());
 
-    auto sparseInput = interpOp.getInput().getType().cast<VPU::SparseTensorType>();
+    auto sparseInput = mlir::cast<vpux::VPU::SparseTensorType>(interpOp.getInput().getType());
 
-    auto seAttr = sparseInput.getSeAttr().cast<VPU::SEInterpolateAttr>();
+    auto seAttr = mlir::cast<vpux::VPU::SEInterpolateAttr>(sparseInput.getSeAttr());
     auto mode = seAttr.getMode().getValue();
     if (mode != VPU::NCEInterpolateMode::NEAREST) {
         return matchFailed(rewriter, interpOp, "Only NEAREST interpolate can be fused");

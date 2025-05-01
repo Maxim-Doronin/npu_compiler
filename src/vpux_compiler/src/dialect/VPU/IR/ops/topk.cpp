@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::VPU::TopKOp::inferReturnTypes(mlir::MLIRContext* ctx, 
         return mlir::failure();
     }
 
-    const auto inType = topK.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(topK.getInput().getType());
     const auto inputShape = inType.getShape().raw();
 
     const auto kValue = getConstOrAttrValue(topK.getK(), topK.getKValueAttr());
@@ -96,7 +96,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::TopKOp::getTilingStrategy(TilingMode ti
     auto axis = this->getAxis();
     auto tileDim = 0;
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(baseOp);
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     Shape nTilesOnDim(outputShape.size(), 1);
     const auto isSupportedTileSize = [baseOp, &tilingInfo, outputShape, log](ShapeRef nTilesOnDim,
@@ -133,7 +133,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::TopKOp::getTilingStrategy(TilingMode ti
 //
 
 bool vpux::VPU::TopKOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inShape = inputType.getShape();
     int64_t axis = getAxisAttr().getValue().getSExtValue();
 

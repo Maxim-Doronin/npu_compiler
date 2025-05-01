@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/expand_with_layer_rewriter.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -14,6 +15,7 @@
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -332,7 +334,7 @@ mlir::LogicalResult ReorderWithShapeChange<ConcreteOp>::matchAndRewrite(Concrete
     }
 
     auto getMemShapeArray = [](mlir::Value val) -> SmallVector<int64_t> {
-        const auto memShape = val.getType().template dyn_cast<vpux::NDTypeInterface>().getMemShape();
+        const auto memShape = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType()).getMemShape();
         SmallVector<int64_t> memShapeVec(memShape.size(), 1);
         for (const auto ind : irange(memShape.size())) {
             memShapeVec[ind] = memShape[MemDim(ind)];
@@ -362,13 +364,13 @@ mlir::LogicalResult ReorderWithShapeChange<ConcreteOp>::matchAndRewrite(Concrete
         return mlir::success();
     } else if (isContinuousMemShape(origReorderInType, origReshapeOutType)) {
         const auto inputOrder =
-                origReorderOp.getInput().getType().template dyn_cast<vpux::NDTypeInterface>().getDimsOrder();
+                mlir::dyn_cast<vpux::NDTypeInterface>(origReorderOp.getInput().getType()).getDimsOrder();
         const auto outputShape = inputOrder.toLogicalOrder(MemShape(reshapeOutMemShape));
         const auto shapeAttr = getIntArrayAttr(ctx, outputShape);
         auto shapeCastOp =
                 rewriter.create<IE::ShapeCastOp>(origReshapeOp->getLoc(), origReorderOp.getInput(), shapeAttr);
 
-        const auto outputOrder = origReshapeOutput.getType().template dyn_cast<vpux::NDTypeInterface>().getDimsOrder();
+        const auto outputOrder = mlir::dyn_cast<vpux::NDTypeInterface>(origReshapeOutput.getType()).getDimsOrder();
         const auto outputOrderAttr = mlir::AffineMapAttr::get(outputOrder.toAffineMap(ctx));
         const auto memPermAttr =
                 mlir::AffineMapAttr::get(DimsOrder::fromNumDims(outputOrder.numDims()).toAffineMap(ctx));
@@ -516,7 +518,7 @@ mlir::LogicalResult ReorderWithTile::matchAndRewrite(IE::TileOp origTileOp, mlir
     auto newReorderOp = rewriter.create<IE::ReorderOp>(origReorderOp->getLoc(), origTileOp.getInput(),
                                                        origReorderOp.getDstOrderAttr());
 
-    auto outputType = origTileOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origTileOp.getOutput().getType());
     auto newOutputType = outputType.changeDimsOrder(DimsOrder::fromAffineMap(newReorderOp.getDstOrder()));
 
     rewriter.replaceOpWithNewOp<IE::TileOp>(origReorderOp, newOutputType, newReorderOp.getOutput(),
@@ -553,7 +555,7 @@ bool isBeneficialToSwapExpandReorders(IE::ExpandOp origExpandOp, mlir::Operation
         return true;
     }
 
-    if (origExpandOp.getInput().isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(origExpandOp.getInput())) {
         return false;
     }
 
@@ -675,12 +677,12 @@ mlir::LogicalResult ReorderWithExpandSlice::matchAndRewrite(IE::ExpandOp origExp
         if (reorderOutputDimsOrderLocal != reorderOutputDimsOrder) {
             return mlir::failure();
         }
-        auto reorderOpOutputType = reorderOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto reorderOpOutputType = mlir::cast<vpux::NDTypeInterface>(reorderOp.getOutput().getType());
         subReordersTotalSize += reorderOpOutputType.getTotalAllocSize().count();
     }
 
     // Only benefit the first inserted Reorder size smaller than subslice total size.
-    auto origExpandInputType = origExpandOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto origExpandInputType = mlir::cast<vpux::NDTypeInterface>(origExpandOp.getInput().getType());
     auto origExpandInputSize = origExpandInputType.getTotalAllocSize().count();
     if (subReordersTotalSize <= origExpandInputSize) {
         _log.trace("Expand input Size: '{0}' larger than total size of Reorder(s): '{1}'. ", origExpandInputSize,
@@ -807,7 +809,7 @@ mlir::LogicalResult ReorderWithAffineReshapeTile::matchAndRewrite(IE::TileOp ori
     auto inputShapeCastOp =
             rewriter.create<IE::ShapeCastOp>(origTileOp->getLoc(), inputReorder.getInput(), inputShapeAttr);
 
-    const auto outputType = origTileOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origTileOp.getOutput().getType());
     auto newOutputType = outputType.changeDimsOrder(targetOrder);
 
     auto newTileOp = rewriter.create<IE::TileOp>(origTileOp->getLoc(), newOutputType, inputShapeCastOp.getResult(),
@@ -1634,8 +1636,8 @@ mlir::LogicalResult ReorderWithHWAdd<ConcreteOp>::matchAndRewrite(IE::ReorderOp 
     auto newIn2 = rewriter.create<IE::LayoutCastOp>(parentAdd.getLoc(), reorderInput2, nhwcOrderAttr);
     auto newAdd = rewriter.create<IE::AddOp>(parentAdd.getLoc(), parentAdd.getType(), newIn1, newIn2,
                                              parentAdd.getAutoBroadcastAttr(), parentAdd.getPostOpAttr(),
-                                             parentAdd.getClampAttr(), parentAdd.getOutputChannelsAttr(),
-                                             parentAdd.getInputChannelsAttr());
+                                             parentAdd.getClampAttr(), parentAdd.getOutputPaddingAttr(),
+                                             parentAdd.getInputPaddingAttr());
 
     _log.trace("New AddOp: {0}", newAdd);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,8 +22,8 @@ mlir::LogicalResult vpux::VPU::PSROIPoolingOp::inferReturnTypes(
 
     const auto outputDim = psroiPooling.getOutputDim();
     const auto groupSize = psroiPooling.getGroupSize();
-    const auto inTypeFeatureMap = psroiPooling.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto inTypeCoord = psroiPooling.getCoords().getType().cast<vpux::NDTypeInterface>();
+    const auto inTypeFeatureMap = mlir::cast<vpux::NDTypeInterface>(psroiPooling.getInput().getType());
+    const auto inTypeCoord = mlir::cast<vpux::NDTypeInterface>(psroiPooling.getCoords().getType());
     const auto inShapeCoord = inTypeCoord.getShape();
 
     if (outputDim <= 0) {

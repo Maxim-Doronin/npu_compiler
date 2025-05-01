@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 #include "vpux/utils/core/string_ref.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinOps.h>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -41,7 +41,7 @@ mlir::LogicalResult vpux::VPU::SliceOp::inferReturnTypes(mlir::MLIRContext* ctx,
         return mlir::failure();
     }
 
-    const auto origType = sliceOp.getSource().getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(sliceOp.getSource().getType());
     if (origType == nullptr) {
         return errorAt(loc, "VPU::SliceOp operand must have vpux::NDTypeInterface type");
     }
@@ -89,14 +89,15 @@ mlir::LogicalResult vpux::VPU::SliceOp::inferReturnTypes(mlir::MLIRContext* ctx,
                 origDistribution.getEqualMemoryAndComputeView());
     };
 
-    const auto distributedIn = origType.dyn_cast<VPU::DistributedTypeInterface>();
+    const auto distributedIn = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(origType);
     VPU::DistributionInfoAttr possibleDistribution =
             distributedIn != nullptr && distributedIn.containsDistributedTypes()
-                    ? distributedIn.getDistributedTypes().front().cast<VPU::DistributedTensorType>().getDistribution()
+                    ? mlir::cast<vpux::VPU::DistributedTensorType>(distributedIn.getDistributedTypes().front())
+                              .getDistribution()
                     : nullptr;
 
     if (possibleDistribution != nullptr && VPU::isDistributedAttrWithExplicitShapesAndOffsets(possibleDistribution)) {
-        if (auto sparseType = distributedIn.dyn_cast<VPU::SparseTensorType>()) {
+        if (auto sparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(distributedIn)) {
             possibleDistribution = VPU::getExplicitDistrAttrForActualDataFromSparseType(sparseType);
         }
 

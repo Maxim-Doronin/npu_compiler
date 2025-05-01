@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
@@ -66,8 +67,8 @@ private:
 
 // Must be 1xCx1x1 -> Subview -> 1xcx1x1 case and it must fit in CMX
 bool OptimizeSubviewCopiesPass::isOptimizableSubview(VPUIP::SubViewOp subview, const Byte& cmxSize) const {
-    auto subviewInput = subview->getOperand(0).getType().cast<NDTypeInterface>();
-    auto subviewOutput = subview->getResult(0).getType().cast<NDTypeInterface>();
+    auto subviewInput = mlir::cast<vpux::NDTypeInterface>(subview->getOperand(0).getType());
+    auto subviewOutput = mlir::cast<vpux::NDTypeInterface>(subview->getResult(0).getType());
     const auto& nestLog = _log.nest();
 
     if (subviewInput.getMemoryKind() == VPU::MemoryKind::CMX_NN) {
@@ -139,19 +140,18 @@ mlir::FailureOr<Byte> OptimizeSubviewCopiesPass::areSubviewConsumersCompatible(V
         }
 
         auto copyOut = child->getResult(0);
-        auto copyOutType = copyOut.getType().cast<NDTypeInterface>();
+        auto copyOutType = mlir::cast<vpux::NDTypeInterface>(copyOut.getType());
 
         if (copyOutType.getMemoryKind() != VPU::MemoryKind::CMX_NN) {
             nestLog.trace("Copy op is not to NNCMX.");
             return mlir::failure();
         }
 
-        auto distributedCopyOut = copyOutType.dyn_cast<VPU::DistributedTypeInterface>();
+        auto distributedCopyOut = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(copyOutType);
         if (distributedCopyOut != nullptr && distributedCopyOut.containsDistributedTypes()) {
-            auto distribution = distributedCopyOut.getDistributedTypes()
-                                        .front()
-                                        .cast<VPUIP::DistributedBufferType>()
-                                        .getDistribution();
+            auto distribution =
+                    mlir::cast<vpux::VPUIP::DistributedBufferType>(distributedCopyOut.getDistributedTypes().front())
+                            .getDistribution();
             if (distribution.getMode().getValue() != VPU::DistributionMode::DUPLICATED) {
                 nestLog.trace("Distributed Copy op is not DUPLICATED.");
                 return mlir::failure();
@@ -201,10 +201,10 @@ mlir::FailureOr<Byte> OptimizeSubviewCopiesPass::areSubviewConsumersCompatible(V
 
 mlir::Operation* OptimizeSubviewCopiesPass::createNewCopyOp(mlir::OpBuilder& builder, mlir::Value input,
                                                             mlir::Type newOutputType, mlir::Location copyLoc) {
-    auto distributedCopy = newOutputType.dyn_cast<VPU::DistributedTypeInterface>();
+    auto distributedCopy = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(newOutputType);
     if (distributedCopy == nullptr || !distributedCopy.containsDistributedTypes()) {
         auto newCMXBuff = builder.create<mlir::memref::AllocOp>(appendLoc(copyLoc, "_top_buf"),
-                                                                newOutputType.cast<mlir::MemRefType>());
+                                                                mlir::cast<mlir::MemRefType>(newOutputType));
         return builder.create<VPUIP::CopyOp>(copyLoc, newOutputType, input, newCMXBuff);
     }
 
@@ -215,15 +215,15 @@ mlir::Operation* OptimizeSubviewCopiesPass::createNewCopyOp(mlir::OpBuilder& bui
 }
 
 NDTypeInterface OptimizeSubviewCopiesPass::getNewCMXType(mlir::Value input, mlir::Type copyType) {
-    auto inputShape = input.getType().cast<NDTypeInterface>().getShape();
+    auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
 
-    auto prevCopyOutType = copyType.cast<NDTypeInterface>();
-    auto distributedCopy = copyType.dyn_cast<VPU::DistributedTypeInterface>();
+    auto prevCopyOutType = mlir::cast<vpux::NDTypeInterface>(copyType);
+    auto distributedCopy = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(copyType);
     if (distributedCopy == nullptr || !distributedCopy.containsDistributedTypes()) {
         return prevCopyOutType.changeShape(inputShape);
     }
 
-    auto outputType = distributedCopy.getDistributedTypes().front().cast<VPUIP::DistributedBufferType>();
+    auto outputType = mlir::cast<vpux::VPUIP::DistributedBufferType>(distributedCopy.getDistributedTypes().front());
     const auto oldDistribution = outputType.getDistribution();
     if (!VPU::isDistributedAttrWithExplicitShapesAndOffsets(outputType.getDistribution())) {
         return outputType.changeShape(inputShape);
@@ -244,7 +244,7 @@ void OptimizeSubviewCopiesPass::moveSubviewsAfterCopy(mlir::Value input, SmallVe
     auto newType = getNewCMXType(input, copyType);
 
     auto subviewInput = input;
-    auto inputType = input.getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     if (inputType.getMemoryKind() != VPU::MemoryKind::CMX_NN) {
         nestLog.trace("Creating new CopyOp.");
 
@@ -253,7 +253,7 @@ void OptimizeSubviewCopiesPass::moveSubviewsAfterCopy(mlir::Value input, SmallVe
         subviewInput = newCopyOp->getResult(0);
     } else {
         newType = newType.changeStrides(inputType.getStrides());
-        auto distributedCopy = copyType.dyn_cast<VPU::DistributedTypeInterface>();
+        auto distributedCopy = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(copyType);
         if (distributedCopy != nullptr && distributedCopy.containsDistributedTypes()) {
             subviewInput = builder.createOrFold<VPUIP::DistributedCastOp>(subviews[0]->getLoc(), newType, input);
         }
@@ -294,16 +294,17 @@ bool OptimizeSubviewCopiesPass::isParentCopyOptimizable(VPUIP::CopyOp copyParent
     }
 
     auto copyInput = copyParent->getOperand(0);
-    auto copyInputType = copyInput.getType().cast<NDTypeInterface>();
+    auto copyInputType = mlir::cast<vpux::NDTypeInterface>(copyInput.getType());
     if (copyInputType.getMemoryKind() != VPU::MemoryKind::CMX_NN) {
         nestLog.trace("Parent Copy op is not from NNCMX.");
         return false;
     }
 
-    auto distributedCopyIn = copyInputType.dyn_cast<VPU::DistributedTypeInterface>();
+    auto distributedCopyIn = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(copyInputType);
     if (distributedCopyIn != nullptr && distributedCopyIn.containsDistributedTypes()) {
         auto distribution =
-                distributedCopyIn.getDistributedTypes().front().cast<VPUIP::DistributedBufferType>().getDistribution();
+                mlir::cast<vpux::VPUIP::DistributedBufferType>(distributedCopyIn.getDistributedTypes().front())
+                        .getDistribution();
         if (!VPU::isDuplicated(distribution)) {
             nestLog.trace("Parent Copy op is not DUPLICATED. Cannot optimize it out.");
             return false;

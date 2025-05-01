@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -25,7 +26,7 @@ namespace {
 
 bool isInputEligibleForConversion(const mlir::Value input, const Logger& log) {
     log.trace("Processing input: {0}", input.getLoc());
-    if (input.isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(input)) {
         log.trace("Input is a block argument.");
         return false;
     }
@@ -38,7 +39,7 @@ bool isInputEligibleForConversion(const mlir::Value input, const Logger& log) {
         log.trace("Input producer is not a DDR2DDR copy.");
         return false;
     }
-    if (copyOp.getInput().isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(copyOp.getInput())) {
         log.trace("Input copy producer is a block argument.");
         return false;
     }
@@ -52,7 +53,7 @@ bool isInputEligibleForConversion(const mlir::Value input, const Logger& log) {
         return false;
     }
     auto output = inputCopyProducer.getOutputBuff();
-    if (output.isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(output)) {
         log.trace("CopyOp buffer is a block argument.");
         return false;
     }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,7 +25,7 @@ namespace {
 bool fitInCMXAfterSplit(VPU::GRUSequenceOp op, Logger log) {
     const auto origOp = op.getOperation();
     const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(origOp).to<Byte>().count();
-    const auto outputYType = op.getMiddleHiddenState().getType().cast<vpux::NDTypeInterface>();
+    const auto outputYType = mlir::cast<vpux::NDTypeInterface>(op.getMiddleHiddenState().getType());
     const auto outputYShape = outputYType.getShape().raw();
 
     const auto batchSize = outputYShape[0];
@@ -36,8 +36,8 @@ bool fitInCMXAfterSplit(VPU::GRUSequenceOp op, Logger log) {
     const auto byteSize = outputYType.getElemTypeSize().to<Byte>().count();
 
     // Validate GRUSequenceFirstPart
-    const auto inputDataSize = op.getInputData().getType().cast<vpux::NDTypeInterface>().getShape().totalSize();
-    const auto weightsSize = op.getWeights().getType().cast<vpux::NDTypeInterface>().getShape().totalSize();
+    const auto inputDataSize = mlir::cast<vpux::NDTypeInterface>(op.getInputData().getType()).getShape().totalSize();
+    const auto weightsSize = mlir::cast<vpux::NDTypeInterface>(op.getWeights().getType()).getShape().totalSize();
     const auto firstPartOutputSize = batchSize * numDirection * seqLength * 3 * hiddenSize;
     const auto firstPartSize = (inputDataSize + weightsSize + firstPartOutputSize) * byteSize;
     if (firstPartSize > cmxAvailableBytes) {
@@ -48,14 +48,14 @@ bool fitInCMXAfterSplit(VPU::GRUSequenceOp op, Logger log) {
 
     // Validate GRUSequenceLastPart
     const auto initialHiddenStateSize =
-            op.getInitialHiddenState().getType().cast<vpux::NDTypeInterface>().getShape().totalSize();
+            mlir::cast<vpux::NDTypeInterface>(op.getInitialHiddenState().getType()).getShape().totalSize();
     const auto recurrenceWeightsSize =
-            op.getRecurrenceWeights().getType().cast<vpux::NDTypeInterface>().getShape().totalSize();
-    const auto biasesSize = op.getBiases().getType().cast<vpux::NDTypeInterface>().getShape().totalSize();
+            mlir::cast<vpux::NDTypeInterface>(op.getRecurrenceWeights().getType()).getShape().totalSize();
+    const auto biasesSize = mlir::cast<vpux::NDTypeInterface>(op.getBiases().getType()).getShape().totalSize();
     const auto middleHiddenStateSize =
-            op.getMiddleHiddenState().getType().cast<vpux::NDTypeInterface>().getShape().totalSize();
+            mlir::cast<vpux::NDTypeInterface>(op.getMiddleHiddenState().getType()).getShape().totalSize();
     const auto outputHiddenStateSize =
-            op.getOutputHiddenState().getType().cast<vpux::NDTypeInterface>().getShape().totalSize();
+            mlir::cast<vpux::NDTypeInterface>(op.getOutputHiddenState().getType()).getShape().totalSize();
     const auto lastPartSize = (firstPartOutputSize + initialHiddenStateSize + recurrenceWeightsSize + biasesSize +
                                middleHiddenStateSize + outputHiddenStateSize) *
                               byteSize;
@@ -132,7 +132,7 @@ void SplitGRUSequencePass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<VPU::GRUSequenceOp>([&](VPU::GRUSequenceOp op) {
         // TODO Refactor when E#79282 is closed.
         const auto origOp = op.getOperation();
-        auto outputShape = op.getMiddleHiddenState().getType().cast<vpux::NDTypeInterface>().getShape();
+        auto outputShape = mlir::cast<vpux::NDTypeInterface>(op.getMiddleHiddenState().getType()).getShape();
         Shape minShapeAfterTiling(outputShape.size(), 1);
         minShapeAfterTiling[Dim(3)] = outputShape[Dim(3)];
         auto iface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(origOp);

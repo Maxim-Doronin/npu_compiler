@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,12 +33,13 @@ bool vpux::VPU::isNCEEltwiseSupported(mlir::Operation* op, vpux::NDTypeInterface
     const auto input1ElemType = input1Type.getElementType();
     const auto input2ElemType = input2Type.getElementType();
 
-    if (!input1ElemType.isa<mlir::quant::QuantizedType>() && !input2ElemType.isa<mlir::quant::QuantizedType>()) {
-        if (!input1ElemType.isa<mlir::Float16Type>() || !input2ElemType.isa<mlir::Float16Type>()) {
+    if (!mlir::isa<mlir::quant::QuantizedType>(input1ElemType) &&
+        !mlir::isa<mlir::quant::QuantizedType>(input2ElemType)) {
+        if (!mlir::isa<mlir::Float16Type>(input1ElemType) || !mlir::isa<mlir::Float16Type>(input2ElemType)) {
             return false;
         }
-    } else if (input1ElemType.isa<mlir::quant::UniformQuantizedType>() &&
-               input2ElemType.isa<mlir::quant::UniformQuantizedType>()) {
+    } else if (mlir::isa<mlir::quant::UniformQuantizedType>(input1ElemType) &&
+               mlir::isa<mlir::quant::UniformQuantizedType>(input2ElemType)) {
         const auto eltwiseType = vpux::VPU::decodeNceEltwiseType(op);
         if (!isSupportedEltwiseQuantization(input1ElemType, input2ElemType, allowDifferentScales, allowDifferentZp,
                                             eltwiseType, logCb)) {

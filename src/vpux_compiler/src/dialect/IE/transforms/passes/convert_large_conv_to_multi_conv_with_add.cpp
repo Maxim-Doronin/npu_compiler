@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -105,7 +107,7 @@ mlir::LogicalResult ConvertLargeConvToMultiConvWithAddPass::SplitConvToMultiConv
             auto outLowConst = fakeQuantizeOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
             auto outHighConst = fakeQuantizeOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
             if (outLowConst != nullptr && outHighConst != nullptr) {
-                const auto realElemType = operandType.getElementType().cast<mlir::FloatType>();
+                const auto realElemType = mlir::cast<mlir::FloatType>(operandType.getElementType());
                 const auto operandQuantType = getQuantizedType(
                         outLowConst.getContentAttr(), outHighConst.getContentAttr(), fakeQuantizeOp.getLevels(),
                         fakeQuantizeOp.getLowFpType(), realElemType, /*isSigned=*/false, fakeQuantizeOp.getLoc(),

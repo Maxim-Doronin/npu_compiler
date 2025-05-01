@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/hw_settings.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 mlir::LogicalResult vpux::IE::MVNOp::inferReturnTypeComponents(
@@ -19,12 +22,14 @@ mlir::LogicalResult vpux::IE::MVNOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = mvn.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(mvn.getInput().getType());
     const auto inShape = inType.getShape();
     if (inShape.size() != 4 && inShape.size() != 5) {
         return errorAt(loc, "First input tensor should have 4 or 5 dimensions");
     }
 
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
+                      IE::MVNOp::getOperationName());
     const auto outDesc = vpux::getTensorAttr(ctx, inType.getDimsOrder(), inType.getMemSpace());
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), outDesc);
 

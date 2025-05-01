@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes/expand_activation_channels.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -23,9 +25,9 @@ using namespace vpux;
 //
 
 mlir::LogicalResult IE::generalRewrite(mlir::Operation* origOp, mlir::PatternRewriter& rewriter,
-                                       FuncRef<mlir::Operation*(mlir::Value, int64_t)> opCreator,
+                                       FuncRef<mlir::Operation*(mlir::Value, int64_t, int64_t)> opCreator,
                                        FuncRef<SmallVector<int64_t>(mlir::Operation*, ShapeRef)> calcOutputSliceOffset,
-                                       FuncRef<void()> autopadAttributeModifier, Logger log) {
+                                       Logger log) {
     auto* ctx = origOp->getContext();
 
     auto iface = mlir::cast<IE::AlignedChannelsOpInterface>(origOp);
@@ -39,15 +41,6 @@ mlir::LogicalResult IE::generalRewrite(mlir::Operation* origOp, mlir::PatternRew
     log.trace("Input padding : {0}", inPadsEnd);
     log.trace("Output padding : {0}", outPadsEnd);
 
-    if (inPadsEnd[Dims4D::Act::C] == 0 && outPadsEnd[Dims4D::Act::C] == 0) {
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp) &&
-            !origOp->hasAttr(VPU::outChanAttrName)) {
-            autopadAttributeModifier();
-            return mlir::success();
-        }
-        return matchFailed(log, rewriter, origOp, "Both input and output channels are already aligned");
-    }
-
     mlir::Value paddedInput;
     if (inPadsEnd[Dims4D::Act::C] == 0) {
         log.trace("Input channels are already aligned");
@@ -58,7 +51,8 @@ mlir::LogicalResult IE::generalRewrite(mlir::Operation* origOp, mlir::PatternRew
     }
 
     log.trace("Create new operation with extended input and output");
-    auto* newOp = opCreator(paddedInput, outPadsEnd[Dims4D::Act::C]);
+    auto* newOp = opCreator(paddedInput, inPadsEnd[Dims4D::Act::C], outPadsEnd[Dims4D::Act::C]);
+    extendOpLoc(newOp, "expand_act_channels");
 
     if (outPadsEnd[Dims4D::Act::C] == 0) {
         log.trace("Output channels are already aligned");
@@ -78,6 +72,16 @@ mlir::LogicalResult IE::generalRewrite(mlir::Operation* origOp, mlir::PatternRew
     return mlir::success();
 }
 
+std::pair<mlir::ArrayAttr, mlir::ArrayAttr> IE::getPaddingAttributes(mlir::Operation* op, mlir::Value expandedInput,
+                                                                     int64_t inChanPadEnd, ShapeRef outPadAfter) {
+    if (!VPU::hasAutoPadding(getModuleOp(op))) {
+        return {nullptr, nullptr};
+    }
+    Shape inPadAfter(checked_cast<size_t>(mlir::cast<NDTypeInterface>(expandedInput.getType()).getRank()), 0);
+    inPadAfter[Dims4D::Act::C] = inChanPadEnd;
+    return {getIntArrayAttr(op->getContext(), inPadAfter), getIntArrayAttr(op->getContext(), outPadAfter)};
+}
+
 //
 // MaxPoolRewriter
 //
@@ -85,33 +89,25 @@ mlir::LogicalResult IE::generalRewrite(mlir::Operation* origOp, mlir::PatternRew
 mlir::LogicalResult IE::MaxPoolRewriter::matchAndRewrite(IE::MaxPoolOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got MaxPool layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput, int64_t outChanPadsEnd) -> mlir::Operation* {
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadsEnd) -> mlir::Operation* {
         const Shape outPadBefore(checked_cast<size_t>(origOp.getType().getRank()), 0);
-
         Shape outPadAfter(checked_cast<size_t>(origOp.getType().getRank()), 0);
         outPadAfter[Dims4D::Act::C] = outChanPadsEnd;
 
         const auto ndType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
         const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
 
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), ndType.getShape()[Dims4D::Act::C]);
-        }
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
         return rewriter.create<IE::MaxPoolOp>(origOp.getLoc(), newOutputType, expandedInput, origOp.getKernelSize(),
                                               origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(),
                                               origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                              outChanBeforeAttr, origOp.getInputChannelsAttr());
+                                              outputPaddingAttr, inputPaddingAttr);
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, _log.nest());
 }
 
 //
@@ -122,19 +118,9 @@ mlir::LogicalResult IE::ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp o
                                                              mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Convolution layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput, int64_t outChanPadEnd) -> mlir::Operation* {
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadEnd) -> mlir::Operation* {
         // We have to expand channels count for filter as well
-        const auto filterShape = getShape(origOp.getFilter());
-
-        const auto newInputShape = getShape(expandedInput);
-        const auto inChanPadEnd = newInputShape[Dims4D::Act::C] - filterShape[Dims4D::Filter::IC];
-
         const auto paddedFilter = IE::padConvFilter(rewriter, origOp, inChanPadEnd, outChanPadEnd, _log);
 
         mlir::Value paddedBiases;
@@ -153,22 +139,19 @@ mlir::LogicalResult IE::ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp o
         }
 
         const Shape outPadBefore(checked_cast<size_t>(origOp.getType().getRank()), 0);
-
         Shape outPadAfter(checked_cast<size_t>(origOp.getType().getRank()), 0);
         outPadAfter[Dims4D::Act::C] = outChanPadEnd;
 
         const auto ndType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
         const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
 
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), ndType.getShape()[Dims4D::Act::C]);
-        }
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
         return rewriter.create<IE::ConvolutionOp>(
                 origOp.getLoc(), newOutputType, expandedInput, paddedFilter, paddedBiases, origOp.getStrides(),
                 origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(),
-                origOp.getClampAttr(), origOp.getStaticScaleAttr(), outChanBeforeAttr, origOp.getInputChannelsAttr());
+                origOp.getClampAttr(), origOp.getStaticScaleAttr(), outputPaddingAttr, inputPaddingAttr);
     };
 
     const auto calcOutputSliceOffset = [&](mlir::Operation*, ShapeRef outPadsEnd) -> SmallVector<int64_t> {
@@ -177,7 +160,7 @@ mlir::LogicalResult IE::ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp o
         return offsets;
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, _log.nest());
 }
 
 //
@@ -292,13 +275,8 @@ mlir::LogicalResult IE::GroupConvolutionRewriter::matchAndRewrite(IE::GroupConvo
                                                                   mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got GroupConvolutionOp layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput, int64_t outChanPadEnd) -> mlir::Operation* {
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadEnd) -> mlir::Operation* {
         const auto filterShape = getShape(origOp.getFilter());
 
         mlir::Value paddedFilter;
@@ -330,7 +308,6 @@ mlir::LogicalResult IE::GroupConvolutionRewriter::matchAndRewrite(IE::GroupConvo
         }
 
         const Shape outPadBefore(checked_cast<size_t>(origOp.getType().getRank()), 0);
-
         Shape outPadAfter(checked_cast<size_t>(origOp.getType().getRank()), 0);
         outPadAfter[Dims4D::Act::C] = outChanPadEnd;
 
@@ -338,19 +315,17 @@ mlir::LogicalResult IE::GroupConvolutionRewriter::matchAndRewrite(IE::GroupConvo
         const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
         const auto newConvOutShape = newOutputType.getShape().toValues();
 
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), ndType.getShape()[Dims4D::Act::C]);
-        }
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
         return rewriter.create<IE::GroupConvolutionOp>(
                 origOp.getLoc(), newOutputType, expandedInput, paddedFilter, paddedBiases, origOp.getStrides(),
                 origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(),
                 getIntAttr(getContext(), newConvOutShape[Dims4D::Act::C]), origOp.getPostOpAttr(),
-                origOp.getClampAttr(), outChanBeforeAttr, origOp.getInputChannelsAttr());
+                origOp.getClampAttr(), outputPaddingAttr, inputPaddingAttr);
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, _log.nest());
 }
 
 //
@@ -361,15 +336,9 @@ mlir::LogicalResult IE::InterpolateRewriter::matchAndRewrite(IE::InterpolateOp o
                                                              mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Interpolate layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput, int64_t outChanPadsEnd) -> mlir::Operation* {
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadsEnd) -> mlir::Operation* {
         const Shape outPadBefore(checked_cast<size_t>(origOp.getType().getRank()), 0);
-
         Shape outPadAfter(checked_cast<size_t>(origOp.getType().getRank()), 0);
         outPadAfter[Dims4D::Act::C] = outChanPadsEnd;
 
@@ -393,16 +362,14 @@ mlir::LogicalResult IE::InterpolateRewriter::matchAndRewrite(IE::InterpolateOp o
             sizesInput = nullptr;
         }
 
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), ndType.getShape()[Dims4D::Act::C]);
-        }
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
         return rewriter.create<IE::InterpolateOp>(
                 origOp.getLoc(), newOutputType, expandedInput, sizesInput, origOp.getScales(), origOp.getAxes(),
                 sizesAttr, origOp.getScalesAttrAttr(), origOp.getAxesAttrAttr(), origOp.getTileOffsetAttrAttr(),
                 origOp.getInitialInputDimsAttrAttr(), origOp.getInitialOutputDimsAttrAttr(), origOp.getAttrAttr(),
-                outChanBeforeAttr);
+                outputPaddingAttr, inputPaddingAttr);
     };
 
     const auto calcOutputSliceOffset = [&](mlir::Operation*, ShapeRef outPadsEnd) -> SmallVector<int64_t> {
@@ -411,7 +378,7 @@ mlir::LogicalResult IE::InterpolateRewriter::matchAndRewrite(IE::InterpolateOp o
         return offsets;
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, _log.nest());
 }
 
 //
@@ -422,16 +389,8 @@ mlir::LogicalResult IE::TransposedConvolutionRewriter::matchAndRewrite(IE::Trans
                                                                        mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Transposed Convolution layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput, int64_t outChanPadEnd) -> mlir::Operation* {
-        const auto newInputShape = getShape(expandedInput);
-        const auto filterShape = getShape(origOp.getFilter());
-        const auto inChanPadEnd = newInputShape[Dims4D::Act::C] - filterShape[Dims4D::Filter::IC];
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadEnd) -> mlir::Operation* {
         auto paddedFilter = IE::padConvFilter(rewriter, origOp, inChanPadEnd, outChanPadEnd, _log);
 
         mlir::Value paddedBiases;
@@ -457,23 +416,21 @@ mlir::LogicalResult IE::TransposedConvolutionRewriter::matchAndRewrite(IE::Trans
         const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
         const auto newOutputType = outputType.pad(outPadBefore, outPadAfter);
 
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), outputType.getShape()[Dims4D::Act::C]);
-        }
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
         return rewriter.create<IE::TransposedConvolutionOp>(
                 origOp.getLoc(), newOutputType, expandedInput, paddedFilter, origOp.getOutputShape(), paddedBiases,
                 origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(),
-                origOp.getOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(), outChanBeforeAttr,
-                origOp.getInputChannelsAttr());
+                origOp.getSpatialOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(), outputPaddingAttr,
+                inputPaddingAttr);
     };
 
     const auto calcOutputSliceOffset = [&](mlir::Operation*, ShapeRef outPadsEnd) -> SmallVector<int64_t> {
         return SmallVector<int64_t>(outPadsEnd.size(), 0);
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, _log.nest());
 }
 
 //
@@ -483,13 +440,8 @@ mlir::LogicalResult IE::TransposedConvolutionRewriter::matchAndRewrite(IE::Trans
 mlir::LogicalResult IE::PadRewriter::matchAndRewrite(IE::PadOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Pad layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput, int64_t outChanPadsEnd) -> mlir::Operation* {
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadsEnd) -> mlir::Operation* {
         const Shape outPadBefore(checked_cast<size_t>(origOp.getType().getRank()), 0);
         Shape outPadAfter(checked_cast<size_t>(origOp.getType().getRank()), 0);
         outPadAfter[Dims4D::Act::C] = outChanPadsEnd;
@@ -497,22 +449,20 @@ mlir::LogicalResult IE::PadRewriter::matchAndRewrite(IE::PadOp origOp, mlir::Pat
         const auto ndType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
         const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
 
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), ndType.getShape()[Dims4D::Act::C]);
-        }
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
         return rewriter.create<IE::PadOp>(origOp.getLoc(), newOutputType, expandedInput, origOp.getPadsBegin(),
                                           origOp.getPadsEnd(), origOp.getPadValue(), origOp.getPadsBeginAttrAttr(),
                                           origOp.getPadsEndAttrAttr(), origOp.getPadValueAttrAttr(),
-                                          origOp.getModeAttr(), outChanBeforeAttr);
+                                          origOp.getModeAttr(), outputPaddingAttr, inputPaddingAttr);
     };
 
     const auto calcOutputSliceOffset = [&](mlir::Operation*, ShapeRef outPadsEnd) -> SmallVector<int64_t> {
         return SmallVector<int64_t>(outPadsEnd.size(), 0);
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, calcOutputSliceOffset, _log.nest());
 }
 
 //
@@ -522,32 +472,24 @@ mlir::LogicalResult IE::PadRewriter::matchAndRewrite(IE::PadOp origOp, mlir::Pat
 mlir::LogicalResult IE::AvgPoolRewriter::matchAndRewrite(IE::AvgPoolOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got AvgPoolRewriter layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    const auto autopadModifier = [&]() {
-        rewriter.modifyOpInPlace(origOp, [&] {
-            origOp.setOutputChannels(getShape(origOp.getResult())[Dims4D::Act::C]);
-        });
-    };
-
-    const auto opCreator = [&](mlir::Value expandedInput, int64_t outChanPadsEnd) -> mlir::Operation* {
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadsEnd) -> mlir::Operation* {
         const Shape outPadBefore(checked_cast<size_t>(origOp.getType().getRank()), 0);
-
         Shape outPadAfter(checked_cast<size_t>(origOp.getType().getRank()), 0);
         outPadAfter[Dims4D::Act::C] = outChanPadsEnd;
 
-        const auto ndType = origOp.getType().cast<vpux::NDTypeInterface>();
+        const auto ndType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
         const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
 
-        auto outChanBeforeAttr = origOp.getOutputChannelsAttr();
-        if (VPU::hasOnlyDirectSWConsumers(origOp) && VPU::canAutopadOutput(origOp)) {
-            outChanBeforeAttr = vpux::getIntAttr(origOp.getContext(), ndType.getShape()[Dims4D::Act::C]);
-        }
+        auto [inputPaddingAttr, outputPaddingAttr] =
+                getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
         return rewriter.create<IE::AvgPoolOp>(origOp.getLoc(), newOutputType, expandedInput, origOp.getKernelSize(),
                                               origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(),
                                               origOp.getRoundingType(), origOp.getExcludePads(), origOp.getPostOpAttr(),
-                                              origOp.getClampAttr(), origOp.getStaticScaleAttr(), outChanBeforeAttr,
-                                              origOp.getInputChannelsAttr());
+                                              origOp.getClampAttr(), origOp.getStaticScaleAttr(), outputPaddingAttr,
+                                              inputPaddingAttr);
     };
 
-    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, autopadModifier, _log.nest());
+    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, _log.nest());
 }

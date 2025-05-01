@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/factors.hpp"
@@ -138,9 +140,9 @@ mlir::LogicalResult AdjustConvWeights::matchAndRewrite(IE::ExpandOp expandOp, ml
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), expandOp->getName(), expandOp->getLoc());
     const auto innerLog = _log.nest();
 
-    const auto inputType = expandOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(expandOp.getInput().getType());
     const auto inputElemType = inputType.getElementType();
-    if (inputElemType.isa<mlir::quant::QuantizedType>()) {
+    if (mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
         innerLog.trace("'Expand' at '{0}' had quantized type, we can't handle it.", expandOp->getLoc());
         return mlir::failure();
     }
@@ -239,8 +241,8 @@ mlir::LogicalResult AdjustConvWeights::matchAndRewrite(IE::ExpandOp expandOp, ml
     rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
             convOp, convOp.getOutput().getType(), newConcatOp.getOutput(), paddedFilter, convOp.getBias(),
             convOp.getStridesAttr(), convOp.getPadsBeginAttr(), convOp.getPadsEndAttr(), convOp.getDilationsAttr(),
-            convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getStaticScaleAttr(), convOp.getOutputChannelsAttr(),
-            convOp.getInputChannelsAttr());
+            convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getStaticScaleAttr(), convOp.getOutputPaddingAttr(),
+            convOp.getInputPaddingAttr());
 
     return mlir::success();
 }

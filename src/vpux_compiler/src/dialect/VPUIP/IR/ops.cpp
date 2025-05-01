@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,10 +21,11 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/dialect/core/IR/attributes.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/asm.hpp"
-#include "vpux/compiler/utils/custom_pwl_table.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
@@ -51,11 +52,11 @@ class SEOpModel final : public IE::SEOpInterface::ExternalModel<SEOpModel<MainOp
 
 template <class ConcreteOp>
 bool isSupportedIsolatedTilingConvBased(ConcreteOp origOp, const OutputTiling& tiles, Logger log) {
-    const auto inputType = origOp.getInput().getType().template cast<NDTypeInterface>();
-    const auto outputType = origOp.getOutput().getType().template cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
     VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} is not NCE", origOp->getLoc());
-    auto filterType = nceOp.getWeightsOperand().getType().template cast<NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(nceOp.getWeightsOperand().getType());
 
     return llvm::all_of(tiles, [&](const TileInfo& outputTile) {
         const auto inputTiles = origOp.backInferTileInfo(outputTile, log).tiles;
@@ -113,9 +114,9 @@ bool isSupportedIsolatedTiling(VPU::NCEDepthConvolutionOp origOp, const OutputTi
 }
 
 bool isSupportedIsolatedTiling(VPU::GroupConvolutionOp origOp, const OutputTiling& tiles, Logger /*log*/) {
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto filterType = origOp.getFilter().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto origGroups = origOp.getGroups().value_or(1);
 
     const auto origInputShape = getShape(origOp.getInput());
@@ -170,8 +171,8 @@ bool isSupportedIsolatedTiling(VPU::GroupConvolutionOp origOp, const OutputTilin
 }
 
 bool isSupportedIsolatedTiling(VPU::NCEMaxPoolOp origOp, const OutputTiling& tiles, Logger log) {
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     TileInfo failedOutputTile = tiles[0];
     const auto areTileChannelsValid = llvm::all_of(tiles, [&](const TileInfo& outputTile) {
@@ -249,9 +250,9 @@ bool isSupportedIsolatedTiling(VPU::NCEAveragePoolOp origOp, const OutputTiling&
 }
 
 bool isSupportedIsolatedTilingEltwise(mlir::Operation* origOp, const OutputTiling& tiles, Logger log) {
-    const auto input1Type = origOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    const auto input2Type = origOp->getOperand(1).getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto input1Type = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
+    const auto input2Type = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(1).getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     return llvm::all_of(tiles, [&](const TileInfo& tile) {
         const auto input1TileType = input1Type.extractDenseTile(tile.offsets, tile.shape);
         const auto input2TileType = input2Type.extractDenseTile(tile.offsets, tile.shape);
@@ -269,7 +270,8 @@ bool isSupportedIsolatedTilingEltwise(mlir::Operation* origOp, const OutputTilin
             auto module = clusteredOp->getParentOfType<mlir::ModuleOp>();
             auto numClusters = VPU::getOptimalNumClusters(
                     clusteredOp, outputTileType.getShape(),
-                    clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                    mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                            .getValue());
 
             return mlir::succeeded(VPU::NCEEltwiseOp::verifyEltwiseCMX(
                     origOp->getLoc(), module, isInplace,
@@ -299,7 +301,7 @@ SmallVector<vpux::NDTypeInterface> getAllOperandsSwInterface(VPU::SWOpInterface 
 
     mlir::SmallVector<vpux::NDTypeInterface> inputTileTypes;
     for (auto input : origOp->getOperands() | indexed) {
-        const auto inputType = input.value().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.value().getType());
         inputTileTypes.push_back(
                 inputType.extractDenseTile(inputTiles[input.index()].offsets, inputTiles[input.index()].shape));
     }
@@ -307,7 +309,7 @@ SmallVector<vpux::NDTypeInterface> getAllOperandsSwInterface(VPU::SWOpInterface 
     auto valueTypes = inputTileTypes;
     mlir::SmallVector<vpux::NDTypeInterface> outputTileTypes;
     for (const auto& output : origOp->getResults()) {
-        const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
         const auto outputTileType = outputType.extractDenseTile(outputTile.offsets, outputTile.shape);
         outputTileTypes.push_back(outputTileType);
         valueTypes.push_back(outputTileType);
@@ -336,13 +338,13 @@ SmallVector<vpux::NDTypeInterface> getAllOperandsSwInterface(VPU::SWOpInterface 
     for (auto inputTileType : inputTileTypes) {
         auto inDistributedType =
                 VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, outputTileTypes[0]);
-        distributedTensorTypes.push_back(inDistributedType.cast<vpux::NDTypeInterface>());
+        distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
     }
 
     for (const auto& outputTileType : outputTileTypes) {
         auto outDistributedType =
                 VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, inputTileTypes);
-        distributedTensorTypes.push_back(outDistributedType.cast<vpux::NDTypeInterface>());
+        distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(outDistributedType));
     }
 
     return distributedTensorTypes;
@@ -370,7 +372,7 @@ bool isSupportedIsolatedTilingGRUSequence(VPU::GRUSequenceOp op, const OutputTil
     VPUX_THROW_UNLESS(tilingOp != nullptr, "Not a tileable operation {0}", origOp->getName());
     const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(origOp).to<Byte>().count();
 
-    auto outputYType = results[0].getType().cast<vpux::NDTypeInterface>();
+    auto outputYType = mlir::cast<vpux::NDTypeInterface>(results[0].getType());
     auto outputYByteSize = outputYType.getElemTypeSize().to<Byte>().count();
 
     auto seqLength = op.getSeqLengthAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
@@ -390,7 +392,7 @@ bool isSupportedIsolatedTilingGRUSequence(VPU::GRUSequenceOp op, const OutputTil
         for (auto p : inTiles | indexed) {
             const auto inT = p.value();
             const auto index = p.index();
-            const auto inputType = operands[index].getType().cast<vpux::NDTypeInterface>();
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(operands[index].getType());
             const auto inputByteSize = inputType.getElemTypeSize().to<Byte>().count();
             const auto inputTileSizeBytes = inT.shape.totalSize() * inputByteSize;
             requiredCMX += inputTileSizeBytes;
@@ -419,7 +421,7 @@ bool isSupportedIsolatedTilingGRUSequenceLastPart(VPU::GRUSequenceLastPartOp op,
     VPUX_THROW_UNLESS(tilingOp != nullptr, "Not a tileable operation {0}", origOp->getName());
     const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(origOp).to<Byte>().count();
 
-    auto outputYType = results[0].getType().cast<vpux::NDTypeInterface>();
+    auto outputYType = mlir::cast<vpux::NDTypeInterface>(results[0].getType());
     auto outputYByteSize = outputYType.getElemTypeSize().to<Byte>().count();
 
     auto seqLength = op.getSeqLengthAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
@@ -439,7 +441,7 @@ bool isSupportedIsolatedTilingGRUSequenceLastPart(VPU::GRUSequenceLastPartOp op,
         for (auto p : inTiles | indexed) {
             const auto inT = p.value();
             const auto index = p.index();
-            const auto inputType = operands[index].getType().cast<vpux::NDTypeInterface>();
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(operands[index].getType());
             const auto inputByteSize = inputType.getElemTypeSize().to<Byte>().count();
             const auto inputTileSizeBytes = inT.shape.totalSize() * inputByteSize;
             requiredCMX += inputTileSizeBytes;
@@ -466,7 +468,7 @@ bool isSupportedIsolatedTilingGatherDMA(VPU::GatherDMAOp op, const OutputTiling&
 
     const auto inputOutputTilesFitCMX = [&](const TileInfo& firstOutputTile) {
         const auto computeRequiredMemory = [&](const auto& operand, const TileInfo& tilingInfo) {
-            const auto tensorType = operand.getType().template cast<vpux::NDTypeInterface>();
+            const auto tensorType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
             const auto denseTile = tensorType.extractDenseTile(tilingInfo.offsets, tilingInfo.shape);
             return denseTile.getTotalAllocSize().count();
         };
@@ -504,7 +506,7 @@ bool isSupportedIsolatedTilingGeneric(mlir::Operation* origOp, const OutputTilin
         const auto computeRequiredMemory = [&](const auto& operands, const SmallVector<TileInfo>& tilingInfo) {
             int64_t requiredBytes = 0;
             for (const auto& [operand, tile] : zip(operands, tilingInfo)) {
-                const auto tensorType = operand.getType().template cast<vpux::NDTypeInterface>();
+                const auto tensorType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
                 const auto denseTile = tensorType.extractDenseTile(tile.offsets, tile.shape);
                 requiredBytes += denseTile.getTotalAllocSize().count();
             }
@@ -555,8 +557,8 @@ bool isSupportedIsolatedTilingStridedSlice(VPU::StridedSliceOp origOp, const Out
 }
 
 bool isSupportedIsolatedTiling(VPU::NCEPermuteOp origOp, const OutputTiling& tiles, Logger log) {
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     return llvm::all_of(tiles, [&](const TileInfo& outputTile) {
         const auto inputTiles = origOp.backInferTileInfo(outputTile, log).tiles;
@@ -572,7 +574,8 @@ bool isSupportedIsolatedTiling(VPU::NCEPermuteOp origOp, const OutputTiling& til
                             origOp->getLoc());
             auto numClusters = VPU::getOptimalNumClusters(
                     clusteredOp, outputTileType.getShape(),
-                    clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                    mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                            .getValue());
             return origOp.fitIntoCMX(
                     VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, nullptr,
                                                             inputTile),
@@ -606,10 +609,11 @@ bool isSupportedIsolatedTilingDetectionOutputSort(VPU::DetectionOutputSortOp ori
         const auto inputTiles = tilingOp.backInferTileInfo(firstOutputTile, log).tiles;
         const auto outputTiles = tilingOp.getOutputTiling(firstOutputTile, log);
 
-        const auto firstOutputType = results[0].getType().cast<vpux::NDTypeInterface>();
+        const auto firstOutputType = mlir::cast<vpux::NDTypeInterface>(results[0].getType());
         const auto firstOutputTileType = firstOutputType.extractDenseTile(outputTiles[0].offsets, outputTiles[0].shape);
         const auto multiClusterStrategy =
-                clusteredOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue();
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue();
         VPUX_THROW_UNLESS(multiClusterStrategy == VPU::MultiClusterStrategy::SplitOverHeight,
                           "Only 'SplitOverHeight' strategy is supported for {0}", origOp->getName());
         auto numClusters =
@@ -617,14 +621,14 @@ bool isSupportedIsolatedTilingDetectionOutputSort(VPU::DetectionOutputSortOp ori
 
         auto distributedTiles = mlir::SmallVector<vpux::NDTypeInterface>();
         for (const auto& [operand, tile] : zip(operands, inputTiles)) {
-            const auto tensorType = operand.getType().template cast<vpux::NDTypeInterface>();
+            const auto tensorType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
             const auto denseTile = tensorType.extractDenseTile(tile.offsets, tile.shape);
             const auto denseInputTile = getDistributedActivationTypeFromOp(clusteredOp, denseTile, numClusters);
             distributedTiles.push_back(denseInputTile);
         }
 
         for (const auto& [result, tile] : zip(results, outputTiles)) {
-            const auto tensorType = result.getType().template cast<vpux::NDTypeInterface>();
+            const auto tensorType = mlir::cast<vpux::NDTypeInterface>(result.getType());
             const auto denseTile = tensorType.extractDenseTile(tile.offsets, tile.shape);
             const auto denseOutputTile = getDistributedOutputTypeFromOp(clusteredOp, denseTile, numClusters);
             distributedTiles.push_back(denseOutputTile);
@@ -723,7 +727,7 @@ bool checkPrefetchMem(mlir::Operation* op, const OutputTiling& tiles, Logger log
     vpux::OutputTiling parentTiling = {TileInfo(parentShape)};
     if (parentOp->hasAttr(tilingStrategy)) {
         const auto parentTilingStrategy =
-                Shape(parseIntArrayAttr<int64_t>(parentOp->getAttr(tilingStrategy).cast<mlir::ArrayAttr>()));
+                Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(parentOp->getAttr(tilingStrategy))));
         auto maybeParentTiling = fillDividedTiles(parentOp, parentTilingStrategy, parentShape);
         if (mlir::succeeded(maybeParentTiling)) {
             parentTiling = maybeParentTiling.value();
@@ -850,6 +854,17 @@ bool isSupportedPrefetchTiling(VPU::NCEMatMulOp origOp, const OutputTiling& tile
     return isSupportedPrefetchTilingConvBased(origOp, tiles, log, tilingMode);
 }
 
+bool isSupportedTilingStrategyImpl(mlir::Operation* op, const vpux::Shape& strategy, TilingMode tilingMode,
+                                   Logger log) {
+    auto tilingInfo = mlir::cast<VPU::TilingInfoOpInterface>(op);
+    const auto outputShape = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getShape();
+    const auto outTiles = fillDividedTiles(op, strategy, outputShape);
+    if (mlir::failed(outTiles)) {
+        return false;
+    }
+    return tilingInfo.isSupportedTiling(outTiles.value(), tilingMode, log);
+}
+
 template <class MainOpType>
 class NCETilingInfoOpModel final :
         public VPU::TilingInfoOpInterface::ExternalModel<NCETilingInfoOpModel<MainOpType>, MainOpType> {
@@ -868,6 +883,11 @@ public:
         default:
             VPUX_THROW("Unknown tiling mode: '{0}'.", getTilingModeStr(tilingMode));
         }
+    }
+
+    bool isSupportedTilingStrategy(mlir::Operation* origOp, const vpux::Shape& strategy, TilingMode tilingMode,
+                                   Logger log) const {
+        return isSupportedTilingStrategyImpl(origOp, strategy, tilingMode, log);
     }
 };
 
@@ -892,6 +912,11 @@ public:
             VPUX_THROW("Unknown tiling mode. ISOLATED, PIPELINING and PREFETCHING are supported.");
         }
     }
+
+    bool isSupportedTilingStrategy(mlir::Operation* origOp, const vpux::Shape& strategy, TilingMode tilingMode,
+                                   Logger log) const {
+        return isSupportedTilingStrategyImpl(origOp, strategy, tilingMode, log);
+    }
 };
 
 template <class MainOpType>
@@ -910,6 +935,11 @@ public:
         default:
             VPUX_THROW("Unknown tiling mode: '{0}'.", getTilingModeStr(tilingMode));
         }
+    }
+
+    bool isSupportedTilingStrategy(mlir::Operation* origOp, const vpux::Shape& strategy, TilingMode tilingMode,
+                                   Logger log) const {
+        return isSupportedTilingStrategyImpl(origOp, strategy, tilingMode, log);
     }
 };
 
@@ -948,8 +978,10 @@ public:
     }
 };
 
+template <class ConcreteCallOpT>
 class AsyncLayerOpModelForCallOp final :
-        public VPUIP::AsyncLayerOpInterface::ExternalModel<AsyncLayerOpModelForCallOp, mlir::func::CallOp> {
+        public VPUIP::AsyncLayerOpInterface::ExternalModel<AsyncLayerOpModelForCallOp<ConcreteCallOpT>,
+                                                           ConcreteCallOpT> {
 public:
     IndexedSymbolAttr getExecutor(mlir::Operation* origOp) const {
         return VPUIP::getExecutorAttr(origOp, VPU::ExecutorKind::NCE);
@@ -983,8 +1015,10 @@ public:
 // MemoryEffectsOpModel
 //
 
+template <class ConcreteCallOpT>
 class MemoryEffectsOpModelForCallOp final :
-        public mlir::MemoryEffectOpInterface::ExternalModel<MemoryEffectsOpModelForCallOp, mlir::func::CallOp> {
+        public mlir::MemoryEffectOpInterface::ExternalModel<MemoryEffectsOpModelForCallOp<ConcreteCallOpT>,
+                                                            ConcreteCallOpT> {
 public:
     void getEffects(
             mlir::Operation* origOp,
@@ -997,8 +1031,9 @@ public:
 // LayerOpModel
 //
 
+template <class ConcreteCallOpT>
 class LayerOpModelForCallOp final :
-        public VPUIP::LayerOpInterface::ExternalModel<LayerOpModelForCallOp, mlir::func::CallOp> {
+        public VPUIP::LayerOpInterface::ExternalModel<LayerOpModelForCallOp<ConcreteCallOpT>, ConcreteCallOpT> {
 public:
     mlir::OperandRange getInputs(mlir::Operation* origOp) const {
         return vpux::VPUIP::getLayerInputs(origOp);
@@ -1025,8 +1060,9 @@ public:
 // TaskOpModel
 //
 
+template <class ConcreteCallOpT>
 class TaskOpModelForCallOp final :
-        public VPUIP::TaskOpInterface::ExternalModel<TaskOpModelForCallOp, mlir::func::CallOp> {
+        public VPUIP::TaskOpInterface::ExternalModel<TaskOpModelForCallOp<ConcreteCallOpT>, ConcreteCallOpT> {
 public:
     static VPU::ExecutorKind getExecutorKind() {
         // TODO: Analyze and define executor type for funcOp - E#117624
@@ -1057,7 +1093,9 @@ void redirectOpInterfacesForVPUIP(mlir::DialectRegistry& registry) {
 // MultiViewOpInterface
 //
 
-class MultiViewOpModel final : public vpux::MultiViewOpInterface::ExternalModel<MultiViewOpModel, mlir::func::CallOp> {
+template <class ConcreteCallOpT>
+class MultiViewOpModel final :
+        public vpux::MultiViewOpInterface::ExternalModel<MultiViewOpModel<ConcreteCallOpT>, ConcreteCallOpT> {
 public:
     mlir::Value getViewSource(mlir::Operation* origOp, ptrdiff_t resultInd) const {
         return VPUIP::getLayerViewSource(origOp, resultInd);
@@ -1106,6 +1144,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::DynamicDequantizeOp::attachInterface<SwLayerTilingInfoOpModel<VPU::DynamicDequantizeOp>>(*ctx);
         VPU::GatherOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GatherOp>>(*ctx);
         VPU::GatherElementsOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GatherElementsOp>>(*ctx);
+        VPU::GridSampleOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GridSampleOp>>(*ctx);
         VPU::GatherDMAOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GatherDMAOp>>(*ctx);
         VPU::GatherNDOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GatherNDOp>>(*ctx);
         VPU::ConvertOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ConvertOp>>(*ctx);
@@ -1163,6 +1202,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::ReduceMaxOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceMaxOp>>(*ctx);
         VPU::ReduceMeanOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceMeanOp>>(*ctx);
         VPU::ReduceMinOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceMinOp>>(*ctx);
+        VPU::ReverseOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReverseOp>>(*ctx);
         VPU::ReduceProdOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceProdOp>>(*ctx);
         VPU::ReduceSumOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceSumOp>>(*ctx);
         VPU::SwishOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SwishOp>>(*ctx);
@@ -1201,6 +1241,8 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::AccumulateOp::attachInterface<SwLayerTilingInfoOpModel<VPU::AccumulateOp>>(*ctx);
         VPU::RMSOp::attachInterface<SwLayerTilingInfoOpModel<VPU::RMSOp>>(*ctx);
         VPU::RoPEOp::attachInterface<SwLayerTilingInfoOpModel<VPU::RoPEOp>>(*ctx);
+        VPU::SDPAOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SDPAOp>>(*ctx);
+        VPU::RandomUniformOp::attachInterface<SwLayerTilingInfoOpModel<VPU::RandomUniformOp>>(*ctx);
         VPU::SigmoidOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::HardSigmoidOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::GridSampleOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -1336,6 +1378,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::EmbeddingBagPackedSumOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::GRUSequenceFirstPartOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::GRUSequenceLastPartOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::GRUGatesOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LSTMCellOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LSTMGatesOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LSTMSequenceOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -1372,6 +1415,8 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::PopulateWeightTableOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::GenericSwLayerOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::RoPEOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::DynamicDataMaskOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::SDPAOp::attachInterface<SoftwareLayerOpModel>(*ctx);
     });
 
     // When implementing a new SW core, remove the corresponding operation from setupExtraInterfacesAdditional
@@ -1382,14 +1427,20 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         vpux::MemRefAttr::attachInterface<vpux::MemRefAttrLayout>(*ctx);
     });
 
-    registry.addExtension(+[](mlir::MLIRContext* ctx, mlir::func::FuncDialect* dialect) {
-        dialect->addInterfaces<VPUIP::FuncInlinerInterface>();
+    registry.addExtension(+[](mlir::MLIRContext* ctx, mlir::func::FuncDialect*) {
+        mlir::func::CallOp::attachInterface<MultiViewOpModel<mlir::func::CallOp>>(*ctx);
+        mlir::func::CallOp::attachInterface<AsyncLayerOpModelForCallOp<mlir::func::CallOp>>(*ctx);
+        mlir::func::CallOp::attachInterface<LayerOpModelForCallOp<mlir::func::CallOp>>(*ctx);
+        mlir::func::CallOp::attachInterface<MemoryEffectsOpModelForCallOp<mlir::func::CallOp>>(*ctx);
+        mlir::func::CallOp::attachInterface<TaskOpModelForCallOp<mlir::func::CallOp>>(*ctx);
+    });
 
-        mlir::func::CallOp::attachInterface<MultiViewOpModel>(*ctx);
-        mlir::func::CallOp::attachInterface<AsyncLayerOpModelForCallOp>(*ctx);
-        mlir::func::CallOp::attachInterface<LayerOpModelForCallOp>(*ctx);
-        mlir::func::CallOp::attachInterface<MemoryEffectsOpModelForCallOp>(*ctx);
-        mlir::func::CallOp::attachInterface<TaskOpModelForCallOp>(*ctx);
+    registry.addExtension(+[](mlir::MLIRContext* ctx, Core::CoreDialect*) {
+        Core::NestedCallOp::attachInterface<MultiViewOpModel<Core::NestedCallOp>>(*ctx);
+        Core::NestedCallOp::attachInterface<AsyncLayerOpModelForCallOp<Core::NestedCallOp>>(*ctx);
+        Core::NestedCallOp::attachInterface<LayerOpModelForCallOp<Core::NestedCallOp>>(*ctx);
+        Core::NestedCallOp::attachInterface<MemoryEffectsOpModelForCallOp<Core::NestedCallOp>>(*ctx);
+        Core::NestedCallOp::attachInterface<TaskOpModelForCallOp<Core::NestedCallOp>>(*ctx);
     });
 }
 
@@ -1427,7 +1478,7 @@ Byte vpux::VPUIP::SubViewOp::getByteOffset() {
     VPUX_THROW_UNLESS(strides.size() == offsets.size(), "SubView offsets '{0}' doesn't match strides '{1}'", offsets,
                       strides);
 
-    auto distributedType = getSource().getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getSource().getType());
 
     VPU::DistributionInfoAttr distribution;
     std::optional<int64_t> tileIndex;
@@ -1530,12 +1581,12 @@ Byte vpux::VPUIP::SubViewOp::getByteOffset() {
 }
 
 Byte vpux::VPUIP::ExtractFlatSliceOp::getByteOffset() {
-    auto distributedType = getSource().getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getSource().getType());
     auto tileIndex = VPUIP::getTilingDimIndex(distributedType);
     auto tileDim = Dim(tileIndex.value());
 
-    auto resMemSpace = getResult().getType().cast<NDTypeInterface>().getMemSpace();
-    auto targetCluster = resMemSpace.cast<IndexedSymbolAttr>().getIndex().value_or(0);
+    auto resMemSpace = mlir::cast<vpux::NDTypeInterface>(getResult().getType()).getMemSpace();
+    auto targetCluster = mlir::cast<vpux::IndexedSymbolAttr>(resMemSpace).getIndex().value_or(0);
     auto perClusterOffsets = distributedType.getPerClusterMemoryShapeOffsets();
     int64_t clusterStart = perClusterOffsets[targetCluster][tileDim];
 
@@ -1548,6 +1599,17 @@ Byte vpux::VPUIP::ExtractFlatSliceOp::getByteOffset() {
 
     return offset;
 }
+
+//
+// VPUIP_BinaryOp
+//
+void vpux::VPUIP::BinaryDataOp::build(mlir::OpBuilder& builder, mlir::OperationState& result, mlir::StringRef name,
+                                      mlir::Attribute object) {
+    result.attributes.push_back(
+            builder.getNamedAttr(mlir::SymbolTable::getSymbolAttrName(), builder.getStringAttr(name)));
+    result.attributes.push_back(builder.getNamedAttr("object", object));
+}
+
 //
 // Generated
 //

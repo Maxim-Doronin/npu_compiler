@@ -8,7 +8,7 @@
 #include "vpux/compiler/NPU37XX/core/pipelines_options.hpp"
 #include "vpux/compiler/core/pipelines_options.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>

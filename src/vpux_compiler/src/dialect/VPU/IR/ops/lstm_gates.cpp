@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::LSTMGatesOp::inferReturnTypes(mlir::MLIRContext* 
         return mlir::failure();
     }
 
-    const auto inType = lstm.getInitialCellState().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(lstm.getInitialCellState().getType());
 
     inferredReturnTypes.push_back(inType);  // outputHiddenState
     inferredReturnTypes.push_back(inType);  // outputCellState
@@ -85,7 +85,7 @@ void vpux::VPU::LSTMGatesOp::adjustAttrs(const TilingInfo& /*inputTiling*/, cons
 
 mlir::FailureOr<OutputTiling> vpux::VPU::LSTMGatesOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
     SmallVector<int64_t> maxNumTiles;
-    const auto outputType = getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getResult(0).getType());
     const auto outputRank = outputType.getShape().size();
     SmallVector<int64_t> axes{checked_cast<int64_t>(outputRank - 1)};
     maxNumTiles = getMaxNumTilesWithAxesExclusion(this->getOperation(), axes);

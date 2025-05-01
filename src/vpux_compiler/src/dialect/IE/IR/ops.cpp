@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
@@ -19,17 +20,6 @@ using namespace vpux;
 
 bool IE::isActShaveKernel(mlir::Operation* operation) {
     return VPU::NCEInvariant::isSupported(operation, Logger::global()).failed();
-}
-
-void IE::IEDialect::setupExtraInterfaces(mlir::DialectRegistry& registry) {
-    // Unary plus converts a stateless lambda to a plain old function pointer.
-    // Type of lambda:
-    // IE::IEDialect::setupExtraInterfaces(mlir::DialectRegistry&)::{lambda(mlir::MLIRContext*, IE::IEDialect*)}
-    // Type of +lambda:
-    // void (*)(mlir::MLIRContext*, IE::IEDialect*)
-    registry.addExtension(+[](mlir::MLIRContext* ctx, IE::IEDialect*) {
-        IE::TransposeOp::attachInterface<ShapeBoundOp>(*ctx);
-    });
 }
 
 //

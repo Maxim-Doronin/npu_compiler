@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
 
 namespace vpux {
 namespace IE {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/utils/swizzling_utils.hpp"
@@ -120,18 +120,18 @@ VPUIP::SwizzlingSchemeAttr vpux::getSwizzlingSchemeAttr(mlir::Type type) {
 
     mlir::MemRefLayoutAttrInterface layout;
 
-    if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+    if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
         layout = memref.getLayout();
-    } else if (auto distributedBuffer = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+    } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
         layout = distributedBuffer.getLayout();
-    } else if (auto itiBuffer = type.dyn_cast<VPUIP::ITIBufferType>()) {
+    } else if (auto itiBuffer = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(type)) {
         layout = itiBuffer.getLayout();
     } else {
         return swizzlingSchemeAttr;
     }
 
     if (layout) {
-        if (const auto memRefAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+        if (const auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
             swizzlingSchemeAttr = memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>();
         }
     }
@@ -153,7 +153,7 @@ mlir::Type vpux::setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKey
         return type;
     }
 
-    const auto ndType = type.cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
     auto* ctx = type.getContext();
 
     auto swizzlingSchemeAttr = createSwizzlingSchemeAttr(ctx, archKind, swizzlingKeyAttr.getInt());
@@ -164,10 +164,10 @@ mlir::Type vpux::setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKey
     const auto strides = ndType.getStrides();
     const auto memSpace = ndType.getMemSpace();
 
-    if (type.isa<mlir::MemRefType>()) {
+    if (mlir::isa<mlir::MemRefType>(type)) {
         return vpux::getMemRefType(shape, elemType, order, memSpace, strides, swizzlingSchemeAttr,
                                    VPUIP::getSparsityCompressionAttr(type));
-    } else if (type.isa<VPUIP::DistributedBufferType>() || type.isa<VPUIP::ITIBufferType>()) {
+    } else if (mlir::isa<vpux::VPUIP::DistributedBufferType>(type) || mlir::isa<vpux::VPUIP::ITIBufferType>(type)) {
         mlir::ArrayAttr stridesAttr;
         const auto orderAttr = mlir::AffineMapAttr::get(order.toAffineMap(ctx));
         const Bit elemSize = ndType.getElemTypeSize();
@@ -186,13 +186,13 @@ mlir::Type vpux::setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKey
         const auto layoutAttr = vpux::MemRefAttr::get(orderAttr, stridesAttr,
                                                       /*allocSize=*/nullptr, {swizzlingSchemeAttr}, ctx);
 
-        if (auto itiBufferType = type.dyn_cast<VPUIP::ITIBufferType>()) {
+        if (auto itiBufferType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(type)) {
             return VPUIP::ITIBufferType::get(ctx, shape.raw(), elemType, layoutAttr, memSpace,
                                              itiBufferType.getIduSegmentation(), itiBufferType.getInwardHaloRegions(),
                                              itiBufferType.getOutwardHaloRegions());
         }
 
-        auto distBufferType = type.cast<VPUIP::DistributedBufferType>();
+        auto distBufferType = mlir::cast<vpux::VPUIP::DistributedBufferType>(type);
         return VPUIP::DistributedBufferType::get(ctx, shape.raw(), elemType, layoutAttr, memSpace,
                                                  distBufferType.getDistribution(),
                                                  distBufferType.getSparsityCompression());

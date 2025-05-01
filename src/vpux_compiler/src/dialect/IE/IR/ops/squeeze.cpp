@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -43,7 +44,7 @@ mlir::FailureOr<SmallVector<int64_t>> getAxes(IE::SqueezeOpAdaptor squeeze, mlir
     auto axes = to_small_vector(axesContent.getValues<int64_t>());
     std::sort(axes.begin(), axes.end());
 
-    const auto inType = squeeze.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(squeeze.getInput().getType());
     const auto inRank = inType.getRank();
 
     for (auto& axis : axes) {
@@ -77,7 +78,7 @@ mlir::LogicalResult vpux::IE::SqueezeOp::inferReturnTypeComponents(
     }
 
     const auto input = squeeze.getInput();
-    const auto inType = input.getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(input.getType());
     const auto inShape = inType.getShape();
     const auto inOrder = DimsOrder::fromValue(input);
 
@@ -116,7 +117,8 @@ mlir::LogicalResult vpux::IE::SqueezeOp::inferReturnTypeComponents(
             outShape.push_back(inShape[inInd]);
         }
     }
-
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
+                      IE::SqueezeOp::getOperationName());
     const auto outDesc = vpux::getTensorAttr(
             ctx, vpux::VPU::inferSqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inShape),
             vpux::getMemorySpace(inType));
@@ -171,8 +173,8 @@ mlir::LogicalResult FuseWithReshape::matchAndRewrite(IE::SqueezeOp origOp, mlir:
     auto reshapeOp =
             rewriter.create<IE::ReshapeOp>(origOp->getLoc(), prevOp->getOperand(0), nullptr, false, outputShapeAttr);
     auto outLink = reshapeOp.getOutput();
-    auto currentOutType = origOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
-    auto newOutType = reshapeOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto currentOutType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    auto newOutType = mlir::dyn_cast<vpux::NDTypeInterface>(reshapeOp.getOutput().getType());
     auto currentOutDimOrder = currentOutType.getDimsOrder();
     auto newOutDimOrder = newOutType.getDimsOrder();
     // Reshape op is not aware of Layout. Add layout if necessary.

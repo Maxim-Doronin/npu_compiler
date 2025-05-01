@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,11 @@ mlir::LogicalResult vpux::VPU::DynamicExpandOp::inferReturnTypes(
 
     auto inShapeInfo = ShapeInfo::fromNDType(inType);
 
-    inferredReturnTypes.push_back(inType.changeShape(Shape(inShapeInfo.bounds)));
+    // For upper bounded tensor interpretation the shape should be equal to the bounds
+    // Tensor with dynamic_dims_mask has upper bounds set as its shape
+    auto outShape = inShapeInfo.bounds.empty() ? Shape(inShapeInfo.shape) : Shape(inShapeInfo.bounds);
+
+    inferredReturnTypes.push_back(inType.changeShape(outShape));
 
     return mlir::success();
 }

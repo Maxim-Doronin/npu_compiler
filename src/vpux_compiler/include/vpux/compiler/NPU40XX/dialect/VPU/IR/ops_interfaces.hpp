@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,5 +8,6 @@
 namespace vpux::VPU::arch40xx {
 
 void registerClusterBroadcastingOpInterfaces(mlir::DialectRegistry& registry);
+void registerSCFTilingOpsInterfaces(mlir::DialectRegistry& registry);
 
 }  // namespace vpux::VPU::arch40xx

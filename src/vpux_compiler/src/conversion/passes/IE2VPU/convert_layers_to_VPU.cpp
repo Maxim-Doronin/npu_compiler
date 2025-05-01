@@ -255,7 +255,8 @@ mlir::LogicalResult InterpolateRewrite::matchAndRewrite(IE::InterpolateOp origOp
             origOp.getAxesAttrAttr(), origOp.getTileOffsetAttrAttr(), origOp.getInitialInputDimsAttrAttr(),
             origOp.getInitialOutputDimsAttrAttr(),
             /*initial_input_offset_attr=*/nullptr, /*initial_output_offset_attr=*/nullptr,
-            /*multiClusterStrategy=*/nullptr, origOp.getAttrAttr(), origOp.getOutputChannelsAttr());
+            /*multiClusterStrategy=*/nullptr, origOp.getAttrAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
     return mlir::success();
 }
 
@@ -286,8 +287,8 @@ mlir::LogicalResult TransposedConvRewrite::matchAndRewrite(IE::TransposedConvolu
     rewriter.replaceOpWithNewOp<VPU::TransposedConvolutionOp>(
             origOp, outType, origOp.getInput(), origOp.getFilter(), origOp.getOutputShape(), origOp.getBias(),
             origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-            origOp.getOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getOutputChannelsAttr());
+            origOp.getSpatialOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -372,7 +373,8 @@ mlir::LogicalResult GroupConvolutionRewrite::matchAndRewrite(IE::GroupConvolutio
     rewriter.replaceOpWithNewOp<VPU::GroupConvolutionOp>(
             origOp, origOp.getOutput().getType(), origOp.getInput(), origOp.getFilter(), origOp.getBias(),
             origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(),
-            origOp.getGroupsAttr(), origOp.getPostOpAttr(), origOp.getOutputChannelsAttr());
+            origOp.getGroupsAttr(), origOp.getPostOpAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -423,6 +425,22 @@ mlir::LogicalResult AccumulateRewrite::matchAndRewrite(IE::AccumulateOp origOp, 
     } else {
         VPUX_THROW("IE.Accumulate must set either both scales or none.");
     }
+
+    return mlir::success();
+}
+
+//
+// RandomUniformRewrite
+//
+
+mlir::LogicalResult RandomUniformRewrite::matchAndRewrite(IE::RandomUniformOp origOp,
+                                                          mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found RandomUniform Operation '{0}'", origOp->getLoc());
+
+    rewriter.replaceOpWithNewOp<VPU::RandomUniformOp>(origOp, origOp.getMin(), origOp.getMax(),
+                                                      origOp.getOutputShapeAttr(), origOp.getOutputTypeAttr(),
+                                                      origOp.getGlobalSeedAttr(), origOp.getOpSeedAttr(),
+                                                      /*multiClusterStrategy=*/nullptr);
 
     return mlir::success();
 }
@@ -509,6 +527,7 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     patterns.add<EmbeddingSegmentsSumRewriter>(&ctx, _log);
     patterns.add<EmbeddingBagOffsetsSumRewriter>(&ctx, _log);
     patterns.add<AccumulateRewrite>(&ctx, _log);
+    patterns.add<RandomUniformRewrite>(&ctx, _log);
     patterns.add<DynamicReshapeRewrite>(&ctx, _log);
     patterns.add<DynamicTileRewrite>(&ctx, _log);
     populateWithGenerated(patterns);

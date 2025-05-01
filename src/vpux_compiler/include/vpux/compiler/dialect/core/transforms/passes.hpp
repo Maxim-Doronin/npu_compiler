@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 
 #include "vpux/compiler/utils/passes.hpp"
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Pass/Pass.h>
@@ -27,6 +27,8 @@ std::unique_ptr<mlir::Pass> createSetupLocationVerifierPass(Logger log = Logger:
 std::unique_ptr<mlir::Pass> createStartLocationVerifierPass(
         vpux::Logger log, const mlir::detail::PassOptions::Option<std::string>& locationsVerificationMode);
 std::unique_ptr<mlir::Pass> createStopLocationVerifierPass(vpux::Logger log);
+std::unique_ptr<mlir::Pass> createPackNestedModulesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnpackNestedModulesPass(const Logger& log = Logger::global());
 
 //
 // Registration

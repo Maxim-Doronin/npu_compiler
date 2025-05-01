@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -55,7 +55,7 @@ mlir::Value findFloatInput(mlir::Value nceOpInput) {
     // Without FakeQuantize the information about data clamping is lost.
     // It makes sense to omit clamping only when the input data fits the range required for a given NCE task.
     // For some models performance gain is worth the risk of losing the clamping information.
-    if (!maybeQuantize.getInput().isa<mlir::BlockArgument>()) {
+    if (!mlir::isa<mlir::BlockArgument>(maybeQuantize.getInput())) {
         return nullptr;
     }
 
@@ -68,12 +68,12 @@ bool isFloatInputSupported(mlir::Operation* origOp, const bool onlyPerTensorQuan
     }
 
     // Supporting only fusing of Convert into fully quantized operation.
-    const auto outElemType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (!outElemType.isa<mlir::quant::QuantizedType>()) {
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getElementType();
+    if (!mlir::isa<mlir::quant::QuantizedType>(outElemType)) {
         return false;
     }
 
-    if (onlyPerTensorQuant && outElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (onlyPerTensorQuant && mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outElemType)) {
         return false;
     }
 
@@ -82,8 +82,8 @@ bool isFloatInputSupported(mlir::Operation* origOp, const bool onlyPerTensorQuan
     }
 
     // The input of the operation must be quantized.
-    const auto inElemType = origOp->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    return inElemType.isa<mlir::quant::QuantizedType>();
+    const auto inElemType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType()).getElementType();
+    return mlir::isa<mlir::quant::QuantizedType>(inElemType);
 }
 
 class NetworkInputConvRewriter final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
@@ -110,7 +110,7 @@ mlir::LogicalResult NetworkInputConvRewriter::matchAndRewrite(IE::ConvolutionOp 
         return mlir::failure();
     }
 
-    const auto dstElemType = maybeFloatInput.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto dstElemType = mlir::cast<vpux::NDTypeInterface>(maybeFloatInput.getType()).getElementType();
     const auto dequantFilter =
             rewriter.createOrFold<IE::DequantizeOp>(origOp->getLoc(), origOp.getFilter(), dstElemType);
     VPUX_THROW_UNLESS(dequantFilter != nullptr, "Failed to de-quantize given filter");
@@ -118,7 +118,7 @@ mlir::LogicalResult NetworkInputConvRewriter::matchAndRewrite(IE::ConvolutionOp 
                                                    origOp.getBias(), origOp.getStrides(), origOp.getPadsBegin(),
                                                    origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(),
                                                    origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-                                                   origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                                   origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -147,15 +147,14 @@ mlir::LogicalResult NetworkInputGroupConvRewriter::matchAndRewrite(IE::GroupConv
         return mlir::failure();
     }
 
-    const auto dstElemType = maybeFloatInput.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto dstElemType = mlir::cast<vpux::NDTypeInterface>(maybeFloatInput.getType()).getElementType();
     const auto dequantFilter =
             rewriter.createOrFold<IE::DequantizeOp>(origOp->getLoc(), origOp.getFilter(), dstElemType);
     VPUX_THROW_UNLESS(dequantFilter != nullptr, "Failed to de-quantize given filter");
     rewriter.replaceOpWithNewOp<IE::GroupConvolutionOp>(
             origOp, origOp.getType(), maybeFloatInput, dequantFilter, origOp.getBias(), origOp.getStrides(),
             origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), origOp.getGroupsAttr(),
-            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputChannelsAttr(),
-            origOp.getInputChannelsAttr());
+            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -187,8 +186,8 @@ mlir::LogicalResult NetworkInputAvgPoolRewriter::matchAndRewrite(IE::AvgPoolOp o
     rewriter.replaceOpWithNewOp<IE::AvgPoolOp>(
             origOp, origOp.getType(), maybeFloatInput, origOp.getKernelSize(), origOp.getStrides(),
             origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getRoundingTypeAttr(), origOp.getExcludePadsAttr(),
-            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(),
-            origOp.getInputChannelsAttr());
+            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -224,7 +223,7 @@ mlir::LogicalResult NetworkInputAddRewriter::matchAndRewrite(IE::AddOp origOp, m
 
     rewriter.replaceOpWithNewOp<IE::AddOp>(origOp, origOp.getType(), floatInputs[0], floatInputs[1],
                                            origOp.getAutoBroadcast(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                           origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                           origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }

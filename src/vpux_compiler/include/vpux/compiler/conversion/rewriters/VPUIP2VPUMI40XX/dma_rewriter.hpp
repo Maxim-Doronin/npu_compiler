@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -89,6 +89,12 @@ struct GatherDMARewriter : DMARewriterBase<VPUIP::GatherDMAOp> {
 struct SyncDMARewriter : DMARewriterBase<VPUIP::SyncDMAOp> {
     using DMARewriterBase::DMARewriterBase;
     mlir::LogicalResult matchAndRewrite(VPUIP::SyncDMAOp syncDMAOp, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const override;
+};
+
+struct ReadOnlyDMARewriter : DMARewriterBase<VPUIP::ReadOnlyDMAOp> {
+    using DMARewriterBase::DMARewriterBase;
+    mlir::LogicalResult matchAndRewrite(VPUIP::ReadOnlyDMAOp readOnlyDMAOp, OpAdaptor adaptor,
                                         mlir::ConversionPatternRewriter& rewriter) const override;
 };
 

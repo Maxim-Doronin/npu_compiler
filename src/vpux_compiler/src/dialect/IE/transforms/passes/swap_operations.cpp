@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
@@ -10,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -61,7 +63,7 @@ bool checkOrderCompatible(mlir::Operation* origOp, DimsOrder origOrder, DimsOrde
 
 void updateOutputOrder(mlir::Value output, DimsOrder origOrder, DimsOrder parentOrder) {
     if (origOrder != parentOrder) {
-        const auto newAddOutputType = output.getType().cast<vpux::NDTypeInterface>();
+        const auto newAddOutputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
         const auto newType = newAddOutputType.changeDimsOrder(parentOrder);
         output.setType(newType);
     }
@@ -201,7 +203,7 @@ mlir::LogicalResult SwapWithBias::matchAndRewrite(IE::AddOp origOp, mlir::Patter
     }
 
     if (!singleValueBias) {
-        if (parentInput.getType().cast<vpux::NDTypeInterface>().getRank() != SUPPORTED_RANK) {
+        if (mlir::cast<vpux::NDTypeInterface>(parentInput.getType()).getRank() != SUPPORTED_RANK) {
             _log.trace("[{0}] Swapped operation doesn't have rank {1}", getDebugName(), SUPPORTED_RANK);
             return mlir::failure();
         }
@@ -236,8 +238,8 @@ mlir::LogicalResult SwapWithBias::matchAndRewrite(IE::AddOp origOp, mlir::Patter
                                            newConstant, origOp.getAutoBroadcast(), nullptr, nullptr, nullptr, nullptr);
 
         // The new add must have the same output element type as the original one
-        const auto origAddOutputType = origOp->getResult(0).getType().dyn_cast<vpux::NDTypeInterface>();
-        auto newAddOutputType = newAddOp->getResult(0).getType().dyn_cast<vpux::NDTypeInterface>();
+        const auto origAddOutputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
+        auto newAddOutputType = mlir::dyn_cast<vpux::NDTypeInterface>(newAddOp->getResult(0).getType());
         newAddOutputType = newAddOutputType.changeElemType(origAddOutputType.getElementType());
         newAddOp->getResult(0).setType(newAddOutputType);
 
@@ -251,8 +253,8 @@ mlir::LogicalResult SwapWithBias::matchAndRewrite(IE::AddOp origOp, mlir::Patter
     auto newParentOp = rewriter.clone(*parentOp, mapper);
 
     // The input and output element type must be the same for AffineReshape/Transpose/Reshape after swap
-    const auto parentInputType = newParentOp->getOpOperand(0).get().getType().dyn_cast<vpux::NDTypeInterface>();
-    const auto oldParentOpOutType = newParentOp->getResult(0).getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto parentInputType = mlir::dyn_cast<vpux::NDTypeInterface>(newParentOp->getOpOperand(0).get().getType());
+    const auto oldParentOpOutType = mlir::dyn_cast<vpux::NDTypeInterface>(newParentOp->getResult(0).getType());
     const auto newParentOpOutType = oldParentOpOutType.changeElemType(parentInputType.getElementType());
     newParentOp->getResult(0).setType(newParentOpOutType);
 
@@ -315,16 +317,16 @@ mlir::LogicalResult SwapWithActivation<Activation>::matchAndRewrite(Activation o
     }
 
     for (mlir::Value parentInput : parentOp->getOperands()) {
-        if (parentInput.getType().cast<vpux::NDTypeInterface>().getRank() != SUPPORTED_RANK) {
+        if (mlir::cast<vpux::NDTypeInterface>(parentInput.getType()).getRank() != SUPPORTED_RANK) {
             _log.trace("[{0}] Swapped operation doesn't have rank {1}", this->getDebugName(), SUPPORTED_RANK);
             return mlir::failure();
         }
     }
 
     mlir::Value origOperand = origOp->getResult(0);
-    const auto origOrder = origOperand.getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto origOrder = mlir::cast<vpux::NDTypeInterface>(origOperand.getType()).getDimsOrder();
     mlir::Value parentInput = parentOp->getOperand(0);
-    const auto parentOrder = parentInput.getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto parentOrder = mlir::cast<vpux::NDTypeInterface>(parentInput.getType()).getDimsOrder();
 
     if (!checkOrderCompatible(origOp, origOrder, parentOrder)) {
         return mlir::failure();
@@ -333,7 +335,7 @@ mlir::LogicalResult SwapWithActivation<Activation>::matchAndRewrite(Activation o
     rewriter.startOpModification(parentOp);
     rewriter.setInsertionPoint(parentOp);
 
-    auto origElemType = origOp->getResult(0).getType().template cast<NDTypeInterface>().getElementType();
+    auto origElemType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getElementType();
     if (mlir::template dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(origElemType)) {
         return mlir::failure();
     }
@@ -345,8 +347,8 @@ mlir::LogicalResult SwapWithActivation<Activation>::matchAndRewrite(Activation o
         newActivation->setOperand(0, parentOpInputs[i]);
         newActivation->getOpResult(0).setType(parentOpInputs[i].getType());
         if (mlir::isa<IE::LeakyReluOp>(origOp)) {
-            auto origElemType = origOp->getResult(0).getType().template cast<NDTypeInterface>().getElementType();
-            auto newType = newActivation->getOpResult(0).getType().template cast<NDTypeInterface>();
+            auto origElemType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getElementType();
+            auto newType = mlir::cast<vpux::NDTypeInterface>(newActivation->getOpResult(0).getType());
             newActivation->getOpResult(0).setType(newType.changeElemType(origElemType));
         }
         parentOp->getOpOperand(static_cast<uint32_t>(i)).set(newActivation->getResult(0));
@@ -379,9 +381,10 @@ mlir::LogicalResult SwapTanhSlice::matchAndRewrite(IE::TanhOp originOp, mlir::Pa
         return mlir::failure();
     }
 
-    auto oldSliceType = sliceOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
-    auto oldLayerType = originOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
-    auto newType = oldLayerType.changeShape(sliceOp.getSource().getType().cast<vpux::NDTypeInterface>().getShape());
+    auto oldSliceType = mlir::cast<vpux::NDTypeInterface>(sliceOp->getResult(0).getType());
+    auto oldLayerType = mlir::cast<vpux::NDTypeInterface>(originOp->getResult(0).getType());
+    auto newType =
+            oldLayerType.changeShape(mlir::cast<vpux::NDTypeInterface>(sliceOp.getSource().getType()).getShape());
 
     const auto oldSliceShape = oldSliceType.getShape();
     const auto newLayerShape = newType.getShape();
@@ -439,10 +442,10 @@ mlir::LogicalResult SwapExpandQuantizeCast::matchAndRewrite(IE::ExpandOp expandO
     if (quantizeCastOp == nullptr) {
         return mlir::failure();
     }
-    auto quantizeCastOutputType = quantizeCastOp.getOutput().getType().cast<vpux::NDTypeInterface>();
-    auto quantizeCastInputType = quantizeCastOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto quantizeCastOutputType = mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getOutput().getType());
+    auto quantizeCastInputType = mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getInput().getType());
     auto isPerChannel = [](vpux::NDTypeInterface type) {
-        return type.getElementType().isa<mlir::quant::UniformQuantizedPerAxisType>();
+        return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(type.getElementType());
     };
     if (isPerChannel(quantizeCastInputType) || isPerChannel(quantizeCastOutputType)) {
         return mlir::failure();
@@ -491,7 +494,7 @@ mlir::LogicalResult SwapTanhShapeCast::matchAndRewrite(IE::TanhOp origOp, mlir::
 
     auto newTanhOp =
             rewriter.create<IE::TanhOp>(origOp.getLoc(), shapeCastOp.getSource().getType(), shapeCastOp.getSource());
-    auto outputType = origOp.getResult().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
     auto castOp = rewriter.replaceOpWithNewOp<IE::ShapeCastOp>(
             origOp, outputType, newTanhOp.getResult(), getIntArrayAttr(origOp.getContext(), outputType.getShape()));
     extendOpLoc(castOp, "swap");

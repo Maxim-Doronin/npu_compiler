@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,7 +13,7 @@ mlir::FailureOr<SymbolizationResult> BootstrapRewriter::symbolize(VPUMI40XX::Boo
                                                                   mlir::ConversionPatternRewriter& rewriter) const {
     auto result = op.getResult();
     auto symName = findSym(result).getRootReference();
-    int barrierId = op.getBarrier().getType().cast<VPURegMapped::IndexType>().getValue();
+    int barrierId = mlir::cast<vpux::VPURegMapped::IndexType>(op.getBarrier().getType()).getValue();
     auto newOp = rewriter.create<VPUASM::BootstrapOp>(op.getLoc(), symName, barrierId);
     rewriter.eraseOp(op);
 

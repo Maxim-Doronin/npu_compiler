@@ -23,8 +23,8 @@ mlir::LogicalResult vpux::VPU::SubtractOp::inferReturnTypes(mlir::MLIRContext* c
         return mlir::failure();
     }
 
-    const auto in1Type = subtract.getInput1().getType().cast<vpux::NDTypeInterface>();
-    const auto in2Type = subtract.getInput2().getType().cast<vpux::NDTypeInterface>();
+    const auto in1Type = mlir::cast<vpux::NDTypeInterface>(subtract.getInput1().getType());
+    const auto in2Type = mlir::cast<vpux::NDTypeInterface>(subtract.getInput2().getType());
 
     const auto outShapeRes = IE::broadcastEltwiseShape(in1Type.getShape().raw(), in2Type.getShape().raw(),
                                                        subtract.getAutoBroadcast(), loc);

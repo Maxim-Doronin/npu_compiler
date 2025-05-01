@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes/insert_identity_pool_before_op.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -12,15 +13,17 @@ using namespace vpux;
 
 bool vpux::IE::isEligiblePostOp(mlir::Operation* op, Logger log) {
     auto postOpInterface = op->getOperand(0).getDefiningOp<IE::LayerWithPostOpInterface>();
-    if (postOpInterface == nullptr || postOpInterface.getPostOp().has_value() ||
+    if (postOpInterface == nullptr || postOpInterface.getPostOp() != nullptr ||
         !postOpInterface->getResult(0).hasOneUse()) {
         return true;
     }
 
-    const auto inElemType = postOpInterface->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto outElemType = postOpInterface->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto inElemType =
+            mlir::cast<vpux::NDTypeInterface>(postOpInterface->getOperand(0).getType()).getElementType();
+    const auto outElemType =
+            mlir::cast<vpux::NDTypeInterface>(postOpInterface->getResult(0).getType()).getElementType();
     // Because of the convert to float, the prelu shift will be bypassed. Check PPE diagram
-    if (inElemType.isa<mlir::quant::QuantizedType>() && !outElemType.isa<mlir::quant::QuantizedType>() &&
+    if (mlir::isa<mlir::quant::QuantizedType>(inElemType) && !mlir::isa<mlir::quant::QuantizedType>(outElemType) &&
         mlir::isa<IE::PReluOp, IE::LeakyReluOp>(op)) {
         log.trace("A PRelu or LeakyRely at {0} has mixed precision producer, and because of this the prelu shift will "
                   "be skiped",

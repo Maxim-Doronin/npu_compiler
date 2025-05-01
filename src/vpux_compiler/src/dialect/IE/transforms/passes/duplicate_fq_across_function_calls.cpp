@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -20,6 +22,7 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/RegionUtils.h>
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_DUPLICATEFQACROSSFUNCTIONCALLS
@@ -96,9 +99,9 @@ public:
         }
 
         auto moduleOp = getOperation();
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         duplicateFQOpsOutside(moduleOp, netFunc);
         duplicateFQOpsInside(moduleOp, netFunc);

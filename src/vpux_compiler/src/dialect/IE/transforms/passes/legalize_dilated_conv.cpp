@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
@@ -11,6 +12,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -65,8 +67,10 @@ mlir::Value createNewOp(mlir::PatternRewriter& rewriter, mlir::Operation* origOp
     }
 
     if (removePostOp) {
-        VPUX_THROW_UNLESS(newOp->hasAttr("post_op"), "operation does not have post op attribute");
-        newOp->removeAttr("post_op");
+        auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(newOp);
+        VPUX_THROW_WHEN(layerWithPostOp == nullptr, "Cannot remove the post-op of a non-LayerWithPostOp operation: {0}",
+                        newOp->getName());
+        layerWithPostOp.clearPostOp();
     }
 
     VPUX_THROW_UNLESS(newOp->hasAttr("dilations"), "operation does not have dilations attribute");
@@ -324,18 +328,23 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
         const auto broadcastType =
                 vpux::IE::AutoBroadcastTypeAttr::get(origOp->getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
         mlir::Value add = newConvs.front();
-        for (size_t i = 1; i < newConvs.size(); i++)
+        for (size_t i = 1; i < newConvs.size(); i++) {
+            const auto isLast = (i == newConvs.size() - 1);
             add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, StringLiteral("add_{0}"), i), add, newConvs[i],
-                                             broadcastType, (i == newConvs.size() - 1) ? origOp.getClampAttr(),
-                                             origOp.getPostOpAttr() : nullptr, nullptr, origOp.getOutputChannelsAttr(),
-                                             origOp.getInputChannelsAttr())
+                                             broadcastType, isLast ? origOp.getPostOpAttr() : nullptr,
+                                             isLast ? origOp.getClampAttr() : nullptr, origOp.getOutputPaddingAttr(),
+                                             origOp.getInputPaddingAttr())
                           ->getResult(0);
+        }
         rewriter.replaceOp(origOp, add);
 
     } else {
         auto conv = newConvs.front().getDefiningOp();
-        if (origOp.getPostOpAttr() != nullptr) {
-            conv->setAttr("post_op", origOp.getPostOpAttr());
+        if (const auto postOp = origOp.getPostOpAttr()) {
+            auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(conv);
+            VPUX_THROW_WHEN(layerWithPostOp == nullptr, "Cannot bind post-op to non-LayerWithPostOp operation: {0}",
+                            conv->getName());
+            layerWithPostOp.setPostOpAttr(postOp);
         }
         rewriter.replaceOp(origOp, conv->getResult(0));
     }

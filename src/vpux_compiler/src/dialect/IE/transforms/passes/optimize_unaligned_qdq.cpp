@@ -1,14 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp>
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/Dialect/Quant/QuantOps.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_OPTIMIZEUNALIGNEDQDQSEQ
@@ -125,7 +129,7 @@ void OptimizeUnalignedQDQSeqPass::safeRunOnFunc() {
         if (!affineReshape->hasOneUse()) {
             return true;
         }
-        const auto outType = affineReshape.getType().dyn_cast<vpux::NDTypeInterface>();
+        const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(affineReshape.getType());
         if (outType.getRank() != 4) {
             return true;
         }

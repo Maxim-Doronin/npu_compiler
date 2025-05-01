@@ -14,6 +14,7 @@
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/BuiltinTypes.h>
 
 #include <cmath>
@@ -281,7 +282,7 @@ mlir::Type vpux::changeAxis(mlir::Type perAxisQType, int32_t newAxis) {
 }
 
 mlir::quant::QuantizedType vpux::changeStorageType(mlir::quant::QuantizedType qType, mlir::Type storageType) {
-    VPUX_THROW_UNLESS(storageType.isa<mlir::IntegerType>(), "Cannot change storage type to non-integer type");
+    VPUX_THROW_UNLESS(mlir::isa<mlir::IntegerType>(storageType), "Cannot change storage type to non-integer type");
 
     if (qType.getStorageType() == storageType) {
         return qType;
@@ -309,6 +310,37 @@ mlir::quant::QuantizedType vpux::changeStorageType(mlir::quant::QuantizedType qT
     }
 
     VPUX_THROW("Unsupported original type: {0}", qType);
+}
+
+mlir::quant::QuantizedType vpux::changeExpressedType(mlir::quant::QuantizedType quantType, mlir::Type expressedType) {
+    return mlir::TypeSwitch<mlir::quant::QuantizedType, mlir::quant::QuantizedType>(quantType)
+            .Case<mlir::quant::QuantileQuantizedType>([&](const auto qType) {
+                return mlir::quant::QuantileQuantizedType::get(
+                        qType.getFlags(), qType.getStorageType(), qType.getQuantileType(), expressedType,
+                        qType.getQuantiles(), qType.getScale(), qType.getZeroPoint(), qType.getStorageTypeMin(),
+                        qType.getStorageTypeMax());
+            })
+            .Case<mlir::quant::UniformQuantizedType>([&](const auto qType) {
+                return mlir::quant::UniformQuantizedType::get(qType.getFlags(), qType.getStorageType(), expressedType,
+                                                              qType.getScale(), qType.getZeroPoint(),
+                                                              qType.getStorageTypeMin(), qType.getStorageTypeMax());
+            })
+            .Case<mlir::quant::QuantileQuantizedPerAxisType>([&](const auto qType) {
+                return mlir::quant::QuantileQuantizedPerAxisType::get(
+                        qType.getFlags(), qType.getStorageType(), qType.getQuantileType(), expressedType,
+                        qType.getQuantiles(), qType.getScales(), qType.getZeroPoints(), qType.getQuantizedDimension(),
+                        qType.getStorageTypeMin(), qType.getStorageTypeMax());
+            })
+            .Case<mlir::quant::UniformQuantizedPerAxisType>([&](const auto qType) {
+                return mlir::quant::UniformQuantizedPerAxisType::get(
+                        qType.getFlags(), qType.getStorageType(), expressedType, qType.getScales(),
+                        qType.getZeroPoints(), qType.getQuantizedDimension(), qType.getStorageTypeMin(),
+                        qType.getStorageTypeMax());
+            })
+            .Default([](const auto qType) {
+                VPUX_THROW("Unsupported original type: {0}", qType);
+                return nullptr;
+            });
 }
 
 bool vpux::canBeMerged(mlir::Type type1, mlir::Type type2) {
@@ -406,7 +438,7 @@ std::pair<Scales, ZeroPoints> vpux::extractScalesAndZeroPoints(mlir::Type tensor
 }
 
 Scales vpux::extractScalesOrDefault(mlir::Type elemType, double defaultScale) {
-    if (elemType == nullptr || !elemType.isa<mlir::quant::QuantizedType>()) {
+    if (elemType == nullptr || !mlir::isa<mlir::quant::QuantizedType>(elemType)) {
         return SmallVector{defaultScale};
     }
 
@@ -809,11 +841,11 @@ std::tuple<double, double, mlir::Type> vpux::getStorageParams(mlir::Type lowPrec
         const auto bitWidth = quantileFloatType.getWidth();
 
         // Although the quantile float representable range is [first_quantile, last_quantile], its storage type is a
-        // signed integer of the same bit-width. The storage range is set according to the storage type.
+        // unsigned integer of the same bit-width. The storage range is set according to the storage type.
         const auto storageType =
-                mlir::IntegerType::get(lowPrecisionType.getContext(), bitWidth, mlir::IntegerType::Signed);
-        const auto storageMin = mlir::quant::QuantizedType::getDefaultMinimumForInteger(/*isSigned=*/true, bitWidth);
-        const auto storageMax = mlir::quant::QuantizedType::getDefaultMaximumForInteger(/*isSigned=*/true, bitWidth);
+                mlir::IntegerType::get(lowPrecisionType.getContext(), bitWidth, mlir::IntegerType::Unsigned);
+        const auto storageMin = mlir::quant::QuantizedType::getDefaultMinimumForInteger(/*isSigned=*/false, bitWidth);
+        const auto storageMax = mlir::quant::QuantizedType::getDefaultMaximumForInteger(/*isSigned=*/false, bitWidth);
 
         return {storageMin, storageMax, storageType};
     }
@@ -845,6 +877,27 @@ bool vpux::isFloat8Quantized(mlir::Type type) {
 
     const auto storageType = qType.getStorageType();
     return isFloat8(storageType);
+}
+
+bool vpux::isNF4SpecQuantized(mlir::Type type) {
+    const auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type);
+    if (qType == nullptr) {
+        return false;
+    }
+    const auto bitWidth = qType.getStorageTypeIntegralWidth();
+    if (bitWidth != 4) {
+        return false;
+    }
+
+    if (const auto quantileUniformType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(qType)) {
+        return quantileUniformType.getQuantiles() == vpux::type::NF4Type::getSpecQuantiles();
+    }
+
+    if (const auto quantilePerAxisType = mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(qType)) {
+        return quantilePerAxisType.getQuantiles() == vpux::type::NF4Type::getSpecQuantiles();
+    }
+
+    return false;
 }
 
 mlir::FailureOr<int32_t> vpux::getQuantizedDimension(ShapeRef lowShape, ShapeRef highShape,
@@ -1012,7 +1065,7 @@ void vpux::getFakeQuantParams(mlir::quant::UniformQuantizedPerAxisType qElemType
 
 void vpux::getFakeQuantParams(vpux::NDTypeInterface qType, int64_t& levels, mlir::RankedTensorType& attrType,
                               mlir::DenseElementsAttr& rMinAttr, mlir::DenseElementsAttr& rMaxAttr) {
-    const auto qElemType = qType.getElementType().dyn_cast<mlir::quant::QuantizedType>();
+    const auto qElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(qType.getElementType());
     VPUX_THROW_WHEN(qElemType == nullptr, "Unsupported Quantized Type '{0}'", qType.getElementType());
 
     if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(qElemType)) {
@@ -1040,18 +1093,18 @@ void vpux::getFakeQuantParams(vpux::NDTypeInterface qType, int64_t& levels, mlir
     }
 }
 
-float vpux::fakeQuantize(float inVal, float inLow, float inHigh, float qLow, float qHigh, float fLevels) {
+double vpux::fakeQuantize(double inVal, double inLow, double inHigh, double qLow, double qHigh, int64_t levels) {
     if (inVal <= inLow) {
         return qLow;
     } else if (inVal > inHigh) {
         return qHigh;
     } else {
-        return std::round((inVal - inLow) / (inHigh - inLow) * (fLevels - 1)) / (fLevels - 1) * (qHigh - qLow) + qLow;
+        return std::round((inVal - inLow) / (inHigh - inLow) * (levels - 1)) / (levels - 1) * (qHigh - qLow) + qLow;
     }
 }
 
 mlir::Type vpux::rescaleUniformQuantizedType(const mlir::Type tensorType, const double factor) {
-    auto ndType = tensorType.cast<vpux::NDTypeInterface>();
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(tensorType);
     VPUX_THROW_UNLESS(ndType != nullptr, "Type {0} does not implement NDTypeInterface", tensorType);
     auto elemType = ndType.getElementType();
     auto uniformQElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elemType);

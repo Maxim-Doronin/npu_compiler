@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -110,7 +112,7 @@ bool isLastDimConcatable(ShapeRef shape1, ShapeRef shape2) {
 template <class ConcreteOp>
 bool isOutputCompatible(SmallVector<ConcreteOp>& ops) {
     auto refOp = ops.back();
-    auto refElemType = refOp->getResult(0).getType().template cast<vpux::NDTypeInterface>().getElementType();
+    auto refElemType = mlir::cast<vpux::NDTypeInterface>(refOp->getResult(0).getType()).getElementType();
     auto refShape = getShape(refOp->getResult(0));
     for (auto ind : irange(ops.size() - 1)) {
         auto op = ops[ind];
@@ -118,7 +120,7 @@ bool isOutputCompatible(SmallVector<ConcreteOp>& ops) {
             return false;
         }
 
-        auto outElementType = op->getResult(0).getType().template cast<vpux::NDTypeInterface>().getElementType();
+        auto outElementType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
         if (outElementType != refElemType) {
             return false;
         }

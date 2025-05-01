@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -99,7 +99,7 @@ mlir::LogicalResult ReorderRewriter::matchAndRewrite(IE::ReorderOp origOp, mlir:
     }
 
     auto output = layerWithPermute->getResult(0);
-    const auto origType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     if (origType == nullptr) {
         return matchFailed(_log.nest(), rewriter, origOp, "NCE task does not implement vpux::NDTypeInterface");
     }

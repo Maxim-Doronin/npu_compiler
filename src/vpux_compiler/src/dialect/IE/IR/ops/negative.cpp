@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include <mlir/IR/PatternMatch.h>
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 using namespace vpux;
@@ -18,9 +19,43 @@ mlir::LogicalResult vpux::IE::NegativeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = negative.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(negative.getInput().getType());
 
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 
     return mlir::success();
+}
+
+//
+// FoldNegative
+//
+
+namespace {
+
+class FoldNegative final : public mlir::OpRewritePattern<IE::NegativeOp> {
+public:
+    using mlir::OpRewritePattern<IE::NegativeOp>::OpRewritePattern;
+
+private:
+    mlir::LogicalResult matchAndRewrite(IE::NegativeOp origOp, mlir::PatternRewriter& rewriter) const final;
+};
+
+mlir::LogicalResult FoldNegative::matchAndRewrite(IE::NegativeOp origOp, mlir::PatternRewriter& /*rewriter*/) const {
+    auto prevOp = origOp.getInput().getDefiningOp<IE::NegativeOp>();
+    if (prevOp == nullptr) {
+        return mlir::failure();
+    }
+
+    origOp.replaceAllUsesWith(prevOp.getInput());
+    return mlir::success();
+}
+
+}  // namespace
+
+//
+// getCanonicalizationPatterns
+//
+
+void vpux::IE::NegativeOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns, mlir::MLIRContext* ctx) {
+    patterns.add<FoldNegative>(ctx);
 }

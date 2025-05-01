@@ -1,20 +1,17 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/utils/core/mem_size.hpp"
+#include "vpux_elf/utils/version.hpp"
 
-#include "vpux/utils/core/string_ref.hpp"
-
+#include <llvm/ADT/Hashing.h>
 #include <llvm/Support/Format.h>
-#include <mlir/IR/DialectImplementation.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Types.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
-
-#include <vpux_elf/utils/version.hpp>
 
 //
 // Hash

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/feasible_memory_scheduler_spilling.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
@@ -217,7 +218,7 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
                     auto layerOp = mlir::dyn_cast<VPUIP::LayerOpInterface>(op);
 
                     for (auto output : layerOp.getOutputs()) {
-                        const auto type = output.getType().dyn_cast<vpux::NDTypeInterface>();
+                        const auto type = mlir::dyn_cast<vpux::NDTypeInterface>(output.getType());
                         if (type == nullptr || type.getMemoryKind() != _memKind) {
                             continue;
                         }
@@ -488,8 +489,8 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
                 auto execOp = _depsInfo.getExecuteOpAtIndex(scheduledOps[schedOpIdx].op_);
                 // Check if buffer is used for an operation input
                 for (auto operand : execOp->getOperands()) {
-                    if (const auto asyncType = operand.getType().dyn_cast<mlir::async::ValueType>()) {
-                        const auto type = asyncType.getValueType().dyn_cast<vpux::NDTypeInterface>();
+                    if (const auto asyncType = mlir::dyn_cast<mlir::async::ValueType>(operand.getType())) {
+                        const auto type = mlir::dyn_cast<vpux::NDTypeInterface>(asyncType.getValueType());
                         if (type == nullptr || type.getMemoryKind() != _memKind) {
                             continue;
                         }
@@ -502,9 +503,9 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
                 }
                 // Check if buffer is used for an operation output
                 for (auto res : execOp.getBodyResults()) {
-                    auto resType = res.getType().dyn_cast<vpux::NDTypeInterface>();
-                    if (const auto asyncType = res.getType().dyn_cast<mlir::async::ValueType>()) {
-                        resType = asyncType.getValueType().dyn_cast<vpux::NDTypeInterface>();
+                    auto resType = mlir::dyn_cast<vpux::NDTypeInterface>(res.getType());
+                    if (const auto asyncType = mlir::dyn_cast<mlir::async::ValueType>(res.getType())) {
+                        resType = mlir::dyn_cast<vpux::NDTypeInterface>(asyncType.getValueType());
                     }
 
                     if (resType == nullptr || resType.getMemoryKind() != _memKind) {
@@ -636,7 +637,7 @@ SmallVector<mlir::Value> FeasibleMemorySchedulerSpilling::getAsyncResultsForBuff
     }
     for (auto& bufferToCheck : buffersToCheck) {
         for (auto bufferAlias : _aliasInfo.getAllAliases(bufferToCheck)) {
-            if (bufferAlias.getType().isa<mlir::async::ValueType>() &&
+            if (mlir::isa<mlir::async::ValueType>(bufferAlias.getType()) &&
                 bufferAlias.getDefiningOp() == opThatWasSpilled.getOperation()) {
                 asyncResults.push_back(bufferAlias);
             }
@@ -652,7 +653,8 @@ SmallVector<mlir::Value> FeasibleMemorySchedulerSpilling::getAsyncResultsForBuff
 
 mlir::Value FeasibleMemorySchedulerSpilling::getBufferFromAsyncResult(mlir::Value asyncResult) {
     const auto resultType = asyncResult.getType();
-    VPUX_THROW_UNLESS(resultType.isa<mlir::async::ValueType>(), "This is not async result. Got: '{0}'", resultType);
+    VPUX_THROW_UNLESS(mlir::isa<mlir::async::ValueType>(resultType), "This is not async result. Got: '{0}'",
+                      resultType);
     return _aliasInfo.getRoot(asyncResult);
 }
 
@@ -668,7 +670,7 @@ mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillWriteDmaOp(ml
     // type of source buffer that is to be spilled
     auto getSpillBufferType = [&](vpux::NDTypeInterface type) -> mlir::Type {
         auto spillType = type;
-        if (auto distBuffType = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto distBuffType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
             spillType = distBuffType.getCompactType();
         }
 
@@ -697,7 +699,7 @@ mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillWriteDmaOp(ml
         newBufferOp = builder.create<VPURT::Alloc>(spillWriteNameLoc, spillBufferType, nullptr, swizzlingKeyAttr);
     } else {
         newBufferOp =
-                builder.create<mlir::memref::AllocOp>(spillWriteNameLoc, spillBufferType.cast<mlir::MemRefType>());
+                builder.create<mlir::memref::AllocOp>(spillWriteNameLoc, mlir::cast<mlir::MemRefType>(spillBufferType));
     }
     auto newBufferResult = newBufferOp->getResult(0);
 
@@ -751,7 +753,7 @@ mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillReadDmaOp(mli
 
     // Get information about spill write returned memref type and prepare new one with proper memory location
     auto spillWriteResult = spillWriteExecOp.getBodyResults()[0];
-    auto spillWriteAsyncType = spillWriteResult.getType().dyn_cast<mlir::async::ValueType>();
+    auto spillWriteAsyncType = mlir::dyn_cast<mlir::async::ValueType>(spillWriteResult.getType());
 
     // Create buffer in first level memory to bring back spilled buffer
     mlir::OpBuilder builder(_allocOpInsertionPoint);
@@ -767,7 +769,7 @@ mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillReadDmaOp(mli
                                                    allocOp.getAlignmentAttr(), allocOp.getSwizzlingKeyAttr());
     } else {
         newBufferOp = builder.create<mlir::memref::AllocOp>(spillReadNameLoc,
-                                                            bufferToSpill.getType().cast<mlir::MemRefType>());
+                                                            mlir::cast<mlir::MemRefType>(bufferToSpill.getType()));
     }
     auto newBufferResult = newBufferOp->getResult(0);
 
@@ -884,7 +886,7 @@ unsigned int FeasibleMemorySchedulerSpilling::SpillUsersUpdate::getOperandIndexF
     unsigned int operandIndex = 0;
     bool operandFound = false;
     for (const auto& operand : spillResultUser.getOperands()) {
-        if (operand.getType().isa<mlir::async::ValueType>()) {
+        if (mlir::isa<mlir::async::ValueType>(operand.getType())) {
             if (operand == spilledAsyncResult) {
                 operandFound = true;
                 break;
@@ -1028,7 +1030,7 @@ void FeasibleMemorySchedulerSpilling::updateSpillWriteReadUsers(mlir::Value buff
     // Find asyncExecOps which have result corresponding to buffer that got spilled
     SmallVector<mlir::async::ExecuteOp> opsThatWereSpilled;
     for (auto bufferAlias : _aliasInfo.getAllAliases(bufferToSpill)) {
-        if (bufferAlias.getType().isa<mlir::async::ValueType>()) {
+        if (mlir::isa<mlir::async::ValueType>(bufferAlias.getType())) {
             if (auto execOpWithSpilledResult = mlir::dyn_cast<mlir::async::ExecuteOp>(bufferAlias.getDefiningOp())) {
                 if (execOpWithSpilledResult->isBeforeInBlock(spillReadExecOp)) {
                     opsThatWereSpilled.push_back(execOpWithSpilledResult);

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -58,8 +59,8 @@ private:
 
 mlir::LogicalResult ConvertShuffleChannelsPass::ShuffleChannelsOpConverter::matchAndRewrite(
         IE::ShuffleChannelsOp origOp, mlir::PatternRewriter& rewriter) const {
-    const auto inputShape = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getShape().raw();
-    const auto outShape = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getShape().raw();
+    const auto outShape = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getShape().raw();
     const auto axis = origOp.getAxis();
     const auto group = origOp.getGroup();
 

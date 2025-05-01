@@ -26,8 +26,10 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/RegionKindInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 //
 // Base classes
@@ -218,7 +220,8 @@ def VPUIP_GatherDMAOp :
             ]
         > {
     let summary = [{
-        Represents a gather operation using gather addressing mode of DMA for NPU40XX.
+        Represents a gather operation using gather addressing mode of DMA for VPU4.
+        See scatter-gather addressing in VPU4 HAS for more information.
     }];
 
     let arguments = (ins
@@ -521,7 +524,9 @@ def VPUIP_SyncDMAOp :
         UnitAttr:$is_out_of_order,
         UnitAttr:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
-        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
+        OptionalAttr<IntAttr>:$bar_prog_dma_at_page
+
     );
 
     let results = (outs
@@ -543,6 +548,62 @@ def VPUIP_SyncDMAOp :
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
+    }];
+
+    let hasVerifier = 1;
+}
+
+//
+// ReadOnlyDMAOp
+//
+
+def VPUIP_ReadOnlyDMAOp :
+        VPUIP_TaskOp<1, "ReadOnlyDMA",
+            [
+                ViewLikeOpInterface,
+                DotInterface,
+                DeclareOpInterfaceMethods<VPUIP_DMATypeOpInterface, ["getOutput","getOutputBuff"]>
+            ]
+        > {
+
+
+    let summary = "This operation represents a Read-Only DMA task, modeled as a singular DMA operation without an output. "
+                "The input is read and then discarded, with no result produced. The Read-Only mode is enabled via "
+                "`SWIDTH > 0 && DWIDTH == 0` at the descriptor level, handled in the VPUMI → VPUASM rewriter based on "
+                "output presence. As a result, certain code paths explicitly check for a missing output—either ignoring it "
+                "or throwing an error if an output is unexpectedly used. A verifier ensures no users consume this operation's (nonexistent) result."
+                "Possible usecases: DMA read-only support enables data reads without usage, aiding debugging, silicon workarounds, FIFO draining, DDR performance analysis, and MSC backup fill as a pseudo-prefetch.";
+
+
+    let arguments = (ins
+        AnyMemRef:$input,
+        OptionalAttr<IntAttr>:$port,
+        UnitAttr:$is_out_of_order,
+        UnitAttr:$is_critical,
+        OptionalAttr<IntAttr>:$dma_hwp_id,
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
+    );
+
+    let results = (outs
+        AnyMemRef:$results
+    );
+
+    let extraClassDeclaration = [{
+        static vpux::VPU::ExecutorKind getExecutorKind() {
+            return vpux::VPU::ExecutorKind::DMA_NN;
+        }
+
+        vpux::DotNodeColor getNodeColor() {
+            return vpux::DotNodeColor::GREEN;
+        }
+
+
+    }] # commonExtraClassDeclaration;
+
+    let assemblyFormat = [{
+        attr-dict
+        `inputs` `(` $input `:` type($input) `)`
+
     }];
 
     let hasVerifier = 1;
@@ -1080,10 +1141,10 @@ def VPUIP_SwKernelOp :
     let arguments = (ins
         SymbolRefAttr:$kernelFunction,
         Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_BoundedBuffer]>>:$inputs,
-        Variadic<MemRefOf<[SI32]>>:$dynamicInputShapes,
+        Variadic<AnyTypeOf<[MemRefOf<[SI32]>, VPUIP_DistributedBuffer]>>:$dynamicInputShapes,
         OptionalAttr<DenseI32ArrayAttr>:$dynamicInputShapesMap,
         Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_BoundedBuffer]>>:$output_buffs,
-        Variadic<MemRefOf<[SI32]>>:$dynamicOutputShapeBuffs,
+        Variadic<AnyTypeOf<[MemRefOf<[SI32]>, VPUIP_DistributedBuffer]>>:$dynamicOutputShapeBuffs,
         OptionalAttr<DenseI32ArrayAttr>:$dynamicOutputShapesMap,
         Optional<AnyTypeOf<[MemRefOf<[UI32]>, VPUIP_DistributedBuffer]>>:$profiling_data,
         OptionalAttr<IntAttr>:$tileIndex,
@@ -1093,7 +1154,7 @@ def VPUIP_SwKernelOp :
 
     let results = (outs
         Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_BoundedBuffer]>>:$results,
-        Variadic<MemRefOf<[SI32]>>:$dynamicOutputShapes,
+        Variadic<AnyTypeOf<[MemRefOf<[SI32]>,VPUIP_DistributedBuffer]>>:$dynamicOutputShapes,
         Optional<AnyTypeOf<[MemRefOf<[UI32]>, VPUIP_DistributedBuffer]>>:$profiling_output
     );
 
@@ -1470,12 +1531,12 @@ def VPUIP_NCEClusterTilingOp :
     let summary = "Operation that encapsulates details of tiling operation between clusters";
 
     let arguments = (ins
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$inputs,
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$output_buffs
+        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>>:$inputs,
+        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>>:$output_buffs
     );
 
     let results = (outs
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$results
+        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>>:$results
     );
 
     let regions = (region SizedRegion<1>:$body);
@@ -1586,7 +1647,7 @@ def VPUIP_SubViewOp :
     let summary = "Extract single subview from buffer";
 
     let arguments = (ins
-        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>:$source,
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>:$source,
 
         I64ArrayAttr:$static_offsets,
         I64ArrayAttr:$static_sizes,
@@ -1595,7 +1656,7 @@ def VPUIP_SubViewOp :
     );
 
     let results = (outs
-        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>:$result
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>:$result
     );
 
     let assemblyFormat = [{
@@ -2121,7 +2182,11 @@ def VPUIP_StorageElementTableOp :
         The following information is contained:
         - dataShape, dataElemType, dataStrides: information about the input data that
           is associated with this Storage Element Table
-        - seSize: the size of a Storage Element
+        - seSize: the size of a Storage Element; seSize can be either:
+            * an integer, in which case every seDepth is the same size, equal to the seSize value;
+            * an array of integers, in which case each seDepth might have a different size; currently
+              the only use case is having different seSize per cluster, therefore the seSize array should
+              ultimately have as many values as there are clusters used for the DPU op this SETable belongs to.
         - seDepth: the number of Storage Elements per depth
         - seAttr: information on how the input data is transformed
         - basePtrs: base pointers associated with each Storage Element pointer
@@ -2130,7 +2195,7 @@ def VPUIP_StorageElementTableOp :
     let arguments = (ins
         I64ArrayAttr:$dataShape,
         TypeAttr:$dataElemType,
-        IntAttr:$seSize,
+        AnyAttrOf<[IntAttr, I64ArrayAttr]>:$seSize,
         IntAttr:$seDepth,
         OptionalAttr<VPU_SEAttr>:$seAttr,
         OptionalAttr<I64ArrayAttr>:$dataStrides,
@@ -2481,14 +2546,13 @@ def VPUIP_ProfilingSectionOp :
         VPUIP_Op<
             "ProfilingSection",
             [
-                IsolatedFromAbove,
-                HasParent<"vpux::IE::DataInfoOp">
+                IsolatedFromAbove
             ]
         > {
     let summary = "Information about memory offset and size of engine specific profiling section";
 
     let description = [{
-        This operation is bound to `IE.DataInfo` operation and holds information about profiling section:
+        This operation is bound to `net.DataInfo` operation and holds information about profiling section:
           * Engine name
           * Start offset(bytes)
           * Section size(bytes)
@@ -2505,7 +2569,7 @@ def VPUIP_ProfilingSectionOp :
         attr-dict
     }];
 
-    let hasVerifier = 0;
+    let hasVerifier = 1;
 }
 
 //
@@ -2523,8 +2587,8 @@ def VPUIP_GroupBoundedBufferOp :
     let summary = "Creates a BoundedBuffer type by combining upper-bounded data buffer and a buffer with dynamic shape";
 
     let arguments = (ins
-        AnyTypeOf<[AnyMemRef]>:$data,
-        AnyTypeOf<[AnyMemRef]>:$dynamicShape
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$data,
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$dynamicShape
     );
 
     let results = (outs
@@ -2534,7 +2598,6 @@ def VPUIP_GroupBoundedBufferOp :
     let assemblyFormat = [{
         `(` operands `)` attr-dict `:` type(operands) `->` type(results)
     }];
-    let hasCanonicalizer = 1;
 }
 
 //
@@ -2558,8 +2621,8 @@ def VPUIP_UngroupBoundedBufferOp :
     );
 
     let results = (outs
-        AnyTypeOf<[AnyMemRef]>:$data,
-        AnyTypeOf<[AnyMemRef]>:$dynamicShape
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$data,
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$dynamicShape
     );
 
     let assemblyFormat = [{
@@ -2607,6 +2670,95 @@ def VPUIP_UpsamplingOp :
             return vpux::VPU::ExecutorKind::SHAVE_NN;
         }
     }] # VPUIP_InferLayerReturnTypes<1>.impl;
+}
+
+//
+// VPUIP_BinaryOp
+//
+
+def VPUIP_BinaryOp :
+        VPUIP_Op<
+            "Binary",
+            [
+                SingleBlock,
+                IsolatedFromAbove,
+                NoTerminator,
+                // must be directly under ModuleOp
+                HasParent<"mlir::ModuleOp">,
+                // disallow any other ops other than const.Rodata in body
+                Core_HasChild<["vpux::VPUIP::BinaryDataOp", "mlir::func::FuncOp"]>,
+                SymbolTable,
+                Symbol
+            ]
+        > {
+    let summary = "Container op that holds serialized ELF binary data and function call declarations in ELF binary";
+
+    let description = [{
+        This operation is a container that holds serialized ELF binary data.
+        Along with binary data, it holds external function declarations that represent
+        the entry point functions in serialized ELF compute function.
+
+        Example:
+
+        ``` MLIR
+        VPUIP.Binary (symbolTable) {
+            VPUIP.BinaryDataOp @kernel <object = "\7FELF\02\01\00\00\00\{{.*}}">
+            func.func private @kernel (...) -> (...)
+        }
+
+        ```
+    }];
+
+    let arguments = (ins SymbolNameAttr:$sym_name);
+    let regions = (region SizedRegion<1>:$body);
+
+    let assemblyFormat = [{
+        $sym_name $body attr-dict
+    }];
+
+    // we need a custom builder to add a single empty block
+    let skipDefaultBuilders = 1;
+    let builders = [
+        OpBuilder<(ins "mlir::StringRef":$sym_name), [{
+            $_state.getOrAddProperties<Properties>().sym_name = $_builder.getStringAttr(sym_name);
+            auto region = $_state.addRegion();
+            region->push_back(new mlir::Block());
+        }]>
+    ];
+}
+
+//
+// VPUIP_BinaryOp
+//
+
+def VPUIP_BinaryDataOp :
+        VPUIP_Op<
+            "BinaryData",
+            [
+                Symbol,
+                HasParent<"vpux::VPUIP::BinaryOp">
+            ]
+            > {
+  let summary = "An Op for storing serialized VPUIP binary objects.";
+
+  let description = [{
+    An Object attribute that holds binary string of serialized ELF data.
+    This binary object is lowered down to LLVM IR in host compilation pipeline
+  }];
+
+  let arguments = (ins
+        SymbolNameAttr:$sym_name,
+        VPUIP_ObjectAttr:$object
+    );
+
+  let builders = [
+    OpBuilder<(ins "mlir::StringRef":$name,
+                   "mlir::Attribute":$object)>,
+  ];
+
+  let assemblyFormat = [{
+    $sym_name attr-dict $object
+  }];
 }
 
 #endif

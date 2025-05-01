@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -62,7 +62,7 @@ uint64_t getTensorMode(mlir::Type type) {
                           std::is_same<REG_TYPE, NPUReg40XX::RegField_dma_acc_info_decompress_dtypeType>::value,
                   "getTensorMode: Unsupported template argument REG_TYPE");
 
-    if (auto quantized = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    if (auto quantized = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         return getTensorMode<REG_TYPE>(quantized.getStorageType());
     }
     if (std::is_same<REG_TYPE, NPUReg40XX::RegField_amodeType>::value ||
@@ -108,7 +108,7 @@ struct FieldsIDUStorageElementOp {
 
 template <typename Type_Fields, typename DpuInvariantDescriptorType>
 void lowerToRegIDUStorageElementOp(VPUIPDPU::IDUStorageElementOp op, DpuInvariantDescriptorType& descriptor) {
-    uint32_t seSize = op.getSeSize();
+    uint32_t seSize = checked_cast<uint32_t>(op.getSeSize());
 
     // TODO: refactor the code in the if-else below (properly define hard-coded values) - E#82002
     if ((seSize != 0) && ((seSize & (seSize - 1)) == 0)) {  // seSize power of 2
@@ -186,7 +186,7 @@ struct FieldsIDUInActivationsOp {
 template <typename Type_Fields, typename DpuInvariantDescriptorType>
 void lowerToRegIDUInActivationsOp(VPUIPDPU::IDUInActivationsOp op, DpuInvariantDescriptorType& descriptor) {
     auto inActivations = op.getInActivations();
-    auto inActivationsType = inActivations.getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto inActivationsType = mlir::cast<vpux::NDTypeInterface>(inActivations.getType()).getElementType();
     auto inActivationShape = getShape(inActivations);
     const auto dimY = inActivationShape[Dims4D::Act::H];
     const auto dimX = inActivationShape[Dims4D::Act::W];
@@ -298,7 +298,7 @@ void lowerToRegIDUWeightsOp(VPUIPDPU::IDUWeightsOp op, DpuInvariantDescriptorTyp
         };
 
         for (unsigned i = 0; i < quantilesLut.size(); ++i) {
-            double lutEntry = quantilesLut[i].dyn_cast<mlir::FloatAttr>().getValueAsDouble();
+            double lutEntry = mlir::dyn_cast<mlir::FloatAttr>(quantilesLut[i]).getValueAsDouble();
             quantilesLutValues[i] = getPalletModeBitValue(lutEntry, wmode);
         }
 
@@ -343,6 +343,7 @@ bool lowerToRegIDUWorkloadCfgOp(VPUIPDPU::IDUWorkloadCfgOp op, DpuInvariantDescr
         descriptor.template write<typename Type_Fields::Field_dw_inputType>(0b1);
         descriptor.template write<typename Type_Fields::Field_pool_wt_rd_disType>(0b1);
         descriptor.template write<typename Type_Fields::Field_dw_wt_sp_insType>(0b1);
+        descriptor.template write<typename Type_Fields::Field_dynamic_bw_enType>(0b1);
         break;
     case VPUIPDPU::IDUWorkloadType::AVEPOOL:
         descriptor.template write<typename Type_Fields::Field_workload_operationType>(0);
@@ -355,7 +356,7 @@ bool lowerToRegIDUWorkloadCfgOp(VPUIPDPU::IDUWorkloadCfgOp op, DpuInvariantDescr
     case VPUIPDPU::IDUWorkloadType::CONV:
         descriptor.template write<typename Type_Fields::Field_workload_operationType>(0);
         descriptor.template write<typename Type_Fields::Field_zm_inputType>(0b1);
-        descriptor.template write<typename Type_Fields::Field_dynamic_bw_enType>(1);
+        descriptor.template write<typename Type_Fields::Field_dynamic_bw_enType>(0b1);
         break;
     case VPUIPDPU::IDUWorkloadType::DWCONV:
         descriptor.template write<typename Type_Fields::Field_workload_operationType>(0);
@@ -406,9 +407,9 @@ struct FieldsIDUEltWiseCfgOp {
 template <typename Type_Fields, typename DpuInvariantDescriptorType>
 void lowerToRegIDUEltWiseCfgOp(VPUIPDPU::IDUEltWiseCfgOp op, DpuInvariantDescriptorType& descriptor) {
     descriptor.template write<typename Type_Fields::Field_elop_scale_aType>(
-            op.getElopScaleAAttr().dyn_cast<mlir::IntegerAttr>().getInt());
+            mlir::dyn_cast<mlir::IntegerAttr>(op.getElopScaleAAttr()).getInt());
     descriptor.template write<typename Type_Fields::Field_elop_scale_bType>(
-            op.getElopScaleBAttr().dyn_cast<mlir::IntegerAttr>().getInt());
+            mlir::dyn_cast<mlir::IntegerAttr>(op.getElopScaleBAttr()).getInt());
 }
 
 // MPEActivationBiasOp
@@ -653,7 +654,7 @@ void lowerToRegODUOutActivationsOp(VPUIPDPU::ODUOutActivationsOp op, DpuInvarian
     if (op.getDataWidth().has_value()) {
         dataWidth = static_cast<uint64_t>(op.getDataWidth().value());
     } else {
-        auto outActType = op.getOutActivations().getType().cast<mlir::MemRefType>().getElementType();
+        auto outActType = mlir::cast<mlir::MemRefType>(op.getOutActivations().getType()).getElementType();
         dataWidth = static_cast<uint64_t>(getDataBitWidth(outActType));
     }
 

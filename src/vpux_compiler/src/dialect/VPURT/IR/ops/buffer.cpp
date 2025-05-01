@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -48,7 +48,7 @@ void vpux::VPURT::DeclareBufferOp::build(mlir::OpBuilder& builder, ::mlir::Opera
 
 mlir::LogicalResult vpux::VPURT::DeclareBufferOp::verify() {
     const auto op = getOperation();
-    const auto type = getType().cast<vpux::NDTypeInterface>();
+    const auto type = mlir::cast<vpux::NDTypeInterface>(getType());
     const auto opSection = getSection();
 
     if (!VPURT::isMemoryCompatible(opSection, type)) {
@@ -65,7 +65,7 @@ mlir::LogicalResult vpux::VPURT::DeclareBufferOp::verify() {
 
     if (getSection() == VPURT::BufferSection::CMX_NN) {
         const auto checkSectionIndex = [&op, &type](ArrayRef<int64_t> sectionIdx) {
-            if (auto distributedType = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+            if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
                 const auto distribution = distributedType.getDistribution();
                 const auto numClusters = checked_cast<size_t>(distribution.getNumClusters().getInt());
                 if (numClusters != sectionIdx.size()) {
@@ -96,7 +96,7 @@ mlir::LogicalResult vpux::VPURT::DeclareBufferOp::verify() {
             }
 
             if (sectionIdx.size() > 1) {
-                if (!type.isa<VPUIP::DistributedBufferType>()) {
+                if (!mlir::isa<vpux::VPUIP::DistributedBufferType>(type)) {
                     return errorAt(
                             op, "Array of section indexes is supported only for distributed buffer type, op = {0}", op);
                 }
@@ -106,7 +106,7 @@ mlir::LogicalResult vpux::VPURT::DeclareBufferOp::verify() {
         };
 
         if (!maybeSectionIndex.has_value()) {
-            if (!type.isa<VPUIP::DistributedBufferType>()) {
+            if (!mlir::isa<vpux::VPUIP::DistributedBufferType>(type)) {
                 return errorAt(op, "Section index is missing");
             }
         } else {
@@ -149,7 +149,7 @@ void vpux::VPURT::DeclareBufferOp::serialize(elf::writer::BinaryDataSection<uint
 }
 
 size_t vpux::VPURT::DeclareBufferOp::getBinarySize() {
-    const auto type = getBuffer().getType().cast<vpux::NDTypeInterface>();
+    const auto type = mlir::cast<vpux::NDTypeInterface>(getBuffer().getType());
     return type.getTotalAllocSize().count();
 }
 

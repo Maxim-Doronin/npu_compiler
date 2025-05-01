@@ -140,6 +140,44 @@ def VPU_SEAttrInterface : AttrInterface<"SEAttr"> {
         >,
 
         InterfaceMethod<[{
+            Computes the Storage Element offsets for the given input data after applying
+            the transformation represented by the current attribute with seSize array.
+
+            For example, let's take an example of a nearest-neighbor interpolate attribute
+            with scale [2, 2] for data which has a 1x48x3x3xui8 type, compact strides and the
+            following array of Storage Element sizes of [32, 16]. The addresses of each Storage
+            Element for the data are:
+            ```
+                0x0    0x30   0x60
+                0x90   0xC0   0xF0
+                0x120  0x150  0x180
+            ```
+
+            The resulting offsets would be:
+            - seDepth 0 (size = 32):
+            ```
+                0x0   0x0   0x20  0x20  0x40  0x40
+                0x0   0x0   0x20  0x20  0x40  0x40
+                0x60  0x60  0x80  0x80  0xA0  0xA0
+                0x60  0x60  0x80  0x80  0xA0  0xA0
+                0xC0  0xC0  0xE0  0xE0  0x100  0x100
+                0xC0  0xC0  0xE0  0xE0  0x100  0x100
+            ```
+            - seDepth 1 (size = 16):
+            ```
+                0x0   0x0   0x10  0x10  0x20  0x20
+                0x0   0x0   0x10  0x10  0x20  0x20
+                0x30  0x30  0x40  0x40  0x50  0x50
+                0x30  0x30  0x40  0x40  0x50  0x50
+                0x60  0x60  0x70  0x70  0x80  0x80
+                0x60  0x60  0x70  0x70  0x80  0x80
+            ```
+            }],
+            "std::vector<int32_t>", "computeSEOffsetsWithMultiSeSize",
+            (ins "vpux::ShapeRef":$dataShape, "vpux::StridesRef":$dataStrides, "vpux::Byte":$elemSize, "ArrayRef<int64_t>":$seSize)
+        >,
+
+        InterfaceMethod<[{
             The attribute generates the input Storage Element pointers based on some internal parameters
             which represent a general input transformation. Beside these parameters, it may also contain
             some extra parameters that represent how to tile the transformed input obtained from the

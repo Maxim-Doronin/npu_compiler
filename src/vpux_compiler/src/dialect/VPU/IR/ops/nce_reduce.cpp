@@ -1,6 +1,7 @@
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
@@ -30,7 +31,23 @@ mlir::LogicalResult vpux::VPU::NCEReduceOp::inferReturnTypes(mlir::MLIRContext* 
     const auto input = reduce.getInput();
     auto axes = parseIntArrayAttr<int64_t>(reduce.getAxesAttr());
 
-    return VPU::inferReduceReturnTypes(loc, input, /*keep_dims*/ true, /*axes*/ axes, inferredReturnTypes);
+    return VPU::inferReduceReturnTypes(loc, input, /*keep_dims*/ true, /*axes*/ axes, inferredReturnTypes,
+                                       reduce.getInputPaddingAttr(), reduce.getOutputPaddingAttr());
+}
+
+mlir::LogicalResult vpux::VPU::NCEReduceOp::verify() {
+    const auto op = getOperation();
+
+    if (mlir::failed(IE::checkPadding(getInputPaddingAttr(), getInput().getType()))) {
+        return errorAt(op, "Input padding {0} incompatible with input type {1}", getInputPaddingAttr(),
+                       getInput().getType());
+    }
+    if (mlir::failed(IE::checkPadding(getOutputPaddingAttr(), getOutput().getType()))) {
+        return errorAt(op, "Output padding {0} incompatible with output type {1}", getOutputPaddingAttr(),
+                       getOutput().getType());
+    }
+
+    return mlir::success();
 }
 
 //
@@ -43,8 +60,8 @@ bool vpux::VPU::NCEReduceOp::isSupported(mlir::Operation* op, LogCb logCb, bool 
         return false;
     }
 
-    auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
 
     if (inputType.getRank() != 4 || outputType.getRank() != 4) {
         logCb(formatv("Only 4D tensors are supported"));

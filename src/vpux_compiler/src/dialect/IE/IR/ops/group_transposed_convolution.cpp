@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,12 +23,12 @@ mlir::LogicalResult vpux::IE::GroupTransposedConvolutionOp::inferReturnTypeCompo
         return mlir::failure();
     }
 
-    const auto inputType = groupTransposedConv.getInput().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupTransposedConv.getInput().getType());
     const auto inputShape = to_small_vector(inputType.getShape());
     const auto inputElemType = inputType.getElementType();
     const auto outputShape = groupTransposedConv.getOutputShape();
     const auto filterShape =
-            to_small_vector(groupTransposedConv.getFilter().getType().cast<NDTypeInterface>().getShape());
+            to_small_vector(mlir::cast<vpux::NDTypeInterface>(groupTransposedConv.getFilter().getType()).getShape());
 
     if (outputShape != nullptr) {
         return errorAt(loc, "Explicit output shape is not implemented");
@@ -38,14 +38,10 @@ mlir::LogicalResult vpux::IE::GroupTransposedConvolutionOp::inferReturnTypeCompo
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(groupTransposedConv.getPadsBegin());
     const auto windowStrides = parseIntArrayAttr<int64_t>(groupTransposedConv.getStrides());
     const auto windowDilations = parseIntArrayAttr<int64_t>(groupTransposedConv.getDilations());
-    const auto outputPadding = parseIntArrayAttr<int64_t>(groupTransposedConv.getOutputPadding());
+    const auto outputPadding = parseIntArrayAttr<int64_t>(groupTransposedConv.getSpatialOutputPadding());
 
     auto mlirOutputShape = inferTransposedGroupConvBackpropOutputShape(
             inputShape, filterShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowDilations, outputPadding);
-
-    if (groupTransposedConv.getOutputChannels().has_value()) {
-        mlirOutputShape[Dims4D::Act::C.ind()] = groupTransposedConv.getOutputChannels().value();
-    }
 
     inferredReturnShapes.emplace_back(mlirOutputShape, inputElemType);
 

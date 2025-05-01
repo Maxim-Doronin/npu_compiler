@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/conversion.hpp"
 
+#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -23,6 +24,7 @@ void vpux::buildLowerIE2IERTPipeline(mlir::OpPassManager& pm, Logger log) {
 
     pm.addPass(createBufferizeIEPass(log));
     pm.addPass(createOneShotBufferizeVPU2VPUIPPass());
+    pm.addPass(VPUIP::createWrapVPUIPOpsInNCEClusterTilingPass(log));
     pm.addPass(createAddBuffersForNetResults(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 }

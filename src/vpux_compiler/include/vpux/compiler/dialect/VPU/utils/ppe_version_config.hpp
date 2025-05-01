@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,11 +15,25 @@ class PpeVersionConfig {
 private:
     static std::unique_ptr<IPpeFactory>& _getFactory();
 
+    static std::mutex& _getPpeFactoryMutex() {
+        static std::mutex mtx;
+        return mtx;
+    }
+
 public:
     template <typename ConcreteFactoryT>
     static void setFactory() {
-        Logger::global().info("Changed PpeFectory instance");
-        _getFactory() = std::make_unique<ConcreteFactoryT>();
+        // Note: Multi-threaded compilation scenarios can concurrently call setFactory in the same process.
+        // A mutex prevents data races, but switching between factory types can lead to undefined behavior, since the
+        // factory object is shared for all compilation threads. In other words, compiling models for platforms with
+        // different PPE factories on separate threads, but part of the same process, is not supported with the current
+        // PPE factory design
+        std::lock_guard lock(_getPpeFactoryMutex());
+        const auto alreadyInit = dynamic_cast<ConcreteFactoryT*>(_getFactory().get()) != nullptr;
+        if (!alreadyInit) {
+            _getFactory() = std::make_unique<ConcreteFactoryT>();
+            Logger::global().info("Changed PpeFactory instance");
+        }
     }
 
     static const IPpeFactory& getFactory();

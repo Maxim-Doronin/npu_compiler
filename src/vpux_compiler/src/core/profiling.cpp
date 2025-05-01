@@ -8,6 +8,7 @@
 
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 using namespace vpux;
 
@@ -74,7 +75,7 @@ DMAProfilingMode vpux::getDMAProfilingMode(VPU::ArchKind arch, const std::string
 }
 
 mlir::BlockArgument vpux::addNewProfilingOutput(mlir::MLIRContext* ctx, mlir::func::FuncOp& netFunc,
-                                                IE::CNNNetworkOp& netOp, mlir::MemRefType outputType,
+                                                net::NetworkInfoOp& netInfo, mlir::MemRefType outputType,
                                                 profiling::ExecutorType execType) {
     const auto name = convertExecTypeToName(execType);
     //
@@ -87,22 +88,22 @@ mlir::BlockArgument vpux::addNewProfilingOutput(mlir::MLIRContext* ctx, mlir::fu
     auto newFunctionType = mlir::FunctionType::get(ctx, newInputsTypes, newResultTypes);
     netFunc.setType(newFunctionType);
 
-    // If you hit this, IR have CNNNetworkOp without profilingOutputInfo region
-    VPUX_THROW_WHEN(netOp.getProfilingOutputsInfo().empty(), "Could not add profiling output: no region added");
+    // If you hit this, IR have NetworkInfoOp without profilingOutputInfo region
+    VPUX_THROW_WHEN(netInfo.getProfilingOutputsInfo().empty(), "Could not add profiling output: no region added");
 
-    const auto ndOutputType = outputType.cast<vpux::NDTypeInterface>();
+    const auto ndOutputType = mlir::cast<vpux::NDTypeInterface>(outputType);
 
     // Adding output to the user info
     auto outputUserResult =
             getTensorType(ndOutputType.getShape(), ndOutputType.getElementType(), ndOutputType.getDimsOrder(), nullptr);
-    auto userInfoBuilder = mlir::OpBuilder::atBlockEnd(&netOp.getProfilingOutputsInfo().front().front());
-    userInfoBuilder.create<IE::DataInfoOp>(mlir::NameLoc::get(mlir::StringAttr::get(ctx, "profilingDataOutputInfo")),
-                                           mlir::StringAttr::get(ctx, name), mlir::TypeAttr::get(outputUserResult),
-                                           /*OptionalAttr originalShape*/ nullptr,
-                                           /*OptionalAttr friendlyName*/ nullptr,
-                                           /*OptionalAttr inputName*/ nullptr,
-                                           /*OptionalAttr tensorNames*/ nullptr,
-                                           /*profilingSectionsCount=*/0);
+    auto userInfoBuilder = mlir::OpBuilder::atBlockEnd(&netInfo.getProfilingOutputsInfo().front().front());
+    userInfoBuilder.create<net::DataInfoOp>(mlir::NameLoc::get(mlir::StringAttr::get(ctx, "profilingDataOutputInfo")),
+                                            mlir::StringAttr::get(ctx, name), mlir::TypeAttr::get(outputUserResult),
+                                            /*OptionalAttr originalShape*/ nullptr,
+                                            /*OptionalAttr friendlyName*/ nullptr,
+                                            /*OptionalAttr inputName*/ nullptr,
+                                            /*OptionalAttr tensorNames*/ nullptr,
+                                            /*profilingSectionsCount=*/0);
 
     const mlir::Location suffixLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, "profiling_" + name));
     const auto argLoc = mlir::FusedLoc::get(ctx, {netFunc.getLoc(), suffixLoc});
@@ -146,14 +147,14 @@ bool vpux::isDmaHwpUsedInVPURT(mlir::ModuleOp& module) {
     if (vpux::VPU::getArch(module) < vpux::VPU::ArchKind::NPU40XX) {
         return false;
     }
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp func;
-    IE::CNNNetworkOp::getFromModule(module, netOp, func);
+    net::NetworkInfoOp::getFromModule(module, netInfo, func);
     return vpux::isDmaHwpUsedInVPURT(func);
 }
 
-bool vpux::isProfilingEnabled(IE::CNNNetworkOp netOp) {
-    auto profilingOutputsInfo = netOp.getProfilingOutputsDataInfo();
+bool vpux::isProfilingEnabled(net::NetworkInfoOp netInfo) {
+    auto profilingOutputsInfo = netInfo.getProfilingOutputsDataInfo();
     VPUX_THROW_WHEN(profilingOutputsInfo.size() > 1, "Unexpected number of profiling outputs (expected 1, got {0})",
                     profilingOutputsInfo.size());
     return profilingOutputsInfo.size() > 0;
@@ -161,16 +162,16 @@ bool vpux::isProfilingEnabled(IE::CNNNetworkOp netOp) {
 
 std::optional<VPUIP::ProfilingSectionOp> vpux::getProfilingSection(mlir::ModuleOp module,
                                                                    profiling::ExecutorType secType) {
-    if (module.getOps<IE::CNNNetworkOp>().empty()) {
+    if (module.getOps<net::NetworkInfoOp>().empty()) {
         return {};
     }
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(module, netOp, netFunc);
-    if (!isProfilingEnabled(netOp)) {
+    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    if (!isProfilingEnabled(netInfo)) {
         return {};
     }
-    auto profilingOutputInfo = *netOp.getProfilingOutputsInfo().front().getOps<IE::DataInfoOp>().begin();
+    auto profilingOutputInfo = *netInfo.getProfilingOutputsInfo().front().getOps<net::DataInfoOp>().begin();
 
     auto& sections = profilingOutputInfo.getSections().front().front();
     for (VPUIP::ProfilingSectionOp section : sections.getOps<VPUIP::ProfilingSectionOp>()) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,10 +20,12 @@ mlir::LogicalResult vpux::IE::GatherNDOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = gatherND.getInput().getType().cast<mlir::ShapedType>();
-    const auto inputShape = inType.getShape();
-    const auto indicesShape = gatherND.getIndices().getType().cast<mlir::ShapedType>().getShape();
-
+    const auto inType = mlir::cast<mlir::ShapedType>(gatherND.getInput().getType());
+    auto originalShapeOptional = gatherND.getOriginalShape();
+    vpux::Shape inputShape = originalShapeOptional.has_value()
+                                     ? vpux::Shape(parseIntArrayAttr<int64_t>(originalShapeOptional.value()))
+                                     : vpux::Shape(inType.getShape());
+    const auto indicesShape = mlir::cast<mlir::ShapedType>(gatherND.getIndices().getType()).getShape();
     const auto batchDims = gatherND.getBatchDims();
     const auto lastIndices = indicesShape.back();
     const auto inputRank = static_cast<int64_t>(inputShape.size());
@@ -45,10 +47,14 @@ mlir::LogicalResult vpux::IE::GatherNDOp::inferReturnTypeComponents(
 
 mlir::LogicalResult vpux::IE::GatherNDOp::verify() {
     const auto op = getOperation();
-    const auto inType = getInput().getType().cast<mlir::ShapedType>();
-    const auto inputShape = inType.getShape();
-    const auto indicesShape = getIndices().getType().cast<mlir::ShapedType>().getShape();
+    const auto inType = mlir::cast<mlir::ShapedType>(getInput().getType());
+    auto originalShapeOptional = getOriginalShape();
 
+    vpux::Shape inputShape = originalShapeOptional.has_value()
+                                     ? vpux::Shape(parseIntArrayAttr<int64_t>(originalShapeOptional.value()))
+                                     : vpux::Shape(inType.getShape());
+
+    const auto indicesShape = mlir::cast<mlir::ShapedType>(getIndices().getType()).getShape();
     const auto batchDims = getBatchDims();
     const auto lastIndices = indicesShape.back();
     const auto inputRank = static_cast<int64_t>(inputShape.size());
@@ -67,10 +73,19 @@ mlir::LogicalResult vpux::IE::GatherNDOp::verify() {
     }
 
     for (size_t i = 0; i < static_cast<size_t>(batchDims); i++) {
-        if (inputShape[i] != indicesShape[i]) {
+        if (inputShape[Dim(i)] != indicesShape[i]) {
             return errorAt(op, "Batch dimensions of data and indices must be the same");
         }
     }
 
     return mlir::success();
+}
+
+//
+// build
+//
+
+void vpux::IE::GatherNDOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state, ::mlir::Value input,
+                                 ::mlir::Value indices, ::mlir::IntegerAttr batch_dims) {
+    build(builder, state, input, indices, batch_dims, /*original_shape=*/{});
 }

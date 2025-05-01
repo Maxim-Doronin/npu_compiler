@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -35,11 +35,11 @@ namespace {
 template <typename T, typename D>
 mlir::Value fftGetTwiddleFactors(mlir::Location loc, T op, ArrayRef<int64_t> axes, ArrayRef<int64_t> signalSize,
                                  mlir::Type dtype, D /*elementType*/, mlir::PatternRewriter& rewriter) {
-    const auto outType = op.getOutput().getType().template cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     auto shape = to_small_vector(outType.getShape());
     // full RDFT last axis shape size need
     if (mlir::isa<VPU::RDFTOp>(op)) {
-        const auto inType = op.getInput().getType().template cast<vpux::NDTypeInterface>();
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
         shape = to_small_vector(inType.getShape());
         for (size_t i = 0; i < axes.size(); ++i) {
             if (signalSize[i] != -1) {
@@ -81,7 +81,7 @@ mlir::Value fftGetTwiddleFactorsByType(T op, ArrayRef<int64_t> axes, ArrayRef<in
                                        mlir::PatternRewriter& rewriter) {
     auto* ctx = op->getContext();
     // produce constant twiddle factors with ouput type precision. Keep consistent precision.
-    const auto outType = op.getOutput().getType().template cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     auto outElementType = outType.getElementType();
     if (outElementType.isF16()) {
         vpux::type::float16 elementType = 0;

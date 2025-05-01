@@ -1,10 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/conversion.hpp"
-#include "vpux/compiler/conversion/passes/VPUMI37XX2VPUASM/symbolization_pattern.hpp"
 #include "vpux/compiler/conversion/passes/VPUMI37XX2VPUASM/symbolization_type_converter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI37XX2VPUASM/barrier_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI37XX2VPUASM/declare_buffer_rewriter.hpp"
@@ -20,12 +19,10 @@
 #include "vpux/compiler/conversion/rewriters/VPUMI37XX2VPUASM/kernel_range_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI37XX2VPUASM/kernel_text_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI37XX2VPUASM/mapped_inference_rewriter.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
-#include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/symbolization.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -57,7 +54,7 @@ private:
 };
 
 bool ConvertVPUMI37XX2VPUASMPass::isDeclareBufferDistributed(VPURT::DeclareBufferOp op) {
-    if (!op.getType().isa<VPUIP::DistributedBufferType>())
+    if (!mlir::isa<vpux::VPUIP::DistributedBufferType>(op.getType()))
         return false;
 
     auto res = op.getResult();
@@ -73,9 +70,8 @@ void ConvertVPUMI37XX2VPUASMPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     auto& ctx = getContext();
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp cnnOp;
-
-    IE::CNNNetworkOp::getFromModule(moduleOp, cnnOp, netFunc);
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
     llvm::DenseMap<mlir::Value, mlir::SymbolRefAttr> symbolNameMappings;
     std::unordered_map<ELF::SectionSignature, ELF::ElfSectionInterface> sectionMap;

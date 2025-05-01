@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/performance_metrics.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/frequency_table.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/utils/profiling/parser/freq.hpp"
 
 namespace vpux {
@@ -49,22 +50,22 @@ SmallVector<SmallVector<uint64_t>> getBWTicks(mlir::ModuleOp module) {
     // inferenceTime table will be zero defaultly when InferenceExecutionAnalysisPass disabled
     // In this way the runtime will be able to use measured ticks instead
     size_t inferenceTimebyDPUCycle = 0;
-    vpux::IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    vpux::IE::CNNNetworkOp::getFromModule(module, netOp, netFunc);
-    if (netOp.getInferenceTiming().has_value()) {
-        inferenceTimebyDPUCycle = netOp.getInferenceTiming().value();
+    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    if (netInfo.getInferenceTiming().has_value()) {
+        inferenceTimebyDPUCycle = netInfo.getInferenceTiming().value();
     } else {
-        vpux::Logger::global().warning("CNNNetworkOp {0} doesn't have value in InferenceTiming attribute. Will use "
+        vpux::Logger::global().warning("NetworkInfoOp {0} doesn't have value in InferenceTiming attribute. Will use "
                                        "default InferenceTiming and activity factor value instead",
-                                       netOp);
+                                       netInfo);
     }
 
     // Get corresponding dpu freq (MHz) from vpunn to parse inferenceTimebyDPUCycle
     const auto arch = VPU::getArch(module);
     size_t dpuBaseFreq = VPU::getDpuFrequency(arch, VPU::getRevisionID(module));
     // Convert inference ticks by getProfClk
-    auto profClk = arch == VPU::ArchKind::NPU40XX ? profiling::ProfClk40XX::PROF_CLK_DEFAULT_VALUE_MHZ
+    auto profClk = arch >= VPU::ArchKind::NPU40XX ? profiling::ProfClk40XX::PROF_CLK_DEFAULT_VALUE_MHZ
                                                   : profiling::ProfClk37XX::PROF_CLK_DEFAULT_VALUE_MHZ;
     auto freqTable = VPU::getFrequencyTable(arch);
     auto freqBase = freqTable().base;

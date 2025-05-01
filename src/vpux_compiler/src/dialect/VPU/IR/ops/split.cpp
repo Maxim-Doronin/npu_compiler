@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,7 +15,7 @@ namespace {
 Dim normalizeAxis(VPU::SplitOpAdaptor split) {
     VPUX_THROW_UNLESS(split.getAxisValue().has_value(), "Got non constant axis");
 
-    const auto inType = split.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(split.getInput().getType());
     const auto inRank = inType.getRank();
 
     auto axisInd = split.getAxisValue().value();
@@ -42,7 +42,7 @@ mlir::FailureOr<Dim> extractAxis(mlir::Location loc, VPU::SplitOpAdaptor split) 
             return errorAt(loc, "Axis value must be a scalar");
         }
 
-        const auto inType = split.getInput().getType().cast<vpux::NDTypeInterface>();
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(split.getInput().getType());
         const auto inRank = inType.getRank();
 
         const auto axisContent = axisConst.getContent();
@@ -77,7 +77,7 @@ mlir::LogicalResult vpux::VPU::SplitOp::inferReturnTypes(mlir::MLIRContext* ctx,
         return mlir::failure();
     }
 
-    const auto inType = split.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(split.getInput().getType());
 
     const auto axis = extractAxis(loc, split);
     if (mlir::failed(axis)) {
@@ -86,7 +86,7 @@ mlir::LogicalResult vpux::VPU::SplitOp::inferReturnTypes(mlir::MLIRContext* ctx,
 
     const auto num_splits = split.getNumSplits();
 
-    auto outShape = inType.cast<vpux::NDTypeInterface>().getShape().toValues();
+    auto outShape = mlir::cast<vpux::NDTypeInterface>(inType).getShape().toValues();
     if ((outShape[*axis] < num_splits) || (outShape[*axis] % num_splits != 0)) {
         return errorAt(loc, "Unsupported num_splits parameter");
     }
@@ -105,13 +105,13 @@ mlir::LogicalResult vpux::VPU::SplitOp::inferReturnTypes(mlir::MLIRContext* ctx,
 //
 
 mlir::LogicalResult vpux::VPU::SplitOp::verify() {
-    const auto inType = getInput().getType().dyn_cast<VPU::DistributedTypeInterface>();
+    const auto inType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(getInput().getType());
     if (inType != nullptr && inType.containsDistributedTypes()) {
         return errorAt(*this, "Split op cannot have Distributed input type", inType);
     }
 
     for (const auto& output : getOutputs()) {
-        auto outType = output.getType().dyn_cast<VPU::DistributedTypeInterface>();
+        auto outType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(output.getType());
         if (outType != nullptr && outType.containsDistributedTypes()) {
             return errorAt(*this, "Split op cannot have Distributed output type", outType);
         }

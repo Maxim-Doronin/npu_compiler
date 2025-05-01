@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -65,7 +67,7 @@ mlir::LogicalResult ConvertGatherToSlicePass::GatherConverter::matchAndRewrite(I
 
     const auto axisVal = gatherOp.getAxisValue().value();
 
-    const auto inType = gatherOp.getInput().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getInput().getType());
     const auto inputShape = inType.getShape();
     auto staticOffsets = SmallVector<int64_t>(inputShape.size(), 0);
     staticOffsets[axisVal] = indicesVal;

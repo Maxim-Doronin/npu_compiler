@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/dynamic_shape_propagation.hpp"
+#include "vpux/utils/core/error.hpp"
 
 using namespace vpux;
 
@@ -26,10 +29,21 @@ mlir::LogicalResult vpux::VPU::DynamicTileOp::inferReturnTypes(mlir::MLIRContext
     const auto outShape = parseIntArrayAttr<int64_t>(tile.getOutputShapeAttr());
     const auto outBounds = parseIntArrayAttr<int64_t>(tile.getOutputBoundsAttr());
 
-    auto outType = inType.changeShape(Shape(outShape));
+    auto typeComponents = TypeComponents().setDimsOrder(DimsOrder::fromNumDims(outShape.size()));
 
-    inferredReturnTypes.push_back(
-            outType.cast<vpux::BoundedTypeInterface>().changeBounds(getIntArrayAttr(ctx, outBounds)));
+    const auto isDynamicDim = [](int64_t dim) {
+        return dim == mlir::ShapedType::kDynamic;
+    };
+
+    // DynamicTile might have static outShape
+    if (llvm::none_of(outShape, isDynamicDim)) {
+        typeComponents.setShape(Shape(outShape)).setBounds({});
+    } else {
+        assignDynamicTypeComponents(typeComponents, tile.getBoundsRepresentation(), outShape, outBounds);
+    }
+
+    auto outType = inType.changeTypeComponents(typeComponents);
+    inferredReturnTypes.push_back(outType);
 
     return mlir::success();
 }

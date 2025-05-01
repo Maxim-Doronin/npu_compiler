@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,10 +25,10 @@ mlir::LogicalResult vpux::Const::ReshapeAttr::verify(FuncRef<mlir::InFlightDiagn
     }
 
     for (const auto dimAttr : shape.getValue()) {
-        if (!dimAttr.isa<mlir::IntegerAttr>()) {
+        if (!mlir::isa<mlir::IntegerAttr>(dimAttr)) {
             return printTo(emitError(), "Got non-integer value '{0}' in 'shape' for 'ReshapeAttr'", dimAttr);
         }
-        if (dimAttr.cast<mlir::IntegerAttr>().getInt() <= 0) {
+        if (mlir::cast<mlir::IntegerAttr>(dimAttr).getInt() <= 0) {
             return printTo(emitError(), "Got unsupported dimension value '{0}' in 'shape' for 'ReshapeAttr'", dimAttr);
         }
     }

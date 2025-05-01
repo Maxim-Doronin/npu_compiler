@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -91,9 +91,9 @@ mlir::LogicalResult vpux::VPU::NCEConvolutionOp::verify() {
         return mlir::failure();
     }
 
-    const auto inputType = getInput().getType().cast<NDTypeInterface>();
-    const auto outputType = getOutput().getType().cast<NDTypeInterface>();
-    const auto filterType = getFilter().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(getFilter().getType());
 
     const auto alignedFilterShape = filterType.getShape();
     const auto expectedAlignedFilterShape = inferAlignedFilterShape(inputType, outputType, filterType);
@@ -173,10 +173,6 @@ mlir::LogicalResult vpux::VPU::NCEConvolutionOp::inferReturnTypes(
     auto outputShape = to_small_vector(outputShapeNG.get_shape() | transformed([](size_t val) {
                                            return checked_cast<int64_t>(val);
                                        }));
-
-    if (op.getOutputChannels().has_value()) {
-        outputShape[Dims4D::Act::C.ind()] = op.getOutputChannels().value();
-    }
 
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto outputType =
@@ -262,7 +258,7 @@ bool vpux::VPU::NCEConvolutionOp::checkStrategyCompatibility(VPU::MultiClusterSt
         return isCompatible.value();
     }
 
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto outputDimsOrder = outputType.getDimsOrder();
     // Unsupported to broadcast the lowest dimension
     // Track E#120804
@@ -309,7 +305,7 @@ bool VPU::NCEConvolutionOp::isOperationSplitOverHeightCompatible(const vpux::Til
 
     auto nceOp = mlir::cast<NCEConvolutionOp>(getOperation());
     Shape inputShape = getShape(nceOp.getInput()).toValues();
-    auto inputType = nceOp.getInput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
     // If has custom output shape, infer the input shape
     if (outputShape != getShape(nceOp.getOutput())) {
         VPUX_THROW_UNLESS(offset != ShapeRef() && axis != ShapeRef(),
@@ -344,9 +340,9 @@ bool VPU::NCEConvolutionOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strate
                                                 SiblingOpsAnalysis& siblingsAnalysis, Byte reservedMem) {
     auto nceOp = mlir::cast<VPU::NCEConvolutionOp>(getOperation());
     auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(getOperation());
-    const auto outputType = nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     auto numClusters = VPU::getOptimalNumClusters(nceOp, outputType.getShape(), strategy);
-    auto output = getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto output = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     // These depend on a particular tile
     const auto OC = output.getShape()[Dims4D::Act::C];
@@ -377,7 +373,7 @@ bool VPU::NCEConvolutionOp::doesLayerChangeOutputAlignmentFitIntoCMX(
     auto nceOp = mlir::cast<NCEConvolutionOp>(getOperation());
     auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
-            nceOp, nceOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape(), strategy);
+            nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
     auto distributedInputType =
             getDistributedActivationTypeFromOp(nceOp, nceOp.getInput().getType(), numClusters, strategy);
     auto distributedFilterType =
@@ -394,7 +390,7 @@ vpux::NDTypeInterface vpux::VPU::NCEConvolutionOp::getDistributedTypeForOpOperan
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
     auto origOp = mlir::cast<NCEConvolutionOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
     auto* ctx = clusteredOp->getContext();
     if (operand.get() == origOp.getInput()) {
@@ -412,7 +408,7 @@ vpux::NDTypeInterface vpux::VPU::NCEConvolutionOp::getDistributedTypeForOpOperan
                                            hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getFilter()) {
         mlir::ArrayAttr weightAlignmentAttr = nullptr;
-        auto filterType = origOp.getFilter().getType().cast<vpux::NDTypeInterface>();
+        auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
         const auto weightsTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
         const auto weightsTensorNumTiles =
                 getIntArrayAttr(ctx, getWeightsTensorNumTiles(clusteredOp, filterType, numClusters, strategy));
@@ -424,7 +420,7 @@ vpux::NDTypeInterface vpux::VPU::NCEConvolutionOp::getDistributedTypeForOpOperan
                                            weightsTensorNumTiles, weightAlignmentAttr, strategy,
                                            hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getWeightsTable()) {
-        auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
         mlir::ArrayAttr weightAlignmentAttr = nullptr;
         const auto weightsTableTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
         const auto weightsTableTensorNumTiles =
@@ -447,7 +443,7 @@ vpux::NDTypeInterface vpux::VPU::NCEConvolutionOp::getDistributedTypeForOpOperan
 
 vpux::VPU::SparsitySupport vpux::VPU::NCEConvolutionOp::sparsitySupport() {
     // Super-dense mode does not support ODU sparsity
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     auto excludeMode = VPU::NCESparsity::bitwiseNot(VPU::SparsitySupport::NONE);
     if (VPU::NCESparsity::isSuperdenseRequired(outputType.getDimsOrder(), outputType.getShape(),
                                                outputType.getElementType())) {
@@ -460,7 +456,7 @@ vpux::VPU::SparsitySupport vpux::VPU::NCEConvolutionOp::sparsitySupport() {
 mlir::LogicalResult vpux::VPU::NCEConvolutionOp::verifyKernel(IE::ConvolutionOp origOp, Logger log) {
     log.setName("NCEInvariant");
 
-    if (origOp.getInput().getType().cast<vpux::NDTypeInterface>().getRank() != 4) {
+    if (mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getRank() != 4) {
         return mlir::failure();
     }
 

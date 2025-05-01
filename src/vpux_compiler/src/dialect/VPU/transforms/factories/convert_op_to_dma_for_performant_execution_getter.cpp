@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,5 +17,5 @@ std::unique_ptr<vpux::IConversionPassStrategy> vpux::VPU::createConvertOpToDMAFo
         return std::make_unique<arch40xx::ConvertOpToDMAForPerformantExecutionStrategy>();
     }
     // TODO : E#-118296 Other ops and architectures will be enabled.
-    VPUX_THROW("Currently ConvertOpToDMAForPerformantExecutionStrategy is available for NPU40XX arch");
+    VPUX_THROW("Currently ConvertOpToDMAForPerformantExecutionStrategy is available for NPU40XX+ arch");
 }

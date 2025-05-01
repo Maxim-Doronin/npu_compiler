@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,7 +21,7 @@ using namespace VPU;
 TilingStorage vpux::VPU::restoreTilingRegions(VPU::VerticalFusionOp vfOp, Logger log,
                                               const TilingOperationStorage::UPtr& opStorage) {
     auto storage = calculateTilingRegions(
-            vfOp, ArrayRef(parseIntArrayAttr<int64_t>(vfOp.getTilingStrategy().cast<mlir::ArrayAttr>())), log,
+            vfOp, ArrayRef(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(vfOp.getTilingStrategy()))), log,
             opStorage);
 
     VPUX_THROW_WHEN(mlir::failed(storage), "Restored tiling {0} of operation {1} is incorrect",
@@ -100,14 +100,22 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation
             const auto operand = op.value();
             const auto indexOp = op.index();
 
-            if (auto arg = operand.dyn_cast<mlir::BlockArgument>()) {
+            if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
                 storage.insert(arg.getArgNumber(), tileNumber, inputTiling.tiles[indexOp]);
                 log.trace("TileInfo inserted for argument {0} tile {1}, {2}", arg.getArgNumber(), tileNumber,
                           inputTiling.tiles[indexOp]);
                 continue;
             }
-            const auto oneTile = {inputTiling.tiles[indexOp]};
-            auto innerStorage = calculateTilingRegions(operand.getDefiningOp(), oneTile, log, opStorage,
+
+            auto oneTile = inputTiling.tiles[indexOp];
+            oneTile.isCompletedTile = tile.isCompletedTile;
+            if (!mlir::isa<VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp>(operation) ||
+                !mlir::isa_and_nonnull<VPU::InterpolateOp>(operand.getDefiningOp())) {
+                // The propagation of the tiling axis in the pattern `VPU.Interpolate -> VPU.NCE.XXXPool` leads to
+                // performance regressions in some models.
+                oneTile.axis = tile.axis;
+            }
+            auto innerStorage = calculateTilingRegions(operand.getDefiningOp(), {std::move(oneTile)}, log, opStorage,
                                                        numTile.value_or(item.index()));
 
             if (mlir::failed(innerStorage)) {
@@ -522,7 +530,7 @@ bool vpux::VPU::isCmxOperation(mlir::Operation* operation, const bool checkTilin
         return true;
     }
 
-    auto tiling = parseIntArrayAttr<int64_t>(operation->getAttr(tilingStrategy).cast<mlir::ArrayAttr>());
+    auto tiling = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy)));
     auto hasTiling = llvm::any_of(tiling, [](auto value) {
         return value > 1;
     });
@@ -548,7 +556,7 @@ bool vpux::VPU::isCmxOperation(mlir::Operation* operation, const bool checkTilin
         return checkNCEFunc(operation);
     }
 
-    const auto outputSize = operation->getResult(0).getType().cast<NDTypeInterface>().getTotalAllocSize();
+    const auto outputSize = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getTotalAllocSize();
 
     if (outputSize > VPU::getTotalCMXSize(operation)) {
         return false;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -156,7 +156,7 @@ void ConvertIEToVPUM2IPass::safeRunOnFunc() {
     auto module = getOperation();
     const auto arch = VPU::getArch(module);
     if (arch < VPU::ArchKind::NPU40XX) {
-        _log.trace("Convert to VPU-M2I Pass enabled only for NPU40XX devices. Got: {0}", arch);
+        _log.trace("Convert to VPU-M2I Pass enabled only for NPU40XX+ devices. Got: {0}", arch);
         return;
     }
 

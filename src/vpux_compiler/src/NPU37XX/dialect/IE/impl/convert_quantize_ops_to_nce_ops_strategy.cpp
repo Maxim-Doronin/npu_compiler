@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,12 +25,12 @@ namespace vpux::IE::arch37xx {
 mlir::Value buildDwWeights(const mlir::Location& loc, const int64_t OC, const mlir::Type& elementType,
                            mlir::PatternRewriter& rewriter) {
     const auto ctx = rewriter.getContext();
-    if (auto quantizeType = elementType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (auto quantizeType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elementType)) {
         const auto baseType = mlir::RankedTensorType::get({OC, 1, 1, 1}, mlir::Float16Type::get(ctx));
         const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vpux::type::float16(1.f)));
         const auto contentAttr = Const::ContentAttr::get(baseAttr);
         auto quantWeightsConstAttr = contentAttr.transform().castElemType(quantizeType).get();
-        const auto weightsType = contentAttr.getType().cast<vpux::NDTypeInterface>().changeElemType(quantizeType);
+        const auto weightsType = mlir::cast<vpux::NDTypeInterface>(contentAttr.getType()).changeElemType(quantizeType);
         return rewriter.create<Const::DeclareOp>(loc, weightsType, std::move(quantWeightsConstAttr));
     }
     if (elementType.isF16()) {
@@ -92,8 +92,8 @@ mlir::LogicalResult DequantizeToAddRewriter::matchAndRewrite(IE::DequantizeOp or
     const auto broadcastType =
             vpux::IE::AutoBroadcastTypeAttr::get(getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
-    auto inElemType = originOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
-    auto uniformQInElemType = inElemType.dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto inElemType = mlir::cast<vpux::NDTypeInterface>(originOp.getInput().getType()).getElementType();
+    auto uniformQInElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inElemType);
     const auto scale = uniformQInElemType.getScale();
     // originQElemType = <u8:fp32, scale>
     // newQElemType = <u8:fp32, scale / 2>
@@ -101,7 +101,7 @@ mlir::LogicalResult DequantizeToAddRewriter::matchAndRewrite(IE::DequantizeOp or
     const auto newScale = static_cast<double>(scale / 2.0);
     const auto zeroPoint = uniformQInElemType.getZeroPoint();
 
-    auto qType = inElemType.dyn_cast<mlir::quant::QuantizedType>();
+    auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(inElemType);
     auto outQuantizeElemType = mlir::quant::UniformQuantizedType::get(
             qType.getFlags(), qType.getStorageType(), qType.getExpressedType(), newScale, zeroPoint,
             qType.getStorageTypeMin(), qType.getStorageTypeMax());
@@ -135,7 +135,7 @@ private:
 
 mlir::LogicalResult DequantizeToDwRewriter::matchAndRewrite(IE::DequantizeOp originOp,
                                                             mlir::PatternRewriter& rewriter) const {
-    const auto origType = originOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(originOp.getInput().getType());
     const auto origShape = origType.getShape();
     const auto OC = origShape[Dims4D::Act::C];
     const auto ctx = rewriter.getContext();
@@ -153,7 +153,7 @@ mlir::LogicalResult DequantizeToDwRewriter::matchAndRewrite(IE::DequantizeOp ori
     rewriter.replaceOpWithNewOp<IE::GroupConvolutionOp>(
             originOp, originOp.getOutput().getType(), originOp.getInput(), quantWeightsOp,
             /*bias=*/nullptr, attrStrides, attrPadsBegin, attrPadsEnd, dilationsAttr, getIntAttr(ctx, OC),
-            /*post_opAttr=*/nullptr, /*clampAttr*/ nullptr, /*output_channels=*/nullptr, /*input_channels=*/nullptr);
+            /*post_opAttr=*/nullptr, /*clampAttr*/ nullptr, /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 
     return mlir::success();
 }
@@ -179,8 +179,8 @@ mlir::LogicalResult QuantizeToAddRewriter::matchAndRewrite(IE::QuantizeOp origin
     const auto broadcastType =
             vpux::IE::AutoBroadcastTypeAttr::get(getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
-    auto outElemType = originOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
-    auto uniformQOutElemType = outElemType.dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto outElemType = mlir::cast<vpux::NDTypeInterface>(originOp.getOutput().getType()).getElementType();
+    auto uniformQOutElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(outElemType);
     const auto scale = uniformQOutElemType.getScale();
     // originQElemType = <u8:fp32, scale>
     // newQElemType = <u8:fp32, scale * 2>
@@ -188,7 +188,7 @@ mlir::LogicalResult QuantizeToAddRewriter::matchAndRewrite(IE::QuantizeOp origin
     const auto newScale = static_cast<double>(scale * 2.0);
     const auto zeroPoint = uniformQOutElemType.getZeroPoint();
 
-    auto qType = outElemType.dyn_cast<mlir::quant::QuantizedType>();
+    auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(outElemType);
     auto quantizeElemType = mlir::quant::UniformQuantizedType::get(
             qType.getFlags(), qType.getStorageType(), qType.getExpressedType(), newScale, zeroPoint,
             qType.getStorageTypeMin(), qType.getStorageTypeMax());
@@ -220,7 +220,7 @@ private:
 
 mlir::LogicalResult QuantizeToDwRewriter::matchAndRewrite(IE::QuantizeOp originOp,
                                                           mlir::PatternRewriter& rewriter) const {
-    const auto origType = originOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(originOp.getInput().getType());
     const auto origShape = origType.getShape();
     const auto OC = origShape[Dims4D::Act::C];
     auto weights = buildDwWeights(originOp->getLoc(), OC, origType.getElementType(), rewriter);
@@ -234,7 +234,7 @@ mlir::LogicalResult QuantizeToDwRewriter::matchAndRewrite(IE::QuantizeOp originO
     rewriter.replaceOpWithNewOp<IE::GroupConvolutionOp>(
             originOp, originOp.getOutput().getType(), originOp.getInput(), weights,
             /*bias=*/nullptr, attrStrides, attrPadsBegin, attrPadsEnd, dilationsAttr, getIntAttr(ctx, OC),
-            /*post_opAttr=*/nullptr, /*clampAttr*/ nullptr, /*outputChannels=*/nullptr, /*input_channels=*/nullptr);
+            /*post_opAttr=*/nullptr, /*clampAttr*/ nullptr, /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 
     return mlir::success();
 }
@@ -244,13 +244,13 @@ mlir::LogicalResult QuantizeToDwRewriter::matchAndRewrite(IE::QuantizeOp originO
 //
 
 bool isPerChannelQuantizedType(mlir::Value val) {
-    auto elemType = val.getType().cast<vpux::NDTypeInterface>().getElementType();
-    auto perAxisType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+    auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
+    auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType);
     if (perAxisType == nullptr) {
         return false;
     }
 
-    auto rank = val.getType().cast<vpux::NDTypeInterface>().getRank();
+    auto rank = mlir::cast<vpux::NDTypeInterface>(val.getType()).getRank();
     if (rank != 4) {
         return false;
     }
@@ -271,7 +271,7 @@ void ConvertQuantizeOpsToNceOpsStrategy::prepareAvgPool(mlir::ConversionTarget& 
     // eltwise Add with self could shift values further away from 0.0 causing precision loss.
 
     toAvgPoolTarget.addDynamicallyLegalOp<IE::QuantizeOp>([&](IE::QuantizeOp quantizeOp) {
-        auto inType = quantizeOp.getInput().getType().cast<vpux::NDTypeInterface>();
+        auto inType = mlir::cast<vpux::NDTypeInterface>(quantizeOp.getInput().getType());
         auto inRank = inType.getRank();
 
         return isLegalQuantizeOp(quantizeOp, _canUseCMajor) || inRank != 4 ||
@@ -279,7 +279,7 @@ void ConvertQuantizeOpsToNceOpsStrategy::prepareAvgPool(mlir::ConversionTarget& 
                 !vpux::isFloat8Quantized(quantizeOp.getDstElemType()));
     });
     toAvgPoolTarget.addDynamicallyLegalOp<IE::DequantizeOp>([&](IE::DequantizeOp dequantizeOp) {
-        auto inType = dequantizeOp.getInput().getType().cast<vpux::NDTypeInterface>();
+        auto inType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
         auto inRank = inType.getRank();
 
         return isLegalDequantizeOp(dequantizeOp) || inRank != 4 ||
@@ -325,7 +325,7 @@ void ConvertQuantizeOpsToNceOpsStrategy::prepareQuantToDw(mlir::ConversionTarget
 
     quantToDwTarget.addDynamicallyLegalOp<IE::DequantizeOp>([&](IE::DequantizeOp dequantizeOp) {
         const auto isPerChannelQuantized = isPerChannelQuantizedType(dequantizeOp.getInput());
-        auto outElemmentType = dequantizeOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+        auto outElemmentType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getOutput().getType()).getElementType();
         return !isPerChannelQuantized || !outElemmentType.isF16() || hasConstProducer(dequantizeOp);
     });
 

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -62,8 +63,8 @@ mlir::Operation* getLastReshape(IE::FakeQuantizeOp fqOp) {
 bool matchFakeQuantReshapePattern(IE::FakeQuantizeOp fqOp) {
     // match [non-channel-aligned op] -> [optional Reshapes] -> [FQ] -> [Reshapes] -> [channel-aligned op]
     // swap to avoid redundant expand and permute ops
-    auto outType = fqOp.getOutput().getType().cast<vpux::NDTypeInterface>();
-    if (outType.getElementType().isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    auto outType = mlir::cast<vpux::NDTypeInterface>(fqOp.getOutput().getType());
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outType.getElementType())) {
         return false;
     }
 
@@ -84,7 +85,7 @@ bool matchFakeQuantReshapePattern(IE::FakeQuantizeOp fqOp) {
     }
 
     if (lastReshapeOp == nullptr ||
-        lastReshapeOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape()[Dims4D::Act::N] != 1) {
+        mlir::cast<vpux::NDTypeInterface>(lastReshapeOp->getResult(0).getType()).getShape()[Dims4D::Act::N] != 1) {
         // The batch size would be unrolled if moving the FQ after this Reshape
         return false;
     }
@@ -189,8 +190,8 @@ mlir::LogicalResult FakeQuantStridedSliceSwapper::matchAndRewrite(IE::FakeQuanti
                                                                   mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got FakeQuantize Operation '{1}'", getDebugName(), origOp->getLoc());
 
-    auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
-    if (outType.getElementType().isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outType.getElementType())) {
         _log.nest().trace("Per-Axis FakeQuantize is not supported '{0}'", origOp->getLoc());
         return mlir::failure();
     }

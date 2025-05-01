@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/layer_post_ops_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 namespace vpux {
@@ -20,8 +21,8 @@ bool checkForQuantization(mlir::Operation* op, mlir::Operation* postOp) {
     }
 
     // since FusePostOps is called also after LowPrecisionPipeline
-    const auto operandType = postOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    const auto isQuantizedElemType = operandType.getElementType().isa<mlir::quant::QuantizedType>();
+    const auto operandType = mlir::cast<vpux::NDTypeInterface>(postOp->getOperand(0).getType());
+    const auto isQuantizedElemType = mlir::isa<mlir::quant::QuantizedType>(operandType.getElementType());
 
     return (isFakeQuantizeOpOutput && isFakeQuantizeOpInput) || isQuantizedElemType;
 };
@@ -89,11 +90,11 @@ mlir::DictionaryAttr mergeClampAttrs(mlir::DictionaryAttr currentClampAttr, IE::
     double currentClampMin = 0, currentClampMax = 0;
 
     if (currentClampAttr.contains(maxId)) {
-        currentClampMax = currentClampAttr.get(maxId).dyn_cast<mlir::FloatAttr>().getValueAsDouble();
+        currentClampMax = mlir::dyn_cast<mlir::FloatAttr>(currentClampAttr.get(maxId)).getValueAsDouble();
     }
 
     if (currentClampAttr.contains(minId)) {
-        currentClampMin = currentClampAttr.get(minId).dyn_cast<mlir::FloatAttr>().getValueAsDouble();
+        currentClampMin = mlir::dyn_cast<mlir::FloatAttr>(currentClampAttr.get(minId)).getValueAsDouble();
     }
 
     const auto newMin = std::max(currentClampMin, minClampOp);
@@ -115,7 +116,7 @@ void setHWClampOp(mlir::Operation* mainOp, mlir::Operation* activationOp) {
     mlir::DictionaryAttr clampOpInfo;
 
     if (hasClampAttr) {
-        auto mainClampAttr = mainOp->getAttr("clamp").dyn_cast<mlir::DictionaryAttr>();
+        auto mainClampAttr = mlir::dyn_cast<mlir::DictionaryAttr>(mainOp->getAttr("clamp"));
         VPUX_THROW_UNLESS(mainClampAttr, "The clamp attribute is expected to be a DictionaryAttr at {0}",
                           mainOp->getLoc());
         clampOpInfo = mergeClampAttrs(mainClampAttr, maybeClampOp);

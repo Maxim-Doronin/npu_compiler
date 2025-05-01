@@ -8,6 +8,7 @@
 #include <mlir/Support/LogicalResult.h>
 #include <vpux/utils/core/error.hpp>
 #include "vpux/compiler/core/bounded_buffer.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -15,6 +16,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
@@ -26,6 +28,104 @@ namespace vpux::VPUIP {
 using namespace vpux;
 
 namespace {
+
+//
+// RemoveGroupUngroup
+//
+
+class RemoveGroupUngroupRewriter final : public mlir::OpRewritePattern<VPUIP::GroupBoundedBufferOp> {
+public:
+    RemoveGroupUngroupRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit)
+            : mlir::OpRewritePattern<VPUIP::GroupBoundedBufferOp>(ctx, benefit) {
+    }
+
+    mlir::LogicalResult matchAndRewrite(VPUIP::GroupBoundedBufferOp op,
+                                        mlir::PatternRewriter& /*rewriter*/) const override {
+        auto hasNonUngroupBoundedBufferUsers = llvm::any_of(op.getOutput().getUsers(), [](mlir::Operation* userOp) {
+            return !mlir::isa<VPUIP::UngroupBoundedBufferOp>(userOp);
+        });
+        if (hasNonUngroupBoundedBufferUsers) {
+            return mlir::failure();
+        }
+
+        // The pass will remove Group/Ungroup pairs
+        //
+        //   [data] [shape]
+        //      \     /
+        //  GroupBoundedBuffer
+        //         |
+        // UngroupBoundedBuffer
+        //      /     \.
+        //   [data] [shape]
+
+        const auto groupOperands = op.getOperands();
+        for (auto* ungroupOp : op.getOutput().getUsers()) {
+            for (const auto& ungroupResult : ungroupOp->getResults() | indexed) {
+                const auto ungroupResultIndex = ungroupResult.index();
+                VPUX_THROW_UNLESS(ungroupResultIndex < groupOperands.size(),
+                                  "UngroupBoundBufferOp '{0}' has more results than GroupBoundedBufferOp '{1}'",
+                                  op.getLoc(), ungroupOp->getLoc());
+
+                ungroupResult.value().replaceAllUsesWith(groupOperands[ungroupResultIndex]);
+            }
+        }
+        return mlir::success();
+    }
+};
+
+//
+// This rewriter removes extra copies of the shape of DynamicReshape input with onlySetShape set to 1,
+// since it is not used in the computation. Also it removes the copies of the shape as they are redundant.
+//
+
+class RemoveExtraShapeCopiesRewriter final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
+public:
+    RemoveExtraShapeCopiesRewriter(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefit)
+            : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx, benefit), _log(log) {
+    }
+
+    mlir::LogicalResult matchAndRewrite(VPUIP::SwKernelOp origOp, mlir::PatternRewriter& rewriter) const override {
+        const auto kernelName = getSwKernelEntryName(origOp);
+        auto args = kernelArgsRange(origOp);
+
+        bool isDynamicReshape = kernelName == "dynamic_reshape";
+        if (!isDynamicReshape) {
+            return mlir::failure();
+        }
+        bool onlySetShape = parseIntAttr<int64_t>(args[0]) != 0;
+        if (!onlySetShape) {
+            return mlir::failure();
+        }
+        if (origOp.getDynamicInputShapes().empty()) {
+            return mlir::failure();
+        }
+
+        // save shape of the dynamic reshape input before rewriting the op
+        auto unusedInputShape = origOp.getDynamicInputShapes()[0];
+
+        // update the op to remove the unused input shape
+        auto noDynamicInputShapeMap =
+                getIntArrayAttr(origOp.getContext(), SmallVector<int32_t>{ABSENT_DIMS_FLAG, ABSENT_DIMS_FLAG});
+        origOp->setAttr("dynamicInputShapesMap", noDynamicInputShapeMap);
+        origOp.getDynamicInputShapesMutable().assign(SmallVector<mlir::Value>{});
+
+        // remove copies of the unused input shape
+        SmallVector<mlir::Operation*> copyOps;
+        while (auto nextCopyOp = unusedInputShape.getDefiningOp<VPUIP::CopyOp>()) {
+            auto copyOp = nextCopyOp;
+            unusedInputShape = copyOp.getInput();
+            copyOps.push_back(copyOp);
+        }
+        for (auto copyOp : copyOps) {
+            rewriter.eraseOp(copyOp);
+        }
+
+        return mlir::success();
+    }
+
+private:
+    Logger _log;
+};
 
 //
 // UngroupBoundedBuffers
@@ -54,6 +154,29 @@ mlir::LogicalResult UngroupCopyOp::matchAndRewrite(VPUIP::CopyOp origOp, mlir::P
 
     return mlir::success();
 }
+
+class UngroupSubViewOp final : public mlir::OpRewritePattern<VPUIP::SubViewOp> {
+public:
+    UngroupSubViewOp(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<VPUIP::SubViewOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(VPUIP::SubViewOp origOp, mlir::PatternRewriter& rewriter) const final {
+        auto ungroupInput = rewriter.create<VPUIP::UngroupBoundedBufferOp>(origOp->getLoc(), origOp.getSource());
+
+        auto subviewData = rewriter.create<VPUIP::SubViewOp>(origOp->getLoc(), ungroupInput.getData(),
+                                                             origOp.getStaticOffsetsAttr(), origOp.getStaticSizesAttr(),
+                                                             origOp.getStaticStridesAttr());
+
+        rewriter.replaceOpWithNewOp<VPUIP::GroupBoundedBufferOp>(origOp, subviewData.getResult(),
+                                                                 ungroupInput.getDynamicShape());
+
+        return mlir::success();
+    }
+
+private:
+    Logger _log;
+};
 
 class UngroupConcatViewOp final : public mlir::OpRewritePattern<VPUIP::ConcatViewOp> {
 public:
@@ -189,7 +312,6 @@ mlir::LogicalResult UngroupSwKernelOp::matchAndRewrite(VPUIP::SwKernelOp origOp,
 
     SmallVector<mlir::Value> newResults;
     const auto kernelName = getSwKernelEntryName(origOp);
-    // TODO: refactoring ticket E#145673
     if (kernelName == "dynamic_reshape" && (parseIntAttr<int64_t>(args[0]) != 0)) {
         // dynamic_reshape will only propagate shape
         auto dataOperand = swKernelOperands[0];
@@ -264,12 +386,16 @@ void UngroupBoundedBuffers::safeRunOnFunc() {
 
         return !hasDynamicInputs && !hasDynamicOutputs;
     };
+    auto isLegalSubViewOp = [](VPUIP::SubViewOp subviewOp) {
+        return !VPUIP::isBoundedBufferType(subviewOp.getSource());
+    };
 
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<VPUIP::CopyOp>(isLegalCopyOp);
     target.addDynamicallyLegalOp<VPUIP::ConcatViewOp>(isLegalConcatViewOp);
     target.addDynamicallyLegalOp<VPUIP::ConvertDMAOp>(isLegalConvertDMAOp);
     target.addDynamicallyLegalOp<VPUIP::SwKernelOp>(isLegalSwKernelOp);
+    target.addDynamicallyLegalOp<VPUIP::SubViewOp>(isLegalSubViewOp);
     target.addLegalOp<VPUIP::GroupBoundedBufferOp>();
     target.addLegalOp<VPUIP::UngroupBoundedBufferOp>();
 
@@ -278,8 +404,19 @@ void UngroupBoundedBuffers::safeRunOnFunc() {
     patterns.add<UngroupConcatViewOp>(&ctx, _log);
     patterns.add<UngroupSwKernelOp>(&ctx, _log);
     patterns.add<UngroupConvertDMAOp>(&ctx, _log);
+    patterns.add<UngroupSubViewOp>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, std::move(patterns)))) {
+        signalPassFailure();
+    }
+
+    // Removing Group/Ungroup pairs has to go before any other optimization
+    mlir::RewritePatternSet removalPatterns(&ctx);
+    removalPatterns.add<RemoveGroupUngroupRewriter>(&ctx, vpux::benefitHigh);
+    removalPatterns.add<RemoveExtraShapeCopiesRewriter>(&ctx, _log, vpux::benefitLow);
+
+    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(removalPatterns),
+                                                        getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
 }

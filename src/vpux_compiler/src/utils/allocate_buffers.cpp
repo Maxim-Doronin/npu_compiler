@@ -24,18 +24,18 @@ SmallVector<mlir::Value> vpux::allocateBuffersOfType(const Logger& log, mlir::Lo
     auto createAllocOp = [&](mlir::Type type) {
         if (type == nullptr) {
             return mlir::Value();
-        } else if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+        } else if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
             return static_cast<mlir::Value>(builder.create<mlir::memref::AllocOp>(loc, memref).getMemref());
-        } else if (auto distributedBuffer = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+        } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
             return builder.create<VPURT::AllocDistributed>(loc, distributedBuffer, nullptr, nullptr).getBuffer();
         }
         VPUX_THROW("Unexpected type to allocate: {0}", type);
     };
 
-    if (bufferType.isa<mlir::MemRefType, VPUIP::DistributedBufferType>()) {
+    if (mlir::isa<mlir::MemRefType, vpux::VPUIP::DistributedBufferType>(bufferType)) {
         log.trace("Allocating result buffer of type '{0}'", bufferType);
         return {createAllocOp(bufferType)};
-    } else if (auto sparseBufferType = bufferType.dyn_cast<VPUIP::SparseBufferType>()) {
+    } else if (auto sparseBufferType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(bufferType)) {
         log.trace("Allocating result buffers of type '{0}'", sparseBufferType);
 
         auto dataBuffer = createAllocOp(sparseBufferType.getData());
@@ -57,7 +57,7 @@ SmallVector<mlir::Value> vpux::allocateBuffersOfType(const Logger& log, mlir::Lo
             buffers.push_back(seTableBuffer);
         }
         return buffers;
-    } else if (auto boundedBufferType = bufferType.dyn_cast<VPUIP::BoundedBufferType>()) {
+    } else if (auto boundedBufferType = mlir::dyn_cast<vpux::VPUIP::BoundedBufferType>(bufferType)) {
         log.trace("Allocating result buffers of type '{0}'", boundedBufferType);
 
         auto dataBuffer = createAllocOp(boundedBufferType.getData());

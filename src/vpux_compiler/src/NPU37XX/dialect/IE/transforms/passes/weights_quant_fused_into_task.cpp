@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 namespace vpux::IE::arch37xx {
 #define GEN_PASS_DECL_WEIGHTSQUANTFUSEDINTOTASK
@@ -29,12 +30,12 @@ private:
 
 void findWeightElementType(mlir::Operation* op, const Logger& log) {
     if (mlir::isa_and_nonnull<Const::DeclareOp>(op)) {
-        const auto tensor = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto tensor = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
         if (const auto quantType = tensor.getElementType().dyn_cast_or_null<mlir::quant::QuantizedType>()) {
             log.trace("Weights constant(WAC) has quantized element type for NCE op - {0}", op->getLoc());
         }
     } else if (mlir::isa<mlir::BlockArgument>(op->getOperand(0))) {
-        auto blocArgElemType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+        auto blocArgElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
         if (blocArgElemType.isInteger(8) || blocArgElemType.isInteger(4)) {
             log.trace("Weights block argument(WAI) has quantized element type for NCE op - {0} ", op->getLoc());
         }

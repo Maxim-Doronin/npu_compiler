@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -49,14 +49,14 @@ static bool areConvInputOutputs4d(ConvTypeOp convOp, LogCb logCb) {
     const auto operands = convOp->getOperands();
     const auto results = convOp->getResults();
     for (const auto operand : operands) {
-        const auto operandType = operand.getType().template cast<NDTypeInterface>();
+        const auto operandType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
         if (operandType.getShape().size() != 4) {
             logCb(formatv("Only 4D inputs are supported, got {0} dimensions", operandType.getShape().size()));
             return false;
         }
     }
     for (const auto result : results) {
-        const auto resultType = result.getType().template cast<NDTypeInterface>();
+        const auto resultType = mlir::cast<vpux::NDTypeInterface>(result.getType());
         if (resultType.getShape().size() != 4) {
             logCb(formatv("Only 4D outputs are supported, got {0} dimensions", resultType.getShape().size()));
             return false;
@@ -97,9 +97,9 @@ bool isSupportedSEPDilatedConv(GroupConvOpType groupConvOp, LogCb logCb, bool ch
         return false;
     }
     const auto filterShape = getShape(groupConvOp.getFilter());
-    const auto inputType = groupConvOp.getInput().getType().template cast<NDTypeInterface>();
-    const auto filterType = groupConvOp.getFilter().getType().template cast<NDTypeInterface>();
-    const auto outputType = groupConvOp.getOutput().getType().template cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupConvOp.getInput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(groupConvOp.getFilter().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(groupConvOp.getOutput().getType());
 
     const auto KY = filterShape[Dims4D::Filter::KY];
     const auto KX = filterShape[Dims4D::Filter::KX];

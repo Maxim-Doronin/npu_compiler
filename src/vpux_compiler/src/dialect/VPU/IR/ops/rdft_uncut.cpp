@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::VPU::RDFTUncutOp::inferReturnTypes(mlir::MLIRContext* 
     auto axes = parseIntArrayAttr<int64_t>(op.getAxesAttr());
     auto signalSize = parseIntArrayAttr<int64_t>(op.getSignalSizeAttr());
 
-    const auto inType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto outShape = to_small_vector(inType.getShape());
 
     for (size_t i = 0; i < axes.size(); ++i) {
@@ -67,7 +67,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::RDFTUncutOp::getTilingStrategy(TilingMo
     // eliminate axes from possible tiling dims
     auto axes = parseIntArrayAttr<int64_t>(getAxesAttr());
     // add last axis to not allowed split as represent the complex number
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     axes.push_back(outputShape.size() - 1);
     return getSWLayerTilingStrategy(op, tilingMode, log, getMaxNumTilesWithAxesExclusion(op, axes));

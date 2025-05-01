@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/VPU/IR/se_attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/loop.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
@@ -39,7 +41,7 @@ void computeBasePtrs(VPUIP::StorageElementTableOp seTableOp, vpux::NDTypeInterfa
     SmallVector<Shape> perClusterShapes{};
     Dim distributedTilingAxis(0);
 
-    if (auto inputDistType = inputType.dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto inputDistType = mlir::dyn_cast<VPUIP::DistributedBufferType>(inputType)) {
         perClusterOffsets = inputDistType.getPerClusterMemoryShapeOffsets();
         perClusterShapes = inputDistType.getPerClusterMemoryShapes();
         VPUX_THROW_UNLESS(perClusterOffsets.size() == perClusterShapes.size(),
@@ -109,7 +111,7 @@ void computeBasePtrs(VPUIP::StorageElementTableOp seTableOp, vpux::NDTypeInterfa
         return clusterIdx;
     };
 
-    const auto outputNDType = seTableOp.getType().cast<vpux::NDTypeInterface>();
+    const auto outputNDType = mlir::cast<vpux::NDTypeInterface>(seTableOp.getType());
     const auto outputShape = outputNDType.getShape();
     const auto outputH = outputShape[Dims4D::Act::H];
     const auto outputW = outputShape[Dims4D::Act::W];
@@ -117,6 +119,14 @@ void computeBasePtrs(VPUIP::StorageElementTableOp seTableOp, vpux::NDTypeInterfa
     const auto seAttr = seTableOp.getSeAttr().value_or(nullptr);
     const auto seSize = seTableOp.getSeSize();
     const auto seDepth = seTableOp.getSeDepth();
+    SmallVector<int64_t> seSizes;
+    if (auto uniformSeSize = mlir::dyn_cast<mlir::IntegerAttr>(seSize)) {
+        seSizes = SmallVector<int64_t>(seDepth, uniformSeSize.getValue().getSExtValue());
+    } else {
+        seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seSize));
+        VPUX_THROW_WHEN(seSizes.size() != checked_cast<size_t>(seDepth), "Expected {0} SE sizes, got {1}", seDepth,
+                        seSizes.size());
+    }
 
     const auto numElements = outputNDType.getNumElements();
     std::vector<int32_t> basePtrs(numElements, 0);
@@ -133,8 +143,14 @@ void computeBasePtrs(VPUIP::StorageElementTableOp seTableOp, vpux::NDTypeInterfa
 
     loop_3d(LoopExecPolicy::Parallel, seTableOp.getContext(), outputH, outputW, seDepth,
             [&](int64_t h, int64_t w, int64_t se) {
+                auto seSizeRange = irange(se);
+                auto seTotalSize =
+                        std::accumulate(seSizeRange.begin(), seSizeRange.end(), 0, [&](int64_t sum, int64_t idx) {
+                            return sum + seSizes[idx];
+                        });
+
                 const Shape outputCoord{
-                        outputOffsets[Dims4D::Act::N.ind()] + 0, outputOffsets[Dims4D::Act::C.ind()] + se * seSize,
+                        outputOffsets[Dims4D::Act::N.ind()] + 0, outputOffsets[Dims4D::Act::C.ind()] + seTotalSize,
                         outputOffsets[Dims4D::Act::H.ind()] + h, outputOffsets[Dims4D::Act::W.ind()] + w};
 
                 auto inputCoord =
@@ -183,15 +199,6 @@ void ComputeSEBasePtrsPass::safeRunOnFunc() {
 
         auto inputOperand = nceOp.getInput();
         auto seTableOperand = nceOp.getInputStorageElementTable();
-        if (auto parentTilingOp = nceOp->getParentOfType<VPUIP::NCEClusterTilingOp>()) {
-            auto inputArg = nceOp.getInput().dyn_cast<mlir::BlockArgument>();
-            VPUX_THROW_WHEN(inputArg == nullptr, "Input is not a block argument");
-            inputOperand = parentTilingOp.getOperand(inputArg.getArgNumber());
-
-            auto seTableBlockArg = nceOp.getInputStorageElementTable().dyn_cast<mlir::BlockArgument>();
-            VPUX_THROW_WHEN(seTableBlockArg == nullptr, "Input storage element table is not a block argument");
-            seTableOperand = parentTilingOp.getOperand(seTableBlockArg.getArgNumber());
-        }
 
         auto seTable = VPUIP::findSETableOp(seTableOperand);
         VPUX_THROW_WHEN(seTable == nullptr, "Unable to find the storage element table");
@@ -201,7 +208,7 @@ void ComputeSEBasePtrsPass::safeRunOnFunc() {
         }
 
         auto seTableOp = mlir::cast<VPUIP::StorageElementTableOp>(seTable);
-        auto inputType = inputOperand.getType().cast<vpux::NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(inputOperand.getType());
         computeBasePtrs(seTableOp, inputType, _log);
     });
 }

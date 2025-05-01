@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -16,6 +16,11 @@ namespace vpux {
 namespace VPU {
 
 enum class SpillingType { SPILL_WRITE, SPILL_READ };
+
+struct HwLayerTilingStrategyCosts {
+    double costWithoutPrefetching = 0;
+    double costWithPrefetching = 0;
+};
 
 //
 // LayerCostModel for layer cost estimation given by different strategies
@@ -36,8 +41,9 @@ public:
     double getNCELayerCost(VPU::NCEOpInterface nceOp, VPU::MultiClusterStrategy strategy, bool useTimeBasedCost = true);
     double getSWLayerCost(VPU::SWOpInterface swOp, VPU::MultiClusterStrategy strategy) const;
     double getDPUandDMATimeCost(VPU::NCEOpInterface nceOp, VPU::MultiClusterStrategy strategy) const;
-    double getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface nceOp, VPU::MultiClusterStrategy strategy,
-                                                const OutputTiling& outTiles) const;
+    HwLayerTilingStrategyCosts getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface nceOp,
+                                                                    VPU::MultiClusterStrategy strategy,
+                                                                    const OutputTiling& outTiles) const;
     double getEfficiencyCost(VPU::NCEOpInterface nceOp, VPU::MultiClusterStrategy strategy) const;
 
     bool hasMultiClusterStrategy(mlir::Operation* op) const;
@@ -170,9 +176,10 @@ SmallVector<uint32_t> getPerTileOutputDMACosts(
         VPU::NCEOpInterface nceOp, ArrayRef<std::vector<std::pair<NDTypeInterface, TensorDistributionMap>>> tilesTypes,
         std::function<uint32_t(NDTypeInterface, const TensorDistributionMap& distributions)> getSpillingReadCostFunc);
 
-uint32_t getWeightsDMACostForNCEOp(VPU::NCEOpInterface nceOp, const OutputTiling& outTiles,
-                                   SmallVector<uint32_t>& layerDPUCosts, ArrayRef<uint32_t> layerDMACosts,
-                                   bool enablePrefetchTiling, vpux::Logger log);
+std::pair<uint32_t, uint32_t> getWeightsDMACostForNCEOp(VPU::NCEOpInterface nceOp, const OutputTiling& outTiles,
+                                                        SmallVector<uint32_t>& layerDPUCosts,
+                                                        ArrayRef<uint32_t> layerDMACosts, bool enablePrefetchTiling,
+                                                        vpux::Logger log);
 
 uint32_t getActivationDMACostForNCEOp(VPU::NCEOpInterface nceOp, const OutputTiling& outTiles,
                                       SmallVector<uint32_t>& layerDPUCosts, ArrayRef<uint32_t> layerDMACosts,

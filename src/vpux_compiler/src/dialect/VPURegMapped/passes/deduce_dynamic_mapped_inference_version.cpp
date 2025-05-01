@@ -6,6 +6,7 @@
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 namespace vpux::VPURegMapped {
 #define GEN_PASS_DECL_DEDUCEDYNAMICMAPPEDINFERENCEVERSION
@@ -32,9 +33,8 @@ private:
 void DeduceDynamicMappedInferenceVersion::safeRunOnModule() {
     auto moduleOp = getOperation();
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp cnnOp;
-
-    IE::CNNNetworkOp::getFromModule(moduleOp, cnnOp, netFunc);
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
     auto mainOps = to_small_vector(netFunc.getOps<ELF::MainOp>());
     VPUX_THROW_UNLESS(mainOps.size() == 1, "Expected exactly one ELF mainOp. Got {0}", mainOps.size());

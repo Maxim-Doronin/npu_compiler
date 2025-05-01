@@ -9,6 +9,8 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
+#include <llvm/ADT/TypeSwitch.h>
+
 using namespace vpux;
 
 std::optional<int64_t> getFQAxisIndex(IE::FakeQuantizeOp fq, Logger log) {
@@ -50,10 +52,8 @@ std::optional<int64_t> getFQAxisIndex(IE::FakeQuantizeOp fq, Logger log) {
 std::optional<int64_t> IE::getQuantAxisIndex(mlir::Operation* op, Logger log) {
     std::optional<int64_t> axis = std::nullopt;
     const auto getPerAxisQType = [](mlir::Value tensor) {
-        return tensor.getType()
-                .cast<NDTypeInterface>()
-                .getElementType()
-                .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+        return mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(
+                mlir::cast<vpux::NDTypeInterface>(tensor.getType()).getElementType());
     };
 
     if (auto fqOp = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(op)) {
@@ -76,8 +76,7 @@ bool IE::hasLeakyReLUPostOp(mlir::Operation* op) {
         return false;
     }
 
-    const auto postOpName = layerWithPostOp.getPostOp();
-    return postOpName.has_value() && postOpName.value().getStringRef() == IE::LeakyReluOp::getOperationName();
+    return mlir::isa_and_nonnull<IE::LeakyReluAttr>(layerWithPostOp.getPostOp());
 }
 
 bool IE::areAnyUserQuantizeOps(mlir::Operation* op) {
@@ -97,17 +96,17 @@ bool IE::areAllUsersQuantized(mlir::Operation* op) {
 
 bool IE::isPerAxisQuant(mlir::Value val) {
     auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
-    return elemType.isa<mlir::quant::UniformQuantizedPerAxisType>();
+    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
 }
 
 bool IE::checkQuantApproximation(mlir::Operation* op) {
     SmallVector<double> scales;
-    const auto outElemType = op->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (outElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
-        const auto perAxis = outElemType.cast<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outElemType)) {
+        const auto perAxis = mlir::cast<mlir::quant::UniformQuantizedPerAxisType>(outElemType);
         std::copy(perAxis.getScales().begin(), perAxis.getScales().end(), std::back_inserter(scales));
-    } else if (outElemType.isa<mlir::quant::UniformQuantizedType>()) {
-        const auto perTensor = outElemType.cast<mlir::quant::UniformQuantizedType>();
+    } else if (mlir::isa<mlir::quant::UniformQuantizedType>(outElemType)) {
+        const auto perTensor = mlir::cast<mlir::quant::UniformQuantizedType>(outElemType);
         scales = {perTensor.getScale()};
     } else {
         return false;
@@ -137,8 +136,8 @@ mlir::Value IE::findQuantizedInput(mlir::Value opInput, bool allowPerAxisQuantiz
         return nullptr;
     }
 
-    const auto dequantType = maybeDequant.getInput().getType().cast<vpux::NDTypeInterface>();
-    if (!allowPerAxisQuantize && !dequantType.getElementType().isa<mlir::quant::UniformQuantizedType>()) {
+    const auto dequantType = mlir::cast<vpux::NDTypeInterface>(maybeDequant.getInput().getType());
+    if (!allowPerAxisQuantize && !mlir::isa<mlir::quant::UniformQuantizedType>(dequantType.getElementType())) {
         return nullptr;
     }
 
@@ -147,9 +146,9 @@ mlir::Value IE::findQuantizedInput(mlir::Value opInput, bool allowPerAxisQuantiz
 
 bool IE::isSymmetricQuantType(mlir::quant::QuantizedType type) {
     // Check that zero points are all 0s
-    if (const auto uniformQuantType = type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
         return uniformQuantType.getZeroPoint() == 0;
-    } else if (const auto uniformPerAxisQuantType = type.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto uniformPerAxisQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
         const auto zeroPoints = uniformPerAxisQuantType.getZeroPoints();
         return std::all_of(zeroPoints.begin(), zeroPoints.end(), [](const int64_t zp) {
             return zp == 0;
@@ -179,8 +178,8 @@ mlir::quant::UniformQuantizedType IE::getQuantizedTypeFromFakeQuantize(IE::FakeQ
     if (inLowConst == nullptr || inHighConst == nullptr || outLowConst == nullptr || outHighConst == nullptr) {
         return nullptr;
     }
-    const auto realType = fqOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto realElemType = realType.getElementType().dyn_cast<mlir::FloatType>();
+    const auto realType = mlir::cast<vpux::NDTypeInterface>(fqOp.getInput().getType());
+    const auto realElemType = mlir::dyn_cast<mlir::FloatType>(realType.getElementType());
     const auto outQuantizeElemType =
             getQuantizedType(outLowConst.getContentAttr(), outHighConst.getContentAttr(), fqOp.getLevels(),
                              fqOp.getLowFpType(), realElemType, false, fqOp.getLoc(), fqOp.getAutoBroadcast());
@@ -188,7 +187,7 @@ mlir::quant::UniformQuantizedType IE::getQuantizedTypeFromFakeQuantize(IE::FakeQ
         return nullptr;
     }
 
-    return outQuantizeElemType.dyn_cast<mlir::quant::UniformQuantizedType>();
+    return mlir::dyn_cast<mlir::quant::UniformQuantizedType>(outQuantizeElemType);
 }
 
 bool vpux::IE::isPerTensorFQ(ArrayRef<IE::FakeQuantizeOp> fqOps) {
@@ -222,7 +221,7 @@ bool vpux::IE::isPerTensorFQ(ArrayRef<IE::FakeQuantizeOp> fqOps) {
 
 IE::FakeQuantizeOp vpux::IE::createFQ(mlir::PatternRewriter& rewriter, mlir::Value input, IE::FakeQuantizeOp fq,
                                       mlir::Location loc) {
-    const auto outputType = fq.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(fq.getOutput().getType());
     const auto newOutputType = outputType.changeShape(getShape(input));
     return rewriter.create<IE::FakeQuantizeOp>(loc, newOutputType, input, fq.getInputLow(), fq.getInputHigh(),
                                                fq.getOutputLow(), fq.getOutputHigh(), fq.getLevelsAttr(),
@@ -236,7 +235,7 @@ Const::DeclareOp vpux::IE::createFQConst(mlir::MLIRContext* ctx, mlir::Location 
     VPUX_THROW_UNLESS(denseElementVal != nullptr, "Failed to generate the denseElementVal.");
     auto cstAttr = Const::ContentAttr::get(
             denseElementVal, Const::ContentSetup(denseElementVal.getType())
-                                     .castElemType(argType.cast<vpux::NDTypeInterface>().getElementType()));
+                                     .castElemType(mlir::cast<vpux::NDTypeInterface>(argType).getElementType()));
     return rewriter.create<Const::DeclareOp>(loc, argType, std::move(cstAttr));
 }
 
@@ -294,9 +293,9 @@ bool vpux::IE::checkRescaledQuantApproximationForConvBasedOp(mlir::Operation* op
         return true;
     }
 
-    auto inElemType = op->getOperand(0).getType().cast<NDTypeInterface>().getElementType();
-    auto outElemType = op->getResult(0).getType().cast<NDTypeInterface>().getElementType();
-    auto weightsType = op->getOperand(1).getType().cast<NDTypeInterface>().getElementType();
+    auto inElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+    auto outElemType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
+    auto weightsType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(1).getType()).getElementType();
 
     auto inQuantScales = extractScalesOrDefault(inElemType, 1.0);
     auto outQuantScales = extractScalesOrDefault(outElemType, 1.0);
@@ -385,4 +384,75 @@ mlir::Type vpux::IE::composeWeightsExpressedType(const mlir::Type convolutionInp
         return quantType;
     }
     return convolutionInputType;
+}
+
+mlir::FailureOr<double> IE::getQuantizedSplatConstant(mlir::Value input) {
+    auto inputOp = input.getDefiningOp();
+    if (inputOp == nullptr) {
+        return mlir::failure();
+    }
+
+    // Possible paths:
+    //  - Const.Declare
+    //  - IE.FakeQuantize <- Const.Declare
+    //  - IE.Dequantize <- Const.Declare
+    return llvm::TypeSwitch<mlir::Operation*, mlir::FailureOr<double>>(inputOp)
+            .Case<Const::DeclareOp>([&](auto declareOp) -> mlir::FailureOr<double> {
+                if (!declareOp.getContentAttr().isSplat()) {
+                    return mlir::failure();
+                }
+                return declareOp.getContent().template getSplatValue<double>();
+            })
+            .Case<IE::FakeQuantizeOp>([&](auto fqOp) -> mlir::FailureOr<double> {
+                auto scalarInputConst = fqOp.getInput().template getDefiningOp<Const::DeclareOp>();
+                if (scalarInputConst == nullptr || !scalarInputConst.getContentAttr().isSplat()) {
+                    return mlir::failure();
+                }
+
+                auto inLowConst = fqOp.getInputLow().template getDefiningOp<Const::DeclareOp>();
+                auto inHighConst = fqOp.getInputHigh().template getDefiningOp<Const::DeclareOp>();
+                auto outLowConst = fqOp.getOutputLow().template getDefiningOp<Const::DeclareOp>();
+                auto outHighConst = fqOp.getOutputHigh().template getDefiningOp<Const::DeclareOp>();
+
+                if (inLowConst == nullptr || inHighConst == nullptr || outLowConst == nullptr ||
+                    outHighConst == nullptr) {
+                    return mlir::failure();
+                }
+
+                if (!inLowConst.getContentAttr().isSplat() || !inHighConst.getContentAttr().isSplat() ||
+                    !outLowConst.getContentAttr().isSplat() || !outHighConst.getContentAttr().isSplat()) {
+                    return mlir::failure();
+                }
+
+                const auto inputVal = scalarInputConst.getContent().template getSplatValue<double>();
+                const auto inLowConstContentVal = inLowConst.getContent().template getSplatValue<double>();
+                const auto inHighConstContentVal = inHighConst.getContent().template getSplatValue<double>();
+                const auto outLowConstContentVal = outLowConst.getContent().template getSplatValue<double>();
+                const auto outHighConstContentVal = outHighConst.getContent().template getSplatValue<double>();
+
+                if (const auto levels = fqOp.getLevels()) {
+                    return fakeQuantize(inputVal, inLowConstContentVal, inHighConstContentVal, outLowConstContentVal,
+                                        outHighConstContentVal, levels.value());
+                } else {
+                    return mlir::failure();
+                }
+            })
+            .Case<IE::DequantizeOp>([&](auto dqOp) -> mlir::FailureOr<double> {
+                auto scalarInputConst = dqOp.getInput().template getDefiningOp<Const::DeclareOp>();
+                if (scalarInputConst == nullptr || !scalarInputConst.getContentAttr().isSplat()) {
+                    return mlir::failure();
+                }
+
+                const auto inputElemType = mlir::cast<NDTypeInterface>(dqOp.getInput().getType()).getElementType();
+                const auto inputElemQType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inputElemType);
+                if (inputElemQType == nullptr) {
+                    return mlir::failure();
+                }
+
+                const auto inputVal = scalarInputConst.getContent().template getSplatValue<double>();
+                return dequantizeDouble(inputVal, inputElemQType.getScale(), inputElemQType.getZeroPoint());
+            })
+            .Default([&](auto) {
+                return mlir::failure();
+            });
 }

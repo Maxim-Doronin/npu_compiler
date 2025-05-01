@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,9 +24,6 @@ void vpux::VPUMI37XX::NetworkMetadataOp::serialize(elf::writer::BinaryDataSectio
     auto nBarrs = VPUIP::getNumAvailableBarriers(operation);
     metadata.mResourceRequirements.nn_barriers_ = checked_cast<uint8_t>(nBarrs);
     metadata.mResourceRequirements.nn_slice_count_ = checked_cast<uint8_t>(VPUIP::getNumTilesUsed(mainModule));
-
-    metadata.mResourceRequirements.ddr_scratch_length_ =
-            checked_cast<uint32_t>(IE::getAvailableMemory(mainModule, vpux::VPU::MemoryKind::DDR).getByteSize());
 
     metadata.mResourceRequirements.nn_slice_length_ =
             checked_cast<uint32_t>(IE::getAvailableMemory(mainModule, vpux::VPU::MemoryKind::CMX_NN).getByteSize());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -64,14 +64,14 @@ Const::Content vpux::Const::AddAttr::transform(vpux::Const::Content& input) cons
             Const::Content::allocTempBuffer(inferOutputType(input.getType()), mlir::Float32Type::get(getContext()),
                                             inferOutputSplat(input.isSplat(), input.getType()));
 
-    const auto values = input.getValues<float>();
     auto shiftedVals = output.getTempBuf<float>();
 
     const auto bias = static_cast<float>(getBias().getValue().convertToDouble());
-
-    for (size_t i = 0; i < shiftedVals.size(); ++i) {
-        shiftedVals[i] = values[i] + bias;
-    }
+    input.read([&](auto values) {
+        for (size_t i = 0; i < shiftedVals.size(); ++i) {
+            shiftedVals[i] = checked_cast<float>(values[i]) + bias;
+        }
+    });
 
     return output;
 }

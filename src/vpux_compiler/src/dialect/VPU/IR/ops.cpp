@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 using namespace vpux;
 
@@ -155,7 +157,7 @@ mlir::Operation* vpux::VPU::VPUDialect::materializeConstant(mlir::OpBuilder& bui
         return nullptr;
     }
 
-    if (!type.isa<mlir::RankedTensorType>()) {
+    if (!mlir::isa<mlir::RankedTensorType>(type)) {
         (void)errorAt(loc, "Can't materialize VPU Constant for Type '{0}'", type);
         return nullptr;
     }
@@ -174,8 +176,8 @@ bool VPU::isNCEWithInt4Weights(mlir::Operation* op) {
         return false;
     }
 
-    auto weightsElemType = weights.getType().cast<NDTypeInterface>().getElementType();
-    if (const auto quantizedType = weightsElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    auto weightsElemType = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType();
+    if (const auto quantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(weightsElemType)) {
         return quantizedType.getStorageTypeIntegralWidth() == 4;
     }
 

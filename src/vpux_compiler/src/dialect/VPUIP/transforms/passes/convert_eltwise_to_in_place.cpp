@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -36,7 +37,7 @@ bool areInOutDistributionsCompatible(VPUIP::NCEClusterTaskOp clusterTaskOp, Alia
     mlir::OpBuilder builder(clusterTaskOp);
     builder.setInsertionPointAfterValue(inputRootBuff);
 
-    // Distributed input of NCEClusterTilingOp is compatible with its output, but Distributed input root buffer type is
+    // Distributed input is compatible with its output, but Distributed input root buffer type is
     // not (e.g. NCE.Permute (SOW) -> ViewOp -> NCE.Eltwise (SOH)). Insert ViewOp.
     if (VPU::areDistributionAttrsCompatible(inRootBuffDistributedType, outDistributedType, true).failed()) {
         auto supportView = builder.create<VPUIP::ViewOp>(clusterTaskOp.getLoc(), inDistributedType, inputRootBuff);
@@ -55,15 +56,7 @@ bool areInOutDistributionsCompatible(VPUIP::NCEClusterTaskOp clusterTaskOp, Alia
 void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& aliasesInfo, Logger log) {
     auto eltwiseAllInputs = SmallVector<mlir::Value>{clusterTaskOp.getInput(), clusterTaskOp.getWeights()};
 
-    // Get the root output buffer of the clusterTaskOp
-    auto getOutputRootBuffOfNCEClusterTiling = [](mlir::Operation* innerOp) {
-        if (auto nceClustOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(innerOp->getParentOp())) {
-            return VPUIP::getLayerOutputs(nceClustOp)[0];
-        }
-        return VPUIP::getLayerOutputs(innerOp)[0];
-    };
-
-    auto outputRootBuff = getOutputRootBuffOfNCEClusterTiling(clusterTaskOp);
+    auto outputRootBuff = VPUIP::getLayerOutputs(clusterTaskOp)[0];
     mlir::Value suitableInputToOverwrite = nullptr;
     mlir::Value potentialOverwriteableInput = nullptr;
 
@@ -79,8 +72,8 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
             return;
         }
 
-        const auto inInterface = inputBuff.getType().dyn_cast<NDTypeInterface>();
-        const auto outInterface = outputRootBuff.getType().dyn_cast<NDTypeInterface>();
+        const auto inInterface = mlir::dyn_cast<vpux::NDTypeInterface>(inputBuff.getType());
+        const auto outInterface = mlir::dyn_cast<vpux::NDTypeInterface>(outputRootBuff.getType());
         if (!isCompatibleForInplaceOp(inInterface, outInterface, nestLog)) {
             continue;
         }
@@ -96,8 +89,8 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
             inputRootBuff = supportView.getResult();
         }
 
-        const auto inRootDataBuffType = VPUIP::extractDataType(inputRootBuff).cast<NDTypeInterface>();
-        const auto outBuffType = VPUIP::extractDataType(outputRootBuff).cast<NDTypeInterface>();
+        const auto inRootDataBuffType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(inputRootBuff));
+        const auto outBuffType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(outputRootBuff));
         auto originalInputRootBuff = inputRootBuff;
         if (inRootDataBuffType.getShape() != outBuffType.getShape() &&
             inRootDataBuffType.getDimsOrder() == outBuffType.getDimsOrder() &&
@@ -112,9 +105,11 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
 
         // Ensure distribution compatibility
         const auto inRootBuffDistributedType =
-                VPUIP::extractDataType(inputRootBuff).dyn_cast<VPUIP::DistributedBufferType>();
-        const auto inDistributedType = VPUIP::extractDataType(inputBuff).dyn_cast<VPUIP::DistributedBufferType>();
-        const auto outDistributedType = VPUIP::extractDataType(outputRootBuff).dyn_cast<VPUIP::DistributedBufferType>();
+                mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(inputRootBuff));
+        const auto inDistributedType =
+                mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(inputBuff));
+        const auto outDistributedType =
+                mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(outputRootBuff));
         if (inDistributedType != nullptr && outDistributedType != nullptr && inRootBuffDistributedType != nullptr) {
             if (!areInOutDistributionsCompatible(clusterTaskOp, aliasesInfo, inputRootBuff, originalInputRootBuff,
                                                  inRootBuffDistributedType, inDistributedType, outDistributedType,
@@ -145,15 +140,7 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
             (suitableInputToOverwrite != nullptr) ? suitableInputToOverwrite : potentialOverwriteableInput;
     outputRootBuff.replaceAllUsesWith(replacementInputRootBuff);
 
-    const auto getEltwiseResult = [&]() {
-        if (auto nceClustOp = mlir::dyn_cast_or_null<VPUIP::NCEClusterTilingOp>(clusterTaskOp->getParentOp())) {
-            return nceClustOp->getResult(0);
-        } else {
-            return clusterTaskOp->getResult(0);
-        }
-    };
-
-    const auto eltwiseResult = getEltwiseResult();
+    const auto eltwiseResult = clusterTaskOp->getResult(0);
     aliasesInfo.remove(eltwiseResult);
     aliasesInfo.addAlias(replacementInputRootBuff, eltwiseResult);
 

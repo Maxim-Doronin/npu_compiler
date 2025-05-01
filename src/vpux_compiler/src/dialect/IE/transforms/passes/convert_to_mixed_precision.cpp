@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes/convert_to_mixed_precision.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -35,8 +36,8 @@ mlir::LogicalResult FloatOutConvRewriter::matchAndRewrite(IE::ConvolutionOp conv
             convolutionOp->getLoc(), convolutionOp.getType(), dequantizeInput, filterDequantizeInput,
             convolutionOp.getBias(), convolutionOp.getStrides(), convolutionOp.getPadsBegin(),
             convolutionOp.getPadsEnd(), convolutionOp.getDilations(), convolutionOp.getPostOpAttr(),
-            convolutionOp.getClampAttr(), convolutionOp.getStaticScaleAttr(), convolutionOp.getOutputChannelsAttr(),
-            convolutionOp.getInputChannelsAttr());
+            convolutionOp.getClampAttr(), convolutionOp.getStaticScaleAttr(), convolutionOp.getOutputPaddingAttr(),
+            convolutionOp.getInputPaddingAttr());
     if (!IE::checkRescaledQuantApproximationForConvBasedOp(newConv)) {
         rewriter.eraseOp(newConv);
         return mlir::failure();
@@ -68,7 +69,7 @@ mlir::LogicalResult FloatOutGroupConvRewriter::matchAndRewrite(IE::GroupConvolut
             groupConvolutionOp.getBias(), groupConvolutionOp.getStrides(), groupConvolutionOp.getPadsBegin(),
             groupConvolutionOp.getPadsEnd(), groupConvolutionOp.getDilations(), groupConvolutionOp.getGroupsAttr(),
             groupConvolutionOp.getPostOpAttr(), groupConvolutionOp.getClampAttr(),
-            groupConvolutionOp.getOutputChannelsAttr(), groupConvolutionOp.getInputChannelsAttr());
+            groupConvolutionOp.getOutputPaddingAttr(), groupConvolutionOp.getInputPaddingAttr());
 
     if (!IE::checkRescaledQuantApproximationForConvBasedOp(newGroupConv)) {
         rewriter.eraseOp(newGroupConv);
@@ -99,8 +100,8 @@ mlir::LogicalResult FloatOutTransposedConvRewriter::matchAndRewrite(IE::Transpos
     auto newTransposedConv = rewriter.create<IE::TransposedConvolutionOp>(
             origOp->getLoc(), origOp.getType(), dequantizeInput, filterDequantizeInput, origOp.getOutputShape(),
             origOp.getBias(), origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(),
-            origOp.getOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getSpatialOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     if (!IE::checkRescaledQuantApproximationForConvBasedOp(newTransposedConv)) {
         rewriter.eraseOp(newTransposedConv);
@@ -157,7 +158,7 @@ mlir::LogicalResult FloatOutAvgPoolRewriter::matchAndRewrite(IE::AvgPoolOp avgPo
             avgPoolOp, avgPoolOp.getType(), dequantizeType, avgPoolOp.getKernelSize(), avgPoolOp.getStrides(),
             avgPoolOp.getPadsBegin(), avgPoolOp.getPadsEnd(), avgPoolOp.getRoundingTypeAttr(),
             avgPoolOp.getExcludePadsAttr(), avgPoolOp.getPostOpAttr(), avgPoolOp.getClampAttr(),
-            avgPoolOp.getStaticScaleAttr(), avgPoolOp.getOutputChannelsAttr(), avgPoolOp.getInputChannelsAttr());
+            avgPoolOp.getStaticScaleAttr(), avgPoolOp.getOutputPaddingAttr(), avgPoolOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -176,8 +177,8 @@ mlir::LogicalResult FloatOutAddRewriter::matchAndRewrite(IE::AddOp addOp, mlir::
         return mlir::failure();
     }
 
-    auto lhsElemType = lhsDequant.getType().cast<vpux::NDTypeInterface>().getElementType();
-    auto rhsElemType = rhsDequant.getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto lhsElemType = mlir::cast<vpux::NDTypeInterface>(lhsDequant.getType()).getElementType();
+    auto rhsElemType = mlir::cast<vpux::NDTypeInterface>(rhsDequant.getType()).getElementType();
 
     if (!isSupportedEltwiseQuantization(lhsElemType, rhsElemType, _allowDifferentScales, /*allowDifferentZp=*/true,
                                         VPU::EltwiseType::ADD)) {
@@ -185,8 +186,8 @@ mlir::LogicalResult FloatOutAddRewriter::matchAndRewrite(IE::AddOp addOp, mlir::
     }
 
     rewriter.replaceOpWithNewOp<IE::AddOp>(addOp, addOp.getType(), lhsDequant, rhsDequant, addOp.getAutoBroadcast(),
-                                           addOp.getPostOpAttr(), addOp.getClampAttr(), addOp.getOutputChannelsAttr(),
-                                           addOp.getInputChannelsAttr());
+                                           addOp.getPostOpAttr(), addOp.getClampAttr(), addOp.getOutputPaddingAttr(),
+                                           addOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -211,10 +212,9 @@ mlir::LogicalResult QuantizeWithNCERewriter::matchAndRewrite(IE::QuantizeOp orig
     }
 
     auto layerWithPostOp = mlir::dyn_cast_or_null<IE::LayerWithPostOpInterface>(maybeNCETask);
-    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp().has_value()) {
-        if (!_checkPostOp(layerWithPostOp, isOutputPerAxisQuant, true, maybeNCETask->getLoc())) {
-            return matchFailed(rewriter, origOp, "Layer with PostOp not supported");
-        }
+    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr &&
+        !_checkPostOp(layerWithPostOp, isOutputPerAxisQuant, /*isFloatInput=*/true)) {
+        return matchFailed(rewriter, origOp, "Layer with PostOp not supported");
     }
 
     // NCE tasks with float input and quant output support LeakyReLU only per-tensor quantize output.

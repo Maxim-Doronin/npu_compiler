@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <mlir/IR/BuiltinTypes.h>
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/utils/dynamic_shape_propagation.hpp"
 #include "vpux/compiler/utils/range_bound.hpp"
 
 using namespace vpux;
@@ -20,20 +21,19 @@ mlir::LogicalResult VPU::RangeOp::inferReturnTypes(mlir::MLIRContext* ctx, std::
         return mlir::failure();
     }
 
-    const auto inType = range.getStart().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(range.getStart().getType());
 
     const auto outShape = Shape{mlir::ShapedType::kDynamic};
-    const auto bounds = SmallVector<int64_t>{RANGEBOUND};
+    const auto outBounds = SmallVector<int64_t>{RANGEBOUND};
 
-    const auto typeComponents = TypeComponents()
-                                        .setShape(outShape)
-                                        .setDimsOrder(DimsOrder::fromNumDims(outShape.size()))
-                                        .setElementType(range.getDstElemType())
-                                        .setBounds(getIntArrayAttr(ctx, bounds));
+    auto typeComponents = TypeComponents()
+                                  .setDimsOrder(DimsOrder::fromNumDims(outShape.size()))
+                                  .setElementType(range.getDstElemType());
+
+    assignDynamicTypeComponents(typeComponents, range.getBoundsRepresentation(), outShape.raw(), outBounds);
 
     auto outType = inType.changeTypeComponents(typeComponents);
-
-    inferredReturnTypes.emplace_back(outType);
+    inferredReturnTypes.push_back(outType);
 
     return mlir::success();
 }

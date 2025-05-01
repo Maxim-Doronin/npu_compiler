@@ -16,14 +16,15 @@
 
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinOps.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
-
-#include <llvm/Support/FormatVariadic.h>
+#include <mlir/IR/Types.h>
 
 #include <optional>
 
 namespace vpux {
+namespace IE {
+class InterpolateCoordModeAttr;
+class PadModeAttr;
+}  // namespace IE
 namespace VPU {
 
 class PaddingAttr;
@@ -36,7 +37,6 @@ class DistributionInfo;
 // Generated
 //
 
-#include <vpux/compiler/dialect/IE/attributes.hpp.inc>
 #include <vpux/compiler/dialect/VPU/enums.hpp.inc>
 
 #define GET_ATTRDEF_CLASSES

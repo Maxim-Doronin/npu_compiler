@@ -331,3 +331,111 @@ At the same time there are several cons:
 - Code duplication for declaration and implementation of the pass;
 - Impossible to reuse sub-pipelines: we can't have common sub-pipeline for 37xx and 40xx with this pass;
 - It is easy to make a mistake when registering passes for vpux-opt. You get an error when trying to register passes for from 37XX and 40XX at the same time, because two passes are registered with the same name.
+
+## Dispatched Inlining
+
+### Motivation
+
+MLIR's inliner will be called as part of the inliner pass. It does a lot behind the scenes, but when it comes to deciding if an operation can be inlined and how it shall be inlined, it is quite simple.
+
+As an example, we take a look at `isLegalToInline()`: If it encounters some operation, it will lookup the dialect. Internally, the inliner saves a mapping from `mlir::Dialect*` to `mlir::DialectInlinerInterface`. If the map contains no such interface for the requested dialect, `false` will be returned. Otherwise the inliner dispatches to that particular inliner interface and return `interface->isLegalToInline(op)`. There are a handful of other functions that work in the same fashion.
+
+We see two important things here: The inliner can only decide on a per-operation basis which interface to choose and the inliner only supports at most one interface per dialect. This means that the inliner **cannot** support multiple different inlining semantics for a particular operation out of the box! This is the motivation for our dispatched inliner interface system.
+
+Our solution is to implement a `func` inliner interface that can then dynamically dispatch to other interfaces. The idea is that the user can add a special attribute, namely `{inliner_dispatch = #MyDialect.MyInlinerDispatchAttr}`, to `func` operations. `UnifiedFuncInlinerInterface` then dispatches to an inliner interface that is associatated with `#MyDialect.MyInlinerDispatchAttr`.
+
+### Tutorial
+
+#### Supporting operations of a custom dialect in the inliner
+
+The common approach here is extending `mlir::DialectInlinerInterface` and implementing `isLegalToInline()`. The most trivial implementation looks like this:
+```cpp
+struct MyDialectInlinerInterface : public mlir::DialectInlinerInterface {
+    bool isLegalToInline(mlir::Operation*, mlir::Operation*, bool) const final {
+        return true;   
+    }
+
+    bool isLegalToInline(mlir::Region*, mlir::Region*, bool, mlir::IRMapping&) const final {
+        return true;
+    }
+
+    bool isLegalToInline(mlir::Operation*, mlir::Region*, bool, mlir::IRMapping&) const final {
+        return true;
+    }
+};
+```
+This then has to be registered during `MyDialect::initialize()`:
+```cpp
+void MyDialect::initialize() {
+    // ...
+    addInterface<MyDialectInlinerInterface>();
+    // ...
+}
+```
+
+This is enough to enable inlining in `MyDialect` if the default inlining behaviour (see `mlir/lib/Dialect/Func/Extensions/InlinerExtension.cpp`) is enough.
+
+#### Supporting custom call (and func, return) operations
+
+Assume we want to implement a custom `MyDialect.Call` operation. It extends `CallOpInterface` and will therefore be handled by `UnifiedFuncInlinerInterface`. If we **don't** want to have the default behaviour (see `mlir/lib/Dialect/Func/Extensions/InlinerExtension.cpp`) for that kind of operation, we can extend `mlir::DialectInlinerInterface`.
+```cpp
+struct MyDialectDispatchedInlinerInterface : public mlir::DialectInlinerInterface {
+    bool isLegalToInline(mlir::Operation*, mlir::Operation*, bool) const final {
+        return true;   
+    }
+
+    bool isLegalToInline(mlir::Region*, mlir::Region*, bool, mlir::IRMapping&) const final {
+        return true;
+    }
+
+    bool isLegalToInline(mlir::Operation*, mlir::Region*, bool, mlir::IRMapping&) const final {
+        return true;
+    }
+
+    void handleTerminator(Operation *op, ValueRange valuesToRepl) const final {
+        // custom logic
+    }
+
+    void processInlinedCallBlocks(mlir::Operation* call,
+                                  mlir::iterator_range<mlir::Region::iterator> inlinedBlocks) const final {
+        // custom logic
+    }
+
+    std::tuple<mlir::Block*, mlir::Block::iterator> getInlineBlockAndPoint(mlir::Operation* call) const final {
+        // custom logic
+    }
+
+    void eraseCall(mlir::Operation* call) const final {
+        // custom logic
+    }
+};
+```
+Additionally, we have to add an attribute to `MyDialect`. This attribute will be added to the func-like operations in `MyDialect` to tell `UnifiedFuncInlinerInterface` which interface to dispatch to.
+```tablegen
+def MyDialectInlinerDispatchAttr : InlinerDispatchAttr<MyDialect, "MyDialectInlinerDispatch">;
+```
+```mlir
+MyDialect.Call {inliner_dispatch = #MyDialect.MyInlinerDispatchAttr} @someFunction() -> ()
+// or if we just want to have different semantics for func ops
+func.call {inliner_dispatch = #MyDialect.MyInlinerDispatchAttr} @someFunction() -> ()
+```
+We then have to register this interface in the `UnifiedFuncInlinerInterface`:
+```cpp
+void MyDialect::initialize() {
+    // ...
+
+    // support inlining for "normal" ops in MyDialect
+    addInterfaces<MyDialectInlinerInterface>();
+
+    // support for func-like ops in MyDialect
+    auto funcDialect = getContext()->getLoadedDialect<mlir::func::FuncDialect>();
+    assert(funcDialect != nullptr);
+
+    auto interface = funcDialect->getRegisteredInterface<Core::UnifiedFuncInlinerInterface>();
+    assert(interface != nullptr);
+
+    interface->registerDispatchedInlinerInterface<MyDialect::MyDialectInlinerDispatchAttr, MyDialect::FuncInlinerInterface>();
+}
+```
+
+Note: If no dispatched inliner interface is provided via `registerDispatchedInlinerInterface`, a fallback implementation which mirrors `mlir/lib/Dialect/Func/Extensions/InlinerExtension.cpp` is used! For a lot of use-cases this is enough as the default inlining behaviour is the desired one.

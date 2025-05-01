@@ -16,7 +16,10 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/IE/locations.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/cal_range_data.hpp"
@@ -363,6 +366,8 @@ bool NGraphImporter::isOpSupported(const std::shared_ptr<ov::Node>& op) {
     return hasParser;
 }
 
+namespace {
+
 mlir::Type importPrecision(mlir::MLIRContext* ctx, const ov::element::Type& precision) {
     switch (precision) {
     case ov::element::Type_t::f64:
@@ -373,6 +378,10 @@ mlir::Type importPrecision(mlir::MLIRContext* ctx, const ov::element::Type& prec
         return mlir::Float16Type::get(ctx);
     case ov::element::Type_t::bf16:
         return mlir::BFloat16Type::get(ctx);
+    case ov::element::Type_t::f8e4m3:
+        return mlir::Float8E4M3FNType::get(ctx);
+    case ov::element::Type_t::f8e5m2:
+        return mlir::Float8E5M2Type::get(ctx);
     case ov::element::Type_t::i64:
         return getSInt64Type(ctx);
     case ov::element::Type_t::u64:
@@ -402,6 +411,8 @@ mlir::Type importPrecision(mlir::MLIRContext* ctx, const ov::element::Type& prec
     }
 }
 
+}  // namespace
+
 //
 // buildMainFunc
 //
@@ -415,30 +426,44 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
             continue;
         }
 
-        auto staticOrBoundedDim = [](ov::Dimension dim) {
-            return dim.is_static() || dim.get_interval().has_upper_bound();
+        const auto hasBounds = [](ov::Dimension dim) {
+            return dim.get_interval().has_upper_bound();
         };
-        auto boundedShape = std::all_of(partialShape.begin(), partialShape.end(), staticOrBoundedDim);
+        auto isBoundedShape = std::any_of(partialShape.begin(), partialShape.end(), hasBounds);
 
-        auto ndType = inputs[i].getType().cast<vpux::NDTypeInterface>();
-        auto boundedTensorType = ndType.cast<vpux::BoundedTypeInterface>();
+        auto ndType = mlir::cast<NDTypeInterface>(inputs[i].getType());
 
-        if (boundedShape) {
+        if (isBoundedShape) {
             std::transform(partialShape.begin(), partialShape.end(), std::back_inserter(boundedOutShape), toBoundedDim);
-            boundedTensorType =
-                    boundedTensorType.changeBounds(getIntArrayAttr(builder.getContext(), boundedOutShape.to_shape()));
-        }
-        // TODO(117112): ngraph representation is able to compute bounds more accurately than NPU compiler
-        // as a workaround for StridedSlice we take shape of input data as an upper bound
-        for (auto iter : origNode->input(i).get_node()->inputs()) {
-            auto inputParent = iter.get_source_output().get_node_shared_ptr();
-            if (auto ovStridedSlice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(inputParent)) {
-                auto inputDataShape = ovStridedSlice->get_input_tensor(0).get_partial_shape().get_max_shape();
-                boundedTensorType =
-                        boundedTensorType.changeBounds(getIntArrayAttr(builder.getContext(), inputDataShape));
-                return;
+            const auto boundShape = boundedOutShape.to_shape();
+            const SmallVector<int64_t> boundedOutShapeVec(boundShape.begin(), boundShape.end());
+            if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(ndType)) {
+                ndType = boundedType.changeBounds(boundedOutShapeVec);
+            } else {
+                ndType = Core::BoundedTensorType::get(ndType, boundedOutShapeVec);
             }
         }
+
+        // Skip ScatterNDUpdate bounds update
+        if (ov::as_type_ptr<ov::opset14::ScatterNDUpdate>(origNode) == nullptr) {
+            // TODO(117112): ngraph representation is able to compute bounds more accurately than NPU compiler
+            // as a workaround for StridedSlice we take shape of input data as an upper bound
+            for (auto iter : origNode->input(i).get_node()->inputs()) {
+                auto inputParent = iter.get_source_output().get_node_shared_ptr();
+                if (auto ovStridedSlice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(inputParent)) {
+                    auto inputDataShape = ovStridedSlice->get_input_tensor(0).get_partial_shape().get_max_shape();
+                    const SmallVector<int64_t> inShapeVec(inputDataShape.begin(), inputDataShape.end());
+
+                    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(ndType)) {
+                        ndType = boundedType.changeBounds(inShapeVec);
+                    } else {
+                        ndType = Core::BoundedTensorType::get(ndType, inShapeVec);
+                    }
+                    return;
+                }
+            }
+        }
+
         // We are not able to get upper bounds for the case:
         //         *----------*
         //         |  SomeOp  |
@@ -461,7 +486,7 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
         //            *-----------*
         // Since ShapeOf result is unknown at the moment, we can set an upper bound for Broadcast output
         // as a max(SomeOp: upper bounds, Const)
-        if (!boundedShape) {
+        if (!isBoundedShape) {
             auto getMaxValue = [](const auto& constValues, const auto& shapeValues) {
                 ov::PartialShape result;
                 result.reserve(constValues.size());
@@ -516,13 +541,12 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
                 auto broadcastShape = applyMaxValue(ovBroadcast->output(0).get_partial_shape(), boundedOutShape);
                 ovBroadcast->set_output_type(0, ovBroadcast->output(0).get_element_type(), broadcastShape);
 
-                auto boundsAttr = getIntArrayAttr(builder.getContext(), boundedOutShape.to_shape());
                 if (auto dynBroadcast = mlir::dyn_cast<IE::DynamicBroadcastOp>(inputs[i].getDefiningOp())) {
-                    dynBroadcast.setOutputBoundsAttr(boundsAttr);
+                    dynBroadcast.setOutputBoundsAttr(getIntArrayAttr(builder.getContext(), boundedOutShape.to_shape()));
                 }
-
-                // Update the bounded tensor type with the new bounds
-                boundedTensorType = boundedTensorType.changeBounds(boundsAttr);
+                const auto boundedShape = boundedOutShape.to_shape();
+                const SmallVector<int64_t> boundedShapeVec(boundedShape.begin(), boundedShape.end());
+                ndType = Core::BoundedTensorType::get(ndType, boundedShapeVec);
             }
             for (const auto& input : origNode->input(i).get_node()->inputs()) {
                 auto inputParent = input.get_source_output().get_node_shared_ptr();
@@ -538,15 +562,16 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
                 boundedOutShape = ov::PartialShape{static_cast<int64_t>(RANGEBOUND)};
                 range->set_output_type(0, range->get_output_type(), boundedOutShape);
 
-                auto boundsAttr = getIntArrayAttr(builder.getContext(), boundedOutShape.to_shape());
+                auto bounds = boundedOutShape.to_shape();
+                const SmallVector<int64_t> boundsVec(bounds.begin(), bounds.end());
 
                 // Update the bounded tensor type with the new bounds
-                boundedTensorType = boundedTensorType.changeBounds(boundsAttr);
+                ndType = Core::BoundedTensorType::get(ndType, boundsVec);
             }
         }
-
-        const auto newTypeComponents =
-                TypeComponents().setBounds(getIntArrayAttr(builder.getContext(), boundedOutShape.to_shape()));
+        const auto outShape = boundedOutShape.to_shape();
+        const SmallVector<int64_t> outShapeVec(outShape.begin(), outShape.end());
+        const auto newTypeComponents = TypeComponents().setBounds(Bounds(outShapeVec));
         const auto changedTypeComponents = ndType.changeTypeComponents(newTypeComponents);
         inputs[i].setType(changedTypeComponents);
     }
@@ -605,8 +630,9 @@ mlir::func::FuncOp NGraphImporter::buildMainFunc(mlir::OpBuilder& moduleBuilder,
         const auto partialShape = paramNode->output(0).get_partial_shape();
         if (partialShape.is_dynamic()) {
             const ov::Shape ovShape = partialShape.get_max_shape();
-            auto boundedTensorType = funcInputVal.getType().dyn_cast<vpux::BoundedTypeInterface>();
-            funcInputVal.setType(boundedTensorType.changeBounds(getIntArrayAttr(builder.getContext(), ovShape)));
+            const SmallVector<int64_t> ovToShapeVec(ovShape.begin(), ovShape.end());
+            auto ndType = mlir::cast<NDTypeInterface>(funcInputVal.getType());
+            funcInputVal.setType(Core::BoundedTensorType::get(ndType, ovToShapeVec));
         }
         _importedVals.emplace(paramNode->output(0), funcInputVal);
     }
@@ -911,9 +937,8 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
 
     auto dataType = importPrecision(_ctx, origNode->get_output_element_type(0));
     if (vpux::Const::isSubByte(bitWidth) || mlir::isa<vpux::type::QuantileFloatType>(dataType)) {
-        mlir::Type conversionType = dataType.isSignedInteger() || mlir::isa<vpux::type::QuantileFloatType>(dataType)
-                                            ? getSInt8Type(builder.getContext())
-                                            : getUInt8Type(builder.getContext());
+        mlir::Type conversionType =
+                dataType.isSignedInteger() ? getSInt8Type(builder.getContext()) : getUInt8Type(builder.getContext());
         contentSetup = contentSetup.convertElemType(conversionType).castElemType(dataType);
         tensorType = mlir::RankedTensorType::get(tensorType.getShape(), dataType);
     }
@@ -1099,8 +1124,8 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder,
                                                      /*groups=*/nullptr,
                                                      /*post_op=*/nullptr,
                                                      /*clamp=*/nullptr,
-                                                     /*output_channels=*/nullptr,
-                                                     /*input_channels=*/nullptr);
+                                                     /*outputPadding=*/nullptr,
+                                                     /*inputPadding=*/nullptr);
     addOutputs(origNode, op);
 }
 
@@ -1277,7 +1302,7 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
 
     auto op = builder.create<IE::AddOp>(
             createLocation(origNode), inputs[0], inputs[1], importBroadcastType(autob.m_type),
-            /*post_op=*/nullptr, /*clamp=*/nullptr, /*output_channels*/ nullptr, /*input_channels*/ nullptr);
+            /*post_op=*/nullptr, /*clamp=*/nullptr, /*outputPadding*/ nullptr, /*inputPadding*/ nullptr);
     addOutputs(origNode, op);
 }
 
@@ -1384,7 +1409,8 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
 
     auto batchDims = origNode->get_batch_dims();
 
-    auto op = builder.create<IE::GatherNDOp>(createLocation(origNode), inputs[0], inputs[1], batchDims);
+    auto op =
+            builder.create<IE::GatherNDOp>(createLocation(origNode), inputs[0], inputs[1], getIntAttr(_ctx, batchDims));
     addOutputs(origNode, op);
 }
 
@@ -1821,7 +1847,8 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
 
     const auto keep_dims = origNode->get_keep_dims();
 
-    auto op = builder.create<IE::ReduceMeanOp>(createLocation(origNode), inputs[0], inputs[1], nullptr, keep_dims);
+    auto op = builder.create<IE::ReduceMeanOp>(createLocation(origNode), inputs[0], inputs[1], nullptr, keep_dims,
+                                               nullptr, nullptr);
     addOutputs(origNode, op);
 }
 
@@ -1879,7 +1906,8 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
 
     const auto keep_dims = origNode->get_keep_dims();
 
-    auto op = builder.create<IE::ReduceSumOp>(createLocation(origNode), inputs[0], inputs[1], nullptr, keep_dims);
+    auto op = builder.create<IE::ReduceSumOp>(createLocation(origNode), inputs[0], inputs[1], nullptr, keep_dims,
+                                              nullptr, nullptr);
     addOutputs(origNode, op);
 }
 
@@ -2276,7 +2304,7 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
         return mlir::TypeAttr::get(mlir::NoneType::get(_ctx));
     }();
 
-    VPUX_THROW_WHEN(destinationTypeAttr.getValue().isa<mlir::NoneType>(),
+    VPUX_THROW_WHEN(mlir::isa<mlir::NoneType>(destinationTypeAttr.getValue()),
                     "nGraph FakeConvert unsupported destination type: '{0}'.", destinationTypeName);
 
     const auto data = inputs[0];
@@ -2406,11 +2434,11 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
     if (inputs.size() == 3) {
         op = builder.create<IE::InterpolateOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], nullptr,
                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, interpolateAttr,
-                                               nullptr);
+                                               nullptr, nullptr);
     } else {
         op = builder.create<IE::InterpolateOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], inputs[3],
                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, interpolateAttr,
-                                               nullptr);
+                                               nullptr, nullptr);
     }
 
     addOutputs(origNode, op);
@@ -2719,11 +2747,12 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
     if (inputs.size() == 4) {
         auto op =
                 builder.create<IE::PadOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], inputs[3], nullptr,
-                                          nullptr, nullptr, importPadMode(origNode->get_pad_mode()), nullptr);
+                                          nullptr, nullptr, importPadMode(origNode->get_pad_mode()), nullptr, nullptr);
         addOutputs(origNode, op);
     } else if (inputs.size() == 3) {
-        auto op = builder.create<IE::PadOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], nullptr, nullptr,
-                                            nullptr, nullptr, importPadMode(origNode->get_pad_mode()), nullptr);
+        auto op =
+                builder.create<IE::PadOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], nullptr, nullptr,
+                                          nullptr, nullptr, importPadMode(origNode->get_pad_mode()), nullptr, nullptr);
         addOutputs(origNode, op);
     } else {
         VPUX_THROW("nGraph Pad node '{0}' has unsupported number of inputs '{1}'", origNode->get_friendly_name(),
@@ -3148,7 +3177,7 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
     VPUX_THROW_UNLESS(inputs.size() == 1, "nGraph BitwiseNot node '{0}' has unsupported number of inputs '{1}'",
                       origNode->get_friendly_name(), inputs.size());
 
-    auto inputType = inputs[0].getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(inputs[0].getType());
     mlir::Operation* op;
     if (inputType.getElementType().isSignlessInteger()) {
         op = builder.create<IE::LogicalNotOp>(createLocation(origNode), inputs[0]);
@@ -4505,11 +4534,12 @@ mlir::RankedTensorType importUserTensor(mlir::MLIRContext* ctx, const ov::descri
             return importedTensor;
         }
 
-        auto boundedTensorType = mlir::cast<vpux::BoundedTypeInterface>(importedTensor);
-        boundedTensorType = boundedTensorType.changeBounds(
-                getIntArrayAttr(importedTensor.getContext(), boundedOutShape.to_shape()));
+        auto ndType = mlir::cast<NDTypeInterface>(importedTensor);
+        const auto boundShape = boundedOutShape.to_shape();
+        const SmallVector<int64_t> boundedOutShapeVec(boundShape.begin(), boundShape.end());
+        ndType = Core::BoundedTensorType::get(ndType, boundedOutShapeVec);
 
-        return mlir::cast<mlir::RankedTensorType>(boundedTensorType);
+        return mlir::cast<mlir::RankedTensorType>(ndType);
     }
 
     return importedTensor;
@@ -4608,12 +4638,14 @@ void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, m
 
     ov::pass::Manager manager;
     manager.register_pass<ov::pass::InitNodeInfo>();
-    ov::element::TypeVector decompression_precisions{
-            ov::element::u4, ov::element::i4, ov::element::nf4, ov::element::u8, ov::element::i8,
-    };
 
+    // Dequantization of the constants with types specified here will not be folded. If folding occurs the compiler will
+    // think weights are FP16/FP32 resulting in high-precision execution.
+    ov::element::TypeVector decompression_precisions{ov::element::u4,     ov::element::i4,    ov::element::nf4,
+                                                     ov::element::u8,     ov::element::i8,    ov::element::f8e4m3,
+                                                     ov::element::f8e5m2, ov::element::f8e8m0};
     manager.register_pass<ov::pass::MarkDequantization>(decompression_precisions, /*fold_subtract_const=*/true);
-    manager.register_pass<ov::pass::KeepConstsPrecision>(decompression_precisions, /*fold_subtract_const=*/true);
+    manager.register_pass<ov::pass::KeepConstPrecision>(decompression_precisions, /*fold_subtract_const=*/true);
     manager.register_pass<ov::pass::SharedOpOptimization>();
     manager.register_pass<ov::pass::ConvertQuantizeDequantize>();
     manager.register_pass<ov::pass::ConstantFolding>();
@@ -4640,7 +4672,7 @@ void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, m
 }
 
 //
-// addCNNNetworkOp
+// addNetworkInfoOp
 //
 
 mlir::StringAttr createPrimaryNameAttr(mlir::MLIRContext* ctx, const ov::Node& node) {
@@ -4699,20 +4731,20 @@ void createDataInfoOp(mlir::OpBuilder infoBuilder, mlir::MLIRContext* ctx, const
 
     const auto tensorNamesAttr = createTensorNamesAttr(ctx, originalNode);
 
-    infoBuilder.create<IE::DataInfoOp>(loc, primaryNameAttr, userTypeAttr,
-                                       /*OptionalAttr originalShape*/ originalShapeAttr,
-                                       /*OptionalAttr friendlyName*/ friendlyNameAttr,
-                                       /*OptionalAttr inputName*/ inputNameAttr,
-                                       /*OptionalAttr tensorNames*/ tensorNamesAttr,
-                                       /*profilingSectionsCount=*/0);
+    infoBuilder.create<net::DataInfoOp>(loc, primaryNameAttr, userTypeAttr,
+                                        /*OptionalAttr originalShape*/ originalShapeAttr,
+                                        /*OptionalAttr friendlyName*/ friendlyNameAttr,
+                                        /*OptionalAttr inputName*/ inputNameAttr,
+                                        /*OptionalAttr tensorNames*/ tensorNamesAttr,
+                                        /*profilingSectionsCount=*/0);
 }
 
-void addCNNNetworkOp(mlir::OpBuilder& builder, mlir::FlatSymbolRefAttr mainFuncName,
-                     const std::shared_ptr<ov::Model>& model,
-                     const std::vector<std::shared_ptr<const ov::Node>>& originalParameters,
-                     const std::vector<std::shared_ptr<const ov::Node>>& originalResults, mlir::TimingScope& rootTiming,
-                     bool enableProfiling) {
-    auto scopeTiming = rootTiming.nest("Add CNNNetwork Operation");
+void addNetworkInfoOp(mlir::OpBuilder& builder, mlir::FlatSymbolRefAttr mainFuncName,
+                      const std::shared_ptr<ov::Model>& model,
+                      const std::vector<std::shared_ptr<const ov::Node>>& originalParameters,
+                      const std::vector<std::shared_ptr<const ov::Node>>& originalResults,
+                      mlir::TimingScope& rootTiming, bool enableProfiling) {
+    auto scopeTiming = rootTiming.nest("Add NetworkInfo Operation");
 
     const auto parameters = model->get_parameters();
     const auto results = model->get_results();
@@ -4734,17 +4766,17 @@ void addCNNNetworkOp(mlir::OpBuilder& builder, mlir::FlatSymbolRefAttr mainFuncN
 
     auto* ctx = builder.getContext();
 
-    auto cnnOp = builder.create<IE::CNNNetworkOp>(mlir::UnknownLoc::get(ctx), mainFuncName, enableProfiling);
-    cnnOp.getInputsInfo().emplaceBlock();
-    cnnOp.getOutputsInfo().emplaceBlock();
+    auto netInfo = builder.create<net::NetworkInfoOp>(mlir::UnknownLoc::get(ctx), mainFuncName, enableProfiling);
+    netInfo.getInputsInfo().emplaceBlock();
+    netInfo.getOutputsInfo().emplaceBlock();
     if (enableProfiling) {
-        cnnOp.getProfilingOutputsInfo().front().emplaceBlock();
+        netInfo.getProfilingOutputsInfo().front().emplaceBlock();
     }
 
     VPUX_THROW_UNLESS(parameters.size() == originalParameters.size(),
                       "Number of parameters are different between actual ({0}) and original model ({1})",
                       parameters.size(), originalParameters.size());
-    auto inputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&cnnOp.getInputsInfo().front(), builder.getListener());
+    auto inputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&netInfo.getInputsInfo().front(), builder.getListener());
     for (size_t i = 0; i < parameters.size(); i++) {
         createDataInfoOp(inputsInfoBuilder, ctx, *parameters[i], *originalParameters[i]);
     }
@@ -4752,7 +4784,7 @@ void addCNNNetworkOp(mlir::OpBuilder& builder, mlir::FlatSymbolRefAttr mainFuncN
     VPUX_THROW_UNLESS(results.size() == originalResults.size(),
                       "Number of results are different between actual ({0}) and original model ({1})", results.size(),
                       originalResults.size());
-    auto outputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&cnnOp.getOutputsInfo().front(), builder.getListener());
+    auto outputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&netInfo.getOutputsInfo().front(), builder.getListener());
     for (size_t i = 0; i < results.size(); i++) {
         createDataInfoOp(outputsInfoBuilder, ctx, *results[i], *originalResults[i]);
     }
@@ -4779,7 +4811,7 @@ void addSparsityStatistics(const std::shared_ptr<ov::Model>& model, mlir::Module
     auto builder = mlir::OpBuilder::atBlockBegin(module.getBody(), &builderLog);
     auto* ctx = builder.getContext();
 
-    auto statsOp = builder.create<IE::SparsityStatisticsOp>(mlir::UnknownLoc::get(ctx));
+    auto statsOp = builder.create<net::SparsityStatisticsOp>(mlir::UnknownLoc::get(ctx));
     statsOp.getSparsityInfo().emplaceBlock();
 
     auto statsBuilder = mlir::OpBuilder::atBlockBegin(&statsOp.getSparsityInfo().front(), builder.getListener());
@@ -4794,7 +4826,7 @@ void addSparsityStatistics(const std::shared_ptr<ov::Model>& model, mlir::Module
         const auto nameAttr = mlir::StringAttr::get(ctx, nodeName);
         const auto inputAttr = getIntAttr(ctx, portId);
         const auto ratioAttr = getFPAttr(ctx, ratio);
-        statsBuilder.create<IE::SparsityInfoOp>(mlir::UnknownLoc::get(ctx), nameAttr, inputAttr, ratioAttr);
+        statsBuilder.create<net::SparsityInfoOp>(mlir::UnknownLoc::get(ctx), nameAttr, inputAttr, ratioAttr);
     }
 }
 
@@ -4844,8 +4876,8 @@ mlir::OwningOpRef<mlir::ModuleOp> vpux::IE::importNetwork(
     OpBuilderLogger builderLog(log.nest());
     auto builder = mlir::OpBuilder::atBlockBegin(module.getBody(), &builderLog);
 
-    log.trace("Add CNNNetwork Operation");
-    addCNNNetworkOp(builder, mainFuncName, model, originalParameters, originalResults, rootTiming, enableProfiling);
+    log.trace("Add NetworkInfo Operation");
+    addNetworkInfoOp(builder, mainFuncName, model, originalParameters, originalResults, rootTiming, enableProfiling);
 
     log.trace("Import nGraph function");
     NGraphImporter importer(ctx, model, sharedConstants, log);

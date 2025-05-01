@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/reify_shape.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -29,11 +30,11 @@ namespace {
 
 // temporary limit the pass to use only limited number of operations
 bool isSupportedOp(mlir::Operation* op) {
-    return mlir::isa<IE::SoftMaxOp>(op);
+    return mlir::isa<IE::SoftMaxOp, IE::LSTMSequenceOp>(op);
 }
 
 bool supportsStridedAccess(mlir::Operation* op) {
-    return mlir::isa<IE::SoftMaxOp>(op);
+    return mlir::isa<IE::SoftMaxOp, IE::LSTMSequenceOp>(op);
 }
 
 void populateDynamicResult(mlir::Operation* op, const unsigned resultIdx) {
@@ -60,12 +61,16 @@ void populateDynamicResult(mlir::Operation* op, const unsigned resultIdx) {
     auto newResult = [&]() -> mlir::Value {
         if (supportsStridedAccess(op)) {
             const SmallVector<int64_t> outputShape{resultShape.raw()};
+            auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(op->getResult(0).getType());
+            VPUX_THROW_UNLESS(boundedType != nullptr, "Expected to get BoundedTensorType at {0}",
+                              op->getResult(0).getLoc());
+
             auto reshape = builder.create<IE::DynamicReshapeOp>(
                     appendLoc(op->getLoc(), "reshape"),
                     /*data=*/op->getResult(0),
                     /*shape=*/concat.getOutput(),
                     /*output_shape=*/getIntArrayAttr(builder.getContext(), outputShape),
-                    /*output_bounds=*/getBounds(op->getResult(0)),
+                    /*output_bounds=*/getIntArrayAttr(builder.getContext(), boundedType.getBounds()),
                     /*only_set_shape*/ true);
 
             return reshape.getResult();

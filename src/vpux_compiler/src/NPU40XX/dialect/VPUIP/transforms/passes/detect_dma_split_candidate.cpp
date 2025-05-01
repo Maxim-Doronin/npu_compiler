@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,13 +7,15 @@
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux::VPUIP::arch40xx {
 #define GEN_PASS_DECL_DETECTDMASPLITCANDIDATE
@@ -56,8 +58,8 @@ bool isDuplicatedBufferType(NDTypeInterface bufferType) {
 }
 
 bool areSupportedTypes(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType) {
-    const auto inputDistributedType = inType.dyn_cast<VPUIP::DistributedBufferType>();
-    const auto outputBufferDistributedType = outType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto inputDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inType);
+    const auto outputBufferDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outType);
 
     // It's supported if both are non-distributed
     if (inputDistributedType == nullptr && outputBufferDistributedType == nullptr) {
@@ -193,13 +195,13 @@ size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, VPU::ArchKind arch,
     }
     const auto tileDim = maybeTileDim.value();
 
-    auto inputType = dmaOp.getInput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
     auto inElemType = inputType.getElementType();
     if (!VPU::isVPUNNSupportedElementType(inElemType)) {
         return COST_MAX;
     }
 
-    auto outputType = dmaOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutput().getType());
     auto inputShape = inputType.getShape();
 
     auto [firstPartSize, secondPartSize] = VPUIP::getSplitPartSizes(inputType, tileDim);
@@ -302,8 +304,8 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
         }
 
         const auto outputBuffer = dmaOp.getOutputBuff();
-        const auto inputType = dmaOp.getInput().getType().cast<NDTypeInterface>();
-        const auto outputType = outputBuffer.getType().cast<NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(outputBuffer.getType());
         if (!areSupportedTypes(inputType, outputType)) {
             return;
         }

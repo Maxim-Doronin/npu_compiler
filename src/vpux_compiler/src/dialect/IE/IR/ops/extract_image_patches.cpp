@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::IE::ExtractImagePatchesOp::inferReturnTypeComponents(
     }
 
     const auto paddingType = extractImagePatches.getAutoPad();
-    const auto inType = extractImagePatches.getData().getType().cast<mlir::ShapedType>().getElementType();
+    const auto inType = mlir::cast<mlir::ShapedType>(extractImagePatches.getData().getType()).getElementType();
     const auto inputShape = getShape(extractImagePatches.getData());
 
     const auto sizes = parseIntArrayAttr<int64_t>(extractImagePatches.getSizes());

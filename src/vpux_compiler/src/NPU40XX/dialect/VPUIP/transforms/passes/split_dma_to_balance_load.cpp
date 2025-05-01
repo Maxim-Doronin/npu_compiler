@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,8 +7,10 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_cluster_tiling.hpp"
 
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -39,7 +41,7 @@ NDTypeInterface getNewBufferType(NDTypeInterface bufferType, vpux::Dim tileDim, 
     newOffset[tileDim] = dimOffset;
 
     NDTypeInterface newType;
-    if (auto distributedType = bufferType.dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(bufferType)) {
         const auto origDistAttr = distributedType.getDistribution();
         VPUX_THROW_UNLESS(VPU::isDuplicated(origDistAttr), "Only support DUPLICATED distributed buffer type");
 
@@ -53,12 +55,12 @@ NDTypeInterface getNewBufferType(NDTypeInterface bufferType, vpux::Dim tileDim, 
                     origDistAttr.getUniformDistributedSegments(), ctx);
 
             auto newElemType = bufferType.getElementType();
-            if (auto qType = bufferType.getElementType().dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+            if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(bufferType.getElementType())) {
                 newElemType = tileScalesAndZP(qType, newShape, newOffset);
             }
 
             auto order = mlir::AffineMapAttr::get(bufferType.getDimsOrder().toAffineMap(ctx));
-            auto memSpace = bufferType.cast<VPUIP::DistributedBufferType>().getMemSpace();
+            auto memSpace = mlir::cast<vpux::VPUIP::DistributedBufferType>(bufferType).getMemSpace();
 
             newType = VPUIP::DistributedBufferType::get(ctx, newShape.raw(), newElemType, order, memSpace,
                                                         newDistribution);
@@ -67,7 +69,7 @@ NDTypeInterface getNewBufferType(NDTypeInterface bufferType, vpux::Dim tileDim, 
         }
     }
 
-    if (auto qType = bufferType.getElementType().dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(bufferType.getElementType())) {
         auto newElemType = tileScalesAndZP(qType, newShape, newOffset);
         newType = bufferType.changeShapeElemType(newShape, newElemType);
     } else {
@@ -79,7 +81,7 @@ NDTypeInterface getNewBufferType(NDTypeInterface bufferType, vpux::Dim tileDim, 
 // Replace single allocation with 2 separate allocations. These allocations cover same memory range, but first points to
 // the beginning of buffer, second points to the middle or place with offset
 BuffersPair getReplacementBuffers(mlir::Value originalBuffer, vpux::Dim tileDim, mlir::OpBuilder builder) {
-    const auto bufferType = originalBuffer.getType().cast<NDTypeInterface>();
+    const auto bufferType = mlir::cast<vpux::NDTypeInterface>(originalBuffer.getType());
     auto bufferOp = originalBuffer.getDefiningOp<VPURT::DeclareBufferOp>();
 
     auto origStrides = bufferType.getStrides();
@@ -111,7 +113,7 @@ BuffersPair getReplacementBuffers(mlir::Value originalBuffer, vpux::Dim tileDim,
 BuffersPair getConstantParts(mlir::Value originalConstant, vpux::Dim tileDim, mlir::OpBuilder builder) {
     auto cstOp = originalConstant.getDefiningOp<Const::DeclareOp>();
 
-    const auto cstType = cstOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto cstType = mlir::cast<vpux::NDTypeInterface>(cstOp.getOutput().getType());
     const auto origShape = cstType.getShape();
     builder.setInsertionPoint(cstOp);
     const auto createCstPart = [&](int64_t tileOffset, int64_t newDimSize, StringRef locSuffix) -> mlir::Value {
@@ -170,7 +172,7 @@ bool isTrivialConst(Const::DeclareOp cstOp) {
 // Non trivial transforms requires folding and flattening to keep content correct
 void splitFoldedConstToBufferDma(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, Const::DeclareOp cstOp, vpux::Dim tileDim,
                                  int64_t numDmaPorts, mlir::OpBuilder builder, vpux::Logger log) {
-    const auto cstType = cstOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto cstType = mlir::cast<vpux::NDTypeInterface>(cstOp.getOutput().getType());
     const auto strides = cstType.getStrides();
     // In case of subbyte type, which has non-byte stride along tiling dim - don't attempt to split this constant
     const auto tileDimStride = strides[tileDim];
@@ -198,9 +200,10 @@ void splitFoldedConstToBufferDma(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, Con
     std::vector<char> tempBuf(bufSize);
     content.copyTo(MutableArrayRef(tempBuf.data(), bufSize));
 
-    auto rankedTensorType = contentType.cast<mlir::RankedTensorType>();
-    if (auto qtype = contentElemType.dyn_cast<mlir::quant::QuantizedType>()) {
-        rankedTensorType = contentType.changeElemType(normalizeQuantStorageType(qtype)).cast<mlir::RankedTensorType>();
+    auto rankedTensorType = mlir::cast<mlir::RankedTensorType>(contentType);
+    if (auto qtype = mlir::dyn_cast<mlir::quant::QuantizedType>(contentElemType)) {
+        rankedTensorType =
+                mlir::cast<mlir::RankedTensorType>(contentType.changeElemType(normalizeQuantStorageType(qtype)));
     }
 
     const auto rankedElemType = rankedTensorType.getElementType();
@@ -237,7 +240,7 @@ void splitFoldedConstToBufferDma(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, Con
 
 void splitDmaIntoParts(VPURT::TaskOp taskOp, int64_t numDmaPorts, mlir::OpBuilder builder, vpux::Logger log) {
     auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(taskOp.getInnerTaskOp());
-    const auto inputBuffType = dmaOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputBuffType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
     const auto maybeTileDim = VPUIP::getCopyDMATilingDim(dmaOp);
     if (!maybeTileDim.has_value()) {
         log.trace("Can't find split dim for shape {0}, skip", inputBuffType.getShape());

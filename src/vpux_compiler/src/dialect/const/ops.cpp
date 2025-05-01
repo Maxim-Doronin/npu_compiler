@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,8 +7,8 @@
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 
-#include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
@@ -37,7 +37,7 @@ mlir::Operation* vpux::Const::ConstDialect::materializeConstant(mlir::OpBuilder&
         return nullptr;
     }
 
-    if (!type.isa<mlir::RankedTensorType, mlir::MemRefType>()) {
+    if (!mlir::isa<mlir::RankedTensorType, mlir::MemRefType>(type)) {
         (void)errorAt(loc, "Can't materialize Constant for Type '{0}'", type);
         return nullptr;
     }
@@ -145,7 +145,7 @@ vpux::ELFNPU37XX::SectionFlagsAttr vpux::Const::DeclareOp::getUserProcs() {
 mlir::LogicalResult vpux::Const::DeclareOp::verify() {
     const auto op = getOperation();
     const auto attrType = getContentAttr().getType();
-    const auto opType = getType().cast<vpux::NDTypeInterface>();
+    const auto opType = mlir::cast<vpux::NDTypeInterface>(getType());
 
     auto emitError = [&]() {
         return op->emitError();
@@ -171,8 +171,8 @@ mlir::LogicalResult vpux::Const::DeclareOp::verify() {
         }
     }
     if (opType.getElementType() != attrType.getElementType()) {
-        if (!opType.getElementType().isa<mlir::quant::QuantizedType>() &&
-            !attrType.getElementType().isa<mlir::IntegerType>()) {
+        if (!mlir::isa<mlir::quant::QuantizedType>(opType.getElementType()) &&
+            !mlir::isa<mlir::IntegerType>(attrType.getElementType())) {
             return errorAt(op, "'Const.Declare' has mismatch in value element type '{0}' and result element type '{1}'",
                            attrType.getElementType(), opType.getElementType());
         }
@@ -441,7 +441,6 @@ mlir::OpFoldResult Const::MultiDeclareOp::fold(FoldAdaptor) {
 void Const::ConstDialect::setupExtraInterfaces(mlir::DialectRegistry& registry) {
     registry.addExtension(+[](mlir::MLIRContext* ctx, mlir::BuiltinDialect*) {
         mlir::RankedTensorType::attachInterface<vpux::TensorNDTypeInterface>(*ctx);
-        mlir::RankedTensorType::attachInterface<vpux::TensorBoundedTypeInterface>(*ctx);
         mlir::UnrankedTensorType::attachInterface<vpux::TensorNDTypeInterface>(*ctx);
         mlir::MemRefType::attachInterface<vpux::MemRefNDTypeInterface>(*ctx);
         mlir::UnrankedMemRefType::attachInterface<vpux::MemRefNDTypeInterface>(*ctx);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,6 +15,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::VPUIP {
@@ -27,64 +28,23 @@ using namespace vpux;
 
 namespace {
 
-using GetCopyFunctType = FuncRef<VPUIP::LayerOpInterface(mlir::Operation*)>;
-using CreateCopyFunctType =
-        FuncRef<VPUIP::LayerOpInterface(mlir::PatternRewriter&, mlir::Location, mlir::Value, mlir::Value)>;
-
-VPUIP::LayerOpInterface getCopyOp(mlir::Operation* sourceOp) {
-    return mlir::dyn_cast_or_null<VPUIP::CopyOp>(sourceOp);
-}
-
-VPUIP::LayerOpInterface createNewCopyOp(mlir::PatternRewriter& rewriter, mlir::Location loc, mlir::Value input,
-                                        mlir::Value outputBuff) {
-    return rewriter.create<VPUIP::CopyOp>(loc, input, outputBuff);
-}
-
-VPUIP::LayerOpInterface getTillingCopyOp(mlir::Operation* sourceOp) {
-    auto clusterTiling = mlir::dyn_cast_or_null<VPUIP::NCEClusterTilingOp>(sourceOp);
-    if (clusterTiling == nullptr || clusterTiling.getInnerTaskOpOfType<VPUIP::CopyOp>() == nullptr) {
-        return nullptr;
-    }
-
-    return clusterTiling;
-}
-
-VPUIP::LayerOpInterface createNewTillingCopyOp(mlir::PatternRewriter& rewriter, mlir::Location loc, mlir::Value input,
-                                               mlir::Value outputBuff) {
-    const auto copyOutBodyBuilder = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange newOperands) {
-        builder.create<VPUIP::CopyOp>(loc, newOperands[0], newOperands[1]);
-    };
-
-    SmallVector<mlir::Value> inputsOutputOperands = {input, outputBuff};
-    return rewriter.create<VPUIP::NCEClusterTilingOp>(loc, outputBuff.getType(), inputsOutputOperands,
-                                                      copyOutBodyBuilder);
-}
-
 //
-// LayerRewriter
+// MoveViewOpToTheFrontOfCopy
 //
 
-class LayerRewriterBase : public mlir::OpInterfaceRewritePattern<mlir::ViewLikeOpInterface> {
+class MoveViewOpToTheFrontOfCopy : public mlir::OpInterfaceRewritePattern<mlir::ViewLikeOpInterface> {
 public:
-    LayerRewriterBase(mlir::MLIRContext* ctx, GetCopyFunctType getCopyOp, CreateCopyFunctType createNewCopyOp,
-                      Logger log)
-            : mlir::OpInterfaceRewritePattern<mlir::ViewLikeOpInterface>(ctx),
-              _getCopyOp(getCopyOp),
-              _createNewCopyOp(createNewCopyOp),
-              _log(log) {
+    MoveViewOpToTheFrontOfCopy(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpInterfaceRewritePattern<mlir::ViewLikeOpInterface>(ctx), _log(log) {
     }
-
-public:
     mlir::LogicalResult matchAndRewrite(mlir::ViewLikeOpInterface origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    GetCopyFunctType _getCopyOp;
-    CreateCopyFunctType _createNewCopyOp;
     Logger _log;
 };
 
-mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface origOp,
-                                                       mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOpInterface origOp,
+                                                                mlir::PatternRewriter& rewriter) const {
     if (mlir::isa<VPUIP::LayerOpInterface>(*origOp)) {
         return mlir::failure();
     }
@@ -94,7 +54,7 @@ mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface
     }
 
     _log.trace("Got pure view-like op: '{0}':'{1}'", origOp->getName(), origOp->getLoc());
-    auto maybeCopy = _getCopyOp(origOp->getOperand(0).getDefiningOp());
+    auto maybeCopy = origOp->getOperand(0).getDefiningOp<VPUIP::CopyOp>();
     if (maybeCopy == nullptr) {
         StringRef parentOpName = "None";
         if (auto parentOp = origOp->getOperand(0).getDefiningOp()) {
@@ -122,18 +82,18 @@ mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface
         return mlir::failure();
     }
 
-    auto copyOpInputType = VPUIP::extractDataType(copyOpInput).cast<vpux::NDTypeInterface>();
-    auto copyOpOutputType = VPUIP::extractDataType(copyOpOutput).cast<vpux::NDTypeInterface>();
+    auto copyOpInputType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(copyOpInput));
+    auto copyOpOutputType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(copyOpOutput));
 
-    auto viewOpInputType = origOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    auto viewOpOutputType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto viewOpInputType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
+    auto viewOpOutputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     auto viewOpOutputShape = viewOpOutputType.getShape();
     auto viewOpOutputElemType = viewOpOutputType.getElementType();
 
     const auto inputShape = viewOpInputType.getShape();
     const auto outputShape = viewOpOutputType.getShape();
     const auto isRankChangedByViewOp = inputShape.size() != outputShape.size();
-    auto distributedType = copyOpInput.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(copyOpInput.getType());
     mlir::FailureOr<std::pair<int64_t, int64_t>> getDistributedAxesMapping = mlir::failure();
     if (distributedType != nullptr && mlir::isa<VPUIP::ShapeCastOp, VPUIP::GenericReshapeOp>(origOp)) {
         getDistributedAxesMapping = VPUIP::getDistributedAxesMappingAfterShapeChanged(
@@ -164,11 +124,11 @@ mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface
 
             if (mlir::isa<VPUIP::QuantizeCastOp>(origOp)) {
                 // Only support per-tensor uniform quantized type
-                return (distributedType.getElementType().isa<mlir::quant::UniformQuantizedType>() &&
-                        viewOpOutputElemType.isa<mlir::quant::UniformQuantizedType>());
+                return (mlir::isa<mlir::quant::UniformQuantizedType>(distributedType.getElementType()) &&
+                        mlir::isa<mlir::quant::UniformQuantizedType>(viewOpOutputElemType));
             }
 
-            // If the cluster copy op has siblings, moving pureViewOp
+            // If the distributed copy op has siblings, moving pureViewOp
             // in front of it may cause accuracy issues
             if (!copyOpInput.hasOneUse()) {
                 return false;
@@ -212,17 +172,17 @@ mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface
             if (mode != VPU::DistributionMode::OVERLAPPED) {
                 return false;
             }
-            // If the cluster copy op has siblings, moving pureViewOp
+            // If the distributed copy op has siblings, moving pureViewOp
             // in front of it may cause accuracy issues
             if (!copyInput.hasOneUse()) {
                 return false;
             }
             if (mlir::isa<VPUIP::QuantizeCastOp>(viewOp)) {
-                const auto viewOpOutputType = viewOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+                const auto viewOpOutputType = mlir::cast<vpux::NDTypeInterface>(viewOp->getResult(0).getType());
                 const auto viewOpOutputElemType = viewOpOutputType.getElementType();
                 // Only support per-tensor uniform quantized type
-                if (distType.getElementType().isa<mlir::quant::UniformQuantizedType>() &&
-                    viewOpOutputElemType.isa<mlir::quant::UniformQuantizedType>()) {
+                if (mlir::isa<mlir::quant::UniformQuantizedType>(distType.getElementType()) &&
+                    mlir::isa<mlir::quant::UniformQuantizedType>(viewOpOutputElemType)) {
                     return true;
                 }
             }
@@ -277,8 +237,8 @@ mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface
         const auto origDistribution = distributedType.getDistribution();
 
         if (auto permuteCast = mlir::dyn_cast<VPUIP::PermuteCastOp>(*origOp)) {
-            auto inPermuteType = permuteCast->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-            auto outPermuteType = permuteCast->getResult(0).getType().cast<vpux::NDTypeInterface>();
+            auto inPermuteType = mlir::cast<vpux::NDTypeInterface>(permuteCast->getOperand(0).getType());
+            auto outPermuteType = mlir::cast<vpux::NDTypeInterface>(permuteCast->getResult(0).getType());
 
             return applyPermutationOnDistributionInfoAttr(distributedType, permuteCast.getMemPerm(),
                                                           inPermuteType.getDimsOrder(), outPermuteType.getDimsOrder(),
@@ -355,7 +315,7 @@ mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface
 
     auto newAllocType = viewOpOutputType.changeMemSpace(copyOpOutputType.getMemSpace());
     auto allocOp = allocateBuffersOfType(_log, maybeCopy->getLoc(), rewriter, newAllocType).front();
-    auto newCopyOp = _createNewCopyOp(rewriter, maybeCopy->getLoc(), origOp->getResult(0), allocOp);
+    auto newCopyOp = rewriter.create<VPUIP::CopyOp>(maybeCopy->getLoc(), origOp->getResult(0), allocOp);
 
     _log.trace("Replace all uses of pure view-like op with new Copy op: '{0}'", newCopyOp);
     rewriter.replaceAllUsesExcept(origOp->getResult(0), newCopyOp->getResults()[0], newCopyOp);
@@ -377,43 +337,14 @@ mlir::LogicalResult LayerRewriterBase::matchAndRewrite(mlir::ViewLikeOpInterface
 // MoveSubviewToTheFrontOfCopy
 //
 
-class MoveViewOpToTheFrontOfCopy final : public LayerRewriterBase {
+class MoveSubviewToTheFrontOfCopy : public mlir::OpRewritePattern<VPUIP::CopyOp> {
 public:
-    MoveViewOpToTheFrontOfCopy(mlir::MLIRContext* ctx, Logger log)
-            : LayerRewriterBase(ctx, getCopyOp, createNewCopyOp, log) {
+    MoveSubviewToTheFrontOfCopy(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<VPUIP::CopyOp>(ctx), _log(log) {
     }
-};
-
-//
-// MoveViewOpToTheFrontOfTillingCopy
-//
-
-class MoveViewOpToTheFrontOfTillingCopy final : public LayerRewriterBase {
-public:
-    MoveViewOpToTheFrontOfTillingCopy(mlir::MLIRContext* ctx, Logger log)
-            : LayerRewriterBase(ctx, getTillingCopyOp, createNewTillingCopyOp, log) {
-    }
-};
-
-//
-// MoveSubviewToTheFrontOfCopyBase
-//
-class MoveSubviewToTheFrontOfCopyBase : public mlir::OpRewritePattern<VPUIP::CopyOp> {
-public:
-    MoveSubviewToTheFrontOfCopyBase(mlir::MLIRContext* ctx, GetCopyFunctType getCopyOp,
-                                    CreateCopyFunctType createNewCopyOp, Logger log)
-            : mlir::OpRewritePattern<VPUIP::CopyOp>(ctx),
-              _getCopyOp(getCopyOp),
-              _createNewCopyOp(createNewCopyOp),
-              _log(log) {
-    }
-
-public:
     mlir::LogicalResult matchAndRewrite(VPUIP::CopyOp copyOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    GetCopyFunctType _getCopyOp;
-    CreateCopyFunctType _createNewCopyOp;
     Logger _log;
 };
 
@@ -432,7 +363,7 @@ bool isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp,
     auto origShape = getShape(subViewOp.getSource());
     auto subShape = getShape(subViewOp.getResult());
 
-    if (!VPUIP::isChannelOffsetsAndTileDimCompatibleWithClusterCopy(
+    if (!VPUIP::isChannelOffsetsAndTileDimCompatibleWithDistributedCopy(
                 parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsetsAttr()), tileIndexVal, distributedType)) {
         return false;
     }
@@ -441,8 +372,12 @@ bool isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp,
     return origShape[Dim(tileIndexVal)] == subShape[Dim(tileIndexVal)];
 }
 
-mlir::LogicalResult MoveSubviewToTheFrontOfCopyBase::matchAndRewrite(VPUIP::CopyOp copyOp,
-                                                                     mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult MoveSubviewToTheFrontOfCopy::matchAndRewrite(VPUIP::CopyOp copyOp,
+                                                                 mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got Copy {0} at {1}", copyOp, copyOp.getLoc());
+    if (vpux::VPUIP::hasDistributedOperand(copyOp)) {
+        return mlir::failure();
+    }
     auto subViewOp = copyOp.getInput().getDefiningOp<VPUIP::SubViewOp>();
     if (subViewOp == nullptr) {
         return mlir::failure();
@@ -454,20 +389,25 @@ mlir::LogicalResult MoveSubviewToTheFrontOfCopyBase::matchAndRewrite(VPUIP::Copy
         return mlir::failure();
     }
 
-    auto parentCopyOp = _getCopyOp(subViewOp.getSource().getDefiningOp());
+    auto parentCopyOp = subViewOp.getSource().getDefiningOp<VPUIP::CopyOp>();
     if (parentCopyOp == nullptr) {
         return mlir::failure();
     }
 
-    // optimize happens only when tillingOp has one subview user
+    // optimize happens only when the distributed op has one subview user
     if (!parentCopyOp->getResults()[0].hasOneUse()) {
+        return mlir::failure();
+    }
+
+    auto allocOp = VPUIP::getRootAlloc<mlir::memref::AllocOp>(parentCopyOp.getOutputs()[0]);
+    if (!mlir::isa_and_nonnull<mlir::memref::AllocOp>(allocOp)) {
         return mlir::failure();
     }
 
     // perform this optimization only when distributed buffer is compatible with subview
     // otherwise an accuracy degradation may occur
     auto originOperand = parentCopyOp->getOperand(0);
-    if (auto distributedType = originOperand.getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(originOperand.getType())) {
         if (!isSubViewCompatibleWithDistributedBuffer(subViewOp, distributedType)) {
             return mlir::failure();
         }
@@ -475,7 +415,7 @@ mlir::LogicalResult MoveSubviewToTheFrontOfCopyBase::matchAndRewrite(VPUIP::Copy
 
     _log.trace("Move subview {0} in front of copy {1}", subViewOp->getLoc(), parentCopyOp->getLoc());
 
-    if (auto arg = originOperand.dyn_cast<mlir::BlockArgument>()) {
+    if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(originOperand)) {
         rewriter.setInsertionPointToStart(arg.getParentBlock());
     } else {
         rewriter.setInsertionPointAfter(originOperand.getDefiningOp());
@@ -487,16 +427,13 @@ mlir::LogicalResult MoveSubviewToTheFrontOfCopyBase::matchAndRewrite(VPUIP::Copy
                                               subViewOp.getStaticSizesAttr(), subViewOp.getStaticStridesAttr());
 
     auto subViewOpShape = getShape(newSubViewOp);
-    auto allocOp = VPUIP::getRootAlloc<mlir::memref::AllocOp>(parentCopyOp.getOutputs()[0]);
-    VPUX_THROW_UNLESS(mlir::isa_and_nonnull<mlir::memref::AllocOp>(allocOp),
-                      "CopyOp output buffer should be AllocationOp");
-    auto allocOpDtype = allocOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto allocOpDtype = mlir::cast<vpux::NDTypeInterface>(allocOp->getResult(0).getType());
     // Per-axis quantization must be aligned with the shape.
-    const auto targetElemType = newSubViewOp.getResult().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto targetElemType = mlir::cast<vpux::NDTypeInterface>(newSubViewOp.getResult().getType()).getElementType();
     allocOp->getResult(0).setType(allocOpDtype.changeShapeElemType(subViewOpShape, targetElemType));
 
     auto newParentOp =
-            _createNewCopyOp(rewriter, newSubViewOp->getLoc(), newSubViewOp.getResult(), allocOp->getResult(0));
+            rewriter.create<VPUIP::CopyOp>(newSubViewOp->getLoc(), newSubViewOp->getResult(0), allocOp->getResult(0));
     if (newParentOp->isBeforeInBlock(allocOp)) {
         VPUIP::moveRootAllocBefore(allocOp, newParentOp);
     }
@@ -509,48 +446,6 @@ mlir::LogicalResult MoveSubviewToTheFrontOfCopyBase::matchAndRewrite(VPUIP::Copy
     rewriter.eraseOp(subViewOp);
     return mlir::success();
 }
-
-//
-// MoveSubviewToTheFrontOfCopy
-//
-
-/*
-Move SubView to the front of Copy to make a chain of copies
-     Copy(CMX2DDR)    =>          Subview
-          |                          |
-       Subview                  Copy(CMX2DDR)
-          |                          |
-        Copy                       Copy
-*/
-
-class MoveSubviewToTheFrontOfCopy final : public MoveSubviewToTheFrontOfCopyBase {
-public:
-    MoveSubviewToTheFrontOfCopy(mlir::MLIRContext* ctx, Logger log)
-            : MoveSubviewToTheFrontOfCopyBase(ctx, getCopyOp, createNewCopyOp, log) {
-    }
-};
-
-//
-// MoveSubviewToTheFrontOfTillingCopy
-//
-
-/*
- Move SubView to the front of  TillingCopy, the assumption is copy src in CMX is faster than DDR
-        NCEOp                      NCEOp
-          |                          |
-  TillingCopy(CMX2DDR)    =>      Subview
-          |                          |
-       Subview               TillingCopy(CMX2DDR)
-          |                          |
-        Copy                       Copy
-*/
-
-class MoveSubviewToTheFrontOfTillingCopy final : public MoveSubviewToTheFrontOfCopyBase {
-public:
-    MoveSubviewToTheFrontOfTillingCopy(mlir::MLIRContext* ctx, Logger log)
-            : MoveSubviewToTheFrontOfCopyBase(ctx, getTillingCopyOp, createNewTillingCopyOp, log) {
-    }
-};
 
 //
 // MovePureViewOpBeforeCopyPass
@@ -577,9 +472,7 @@ void MovePureViewOpBeforeCopyPass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<MoveViewOpToTheFrontOfCopy>(&ctx, _log);
-    patterns.add<MoveViewOpToTheFrontOfTillingCopy>(&ctx, _log);
     patterns.add<MoveSubviewToTheFrontOfCopy>(&ctx, _log);
-    patterns.add<MoveSubviewToTheFrontOfTillingCopy>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

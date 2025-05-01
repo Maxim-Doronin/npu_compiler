@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,8 @@
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_RECOMPUTESPARSITYPTRS
@@ -50,7 +52,7 @@ void RecomputeSparsityPtrsPass::safeRunOnFunc() {
     const auto getCachedRecomputedWeightsTable = [&](mlir::Operation* nceOp, VPU::GroupSparseTensorOp weightsOp,
                                                      Const::DeclareOp weightsTableConstOp) {
         auto sparsityMap = weightsOp.getSparsityMap();
-        const auto sparsityMapShape = sparsityMap.getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto sparsityMapShape = mlir::cast<vpux::NDTypeInterface>(sparsityMap.getType()).getShape();
 
         int32_t sparsityPtrOffset = 0;
         auto workloadSize = sparsityMapShape[Dims4D::Filter::IC] * sparsityMapShape[Dims4D::Filter::KY] *
@@ -70,7 +72,7 @@ void RecomputeSparsityPtrsPass::safeRunOnFunc() {
         _log.nest().trace("Sparsity pointer step '{0}' for sparsity map of shape '{1}'", sparsityPtrStep,
                           sparsityMapShape);
 
-        auto outType = nceOp->getResult(0).getType().template cast<vpux::NDTypeInterface>();
+        auto outType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
         auto OC = outType.getShape()[Dims4D::Act::C];
         std::optional<int64_t> ocOptional = std::nullopt;
         if (VPU::canAutopadOutput(nceOp)) {
@@ -89,7 +91,7 @@ void RecomputeSparsityPtrsPass::safeRunOnFunc() {
 
     func->walk([&](VPU::NCEOpInterface nceOp) {
         const auto weights = nceOp.getWeightsOperand();
-        if (weights == nullptr || !weights.getType().isa<VPU::SparseTensorType>()) {
+        if (weights == nullptr || !mlir::isa<vpux::VPU::SparseTensorType>(weights.getType())) {
             return;
         }
 

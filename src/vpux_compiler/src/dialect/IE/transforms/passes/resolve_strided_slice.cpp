@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -84,7 +85,7 @@ ov::op::util::SlicePlan ResolveStridedSlicePass::SlicePlanning::getSlicePlan(IE:
     const auto shrinkAxisMask = getAxisSetArr(origOp.getShrinkAxisMask());
     const auto ellipsisMask = getAxisSetArr(origOp.getEllipsisMask());
 
-    const auto inDataType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inDataType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inDataShape = inDataType.getShape();
 
     return ov::op::util::make_slice_plan(ov::Shape(inDataShape.begin(), inDataShape.end()), beginsVec, endsVec,
@@ -163,9 +164,9 @@ mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::
         outputShape.push_back(1);
     }
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
-    auto outReshape =
-            rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newOp->getResult(0), nullptr, false, outputShapeAttr);
-    extendOpLoc(outReshape, "reshape_out");
+    auto outReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), newOp->getResult(0),
+                                                           nullptr, false, outputShapeAttr);
+    rewriter.replaceOp(origOp, outReshape);
 
     _log.trace("Replaced with 'IE::StridedSlice' -> 'IE::Reshape'");
 

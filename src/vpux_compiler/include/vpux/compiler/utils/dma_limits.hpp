@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -116,7 +116,7 @@ private:
     std::optional<StrideLimits> _strideLimits;
 
     std::optional<SubLimits> _subLimits;  // Some NPU generations have "residual" sub-dims that cannot exceed
-                                          // the maximum size of the parent dim
+                                          // the maximum size of the parent dim (see NPU2.7 HAS)
 };
 
 class EngineLimits {

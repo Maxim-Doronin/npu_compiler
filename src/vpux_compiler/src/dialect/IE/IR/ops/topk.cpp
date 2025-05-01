@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,8 @@
 
 #include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -19,7 +21,7 @@ mlir::LogicalResult vpux::IE::TopKOp::verify() {
         return mlir::success();
     }
 
-    auto kNumElements = getK().getType().cast<vpux::NDTypeInterface>().getNumElements();
+    auto kNumElements = mlir::cast<vpux::NDTypeInterface>(getK().getType()).getNumElements();
     if (kNumElements != 1) {
         return errorAt(*this, "K should have only 1 element, while it has {0}", kNumElements);
     }
@@ -38,7 +40,7 @@ mlir::LogicalResult vpux::IE::TopKOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = topK.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(topK.getInput().getType());
     const auto inputShape = inType.getShape();
 
     const auto kValue = getConstOrAttrValue(topK.getK(), topK.getKValueAttr());

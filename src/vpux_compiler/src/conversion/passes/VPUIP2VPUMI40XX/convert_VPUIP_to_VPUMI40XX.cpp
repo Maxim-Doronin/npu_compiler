@@ -8,11 +8,10 @@
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/profiling_metadata.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
 
 #include "vpux/compiler/utils/analysis.hpp"
-#include "vpux/utils/core/custom_float.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include "vpux/compiler/conversion/rewriters/VPUIP2VPUMI40XX/barrier_rewriter.hpp"
@@ -187,16 +186,16 @@ void createProfilingMetadataOp(mlir::func::FuncOp funcOp, Logger log) {
     auto ctx = funcOp.getContext();
     auto moduleOp = getModuleOp(funcOp);
 
-    IE::CNNNetworkOp netOp;
-    IE::CNNNetworkOp::getFromModule(moduleOp, netOp, funcOp);
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
 
-    if (netOp.getProfilingOutputsInfo().empty()) {
+    if (netInfo.getProfilingOutputsInfo().empty()) {
         return;
     }
 
     mlir::OpBuilder builderFunc(&(funcOp.getBody().front().back()));
 
-    auto buffer = vpux::buildProfilingMetadataBuffer(netOp, funcOp, log);
+    auto buffer = vpux::buildProfilingMetadataBuffer(netInfo, funcOp, log);
     llvm::ArrayRef<char> rawMetadata{reinterpret_cast<const char*>(buffer.data()), buffer.size()};
     long int bufferSize = buffer.size();
 
@@ -228,7 +227,7 @@ template <typename TaskType, typename Condition = decltype(noCond<TaskType>)>
 int64_t gatherTasks(mlir::SmallVector<mlir::Value>& taskValues, mlir::func::FuncOp& funcOp, uint32_t tileIdx,
                     uint32_t listIdx) {
     auto indexCond = [tileIdx, listIdx](auto op) {
-        auto type = op.getIndex().getType().template dyn_cast<vpux::VPURegMapped::IndexType>();
+        auto type = mlir::dyn_cast<vpux::VPURegMapped::IndexType>(op.getIndex().getType());
         return (type.getTileIdx() == tileIdx) && (type.getListIdx() == listIdx);
     };
 
@@ -404,7 +403,8 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
             nullptr,                                                // mlir::AnyMemRef barrierConfigurationTasks
             nullptr,                                                // mlir::IntegerAttr barrierConfigurationTasksCount
             nullptr,                                                // mlir::Value numOfBarrierReprogrammings
-            nullptr                                                 // mlir::Value mappedInferenceVersion
+            nullptr,                                                // mlir::Value mappedInferenceVersion
+            nullptr                                                 // VPURegMapped::BarrierProgrammingModeAttr
     );
 }
 
@@ -551,6 +551,7 @@ private:
         tasksConverters.add<CompressDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<GatherDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<SyncDMARewriter>(&ctx, _enableMemorySideCacheOption);
+        tasksConverters.add<ReadOnlyDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<NCEClusterTaskRewriter>(&ctx);
         tasksConverters.add<SWKernelRewriter>(&ctx);
         tasksConverters.add<M2IRewriter>(&ctx);

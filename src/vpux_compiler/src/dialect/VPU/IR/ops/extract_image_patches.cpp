@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ mlir::LogicalResult vpux::VPU::ExtractImagePatchesOp::inferReturnTypes(
     }
 
     const auto paddingType = extractImagePatches.getAutoPad();
-    const auto inputType = extractImagePatches.getData().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(extractImagePatches.getData().getType());
     const auto inputShape = inputType.getShape();
 
     const auto sizes = parseIntArrayAttr<int64_t>(extractImagePatches.getSizes());

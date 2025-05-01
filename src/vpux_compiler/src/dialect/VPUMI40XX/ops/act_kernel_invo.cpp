@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <vpux/compiler/dialect/VPUMI40XX/ops.hpp>
 #include <vpux/compiler/dialect/VPUMI40XX/utils.hpp>
+#include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
 using namespace VPUMI40XX;

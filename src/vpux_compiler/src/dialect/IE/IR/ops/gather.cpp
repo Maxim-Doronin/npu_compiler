@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,8 @@
 #include "vpux/compiler/utils/error.hpp"
 
 #include "vpux/utils/core/checked_cast.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 #include <numeric>
 
@@ -33,7 +35,7 @@ mlir::FailureOr<int64_t> extractAxis(mlir::Location loc, IE::GatherOpAdaptor gat
         int64_t axisInd = axisContent.getSplatValue<int64_t>();
 
         if (axisInd < 0) {
-            const auto inType = gather.getInput().getType().cast<mlir::ShapedType>();
+            const auto inType = mlir::cast<mlir::ShapedType>(gather.getInput().getType());
             const auto inRank = inType.getRank();
             axisInd += inRank;
             VPUX_THROW_UNLESS(axisInd >= 0 && axisInd < inRank, "Wrong Gather axis {0}", axisInd);
@@ -60,9 +62,9 @@ mlir::LogicalResult vpux::IE::GatherOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = gather.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(gather.getInput().getType());
     const auto inputShape = inType.getShape();
-    const auto indicesShape = gather.getIndices().getType().cast<mlir::ShapedType>().getShape();
+    const auto indicesShape = mlir::cast<mlir::ShapedType>(gather.getIndices().getType()).getShape();
 
     const auto axis = extractAxis(loc, gather);
     if (mlir::failed(axis)) {
@@ -131,7 +133,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::GatherOp gatherOp, m
     const auto axisContent = axisConst.getContent();
     int64_t axisInd = axisContent.getSplatValue<int64_t>();
     if (axisInd < 0) {
-        const auto inType = gatherOp.getInput().getType().cast<mlir::ShapedType>();
+        const auto inType = mlir::cast<mlir::ShapedType>(gatherOp.getInput().getType());
         const auto inRank = inType.getRank();
         axisInd += inRank;
     }

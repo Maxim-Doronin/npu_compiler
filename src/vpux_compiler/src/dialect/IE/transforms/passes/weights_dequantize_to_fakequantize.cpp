@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,40 +26,13 @@ class WeightsDequantizeToFakeQuantizePass final :
         public IE::impl::WeightsDequantizeToFakeQuantizeBase<WeightsDequantizeToFakeQuantizePass> {
 public:
     WeightsDequantizeToFakeQuantizePass() = default;
-    explicit WeightsDequantizeToFakeQuantizePass(const IE::LowPrecisionTransformOptions& options, Logger log) {
+    explicit WeightsDequantizeToFakeQuantizePass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
-        Base::copyOptionValuesFrom(options);
-
-        initializeFromOptions();
     }
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
     void safeRunOnFunc() final;
-
-private:
-    // Initialize fields from pass options
-    void initializeFromOptions();
-
-private:
-    bool _enableWDBlockArgumentInput = true;
 };
-
-mlir::LogicalResult WeightsDequantizeToFakeQuantizePass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
-        return mlir::failure();
-    }
-
-    initializeFromOptions();
-
-    return mlir::success();
-}
-
-void WeightsDequantizeToFakeQuantizePass::initializeFromOptions() {
-    if (enableWDBlockArgumentInput.hasValue()) {
-        _enableWDBlockArgumentInput = enableWDBlockArgumentInput.getValue();
-    }
-}
 
 void WeightsDequantizeToFakeQuantizePass::safeRunOnFunc() {
     auto& ctx = getContext();
@@ -68,7 +41,7 @@ void WeightsDequantizeToFakeQuantizePass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
 
     // register platform specific rewriters using the platform specific strategy
-    auto strategy = vpux::IE::createWeightsDequantizeToFakeQuantizeStrategy(func, _enableWDBlockArgumentInput);
+    auto strategy = vpux::IE::createWeightsDequantizeToFakeQuantizeStrategy(func);
     strategy->addPatterns(patterns, _log);
 
     auto config = getDefaultGreedyRewriteConfig();
@@ -88,11 +61,6 @@ void WeightsDequantizeToFakeQuantizePass::safeRunOnFunc() {
 // createWeightsDequantizeToFakeQuantizePass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createWeightsDequantizeToFakeQuantizePass() {
-    return std::make_unique<WeightsDequantizeToFakeQuantizePass>();
-}
-
-std::unique_ptr<mlir::Pass> vpux::IE::createWeightsDequantizeToFakeQuantizePass(
-        const IE::LowPrecisionTransformOptions& options, Logger log) {
-    return std::make_unique<WeightsDequantizeToFakeQuantizePass>(options, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createWeightsDequantizeToFakeQuantizePass(Logger log) {
+    return std::make_unique<WeightsDequantizeToFakeQuantizePass>(log);
 }

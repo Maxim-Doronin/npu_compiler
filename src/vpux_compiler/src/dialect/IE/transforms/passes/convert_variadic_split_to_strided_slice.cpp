@@ -4,12 +4,15 @@
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTVARIADICSPLITTOSTRIDEDSLICE

@@ -6,7 +6,10 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/metadata.hpp"
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/utils/core/error.hpp"
+#include "vpux_headers/metadata_primitives.hpp"
 
 #include <intel_npu/prefix.hpp>
 
@@ -61,7 +64,7 @@ elf::DType ELFNPU37XX::createDType(mlir::Type type) {
     } else if (type.isInteger(1)) {
         return elf::DType::DType_BIN;
     } else if (mlir::isa<mlir::quant::QuantizedType>(type)) {
-        return createDType(type.cast<mlir::quant::QuantizedType>().getStorageType());
+        return createDType(mlir::cast<mlir::quant::QuantizedType>(type).getStorageType());
     } else if (mlir::isa<vpux::type::QuantileFloatType>(type)) {
         return elf::DType::DType_I4X;
     } else {
@@ -81,26 +84,17 @@ elf::TensorRef ELFNPU37XX::createTensorRef(vpux::NDTypeInterface type, StringRef
     const auto shape = type.getShape();
     out.dimensions_size = checked_cast<uint32_t>(shape.size());
 
-    for (const auto& shPair : shape | indexed) {
-        const auto ind = checked_cast<uint32_t>(shPair.index());
-        auto dim = shPair.value();
-        if (dim >= 0) {
-            out.dimensions[ind] = checked_cast<uint32_t>(dim);
-        } else if (mlir::ShapedType::isDynamic(dim)) {
-            // Setting bound as a value of dimension since user can rely on it to compute sizes
-            auto boundedTensorType = mlir::cast<vpux::BoundedTypeInterface>(type);
-            auto boundsAttr = boundedTensorType.getBounds();
-            VPUX_THROW_UNLESS(boundsAttr != nullptr,
-                              "Dynamic shape without bounds is not supported for serialization."
-                              "Please provide bounds for the tensor '{0}'",
-                              name);
-            auto bounds = parseIntArrayAttr<int64_t>(boundsAttr);
+    VPUX_THROW_UNLESS(shape.size() < elf::MAX_TENSOR_REF_DIMS, "Shape rank of the type {0} is too high {1} >= {2}",
+                      type, shape.size(), elf::MAX_TENSOR_REF_DIMS);
+
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
+        auto bounds = boundedType.getBounds();
+        for (auto [ind, dim] : bounds | indexed) {
             out.dimensions[ind] = checked_cast<uint32_t>(bounds[ind]);
-        } else {
-            VPUX_THROW(
-                    "Unexpected dim value {0}. It must be a positive number or mlir::ShapedType::kDynamic to represent "
-                    "a dynamic dim",
-                    dim);
+        }
+    } else {
+        for (auto [ind, dim] : shape | indexed) {
+            out.dimensions[ind] = checked_cast<uint32_t>(dim);
         }
     }
 
@@ -183,12 +177,12 @@ elf::OVNodeType ELFNPU37XX::createOVNodeType(mlir::Type type) {
     }
 }
 
-void setOVNodeType(elf::OVNode& node, IE::DataInfoOp dataInfo) {
-    auto userType = dataInfo.getUserType().cast<vpux::NDTypeInterface>();
+void setOVNodeType(elf::OVNode& node, net::DataInfoOp dataInfo) {
+    auto userType = mlir::cast<vpux::NDTypeInterface>(dataInfo.getUserType());
     node.type = ELFNPU37XX::createOVNodeType(userType.getElementType());
 }
 
-void setOVNodeNames(elf::OVNode& node, IE::DataInfoOp dataInfo, vpux::Logger log) {
+void setOVNodeNames(elf::OVNode& node, net::DataInfoOp dataInfo, vpux::Logger log) {
     auto primaryName = dataInfo.getName().str();
 
     // If the friendlyName is not set in DataInfoOp, friendlyName is equal to primary name.
@@ -214,11 +208,11 @@ void setOVNodeNames(elf::OVNode& node, IE::DataInfoOp dataInfo, vpux::Logger log
     }
 }
 
-void setOVNodeShape(elf::OVNode& node, IE::DataInfoOp dataInfo) {
+void setOVNodeShape(elf::OVNode& node, net::DataInfoOp dataInfo) {
     // If the originalShape is not set in DataInfo, originalShape is the same as shape of userType
     auto shape = dataInfo.getOriginalShape().has_value()
-                         ? dataInfo.getOriginalShape().value().cast<vpux::NDTypeInterface>().getShape()
-                         : dataInfo.getUserType().cast<vpux::NDTypeInterface>().getShape();
+                         ? mlir::cast<vpux::NDTypeInterface>(dataInfo.getOriginalShape().value()).getShape()
+                         : mlir::cast<vpux::NDTypeInterface>(dataInfo.getUserType()).getShape();
     node.shape_size = checked_cast<uint32_t>(shape.size());
     for (const auto& sh_iterator : shape | indexed) {
         auto dim = sh_iterator.value();
@@ -237,7 +231,7 @@ void setOVNodeShape(elf::OVNode& node, IE::DataInfoOp dataInfo) {
     }
 }
 
-void createOVNodes(std::vector<elf::OVNode>& nodes, ArrayRef<IE::DataInfoOp> dataInfoVector, vpux::Logger log) {
+void createOVNodes(std::vector<elf::OVNode>& nodes, ArrayRef<net::DataInfoOp> dataInfoVector, vpux::Logger log) {
     for (auto dataInfo : dataInfoVector) {
         // Serialize metadata only for model primary parameters and results, skip state and shape nodes
         const auto name = dataInfo.getName().str();
@@ -352,13 +346,13 @@ void printMetadata(elf::NetworkMetadata* metadata, Logger log) {
 std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::ModuleOp module, Logger log) {
     log.setName("constructMetadata");
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(module, netOp, netFunc);
+    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
 
-    auto inputsInfo = netOp.getInputsDataInfo();
-    auto outputsInfo = netOp.getOutputsDataInfo();
-    auto profilingOutputsInfo = netOp.getProfilingOutputsDataInfo();
+    auto inputsInfo = netInfo.getInputsDataInfo();
+    auto outputsInfo = netInfo.getOutputsDataInfo();
+    auto profilingOutputsInfo = netInfo.getProfilingOutputsDataInfo();
 
     // We are returning a unique_ptr to the heap allocated metadata due to its large size.
     // Returning the metadata struct by value can cause a stack overflow on certain systems.
@@ -392,7 +386,7 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
             auto inputDeclaration = inputDeclarations[index];
 
             auto declaredInputType = mlir::cast<NDTypeInterface>(inputDeclaration.getBufferType().getMemref());
-            const auto userType = userInfo.getUserType().cast<NDTypeInterface>();
+            const auto userType = mlir::cast<vpux::NDTypeInterface>(userInfo.getUserType());
 
             metadata.mNetInputs[index] = createTensorRef(declaredInputType, userInfo.getName());
             metadata.mInTensorDescriptors[index] = createTensorRef(userType, userInfo.getName());
@@ -406,7 +400,7 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
             auto outDeclaration = outDeclarations[index];
 
             auto declaredOutType = mlir::cast<NDTypeInterface>(outDeclaration.getBufferType().getMemref());
-            const auto userType = userInfo.getUserType().cast<NDTypeInterface>();
+            const auto userType = mlir::cast<vpux::NDTypeInterface>(userInfo.getUserType());
             metadata.mNetOutputs[index] = createTensorRef(declaredOutType, userInfo.getName());
             metadata.mOutTensorDescriptors[index] = createTensorRef(userType, userInfo.getName());
         }

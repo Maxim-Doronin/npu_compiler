@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,8 +33,8 @@ bool vpux::VPU::M2IResizeOp::fitIntoCMX(mlir::Operation* op, vpux::NDTypeInterfa
 
 bool vpux::VPU::M2IResizeOp::isSupported(IE::InterpolateOp op, LogCb logCb, bool /*checkLayout*/,
                                          bool /*checkChannelAlignment*/) {
-    const auto inType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     if (!fitIntoCMX(op, inType, outType)) {
         logCb(llvm::formatv("Op doesn't fit into CMX memory"));
         return false;
@@ -59,7 +59,7 @@ mlir::LogicalResult vpux::VPU::M2IResizeOp::inferReturnTypes(mlir::MLIRContext* 
         return mlir::failure();
     }
 
-    const auto inType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     const auto inShape = inType.getShape().raw();
 
     // Note: limited to 'shape_calculation_mode = sizes'

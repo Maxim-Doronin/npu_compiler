@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/conversion/rewriters/VPUMI37XX2VPUASM/declare_const_buffer_rewriter.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 
 namespace vpux {
 namespace vpumi37xx2vpuasm {
@@ -26,7 +27,7 @@ mlir::FailureOr<SymbolizationResult> DeclareConstBufferRewriter::symbolize(
     auto result = op.getResult();
     auto symName = findSym(result).getRootReference();
 
-    auto constMemref = result.getType().dyn_cast<mlir::MemRefType>();
+    auto constMemref = mlir::dyn_cast<mlir::MemRefType>(result.getType());
     if (!constMemref) {
         VPUX_THROW("Detected const buffer that is not MemRefType {0}", op.getOperationName());
         return mlir::failure();

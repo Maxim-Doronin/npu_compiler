@@ -84,7 +84,7 @@ mlir::LogicalResult vpux::VPU::AffineReshapeOp::inferReturnTypes(
     const auto outShape = Shape(parseIntArrayAttr<int64_t>(affineReshape.getShapeValue()));
     const auto input = affineReshape.getInput();
     const auto inType = input.getType();
-    const auto ndInType = inType.cast<vpux::NDTypeInterface>();
+    const auto ndInType = mlir::cast<vpux::NDTypeInterface>(inType);
     const auto inOrder = DimsOrder::fromValue(input);
 
     const auto outputLayout =
@@ -100,7 +100,7 @@ mlir::LogicalResult vpux::VPU::AffineReshapeOp::inferReturnTypes(
     }
 
     auto getOutputType = [&](NDTypeInterface type, const TypeComponents& components) -> NDTypeInterface {
-        auto distributedType = type.dyn_cast<VPU::DistributedTensorType>();
+        auto distributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(type);
         if (distributedType == nullptr ||
             !VPU::isDistributedAttrWithExplicitShapesAndOffsets(distributedType.getDistribution())) {
             return type.changeTypeComponents(components);
@@ -115,7 +115,7 @@ mlir::LogicalResult vpux::VPU::AffineReshapeOp::inferReturnTypes(
     };
 
     NDTypeInterface outType;
-    if (auto sparseInputType = ndInType.dyn_cast<VPU::SparseTensorType>()) {
+    if (auto sparseInputType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(ndInType)) {
         const NDTypeInterface dataType = sparseInputType.getData();
         outType = VPU::SparseTensorType::get(getOutputType(dataType, typeComponents));
     } else {
@@ -143,7 +143,7 @@ vpux::VPU::AffineReshapeOp::inferCastedTypeAndDistribution(vpux::NDTypeInterface
         return mlir::failure();
     }
 
-    const auto dstType = getOutput().getType().cast<NDTypeInterface>();
+    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto outShape = dstType.getShape();
     const auto dstElemType = dstType.getElementType();
 

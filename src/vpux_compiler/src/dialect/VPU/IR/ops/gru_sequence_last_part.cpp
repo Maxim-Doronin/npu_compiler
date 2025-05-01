@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::GRUSequenceLastPartOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto initialStateType = gru.getInitialHiddenState().getType().cast<vpux::NDTypeInterface>();
+    const auto initialStateType = mlir::cast<vpux::NDTypeInterface>(gru.getInitialHiddenState().getType());
     const auto outputStateType = initialStateType;
     const auto outputStateShape = outputStateType.getShape().raw();
     const auto seqLength = gru.getSeqLength();
@@ -117,7 +117,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GRUSequenceLastPartOp::getTilingStrateg
     // The shape of Y is [batch_size, num_directions, seq_len, hidden_size],
     // and the shape of Ho is [batch_size, num_directions, hidden_size].
     // Ho-tiles can be inferred by Y-tiles.
-    const auto outputYType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputYType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputYShape = outputYType.getShape();
     Shape nTilesOnDimForOutputY(outputYShape.size(), 1);
 

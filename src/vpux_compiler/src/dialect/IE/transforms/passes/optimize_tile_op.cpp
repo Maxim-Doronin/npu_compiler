@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
@@ -50,7 +51,7 @@ private:
 mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir::PatternRewriter& rewriter) const {
     auto ctx = getContext();
 
-    auto origInputType = origOp.getInput().getType().cast<NDTypeInterface>();
+    auto origInputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     auto origInputShape = origInputType.getShape();
 
     // If the tile op is used as input for op like eltwise or multiply, and its size is too big to fit into CMX, which
@@ -77,7 +78,7 @@ mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir:
         return true;
     };
 
-    auto outputValue = origOp.getOutput().cast<mlir::Value>();
+    auto outputValue = mlir::cast<mlir::Value>(origOp.getOutput());
     auto outputUserOp = *(outputValue.getUsers().begin());
     while (isFoldableViewOp(outputUserOp)) {
         outputValue = outputUserOp->getResult(0);
@@ -98,7 +99,7 @@ mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir:
 
     // Can't fold TileOp if the layer has post operation
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(outputUserOp)) {
-        if (layerWithPostOp.getPostOp().has_value()) {
+        if (layerWithPostOp.getPostOp() != nullptr) {
             return mlir::failure();
         }
     }
@@ -121,7 +122,7 @@ mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir:
         return mlir::success();
     }
 
-    auto newShape = SmallVector<int64_t>(outputValue.getType().cast<NDTypeInterface>().getRank(), 1);
+    auto newShape = SmallVector<int64_t>(mlir::cast<vpux::NDTypeInterface>(outputValue.getType()).getRank(), 1);
     auto newReshapeOp = rewriter.createOrFold<IE::ReshapeOp>(origOp.getLoc(), origOp.getInput(), nullptr, false,
                                                              getIntArrayAttr(ctx, newShape));
 

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -159,8 +160,8 @@ SmallVector<int64_t> inferOutputShapeWithScalesMode(ShapeRef inputShape, ArrayRe
     auto outputShape = to_small_vector(inputShape);
     auto scalesIter = scalesVal.begin();
     for (const auto& axis : axesVal) {
-        outputShape[axis] =
-                static_cast<int64_t>(floor(static_cast<StorageType>(*scalesIter++) * inputShape[Dim(axis)]));
+        outputShape[axis] = static_cast<int64_t>(
+                floor(static_cast<double>(static_cast<StorageType>(*scalesIter++) * inputShape[Dim(axis)])));
         log.trace("Infer Scales mode at axis {0}: {1} -> {2}", axis, inputShape[Dim(axis)], outputShape[axis]);
     }
     return outputShape;
@@ -234,8 +235,8 @@ bool isEquivalentToNearestAsymmetricInterpolate(IE::InterpolateOp op) {
         return false;
     }
 
-    const auto inputShape = op.getInput().getType().cast<NDTypeInterface>().getShape();
-    const auto outputShape = op.getOutput().getType().cast<NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getShape();
+    const auto outputShape = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getShape();
     if (inputShape.size() != 4 || outputShape.size() != 4) {
         return false;
     }
@@ -259,7 +260,7 @@ bool isEquivalentToNearestAsymmetricInterpolate(IE::InterpolateOp op) {
 }
 
 bool isBroadCastInterpolate(IE::InterpolateOp op) {
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     const auto inputShape = inputType.getShape();
 
     auto padValueIsNull = [](mlir::ArrayAttr pad) {

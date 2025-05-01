@@ -3,25 +3,27 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include <llvm/ADT/TypeSwitch.h>
-
+#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
+#include <vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp>
 #include "vpux/compiler/core/attributes/dim.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/dilated_utils.hpp"
 #include "vpux/utils/core/error.hpp"
 
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/IRMapping.h>
-#include <vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp>
 
 namespace vpux {
 namespace VPU {
@@ -74,7 +76,7 @@ mlir::FailureOr<OutputTiling> getLayerTilingStrategy(VPU::TilingBuilderOpInterfa
 
 mlir::LogicalResult checkAndAlignActInputTiling(vpux::VPU::NCEOpInterface nceOp, InputTiling& inputTiling,
                                                 vpux::Logger log) {
-    auto origInputType = nceOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    auto origInputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
     // use effective sparse output type to reduce the validation for the input sparse type.
     const auto inType = mlir::isa<VPU::SparseTensorType>(origInputType)
                                 ? mlir::cast<NDTypeInterface>(VPU::getEffectiveSparseOutputType(origInputType))
@@ -141,7 +143,7 @@ SmallVector<mlir::Value> reifyTiles(VPU::TilingBuilderOpInterface origOp, const 
 }
 
 mlir::LogicalResult applyTileStrategy(VPU::TilingBuilderOpInterface origOp, const OutputTiling& tiles,
-                                      mlir::PatternRewriter& rewriter, Logger log) {
+                                      mlir::RewriterBase& rewriter, Logger log) {
     const auto results = origOp->getResults();
 
     auto resultTileValues = SmallVector<SmallVector<mlir::Value>>(results.size());
@@ -300,36 +302,60 @@ bool prefetchTilingConditionSatisfied(mlir::Operation* op, Logger log) {
     return tiles.value().begin()->axis != neutralTile;
 }
 
-bool isLargeConstOp(mlir::Operation* op, Logger log) {
+bool findBlockArgFilter(mlir::Value filter) {
+    while (!mlir::isa<mlir::BlockArgument>(filter)) {
+        auto filterOp = filter.getDefiningOp();
+        if (!VPU::isPureViewOp(filterOp)) {
+            return false;
+        }
+        filter = filterOp->getOperand(0);
+    }
+
+    return true;
+}
+
+bool isLargeFilterOp(mlir::Operation* op, Logger log) {
     // The operation should have constant filter
     if (!mlir::isa<VPU::NCEConvolutionOp>(op) && !mlir::isa<VPU::NCEDepthConvolutionOp>(op) &&
         !mlir::isa<VPU::NCECompressConvolutionOp>(op)) {
         return false;
     }
-    auto filter = op->getOperand(1).getDefiningOp<Const::DeclareOp>();
-    if (filter == nullptr) {
+
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
+    if (nceOp == nullptr) {
+        return false;
+    }
+
+    auto filter = nceOp.getWeightsOperand();
+    Byte cmxThreshold(0);
+    auto cmxTotalSize = VPU::getTotalCMXSize(op).count();
+    if (filter.getDefiningOp<Const::DeclareOp>() != nullptr) {
+        cmxThreshold =
+                Byte(static_cast<int64_t>(std::ceil(static_cast<double>(cmxTotalSize) * LARGE_CONST_THRESHOLD_RATIO)));
+    } else if (findBlockArgFilter(filter)) {
+        cmxThreshold = Byte(static_cast<int64_t>(
+                std::ceil(static_cast<double>(cmxTotalSize) * FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS)));
+    } else {
         return false;
     }
 
     Byte filterSize(0);
-    auto filterType = filter.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(filter.getType());
     if (op->hasAttr(multiClusterStrategy)) {
         auto nceOp = mlir::cast<VPU::NCEOpInterface>(op);
         auto clusterOp = mlir::cast<VPU::ClusteredOpInterface>(op);
-        auto outputType = clusterOp->getResult(0).getType().cast<NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(clusterOp->getResult(0).getType());
         auto numClusters = VPU::getOptimalNumClusters(
                 clusterOp, outputType.getShape(),
-                clusterOp->getAttr(VPU::multiClusterStrategy).cast<VPU::MultiClusterStrategyAttr>().getValue());
+                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusterOp->getAttr(VPU::multiClusterStrategy))
+                        .getValue());
         auto filterDistributedType = VPU::getDistributedFilterTypeFromOp(nceOp, filterType, numClusters);
         for (auto filterType : filterDistributedType.getDistributedTypes()) {
-            filterSize += filterType.cast<VPU::DistributedTensorType>().getTotalAllocSize();
+            filterSize += mlir::cast<vpux::VPU::DistributedTensorType>(filterType).getTotalAllocSize();
         }
     } else {
         filterSize = filterType.getTotalAllocSize();
     }
-
-    auto cmxThreshold = Byte(static_cast<int64_t>(
-            std::ceil(static_cast<double>(VPU::getTotalCMXSize(op).count()) * LARGE_CONST_THRESHOLD_RATIO)));
     if (filterSize > cmxThreshold) {
         log.nest(1).trace("filter size {0} is larger than cmxThreshold {1}", filterSize, cmxThreshold);
         return true;
@@ -337,9 +363,9 @@ bool isLargeConstOp(mlir::Operation* op, Logger log) {
     return false;
 }
 
-bool largeConstPipelineConditionSatisfied(mlir::Operation* op, Logger log) {
+bool largeFilterPipelineConditionSatisfied(mlir::Operation* op, Logger log) {
     // Check if the operation has large constant filter
-    if (!isLargeConstOp(op, log)) {
+    if (!isLargeFilterOp(op, log)) {
         return false;
     }
     auto opTilingBuilder = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(op);
@@ -363,63 +389,56 @@ bool largeConstPipelineConditionSatisfied(mlir::Operation* op, Logger log) {
     return false;
 }
 
-bool archSupportsSwLayerTiling(VPU::ArchKind arch) {
-    VPUX_UNUSED(arch);
-    // Support all NPU37XX+ platforms.
-    return true;
-}
-
-bool opNeedsTiling(mlir::Operation* op, bool enablePrefetchTiling, Logger log) {
-    if (mlir::isa<VPU::SliceOp, VPU::ConcatOp, VPU::NCEClusterTilingOp>(op) ||
-        op->getParentOfType<VPU::NCEClusterTilingOp>()) {
-        return false;
+std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bool enablePrefetchTiling, Logger log) {
+    if (mlir::isa<VPU::NCEClusterTilingOp>(op) || op->getParentOfType<VPU::NCEClusterTilingOp>()) {
+        return std::nullopt;
     }
+
     auto func = op->getParentOfType<mlir::func::FuncOp>();
     if (func == nullptr) {
-        return false;
+        return std::nullopt;
     }
-    auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
-    if (!mlir::isa<VPU::NCEOpInterface>(op) && !VPU::archSupportsSwLayerTiling(arch)) {
-        return false;
-    }
+
     if (IE::hasDynamicTensors(op)) {
         log.warning("Tiling is not applied to the operation '{0}' at '{1}' because it has at least one operand or "
                     "result with a dynamic shape",
                     op->getName(), op->getLoc());
         // Track number: E-147023
-        return false;
+        return std::nullopt;
     }
 
-    if (auto iface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op)) {
-        log.trace("Check: '{0}' at '{1}'", op->getName(), op->getLoc());
-        const auto resType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
-        Shape resShape = resType.getShape().toValues();
-        // TODO(E#113258): getShape needs to return shape based on upper bounds to avoid parsing bounds
-        if (auto boundedTensor = resType.dyn_cast_or_null<vpux::BoundedTypeInterface>();
-            boundedTensor != nullptr && boundedTensor.getBounds() != nullptr) {
-            const auto bounds = parseIntArrayAttr<int64_t>(boundedTensor.getBounds());
-            resShape = Shape(bounds.begin(), bounds.end());
-        }
-        TileInfo outputTile(resShape);
-        // Mark the output tile as completed so that the inferred input shape contains the whole input
-        outputTile.isCompletedTile = true;
-        if (!iface.isSupportedTiling({std::move(outputTile)}, TilingMode::ISOLATED, log.nest())) {
-            log.nest().trace("ISOLATED tiling or PIPELINING tiling required");
-            return true;
-        }
-        if (enablePrefetchTiling && mlir::isa<VPU::NCEOpInterface>(op)) {
-            if (VPU::prefetchTilingConditionSatisfied(op, log.nest())) {
-                log.nest().trace("PREFETCHING tiling required");
-                return true;
-            }
-            if (VPU::largeConstPipelineConditionSatisfied(op, log.nest())) {
-                log.nest().trace("PIPELINING tiling for large constant weights required");
-                return true;
-            }
-        }
+    auto iface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
+    if (iface == nullptr) {
+        return std::nullopt;
     }
-    return false;
+    log.trace("Check: '{0}' at '{1}'", op->getName(), op->getLoc());
+    const auto resType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+    Shape resShape = resType.getShape().toValues();
+    // TODO(E#113258): getShape needs to return shape based on upper bounds to avoid parsing bounds
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(op->getResult(0).getType())) {
+        resShape = Shape(boundedType.getBounds().raw());
+    }
+    TileInfo outputTile(resShape);
+    // Mark the output tile as completed so that the inferred input shape contains the whole input
+    outputTile.isCompletedTile = true;
+    auto isolatedTilingSupported = iface.isSupportedTiling({std::move(outputTile)}, TilingMode::ISOLATED, log.nest());
+
+    if (!isolatedTilingSupported) {
+        if (enablePrefetchTiling && (mlir::isa<VPU::NCEOpInterface, VPU::MVN1NormalizeOp>(op))) {
+            return std::make_pair(TilingMode::PIPELINING, false);
+        }
+        return std::make_pair(TilingMode::ISOLATED, false);
+    }
+
+    if (enablePrefetchTiling && mlir::isa<VPU::NCEOpInterface>(op)) {
+        if (VPU::largeFilterPipelineConditionSatisfied(op, log.nest())) {
+            return std::make_pair(TilingMode::PIPELINING, true);
+        }
+
+        return std::make_pair(TilingMode::PREFETCHING, true);
+    }
+
+    return std::nullopt;
 }
 
 std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseOutput(
@@ -499,14 +518,14 @@ bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& out
     }
 
     auto getDataType = [](mlir::Type type) {
-        if (auto sparseTensor = type.dyn_cast<VPU::SparseTensorType>()) {
+        if (auto sparseTensor = mlir::dyn_cast<vpux::VPU::SparseTensorType>(type)) {
             return sparseTensor.getData();
         }
         return type;
     };
 
     const auto getPerClusterShapes = [&]() {
-        auto outputType = getDataType(nceOp->getResult(0).getType()).cast<NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(getDataType(nceOp->getResult(0).getType()));
         const auto outputTileType = outputType.extractDenseTile(outputTile.offsets, outputTile.shape);
 
         auto clusterOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(nceOp);
@@ -517,7 +536,7 @@ bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& out
         auto strategy = clusterOp.getMultiClusterStrategy().value();
         auto numClusters = VPU::getOptimalNumClusters(clusterOp, outputTile.shape, strategy);
         auto distributedType = getDistributedOutputTypeFromOp(clusterOp, outputTileType, numClusters, strategy);
-        return getDataType(distributedType).cast<VPU::DistributedTensorType>().getPerClusterComputeShapes();
+        return mlir::cast<vpux::VPU::DistributedTensorType>(getDataType(distributedType)).getPerClusterComputeShapes();
     };
 
     const auto perClusterShapes = getPerClusterShapes();
@@ -530,9 +549,20 @@ bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& out
 
     size_t wlMaxNumPerCluster = 0;
     size_t wlNumInTotal = 0;
-    if (nceOp->getResult(0).getType().isa<VPU::SparseTensorType>() && !isSparseRemoved) {
+    auto isSEPDWConvOp = vpux::isSEPDWConv(nceOp);
+    if (isSEPDWConvOp || (mlir::isa<VPU::SparseTensorType>(nceOp->getResult(0).getType()) && !isSparseRemoved)) {
         // NCE operations with sparse outputs must have all variants with the same number of channels
         // except of the last one which can have fewer channels than the rest
+        if (isSEPDWConvOp) {
+            // for SEP DWConv, per cluster workload's channel must be supported
+            // because of compiler implementation for now, only 1 workload per cluster is supported
+            auto allChannelsSupported = llvm::all_of(perClusterShapes, [supportedChannels](Shape perClusterShape) {
+                return llvm::find(supportedChannels, perClusterShape[Dims4D::Act::C]) != supportedChannels.end();
+            });
+            if (!allChannelsSupported) {
+                return false;
+            }
+        }
         const auto workloadInformation =
                 getWorkLoadInformationForNCEWithSparseOutput(getArch(nceOp), perClusterShapes, supportedChannels);
         if (!workloadInformation.has_value()) {
@@ -545,8 +575,8 @@ bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& out
         for (const auto& perClusterShape : perClusterShapes) {
             const auto perClusterChannel = perClusterShape[vpux::Dims4D::Act::C];
             auto wlChannels = splitWorkloadChannel(perClusterChannel, supportedChannels);
-            // There may be some invalid tileChannel passed into. For example, channel is 16 but supportedChannels is
-            // [32]. We can't split it over C in that case.
+            // There may be some invalid tileChannel passed into. For example, channel is 16 but supportedChannels
+            // is [32]. We can't split it over C in that case.
             if (wlChannels.size() == 0) {
                 log.debug("splitWorkloadChannel failed: perClusterChannel - {0}, supportedChannels - {1}",
                           perClusterChannel, supportedChannels);
@@ -569,13 +599,12 @@ bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& out
     // the variants count should be less than availableSlot on each cluster, otherwise there could be an illegal
     // scenario for the barrier
     //
-    // the sum of variants count from all clusters should be less than maxSlotsSum, otherwise there could a serialized
-    // dpu execution between clusters
+    // the sum of variants count from all clusters should be less than maxSlotsSum, otherwise there could be a
+    // serialized dpu execution between clusters
     //
-    // but if there's no tiling for the layer when we don't consider the constraint for the sum of variants, it's not
-    // worth to introduce the extra tiling to parallelize dpu execution
-    // it's because this extra tiling will be on channel dimension and it will introduce stride dma which takes more
-    // time than serialized dpu execution
+    // but if there's no tiling for the layer when we don't consider the constraint for the sum of variants, it's
+    // not worth to introduce the extra tiling to parallelize dpu execution it's because this extra tiling will be
+    // on channel dimension and it will introduce stride dma which takes more time than serialized dpu execution
     const auto isTiled = llvm::any_of(outputTile.axis, [](auto axis) {
         return axis > 1;
     });
@@ -593,7 +622,7 @@ std::optional<DimArr> getSEPConvTilingOrder(mlir::Operation* op) {
     if (nceConv == nullptr) {
         return std::nullopt;
     }
-    auto sparseInput = nceConv.getInput().getType().dyn_cast<VPU::SparseTensorType>();
+    auto sparseInput = mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceConv.getInput().getType());
     if (sparseInput == nullptr) {
         return std::nullopt;
     }
@@ -607,7 +636,39 @@ std::optional<DimArr> getSEPConvTilingOrder(mlir::Operation* op) {
 
 mlir::FailureOr<OutputTiling> getBestHWLayerTilingStrategy(mlir::Operation* op, TilingMode tilingMode,
                                                            const std::shared_ptr<LayerCostModel>& costModel,
-                                                           Logger log) {
+                                                           bool enablePrefetchTiling, Logger log) {
+    auto strategies = getHwLayerTilingStrategiesWithCost(op, tilingMode, costModel, log);
+    if (strategies.empty()) {
+        return mlir::failure();
+    }
+    double bestCost = strategies.front().cost.costWithoutPrefetching;
+    Shape bestStrategy = strategies.front().strategy;
+    auto tilingInfoOp = mlir::cast<VPU::TilingInfoOpInterface>(op);
+    for (auto& [strategy, costs] : strategies) {
+        auto [costWithoutPrefetching, costWithPrefetching] = costs;
+        double currentCost = 0;
+        if (enablePrefetchTiling && tilingInfoOp.isSupportedTilingStrategy(strategy, TilingMode::PREFETCHING, log)) {
+            currentCost = costWithPrefetching;
+        } else {
+            currentCost = costWithoutPrefetching;
+        }
+        if (currentCost < bestCost ||
+            (currentCost == bestCost && isNewTileWithSameCostHasPotentialDMABenefits(op, bestStrategy, strategy))) {
+            bestCost = currentCost;
+            bestStrategy = strategy;
+        }
+    }
+
+    log.nest().debug("Best tiling strategy {0} with cost {1}. {2} : Op {3}", bestStrategy, bestCost, op->getName(),
+                     op->getLoc());
+
+    const auto outputShape = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getShape();
+    return fillDividedTiles(op, bestStrategy, outputShape);
+}
+
+std::vector<StrategyWithCost> getHwLayerTilingStrategiesWithCost(mlir::Operation* op, TilingMode tilingMode,
+                                                                 const std::shared_ptr<LayerCostModel>& costModel,
+                                                                 Logger log) {
     auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
     VPUX_THROW_WHEN(nceOp == nullptr, "Operation '{0}' doesn't implement NCEop Interface", op->getName());
     const auto tileDimOrder = getTileDimOrder(op, tilingMode, log);
@@ -615,7 +676,11 @@ mlir::FailureOr<OutputTiling> getBestHWLayerTilingStrategy(mlir::Operation* op, 
     // Temporarily not apply cost-based tiling strategy to NCE ops with INT4 weights based on VPUNN cost.
     // This can be removed when VPUNN is upgraded to support INT4 data type, tracked in E#113316.
     if (VPU::isNCEWithInt4Weights(op)) {
-        return getHWLayerTilingStrategyWithTileDimOrder(op, tilingMode, tileDimOrder, log);
+        auto strategy = getHWLayerTilingStrategyWithTileDimOrder(op, tilingMode, tileDimOrder, log);
+        if (mlir::failed(strategy)) {
+            return {};
+        }
+        return {{strategy.value()[0].axis, {0, 0}}};
     }
 
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
@@ -638,32 +703,27 @@ mlir::FailureOr<OutputTiling> getBestHWLayerTilingStrategy(mlir::Operation* op, 
         }
     }
 
-    mlir::FailureOr<OutputTiling> bestTilingStrategy = SmallVector({TileInfo(1)});
-    auto bestCost = static_cast<double>(INVALID_COST_BASE);
+    std::vector<StrategyWithCost> tilingStrategiesWithCost{};
     auto outputTiles = getAllHWLayerTilingStrategies(op, tilingMode, tileDimOrder, log);
+    tilingStrategiesWithCost.reserve(outputTiles.size());
     for (const auto& outputTile : outputTiles) {
-        auto currentCost = costModel->getDPUandDMATimeCostWithCustomTiling(nceOp, mcStrategy, outputTile);
-        log.trace("For Op {0} Name {1}: Got pair of MC Strategy {2} tiling strategy {3} with cost {4} ", op->getLoc(),
-                  op->getName(), mcStrategy, outputTile[0].axis, currentCost);
-        if (currentCost >= INVALID_COST_BASE) {
-            log.trace("Choosing default tiling due to invalid cost");
-            return getHWLayerTilingStrategyWithTileDimOrder(op, tilingMode, tileDimOrder, log);
+        auto cost = costModel->getDPUandDMATimeCostWithCustomTiling(nceOp, mcStrategy, outputTile);
+        tilingStrategiesWithCost.push_back({outputTile[0].axis, cost});
+        if (cost.costWithoutPrefetching >= INVALID_COST_BASE || cost.costWithPrefetching >= INVALID_COST_BASE) {
+            tilingStrategiesWithCost.clear();
+            break;
         }
-        if (currentCost < bestCost ||
-            (currentCost == bestCost && isNewTileWithSameCostHasPotentialDMABenefits(
-                                                op, bestTilingStrategy.value()[0].axis, outputTile[0].axis))) {
-            bestTilingStrategy = outputTile;
-            bestCost = currentCost;
-        }
-    }
-    // if all feasible tile dim orders fail, return the default tiling strategy from HW layer without checking cost
-    if (bestCost >= INVALID_COST_BASE) {
-        return getHWLayerTilingStrategyWithTileDimOrder(op, tilingMode, tileDimOrder, log);
     }
 
-    log.trace("For Op {0} Name {1}: Best pair of MC Strategy {2} tiling strategy {3} with cost {4} ", op->getLoc(),
-              op->getName(), mcStrategy, bestTilingStrategy.value()[0].axis, bestCost);
-    return bestTilingStrategy.value();
+    if (tilingStrategiesWithCost.empty()) {
+        auto strategy = getHWLayerTilingStrategyWithTileDimOrder(op, tilingMode, tileDimOrder, log);
+        if (mlir::failed(strategy)) {
+            return {};
+        }
+        return {{strategy.value()[0].axis, {0, 0}}};
+    }
+
+    return tilingStrategiesWithCost;
 }
 
 mlir::FailureOr<OutputTiling> getHWLayerTilingStrategy(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling,
@@ -672,7 +732,7 @@ mlir::FailureOr<OutputTiling> getHWLayerTilingStrategy(VPU::TilingBuilderOpInter
     log.nest().trace("Enable Prefetch Tiling: {0}", enablePrefetchTiling);
     auto mode = getTilingSupportedMode(origOp, enablePrefetchTiling, log);
     log.nest().trace("Assigning {0} tiling strategy", getTilingModeStr(mode));
-    return getBestHWLayerTilingStrategy(origOp, mode, costModel, log);
+    return getBestHWLayerTilingStrategy(origOp, mode, costModel, enablePrefetchTiling, log);
 }
 
 static constexpr auto MODE_ON = "true";

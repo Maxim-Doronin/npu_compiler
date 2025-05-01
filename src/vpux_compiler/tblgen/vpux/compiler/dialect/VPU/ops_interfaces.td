@@ -165,9 +165,19 @@ def VPU_ClusteredOpInterface : OpInterface<"ClusteredOpInterface"> {
                 (ins "mlir::OpOperand&":$operand, "bool":$hasExplicitDistributedAttr, "SiblingOpsAnalysis&":$siblingsAnalysis),
                 [{}],
                 [{
-                    return nullptr;
+                    return vpux::VPU::getDistributedTypeForOpOperand($_op, operand, hasExplicitDistributedAttr, siblingsAnalysis);
                 }]
                 >,
+        InterfaceMethod<
+                "Compute distributed type for result",
+                "vpux::NDTypeInterface", "getDistributedTypeForOpResult",
+                (ins "mlir::Value":$result, "VPU::MultiClusterStrategy":$strategy, "SiblingOpsAnalysis&":$siblingsAnalysis,
+                "bool":$hasExplicitDistributedAttr),
+                [{}],
+                [{
+                    return vpux::VPU::getDistributedTypeForOpResult($_op, result, strategy, siblingsAnalysis, hasExplicitDistributedAttr);
+                }]
+                >
     ];
 }
 
@@ -452,6 +462,12 @@ def VPU_TilingInfoOpInterface : OpInterface<"TilingInfoOpInterface"> {
             "bool", "isSupportedTiling",
             (ins "const vpux::OutputTiling&":$tiles, "vpux::TilingMode":$tilingMode, "vpux::Logger":$log)
         >,
+
+        InterfaceMethod<
+            "Check if the provided tiling strategy is supported by the operation implementation",
+            "bool", "isSupportedTilingStrategy",
+            (ins "const vpux::Shape&":$strategy, "vpux::TilingMode":$tilingMode, "vpux::Logger":$log)
+        >,
     ];
 
     let verify = [{
@@ -587,6 +603,44 @@ def VPU_ClusterBroadcastingOpInterface : OpInterface<"ClusterBroadcastingOpInter
             "bool", "isBroadcastCapable", (ins "int64_t":$axis)
         >
     ];
+}
+
+//
+// BoundsRepresentationInterface
+//
+
+def VPU_BoundsRepresentationInterface : OpInterface<"BoundsRepresentationInterface"> {
+    let description = [{
+        It should be attached to the operations that are unable to infer dynamic output representation
+        based on the input types.
+        For example, an operation with static inputs that produces dynamic shape
+        doesn't know the expected dynamic shape representation.
+        This interface expects bounds_representation attribute of type VPU_BoundsRepresentationAttr
+        to be defined by the operation. It should be used in the inferReturnTypes function
+        to determine the output type.
+    }];
+
+    let cppNamespace = "vpux::VPU";
+
+    let methods = [
+        InterfaceMethod<
+            "Get the bounds representation attribute",
+            "vpux::VPU::BoundsRepresentation", "getBoundsRepresentation", (ins),
+            [{}],
+            [{
+                return $_op->getBoundsRepresentation();
+            }]
+        >,
+        InterfaceMethod<
+            "Set the bounds representation attribute",
+            "void", "setBoundsRepresentation",
+            (ins "vpux::VPU::BoundsRepresentation":$value),
+            [{}],
+            [{
+                $_op->setBoundsRepresentation(value);
+            }]
+        >
+      ];
 }
 
 #endif

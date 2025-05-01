@@ -3,12 +3,14 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -74,7 +76,7 @@ mlir::LogicalResult PropagateQuantize::matchAndRewrite(IE::ElemTypeInfoOpInterfa
 
     // 3. Check that operation supports quantization params propagation.
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(origOp.getOperation());
-        layerWithPostOp != nullptr && layerWithPostOp.getPostOp().has_value()) {
+        layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
         // A quantization-agnostic operation is no longer quantization-agnostic after it is fused with a post-op
         // (because post-op's are not quantization-agnostic). Since most post-op's will be fused by this time, this
         // check is here to prevent the propagation of output quantization through both the ElemTypeInfoOp and its
@@ -83,7 +85,7 @@ mlir::LogicalResult PropagateQuantize::matchAndRewrite(IE::ElemTypeInfoOpInterfa
         return mlir::failure();
     }
 
-    const auto quantizedElemType = quantizeOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto quantizedElemType = mlir::cast<vpux::NDTypeInterface>(quantizeOp.getOutput().getType()).getElementType();
     auto elemTypeInfo = origOp.getElemTypeInfo();
     for (size_t outputInd = 0; outputInd < layer->getNumResults(); outputInd++) {
         elemTypeInfo.setOutput(outputInd, quantizedElemType);
@@ -100,7 +102,7 @@ mlir::LogicalResult PropagateQuantize::matchAndRewrite(IE::ElemTypeInfoOpInterfa
 
     origOp.inferElemTypeInfoUp(elemTypeInfo);
 
-    if (!elemTypeInfo.getInput(0).isa<mlir::quant::QuantizedType>()) {
+    if (!mlir::isa<mlir::quant::QuantizedType>(elemTypeInfo.getInput(0))) {
         return matchFailed(rewriter, origOp, "Operation does not support quantization params propagation");
     }
 
@@ -205,7 +207,7 @@ mlir::LogicalResult PropagateDequantize::matchAndRewrite(IE::ElemTypeInfoOpInter
 
     // 2. Check if operation supports quantization params propagation.
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(origOp.getOperation());
-        layerWithPostOp != nullptr && layerWithPostOp.getPostOp().has_value()) {
+        layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
         // A quantization-agnostic operation is no longer quantization-agnostic after it is fused with a post-op
         // (because post-op's are not quantization-agnostic). Since most post-op's will be fused by this time, this
         // check is here to prevent the propagation of input quantization through both the ElemTypeInfoOp and its
@@ -220,7 +222,8 @@ mlir::LogicalResult PropagateDequantize::matchAndRewrite(IE::ElemTypeInfoOpInter
     for (auto idx : irange(dequantizeOps.size())) {
         auto dequantizeOp = dequantizeOps[idx];
 
-        const auto quantizedElemType = dequantizeOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto quantizedElemType =
+                mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType()).getElementType();
         elemTypeInfo.setInput(idx, quantizedElemType);
         originalTypes.push_back(quantizedElemType);
     }
@@ -245,7 +248,7 @@ mlir::LogicalResult PropagateDequantize::matchAndRewrite(IE::ElemTypeInfoOpInter
     }
 
     for (size_t outputInd = 0; outputInd < layer->getNumResults(); outputInd++) {
-        if (!elemTypeInfo.getOutput(outputInd).isa<mlir::quant::QuantizedType>()) {
+        if (!mlir::isa<mlir::quant::QuantizedType>(elemTypeInfo.getOutput(outputInd))) {
             return matchFailed(rewriter, origOp, "Operation does not support quantization params propagation: {0}",
                                elemTypeInfo.getOutput(outputInd));
         }

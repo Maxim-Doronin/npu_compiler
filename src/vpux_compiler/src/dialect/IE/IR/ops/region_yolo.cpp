@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::IE::RegionYoloOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = regionYolo.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(regionYolo.getInput().getType());
 
     SmallVector<int64_t> outputShape;
     if (regionYolo.getDoSoftmax()) {

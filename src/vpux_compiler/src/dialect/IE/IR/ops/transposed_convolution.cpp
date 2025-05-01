@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -55,16 +55,16 @@ mlir::LogicalResult vpux::IE::TransposedConvolutionOp::inferReturnTypeComponents
         return mlir::failure();
     }
 
-    const auto inputShape = convBackpropData.getInput().getType().cast<mlir::ShapedType>().getShape();
-    const auto featureType = convBackpropData.getInput().getType().cast<mlir::ShapedType>().getElementType();
+    const auto inputShape = mlir::cast<mlir::ShapedType>(convBackpropData.getInput().getType()).getShape();
+    const auto featureType = mlir::cast<mlir::ShapedType>(convBackpropData.getInput().getType()).getElementType();
     const auto outputShape = convBackpropData.getOutputShape();
-    const auto filterShape = convBackpropData.getFilter().getType().cast<mlir::ShapedType>().getShape();
+    const auto filterShape = mlir::cast<mlir::ShapedType>(convBackpropData.getFilter().getType()).getShape();
 
     const auto dataPaddingBelow = parseIntArrayAttr<int64_t>(convBackpropData.getPadsEnd());
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(convBackpropData.getPadsBegin());
     const auto windowStrides = parseIntArrayAttr<int64_t>(convBackpropData.getStrides());
     const auto windowDilations = parseIntArrayAttr<int64_t>(convBackpropData.getDilations());
-    const auto outputPadding = parseIntArrayAttr<int64_t>(convBackpropData.getOutputPadding());
+    const auto outputPadding = parseIntArrayAttr<int64_t>(convBackpropData.getSpatialOutputPadding());
 
     if (outputShape != nullptr) {
         const SmallVector<ov::Dimension> nDataShape(std::next(inputShape.begin(), 2), inputShape.end());
@@ -83,19 +83,11 @@ mlir::LogicalResult vpux::IE::TransposedConvolutionOp::inferReturnTypeComponents
         mlirOutputShape.push_back(filterShape[0]);
         std::copy(outputShapeVals.begin(), outputShapeVals.end(), std::back_inserter(mlirOutputShape));
 
-        if (convBackpropData.getOutputChannels().has_value()) {
-            mlirOutputShape[Dims4D::Filter::OC.ind()] = convBackpropData.getOutputChannels().value();
-        }
-
         inferredReturnShapes.emplace_back(mlirOutputShape, featureType);
     } else {
         auto mlirOutputShape =
                 inferTransposedConvBackpropOutputShape(inputShape, filterShape, windowStrides, dataPaddingBelow,
                                                        dataPaddingAbove, windowDilations, outputPadding);
-
-        if (convBackpropData.getOutputChannels().has_value()) {
-            mlirOutputShape[Dims4D::Filter::OC.ind()] = convBackpropData.getOutputChannels().value();
-        }
         inferredReturnShapes.emplace_back(mlirOutputShape, featureType);
     }
 

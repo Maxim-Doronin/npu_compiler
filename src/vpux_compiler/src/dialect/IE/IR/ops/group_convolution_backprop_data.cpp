@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,12 +23,12 @@ mlir::LogicalResult vpux::IE::GroupConvolutionBackpropDataOp::inferReturnTypeCom
         return mlir::failure();
     }
 
-    const auto inputType = groupConvBackpropData.getInput().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupConvBackpropData.getInput().getType());
     const auto inputShape = to_small_vector(inputType.getShape());
     const auto inputElemType = inputType.getElementType();
     const auto outputShape = groupConvBackpropData.getOutputShape();
     const auto filterShape =
-            to_small_vector(groupConvBackpropData.getFilter().getType().cast<NDTypeInterface>().getShape());
+            to_small_vector(mlir::cast<vpux::NDTypeInterface>(groupConvBackpropData.getFilter().getType()).getShape());
 
     if (outputShape != nullptr) {
         return errorAt(loc, "Explicit output shape is not implemented");
@@ -38,7 +38,7 @@ mlir::LogicalResult vpux::IE::GroupConvolutionBackpropDataOp::inferReturnTypeCom
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(groupConvBackpropData.getPadsBegin());
     const auto windowStrides = parseIntArrayAttr<int64_t>(groupConvBackpropData.getStrides());
     const auto windowDilations = parseIntArrayAttr<int64_t>(groupConvBackpropData.getDilations());
-    const auto outputPadding = parseIntArrayAttr<int64_t>(groupConvBackpropData.getOutputPadding());
+    const auto outputPadding = parseIntArrayAttr<int64_t>(groupConvBackpropData.getSpatialOutputPadding());
 
     const auto mlirOutputShape = inferGroupConvBackpropOutputShape(
             inputShape, filterShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowDilations, outputPadding);

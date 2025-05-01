@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,7 +17,9 @@ namespace arch37xx {
 // to avoid confusion when we have the same option for IE and the VPU dialect, but with a different value
 //
 
-struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
+struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, public vpux::BatchCompileOptionsAdapter {
+    DefaultHWOptionsDeviceBase(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
+    }
     StrOption enableActivationSparsity{*this, "enable-activation-sparsity",
                                        llvm::cl::desc("Enable activation sparsity"), llvm::cl::init("auto")};
 

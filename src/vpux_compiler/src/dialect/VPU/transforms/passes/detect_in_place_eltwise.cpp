@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -52,10 +52,19 @@ mlir::LogicalResult DetectInPlaceEltwise::matchAndRewrite(VPU::NCEEltwiseOp eltw
     auto eltwiseAllInputs = eltwiseOp.getInputs();
 
     // #65421
-    if (eltwiseOp.fitIntoCMX(eltwiseAllInputs[0].getType().cast<NDTypeInterface>(),
-                             eltwiseAllInputs[1].getType().cast<NDTypeInterface>(),
-                             output.getType().cast<NDTypeInterface>())) {
+    if (eltwiseOp.fitIntoCMX(mlir::cast<vpux::NDTypeInterface>(eltwiseAllInputs[0].getType()),
+                             mlir::cast<vpux::NDTypeInterface>(eltwiseAllInputs[1].getType()),
+                             mlir::cast<vpux::NDTypeInterface>(output.getType()))) {
         return mlir::failure();
+    }
+
+    // sprLUT adds additional dummy DPU task, that writes garbage to the output
+    // (see AddDummyDPUTaskForSprLUT pass). In case of in-place operation it will
+    // write into the input, corrupting its data.
+    if (auto ppeAttr = mlir::dyn_cast_or_null<VPU::PPEFpAttr>(eltwiseOp.getPpeAttr())) {
+        if (ppeAttr.getSprlut()) {
+            return mlir::failure();
+        }
     }
 
     for (auto input : eltwiseAllInputs) {
@@ -67,14 +76,14 @@ mlir::LogicalResult DetectInPlaceEltwise::matchAndRewrite(VPU::NCEEltwiseOp eltw
 
         auto nestLog = _log.nest(2);
         // Check that input is not block argument
-        if (input.isa<mlir::BlockArgument>()) {
+        if (mlir::isa<mlir::BlockArgument>(input)) {
             nestLog.trace("Input is a block argument - not supported");
             continue;
         }
 
         // Check that input tensor is compatible with output
-        auto inInterface = input.getType().cast<NDTypeInterface>();
-        auto outInterface = output.getType().cast<NDTypeInterface>();
+        auto inInterface = mlir::cast<vpux::NDTypeInterface>(input.getType());
+        auto outInterface = mlir::cast<vpux::NDTypeInterface>(output.getType());
         if (!isCompatibleForInplaceOp(inInterface, outInterface, nestLog)) {
             continue;
         }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -48,7 +48,7 @@ void VPUIP::UngroupSparseBufferOp::build(mlir::OpBuilder& builder, mlir::Operati
         VPUX_THROW("Failed to infer result types for {0}", state.name);
     }
 
-    const auto sparseInput = input.getType().dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseInput = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(input.getType());
     VPUX_THROW_WHEN(sparseInput == nullptr, "Input type ({0}) is not a sparse buffer", input.getType());
     const int32_t sparsityMapAttrVal = (sparseInput.getSparsityMap() != nullptr) ? 1 : 0;
     const int32_t seTableAttrVal = (sparseInput.getStorageElementTable() != nullptr) ? 1 : 0;
@@ -74,9 +74,9 @@ mlir::LogicalResult VPUIP::UngroupSparseBufferOp::inferReturnTypes(mlir::MLIRCon
                                                                    mlir::DictionaryAttr /*attrs*/,
                                                                    mlir::OpaqueProperties, mlir::RegionRange /*ranges*/,
                                                                    SmallVectorImpl<mlir::Type>& inferredReturnTypes) {
-    VPUX_THROW_UNLESS(operands[0].getType().isa<VPUIP::SparseBufferType>(),
+    VPUX_THROW_UNLESS(mlir::isa<vpux::VPUIP::SparseBufferType>(operands[0].getType()),
                       "Operand of type {0} is not a sparse buffer", operands[0].getType());
-    const auto sparseBufferType = operands[0].getType().cast<VPUIP::SparseBufferType>();
+    const auto sparseBufferType = mlir::cast<vpux::VPUIP::SparseBufferType>(operands[0].getType());
 
     inferredReturnTypes.push_back(sparseBufferType.getData());
     if (sparseBufferType.getSparsityMap() != nullptr) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 
 #include "vpux/compiler/utils/options.hpp"
 #include "vpux/compiler/utils/passes.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Pass/Pass.h>
@@ -46,8 +46,9 @@ std::unique_ptr<mlir::Pass> createReduceExceedingActiveCountBarriersPass(
         std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
         const bool unevenVariantSplitFlag = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAssignPhysicalBarriersPass(
-        const bool barrierColorBinFlag = false, std::optional<int> virtualBarrierThresholdForWlm = std::nullopt,
-        Logger log = Logger::global());
+        const bool barrierColorBinFlag = false,
+        std::optional<WorkloadManagementMode> workloadManagementMode = std::nullopt,
+        std::optional<int> virtualBarrierThresholdForWlm = std::nullopt, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createBarrierSimulationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createIntermediateBufferOutputPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInferenceExecutionAnalysisPass(
@@ -55,7 +56,6 @@ std::unique_ptr<mlir::Pass> createInferenceExecutionAnalysisPass(
         bool enableActivityFactor = true, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
         std::optional<size_t> virtualBarrierThresholdForWlm = VIRTUAL_BARRIER_THRESHOLD_WLM,
-        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
         Logger log = Logger::global());
 
 //

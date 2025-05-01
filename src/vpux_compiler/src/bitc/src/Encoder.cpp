@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -103,7 +103,7 @@ const std::map<uint32_t, DecoderAlgorithm> Encoder::Impl::encoder_to_decoder_map
         {0, DecoderAlgorithm::ADDPROC},         {1, DecoderAlgorithm::SIGNSHFTADDPROC},
         {2, DecoderAlgorithm::SIGNSHFTADDPROC}, {3, DecoderAlgorithm::NOPROC},
         {4, DecoderAlgorithm::SIGNSHFTPROC},    {5, DecoderAlgorithm::SIGNSHFTADDPROC},
-        {6, DecoderAlgorithm::SIGNSHFTADDBLK},  // >= NPU40XX only
+        {6, DecoderAlgorithm::SIGNSHFTADDBLK},  // >= NPU4 only
         {7, DecoderAlgorithm::BINEXPPROC},      {8, DecoderAlgorithm::BTEXPPROC}};
 
 void Encoder::Impl::verify_config(const BitCompactorConfig& config) {
@@ -136,7 +136,7 @@ void Encoder::Impl::init(const BitCompactorConfig& config, const std::vector<uin
     algorithm_encoder_[static_cast<uint32_t>(EncoderAlgorithm::NOPRDCT)] = &Encoder::Impl::noprdct;
     algorithm_encoder_[static_cast<uint32_t>(EncoderAlgorithm::NOSPRDCT)] = &Encoder::Impl::nosprdct;
     algorithm_encoder_[static_cast<uint32_t>(EncoderAlgorithm::PREVBLKPRDCT)] =
-            &Encoder::Impl::prevblkprdct;  // >= NPU40XX only
+            &Encoder::Impl::prevblkprdct;  // >= NPU4 only
     algorithm_encoder_[static_cast<uint32_t>(EncoderAlgorithm::BINCMPCT)] = &Encoder::Impl::binexpproc;
     algorithm_encoder_[static_cast<uint32_t>(EncoderAlgorithm::BTMAP)] = &Encoder::Impl::btexpproc;
 
@@ -756,7 +756,8 @@ void Encoder::Impl::encode(const BitCompactorConfig& config, const std::vector<u
     const auto last_block_elements{input_bytes - (input_blocks << 6)};
     uint32_t last_block{static_cast<uint32_t>(last_block_elements > 0u)};
 
-    std::vector<AlgorithmParam> block_params(input_blocks * ALGORITHMS);
+    std::size_t total_blocks = static_cast<std::size_t>(input_blocks) * static_cast<std::size_t>(ALGORITHMS);
+    std::vector<AlgorithmParam> block_params(total_blocks);
     std::vector<BitStream> block_stream(input_blocks + last_block);
 
     if (config.mode_fp16_enable) {

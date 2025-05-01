@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -356,5 +356,28 @@ def VPUIP_WlmStatus :
 }
 
 def VPUIP_WlmStatusAttr : VPUIP_EnumAttr<VPUIP_WlmStatus, "wlm_status">;
+
+//
+// VPUIPInlinerDispatch
+//
+
+// This attribute controls the inlining behaviour for 'func' operations. A 'func' operation can be annotated
+// with an attribute named "inliner_dispatch": {"inliner_dispatch" = #VPUIP.VPUIPInlinerDispatchAttr}.
+// See 'InlinerDispatchAttr' for more information.
+def VPUIPInlinerDispatchAttr : InlinerDispatchAttr<VPUIP_Dialect, "VPUIPInlinerDispatch">;
+
+//
+// VPUIPObjectAttr
+//
+
+def VPUIP_ObjectAttr : VPUIP_Attr<"Object"> {
+    let description = [{
+        VPUIP object holds the hex string of serialized NPU compute functions in the ELF dialect.
+    }];
+    let parameters = (ins
+        "mlir::StringAttr":$object
+    );
+    let assemblyFormat = "`<` struct(params) `>`";
+}
 
 #endif

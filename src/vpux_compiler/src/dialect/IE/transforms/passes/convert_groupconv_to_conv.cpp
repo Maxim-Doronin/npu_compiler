@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -63,8 +65,8 @@ private:
 };
 
 std::optional<int64_t> getZeroPoint(IE::FakeQuantizeOp fqOp) {
-    const auto realType = fqOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto realElemType = realType.getElementType().cast<mlir::FloatType>();
+    const auto realType = mlir::cast<vpux::NDTypeInterface>(fqOp.getInput().getType());
+    const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
     auto inLowConst = fqOp.getInputLow().getDefiningOp<Const::DeclareOp>();
     auto inHighConst = fqOp.getInputHigh().getDefiningOp<Const::DeclareOp>();
     VPUX_THROW_UNLESS(inLowConst != nullptr && inHighConst != nullptr,
@@ -95,13 +97,65 @@ mlir::Value createConstantOpForPadding(ShapeRef padShape, mlir::Type elemType, c
     return Const::createFloatConst(rewriter, loc, dataStorageType, static_cast<float>(padValue));
 }
 
+bool isSupportAffineReshape(IE::AffineReshapeOp reshapeOp, IE::FakeQuantizeOp fakeQuantizeOp) {
+    SmallVector<int64_t> notSplitAxes;
+    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(reshapeOp.getDimMapping());
+    for (auto mappedDim : dimMapping) {
+        if (mappedDim.size() == 1) {
+            notSplitAxes.push_back(mappedDim[0]);
+        }
+    }
+
+    const auto getNonOneAxes = [](mlir::Value value) -> SmallVector<int64_t> {
+        SmallVector<int64_t> axes;
+        const auto shape = to_small_vector(getShape(value));
+        for (auto dimIdx : irange(shape.size())) {
+            if (shape[dimIdx] != 1) {
+                axes.push_back(dimIdx);
+            }
+        }
+
+        return axes;
+    };
+
+    const auto inputLowNonOneAxes = getNonOneAxes(fakeQuantizeOp.getInputLow());
+    const auto inputHighNonOneAxes = getNonOneAxes(fakeQuantizeOp.getInputHigh());
+    const auto outputLowNonOneAxes = getNonOneAxes(fakeQuantizeOp.getOutputLow());
+    const auto outputHighNonOneAxes = getNonOneAxes(fakeQuantizeOp.getOutputHigh());
+
+    const auto isAxesNotSplitOrMerged = [](ArrayRef<int64_t> nonOneAxes, ArrayRef<int64_t> notSplitAxes) -> bool {
+        for (auto axis : nonOneAxes) {
+            // non one axes have overlap with split dims
+            if (std::find(notSplitAxes.begin(), notSplitAxes.end(), axis) == notSplitAxes.end()) {
+                return false;
+            }
+
+            const auto inputAxisCount = llvm::count_if(notSplitAxes, [&](auto dim) {
+                return dim == axis;
+            });
+
+            // non one axes have overlap with merged dims
+            if (inputAxisCount != 1) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // Value of dim should be 1 when has overlap with split or merged dim of affineReshape
+    return isAxesNotSplitOrMerged(inputLowNonOneAxes, notSplitAxes) &&
+           isAxesNotSplitOrMerged(inputHighNonOneAxes, notSplitAxes) &&
+           isAxesNotSplitOrMerged(outputLowNonOneAxes, notSplitAxes) &&
+           isAxesNotSplitOrMerged(outputHighNonOneAxes, notSplitAxes);
+}
+
 mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::matchAndRewrite(
         IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Got GroupConvolutionOp layer at '{0}'", origOp->getLoc());
     VPUX_THROW_UNLESS(origOp.getType().getRank() == 4, "The pass currently can only support 4D input");
 
     const auto weights = origOp.getFilter();
-    const auto weightsShape = weights.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto weightsShape = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getShape();
     const auto groupNumb = origOp.getGroups().value();
 
     const auto groupInSize = weightsShape[Dims4D::Filter::IC];
@@ -115,6 +169,18 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
 
     auto weightsCst = weights.getDefiningOp<Const::DeclareOp>();
     auto weightsFQ = weights.getDefiningOp<IE::FakeQuantizeOp>();
+    auto weightsAffineReshapeOp = weights.getDefiningOp<IE::AffineReshapeOp>();
+
+    if (weightsAffineReshapeOp != nullptr) {
+        weightsFQ = weightsAffineReshapeOp.getInput().getDefiningOp<IE::FakeQuantizeOp>();
+
+        if (weightsFQ == nullptr || !isSupportAffineReshape(weightsAffineReshapeOp, weightsFQ)) {
+            _log.trace("FakeQuantizeOp can't be found or quantized axis is split or merged by affineReshape at '{0}'",
+                       origOp->getLoc());
+            return mlir::failure();
+        }
+    }
+
     auto isWeightsHasFQ = false;
     int64_t padValue = 0;
     if (weightsFQ) {
@@ -134,7 +200,7 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
         return mlir::failure();
     }
 
-    const auto weightsNDType = weightsCst.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto weightsNDType = mlir::cast<vpux::NDTypeInterface>(weightsCst.getOutput().getType());
     const auto weightsElemType = weightsNDType.getElementType();
 
     if (weightsNDType.getTotalAllocSize() > vpux::VPU::getTotalCMXSize(origOp)) {
@@ -156,10 +222,15 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
 
     const auto& weightsContentAttr = weightsCst.getContentAttr();
     auto reconstructGroupWeights = [&](const int64_t groupIdx) -> mlir::Value {
+        auto groupWeightsSetup = weightsContentAttr.transform();
+        if (weightsAffineReshapeOp != nullptr) {
+            groupWeightsSetup = groupWeightsSetup.reshape(getShape(weightsAffineReshapeOp.getOutput()));
+        }
+
         const auto subviewOffsets = Shape{(groupIdx - 1) * groupOutSize, 0, 0, 0};
         const auto subviewStaticShape = Shape{groupOutSize, weightsShape[Dims4D::Filter::IC],
                                               weightsShape[Dims4D::Filter::KY], weightsShape[Dims4D::Filter::KX]};
-        auto groupWeightsSetup = weightsContentAttr.transform().subview(subviewOffsets, subviewStaticShape);
+        groupWeightsSetup = groupWeightsSetup.subview(subviewOffsets, subviewStaticShape);
 
         if (isWeightsHasFQ) {
             SmallVector<mlir::Value> concatInputs;
@@ -211,14 +282,12 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
                                                          weightsFQ.getLevelsAttr(), weightsFQ.getLowFpTypeAttr(),
                                                          weightsFQ.getAutoBroadcastAttr())
                              .getResult();
-        weightsFQ.replaceAllUsesWith(newWeights);
-        weightsFQ.erase();
     }
 
     rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(origOp, origOp.getInput(), newWeights, origOp.getBias(),
                                                    origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(),
                                                    origOp.getDilations(), nullptr, nullptr, nullptr,
-                                                   origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                                   origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -247,9 +316,9 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::m
     VPUX_THROW_UNLESS(origOp.getType().getRank() == 4, "The pass currently can only support 4D input");
 
     const auto input = origOp.getInput();
-    const auto inputShape = input.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
     const auto weights = origOp.getFilter();
-    const auto weightsShape = weights.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto weightsShape = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getShape();
     const auto bias = origOp.getBias();
     const auto group = origOp.getGroups().value();
     const auto newInShape = Shape{inputShape[Dims4D::Act::N], inputShape[Dims4D::Act::C] / group,
@@ -286,22 +355,22 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::m
             auto newInput = rewriter.createOrFold<IE::SliceOp>(
                     takeOpLoc(fakeQuantizeOp, StringLiteral("slice_in_{0}"), sliceIdx), fakeQuantizeOp.getInput(),
                     weightsOffsetsAttr, weightsShapeAttr);
-            if (inputLow.getType().cast<vpux::NDTypeInterface>().getShape()[Dims4D::Filter::OC] != 1) {
+            if (mlir::cast<vpux::NDTypeInterface>(inputLow.getType()).getShape()[Dims4D::Filter::OC] != 1) {
                 inputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
                         takeOpLoc(fakeQuantizeOp, StringLiteral("slice_in_low_{0}"), sliceIdx), inputLow,
                         weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
             }
-            if (outputLow.getType().cast<vpux::NDTypeInterface>().getShape()[Dims4D::Filter::OC] != 1) {
+            if (mlir::cast<vpux::NDTypeInterface>(outputLow.getType()).getShape()[Dims4D::Filter::OC] != 1) {
                 outputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
                         takeOpLoc(fakeQuantizeOp, StringLiteral("slice_out_low_{0}"), sliceIdx), outputLow,
                         weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
             }
-            if (inputHigh.getType().cast<vpux::NDTypeInterface>().getShape()[Dims4D::Filter::OC] != 1) {
+            if (mlir::cast<vpux::NDTypeInterface>(inputHigh.getType()).getShape()[Dims4D::Filter::OC] != 1) {
                 inputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
                         takeOpLoc(fakeQuantizeOp, StringLiteral("slice_in_high_{0}"), sliceIdx), inputHigh,
                         weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
             }
-            if (outputHigh.getType().cast<vpux::NDTypeInterface>().getShape()[Dims4D::Filter::OC] != 1) {
+            if (mlir::cast<vpux::NDTypeInterface>(outputHigh.getType()).getShape()[Dims4D::Filter::OC] != 1) {
                 outputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
                         takeOpLoc(fakeQuantizeOp, StringLiteral("slice_out_high_{0}"), sliceIdx), outputHigh,
                         weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
@@ -319,7 +388,7 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::m
 
         // Slice Bias
         if (bias != nullptr) {
-            auto biasShape = bias.getType().cast<vpux::NDTypeInterface>().getShape();
+            auto biasShape = mlir::cast<vpux::NDTypeInterface>(bias.getType()).getShape();
             const auto newBiasShape = Shape{biasShape[Dims4D::Act::N], biasShape[Dims4D::Act::C] / group,
                                             biasShape[Dims4D::Act::H], biasShape[Dims4D::Act::W]};
             const auto biasShapeAttr = getIntArrayAttr(getContext(), newBiasShape);

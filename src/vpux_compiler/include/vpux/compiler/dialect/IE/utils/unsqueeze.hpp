@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 namespace vpux {
@@ -14,8 +15,8 @@ namespace IE {
 
 mlir::FailureOr<SmallVector<int64_t>> propagateShape(mlir::Location loc, ArrayRef<int64_t> inShape,
                                                      ArrayRef<int64_t> axes);
-mlir::FailureOr<mlir::ArrayAttr> propagateBoundsAttr(mlir::MLIRContext* ctx, mlir::Location loc, mlir::Value value,
-                                                     ArrayRef<int64_t> axes);
+mlir::FailureOr<SmallVector<int64_t>> propagateDynamicAttr(mlir::Location loc, mlir::Value value,
+                                                           ArrayRef<int64_t> axes);
 
 template <typename UnsqueezeType>
 mlir::FailureOr<SmallVector<int64_t>> getAxes(UnsqueezeType unsqueeze, mlir::Location loc) {
@@ -39,7 +40,7 @@ mlir::FailureOr<SmallVector<int64_t>> getAxes(UnsqueezeType unsqueeze, mlir::Loc
     auto axes = to_small_vector(axesContent.template getValues<int64_t>());
     std::sort(axes.begin(), axes.end());
 
-    const auto inType = unsqueeze.getInput().getType().template cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(unsqueeze.getInput().getType());
     const auto inRank = inType.getRank();
     const auto numAxes = checked_cast<int64_t>(axes.size());
 

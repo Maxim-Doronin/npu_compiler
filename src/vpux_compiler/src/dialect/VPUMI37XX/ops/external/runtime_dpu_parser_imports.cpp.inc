@@ -58,7 +58,7 @@ FlatBufferAccessor<MVCNN::TensorReference> createTensorRef(vpux::VPUMI37XX::Blob
                                                            std::optional<int64_t> storageElementSize,
                                                            std::optional<int64_t> swizzlingKey) {
     const auto off =
-            writer.createTensorRef(name, val.getType().cast<vpux::NDTypeInterface>(), section, sectionIndex, byteOffset,
+            writer.createTensorRef(name, mlir::cast<vpux::NDTypeInterface>(val.getType()), section, sectionIndex, byteOffset,
                                    sparsityMapOffset, storageElementOffset, storageElementSize, swizzlingKey);
 
     return {&writer, off};
@@ -134,12 +134,12 @@ FlatBufferAccessor<MVCNN::TensorReference> getTensorReferenceWithUpdatedQuantPar
     // Get also ZP
     SmallVector<uint8_t> quantZeroPoints;
 
-    auto type = tensor.getType().cast<vpux::NDTypeInterface>();
+    auto type = mlir::cast<vpux::NDTypeInterface>(tensor.getType());
 
     auto elementType = type.getElementType();
-    if (const auto uniformQuantType = elementType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elementType)) {
         quantZeroPoints.push_back(checked_cast<uint8_t>(uniformQuantType.getZeroPoint()));
-    } else if (const auto uniformQuantPerAxisType = elementType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
         auto zp = uniformQuantPerAxisType.getZeroPoints();
         quantZeroPoints.resize(zp.size());
         std::transform(zp.begin(), zp.end(), quantZeroPoints.begin(), [](int64_t a) {
@@ -736,7 +736,7 @@ void SetupInvariant_Grid(vpux::VPUMI37XX::DPUInvariantOp fb_invariant, nn_public
         invariant.kernel_pad_cfg.kernel_pad_cfg_bf.mpe_assign = nn_public::VpuMPEGrid::MPE_GRID_4x4;
         break;
     case VPU::MPEMode::CUBOID_8x16:  // NTH = 2, NTW=4, NTK = 8 (8, 8)
-    case VPU::MPEMode::VECTOR:       // nn_public::VpuMPE_GRID_16x1 not valid for NPU37XX
+    case VPU::MPEMode::VECTOR:       // nn_public::VpuMPE_GRID_16x1 not valid for VPUX37XX
         invariant.odu_cfg.odu_cfg_bf.grid = static_cast<unsigned int>(nn_public::VpuODUGrid::ODU_GRID_4x4);
         invariant.odu_cfg.odu_cfg_bf.nthw = static_cast<unsigned int>(nn_public::VpuODUNthw::ODU_NTHW_8);
         invariant.kernel_pad_cfg.kernel_pad_cfg_bf.mpe_assign = nn_public::VpuMPEGrid::MPE_GRID_4x4;
@@ -874,7 +874,7 @@ void SetupInput(vpux::VPUMI37XX::BlobWriter& writer, vpux::VPUMI37XX::DPUInvaria
                 (inputRef->quant_zero() && inputRef->quant_zero()->size()) ? inputRef->quant_zero()->Get(0) : 0;
     }
 
-    // pad_value is not set for NPU37XX
+    // pad_value is not set for VPUX37XX
     // registers.tensor_mode.tensor_mode_bf.pad_value =
     //         (inputRef->quant_zero() && inputRef->quant_zero()->size()) ? inputRef->quant_zero()->Get(0) : 0;
 
@@ -947,7 +947,7 @@ void SetupWeights(vpux::VPUMI37XX::BlobWriter& writer, vpux::VPUMI37XX::DPUInvar
 
 void SetupKernel(vpux::VPUMI37XX::DPUInvariantOp op, nn_public::VpuDPUInvariantRegisters& registers) {
     registers.kernel_pad_cfg.kernel_pad_cfg_bf.rst_ctxt = 1;
-    // MPE_GRID_16x1 is deprecated for DPU 2.7 (NPU37XX). Will always be MPE_GRID_4x4
+    // MPE_GRID_16x1 is deprecated for DPU 2.7 (VPUX37XX). Will always be MPE_GRID_4x4
     registers.kernel_pad_cfg.kernel_pad_cfg_bf.mpe_assign = MPE_GRID_4x4;
 
     int64_t kernelSizeH = 1, kernelSizeW = 1;
@@ -1247,7 +1247,7 @@ void SetupInvariant_SOH(FlatBufferAccessor<MVCNN::TensorReference> in_tensor,
             }
         }
 
-        // Assuming symmetric SOH layer split across both NPU37XX tiles
+        // Assuming symmetric SOH layer split across both VPUX37XX tiles
         invariantRegisters.se_sp_size[1] = invariantRegisters.se_sp_size[0];
         invariantRegisters.kernel_pad_cfg.kernel_pad_cfg_bf.sp_se_tbl_segment = 1;
     }
@@ -1287,7 +1287,7 @@ void SetupInvariant_Input_SE_Size(FlatBufferAccessor<MVCNN::TensorReference> in_
 }
 
 size_t getInputClusterCount(mlir::Value parentInput) {
-    if (auto distributedBufferType = parentInput.getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedBufferType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(parentInput.getType())) {
         return distributedBufferType.getDistribution().getNumClusters().getInt();
     }
     return 1;
@@ -1523,7 +1523,7 @@ bool SetupInvariant_Eltwise(vpux::VPUMI37XX::BlobWriter& writer, vpux::VPUMI37XX
     const auto isInputQuantizationProvided = in1QuantMult.has_value() && in2QuantMult.has_value();
 
     if (isInputQuantizationProvided) {
-        // Shifts must be set 0 for NPU37XX and NPU40XX runtime to be considered, otherwise runtime will ignore inputs
+        // Shifts must be set 0 for VPUX37XX and VPUX40XX runtime to be considered, otherwise runtime will ignore inputs
         // MULT.
         const auto inputSparsityMapOffset =
                 inputSparsityMap ? std::optional<int64_t>{inputSparsityMap.getDefiningOp<VPURT::DeclareBufferOp>()
@@ -1546,7 +1546,7 @@ bool SetupInvariant_Eltwise(vpux::VPUMI37XX::BlobWriter& writer, vpux::VPUMI37XX
 
     uint32_t elop_scale_a = 1;
     uint32_t elop_scale_b = 1;
-    // For NPU37XX, original code computing eltwise scales on the VPU disabled (E#5671)
+    // For VPUX37XX, original code computing eltwise scales on the VPU disabled (E#5671)
     // If blob contains scales, it is the final values (E#33155)
     if (inputRef->quant_mult()->size() && weightsRef->quant_mult()->size() && inputRef->quant_shift()->size() &&
         weightsRef->quant_shift()->size()) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,11 +7,13 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/constant_fusion.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
@@ -86,7 +88,7 @@ void PatchWeightsTablePass::safeRunOnFunc() {
         }
         _log.trace("WeightTable identified for operation '{0}'", nceOp->getLoc());
 
-        auto distributedType = wTable.getType().dyn_cast<VPUIP::DistributedBufferType>();
+        auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(wTable.getType());
         if (distributedType != nullptr) {
             if (nceOp->hasAttr(vpux::ConstantFusing::constantsFused) &&
                 (distributedType.getDistribution().getMode().getValue() == VPU::DistributionMode::SEGMENTED)) {
@@ -172,7 +174,7 @@ unsigned PatchWeightsTablePass::getWeightTableSize(vpux::VPUIP::NCEClusterTaskOp
         }
     }
     // unfused constant or fused constant with only weight table
-    auto weightTableType = nceOp.getWeightTable().getType().cast<vpux::NDTypeInterface>();
+    auto weightTableType = mlir::cast<vpux::NDTypeInterface>(nceOp.getWeightTable().getType());
     auto shapeTotalSize = weightTableType.getShape().totalSize();
     auto elementSize = weightTableType.getElemTypeSize().count() / CHAR_BIT;
     return shapeTotalSize * elementSize;
@@ -186,7 +188,7 @@ SmallVector<int64_t> PatchWeightsTablePass::getOffsets(vpux::VPUIP::NCEClusterTa
     }
 
     SmallVector<int64_t> offsets;
-    if (auto distributedType = wtDecBuf.getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(wtDecBuf.getType())) {
         auto distributionAttr = distributedType.getDistribution();
         const auto numClusters = distributionAttr.getNumClusters().getInt();
         const auto perClusterShapeOffsets = distributedType.getPerClusterMemoryShapeOffsets();
@@ -300,10 +302,10 @@ SmallVector<uint32_t> PatchWeightsTablePass::getWeightsPerClusterPointers(VPUIP:
     auto weights = nceOp.getWeights();
     uint64_t weightsBasePointer = getRootBufferPointer(weights, 0);
 
-    if (weights == nullptr || !weights.getType().isa<VPUIP::DistributedBufferType>()) {
+    if (weights == nullptr || !mlir::isa<vpux::VPUIP::DistributedBufferType>(weights.getType())) {
         return SmallVector<uint32_t>(numCluster, static_cast<int32_t>(weightsBasePointer));
     }
-    auto distributedType = weights.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(weights.getType());
     auto distributionAttr = distributedType.getDistribution();
     auto mode = distributionAttr.getMode().getValue();
     if (mode != (VPU::DistributionMode::DUPLICATED | VPU::DistributionMode::SEGMENTED)) {

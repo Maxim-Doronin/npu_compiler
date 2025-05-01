@@ -39,7 +39,7 @@ int64_t AdjustSpillSizePass::getAdjustedSpillBufferSize(vpux::NDTypeInterface or
     int64_t numberOfDmas = 1;
     // In case of segmented buffer each chunk needs to satisfy
     // compression requirements as each will be handled by dedicated compress DMA
-    if (auto distributedType = origTypeThatGotSpilled.dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(origTypeThatGotSpilled)) {
         const auto distributionAttr = distributedType.getDistribution();
         const auto distributionMode = distributionAttr.getMode().getValue();
 
@@ -67,10 +67,10 @@ void AdjustSpillSizePass::updateSpillWrite(VPUIP::NNDMAOp dmaOp) {
     mlir::Type spillSourceBufferType;
     if (clusterOp) {
         asyncOp = clusterOp->getParentOfType<mlir::async::ExecuteOp>();
-        blockArg = dmaOp.getOutputBuff().cast<mlir::BlockArgument>();
+        blockArg = mlir::cast<mlir::BlockArgument>(dmaOp.getOutputBuff());
         spillBuffer = clusterOp->getOperand(blockArg.getArgNumber());
         spillSourceBufferType =
-                clusterOp->getOperand(dmaOp.getInput().cast<mlir::BlockArgument>().getArgNumber()).getType();
+                clusterOp->getOperand(mlir::cast<mlir::BlockArgument>(dmaOp.getInput()).getArgNumber()).getType();
     } else {
         spillSourceBufferType = dmaOp.getInput().getType();
     }
@@ -87,7 +87,7 @@ void AdjustSpillSizePass::updateSpillWrite(VPUIP::NNDMAOp dmaOp) {
     // to compressed DMA and in worst case scenario size of compressed activation can be in fact bigger than
     // original buffer. To prevent from memory corruption spill buffer size needs to be adjusted
 
-    auto spillType = spillAllocOpResult.getType().cast<vpux::NDTypeInterface>();
+    auto spillType = mlir::cast<vpux::NDTypeInterface>(spillAllocOpResult.getType());
 
     auto newSpillType = vpux::setAllocSizeAttr(spillType, getAdjustedSpillBufferSize(spillSourceBufferType));
     newSpillType = vpux::setCompressionState(newSpillType, VPUIP::CompressionState::CompressionCandidate);
@@ -129,7 +129,7 @@ void AdjustSpillSizePass::updateSpillRead(VPUIP::NNDMAOp dmaOp) {
 
     if (clusterOp) {
         asyncOp = clusterOp->getParentOfType<mlir::async::ExecuteOp>();
-        auto blockArg = dmaOp.getInput().dyn_cast<mlir::BlockArgument>();
+        auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(dmaOp.getInput());
 
         spillBuffer = clusterOp->getOperand(blockArg.getArgNumber());
 
@@ -139,7 +139,7 @@ void AdjustSpillSizePass::updateSpillRead(VPUIP::NNDMAOp dmaOp) {
     VPUX_THROW_WHEN(asyncOp == nullptr, "No async execute identified for given SpillRead DmaOp - '{0}'",
                     dmaOp->getLoc());
 
-    if (auto blockArg = spillBuffer.dyn_cast<mlir::BlockArgument>()) {
+    if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(spillBuffer)) {
         blockArg.setType(newSpillTypeMemref);
     }
     dmaOp.setCompressCandidate(true);
@@ -153,8 +153,8 @@ void AdjustSpillSizePass::safeRunOnFunc() {
             return;
         }
 
-        const auto inType = dmaOp.getInput().getType().cast<vpux::NDTypeInterface>();
-        const auto outType = dmaOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutput().getType());
 
         if (inType.getMemoryKind() == VPU::MemoryKind::CMX_NN && outType.getMemoryKind() == VPU::MemoryKind::DDR) {
             if (isSupportedBufferSizeForCompression(inType)) {

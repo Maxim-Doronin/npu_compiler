@@ -1,16 +1,18 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/core/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/utils/hash.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/format.hpp"
 
 #include <llvm/ADT/STLExtras.h>
@@ -29,12 +31,6 @@ namespace vpux::VPU {
 using namespace vpux;
 
 namespace {
-
-struct FuncInfo {
-    SmallVector<mlir::Type> inputTypes;
-    SmallVector<mlir::Type> outputTypes;
-    std::string funcNames;
-};
 
 using FunctionCalls = std::map<mlir::func::FuncOp, std::vector<mlir::func::CallOp>>;
 using CallFunction = std::map<mlir::func::CallOp, mlir::func::FuncOp>;
@@ -454,10 +450,10 @@ public:
 
 private:
     void safeRunOnModule() final {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp mainFuncOp;
         auto moduleOp = getOperation();
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
 
         _log.debug("Searching for outlining instances around concat operations");
         ConcatOutliner outliner(_minSeqLength, _singleFunctionPerConcat, _log);
@@ -466,7 +462,7 @@ private:
             _log.debug("Found no candidate instances");
             return;
         }
-        printOutliningInstances(outliningInstances);
+        printOutliningInstances(outliningInstances, _log);
 
         if (mlir::failed(validateOutliningInstances(outliningInstances))) {
             _log.debug("The outlined instances failed validation");
@@ -575,49 +571,6 @@ private:
         return mlir::success();
     }
 
-    void printOutliningInstances(ArrayRef<OutliningInstance> outliningInstances) {
-        if (!_log.isActive(LogLevel::Debug)) {
-            return;
-        }
-        _log.debug("Functions to outline: {0}", outliningInstances.size());
-        for (auto& outliningInstance : outliningInstances) {
-            _log.nest().debug("Number of instances in IR: {0}", outliningInstance.size());
-            for (const auto& p : outliningInstance | indexed) {
-                const auto& slice = p.value();
-                _log.nest().debug("Instance {0}", p.index());
-                _log.nest(2).debug("Input values: {0}", slice.inputs.size());
-                for (auto input : slice.inputs) {
-                    auto producerOp = input.getDefiningOp();
-                    if (producerOp != nullptr) {
-                        _log.nest(3).debug("{0} at {1}", producerOp->getName(), producerOp->getLoc());
-                        continue;
-                    }
-                    _log.nest(3).debug("{0}", input);
-                }
-                _log.nest(2).debug("Output values: {0}", slice.outputs.size());
-                for (auto output : slice.outputs) {
-                    auto producerOp = output.getDefiningOp();
-                    if (producerOp != nullptr) {
-                        _log.nest(3).debug("{0} at {1}", producerOp->getName(), producerOp->getLoc());
-                        continue;
-                    }
-                    _log.nest(3).debug("{0}", output);
-                }
-                _log.nest(2).debug("Number of operations in slice: {0}", slice.operations.size());
-                for (auto op : slice.operations) {
-                    _log.nest(3).debug("Operation {0} at {1}", op->getName(), op->getLoc());
-                }
-                if (!slice.inputUserMapping.empty()) {
-                    _log.nest(2).debug("Input user mapping");
-                    for (const auto& [argIdx, user] : slice.inputUserMapping | indexed) {
-                        _log.nest(3).debug("Argument {0}, user operation {1}, operand {2}", argIdx,
-                                           user.first->getName(), user.second);
-                    }
-                }
-            }
-        }
-    }
-
     void outlineTargets(mlir::ModuleOp moduleOp, mlir::func::FuncOp mainFuncOp,
                         ArrayRef<OutliningInstance> outliningInstances) {
         size_t numFunctions = 0;
@@ -651,9 +604,9 @@ private:
 
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp mainFuncOp;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(mainFuncOp);
@@ -666,7 +619,7 @@ private:
                 const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                               ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
                 auto func =
-                        builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcNames, funcType);
+                        builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
                 func.setPrivate();
 
                 auto builder = mlir::OpBuilder::atBlockEnd(func.addEntryBlock());
@@ -701,9 +654,9 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp mainFuncOp;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
 
         auto builder = mlir::OpBuilder::atBlockBegin(&mainFuncOp.getBody().front());
         DenseMap<mlir::Value, mlir::Value> oldToNewArgMap;
@@ -731,7 +684,7 @@ private:
 
                 const auto callLoc = appendLoc(mainFuncOp.getLoc(), "_fn{0}_call{1}", targetIdx + 1, sliceIdx);
                 auto newCall =
-                        builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcNames,
+                        builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                            funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);
                 for (const auto& res : newCall.getResults()) {
                     size_t idx = res.getResultNumber();

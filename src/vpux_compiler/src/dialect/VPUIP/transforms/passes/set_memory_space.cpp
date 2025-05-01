@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -68,7 +68,7 @@ void SetMemorySpacePass::updateFunction(mlir::func::FuncOp func, const AliasesIn
 
     const auto updateArgTypes = [&](mlir::ValueRange args, SmallVector<mlir::Type>& newTypes) {
         for (auto arg : args) {
-            const auto argType = arg.getType().cast<vpux::NDTypeInterface>();
+            const auto argType = mlir::cast<vpux::NDTypeInterface>(arg.getType());
             const auto newArgType = argType.changeMemSpace(_memKind);
 
             newTypes.push_back(newArgType);
@@ -76,11 +76,11 @@ void SetMemorySpacePass::updateFunction(mlir::func::FuncOp func, const AliasesIn
             for (auto var : aliases) {
                 auto aliasType = var.getType();
                 mlir::Type newAliasType;
-                if (auto asyncType = aliasType.dyn_cast<mlir::async::ValueType>()) {
+                if (auto asyncType = mlir::dyn_cast<mlir::async::ValueType>(aliasType)) {
                     newAliasType = mlir::async::ValueType::get(
-                            asyncType.getValueType().cast<vpux::NDTypeInterface>().changeMemSpace(_memKind));
+                            mlir::cast<vpux::NDTypeInterface>(asyncType.getValueType()).changeMemSpace(_memKind));
                 } else {
-                    newAliasType = aliasType.cast<vpux::NDTypeInterface>().changeMemSpace(_memKind);
+                    newAliasType = mlir::cast<vpux::NDTypeInterface>(aliasType).changeMemSpace(_memKind);
                 }
 
                 var.setType(newAliasType);
@@ -105,8 +105,8 @@ void SetMemorySpacePass::updateAliases(AliasesInfo& aliasInfo, mlir::Value value
     for (auto var : aliases) {
         _log.nest().trace("Process alias buffer '{0}'", var);
 
-        if (const auto futureType = var.getType().dyn_cast<mlir::async::ValueType>()) {
-            const auto origType = futureType.getValueType().dyn_cast<vpux::NDTypeInterface>();
+        if (const auto futureType = mlir::dyn_cast<mlir::async::ValueType>(var.getType())) {
+            const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(futureType.getValueType());
             VPUX_THROW_UNLESS(origType != nullptr, "Got non vpux::NDTypeInterface Type '{0}'", var.getType());
 
             const auto newType = origType.changeMemSpace(_memKind);
@@ -114,7 +114,7 @@ void SetMemorySpacePass::updateAliases(AliasesInfo& aliasInfo, mlir::Value value
 
             var.setType(newFutureType);
         } else {
-            const auto origType = var.getType().dyn_cast<vpux::NDTypeInterface>();
+            const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(var.getType());
             VPUX_THROW_UNLESS(origType != nullptr, "Got non vpux::NDTypeInterface Type '{0}'", var.getType());
 
             const auto newType = origType.changeMemSpace(_memKind);
@@ -151,7 +151,7 @@ void SetMemorySpacePass::safeRunOnModule() {
 
             // For grouping op memory space is set only if one of the buffers already has memory space set
             auto isMemSpaceSet = llvm::any_of(groupOp->getOperands(), [&](mlir::Value operand) {
-                const auto operandMemSpaceAttr = operand.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+                const auto operandMemSpaceAttr = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getMemSpace();
                 if (operandMemSpaceAttr == nullptr) {
                     return false;
                 }
@@ -164,7 +164,7 @@ void SetMemorySpacePass::safeRunOnModule() {
             }
 
             for (auto operand : groupOp->getOperands() | indexed) {
-                const auto operandMemSpace = operand.value().getType().cast<vpux::NDTypeInterface>().getMemSpace();
+                const auto operandMemSpace = mlir::cast<vpux::NDTypeInterface>(operand.value().getType()).getMemSpace();
                 if (operandMemSpace != nullptr) {
                     _log.nest().trace("Operand '{0}' already has a memory space '{1}'", operand.index(),
                                       operandMemSpace);

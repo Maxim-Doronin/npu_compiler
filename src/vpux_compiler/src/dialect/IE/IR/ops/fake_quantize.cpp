@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,9 +9,11 @@
 #include "vpux/compiler/dialect/IE/utils/fake_quantize_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include "vpux/compiler/utils/error.hpp"
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -23,7 +25,8 @@ mlir::LogicalResult vpux::IE::FakeQuantizeOp::verify() {
         if (!lowFpType.has_value()) {
             return errorAt(*this, "Missing both levels and low precision floating type");
         }
-        if (!lowFpType->isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type, vpux::type::QuantileFloatType>()) {
+        if (!mlir::isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type, vpux::type::QuantileFloatType>(
+                    lowFpType.value())) {
             return errorAt(*this, "Unsupported low floating point type {0}", *lowFpType);
         }
     } else {
@@ -47,12 +50,15 @@ mlir::LogicalResult vpux::IE::FakeQuantizeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inputType = quantize.getInput().getType().cast<mlir::ShapedType>();
-    const auto inputLowType = quantize.getInputLow().getType().cast<mlir::ShapedType>();
-    const auto inputHighType = quantize.getInputHigh().getType().cast<mlir::ShapedType>();
-    const auto outputLowType = quantize.getOutputLow().getType().cast<mlir::ShapedType>();
-    const auto outputHighType = quantize.getOutputHigh().getType().cast<mlir::ShapedType>();
+    const auto inputType = mlir::cast<mlir::ShapedType>(quantize.getInput().getType());
+    const auto inputLowType = mlir::cast<mlir::ShapedType>(quantize.getInputLow().getType());
+    const auto inputHighType = mlir::cast<mlir::ShapedType>(quantize.getInputHigh().getType());
+    const auto outputLowType = mlir::cast<mlir::ShapedType>(quantize.getOutputLow().getType());
+    const auto outputHighType = mlir::cast<mlir::ShapedType>(quantize.getOutputHigh().getType());
     const auto autob = quantize.getAutoBroadcast();
+
+    const auto inputTensorType = mlir::cast<mlir::RankedTensorType>(inputType);
+    const auto outDesc = vpux::getTensorAttr(inputTensorType);
 
     const auto outShapeOrResult =
             IE::broadcastEltwiseShape({inputType.getShape(), inputLowType.getShape(), inputHighType.getShape(),
@@ -60,10 +66,26 @@ mlir::LogicalResult vpux::IE::FakeQuantizeOp::inferReturnTypeComponents(
                                       autob, loc);
 
     if (mlir::succeeded(outShapeOrResult)) {
-        inferredReturnShapes.emplace_back(outShapeOrResult.value(), inputType.getElementType());
+        inferredReturnShapes.emplace_back(outShapeOrResult.value(), inputType.getElementType(), outDesc);
     }
 
     return outShapeOrResult;
+}
+
+mlir::LogicalResult vpux::IE::FakeQuantizeOp::reifyResultShapes(
+        mlir::OpBuilder& builder, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+    auto input = getInput();
+    auto inputType = mlir::cast<mlir::RankedTensorType>(input.getType());
+    auto rank = inputType.getRank();
+
+    SmallVector<mlir::OpFoldResult> dims;
+    for (auto i : irange(rank)) {
+        dims.push_back(IE::reifyDim(builder, input, inputType, i, loc));
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(dims));
+    return mlir::success();
 }
 
 mlir::OpFoldResult vpux::IE::FakeQuantizeOp::fold(FoldAdaptor) {
@@ -146,7 +168,7 @@ mlir::LogicalResult TransposeGroups::matchAndRewrite(IE::FakeQuantizeOp fqOp, ml
         if (constOp == nullptr) {
             return matchFailed(rewriter, fqOp, "FakeQuantize input is not const");
         }
-        const auto outType = operand.value().getType().cast<vpux::NDTypeInterface>();
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(operand.value().getType());
         if (outType.getRank() != 3) {
             return matchFailed(rewriter, fqOp, "FakeQuantize input rank does not meet the requirement");
         }

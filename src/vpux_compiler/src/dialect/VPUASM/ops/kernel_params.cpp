@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,10 +22,10 @@ vpux::NDTypeInterface getNdTypeFromBufferSymRef(ELF::SymbolReferenceMap& symRefM
 
     if (mlir::isa<VPUASM::DeclareBufferOp>(buffOp)) {
         auto buffer = mlir::cast<VPUASM::DeclareBufferOp>(buffOp);
-        return buffer.getBufferType().getMemref().cast<vpux::NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(buffer.getBufferType().getMemref());
     } else if (mlir::isa<VPUASM::ConstBufferOp>(buffOp)) {
         auto buffer = mlir::cast<VPUASM::ConstBufferOp>(buffOp);
-        return buffer.getBufferType().getMemref().cast<vpux::NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(buffer.getBufferType().getMemref());
     }
     VPUX_THROW("Could not find symbol name entry for input {0}", symRef);
 }
@@ -35,10 +35,10 @@ vpux::NDTypeInterface getNdTypeFromBufferSymRef(mlir::Operation* op, mlir::Symbo
 
     if (mlir::isa<VPUASM::DeclareBufferOp>(buffOp)) {
         auto buffer = mlir::cast<VPUASM::DeclareBufferOp>(buffOp);
-        return buffer.getBufferType().getMemref().cast<vpux::NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(buffer.getBufferType().getMemref());
     } else if (mlir::isa<VPUASM::ConstBufferOp>(buffOp)) {
         auto buffer = mlir::cast<VPUASM::ConstBufferOp>(buffOp);
-        return buffer.getBufferType().getMemref().cast<vpux::NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(buffer.getBufferType().getMemref());
     }
     VPUX_THROW("Could not find symbol name entry for input {0}", symRef);
 }
@@ -86,7 +86,7 @@ void vpux::VPUASM::KernelParamsOp::serializeCached(elf::writer::BinaryDataSectio
 
         // input Dims & Strides
         for (auto inputBuff : inputBuffs) {
-            auto inputSymRef = inputBuff.cast<mlir::SymbolRefAttr>();
+            auto inputSymRef = mlir::cast<mlir::SymbolRefAttr>(inputBuff);
             auto inputNdType = getNdTypeFromBufferSymRef(symRefMap, inputSymRef);
 
             insertDimsIntoVector(inputDimsVector, inputNdType);
@@ -95,7 +95,7 @@ void vpux::VPUASM::KernelParamsOp::serializeCached(elf::writer::BinaryDataSectio
 
         // output Dims & Strides
         for (const auto outputBuff : outputBuffs) {
-            auto outputSymRef = outputBuff.cast<mlir::SymbolRefAttr>();
+            auto outputSymRef = mlir::cast<mlir::SymbolRefAttr>(outputBuff);
             auto outputNdType = getNdTypeFromBufferSymRef(symRefMap, outputSymRef);
 
             insertDimsIntoVector(outputDimsVector, outputNdType);
@@ -127,7 +127,7 @@ size_t vpux::VPUASM::KernelParamsOp::getBinarySizeCached(ELF::SymbolReferenceMap
     size_t inputStridesSize = 0;
 
     for (const auto inputBuff : inputBuffs) {
-        auto inputSymRef = inputBuff.cast<mlir::SymbolRefAttr>();
+        auto inputSymRef = mlir::cast<mlir::SymbolRefAttr>(inputBuff);
         auto ndType = getNdTypeFromBufferSymRef(symRefMap, inputSymRef);
 
         inputDimsSize += sizeof(int32_t) * ndType.getShape().size();
@@ -138,7 +138,7 @@ size_t vpux::VPUASM::KernelParamsOp::getBinarySizeCached(ELF::SymbolReferenceMap
     size_t outputStridesSize = 0;
 
     for (const auto outputBuff : outputBuffs) {
-        auto outputSymRef = outputBuff.cast<mlir::SymbolRefAttr>();
+        auto outputSymRef = mlir::cast<mlir::SymbolRefAttr>(outputBuff);
         auto ndType = getNdTypeFromBufferSymRef(symRefMap, outputSymRef);
 
         outputDimsSize += sizeof(int32_t) * ndType.getShape().size();
@@ -192,13 +192,18 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
                /* stridesArray */ sizeof(int32_t) * memrefRank;
     };
 
-    auto kernelInputs = getInputs();
-    for (auto input : kernelInputs | indexed) {
-        auto inputSymRef = input.value().cast<mlir::SymbolRefAttr>();
-        auto inputBufferType = VPUASM::getBufferType(symRefMap, inputSymRef);
-        auto relocType = inputBufferType.getLocation().getSection() == VPURT::BufferSection::CMX_NN
+    auto getRelocationForType = [](const VPUASM::BufferType& bufferType) {
+        auto relocType = bufferType.getLocation().getSection() == VPURT::BufferSection::CMX_NN
                                  ? ELF::RelocationType::R_VPU_32_BIT_OR_B21_B26_UNSET
                                  : ELF::RelocationType::R_VPU_32;
+        return relocType;
+    };
+
+    auto kernelInputs = getInputs();
+    for (auto input : kernelInputs | indexed) {
+        auto inputSymRef = mlir::cast<mlir::SymbolRefAttr>(input.value());
+        auto inputBufferType = VPUASM::getBufferType(symRefMap, inputSymRef);
+        auto relocType = getRelocationForType(inputBufferType);
 
         size_t relocOffset = input.index() * sizeof(sw_params::MemRefData) + offsetof(sw_params::MemRefData, dataAddr);
         if (getIsJitCompiled()) {
@@ -213,11 +218,9 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
 
     auto kernelOutputs = getOutputs();
     for (auto output : kernelOutputs | indexed) {
-        auto outputSymRef = output.value().cast<mlir::SymbolRefAttr>();
+        auto outputSymRef = mlir::cast<mlir::SymbolRefAttr>(output.value());
         auto outputBufferType = VPUASM::getBufferType(symRefMap, outputSymRef);
-        auto relocType = outputBufferType.getLocation().getSection() == VPURT::BufferSection::CMX_NN
-                                 ? ELF::RelocationType::R_VPU_32_BIT_OR_B21_B26_UNSET
-                                 : ELF::RelocationType::R_VPU_32;
+        auto relocType = getRelocationForType(outputBufferType);
 
         size_t relocOffset = (kernelInputs.size() + output.index()) * sizeof(sw_params::MemRefData) +
                              offsetof(sw_params::MemRefData, dataAddr);
@@ -241,8 +244,8 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
             auto bufferTypeAttr = memoryOp->getAttrOfType<mlir::TypeAttr>("buffer_type");
             VPUX_THROW_UNLESS(bufferTypeAttr, "Operation is not a memory-descriptive op");
 
-            auto bufferType = bufferTypeAttr.getValue().cast<VPUASM::BufferType>();
-            auto NDTypeIf = bufferType.getMemref().cast<vpux::NDTypeInterface>();
+            auto bufferType = mlir::cast<vpux::VPUASM::BufferType>(bufferTypeAttr.getValue());
+            auto NDTypeIf = mlir::cast<vpux::NDTypeInterface>(bufferType.getMemref());
             return NDTypeIf;
         };
 
@@ -268,11 +271,15 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
         for (auto kernelInputIt : kernelInputs | indexed) {
             auto [isDynamic, symbolRefAttr] = checkDynamicShape(dynamicInputShapes, kernelInputIt.index());
 
+            auto inputSymRef = mlir::cast<mlir::SymbolRefAttr>(kernelInputIt.value());
             if (isDynamic && symbolRefAttr) {
+                auto bufferType = VPUASM::getBufferType(symRefMap, inputSymRef);
+                auto relocType = getRelocationForType(bufferType);
+
                 relocs.emplace_back(symbolRefAttr, targetSection,
                                     kernelInputIt.index() * sizeof(sw_params::MemRefData) +
                                             offsetof(sw_params::MemRefData, dimsAddr),
-                                    ELF::RelocationType::R_VPU_32, ELF::getOffsetOfSymRef(symRefMap, symbolRefAttr),
+                                    relocType, ELF::getOffsetOfSymRef(symRefMap, symbolRefAttr),
                                     "Input " + std::to_string(kernelInputIt.index()) +
                                             " dynamic dims (dimsAddr) kernel params reloc");
             } else {
@@ -284,7 +291,6 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
                         "Input " + std::to_string(kernelInputIt.index()) + " dims (dimsAddr) kernel params reloc");
             }
 
-            auto inputSymRef = kernelInputIt.value().cast<mlir::SymbolRefAttr>();
             addend += sizeof(int32_t) * getNDTypeIfFromSymRef(inputSymRef).getShape().size();
         }
 
@@ -296,18 +302,22 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
                     ELF::RelocationType::R_VPU_32, addend,
                     "Input " + std::to_string(kernelInputIt.index()) + " strides (stridesAddr) kernel params reloc");
 
-            auto inputSymRef = kernelInputIt.value().cast<mlir::SymbolRefAttr>();
+            auto inputSymRef = mlir::cast<mlir::SymbolRefAttr>(kernelInputIt.value());
             addend += sizeof(int64_t) * getNDTypeIfFromSymRef(inputSymRef).getMemStrides().size();
         }
 
         for (auto kernelOutputIt : kernelOutputs | indexed) {
             auto [isDynamic, symbolRefAttr] = checkDynamicShape(dynamicOutputShapes, kernelOutputIt.index());
 
+            auto outputSymRef = mlir::cast<mlir::SymbolRefAttr>(kernelOutputIt.value());
             if (isDynamic && symbolRefAttr) {
+                auto bufferType = VPUASM::getBufferType(symRefMap, outputSymRef);
+                auto relocType = getRelocationForType(bufferType);
+
                 relocs.emplace_back(symbolRefAttr, targetSection,
                                     (kernelInputs.size() + kernelOutputIt.index()) * sizeof(sw_params::MemRefData) +
                                             offsetof(sw_params::MemRefData, dimsAddr),
-                                    ELF::RelocationType::R_VPU_32, ELF::getOffsetOfSymRef(symRefMap, symbolRefAttr),
+                                    relocType, ELF::getOffsetOfSymRef(symRefMap, symbolRefAttr),
                                     "Output " + std::to_string(kernelOutputIt.index()) +
                                             " dynamic dims (dimsAddr) kernel params reloc");
             } else {
@@ -319,7 +329,6 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
                         "Output " + std::to_string(kernelOutputIt.index()) + " dims (dimsAddr) kernel params reloc");
             }
 
-            auto outputSymRef = kernelOutputIt.value().cast<mlir::SymbolRefAttr>();
             addend += sizeof(int32_t) * getNDTypeIfFromSymRef(outputSymRef).getShape().size();
 
             if (getIsOutputBroadcasted()) {
@@ -335,7 +344,7 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
                     ELF::RelocationType::R_VPU_32, addend,
                     "Output " + std::to_string(kernelOutputIt.index()) + " strides (stridesAddr) kernel params reloc");
 
-            auto outputSymRef = kernelOutputIt.value().cast<mlir::SymbolRefAttr>();
+            auto outputSymRef = mlir::cast<mlir::SymbolRefAttr>(kernelOutputIt.value());
             addend += sizeof(int64_t) * getNDTypeIfFromSymRef(outputSymRef).getMemStrides().size();
 
             if (getIsOutputBroadcasted()) {

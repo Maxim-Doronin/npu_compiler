@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -87,7 +87,7 @@ size_t vpux::ELFNPU37XX::getOffsetOfOpInSection(mlir::Value& op) {
             declareBufferOp != nullptr && declareBufferOp.getMemorySpace() == vpux::VPURT::BufferSection::CMX_NN,
             "This version of getOffsetOfOpInSection() only works with CMX Buffers");
 
-    auto type = op.getType().dyn_cast<vpux::NDTypeInterface>();
+    auto type = mlir::dyn_cast<vpux::NDTypeInterface>(op.getType());
 
     auto tile = type.getMemSpace().getIndex().value_or(0);
 

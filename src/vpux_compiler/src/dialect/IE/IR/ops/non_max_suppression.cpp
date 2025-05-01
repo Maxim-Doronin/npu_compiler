@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-
 #include "vpux/compiler/dialect/const/ops.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -55,7 +56,7 @@ mlir::LogicalResult vpux::IE::NonMaxSuppressionOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = nms.getInBoxScores().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(nms.getInBoxScores().getType());
     mlir::Type outType = mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed);
 
     const auto maxOutputBoxesPerClass = extractMaxOutputBoxesPerClass(nms);

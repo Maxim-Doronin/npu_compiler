@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -14,6 +15,7 @@
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/range.hpp"
 
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/IRMapping.h>
 #include <vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp>
@@ -34,11 +36,11 @@ mlir::LogicalResult vpux::IE::verifyLayer(mlir::Operation* op) {
     }
 
     const auto verifyType = [&](mlir::Type type, StringRef name, unsigned ind) {
-        if (type.isa<mlir::MemRefType>()) {
+        if (mlir::isa<mlir::MemRefType>(type)) {
             return errorAt(op, "Layer Operation has MemRef {0} #{1}", name, ind);
         }
 
-        if (auto mainType = type.dyn_cast<vpux::NDTypeInterface>()) {
+        if (auto mainType = mlir::dyn_cast<vpux::NDTypeInterface>(type)) {
             if (validateQuantElemType(op->getLoc(), mainType).failed()) {
                 return mlir::failure();
             }
@@ -78,6 +80,55 @@ mlir::LogicalResult vpux::IE::inferTensorTypes(InferTypeComponentsCb componentsC
     }
 
     return mlir::success();
+}
+
+//
+// LayerWithPostOpInterface
+//
+
+IE::PostOpAttr vpux::IE::attributizePostOp(mlir::Operation* postOp) {
+    return llvm::TypeSwitch<mlir::Operation*, IE::PostOpAttr>(postOp)
+            .Case<IE::ReLUOp>([](auto reluOp) {
+                return IE::ReluAttr::get(reluOp.getContext());
+            })
+            .Case<IE::ClampOp>([](auto clampOp) {
+                return IE::ClampAttr::get(clampOp.getContext(), clampOp.getMinAttr(), clampOp.getMaxAttr());
+            })
+            .Case<IE::LeakyReluOp>([](auto leakyReluOp) {
+                return IE::LeakyReluAttr::get(leakyReluOp.getContext(), leakyReluOp.getNegativeSlopeAttr());
+            })
+            .Case<IE::PReluOp>([](auto pReluOp) -> IE::PostOpAttr {
+                const auto ctx = pReluOp.getContext();
+                const auto slopesConst = pReluOp.getNegativeSlope().template getDefiningOp<Const::DeclareOp>();
+                VPUX_THROW_WHEN(slopesConst == nullptr, "Cannon attributize PRelu operation with non-constant slopes.");
+
+                const auto slopesContent = slopesConst.getContentAttr().fold();
+                if (slopesContent.isSplat()) {
+                    const auto slope = slopesContent.template getSplatValue<double>();
+                    return IE::LeakyReluAttr::get(ctx, getFPAttr(ctx, slope));
+                }
+
+                const auto slopes = slopesContent.template getValues<double>();
+                return IE::PReluAttr::get(ctx, getFPArrayAttr(ctx, slopes));
+            })
+            .Case<IE::TanhOp>([](auto tanhOp) {
+                return IE::TanhAttr::get(tanhOp.getContext());
+            })
+            .Case<IE::SigmoidOp>([](auto sigmoidOp) {
+                return IE::SigmoidAttr::get(sigmoidOp.getContext());
+            })
+            .Case<IE::SwishOp>([](auto swishOp) {
+                const auto beta = swishOp.getBetaValueAttr();
+                VPUX_THROW_WHEN(beta == nullptr, "Cannot attributize Swish operation with non-constant beta.");
+                return IE::SwishAttr::get(swishOp.getContext(), beta);
+            })
+            .Case<IE::GeluOp>([](auto geluOp) {
+                return IE::GeluAttr::get(geluOp.getContext());
+            })
+            .Default([](auto unknownOp) {
+                VPUX_THROW("Failed to attributize operation: {0}", unknownOp->getName());
+                return nullptr;
+            });
 }
 
 //
@@ -156,7 +207,7 @@ mlir::LogicalResult vpux::IE::verifyEltwiseOp(mlir::Operation* op) {
     }
 
     if (op->hasAttr("auto_broadcast")) {
-        auto autoBroadcast = op->getAttr("auto_broadcast").dyn_cast<IE::AutoBroadcastTypeAttr>();
+        auto autoBroadcast = mlir::dyn_cast<vpux::IE::AutoBroadcastTypeAttr>(op->getAttr("auto_broadcast"));
         if (autoBroadcast == nullptr) {
             return errorAt(op, "Auto broadcast attribute cannot be cast");
         }
@@ -164,7 +215,7 @@ mlir::LogicalResult vpux::IE::verifyEltwiseOp(mlir::Operation* op) {
 
         SmallVector<ArrayRef<int64_t>> inputShapes;
         for (auto operand : op->getOperands()) {
-            const auto shape = operand.getType().cast<vpux::NDTypeInterface>().getShape().raw();
+            const auto shape = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getShape().raw();
             inputShapes.push_back(shape);
         }
 
@@ -182,13 +233,13 @@ vpux::IE::LayerDataInfo<mlir::Type> vpux::IE::getElemTypeInfo(mlir::Operation* o
     SmallVector<mlir::Type> inputTypes;
     inputTypes.reserve(op->getNumOperands());
     for (const auto& val : op->getOperands()) {
-        inputTypes.push_back(val.getType().cast<vpux::NDTypeInterface>().getElementType());
+        inputTypes.push_back(mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType());
     }
 
     SmallVector<mlir::Type> outputTypes;
     outputTypes.reserve(op->getNumResults());
     for (const auto& val : op->getResults()) {
-        outputTypes.push_back(val.getType().cast<vpux::NDTypeInterface>().getElementType());
+        outputTypes.push_back(mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType());
     }
 
     return vpux::IE::LayerDataInfo<mlir::Type>(std::move(inputTypes), std::move(outputTypes));

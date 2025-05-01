@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_cluster_tiling.hpp"
 
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -125,8 +126,8 @@ mlir::LogicalResult ConvertDMACopyRewriterBase::matchAndRewrite(VPUIP::CopyOp co
     auto parentCopy = copyOp.getOperation();
     auto outputBuff = copyOp.getOutputs()[0];
 
-    auto newConvertDMAInputDistType = newConvertDMAInput.getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto newConvertDMAOutputDistType = outputBuff.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto newConvertDMAInputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(newConvertDMAInput.getType());
+    auto newConvertDMAOutputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputBuff.getType());
     if (newConvertDMAInputDistType != nullptr && newConvertDMAOutputDistType != nullptr &&
         mlir::failed(VPU::areDistributionAttrsCompatible(newConvertDMAInputDistType, newConvertDMAOutputDistType,
                                                          /*allowDifferentPerClusterMemoryView = */ false))) {
@@ -140,7 +141,7 @@ mlir::LogicalResult ConvertDMACopyRewriterBase::matchAndRewrite(VPUIP::CopyOp co
     // Tracked in: E#101270
     if (newConvertDMAInputDistType != nullptr && newConvertDMAOutputDistType == nullptr) {
         const auto inDistMode = newConvertDMAInputDistType.getDistribution().getMode().getValue();
-        const auto outMemKind = outputBuff.getType().cast<NDTypeInterface>().getMemoryKind();
+        const auto outMemKind = mlir::cast<vpux::NDTypeInterface>(outputBuff.getType()).getMemoryKind();
         if (inDistMode == VPU::DistributionMode::SEGMENTED && outMemKind == VPU::MemoryKind::DDR) {
             return mlir::failure();
         }
@@ -211,8 +212,8 @@ mlir::LogicalResult CopyConvertDMARewriterBase::matchAndRewrite(VPUIP::CopyOp co
     auto newConvertDMAInput = copyOp->getOperand(0);
     auto outputBuff = convertDMAOp.getOutputs()[0];
 
-    auto newConvertDMAInputDistType = newConvertDMAInput.getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto newConvertDMAOutputDistType = outputBuff.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto newConvertDMAInputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(newConvertDMAInput.getType());
+    auto newConvertDMAOutputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputBuff.getType());
     if (newConvertDMAInputDistType != nullptr && newConvertDMAOutputDistType != nullptr &&
         mlir::failed(VPU::areDistributionAttrsCompatible(newConvertDMAInputDistType, newConvertDMAOutputDistType,
                                                          /*allowDifferentPerClusterMemoryView = */ false))) {

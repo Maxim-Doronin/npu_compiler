@@ -1,6 +1,6 @@
 
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -31,7 +31,7 @@ def HoistInputOutputs : PassBase<"hoist-input-outputs", "vpux::ModulePass"> {
         to represent an I/O.
 
         This pass will effectively remove any funcArgument, and will hoist up their declarations to a global ModuleOp
-        (similarliy with IE.CNNNetworkOp with the critical difference that it will hold buffer/memref semantics)
+        (similarliy with net.NetworkInfoOp with the critical difference that it will hold buffer/memref semantics)
 
         Any reference within the function body to the funcArguments will be replaced by the aliased declarations
     }];
@@ -41,7 +41,7 @@ def HoistInputOutputs : PassBase<"hoist-input-outputs", "vpux::ModulePass"> {
     let dependentDialects = [
         "vpux::VPUASM::VPUASMDialect",
         "vpux::VPURT::VPURTDialect",
-        "vpux::IE::IEDialect"
+        "vpux::net::NetDialect"
     ];
 }
 

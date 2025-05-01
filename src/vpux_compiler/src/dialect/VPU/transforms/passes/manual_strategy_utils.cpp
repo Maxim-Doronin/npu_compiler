@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/json_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/string_ref.hpp"
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
@@ -38,15 +39,12 @@ public:
               _writeStrategyFileLocation(),
               _readStrategyFromJSON(false),
               _readStrategyFileLocation(),
-              _updateStrategyForOutputPipelining(false),
-              _enableSideLoadDump(false),
-              _modelHash(){};
+              _updateStrategyForOutputPipelining(false) {
+    }
     ManualStrategyUtilsPass(bool writeStrategyToJSON, StringRef writeStrategyFileLocation, bool readStrategyFromJSON,
-                            StringRef readStrategyFileLocation, bool enableSideLoadDump, StringRef modelHash,
-                            Logger log);
+                            StringRef readStrategyFileLocation, Logger log);
     ManualStrategyUtilsPass(bool writeStrategyToJSON, StringRef writeStrategyFileLocation, bool readStrategyFromJSON,
-                            StringRef readStrategyFileLocation, bool updateStrategyForOutputPipelining,
-                            bool enableSideLoadDump, StringRef modelHash, Logger log);
+                            StringRef readStrategyFileLocation, bool updateStrategyForOutputPipelining, Logger log);
 
 private:
     mlir::LogicalResult initializeOptions(StringRef options) final;
@@ -58,36 +56,29 @@ private:
     bool _readStrategyFromJSON;
     std::string _readStrategyFileLocation;
     bool _updateStrategyForOutputPipelining;
-    bool _enableSideLoadDump;
-    std::string _modelHash;
 };
 
 ManualStrategyUtilsPass::ManualStrategyUtilsPass(bool writeStrategyToJSON, StringRef writeStrategyFileLocation,
                                                  bool readStrategyFromJSON, StringRef readStrategyFileLocation,
-                                                 bool enableSideLoadDump, StringRef modelHash, Logger log)
+                                                 Logger log)
         // NOTE: currently called after two/three strategy passes, flags in all must match.
         : _writeStrategyToJSON(writeStrategyToJSON),
           _writeStrategyFileLocation(writeStrategyFileLocation.str()),
           _readStrategyFromJSON(readStrategyFromJSON),
           _readStrategyFileLocation(readStrategyFileLocation.str()),
-          _updateStrategyForOutputPipelining(false),
-          _enableSideLoadDump(enableSideLoadDump),
-          _modelHash(modelHash) {
+          _updateStrategyForOutputPipelining(false) {
     Base::initLogger(log, Base::getArgumentName());
 }
 
 ManualStrategyUtilsPass::ManualStrategyUtilsPass(bool writeStrategyToJSON, StringRef writeStrategyFileLocation,
                                                  bool readStrategyFromJSON, StringRef readStrategyFileLocation,
-                                                 bool updateStrategyForOutputPipelining, bool enableSideLoadDump,
-                                                 StringRef modelHash, Logger log)
+                                                 bool updateStrategyForOutputPipelining, Logger log)
         // NOTE: currently called after two/three strategy passes, flags in all must match.
         : _writeStrategyToJSON(writeStrategyToJSON),
           _writeStrategyFileLocation(writeStrategyFileLocation.str()),
           _readStrategyFromJSON(readStrategyFromJSON),
           _readStrategyFileLocation(readStrategyFileLocation.str()),
-          _updateStrategyForOutputPipelining(updateStrategyForOutputPipelining),
-          _enableSideLoadDump(enableSideLoadDump),
-          _modelHash(modelHash) {
+          _updateStrategyForOutputPipelining(updateStrategyForOutputPipelining) {
     Base::initLogger(log, Base::getArgumentName());
 }
 
@@ -128,11 +119,6 @@ void ManualStrategyUtilsPass::safeRunOnFunc() {
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
     auto func = getOperation();
-    if (_enableSideLoadDump) {
-        const auto layerHashes = hashFunctionLayers(func);
-        VPUX_THROW_UNLESS(layerHashes.succeed, "Can't generate unique hashes for side-load dump");
-        saveMCSideLoadStrategyToFile(func, "mc_side_load_dump.json", layerHashes.localizedHashes, _modelHash);
-    }
 
     if (!_writeStrategyToJSON && !_readStrategyFromJSON) {
         _log.trace("Flags to write and read disabled, skipping pass");
@@ -173,17 +159,10 @@ void ManualStrategyUtilsPass::safeRunOnFunc() {
         }
         // store unique operations (tiled operations are merged)
         mlir::Location opLoc = op.getLoc();
-        if (op->hasAttr(tilingStrategy)) {
-            const auto fused = opLoc.dyn_cast<mlir::FusedLoc>();
-            VPUX_THROW_UNLESS(fused, "Tiled operation has location not fused");
-            // store only 1 tile
-            opLoc = fused.getLocations().front();
-        } else {
-            if (operations.find(opLoc) != operations.end()) {
-                // if duplicate locations, create unique
-                opLoc = appendLoc(opLoc, "unique_{0}", operations.count(opLoc));
-                op->setLoc(opLoc);
-            }
+        if (operations.find(opLoc) != operations.end()) {
+            // if duplicate locations, create unique
+            opLoc = appendLoc(opLoc, "unique_{0}", operations.count(opLoc));
+            op->setLoc(opLoc);
         }
         operations.insert({opLoc, op.getOperation()});
         if (!operationsWrappedInClusterTiling && op->getParentOfType<VPU::NCEClusterTilingOp>() != nullptr) {
@@ -268,19 +247,20 @@ std::unique_ptr<mlir::Pass> vpux::VPU::createManualStrategyUtilsPass() {
     return std::make_unique<ManualStrategyUtilsPass>();
 }
 
-std::unique_ptr<mlir::Pass> VPU::createManualStrategyUtilsPass(
-        bool writeStrategyToJSON, StringRef writeStrategyFileLocation, bool readStrategyFromJSON,
-        StringRef readStrategyFileLocation, bool enableSideLoadDump, StringRef modelHash, Logger log) {
+std::unique_ptr<mlir::Pass> VPU::createManualStrategyUtilsPass(bool writeStrategyToJSON,
+                                                               StringRef writeStrategyFileLocation,
+                                                               bool readStrategyFromJSON,
+                                                               StringRef readStrategyFileLocation, Logger log) {
     return std::make_unique<ManualStrategyUtilsPass>(writeStrategyToJSON, writeStrategyFileLocation,
-                                                     readStrategyFromJSON, readStrategyFileLocation, enableSideLoadDump,
-                                                     modelHash, log);
+                                                     readStrategyFromJSON, readStrategyFileLocation, log);
 }
 
-std::unique_ptr<mlir::Pass> VPU::createManualStrategyUtilsPass(
-        bool writeStrategyToJSON, StringRef writeStrategyFileLocation, bool readStrategyFromJSON,
-        StringRef readStrategyFileLocation, bool updateStrategyForOutputPipelining, bool enableSideLoadDump,
-        StringRef modelHash, Logger log) {
-    return std::make_unique<ManualStrategyUtilsPass>(
-            writeStrategyToJSON, writeStrategyFileLocation, readStrategyFromJSON, readStrategyFileLocation,
-            updateStrategyForOutputPipelining, enableSideLoadDump, modelHash, log);
+std::unique_ptr<mlir::Pass> VPU::createManualStrategyUtilsPass(bool writeStrategyToJSON,
+                                                               StringRef writeStrategyFileLocation,
+                                                               bool readStrategyFromJSON,
+                                                               StringRef readStrategyFileLocation,
+                                                               bool updateStrategyForOutputPipelining, Logger log) {
+    return std::make_unique<ManualStrategyUtilsPass>(writeStrategyToJSON, writeStrategyFileLocation,
+                                                     readStrategyFromJSON, readStrategyFileLocation,
+                                                     updateStrategyForOutputPipelining, log);
 }

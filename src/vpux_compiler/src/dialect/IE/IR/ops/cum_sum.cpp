@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -14,7 +17,7 @@ using namespace vpux;
 
 mlir::LogicalResult vpux::IE::CumSumOp::verify() {
     if (getAxis() != nullptr) {
-        auto axisNumElements = getAxis().getType().cast<vpux::NDTypeInterface>().getNumElements();
+        auto axisNumElements = mlir::cast<vpux::NDTypeInterface>(getAxis().getType()).getNumElements();
         if (axisNumElements != 1) {
             return errorAt(*this, "Axis should have only 1 element, while it has {0}", axisNumElements);
         }
@@ -34,7 +37,7 @@ mlir::LogicalResult vpux::IE::CumSumOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = cumsum.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(cumsum.getInput().getType());
     const auto inShape = inType.getShape();
 
     inferredReturnShapes.emplace_back(inShape, inType.getElementType());

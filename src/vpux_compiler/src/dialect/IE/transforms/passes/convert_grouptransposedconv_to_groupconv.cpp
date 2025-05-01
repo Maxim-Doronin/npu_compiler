@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -47,7 +49,7 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
                                                                   mlir::PatternRewriter& rewriter) const {
     _log.trace("Got GroupTransposedConvolutionOp layer at '{0}'", origOp->getLoc());
 
-    auto padsOutput = Shape(parseIntArrayAttr<int64_t>(origOp.getOutputPadding()));
+    auto padsOutput = Shape(parseIntArrayAttr<int64_t>(origOp.getSpatialOutputPadding()));
 
     const auto featureShape = getShape(origOp.getInput());
     if (featureShape.size() != 4) {
@@ -63,7 +65,7 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
                            outputShape.size());
     }
 
-    auto filterType = origOp.getFilter().getType().cast<vpux::NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
     auto origFilterShape = to_small_vector(filterType.getShape());
     if (origFilterShape.size() != 5) {
         return matchFailed(rewriter, origOp,
@@ -99,8 +101,8 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
 
     const auto postOp = origOp.getPostOpAttr();
     const auto clampOp = origOp.getClampAttr();
-    const auto outputChannels = origOp.getOutputChannelsAttr();
-    const auto inputChannels = origOp.getInputChannelsAttr();
+    const auto outputChannels = origOp.getOutputPaddingAttr();
+    const auto inputChannels = origOp.getInputPaddingAttr();
 
     if (padsOutput[Dims4D::PadsOutput::Y] > 0) {
         paddingOutput = IE::createPadding(rewriter, takeOpLoc(origOp, "height"), paddingOutput, Dims4D::Act::H,

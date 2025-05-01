@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ mlir::LogicalResult vpux::VPU::ReverseSequenceOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto dataType = rev.getData().getType().cast<vpux::NDTypeInterface>();
+    const auto dataType = mlir::cast<vpux::NDTypeInterface>(rev.getData().getType());
     const auto dataShape = dataType.getShape().raw();
 
     if (dataShape.size() < 2) {

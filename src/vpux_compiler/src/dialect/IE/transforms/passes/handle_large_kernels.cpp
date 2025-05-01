@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/handle_kernels_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
@@ -101,7 +102,7 @@ mlir::Value getExtendedActivation(IE::ConvolutionOp origOp, mlir::PatternRewrite
     extendedActivation.push_back(activation);
 
     if (padEnd[Dims4D::PadsEnd::Right] > 0) {
-        extendActivationOnWidth(padStart[Dims4D::PadsEnd::Right]);
+        extendActivationOnWidth(padEnd[Dims4D::PadsEnd::Right]);
     }
 
     auto tempActivation =
@@ -125,7 +126,7 @@ mlir::Value getExtendedActivation(IE::ConvolutionOp origOp, mlir::PatternRewrite
     extendedActivation.push_back(tempActivation);
 
     if (padEnd[Dims4D::PadsEnd::Bottom] > 0) {
-        extendActivationOnHeight(padStart[Dims4D::PadsEnd::Bottom]);
+        extendActivationOnHeight(padEnd[Dims4D::PadsEnd::Bottom]);
     }
 
     return rewriter.createOrFold<IE::ConcatOp>(takeOpLoc(origOp, "concat_res"), mlir::ValueRange(extendedActivation),
@@ -202,15 +203,14 @@ void rewriteSubGraph(IE::ConvolutionOp origOp, ArrayRef<mlir::Value> slicedFilte
                     isLastSlice ? origOp.getBias() : mlir::TypedValue<mlir::RankedTensorType>{nullptr},
                     origOp.getStrides(), getIntArrayAttr(origOp->getContext(), ArrayRef({0, 0})),
                     getIntArrayAttr(origOp->getContext(), ArrayRef({0, 0})), origOp.getDilationsAttr(), nullptr,
-                    nullptr, origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(),
-                    origOp.getInputChannelsAttr());
+                    nullptr, origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
             if (!accumulativeOutputTensors.empty()) {
                 auto add = rewriter.create<IE::AddOp>(
                         takeOpLoc(origOp, StringLiteral("res_add_{0}"), accumulativeOutputTensors.size()),
                         accumulativeOutputTensors.back(), conv, broadcastType, isLastSlice ? origOp.getClampAttr(),
-                        origOp.getPostOpAttr() : nullptr, nullptr, origOp.getOutputChannelsAttr(),
-                        origOp.getInputChannelsAttr());
+                        origOp.getPostOpAttr() : nullptr, nullptr, origOp.getOutputPaddingAttr(),
+                        origOp.getInputPaddingAttr());
                 accumulativeOutputTensors.push_back(add);
             } else {
                 accumulativeOutputTensors.push_back(conv);
@@ -266,7 +266,7 @@ protected:
 // For those scenarios, MaxPool and AvgPool have the same split logic.
 template <class ConcreteOp>
 bool GeneralPoolingBaseRewriter<ConcreteOp>::isLegalGeneralPoolingOp(ConcreteOp origOp) const {
-    const auto inDataType = origOp.getInput().getType().template cast<vpux::NDTypeInterface>();
+    const auto inDataType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inDataShape = inDataType.getShape().raw();
     if (inDataShape.size() != 4) {
         _log.trace("Pooling Op should with input shape rank equal 4");
@@ -369,7 +369,7 @@ mlir::Value GeneralPoolingBaseRewriter<ConcreteOp>::createSecondSplitOp(Concrete
                                                                         IE::KernelsInfo& kernelsInfo,
                                                                         mlir::PatternRewriter& rewriter) const {
     auto* ctx = origOp->getContext();
-    const auto secondOpInShape = input.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto secondOpInShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
     const auto secondOpKernel = kernelsInfo.secondKernel;
     auto globalAvgOverH = secondOpInShape[Dims4D::Act::H] == secondOpKernel[Dims4D::Kernel::Y];
     auto globalAvgOverW = secondOpInShape[Dims4D::Act::W] == secondOpKernel[Dims4D::Kernel::X];
@@ -501,9 +501,9 @@ mlir::Value GeneralAvgPoolRewriter::handlePoolWithPadding(IE::AvgPoolOp origOp, 
                                                           mlir::PatternRewriter& rewriter) const {
     auto* ctx = origOp->getContext();
 
-    const auto inShapeType = origOp.getInput().getType().cast<NDTypeInterface>();
+    const auto inShapeType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inShape = inShapeType.getShape();
-    const auto outShape = origOp.getOutput().getType().cast<NDTypeInterface>().getShape();
+    const auto outShape = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getShape();
     const auto kernelPadEnd = kernelsInfo.padEnd;
     const auto padsBegin = Shape(parseIntArrayAttr<int64_t>(origOp.getPadsBegin()));
     auto padsEnd = Shape(parseIntArrayAttr<int64_t>(origOp.getPadsEnd()));
@@ -536,7 +536,7 @@ mlir::Value GeneralAvgPoolRewriter::handlePoolWithPadding(IE::AvgPoolOp origOp, 
             origOp, origOp.getInput(), weights,
             /*bias=*/nullptr, origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(),
             dilationsAttr, groupAttr,
-            /*post_opAttr=*/nullptr, /*clamp=*/nullptr, origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            /*post_opAttr=*/nullptr, /*clamp=*/nullptr, origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     extendOpLoc(gConvOp, "as_groupconv");
     return gConvOp.getOutput();
 }
@@ -569,7 +569,7 @@ mlir::Value GeneralMaxPoolRewriter::handlePoolWithPadding(IE::MaxPoolOp origOp, 
                                                           mlir::PatternRewriter& rewriter) const {
     auto* ctx = origOp->getContext();
 
-    const auto inShape = origOp.getInput().getType().cast<NDTypeInterface>().getShape();
+    const auto inShape = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getShape();
     auto paddingActivation = [&](mlir::Value input, const int64_t padSize, const Dim padDim, StringRef locSuffix) {
         auto offsets = SmallVector<int64_t>(inShape.size(), 0);
         auto sliceShape = to_small_vector(inShape.raw());
@@ -601,7 +601,7 @@ mlir::Value GeneralMaxPoolRewriter::handlePoolWithPadding(IE::MaxPoolOp origOp, 
             .replaceOpWithNewOp<IE::MaxPoolOp>(origOp, inputVal, origOp.getKernelSizeAttr(), origOp.getStridesAttr(),
                                                origOp.getPadsBeginAttr(), getIntArrayAttr(ctx, padsEnd),
                                                origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                               origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr())
+                                               origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr())
             .getOutput();
 }
 
@@ -630,7 +630,7 @@ private:
 // - Split 2: Kernel: [7, 7], Stride: [1, 1], PadBegin: [3, 3], PadEnd: [3, 3]
 // If there are more related cases in the future. This part can be considered a more general implementation.
 bool OverlappedMaxPoolRewriter::isLegalOverlappedMaxPool(IE::MaxPoolOp origOp, int64_t maxKernelSize) const {
-    const auto inShape = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto inShape = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getShape();
     if (inShape.size() != 4) {
         _log.trace("Overlapped MaxPool Op should with input shape rank equal 4");
         return true;
@@ -710,7 +710,7 @@ mlir::LogicalResult OverlappedMaxPoolRewriter::matchAndRewrite(IE::MaxPoolOp ori
     auto firstOp = rewriter.create<IE::MaxPoolOp>(
             takeOpLoc(origOp, "first_split"), origOp.getInput(), newKernelsAttr, origOp.getStridesAttr(),
             newPadsBeginAttr, newPadsEndAttr, origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     _log.nest(2).trace("Create firstSplitOp with Kernel: '{0}', Stride: '{1}', PadBegin: '{2}', PadEnd: '{3}'",
                        newKernelsAttr, origOp.getStridesAttr(), newPadsBeginAttr, newPadsEndAttr);
 
@@ -718,8 +718,8 @@ mlir::LogicalResult OverlappedMaxPoolRewriter::matchAndRewrite(IE::MaxPoolOp ori
                        newKernelsAttr, origOp.getStridesAttr(), newPadsBeginAttr, newPadsEndAttr);
     auto secondOp = rewriter.replaceOpWithNewOp<IE::MaxPoolOp>(
             origOp, firstOp.getOutput(), newKernelsAttr, origOp.getStridesAttr(), newPadsBeginAttr, newPadsEndAttr,
-            origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputChannelsAttr(),
-            origOp.getInputChannelsAttr());
+            origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
     extendOpLoc(secondOp, "second_split");
 
     return mlir::success();
@@ -745,8 +745,8 @@ private:
 };
 
 bool SliceLargeConvRewriter::isLegalOpToConvert(IE::ConvolutionOp origOp, int64_t maxKernelSize) const {
-    auto activationRank = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getRank();
-    auto filterRank = origOp.getFilter().getType().cast<vpux::NDTypeInterface>().getRank();
+    auto activationRank = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getRank();
+    auto filterRank = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType()).getRank();
     if (activationRank != 4 || filterRank != 4) {
         return false;
     }
@@ -991,7 +991,7 @@ mlir::Value ReshapeLargeConvRewriter::getOutputFromLargeStride(mlir::PatternRewr
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(
             origOp->getLoc(), newInputValue, newFilterValue, origOp.getBias(), newStridesAttr, newBeginAttr, newEndAttr,
             origOp.getDilationsAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return rewriter
             .create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "_reshape_out"), newConvOp.getOutput(), nullptr, false,
@@ -1059,8 +1059,8 @@ mlir::Value ReshapeLargeConvRewriter::getOutputFromStrideOne(mlir::PatternRewrit
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(
             origOp->getLoc(), newInputValue, newFilterValue, biasValue, origOp.getStridesAttr(),
             origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(), origOp.getPostOpAttr(),
-            origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(),
-            origOp.getInputChannelsAttr());
+            origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
 
     auto origOutputShape = getShape(origOp.getOutput());
     auto convOutputShape = getShape(newConvOp.getOutput());
@@ -1231,8 +1231,8 @@ private:
 };
 
 bool SliceLargePrimeKernelRewriter::isLegalOpToSlice(IE::ConvolutionOp origOp, int64_t maxKernelSize) const {
-    auto activationRank = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getRank();
-    auto filterRank = origOp.getFilter().getType().cast<vpux::NDTypeInterface>().getRank();
+    auto activationRank = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getRank();
+    auto filterRank = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType()).getRank();
     if (activationRank != 4 || filterRank != 4) {
         return false;
     }
@@ -1428,7 +1428,7 @@ mlir::LogicalResult ReshapeLargeConvWithGCDRewriter::matchAndRewrite(IE::Convolu
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(
             origOp->getLoc(), newInputValue, newFilterValue, origOp.getBias(), newStridesAttr, newBeginAttr, newEndAttr,
             origOp.getDilationsAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     auto outReshape =
             rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "_reshape_out"), newConvOp.getOutput(), nullptr,

@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -12,6 +14,7 @@
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTWEIGHTSTOU8
@@ -29,14 +32,14 @@ namespace {
 
 // change storage type to U8 and shift zp, min, max attributes by the value of storage type min
 mlir::quant::QuantizedType changeStorageTypeToU8(mlir::quant::QuantizedType originQType) {
-    if (const auto uniformType = originQType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(originQType)) {
         const auto low = uniformType.getStorageTypeMin();
 
         return mlir::quant::UniformQuantizedType::get(
                 0, getUInt8Type(uniformType.getContext()), uniformType.getExpressedType(), uniformType.getScale(),
                 uniformType.getZeroPoint() - low, uniformType.getStorageTypeMin() - low,
                 uniformType.getStorageTypeMax() - low);
-    } else if (const auto perAxisType = originQType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(originQType)) {
         const auto low = perAxisType.getStorageTypeMin();
         const auto zeroPoints = perAxisType.getZeroPoints();
 
@@ -77,7 +80,7 @@ mlir::LogicalResult QuantizeCastRewriter::matchAndRewrite(IE::QuantizeCastOp ori
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     auto dstElemType = origOp.getDstElemType();
-    auto outQuantizedType = dstElemType.dyn_cast<mlir::quant::QuantizedType>();
+    auto outQuantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(dstElemType);
     VPUX_THROW_WHEN(outQuantizedType == nullptr, "Type must be quantized, but provided {0}", dstElemType);
 
     rewriter.replaceOpWithNewOp<IE::QuantizeCastOp>(origOp, origOp.getInput(), changeStorageTypeToU8(outQuantizedType));
@@ -147,11 +150,8 @@ inline bool isFloatInputQuantWeightsMixedPrecisionOperation(mlir::Operation* op)
             return false;
         }
 
-        const auto quantizationType = op->getResult(0)
-                                              .getType()
-                                              .cast<vpux::NDTypeInterface>()
-                                              .getElementType()
-                                              .dyn_cast<mlir::quant::QuantizedType>();
+        const auto quantizationType = mlir::dyn_cast<mlir::quant::QuantizedType>(
+                mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType());
         if (quantizationType == nullptr) {
             return false;
         }
@@ -162,10 +162,11 @@ inline bool isFloatInputQuantWeightsMixedPrecisionOperation(mlir::Operation* op)
     if (!mlir::isa<IE::ConvolutionOp, IE::GroupConvolutionOp>(op)) {
         return false;
     }
-    const auto inputElemType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto filterElemType = op->getOperand(1).getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+    const auto filterElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(1).getType()).getElementType();
     // cases of non quant input and quant wt must remain as SI8
-    return !inputElemType.isa<mlir::quant::QuantizedType>() && filterElemType.isa<mlir::quant::QuantizedType>();
+    return !mlir::isa<mlir::quant::QuantizedType>(inputElemType) &&
+           mlir::isa<mlir::quant::QuantizedType>(filterElemType);
 };
 
 //
@@ -193,11 +194,11 @@ mlir::LogicalResult ConstRewriter::matchAndRewrite(Const::DeclareOp origOp, OpAd
     const auto* typeConverter = this->getTypeConverter();
     VPUX_THROW_UNLESS(typeConverter != nullptr, "TypeConverter was not set");
 
-    const auto origQuantType =
-            origOp.getType().cast<vpux::NDTypeInterface>().getElementType().cast<mlir::quant::QuantizedType>();
+    const auto origQuantType = mlir::cast<mlir::quant::QuantizedType>(
+            mlir::cast<vpux::NDTypeInterface>(origOp.getType()).getElementType());
 
-    const auto newType = typeConverter->convertType(origOp.getType()).cast<vpux::NDTypeInterface>();
-    const auto newQuantType = newType.getElementType().cast<mlir::quant::QuantizedType>();
+    const auto newType = mlir::cast<vpux::NDTypeInterface>(typeConverter->convertType(origOp.getType()));
+    const auto newQuantType = mlir::cast<mlir::quant::QuantizedType>(newType.getElementType());
 
     _log.nest().trace("Convert content from '{0}' to '{1}'", origQuantType, newQuantType);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,8 +8,11 @@
 
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
+
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -33,7 +36,7 @@ mlir::LogicalResult vpux::VPU::verifyLayer(mlir::Operation* op) {
 
 bool vpux::VPU::supportsSparseInputs(mlir::Operation* op) {
     const auto compressedInput = [](mlir::Value operand) {
-        auto inputShape = operand.getType().cast<vpux::NDTypeInterface>().getShape();
+        auto inputShape = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getShape();
         if (inputShape[Dims4D::Act::C] < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT) {
             return true;
         }
@@ -156,7 +159,7 @@ mlir::LogicalResult vpux::VPU::verifyEltwiseOp(mlir::Operation* op) {
     }
 
     if (op->hasAttr("auto_broadcast")) {
-        auto autoBroadcast = op->getAttr("auto_broadcast").dyn_cast<IE::AutoBroadcastTypeAttr>();
+        auto autoBroadcast = mlir::dyn_cast<vpux::IE::AutoBroadcastTypeAttr>(op->getAttr("auto_broadcast"));
         if (autoBroadcast == nullptr) {
             return errorAt(op, "Auto broadcast attribute cannot be cast");
         }
@@ -164,7 +167,7 @@ mlir::LogicalResult vpux::VPU::verifyEltwiseOp(mlir::Operation* op) {
 
         SmallVector<ArrayRef<int64_t>> inputShapes;
         for (auto operand : op->getOperands()) {
-            const auto shape = operand.getType().cast<vpux::NDTypeInterface>().getShape().raw();
+            const auto shape = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getShape().raw();
             inputShapes.push_back(shape);
         }
 
@@ -198,6 +201,38 @@ mlir::LogicalResult vpux::VPU::verifyNCEOp(mlir::Operation* op) {
     }
 
     return iface.verifyChannels();
+}
+
+//
+// ClusteredOpInterface
+//
+
+vpux::NDTypeInterface vpux::VPU::getDistributedTypeForOpOperand(mlir::Operation* op, mlir::OpOperand& operand,
+                                                                bool hasExplicitDistributedAttr,
+                                                                SiblingOpsAnalysis& siblingsAnalysis) {
+    auto clusteredOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(op);
+    if (clusteredOp == nullptr) {
+        return nullptr;
+    }
+
+    if (mlir::isa<VPU::SWOpInterface>(op)) {
+        return getSwDistributedTypeForOpOperand(clusteredOp, operand, siblingsAnalysis, hasExplicitDistributedAttr);
+    }
+
+    VPUX_THROW("Can't generate distributed-type for operand");
+}
+
+vpux::NDTypeInterface vpux::VPU::getDistributedTypeForOpResult(mlir::Operation* op, mlir::Value result,
+                                                               VPU::MultiClusterStrategy strategy,
+                                                               SiblingOpsAnalysis& siblingsAnalysis,
+                                                               bool hasExplicitDistributedAttr) {
+    auto clusteredOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(op);
+    if (clusteredOp == nullptr) {
+        return nullptr;
+    }
+
+    return getDistributedOutputTensorType(clusteredOp, mlir::cast<vpux::NDTypeInterface>(result.getType()),
+                                          siblingsAnalysis, strategy, hasExplicitDistributedAttr);
 }
 
 //

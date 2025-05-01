@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <mlir/Support/LogicalResult.h>
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
@@ -49,7 +50,7 @@ bool AvgPoolToConv::isEligibleConvertAvgPoolToConv(IE::AvgPoolOp origOp) const {
         return false;
     }
 
-    const auto inputType = origOp.getInput().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     if (inputType.getRank() != SUPPORTED_RANK) {
         _log.nest().trace("[{0}] Unsupported rank '{1}'", getDebugName(), inputType.getRank());
         return false;
@@ -88,7 +89,7 @@ bool AvgPoolToConv::isEligibleConvertAvgPoolToConv(IE::AvgPoolOp origOp) const {
         return false;
     }
 
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto kernelSize = parseIntArrayAttr<int64_t>(origOp.getKernelSize());
     const auto strides = parseIntArrayAttr<int64_t>(origOp.getStrides());
     const auto KX = kernelSize[Dims4D::Kernel::X.ind()];
@@ -113,7 +114,7 @@ mlir::LogicalResult AvgPoolToConv::matchAndRewrite(IE::AvgPoolOp origOp, mlir::P
     }
 
     const auto ctx = rewriter.getContext();
-    const auto inputType = origOp.getInput().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inputShape = inputType.getShape();
     const int64_t IC = inputShape[Dims4D::Act::C];
 
@@ -138,10 +139,10 @@ mlir::LogicalResult AvgPoolToConv::matchAndRewrite(IE::AvgPoolOp origOp, mlir::P
     const DimsOrder weightsOrder = DimsOrder::OIYX;
     const auto weightsType =
             mlir::RankedTensorType::get(weightsShape.raw(), mlir::cast<NDTypeInterface>(inputType).getElementType(),
-                                        getTensorAttr(rewriter.getContext(), weightsOrder, nullptr, nullptr));
+                                        getTensorAttr(rewriter.getContext(), weightsOrder, nullptr));
     auto filter = Const::buildWeightsConst(rewriter, origOp.getLoc(), weightsType, ArrayRef(weights));
 
-    const auto weightsTypeNCHW = filter.getType().cast<vpux::NDTypeInterface>();
+    const auto weightsTypeNCHW = mlir::cast<vpux::NDTypeInterface>(filter.getType());
     const auto reorderType = weightsTypeNCHW.changeDimsOrder(DimsOrder::NHWC);
     const auto orderMap = DimsOrder::NHWC.toAffineMap(ctx);
     auto reorderFilter = rewriter.createOrFold<IE::ReorderOp>(origOp->getLoc(), reorderType, filter, orderMap);
@@ -150,8 +151,8 @@ mlir::LogicalResult AvgPoolToConv::matchAndRewrite(IE::AvgPoolOp origOp, mlir::P
     auto newConv = rewriter.create<IE::ConvolutionOp>(
             origOp.getLoc(), origOp.getOutput().getType(), origOp.getInput(), reorderFilter, nullptr,
             origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), dilations,
-            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(),
-            origOp.getInputChannelsAttr());
+            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
 
     rewriter.replaceOp(origOp, newConv);
 

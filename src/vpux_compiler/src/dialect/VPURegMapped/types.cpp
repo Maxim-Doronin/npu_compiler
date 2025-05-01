@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/utils/core/helper_macros.hpp"
@@ -232,9 +233,9 @@ std::vector<uint8_t> vpux::VPURegMapped::RegisterType::serialize() const {
     uint64_t serializedReg = 0;
     auto fieldsAttrs = getRegFields().getValue();
     for (const auto& fieldAttr : fieldsAttrs) {
-        auto pos = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getPos();
-        auto value = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getValue();
-        auto currentFieldMap = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getMap();
+        auto pos = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getPos();
+        auto value = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getValue();
+        auto currentFieldMap = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getMap();
 
         auto shiftedValue = value << pos;
         serializedReg |= (shiftedValue & currentFieldMap);
@@ -250,11 +251,11 @@ std::vector<uint8_t> vpux::VPURegMapped::RegisterType::serialize() const {
 vpux::VPURegMapped::RegFieldType vpux::VPURegMapped::RegisterType::getField(const std::string& name) const {
     auto fieldsAttrs = getRegFields().getValue();
     auto fieldIter = std::find_if(fieldsAttrs.begin(), fieldsAttrs.end(), [&](mlir::Attribute fieldAttr) {
-        return fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getName() == name;
+        return mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getName() == name;
     });
     VPUX_THROW_UNLESS(fieldIter != fieldsAttrs.end(), "Field with name {0} is not found in register {1}", name,
                       this->getName());
-    return fieldIter->cast<VPURegMapped::RegisterFieldAttr>().getRegField();
+    return mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(*fieldIter).getRegField();
 }
 
 elf::Version vpux::VPURegMapped::RegisterType::getRequiredMIVersion() const {
@@ -262,7 +263,8 @@ elf::Version vpux::VPURegMapped::RegisterType::getRequiredMIVersion() const {
 
     elf::Version maxVersion;
     llvm::for_each(fieldsAttrs, [&maxVersion](mlir::Attribute fieldAttr) {
-        auto currVersion = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getRequiredMIVersion();
+        auto currVersion =
+                mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getRequiredMIVersion();
         maxVersion = std::max(maxVersion, currVersion);
     });
 
@@ -289,13 +291,14 @@ mlir::LogicalResult vpux::VPURegMapped::RegisterType::verify(
     std::map<std::string, uint64_t> wholeRegisterMap;
     auto fieldsAttrs = regFields.getValue();
     for (const auto& fieldAttr : fieldsAttrs) {
-        auto width = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getWidth();
-        auto pos = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getPos();
-        auto value = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getValue();
-        auto name = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getName();
-        auto dataType = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getDataType();
-        auto currentFieldMap = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getMap();
-        auto requiredMiVersion = fieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().getRequiredMIVersion();
+        auto width = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getWidth();
+        auto pos = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getPos();
+        auto value = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getValue();
+        auto name = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getName();
+        auto dataType = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getDataType();
+        auto currentFieldMap = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getMap();
+        auto requiredMiVersion =
+                mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(fieldAttr).getRegField().getRequiredMIVersion();
         totalWidth += width;
 
         // check overlaping
@@ -337,7 +340,7 @@ void VPURegMapped::RegisterType::print(mlir::AsmPrinter& printer) const {
         printer << " allowOverlap";
     }
     auto regFields = getRegFields().getValue();
-    auto firstRegField = regFields.front().cast<VPURegMapped::RegisterFieldAttr>().getRegField();
+    auto firstRegField = mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(regFields.front()).getRegField();
     if (getName() == firstRegField.getName() && getSize() * CHAR_BIT == firstRegField.getWidth()) {
         printer << " = " << VPURegMapped::stringifyEnum(firstRegField.getDataType()) << " "
                 << getFormattedValue(firstRegField.getValue());
@@ -352,7 +355,7 @@ void VPURegMapped::RegisterType::print(mlir::AsmPrinter& printer) const {
     printer.increaseIndent();
     for (auto regFieldAttr : regFields) {
         printer.printNewline();
-        regFieldAttr.cast<VPURegMapped::RegisterFieldAttr>().getRegField().print(printer);
+        mlir::cast<vpux::VPURegMapped::RegisterFieldAttr>(regFieldAttr).getRegField().print(printer);
         if (regFieldAttr != regFields.back()) {
             printer << ",";
         }
@@ -445,7 +448,7 @@ std::vector<uint8_t> vpux::VPURegMapped::RegMappedType::serialize() const {
     auto regAttrs = getRegs().getValue();
     std::vector<uint8_t> result(getWidth().count(), 0);
     std::for_each(regAttrs.begin(), regAttrs.end(), [&result](const mlir::Attribute& regAttr) {
-        auto reg = regAttr.cast<VPURegMapped::RegisterAttr>().getReg();
+        auto reg = mlir::cast<vpux::VPURegMapped::RegisterAttr>(regAttr).getReg();
         auto serializedRegister = reg.serialize();
 
         auto resultIter = result.begin() + Byte(reg.getAddress()).count();
@@ -462,7 +465,7 @@ Byte vpux::VPURegMapped::RegMappedType::getWidth() const {
     auto regAttrs = getRegs().getValue();
     Byte regMappedSize(0);
     for (auto regAttr = regAttrs.begin(); regAttr != regAttrs.end(); regAttr++) {
-        auto reg = regAttr->cast<VPURegMapped::RegisterAttr>().getReg();
+        auto reg = mlir::cast<vpux::VPURegMapped::RegisterAttr>(*regAttr).getReg();
         auto boundingRegMappedWidth = Byte(reg.getAddress()) + reg.getSizeInBytes();
         regMappedSize = boundingRegMappedWidth > regMappedSize ? boundingRegMappedWidth : regMappedSize;
     }
@@ -473,11 +476,11 @@ vpux::VPURegMapped::RegisterType vpux::VPURegMapped::RegMappedType::getRegister(
     auto regsAttrs = getRegs().getValue();
 
     auto regIter = std::find_if(regsAttrs.begin(), regsAttrs.end(), [&](mlir::Attribute regAttr) {
-        return regAttr.cast<VPURegMapped::RegisterAttr>().getReg().getName() == name;
+        return mlir::cast<vpux::VPURegMapped::RegisterAttr>(regAttr).getReg().getName() == name;
     });
     VPUX_THROW_UNLESS(regIter != regsAttrs.end(), "Register with name {0} is not found in Mapped Register {1}", name,
                       this->getName());
-    return regIter->cast<VPURegMapped::RegisterAttr>().getReg();
+    return mlir::cast<vpux::VPURegMapped::RegisterAttr>(*regIter).getReg();
 }
 
 elf::Version vpux::VPURegMapped::RegMappedType::getRequiredMIVersion() const {
@@ -485,7 +488,7 @@ elf::Version vpux::VPURegMapped::RegMappedType::getRequiredMIVersion() const {
 
     elf::Version maxVersion;
     llvm::for_each(regsAttrs, [&maxVersion](mlir::Attribute fieldAttr) {
-        auto currVersion = fieldAttr.cast<VPURegMapped::RegisterAttr>().getReg().getRequiredMIVersion();
+        auto currVersion = mlir::cast<vpux::VPURegMapped::RegisterAttr>(fieldAttr).getReg().getRequiredMIVersion();
         maxVersion = std::max(maxVersion, currVersion);
     });
 
@@ -505,7 +508,7 @@ mlir::LogicalResult vpux::VPURegMapped::RegMappedType::verify(
 
     auto regAttrs = regs.getValue();
     for (const auto& regAttr : regAttrs) {
-        auto reg = regAttr.cast<VPURegMapped::RegisterAttr>().getReg();
+        auto reg = mlir::cast<vpux::VPURegMapped::RegisterAttr>(regAttr).getReg();
         auto regSize = reg.getSize();
         auto name = reg.getName();
         auto address = reg.getAddress();
@@ -529,7 +532,7 @@ void VPURegMapped::RegMappedType::print(mlir::AsmPrinter& printer) const {
     auto regs = getRegs().getValue();
     for (auto regAttr : regs) {
         printer.printNewline();
-        regAttr.cast<VPURegMapped::RegisterAttr>().getReg().print(printer);
+        mlir::cast<vpux::VPURegMapped::RegisterAttr>(regAttr).getReg().print(printer);
         if (regAttr != regs.back()) {
             printer << ",";
         }

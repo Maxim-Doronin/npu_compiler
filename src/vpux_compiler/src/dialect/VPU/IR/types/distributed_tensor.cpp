@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
@@ -67,6 +68,10 @@ void VPU::DistributedTensorType::print(mlir::AsmPrinter& printer) const {
         printer << ", equal_memory_and_compute_view";
     }
     printer << "}";
+
+    if (getDynamicDimsMask() != nullptr) {
+        printer << ", dynamic_dims_mask = " << getDynamicDimsMask();
+    }
 
     printer << ">";
 }
@@ -210,16 +215,41 @@ mlir::Type VPU::DistributedTensorType::parse(mlir::AsmParser& parser) {
             return Type();
         }
     }
-
-    if (parser.parseGreater()) {
-        return Type();
-    }
     auto distributedAttr =
             VPU::DistributionInfoAttr::get(parser.getContext(), distributionModeAttr, numTiles, kernel, pads, strides,
                                            numClusters, alignment, uniformDistributedSegments, computeShapes,
                                            computeOffsets, memoryShapes, memoryOffsets, equalComputeAndMemoryView);
+
+    if (mlir::succeeded(parser.parseOptionalGreater())) {
+        return static_cast<mlir::Type>(
+                get(parser.getContext(), ArrayRef(shape), elemType, order, memSpace, distributedAttr));
+    }
+    //
+    // DynamicDimsMask (optional)
+    //
+
+    if (parser.parseComma()) {
+        return Type();
+    }
+
+    if (parser.parseKeyword("dynamic_dims_mask")) {
+        return Type();
+    }
+    if (parser.parseEqual()) {
+        return Type();
+    }
+
+    Const::OpaqueI64ElementsAttr dynamicDimsMask;
+    if (parser.parseAttribute(dynamicDimsMask)) {
+        return Type();
+    }
+
+    if (parser.parseGreater()) {
+        return Type();
+    }
+
     return static_cast<mlir::Type>(
-            get(parser.getContext(), ArrayRef(shape), elemType, order, memSpace, distributedAttr));
+            get(parser.getContext(), ArrayRef(shape), elemType, order, memSpace, distributedAttr, dynamicDimsMask));
 }
 
 //
@@ -229,7 +259,8 @@ mlir::Type VPU::DistributedTensorType::parse(mlir::AsmParser& parser) {
 mlir::LogicalResult VPU::DistributedTensorType::verify(FuncRef<mlir::InFlightDiagnostic()> emitError,
                                                        ::llvm::ArrayRef<int64_t> shape, mlir::Type /*elementType*/,
                                                        mlir::AffineMapAttr /*order*/, IndexedSymbolAttr /*memSpace*/,
-                                                       DistributionInfoAttr distribution) {
+                                                       DistributionInfoAttr distribution,
+                                                       Const::OpaqueI64ElementsAttr /*dynamicDimsMask*/) {
     return VPU::verify(emitError, distribution, shape);
 }
 
@@ -238,8 +269,9 @@ mlir::LogicalResult VPU::DistributedTensorType::verify(FuncRef<mlir::InFlightDia
 //
 
 mlir::RankedTensorType VPU::DistributedTensorType::getCompactType() const {
-    return mlir::RankedTensorType::get(getShape().raw(), getElementType(),
-                                       vpux::TensorAttr::get(getContext(), getOrder(), getMemSpace()));
+    return mlir::RankedTensorType::get(
+            getShape().raw(), getElementType(),
+            vpux::TensorAttr::get(getContext(), getOrder(), getMemSpace(), /*bounds=*/{}, /*dynamicDimsMask=*/{}));
 }
 
 //
@@ -429,7 +461,7 @@ NDTypeInterface VPU::DistributedTensorType::changeTypeComponentsForExplicitDistr
     if (typeComponents.elementType.has_value()) {
         elementType = typeComponents.elementType.value();
     } else {
-        if (auto perAxisType = elementType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+        if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
             const auto axis = getQuantizedAxis(perAxisType.getQuantizedDimension(), getShape(), shape);
             if (axis.has_value()) {
                 elementType = changeAxis(perAxisType, axis.value());
@@ -453,7 +485,7 @@ NDTypeInterface VPU::DistributedTensorType::extractDenseTileForExplicitDistribut
     }
 
     auto elemType = getElementType();
-    if (const auto perAxisQType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         elemType = tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
     }
 
@@ -550,7 +582,7 @@ NDTypeInterface VPU::DistributedTensorType::changeShape(ShapeRef shape) const {
                     "Cannot change shape when having explicit per cluster shapes/offsets");
 
     auto elemType = getElementType();
-    if (auto perAxisType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto axis = getQuantizedAxis(perAxisType.getQuantizedDimension(), getShape(), shape);
         if (axis.has_value()) {
             elemType = changeAxis(perAxisType, axis.value());
@@ -608,7 +640,7 @@ NDTypeInterface VPU::DistributedTensorType::changeTypeComponents(const vpux::Typ
     if (typeComponents.elementType.has_value()) {
         elementType = typeComponents.elementType.value();
     } else {
-        if (auto perAxisType = elementType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+        if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
             const auto axis = getQuantizedAxis(perAxisType.getQuantizedDimension(), getShape(), shape);
             if (axis.has_value()) {
                 elementType = changeAxis(perAxisType, axis.value());
@@ -629,7 +661,7 @@ NDTypeInterface VPU::DistributedTensorType::extractDenseTile(vpux::ShapeRef tile
                     "shapes/offsets");
 
     auto elemType = getElementType();
-    if (const auto perAxisQType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         elemType = tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
     }
 

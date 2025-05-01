@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@
 
 namespace vpux::IE {
 
-bool hasDynamicShape(const mlir::Value value);
+bool hasDynamicShapeAttr(mlir::Value value);
 bool hasDynamicTensors(mlir::Operation* op);
 bool needsStaticShape(mlir::Operation* op);
 bool isDynamicDataContiguous(vpux::ShapeRef shape, vpux::DimsOrder order);

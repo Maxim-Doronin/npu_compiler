@@ -1,24 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/attributes.hpp"
-#include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/core/attributes/strides.hpp"
-#include "vpux/compiler/dialect/const/attributes/content.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/stl_extras.hpp"
-#include "vpux_elf/utils/version.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 #include "vpux/utils/core/dense_map.hpp"
-#include "vpux/utils/core/small_string.hpp"
 
-#include <tuple>
 #include <vpux_elf/writer.hpp>
+
 namespace vpux {
 namespace ELF {
 

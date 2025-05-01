@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 
+#include <mlir/Dialect/Async/IR/Async.h>
+
 namespace vpux {
 
 constexpr StringLiteral DPUCost = "minimumHardwareExecutionCost";
@@ -43,6 +45,8 @@ size_t getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<VPUNN:
                         VPU::ArchKind arch, vpux::Logger log);
 
 VPUNN::MemoryLocation getMemoryLocation(mlir::Type type);
+VPUNN::Swizzling getVPUNNSwizzlingKey(mlir::Type type);
 VPUNN::ActivationFunction getVPUNNActivationFunction(VPU::PPEAttr ppeAttr);
+VPUNN::SEPModeInfo getSEPModeInfo(VPUIP::SEPInfo sepInfo);
 
 }  // namespace vpux

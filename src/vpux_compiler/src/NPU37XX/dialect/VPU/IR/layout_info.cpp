@@ -69,10 +69,10 @@ public:
         info.setInput(0, DimsOrder::NHWC);
         info.setInput(1, DimsOrder::OYXI);
 
-        // FIXME [E#-87197]: NPU37XX ODU supports reordering of the output tensor, so we could use any layout here.
+        // FIXME [E#-87197]: VPUX37XX ODU supports reordering of the output tensor, so we could use any layout here.
         // But right now current behavior of AdjustLayouts and OptimizeReorder passes might introduce extra Reorders in
         // that case. We need to update the passes to properly handle various Reorder propagation and fusing cases prior
-        // enabling ODU permutation feature in NPU37XX.
+        // enabling ODU permutation feature in VPUX37XX.
         info.setOutput(0, DimsOrder::NHWC);
     }
 
@@ -209,7 +209,7 @@ private:
         if (!mlir::isa_and_nonnull<IE::MVNOp>(mvnOp)) {
             return false;
         }
-        auto mvnShape = mvnOp->getOperand(0).getType().cast<NDTypeInterface>().getShape();
+        auto mvnShape = mlir::cast<vpux::NDTypeInterface>(mvnOp->getOperand(0).getType()).getShape();
         auto W = mvnShape[Dims4D::Act::W];
         auto H = mvnShape[Dims4D::Act::H];
         auto C = mvnShape[Dims4D::Act::C];
@@ -243,8 +243,8 @@ private:
         }
 
         // Check Reshapes are symmetrical
-        const auto inType = reshapeBefore->getOperand(0).getType().cast<NDTypeInterface>();
-        const auto outType = reshapeAfter->getResult(0).getType().cast<NDTypeInterface>();
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(reshapeBefore->getOperand(0).getType());
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(reshapeAfter->getResult(0).getType());
         const auto inC = inType.getShape()[Dims4D::Act::C];
         const auto outC = outType.getShape()[Dims4D::Act::C];
         if (inC != outC) {
@@ -271,7 +271,7 @@ public:
             return;
         }
 
-        const auto inputType = op->getOperand(0).getType().cast<NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
         const auto inputShape = inputType.getShape();
 
         if (isReshapeFusePattern(op)) {
@@ -542,6 +542,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::GeluOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NCHW_NHWC>(*ctx);
         VPU::RMSOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::RoPEOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
+        VPU::SDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
     });
 }
 
@@ -712,6 +713,7 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::AccumulateOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NHWC>(*ctx);
         IE::RMSOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::RoPEOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
+        IE::SDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
 
         IE::GeluOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NCHW_NHWC>(*ctx);
 

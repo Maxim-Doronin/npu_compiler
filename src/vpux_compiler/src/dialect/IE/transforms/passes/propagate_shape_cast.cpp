@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -103,8 +104,8 @@ mlir::LogicalResult MoveThroughPoolOp<PoolingOp>::matchAndRewrite(IE::ShapeCastO
 
         mlir::Value input = layerOp.getInput();
         mlir::Value output = layerOp.getOutput();
-        auto inputLayout = input.getType().cast<vpux::NDTypeInterface>().getDimsOrder();
-        auto outputLayout = output.getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+        auto inputLayout = mlir::cast<vpux::NDTypeInterface>(input.getType()).getDimsOrder();
+        auto outputLayout = mlir::cast<vpux::NDTypeInterface>(output.getType()).getDimsOrder();
         // input and output layer need to be same
         if (inputLayout != outputLayout) {
             return false;
@@ -124,8 +125,8 @@ mlir::LogicalResult MoveThroughPoolOp<PoolingOp>::matchAndRewrite(IE::ShapeCastO
         });
 
         const auto sizeToAlign = std::max(
-                VPU::NCEInvariant::getAlignment(input.getType().cast<vpux::NDTypeInterface>().getElementType()),
-                VPU::NCEInvariant::getAlignment(output.getType().cast<vpux::NDTypeInterface>().getElementType()));
+                VPU::NCEInvariant::getAlignment(mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType()),
+                VPU::NCEInvariant::getAlignment(mlir::cast<vpux::NDTypeInterface>(output.getType()).getElementType()));
         const auto origOutShape = getShape(origOp.getResult());
 
         return hasValidKernels && hasValidPadStart && hasValidPadEnd && hasValidStrides &&
@@ -189,7 +190,7 @@ mlir::LogicalResult MoveThroughEltwiseOp<EltwiseOp>::matchAndRewrite(IE::ShapeCa
         int64_t getLastOpIdx = 0;
         for (auto operand : layerOp->getOperands() | indexed) {
             const auto index = operand.index();
-            const auto operandOutType = layerOp->getOperand(index).getType().template cast<vpux::NDTypeInterface>();
+            const auto operandOutType = mlir::cast<vpux::NDTypeInterface>(layerOp->getOperand(index).getType());
             const auto operandOutShape = operandOutType.getShape();
             const auto expectedShape = Shape{1, 1, 1, 1};
             if (operandOutShape == expectedShape) {
@@ -221,14 +222,14 @@ mlir::LogicalResult MoveThroughEltwiseOp<EltwiseOp>::matchAndRewrite(IE::ShapeCa
 
         // Could not support per channel quantize type
         const auto input1ElementType =
-                layerOp->getOperand(0).getType().template cast<vpux::NDTypeInterface>().getElementType();
+                mlir::cast<vpux::NDTypeInterface>(layerOp->getOperand(0).getType()).getElementType();
         const auto input2ElementType =
-                layerOp->getOperand(1).getType().template cast<vpux::NDTypeInterface>().getElementType();
+                mlir::cast<vpux::NDTypeInterface>(layerOp->getOperand(1).getType()).getElementType();
         const auto outputElementType =
-                layerOp->getResult(0).getType().template cast<vpux::NDTypeInterface>().getElementType();
-        if (input1ElementType.template isa<mlir::quant::UniformQuantizedPerAxisType>() ||
-            input2ElementType.template isa<mlir::quant::UniformQuantizedPerAxisType>() ||
-            outputElementType.template isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+                mlir::cast<vpux::NDTypeInterface>(layerOp->getResult(0).getType()).getElementType();
+        if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(input1ElementType) ||
+            mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(input2ElementType) ||
+            mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outputElementType)) {
             return false;
         }
 

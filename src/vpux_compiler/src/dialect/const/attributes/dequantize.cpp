@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ using namespace vpux;
 //
 
 vpux::NDTypeInterface vpux::Const::DequantizeAttr::inferOutputType(vpux::NDTypeInterface input) const {
-    const auto qElemType = input.getElementType().dyn_cast<mlir::quant::QuantizedType>();
+    const auto qElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(input.getElementType());
     VPUX_THROW_UNLESS(qElemType != nullptr, "Got non quantized type '{0}' in 'DequantizeAttr'");
 
     return input.changeElemType(qElemType.getExpressedType());
@@ -40,7 +40,7 @@ bool vpux::Const::DequantizeAttr::inferOutputSplat(bool inputIsSplat, vpux::NDTy
 //
 
 Const::Content vpux::Const::DequantizeAttr::transform(vpux::Const::Content& input) const {
-    const auto qElemType = input.getType().getElementType().dyn_cast<mlir::quant::QuantizedType>();
+    const auto qElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(input.getType().getElementType());
     VPUX_THROW_UNLESS(qElemType != nullptr, "Got non quantized type '{0}' in 'DequantizeAttr'");
 
     auto output =

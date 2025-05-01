@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,8 +15,8 @@ bool isCompatibleWithMultiClusterNNDMA(VPU::SpaceToDepthOp op, vpux::ShapeRef nu
         return false;
     }
 
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     if (inputType.getDimsOrder() != DimsOrder::NHWC || outputType.getDimsOrder() != DimsOrder::NHWC) {
         return false;
     }
@@ -47,12 +47,11 @@ bool isCompatibleWithMultiClusterNNDMA(VPU::SpaceToDepthOp op, vpux::ShapeRef nu
             return false;
         }
         // Check distributed tensor types are aligned
-        auto userInputType = userOp->getOperand(0).getType().cast<NDTypeInterface>();
-        auto userOutputType = userOp->getResult(0).getType().cast<NDTypeInterface>();
+        auto userInputType = mlir::cast<vpux::NDTypeInterface>(userOp->getOperand(0).getType());
+        auto userOutputType = mlir::cast<vpux::NDTypeInterface>(userOp->getResult(0).getType());
         auto numClusters = VPU::getOptimalNumClusters(userOp, userOutputType.getShape(), userStrategy.value());
-        auto userInputDistType =
-                getDistributedActivationTypeFromOp(userClusteredOp, userInputType, numClusters, userStrategy.value())
-                        .dyn_cast<VPU::DistributedTensorType>();
+        auto userInputDistType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(
+                getDistributedActivationTypeFromOp(userClusteredOp, userInputType, numClusters, userStrategy.value()));
         if (userInputDistType == nullptr) {
             return false;
         }
@@ -93,11 +92,11 @@ mlir::LogicalResult vpux::VPU::SpaceToDepthOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inputType = spd.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(spd.getInput().getType());
 
     const auto elementType = inputType.getElementType();
     if (!(elementType.isF16() || elementType.isF32() || elementType.isUnsignedInteger(8) ||
-          elementType.isa<mlir::quant::QuantizedType>())) {
+          mlir::isa<mlir::quant::QuantizedType>(elementType))) {
         return errorAt(loc, "SpaceToDepth only supports FP16, FP32, U8 or Quantized input data type");
     }
 
@@ -146,7 +145,7 @@ vpux::InputTiling vpux::VPU::SpaceToDepthOp::backInferTileInfo(const vpux::TileI
     int64_t blockSize = 0;
 
     VPUX_THROW_UNLESS(getBlockSizeAttr() != nullptr, "Got NULL block_size");
-    blockSize = getBlockSizeAttr().dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    blockSize = mlir::dyn_cast<mlir::IntegerAttr>(getBlockSizeAttr()).getValue().getSExtValue();
 
     TileInfo inputTile(origInputShape);
 
@@ -171,13 +170,13 @@ mlir::FailureOr<OutputTiling> vpux::VPU::SpaceToDepthOp::getTilingStrategy(Tilin
     auto origOp = mlir::dyn_cast<VPU::SpaceToDepthOp>(op);
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
 
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     const auto outputShape = outputType.getShape();
 
     int64_t blockSize = 0;
 
     VPUX_THROW_UNLESS(getBlockSizeAttr() != nullptr, "Got NULL block_size");
-    blockSize = getBlockSizeAttr().dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    blockSize = mlir::dyn_cast<mlir::IntegerAttr>(getBlockSizeAttr()).getValue().getSExtValue();
 
     Shape nTilesOnDimforSpaceToDepth(outputShape.size(), 1);
     tilingMode = TilingMode::ISOLATED;

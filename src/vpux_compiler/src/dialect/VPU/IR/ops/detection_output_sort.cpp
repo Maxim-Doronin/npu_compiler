@@ -30,7 +30,7 @@ mlir::LogicalResult VPU::DetectionOutputSortOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inputType = sort.getConfidence().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(sort.getConfidence().getType());
     const auto inputShape = inputType.getShape();
 
     const auto numClasses = inputShape[Dims4D::Act::H];

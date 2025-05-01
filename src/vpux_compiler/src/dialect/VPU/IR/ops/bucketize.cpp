@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ mlir::LogicalResult vpux::VPU::BucketizeOp::inferReturnTypes(mlir::MLIRContext* 
         return mlir::failure();
     }
 
-    const auto inType = bucketize.getData().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(bucketize.getData().getType());
     const auto outType = inType.changeElemType(bucketize.getOutputType());
     inferredReturnTypes.push_back(outType);
 

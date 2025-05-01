@@ -7,6 +7,7 @@
 #include <vpux/compiler/utils/rewriter.hpp>
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
@@ -222,10 +223,9 @@ mlir::LogicalResult BroadcastInputRewriter::matchAndRewrite(IE::MultiplyOp origO
 
     // Create new Multiply
     auto newOutputType = outputType.changeDimsOrder(dstOrder).changeShape(getShape(newRhsInput));
-    auto newMultiplyOp = rewriter.create<IE::MultiplyOp>(origOp.getLoc(), newOutputType, newLhsInput, newRhsInput,
-                                                         origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
-                                                         origOp.getClampAttr(), origOp.getOutputChannelsAttr(),
-                                                         origOp.getInputChannelsAttr());
+    auto newMultiplyOp = rewriter.create<IE::MultiplyOp>(
+            origOp.getLoc(), newOutputType, newLhsInput, newRhsInput, origOp.getAutoBroadcastAttr(),
+            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     // Cast to the original dims order
     auto result = castToDimsOrder(newMultiplyOp.getOutput(), dimsOrder.toAffineMap(ctx), memOrderMap[1],
                                   "_output_permute_cast", rewriter);

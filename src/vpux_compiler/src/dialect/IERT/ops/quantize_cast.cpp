@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,8 +21,8 @@ mlir::LogicalResult vpux::IERT::QuantizeCastOp::verify() {
                        inputShape, outputShape);
     }
 
-    const auto dstElemType = getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto dstElemType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType()).getElementType();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getElementType();
 
     return vpux::isQuantizeCastValid(getLoc(), inputType, dstElemType);
 }

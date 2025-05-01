@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -258,7 +258,7 @@ IE::LayerWithPermuteInterface vpux::getFusableLayerWithPermuteInterface(mlir::Op
     auto inputOp = op->getOperand(0).getDefiningOp();
     if (auto quantizeCastOp = mlir::dyn_cast_or_null<IE::QuantizeCastOp>(inputOp)) {
         auto outElemType = quantizeCastOp.getOutput().getType().getElementType();
-        if (quantizeCastOp->hasOneUse() && outElemType.isa<mlir::quant::UniformQuantizedType>()) {
+        if (quantizeCastOp->hasOneUse() && mlir::isa<mlir::quant::UniformQuantizedType>(outElemType)) {
             inputOp = quantizeCastOp.getInput().getDefiningOp();
         }
     }

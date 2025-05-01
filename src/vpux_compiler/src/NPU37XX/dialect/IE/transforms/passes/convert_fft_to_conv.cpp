@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/fft_ops_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -40,8 +41,8 @@ using AnyRankedTensor = mlir::TypedValue<mlir::RankedTensorType>;
 auto reshapeRestoreAndComplexAdd(mlir::PatternRewriter& rewriter, mlir::Location loc, AnyRankedTensor input,
                                  mlir::Value expectedInput, bool addComplex, bool isRdftLastAxisCut, Logger log) {
     log.trace("reshapeRestoreAndComplexAdd : {0}", input);
-    const auto shapeTypeExpect = expectedInput.getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto shapeTypeInput = input.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto shapeTypeExpect = mlir::cast<vpux::NDTypeInterface>(expectedInput.getType()).getShape();
+    const auto shapeTypeInput = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
     auto newShape = to_small_vector(shapeTypeExpect);
     auto shapeInput = to_small_vector(shapeTypeInput);
     if (addComplex) {
@@ -64,7 +65,7 @@ auto reshapeRestoreAndComplexAdd(mlir::PatternRewriter& rewriter, mlir::Location
 auto reshapeRestoreIrdftLastAxis(mlir::PatternRewriter& rewriter, mlir::Location loc, AnyRankedTensor input,
                                  mlir::Value expectedInput, Logger log) {
     log.trace("reshapeRestoreIrdftLastAxis : {0}", input);
-    const auto outResShapeType = expectedInput.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto outResShapeType = mlir::cast<vpux::NDTypeInterface>(expectedInput.getType()).getShape();
     auto newShape = to_small_vector(outResShapeType);
     newShape.pop_back();  // delete complex representation
     auto axisShape = (newShape.back() - 1) * 2;
@@ -80,7 +81,7 @@ auto reshapeToMatMulNeedRank(mlir::PatternRewriter& rewriter, mlir::Location loc
     log.trace("reshapeToMatMulNeedRank: {0}", input);
     bool shapeWasChanged = false;
     const int64_t targetRank = 3;
-    const auto shape = input.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto shape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
     auto newShape = to_small_vector(shape);
     if (cutComplex) {
         newShape.pop_back();
@@ -227,7 +228,7 @@ auto fftOneAxisDecompose(mlir::PatternRewriter& rewriter, mlir::Location loc, An
                          mlir::Value (*getTwiddleFactors)(mlir::Location, int64_t, mlir::Type, mlir::PatternRewriter&,
                                                           bool, bool)) {
     log.trace("fftOneAxisDecompose: {0}", inIter);
-    const auto inType = inIter.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(inIter.getType());
     // Reorder input in order to move axis on last dimension
     auto transposesOut = inIter;
     auto axisPermutation = curOrder;
@@ -256,7 +257,7 @@ auto fftOneAxisDecompose(mlir::PatternRewriter& rewriter, mlir::Location loc, An
     auto transposesOutRestored = reshapeRestoredOut;
     if (axis < lastComplexAxes) {
         if (!inputIsComplex) {
-            const auto rank = transposesOutRestored.getType().cast<vpux::NDTypeInterface>().getRank();
+            const auto rank = mlir::cast<vpux::NDTypeInterface>(transposesOutRestored.getType()).getRank();
             axisPermutation.push_back(Dim(rank - 1));
             dstOrder = DimsOrder::fromPermutation(axisPermutation);
             orderOutputAttr = mlir::AffineMapAttr::get(dstOrder.toAffineMap(rewriter.getContext()));
@@ -273,7 +274,7 @@ auto complexFFTDecompose(mlir::PatternRewriter& rewriter, mlir::Location loc, An
     log.trace("complexFFTDecompose: {0}", input);
     Logger _log = log.nest();
     auto inIter = input;
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     auto rank = inType.getRank();
     auto lastComplexAxes = rank - 2;
     const auto curOrder = DimsOrder::fromValue(inIter).toPermutation();
@@ -292,7 +293,7 @@ auto rdftFirstAxisDecompose(mlir::PatternRewriter& rewriter, mlir::Location loc,
     log.trace("rdftFirstAxisDecompose: {0}", input);
     Logger _log = log.nest();
     const auto rdftLoc = appendLoc(loc, "FirstAxis");
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     auto rank = inType.getRank();
     auto lastComplexAxes = rank - 1;
     const auto curOrder = DimsOrder::fromValue(input).toPermutation();
@@ -306,7 +307,7 @@ auto irdftLastAxisDecompose(mlir::PatternRewriter& rewriter, mlir::Location loc,
     log.trace("irdftLastAxisDecompose: {0}", input);
     Logger _log = log.nest();
     const auto irdftLoc = appendLoc(loc, "LastAxis");
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     auto rank = inType.getRank();
     auto lastComplexAxes = rank - 2;
     auto curOrder = DimsOrder::fromValue(input).toPermutation();
@@ -477,9 +478,9 @@ bool isLegalOp(ConcreteOp op) {
     auto axes = params.value().axes;
     auto signalSize = params.value().signalSize;
     // Calculate output shape if signal_size params is default
-    const auto inType = op.getInput().getType().template cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto shape = to_small_vector(inType.getShape());
-    const auto outType = op.getOutput().getType().template cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     auto outShape = to_small_vector(outType.getShape());
     if (mlir::isa<IE::IRDFTOp>(op)) {
         shape.pop_back();

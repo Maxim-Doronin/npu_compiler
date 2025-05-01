@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -41,18 +41,6 @@ private:
 void OneShotBufferizeVPU2VPUIPPass::safeRunOnModule() {
     mlir::bufferization::OneShotBufferizationOptions options = vpux::getOneShotBufferizationOptions();
     mlir::ModuleOp moduleOp = getOperation();
-    auto& ctx = getContext();
-
-    // E#112397: special case: "bufferize" multi-tile vpu nce permute operation
-    // before anything else. can be (safely) deleted once NCEClusterTiling is
-    // removed and necessary functionality is supported directly in NCEPermuteOp
-    auto log = Logger::global().nest("one-shot-bufferize-MultiTileNcePermute", 0);
-    for (auto funcOp : moduleOp.getRegion().getOps<mlir::func::FuncOp>()) {
-        if (mlir::failed(vpux::lowerMultiTileVpuNcePermuteOneShot(&ctx, funcOp, log))) {
-            signalPassFailure();
-            return;
-        }
-    }
 
     if (mlir::failed(mlir::bufferization::bufferizeOp(moduleOp, options, /*statistics=*/nullptr))) {
         signalPassFailure();

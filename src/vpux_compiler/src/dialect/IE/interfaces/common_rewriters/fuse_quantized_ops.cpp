@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ IE::ConvolutionOp FuseWithConv::createNewConvBasedOp(IE::QuantizeOp quantizeOp, 
     auto newConv = rewriter.create<IE::ConvolutionOp>(
             conv->getLoc(), quantizeOp.getType(), newInput, newWeights, conv.getBias(), conv.getStrides(),
             conv.getPadsBegin(), conv.getPadsEnd(), conv.getDilations(), conv.getPostOpAttr(), conv.getClampAttr(),
-            conv.getStaticScaleAttr(), conv.getOutputChannelsAttr(), conv.getInputChannelsAttr());
+            conv.getStaticScaleAttr(), conv.getOutputPaddingAttr(), conv.getInputPaddingAttr());
 
     return newConv;
 }
@@ -35,8 +35,8 @@ IE::GroupConvolutionOp FuseWithGroupConv::createNewConvBasedOp(IE::QuantizeOp qu
     auto newGroupConv = rewriter.create<IE::GroupConvolutionOp>(
             grConvOp->getLoc(), quantizeOp.getType(), newInput, newWeights, grConvOp.getBias(), grConvOp.getStrides(),
             grConvOp.getPadsBegin(), grConvOp.getPadsEnd(), grConvOp.getDilations(), grConvOp.getGroupsAttr(),
-            grConvOp.getPostOpAttr(), grConvOp.getClampAttr(), grConvOp.getOutputChannelsAttr(),
-            grConvOp.getInputChannelsAttr());
+            grConvOp.getPostOpAttr(), grConvOp.getClampAttr(), grConvOp.getOutputPaddingAttr(),
+            grConvOp.getInputPaddingAttr());
 
     return newGroupConv;
 }
@@ -56,9 +56,10 @@ IE::TransposedConvolutionOp FuseWithTransposedConv::createNewConvBasedOp(IE::Qua
     auto newTransposedConv = rewriter.create<IE::TransposedConvolutionOp>(
             transposedConvOp->getLoc(), quantizeOp.getType(), newInput, newWeights, transposedConvOp.getOutputShape(),
             transposedConvOp.getBias(), transposedConvOp.getStrides(), transposedConvOp.getPadsBegin(),
-            transposedConvOp.getPadsEnd(), transposedConvOp.getDilations(), transposedConvOp.getOutputPaddingAttr(),
-            transposedConvOp.getPostOpAttr(), transposedConvOp.getClampAttr(), transposedConvOp.getOutputChannelsAttr(),
-            transposedConvOp.getInputChannelsAttr());
+            transposedConvOp.getPadsEnd(), transposedConvOp.getDilations(),
+            transposedConvOp.getSpatialOutputPaddingAttr(), transposedConvOp.getPostOpAttr(),
+            transposedConvOp.getClampAttr(), transposedConvOp.getOutputPaddingAttr(),
+            transposedConvOp.getInputPaddingAttr());
 
     return newTransposedConv;
 }
@@ -85,10 +86,8 @@ mlir::LogicalResult FuseWithMaxPool::matchAndRewrite(IE::QuantizeOp quantizeOp, 
     // Since we are not subtracting the input zero-point, the non-linear post-op will operate on improper data.
     // Only zero-centered values would be supported. Currently, quantized MaxPool is disabled for all post-ops.
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(maxPoolOp.getOperation());
-    if (layerWithPostOp != nullptr) {
-        if (layerWithPostOp.getPostOp().has_value()) {
-            return mlir::failure();
-        }
+    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+        return mlir::failure();
     }
 
     auto inputDequantizeOp = maxPoolOp.getInput().getDefiningOp<IE::DequantizeOp>();
@@ -104,7 +103,7 @@ mlir::LogicalResult FuseWithMaxPool::matchAndRewrite(IE::QuantizeOp quantizeOp, 
                     quantizeOp, quantizeOp.getType(), inputDequantizeOp.getInput(), maxPoolOp.getKernelSize(),
                     maxPoolOp.getStrides(), maxPoolOp.getPadsBegin(), maxPoolOp.getPadsEnd(),
                     maxPoolOp.getRoundingType(), maxPoolOp.getPostOpAttr(), maxPoolOp.getClampAttr(),
-                    maxPoolOp.getOutputChannelsAttr(), maxPoolOp.getInputChannelsAttr())
+                    maxPoolOp.getOutputPaddingAttr(), maxPoolOp.getInputPaddingAttr())
             ->setLoc(maxPoolOp->getLoc());
 
     return mlir::success();
@@ -133,10 +132,8 @@ mlir::LogicalResult FuseWithAveragePool::matchAndRewrite(IE::QuantizeOp quantize
     // Since we are not subtracting the input zero-point, the non-linear post-op will operate on improper data.
     // Only zero-centered values would be supported. Currently, quantized AveragePool is disabled for all post-ops.
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(avgPoolOp.getOperation());
-    if (layerWithPostOp != nullptr) {
-        if (layerWithPostOp.getPostOp().has_value()) {
-            return mlir::failure();
-        }
+    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+        return mlir::failure();
     }
 
     auto inputDequantizeOp = avgPoolOp.getInput().getDefiningOp<IE::DequantizeOp>();
@@ -152,8 +149,8 @@ mlir::LogicalResult FuseWithAveragePool::matchAndRewrite(IE::QuantizeOp quantize
                     quantizeOp, quantizeOp.getType(), inputDequantizeOp.getInput(), avgPoolOp.getKernelSize(),
                     avgPoolOp.getStrides(), avgPoolOp.getPadsBegin(), avgPoolOp.getPadsEnd(),
                     avgPoolOp.getRoundingTypeAttr(), avgPoolOp.getExcludePadsAttr(), avgPoolOp.getPostOpAttr(),
-                    avgPoolOp.getClampAttr(), avgPoolOp.getStaticScaleAttr(), avgPoolOp.getOutputChannelsAttr(),
-                    avgPoolOp.getInputChannelsAttr())
+                    avgPoolOp.getClampAttr(), avgPoolOp.getStaticScaleAttr(), avgPoolOp.getOutputPaddingAttr(),
+                    avgPoolOp.getInputPaddingAttr())
             ->setLoc(avgPoolOp->getLoc());
 
     return mlir::success();
@@ -171,8 +168,8 @@ bool isLegalFuseOp(mlir::Operation* concreteOp, IE::QuantizeOp quantizeOp) {
 
     auto origOutput = quantizeOp.getOutput();
     auto origInput = inputDequantizeOp.getInput();
-    auto tileOpInputElementType = origInput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    auto tileOpOutputElementType = origOutput.getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto tileOpInputElementType = mlir::cast<vpux::NDTypeInterface>(origInput.getType()).getElementType();
+    auto tileOpOutputElementType = mlir::cast<vpux::NDTypeInterface>(origOutput.getType()).getElementType();
 
     return tileOpInputElementType == tileOpOutputElementType;
 }
@@ -273,12 +270,13 @@ mlir::LogicalResult FuseWithConcat::matchAndRewrite(IE::QuantizeOp quantizeOp, m
         }
 
         if (!newConcatInputs.empty()) {
-            const auto prevElemType = newConcatInputs.back().getType().cast<vpux::NDTypeInterface>().getElementType();
+            const auto prevElemType =
+                    mlir::cast<vpux::NDTypeInterface>(newConcatInputs.back().getType()).getElementType();
             const auto curElemType =
-                    inputDequantizeOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+                    mlir::cast<vpux::NDTypeInterface>(inputDequantizeOp.getInput().getType()).getElementType();
 
-            if (const auto prevPerAxisType = prevElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
-                if (const auto curPerAxisType = curElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+            if (const auto prevPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(prevElemType)) {
+                if (const auto curPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(curElemType)) {
                     if (!canBeMerged(prevPerAxisType, curPerAxisType)) {
                         return mlir::failure();
                     }
@@ -330,7 +328,7 @@ mlir::LogicalResult FuseWithInterpolate::matchAndRewrite(IE::QuantizeOp quantize
                     interpOp.getSizesAttr().value_or(nullptr), interpOp.getScalesAttr().value_or(nullptr),
                     interpOp.getAxesAttr().value_or(nullptr), interpOp.getTileOffsetAttrAttr(),
                     interpOp.getInitialInputDimsAttrAttr(), interpOp.getInitialOutputDimsAttrAttr(), interpOp.getAttr(),
-                    interpOp.getOutputChannelsAttr())
+                    interpOp.getOutputPaddingAttr(), interpOp.getInputPaddingAttr())
             ->setLoc(interpOp->getLoc());
 
     return mlir::success();

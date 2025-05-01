@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,6 +15,8 @@ mlir::ArrayAttr getNewConcatOffsetsParameters(mlir::ArrayAttr oldOffsets, mlir::
 mlir::DenseSet<int64_t> getConcatModifiedAxis(IE::ConcatOp origOp);
 SmallVector<int64_t> calculateInputShapeAfterSwitchConcatAndAffineReshape(mlir::Value input, IE::ConcatOp concatOp,
                                                                           IE::AffineReshapeOp reshapeOp);
+
+// TODO: E#159557 refactor initiative
 mlir::Value createPaddingConstForConcat(ArrayRef<int64_t> constShape, mlir::Location loc,
                                         vpux::NDTypeInterface inputType, double padValue,
                                         mlir::PatternRewriter& rewriter);

@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -32,7 +34,7 @@ bool isConstAndSameAsGroup(mlir::Value value, int64_t groups) {
     }
     // Only handle below scenario:
     // kernel size 1x1 and Group == Output Channel
-    auto shapeSize = value.getType().cast<vpux::NDTypeInterface>().getNumElements();
+    auto shapeSize = mlir::cast<vpux::NDTypeInterface>(value.getType()).getNumElements();
     if (shapeSize != groups) {
         return false;
     }
@@ -116,7 +118,7 @@ mlir::LogicalResult ReshapeGroupConvInput::matchAndRewrite(IE::GroupConvolutionO
                                                            mlir::PatternRewriter& rewriter) const {
     const auto alignedChannel = VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
     auto groups = convOp.getGroups().value();
-    auto inNDInterface = convOp.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto inNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(convOp.getInput().getType());
     auto inDimOrder = inNDInterface.getDimsOrder();
     SmallVector<int64_t> newInputShape;
     if (DimsOrder::NHWC != inDimOrder) {
@@ -133,7 +135,7 @@ mlir::LogicalResult ReshapeGroupConvInput::matchAndRewrite(IE::GroupConvolutionO
     };
 
     const auto supportedGroupConv = [&](IE::GroupConvolutionOp layerOp) {
-        auto outNDInterface = layerOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto outNDInterface = mlir::cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
         auto outDimOrder = outNDInterface.getDimsOrder();
         if (inDimOrder != outDimOrder) {
             return false;
@@ -215,10 +217,9 @@ mlir::LogicalResult ReshapeGroupConvInput::matchAndRewrite(IE::GroupConvolutionO
     auto newGroupConv = rewriter.create<IE::GroupConvolutionOp>(
             convOp.getLoc(), input, weights, bias, convOp.getStrides(), convOp.getPadsBegin(), convOp.getPadsEnd(),
             convOp.getDilations(), getIntAttr(rewriter.getContext(), newInputShape[Dims4D::Act::C.ind()]),
-            convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getOutputChannelsAttr(),
-            convOp.getInputChannelsAttr());
+            convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr());
     auto newInShape = getShape(input);
-    auto origOutputType = convOp.getType().cast<vpux::NDTypeInterface>();
+    auto origOutputType = mlir::cast<vpux::NDTypeInterface>(convOp.getType());
     newGroupConv.getOutput().setType(mlir::cast<mlir::RankedTensorType>(origOutputType.changeShape(newInShape)));
     auto output = reshapeOutput(convOp, newGroupConv, rewriter);
     rewriter.replaceOp(convOp, output.getResult());
@@ -248,8 +249,8 @@ mlir::LogicalResult SliceGroupConvInput::matchAndRewrite(IE::GroupConvolutionOp 
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
     auto ctx = rewriter.getContext();
     auto groups = origOp.getGroups().value();
-    auto inNDInterface = origOp.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
-    auto outNDInterface = origOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto inNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto inDimOrder = inNDInterface.getDimsOrder();
     auto outDimOrder = outNDInterface.getDimsOrder();
     auto inputShape = inNDInterface.getShape();
@@ -368,9 +369,9 @@ mlir::LogicalResult SliceGroupConvInput::matchAndRewrite(IE::GroupConvolutionOp 
         auto newGroupConv = rewriter.create<IE::GroupConvolutionOp>(
                 origOp->getLoc(), permuteCast.getOutput(), sliceWeight.getResult(), biasValue, origOp.getStrides(),
                 origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), getIntAttr(ctx, 1),
-                origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputChannelsAttr(),
-                origOp.getInputChannelsAttr());
-        auto groupOutputType = newGroupConv.getOutput().getType().cast<NDTypeInterface>();
+                origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+                origOp.getInputPaddingAttr());
+        auto groupOutputType = mlir::cast<vpux::NDTypeInterface>(newGroupConv.getOutput().getType());
         newGroupConv.getOutput().setType(mlir::cast<mlir::RankedTensorType>(
                 groupOutputType.changeDimsOrder(DimsOrder::fromValue(origOp.getOutput()))));
 

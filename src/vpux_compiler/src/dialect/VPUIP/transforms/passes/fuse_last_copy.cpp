@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -35,8 +36,8 @@ void fuseLastCopy(VPUIP::CopyOp copyOp, const AliasesInfo& aliasesInfo, Logger l
     log.trace("fuseLastCopy: Copy at {0}", copyOp->getLoc());
     auto nestedLogger = log.nest();
 
-    auto inSourceMemory = copyOp.getInput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
-    auto outSourceMemory = copyOp.getOutput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+    auto inSourceMemory = mlir::cast<vpux::NDTypeInterface>(copyOp.getInput().getType()).getMemoryKind();
+    auto outSourceMemory = mlir::cast<vpux::NDTypeInterface>(copyOp.getOutput().getType()).getMemoryKind();
     if (inSourceMemory != outSourceMemory) {
         nestedLogger.trace("Cannot match because the copy is not within the same memory space");
         return;
@@ -70,7 +71,7 @@ void fuseLastCopy(VPUIP::CopyOp copyOp, const AliasesInfo& aliasesInfo, Logger l
     for (auto alias : allRootAliases) {
         for (auto userOp : alias.getUsers()) {
             if (auto copyUserOp = mlir::dyn_cast<VPUIP::CopyOp>(userOp)) {
-                if (copyUserOp != copyOp && copyUserOp.getOutputBuff().isa<mlir::BlockArgument>()) {
+                if (copyUserOp != copyOp && mlir::isa<mlir::BlockArgument>(copyUserOp.getOutputBuff())) {
                     nestedLogger.trace("Cannot fuse when there are multiple output copy operations");
                     return;
                 }
@@ -232,7 +233,7 @@ void FuseLastCopyPass::safeRunOnFunc() {
     auto func = getOperation();
 
     func->walk([&](VPUIP::CopyOp op) {
-        if (!op.getOutputBuff().isa<mlir::BlockArgument>()) {
+        if (!mlir::isa<mlir::BlockArgument>(op.getOutputBuff())) {
             return;
         }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::VPU::MVN1MeanVarOp::inferReturnTypes(mlir::MLIRContext
         return mlir::failure();
     }
 
-    const auto iType = op.getSum().getType().cast<vpux::NDTypeInterface>();
+    const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getSum().getType());
     const auto iShape = iType.getShape().raw();
     const auto iOrder = iType.getDimsOrder();
     const auto inN = iShape[0];
@@ -107,7 +107,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::MVN1MeanVarOp::getTilingStrategy(Tiling
                     baseOp->getName(), getLoc());
 
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(baseOp);
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     const auto isSupportedTileSize = [baseOp, &tilingInfo, outputShape, log](ShapeRef nTilesOnDim,
                                                                              TilingMode tilingMode) -> bool {

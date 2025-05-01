@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -34,9 +36,9 @@ mlir::Value reduceWeightsConstant(VPUIP::NCEClusterTaskOp nceOp, VPUIP::CopyOp w
 
     auto newContentAttr = weightsConstOp.transformContentAttr().subview(Shape(currentOffset), origShape).get();
 
-    auto newConstType = weightsConstOp.getType().cast<NDTypeInterface>().changeShape(origShape);
+    auto newConstType = mlir::cast<vpux::NDTypeInterface>(weightsConstOp.getType()).changeShape(origShape);
     auto newWeightsConstOp = constBuilder.create<Const::DeclareOp>(
-            weightsConstOp.getLoc(), newConstType.cast<mlir::MemRefType>(), std::move(newContentAttr));
+            weightsConstOp.getLoc(), mlir::cast<mlir::MemRefType>(newConstType), std::move(newContentAttr));
     weightsConstOp.replaceAllUsesWith(newWeightsConstOp.getOperation());
 
     constexpr int64_t requiredAlignment = 16;
@@ -55,7 +57,7 @@ mlir::Value reduceWeightsConstant(VPUIP::NCEClusterTaskOp nceOp, VPUIP::CopyOp w
     bool isTiled = vpux::VPUIP::hasDistributedOperand(nceOp);
 
     if (isTiled) {
-        auto oldDistrType = weightsCopyOp.getResult().getType().dyn_cast<VPUIP::DistributedBufferType>();
+        auto oldDistrType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(weightsCopyOp.getResult().getType());
         const auto orderAttr =
                 mlir::AffineMapAttr::get(oldDistrType.getDimsOrder().toAffineMap(oldDistrType.getContext()));
         const auto elemStrides =
@@ -107,7 +109,7 @@ mlir::Value reduceWeightsConstant(VPUIP::NCEClusterTaskOp nceOp, VPUIP::CopyOp w
     }
 
     auto allocOp =
-            builder.create<mlir::memref::AllocOp>(nceOp->getLoc(), weightsCopyOutputType.cast<mlir::MemRefType>());
+            builder.create<mlir::memref::AllocOp>(nceOp->getLoc(), mlir::cast<mlir::MemRefType>(weightsCopyOutputType));
 
     auto copyOp = builder.create<VPUIP::CopyOp>(nceOp->getLoc(), newWeightsConstOp.getOutput(), allocOp);
 
@@ -162,9 +164,14 @@ mlir::Value getAdjustWeightsTable(Const::DeclareOp weightsTableConstOp, const in
 
 */
 void compressConvWeights(Logger& log, VPUIP::NCEClusterTaskOp origOp) {
+    if (origOp.getWeightTable() == nullptr) {
+        return;
+    }
+
     if (!VPUIP::canWeightsBeCompressed(origOp)) {
         return;
     }
+
     auto weights = origOp.getWeights().getDefiningOp<VPUIP::CopyOp>();
     auto weightsInput = weights.getInput().getDefiningOp<Const::DeclareOp>();
 
@@ -177,10 +184,11 @@ void compressConvWeights(Logger& log, VPUIP::NCEClusterTaskOp origOp) {
     mlir::OpBuilder builder(origOp);
     const auto& weightsContentAttr = weightsInput.getContentAttr();
 
-    const auto origChannelVal =
-            weightsContentAttr.getBaseContent().getType().cast<NDTypeInterface>().getShape()[Dims4D::Filter::IC];
+    const auto origChannelVal = mlir::cast<vpux::NDTypeInterface>(weightsContentAttr.getBaseContent().getType())
+                                        .getShape()[Dims4D::Filter::IC];
     const auto kernelSz = parseIntArrayAttr<int64_t>(origOp.getKernelSizeAttr());
-    const auto outputChannels = origOp.getOutput().getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::C];
+    const auto outputChannels =
+            mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getShape()[Dims4D::Act::C];
     const auto origShape = Shape(
             {outputChannels, origChannelVal, kernelSz[Dims4D::Kernel::Y.ind()], kernelSz[Dims4D::Kernel::X.ind()]});
 
@@ -191,7 +199,7 @@ void compressConvWeights(Logger& log, VPUIP::NCEClusterTaskOp origOp) {
 
     const bool paddingDoneOnlyOnC = VPUIP::isOnlyPadOverIC(weightsContentAttr);
     if (paddingDoneOnlyOnC) {
-        auto distributedBufferType = weights.getType().dyn_cast<VPUIP::DistributedBufferType>();
+        auto distributedBufferType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(weights.getType());
         auto distribution = distributedBufferType ? distributedBufferType.getDistribution() : nullptr;
         if (distribution && VPU::isDistributedAttrWithExplicitShapesAndOffsets(distribution)) {
             // we don't support OVERLAPPED weights
@@ -208,7 +216,7 @@ void compressConvWeights(Logger& log, VPUIP::NCEClusterTaskOp origOp) {
                     distributedBufferType.getContext(), origShape.raw(), distributedBufferType.getElementType(),
                     distributedBufferType.getLayout(), distributedBufferType.getMemSpace(), newDistribution);
         } else {
-            weightsType = weights.getType().cast<vpux::NDTypeInterface>();
+            weightsType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
             weightsType = weightsType.changeShape(origShape);
         }
 
@@ -216,7 +224,7 @@ void compressConvWeights(Logger& log, VPUIP::NCEClusterTaskOp origOp) {
 
         // Removing the input channel padding for the weights const will lead to differences in
         // weight sets offsets. This will make the necessary adjustments.
-        const auto weightsCopyOpDstStrides = weightsCopyOp.getType().cast<NDTypeInterface>().getStrides();
+        const auto weightsCopyOpDstStrides = mlir::cast<vpux::NDTypeInterface>(weightsCopyOp.getType()).getStrides();
         auto newWeightsTableConst = getAdjustWeightsTable(weightsTableConstOp, origShape[Dims4D::Filter::OC],
                                                           weightsCopyOpDstStrides[Dims4D::Filter::OC].count());
 

@@ -20,14 +20,12 @@ def AddELFSymbolTable : PassBase<"create-elf-symbol-table", "vpux::FunctionPass"
         For each DataSection and LogicalSection operation, an associated ELF symbol op will be added to the SymbolTableSection.
     }];
 
-
     let constructor = "vpux::ELF::createAddELFSymbolTablePass()";
 
     let dependentDialects = [
         "vpux::ELF::ELFDialect"
     ];
 }
-
 
 //
 // CreateELFRelocations

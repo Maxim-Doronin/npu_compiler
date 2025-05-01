@@ -99,14 +99,15 @@ void vpux::VPUMI37XX::DPUInvariantOp::serialize(elf::writer::BinaryDataSection<u
 
         llvm::SmallVector<mlir::Value> outputs(getOutputBuffs());
         llvm::sort(outputs.begin(), outputs.end(), [](mlir::Value lhs, mlir::Value rhs) {
-            auto lhsIdx = lhs.getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value_or(0);
-            auto rhsIdx = rhs.getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value_or(0);
+            auto lhsIdx = mlir::cast<vpux::NDTypeInterface>(lhs.getType()).getMemSpace().getIndex().value_or(0);
+            auto rhsIdx = mlir::cast<vpux::NDTypeInterface>(rhs.getType()).getMemSpace().getIndex().value_or(0);
             return lhsIdx < rhsIdx;
         });
 
-        auto firstIndex = outputs[0].getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value_or(0);
+        auto firstIndex = mlir::cast<vpux::NDTypeInterface>(outputs[0].getType()).getMemSpace().getIndex().value_or(0);
         for (size_t idx = 1; idx < outputs.size(); ++idx) {
-            auto outIdx = outputs[idx].getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value_or(0);
+            auto outIdx =
+                    mlir::cast<vpux::NDTypeInterface>(outputs[idx].getType()).getMemSpace().getIndex().value_or(0);
             if (outIdx == firstIndex) {
                 continue;
             }

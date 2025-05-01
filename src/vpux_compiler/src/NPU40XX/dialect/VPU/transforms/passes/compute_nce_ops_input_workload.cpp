@@ -70,7 +70,7 @@ int64_t getInputWorkloadSizeCh(NCEOpInterface nceOp, const int64_t outputSizeCh,
             })
             .Case<NCECompressConvolutionOp>([&](mlir::Operation* /*op*/) {
                 return VPU::NCEInvariant::getAlignment(
-                        nceOp.getWeightsOperand().getType().cast<vpux::NDTypeInterface>().getElementType());
+                        mlir::cast<vpux::NDTypeInterface>(nceOp.getWeightsOperand().getType()).getElementType());
             })
             .Case<NCEPermuteOp>([&](mlir::Operation* /*op*/) {
                 if ((outputStartCh + outputSizeCh) > fullInputChannels) {
@@ -97,10 +97,10 @@ SmallVector<Shape> getInputOffsetsPerCluster(NCEOpInterface nceOp, Logger log) {
         return {};
     }
 
-    auto distributedInType = inputTypes.getDistributedTypes().begin()->cast<VPU::DistributedTensorType>();
+    auto distributedInType = mlir::cast<vpux::VPU::DistributedTensorType>(*inputTypes.getDistributedTypes().begin());
     if (auto inputSparseType = mlir::dyn_cast<VPU::SparseTensorType>(inputTypes)) {
         auto effectiveSparseOutputType = getEffectiveSparseOutputType(inputSparseType);
-        distributedInType = effectiveSparseOutputType.cast<VPU::DistributedTensorType>();
+        distributedInType = mlir::cast<vpux::VPU::DistributedTensorType>(effectiveSparseOutputType);
     }
     auto inputDistrAttr = distributedInType.getDistribution();
     auto modeInput = inputDistrAttr.getMode().getValue();
@@ -110,7 +110,8 @@ SmallVector<Shape> getInputOffsetsPerCluster(NCEOpInterface nceOp, Logger log) {
     VPUX_THROW_WHEN(outputTypes == nullptr || !outputTypes.containsDistributedTypes(),
                     "nceOp has distributed type input and non distributed output type.");
 
-    auto distributedOutputType = outputTypes.getDistributedTypes().begin()->cast<VPU::DistributedTensorType>();
+    auto distributedOutputType =
+            mlir::cast<vpux::VPU::DistributedTensorType>(*outputTypes.getDistributedTypes().begin());
     const auto outputDistrAttr = distributedOutputType.getDistribution();
     const auto outputPerClusterOffsetInFullTensor = distributedOutputType.getPerClusterMemoryShapeOffsets();
     const auto modeOutput = outputDistrAttr.getMode().getValue();
@@ -178,9 +179,9 @@ std::pair<SmallVector<int64_t>, SmallVector<int64_t>> compute5DInputWorkload(NCE
     const auto outWlStart = parseIntArrayAttr<int64_t>(dpuTaskOp.getOutOffsets());
     const auto outWlSize = parseIntArrayAttr<int64_t>(dpuTaskOp.getOutSizes());
 
-    const auto inputType = nceOp->getOperand(0).getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
     auto fullInputShape = inputType.getShape();
-    if (auto inputSparseType = inputType.dyn_cast<VPU::SparseTensorType>()) {
+    if (auto inputSparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(inputType)) {
         auto effectiveSparseOutputType = getEffectiveSparseOutputType(inputSparseType);
         fullInputShape = mlir::cast<NDTypeInterface>(effectiveSparseOutputType).getShape();
     }
@@ -247,9 +248,9 @@ std::pair<SmallVector<int64_t>, SmallVector<int64_t>> computeInputWorkload(NCEOp
 
     const auto outWlSize = parseIntArrayAttr<int64_t>(dpuTaskOp.getOutSizes());
 
-    const auto inputType = nceOp->getOperand(0).getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
     auto fullInputShape = inputType.getShape();
-    if (auto inputSparseType = inputType.dyn_cast<VPU::SparseTensorType>()) {
+    if (auto inputSparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(inputType)) {
         auto effectiveSparseOutputType = getEffectiveSparseOutputType(inputSparseType);
         fullInputShape = mlir::cast<NDTypeInterface>(effectiveSparseOutputType).getShape();
     }
@@ -327,7 +328,7 @@ private:
 void ComputeNCEInputWorkloadsPass::safeRunOnFunc() {
     auto func = getOperation();
 
-    // TODO: Add support for NPU37XX input workloads computation
+    // TODO: Add support for VPUX37XX input workloads computation
     // Ticket: E#63055
 
     func.walk([&](NCEOpInterface nceOp) {

@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
 #include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>

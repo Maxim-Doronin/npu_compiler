@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,6 +19,11 @@ constexpr float INPUT_OVERLAP_THRESHOLD = 2.0;
 
 TilingMode getTilingSupportedMode(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling, Logger log);
 
+// Returns a TilingMode which should be applied to operation and whether it can be prefetched. Caller is
+// supposed to check if prefetching condition is satisfied as this function aims to be thread safe
+// and avoids inspecting parent's strategy.
+std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bool enablePrefetchTiling, Logger log);
+
 mlir::FailureOr<OutputTiling> getLayerTilingStrategy(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling,
                                                      TilingMode& mode, Logger log);
 mlir::FailureOr<OutputTiling> getLayerTilingStrategy(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling,
@@ -29,14 +34,13 @@ mlir::LogicalResult checkAndAlignActInputTiling(vpux::VPU::NCEOpInterface nceOp,
 mlir::Value reifyTile(VPU::TilingBuilderOpInterface origOp, const TileInfo& outputTile, mlir::OpBuilder& builder,
                       Logger log);
 mlir::LogicalResult applyTileStrategy(VPU::TilingBuilderOpInterface origOp, const OutputTiling& tiles,
-                                      mlir::PatternRewriter& rewriter, Logger log);
+                                      mlir::RewriterBase& rewriter, Logger log);
 mlir::Operation* getParentComputeOp(mlir::Operation* op);
 bool prefetchTilingConditionSatisfied(mlir::Operation* op, Logger log);
 bool largeConstPipelineConditionSatisfied(mlir::Operation* op, Logger log);
 bool hasMultiBranches(mlir::Operation* op);
 
 bool archSupportsSwLayerTiling(VPU::ArchKind arch);
-bool opNeedsTiling(mlir::Operation* op, bool enablePrefetchTiling, Logger log);
 bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& outputTile);
 std::optional<DimArr> getSEPConvTilingOrder(mlir::Operation* op);
 std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseOutput(
@@ -64,6 +68,19 @@ std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseO
 
 mlir::FailureOr<OutputTiling> getHWLayerTilingStrategy(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling,
                                                        const std::shared_ptr<LayerCostModel>& costModel, Logger log);
+
+mlir::FailureOr<OutputTiling> getBestHWLayerTilingStrategy(mlir::Operation* op, TilingMode tilingMode,
+                                                           const std::shared_ptr<LayerCostModel>& costModel,
+                                                           bool enablePrefetchTiling, Logger log);
+
+struct StrategyWithCost {
+    Shape strategy;
+    HwLayerTilingStrategyCosts cost;
+};
+
+std::vector<StrategyWithCost> getHwLayerTilingStrategiesWithCost(mlir::Operation* op, TilingMode tilingMode,
+                                                                 const std::shared_ptr<LayerCostModel>& costModel,
+                                                                 Logger log);
 
 enum class EnableShaveDDRAccessOptimization { TRUE, FALSE, AUTO };
 

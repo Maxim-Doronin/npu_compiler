@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -454,23 +454,39 @@ VPUIP::DMADescriptorAttr vpux::VPUIP::ExpandDmaDescriptorGenerator::generate(vpu
     const auto inputPaddingDimSize = inType.getShape()[Dim(padEndAxis)];
     const auto outputPaddingDimSize = outType.getShape()[Dim(padEndAxis)];
     int64_t totalLowerDimSize = 1;
-    int64_t totalHigherDimSize = 1;
     for (auto idx : irange(inOrder.numDims())) {
         auto curPos = inOrder.dimPos(Dim(idx));
-        if (curPos < padEndAxisPos) {
-            totalHigherDimSize *= inType.getShape()[Dim(idx)];
-        } else if (curPos > padEndAxisPos) {
+        if (curPos > padEndAxisPos) {
             totalLowerDimSize *= inType.getShape()[Dim(idx)];
         }
     }
 
-    auto len = vpux::getIntAttr(_ctx, totalHigherDimSize * inputPaddingDimSize * totalLowerDimSize * elemTypeSize);
-    auto srcWidth = vpux::getIntAttr(_ctx, totalHigherDimSize * inputPaddingDimSize * totalLowerDimSize * elemTypeSize);
-    auto srcStride =
-            vpux::getIntAttr(_ctx, totalHigherDimSize * inputPaddingDimSize * totalLowerDimSize * elemTypeSize);
+    const bool isHighestDim = padEndAxisPos > 0;
+    auto getStrideOnPaddingDim = [&](NDTypeInterface type, const DimsOrder& order,
+                                     const int64_t paddingDimSize) -> int64_t {
+        const auto higherDim = isHighestDim ? order.dimAt(padEndAxisPos - 1) : order.dimAt(padEndAxisPos);
+        return isHighestDim ? type.getStrides()[Dim(higherDim)].to<Byte>().count()
+                            : type.getStrides()[Dim(higherDim)].to<Byte>().count() * paddingDimSize;
+    };
+
+    const auto inPaddingStride = getStrideOnPaddingDim(inType, inOrder, inputPaddingDimSize);
+
+    const auto lowerDimByteSize = inputPaddingDimSize * totalLowerDimSize * elemTypeSize;
+    const auto totalTrasferSize = inType.getShape().totalSize() * elemTypeSize;
+
+    // If source buffer is compact, source width and stride should be set as the size of the whole transfer,
+    // otherwise there might performance penalties.
+    const bool isInputStridedOnExpandDim = inPaddingStride > lowerDimByteSize;
+    auto len = vpux::getIntAttr(_ctx, totalTrasferSize);
+    auto srcWidth = vpux::getIntAttr(_ctx, isInputStridedOnExpandDim ? lowerDimByteSize : totalTrasferSize);
+    auto srcStride = vpux::getIntAttr(_ctx, isInputStridedOnExpandDim ? inPaddingStride : totalTrasferSize);
     auto srcPlaneStride = vpux::getIntAttr(_ctx, 0 * elemTypeSize);
-    auto dstWidth = vpux::getIntAttr(_ctx, inputPaddingDimSize * totalLowerDimSize * elemTypeSize);
-    auto dstStride = vpux::getIntAttr(_ctx, outputPaddingDimSize * totalLowerDimSize * elemTypeSize);
+
+    const auto outOrder = outType.getDimsOrder();
+    const auto outPaddingStride = getStrideOnPaddingDim(outType, outOrder, outputPaddingDimSize);
+
+    auto dstWidth = vpux::getIntAttr(_ctx, lowerDimByteSize);
+    auto dstStride = vpux::getIntAttr(_ctx, outPaddingStride);
     auto dstPlaneStride = vpux::getIntAttr(_ctx, 0 * elemTypeSize);
     auto numPlanes = vpux::getIntAttr(_ctx, 1);
 

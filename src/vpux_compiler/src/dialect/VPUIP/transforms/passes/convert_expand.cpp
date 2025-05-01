@@ -6,7 +6,6 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -79,7 +78,7 @@ mlir::Value ConvertExpandPass::applyPadding(const int64_t padAxis, const int64_t
     auto constantOp = constantBuffer.getDefiningOp<Const::DeclareOp>();
     VPUX_THROW_UNLESS(constantOp != nullptr, "Can not get constant Op");
 
-    const auto constShapeType = constantOp.getOutput().getType().cast<NDTypeInterface>();
+    const auto constShapeType = mlir::cast<vpux::NDTypeInterface>(constantOp.getOutput().getType());
     const auto constOuputShape = constShapeType.getShape();
     Shape subViewShape;
     std::copy(inShape.begin(), inShape.end(), std::back_inserter(subViewShape));
@@ -264,8 +263,8 @@ void ConvertExpandPass::safeRunOnFunc() {
     func->walk([&](VPUIP::ExpandOp origOp) {
         _log.trace("Found Expand Operation '{0}'", origOp.getLoc());
 
-        const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-        const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
         const auto elemType = inputType.getElementType();
 
         auto padBeginCheck = llvm::any_of(parseIntArrayAttr<int64_t>(origOp.getPadsBegin()), [](auto padValue) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,8 +13,8 @@ using namespace vpux;
 
 mlir::LogicalResult vpux::VPUIP::GenericReshapeOp::verify() {
     const auto op = getOperation();
-    auto distributedInType = getInput().getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto distributedOutType = getOutput().getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedInType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getInput().getType());
+    auto distributedOutType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getOutput().getType());
     if (distributedInType && distributedOutType) {
         if (!isDistributedCompatibleAfterShapeChangeForViewOps<VPUIP::DistributedBufferType>(distributedInType,
                                                                                              distributedOutType)) {
@@ -23,8 +23,8 @@ mlir::LogicalResult vpux::VPUIP::GenericReshapeOp::verify() {
         }
     }
 
-    const auto inType = getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     if (inType.getNumElements() != outType.getNumElements()) {
         return errorAt(op, "Reshape input and output must have the same number of elements");

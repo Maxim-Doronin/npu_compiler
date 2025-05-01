@@ -7,11 +7,11 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 
 #include "vpux/utils/core/enums.hpp"
 #include "vpux/utils/core/mem_size.hpp"
@@ -119,8 +119,10 @@ mlir::SmallVector<float> getFloatStrides(StridesRef strides);
 // RankedTensorType utilities
 //
 
+mlir::RankedTensorType getTensorType(ShapeRef shape, mlir::Type elemType, DimsOrder order, IndexedSymbolAttr memSpace);
 mlir::RankedTensorType getTensorType(ShapeRef shape, mlir::Type elemType, DimsOrder order, IndexedSymbolAttr memSpace,
-                                     mlir::ArrayAttr bounds = nullptr);
+                                     Bounds bounds, DynamicDimsMask dynamicDimsMask);
+
 ///
 /// \brief Convert RankedTensor type to Memref type
 /// \param [in] tensorType - ranked tensor type

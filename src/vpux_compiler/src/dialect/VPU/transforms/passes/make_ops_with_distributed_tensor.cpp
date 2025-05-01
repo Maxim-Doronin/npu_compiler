@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/utils/overlap_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/IRMapping.h>
@@ -25,6 +26,9 @@ using namespace vpux;
 using namespace VPU;
 
 namespace {
+
+using typeLookupType = llvm::DenseMap<mlir::OpResult, vpux::NDTypeInterface>;
+using inputLookupType = llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int, vpux::NDTypeInterface>>;
 
 //
 // MakeOpsWithDistributedTensorPass
@@ -47,10 +51,6 @@ public:
 private:
     bool _enableExplicitDistributionInfoAttr = false;
     void safeRunOnFunc() final;
-    static void insertDistributedInputTypes(
-            VPU::ClusteredOpInterface clusteredOp, bool hasExplicitDistributedAttr,
-            SiblingOpsAnalysis& siblingsAnalysis,
-            llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int, vpux::NDTypeInterface>>& inputTypeLookup);
 };
 
 mlir::LogicalResult MakeOpsWithDistributedTensorPass::initialize(mlir::MLIRContext* ctx) {
@@ -65,48 +65,6 @@ mlir::LogicalResult MakeOpsWithDistributedTensorPass::initialize(mlir::MLIRConte
     return mlir::success();
 }
 
-void MakeOpsWithDistributedTensorPass::insertDistributedInputTypes(
-        VPU::ClusteredOpInterface clusteredOp, bool hasExplicitDistributedAttr, SiblingOpsAnalysis& siblingsAnalysis,
-        llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int, vpux::NDTypeInterface>>& inputTypeLookup) {
-    llvm::DenseMap<int, vpux::NDTypeInterface> operandLookup;
-    if (mlir::isa<VPU::SWOpInterface>(clusteredOp.getOperation())) {
-        auto origOp = mlir::cast<VPU::SWOpInterface>(clusteredOp.getOperation());
-        const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-        auto* ctx = clusteredOp->getContext();
-        auto numClusters = VPU::getOptimalNumClusters(clusteredOp, getShape(origOp->getResult(0)), strategy);
-        for (auto& operand : origOp->getOpOperands()) {
-            const auto operandType = operand.get().getType().cast<vpux::NDTypeInterface>();
-            const auto activationTensorDistributionMode =
-                    getSWInputTensorDistributionMode(clusteredOp, strategy, operandType);
-            const auto activationTensorNumTiles =
-                    getIntArrayAttr(ctx, getSWInputTensorNumTiles(clusteredOp, numClusters, strategy, operandType));
-
-            // Input alignment is possibly needed to keep compatibility and avoid spilling
-            // Only support:
-            //       NCE_DPU (non SOH/SOHOverlapped)
-            //          |
-            //       NCE_SW  (Clustering/SOK)
-            const auto activationAlignment =
-                    getActivationTensorAlignment(clusteredOp, numClusters, strategy, operandType);
-            const auto activationAlignmentAttr =
-                    activationAlignment.has_value() ? getIntArrayAttr(ctx, activationAlignment.value()) : nullptr;
-
-            operandLookup.insert(std::make_pair(
-                    operand.getOperandNumber(),
-                    getDistributedTypeFromInput(clusteredOp, operand.get(), activationTensorDistributionMode,
-                                                activationTensorNumTiles, activationAlignmentAttr, strategy,
-                                                hasExplicitDistributedAttr, siblingsAnalysis)));
-        }
-    } else {
-        for (auto& operand : clusteredOp->getOpOperands()) {
-            operandLookup.insert(std::make_pair(
-                    operand.getOperandNumber(),
-                    clusteredOp.getDistributedTypeForOpOperand(operand, hasExplicitDistributedAttr, siblingsAnalysis)));
-        }
-    }
-    inputTypeLookup.insert(std::make_pair(clusteredOp.getOperation(), operandLookup));
-}
-
 //
 // safeRunOnModule
 //
@@ -115,24 +73,30 @@ void MakeOpsWithDistributedTensorPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    llvm::DenseMap<mlir::OpResult, vpux::NDTypeInterface> typeLookup;
-    llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int, vpux::NDTypeInterface>> inputTypeLookup;
+    typeLookupType typeLookup;
+    inputLookupType inputTypeLookup;
     auto& siblingsAnalysis = getAnalysis<SiblingOpsAnalysis>();
     func->walk([&](VPU::ClusteredOpInterface clusteredOp) {
         const auto strategyAttr = clusteredOp.getMultiClusterStrategy();
         if (!strategyAttr.has_value()) {
             return;
         }
-        auto strategy = strategyAttr.value();
 
+        // outputs
         for (const auto& opResult : clusteredOp->getResults()) {
-            typeLookup.insert(std::make_pair(
-                    opResult,
-                    getDistributedOutputTensorType(clusteredOp, opResult.getType().cast<vpux::NDTypeInterface>(),
-                                                   siblingsAnalysis, strategy, _enableExplicitDistributionInfoAttr)));
+            auto resultDist = clusteredOp.getDistributedTypeForOpResult(
+                    opResult, strategyAttr.value(), siblingsAnalysis, _enableExplicitDistributionInfoAttr);
+            typeLookup.insert(std::make_pair(opResult, resultDist));
         }
-        insertDistributedInputTypes(clusteredOp, _enableExplicitDistributionInfoAttr, siblingsAnalysis,
-                                    inputTypeLookup);
+
+        // inputs
+        llvm::DenseMap<int, vpux::NDTypeInterface> operandLookup;
+        for (auto& operand : clusteredOp->getOpOperands()) {
+            auto operandDist = clusteredOp.getDistributedTypeForOpOperand(operand, _enableExplicitDistributionInfoAttr,
+                                                                          siblingsAnalysis);
+            operandLookup.insert(std::make_pair(operand.getOperandNumber(), operandDist));
+        }
+        inputTypeLookup.insert(std::make_pair(clusteredOp.getOperation(), operandLookup));
     });
 
     mlir::RewritePatternSet patterns(&ctx);
@@ -147,8 +111,9 @@ void MakeOpsWithDistributedTensorPass::safeRunOnFunc() {
 
     target.markUnknownOpDynamicallyLegal([&](mlir::Operation* op) {
         if (auto clusteredOp = mlir::dyn_cast<ClusteredOpInterface>(op)) {
-            if (op->hasAttr(multiClusterStrategy))
+            if (op->hasAttr(multiClusterStrategy)) {
                 return false;
+            }
         }
 
         return true;

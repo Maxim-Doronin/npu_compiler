@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -31,6 +31,5 @@ void vpux::arch37xx::registerBufferizableOpInterfaces(mlir::DialectRegistry& reg
     vpux::registerSoftwareLayerBufferizableOpInterfaces(registry);
     vpux::registerVpuNceBufferizableOpInterfaces(registry);
     vpux::registerVPUBufferizableOpInterfaces(registry);
-    vpux::registerNCEClusterTilingBufferizableOpInterfaces(registry);
     registerConvertOpBufferizableOpInterfaces(registry);
 }

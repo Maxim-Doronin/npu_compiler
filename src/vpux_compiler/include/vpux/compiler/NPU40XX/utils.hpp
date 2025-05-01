@@ -22,11 +22,11 @@ bool isConvertSupportedOnDMA(T convertOp) {
     // Remove arch check when one-shot enabled, TODO: E#113196
     auto arch = VPU::getArch(module);
     if (arch < VPU::ArchKind::NPU40XX) {
-        // Feature is only tested on 40XX
+        // Feature is only tested on 40XX+
         return false;
     }
 
-    auto inputElementType = convertOp.getInput().getType().template cast<NDTypeInterface>().getElementType();
+    auto inputElementType = mlir::cast<vpux::NDTypeInterface>(convertOp.getInput().getType()).getElementType();
     auto outputElementType = convertOp.getDstElemType();
 
     return inputElementType.isF32() && (outputElementType.isBF16() || outputElementType.isF16());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -194,13 +194,14 @@ bool MergeVFRegionRewriter::alignMCTiling(VPU::VerticalFusionOp currentOp, VPU::
     };
 
     const auto getOutputDistributedType = [](VPU::ClusteredOpInterface clusteredOp) {
-        const auto outputType = clusteredOp->getResult(0).getType().cast<NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
         const auto numClusters =
                 clusteredOp.getOptimalNumClusters(outputType.getShape(), clusteredOp.getMultiClusterStrategy().value());
 
-        auto ndType = VPU::getDistributedOutputTypeFromOp(clusteredOp, outputType, numClusters).cast<NDTypeInterface>();
-        if (auto sparseTensorType = ndType.dyn_cast<VPU::SparseTensorType>()) {
-            ndType = sparseTensorType.getData().cast<NDTypeInterface>();
+        auto ndType = mlir::cast<vpux::NDTypeInterface>(
+                VPU::getDistributedOutputTypeFromOp(clusteredOp, outputType, numClusters));
+        if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(ndType)) {
+            ndType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
         }
 
         return ndType.dyn_cast_or_null<VPU::DistributedTensorType>();
@@ -208,20 +209,20 @@ bool MergeVFRegionRewriter::alignMCTiling(VPU::VerticalFusionOp currentOp, VPU::
 
     const auto getInputDistributedType = [](VPU::ClusteredOpInterface clusteredOp, mlir::Value inputOperand,
                                             bool& isSparsed) {
-        const auto inputType = inputOperand.getType().cast<NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(inputOperand.getType());
         isSparsed = false;
         const auto numClusters =
                 clusteredOp.getOptimalNumClusters(inputType.getShape(), clusteredOp.getMultiClusterStrategy().value());
 
         auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(clusteredOp.getOperation());
 
-        auto ndType =
-                (nceOp != nullptr && nceOp.getWeightsOperand() == inputOperand)
-                        ? VPU::getDistributedFilterTypeFromOp(nceOp, inputType, numClusters).cast<NDTypeInterface>()
-                        : VPU::getDistributedActivationTypeFromOp(clusteredOp, inputType, numClusters)
-                                  .cast<NDTypeInterface>();
-        if (auto sparseTensorType = ndType.dyn_cast<VPU::SparseTensorType>()) {
-            ndType = sparseTensorType.getData().cast<NDTypeInterface>();
+        auto ndType = (nceOp != nullptr && nceOp.getWeightsOperand() == inputOperand)
+                              ? mlir::cast<vpux::NDTypeInterface>(
+                                        VPU::getDistributedFilterTypeFromOp(nceOp, inputType, numClusters))
+                              : mlir::cast<vpux::NDTypeInterface>(
+                                        VPU::getDistributedActivationTypeFromOp(clusteredOp, inputType, numClusters));
+        if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(ndType)) {
+            ndType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
             isSparsed = true;
         }
 
@@ -285,7 +286,7 @@ bool MergeVFRegionRewriter::alignMCTiling(VPU::VerticalFusionOp currentOp, VPU::
             return false;
         }
         if (isPrevOutOpWithMCStrategy && isCurrInOpWithMCStrategy) {
-            auto currInputOperand = currInputViewLikeOps.empty() ? currInputArg.cast<mlir::Value>()
+            auto currInputOperand = currInputViewLikeOps.empty() ? mlir::cast<mlir::Value>(currInputArg)
                                                                  : currInputViewLikeOps.back()->getResult(0);
             bool isSparsed = false;
             auto actualCurrInDistType = getInputDistributedType(mlir::cast<VPU::ClusteredOpInterface>(currInputOp),
@@ -401,7 +402,7 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
         auto spilling = dim.has_value() &&
                         (isSpatialTiling(tilingDims) || (nceOp == nullptr || nceOp.getWeightsOperand() == nullptr));
         auto hasSpilledParents = llvm::any_of(operands, [&](mlir::Value value) {
-            if (auto arg = value.dyn_cast<mlir::BlockArgument>()) {
+            if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(value)) {
                 auto parentOperand = vfConfig.getSubgraph().getOperand(arg.getArgNumber());
                 auto parentOp = findParent(parentOperand);
                 return !isCmxOperation(parentOp, false) ||
@@ -436,7 +437,7 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
         if (spilling || hasSpilledParents) {
             for (auto operandValue : operands | indexed) {
                 auto operand = operandValue.value();
-                auto arg = operand.dyn_cast<mlir::BlockArgument>();
+                auto arg = mlir::dyn_cast<mlir::BlockArgument>(operand);
                 if (!spilling && arg != nullptr) {
                     auto parentOp = vfConfig.getSubgraph().getOperand(arg.getArgNumber()).getDefiningOp();
                     if (isCmxOperation(parentOp, false) &&
@@ -595,7 +596,7 @@ std::optional<int64_t> MergeVFRegionRewriter::getOptimalTilingStrategy(
     auto maxNTiles = maxTiles;
 
     std::optional<int64_t> result;
-    auto outType = config.getSubgraph()->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto outType = mlir::cast<vpux::NDTypeInterface>(config.getSubgraph()->getResult(0).getType());
     auto tilingArray = SmallVector<int64_t>(outType.getRank(), 1);
     tilingArray[dim.ind()] = minNTiles;
     if (minTiles == maxTiles) {

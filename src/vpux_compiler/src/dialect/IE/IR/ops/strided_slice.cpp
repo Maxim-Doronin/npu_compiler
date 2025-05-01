@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,6 +17,8 @@
 
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/range.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 #include <optional>
 
@@ -66,14 +68,15 @@ mlir::LogicalResult vpux::IE::StridedSliceOp::inferReturnTypeComponents(
     const auto inputData = extractData(loc, slice);
     const auto beginsShape =
             slice.getBegins() != nullptr
-                    ? SmallVector<int64_t>(slice.getBegins().getType().cast<mlir::ShapedType>().getShape())
+                    ? SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(slice.getBegins().getType()).getShape())
                     : SmallVector<int64_t>{};
-    const auto endsShape = slice.getEnds() != nullptr
-                                   ? SmallVector<int64_t>(slice.getEnds().getType().cast<mlir::ShapedType>().getShape())
-                                   : SmallVector<int64_t>{};
+    const auto endsShape =
+            slice.getEnds() != nullptr
+                    ? SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(slice.getEnds().getType()).getShape())
+                    : SmallVector<int64_t>{};
     const auto stridesShape =
             slice.getStrides() != nullptr
-                    ? SmallVector<int64_t>(slice.getStrides().getType().cast<mlir::ShapedType>().getShape())
+                    ? SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(slice.getStrides().getType()).getShape())
                     : SmallVector<int64_t>{};
 
     const auto beginMask = parseIntArrayAttr<int64_t>(slice.getBeginMask());
@@ -93,13 +96,12 @@ mlir::LogicalResult vpux::IE::StridedSliceOp::inferReturnTypeComponents(
         outputShape.push_back(1);
     }
 
-    auto inType = slice.getInput().getType().cast<NDTypeInterface>();
-    const auto outType = inType.changeShape(Shape(outputShape)).cast<mlir::RankedTensorType>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(slice.getInput().getType());
+    const auto outType = mlir::cast<mlir::RankedTensorType>(inType.changeShape(Shape(outputShape)));
 
-    const auto inDataTensorType = slice.getInput().getType().cast<mlir::RankedTensorType>();
-    mlir::ArrayAttr outBoundsAttr =
-            !outputShapeInfo.bounds.empty() ? getIntArrayAttr(ctx, outputShapeInfo.bounds) : nullptr;
-    const auto outDesc = vpux::getTensorAttr(vpux::getOrder(inDataTensorType), /*memSpace=*/nullptr, outBoundsAttr);
+    const auto inDataTensorType = mlir::cast<mlir::RankedTensorType>(slice.getInput().getType());
+    auto outBounds = !outputShapeInfo.bounds.empty() ? outputShapeInfo.bounds : SmallVector<int64_t>{};
+    auto outDesc = vpux::getTensorAttr(ctx, vpux::getOrder(inDataTensorType), /*memSpace=*/nullptr, Bounds(outBounds));
 
     inferredReturnShapes.emplace_back(outType.getShape(), outType.getElementType(), outDesc);
 
@@ -275,7 +277,7 @@ mlir::LogicalResult ConvertNegStrideStridedSlice2Reverse::matchAndRewrite(IE::St
     }
 
     // If the data is reversed all along 1 axis, the StridedSlice can be replaced by ReverseSequenceOp
-    const auto inDataType = slice.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inDataType = mlir::cast<vpux::NDTypeInterface>(slice.getInput().getType());
     const auto inDataShape = inDataType.getShape().raw();
     const auto begins = inputData.begins;
     const auto ends = inputData.ends;

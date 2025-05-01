@@ -22,10 +22,6 @@ def DeduceDynamicMappedInferenceVersion : PassBase<"deduce-dynamic-mi", "vpux::M
     }];
 
     let constructor = "vpux::VPURegMapped::createDeduceDynamicMappedInferenceVersionPass()";
-
-    let dependentDialects = [
-        "vpux::ELF::ELFDialect"
-    ];
 }
 
 #endif

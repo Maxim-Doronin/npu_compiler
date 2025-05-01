@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,8 +26,8 @@ mlir::LogicalResult vpux::VPU::GatherElementsOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inIndicesType = gatherElements.getIndices().getType().cast<vpux::NDTypeInterface>();
-    const auto inInputType = gatherElements.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inIndicesType = mlir::cast<vpux::NDTypeInterface>(gatherElements.getIndices().getType());
+    const auto inInputType = mlir::cast<vpux::NDTypeInterface>(gatherElements.getInput().getType());
 
     const auto outType = inIndicesType.changeElemType(inInputType.getElementType());
     inferredReturnTypes.push_back(outType);
@@ -57,7 +57,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherElementsOp::getTilingStrategy(Til
                     baseOp->getName(), getLoc());
     const auto axis = getAxis();
 
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
 
     DimArr tileDimOrder;

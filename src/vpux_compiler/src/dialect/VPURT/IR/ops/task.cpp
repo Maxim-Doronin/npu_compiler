@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,13 +22,15 @@ mlir::Operation* vpux::VPURT::TaskOp::getInnerTaskOp() {
 
 void vpux::VPURT::TaskOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
                                 mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers) {
-    build(odsBuilder, odsState, nullptr, waitBarriers, updateBarriers, nullptr);
+    build(odsBuilder, odsState, nullptr, waitBarriers, updateBarriers, nullptr, /*isTrailingSWLayer*/ false,
+          /*wlmPage*/ nullptr);
 }
 
 void vpux::VPURT::TaskOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
                                 mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
                                 mlir::Value enqueueBarrier) {
-    build(odsBuilder, odsState, nullptr, waitBarriers, updateBarriers, enqueueBarrier);
+    build(odsBuilder, odsState, nullptr, waitBarriers, updateBarriers, enqueueBarrier, /*isTrailingSWLayer*/ false,
+          /*wlmPage*/ nullptr);
 }
 
 VPU::ExecutorKind vpux::VPURT::TaskOp::getExecutorKind() {
@@ -86,18 +88,18 @@ SmallVector<int64_t> vpux::VPURT::getDMATaskPorts(TaskOp task) {
 
         const auto input = *clusterTilingOp.getInputs().begin();
         const auto output = *clusterTilingOp.getOutputs().begin();
-        auto inputType = input.getType().cast<vpux::NDTypeInterface>();
-        auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
-        const auto distributedType = inputType.isa<VPUIP::DistributedBufferType>()
-                                             ? inputType.dyn_cast<VPUIP::DistributedBufferType>()
-                                             : outputType.dyn_cast<VPUIP::DistributedBufferType>();
+        const auto distributedType = mlir::isa<vpux::VPUIP::DistributedBufferType>(inputType)
+                                             ? mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType)
+                                             : mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
 
         VPUX_THROW_UNLESS(distributedType != nullptr, "At least one of operands must have DistributedBuffer type");
 
         int64_t numClusters = 0;
         const auto checkSegmentedOrOverlapped = [&](vpux::NDTypeInterface type) {
-            const auto distType = type.dyn_cast<VPUIP::DistributedBufferType>();
+            const auto distType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type);
             if (distType == nullptr) {
                 return false;
             }

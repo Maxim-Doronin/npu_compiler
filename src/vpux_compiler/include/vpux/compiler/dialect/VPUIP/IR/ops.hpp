@@ -5,26 +5,15 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
+#include "vpux/compiler/utils/types.hpp"
 
-#include <mlir/Dialect/Func/IR/FuncOps.h>
-#include <mlir/Dialect/Quant/QuantOps.h>
-#include <mlir/Dialect/SCF/IR/SCF.h>
-#include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/Dialect.h>
-#include <mlir/IR/DialectImplementation.h>
-#include <mlir/IR/SymbolTable.h>
-#include <mlir/Interfaces/CopyOpInterface.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
+#include <mlir/Interfaces/ViewLikeInterface.h>
 
 //
 // Generated

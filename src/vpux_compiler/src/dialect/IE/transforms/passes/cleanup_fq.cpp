@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -93,6 +95,12 @@ private:
 };
 
 mlir::LogicalResult CleanupFQRewriter::matchAndRewrite(IE::FakeQuantizeOp fqOp, mlir::PatternRewriter& rewriter) const {
+    auto levels = fqOp.getLevels();
+    // Maximum number of levels that exceeds I8/U8 storage type
+    if (!levels.has_value() || *levels > MAX_LEVELS) {
+        return mlir::failure();
+    }
+
     if (!isViewLikeOrFQ(fqOp.getInput().getDefiningOp())) {
         return mlir::failure();
     }

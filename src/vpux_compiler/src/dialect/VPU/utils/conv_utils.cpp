@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -84,9 +85,9 @@ bool vpux::VPU::isSupportedConv(IE::ConvolutionOp op, LogCb logCb, bool checkLay
 
     const auto pads = PadInfo(op.getPadsBegin(), op.getPadsEnd());
 
-    const auto inputType = op.getInput().getType().cast<NDTypeInterface>();
-    const auto filterType = op.getFilter().getType().cast<NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     return VPU::isNCEConvSupported(op, inputType, filterType, outputType, dilations, KY, KX, SY, SX, pads, checkLayout,
                                    checkChannelAlignment, logCb, supportsInputActCompression);
@@ -162,13 +163,9 @@ bool isSupportedSEPTransposedConvImpl(mlir::Operation* op, NDTypeInterface input
 
 bool VPU::isSupportedSEPTransposedConv(IE::TransposedConvolutionOp op, LogCb logCb, bool checkLayout,
                                        bool checkChannelAlignment, bool supportsInputActCompression) {
-    if (!isFilterConst(op.getFilter())) {
-        logCb(formatv("The filter is not a constant"));
-        return false;
-    }
-    auto inputType = op.getInput().getType().cast<NDTypeInterface>();
-    auto filterType = op.getFilter().getType().cast<NDTypeInterface>();
-    auto outputType = op.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     auto origPads = PadInfo(op.getPadsBegin(), op.getPadsEnd());
     if (inputType.getShape().size() != 4) {
         logCb(formatv("Only 4D inputs are supported, got {0} dimensions", inputType.getShape().size()));
@@ -182,10 +179,14 @@ bool VPU::isSupportedSEPTransposedConv(IE::TransposedConvolutionOp op, LogCb log
         logCb(formatv("Only 4D outputs are supported, got {0} dimensions", outputType.getShape().size()));
         return false;
     }
+    if (inputType.getShape()[Dims4D::Act::C] != filterType.getShape()[Dims4D::Filter::IC]) {
+        logCb(formatv("The filter channels are inconsistent with activation channels"));
+        return false;
+    }
 
     return isSupportedSEPTransposedConvImpl(op.getOperation(), inputType, filterType, outputType, op.getStrides(),
-                                            op.getDilations(), op.getOutputPadding(), origPads, logCb, checkLayout,
-                                            checkChannelAlignment, supportsInputActCompression);
+                                            op.getDilations(), op.getSpatialOutputPadding(), origPads, logCb,
+                                            checkLayout, checkChannelAlignment, supportsInputActCompression);
 }
 
 bool VPU::isSupportedSEPTransposedConv(IE::GroupTransposedConvolutionOp op, LogCb logCb, bool checkLayout,
@@ -193,9 +194,9 @@ bool VPU::isSupportedSEPTransposedConv(IE::GroupTransposedConvolutionOp op, LogC
     if (!isFilterConst(op.getFilter())) {
         return false;
     }
-    auto inputType = op.getInput().getType().cast<NDTypeInterface>();
-    auto filterType = op.getFilter().getType().cast<NDTypeInterface>();
-    auto outputType = op.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     auto origPads = PadInfo(op.getPadsBegin(), op.getPadsEnd());
     if (inputType.getShape().size() != 4) {
         logCb(formatv("Only 4D inputs are supported, got {0} dimensions", inputType.getShape().size()));
@@ -211,18 +212,15 @@ bool VPU::isSupportedSEPTransposedConv(IE::GroupTransposedConvolutionOp op, LogC
     }
 
     return isSupportedSEPTransposedConvImpl(op.getOperation(), inputType, filterType, outputType, op.getStrides(),
-                                            op.getDilations(), op.getOutputPadding(), origPads, logCb, checkLayout,
-                                            checkChannelAlignment, supportsInputActCompression);
+                                            op.getDilations(), op.getSpatialOutputPadding(), origPads, logCb,
+                                            checkLayout, checkChannelAlignment, supportsInputActCompression);
 }
 
 bool VPU::isSupportedSEPTransposedConv(VPU::TransposedConvolutionOp op, LogCb logCb, bool checkLayout,
                                        bool checkChannelAlignment, bool supportsInputActCompression) {
-    if (!isFilterConst(op.getFilter())) {
-        return false;
-    }
-    auto inputType = op.getInput().getType().cast<NDTypeInterface>();
-    auto filterType = op.getFilter().getType().cast<NDTypeInterface>();
-    auto outputType = op.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     auto origPads = PadInfo(op.getPadsBegin(), op.getPadsEnd());
     if (inputType.getShape().size() != 4) {
         logCb(formatv("Only 4D inputs are supported, got {0} dimensions", inputType.getShape().size()));
@@ -236,15 +234,19 @@ bool VPU::isSupportedSEPTransposedConv(VPU::TransposedConvolutionOp op, LogCb lo
         logCb(formatv("Only 4D outputs are supported, got {0} dimensions", outputType.getShape().size()));
         return false;
     }
+    if (inputType.getShape()[Dims4D::Act::C] != filterType.getShape()[Dims4D::Filter::IC]) {
+        logCb(formatv("The filter channels are inconsistent with activation channels"));
+        return false;
+    }
 
     return isSupportedSEPTransposedConvImpl(op.getOperation(), inputType, filterType, outputType, op.getStrides(),
-                                            op.getDilations(), op.getOutputPadding(), origPads, logCb, checkLayout,
-                                            checkChannelAlignment, supportsInputActCompression);
+                                            op.getDilations(), op.getSpatialOutputPadding(), origPads, logCb,
+                                            checkLayout, checkChannelAlignment, supportsInputActCompression);
 }
 
 std::optional<bool> VPU::isSEPConvCompatibleWithClusterStrategy(VPU::NCEConvolutionOp nceConv,
                                                                 VPU::MultiClusterStrategy strategy) {
-    auto sparseInput = nceConv.getInput().getType().dyn_cast<VPU::SparseTensorType>();
+    auto sparseInput = mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceConv.getInput().getType());
     if (sparseInput == nullptr) {
         return std::nullopt;
     }

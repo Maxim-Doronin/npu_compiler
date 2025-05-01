@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,10 +9,12 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_scheduling_factory.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 
 #include <mlir/Dialect/Linalg/IR/Linalg.h>
 #include <mlir/Dialect/Math/IR/Math.h>
 #include <mlir/IR/IRMapping.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_VFTILING
@@ -47,8 +49,10 @@ private:
     void adjustInputShape(mlir::PatternRewriter& rewriter, mlir::Operation* operation, InputTiling& inputTiling,
                           mlir::IRMapping& mapper, TilingStorage& tilingStorage,
                           const TilingOperationStorage::UPtr& opStorage, int64_t tilingIndex, Dim axis) const;
-    void processOffset(mlir::Value operand, TilingStorage& tilingStorage, const TilingOperationStorage::UPtr& opStorage,
-                       TileInfo& originalTiling, int64_t tilingIndex, Dim axis, ShapeRef expectedShape) const;
+    void processOffset(mlir::Value operand, const TilingOperationStorage::UPtr& opStorage, TileInfo& originalTiling,
+                       int64_t tilingIndex, Dim axis, ShapeRef expectedShape) const;
+    bool processBlockArgument(mlir::BlockArgument blockArg, TilingStorage& tilingStorage, TileInfo& originalTiling,
+                              int64_t tilingIndex, Dim axis) const;
     void applyLinearTiling(const int64_t numTiles, VFConfig& config, SmallVector<mlir::Value>& resultTileVals,
                            SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure) const;
     void applyPipelinedTiling(const int64_t numTiles, VFConfig& config, SmallVector<mlir::Value>& resultTileVals,
@@ -60,8 +64,36 @@ private:
     Logger _log;
 };
 
-void VerticalFusionTilingRewriter::processOffset(mlir::Value operand, TilingStorage& tilingStorage,
-                                                 const TilingOperationStorage::UPtr& opStorage,
+bool VerticalFusionTilingRewriter::processBlockArgument(mlir::BlockArgument blockArg, TilingStorage& tilingStorage,
+                                                        TileInfo& originalTiling, int64_t tilingIndex, Dim axis) const {
+    auto& offset = originalTiling.offsets[axis];
+    const auto storageInfo = tilingStorage.get(blockArg.getArgNumber(), tilingIndex);
+    VPUX_THROW_WHEN(!storageInfo.has_value(), "Tiling info for argument {0} with index {1} not found", blockArg,
+                    tilingIndex);
+
+    auto tileInfo = storageInfo.value();
+    VPUX_THROW_UNLESS(static_cast<size_t>(axis.ind()) < tileInfo.shape.size(), "Got invalid tiling shape size {0}",
+                      tileInfo.shape.size());
+
+    const auto inputOffset = tileInfo.offsets[axis];
+    const auto inputDimShape = tileInfo.shape[axis];
+    const auto origDimSize = originalTiling.shape[axis];
+
+    _log.trace("Input Offset {0}, shape {1} ==> offset: {2}, shape: {3} ", inputOffset, inputDimShape, offset,
+               origDimSize);
+
+    if (offset >= inputOffset && (inputOffset + inputDimShape) >= (offset + origDimSize)) {
+        offset -= inputOffset;
+        return true;
+    }
+
+    _log.trace("invalid offsets: Input Offset {0}, shape {1} ==> offset: {2}, shape: {3} ", inputOffset, inputDimShape,
+               offset, origDimSize);
+
+    return false;
+}
+
+void VerticalFusionTilingRewriter::processOffset(mlir::Value operand, const TilingOperationStorage::UPtr& opStorage,
                                                  TileInfo& originalTiling, int64_t tilingIndex, Dim axis,
                                                  ShapeRef expectedShape) const {
     auto& offset = originalTiling.offsets[axis];
@@ -69,41 +101,8 @@ void VerticalFusionTilingRewriter::processOffset(mlir::Value operand, TilingStor
         return;
     }
 
-    const auto shiftOffsetBlockArg = [&](mlir::BlockArgument blockArg) {
-        // in case previous operation is outside the block and
-        // operand is block argument, correct offset on its offset from tiling info
-        if (blockArg == nullptr) {
-            return;
-        }
-
-        const auto storageInfo = tilingStorage.get(blockArg.getArgNumber(), tilingIndex);
-        VPUX_THROW_WHEN(!storageInfo.has_value(), "Tiling info for argument {0} with index {1} not found", blockArg,
-                        tilingIndex);
-
-        auto tileInfo = storageInfo.value();
-
-        VPUX_THROW_UNLESS(static_cast<size_t>(axis.ind()) < tileInfo.shape.size(), "Got invalid tiling shape size {0}",
-                          tileInfo.shape.size());
-        const auto inputOffset = tileInfo.offsets[axis];
-        const auto inputDimShape = tileInfo.shape[axis];
-        const auto origDimSize = originalTiling.shape[axis];
-
-        _log.trace("Input Offset {0}, shape {1} ==> offset: {2}, shape: {3} ", inputOffset, inputDimShape, offset,
-                   origDimSize);
-
-        VPUX_THROW_WHEN((inputOffset > offset) || ((inputOffset + inputDimShape) < (offset + origDimSize)),
-                        "Got invalid offsets");
-        offset -= inputOffset;
-    };
-
-    if (auto blockArg = operand.dyn_cast<mlir::BlockArgument>()) {
-        shiftOffsetBlockArg(blockArg);
-        return;
-    }
-
     auto operandOp = operand.getDefiningOp();
     if (operandOp != nullptr) {
-        VPUX_THROW_WHEN(operandOp == nullptr, "Can not get defining op for '{0}'", operand);
         auto inputOutputTiling = opStorage->get(operandOp, tilingIndex);
         VPUX_THROW_UNLESS(inputOutputTiling.has_value(), "Couldn't find tiling info at {0}", operandOp->getLoc());
         const auto inputOutputTilingPair = inputOutputTiling.value();
@@ -201,13 +200,34 @@ void VerticalFusionTilingRewriter::adjustInputShape(mlir::PatternRewriter& rewri
         // which might happen when bigger tile was chosen for same block argument
         // slice operation is needed after the output with correct offsets
         // calculated based on tiling information of current operation and previous one
-        _log.trace("Offset before {0}, shape {1}", originalTiling.offsets, originalTiling.shape);
+        _log.trace("op {0}, Offset before {1}, shape {2}", operation->getLoc(), originalTiling.offsets,
+                   originalTiling.shape);
 
-        processOffset(operand, tilingStorage, opStorage, originalTiling, tilingIndex, axis, expectedShape);
-        _log.trace("Offset after {0}", originalTiling.offsets);
-
+        mlir::Value opSlice;
         const auto valName = printToString("input {0}", opIndex);
-        auto opSlice = makeTile(rewriter, operation->getLoc(), expectedOp, originalTiling, valName);
+        auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(operand);
+        if (blockArg != nullptr) {
+            if (!processBlockArgument(blockArg, tilingStorage, originalTiling, tilingIndex, axis)) {
+                auto sliceOp = mlir::dyn_cast_or_null<VPU::SliceOp>(expectedOp.getDefiningOp());
+                VPUX_THROW_WHEN(sliceOp == nullptr || sliceOp.getSource() == operand,
+                                "Can't get the operand from Slice");
+
+                auto inputOutputTiling = opStorage->get(operation, tilingIndex);
+                VPUX_THROW_UNLESS(inputOutputTiling.has_value(), "Couldn't find tiling info at {0}",
+                                  operation->getLoc());
+
+                const auto inputTiling = inputOutputTiling.value().first.tiles[blockArg.getArgNumber()];
+                opSlice = makeTile(rewriter, operation->getLoc(), sliceOp.getSource(), inputTiling, valName);
+            } else {
+                opSlice = makeTile(rewriter, operation->getLoc(), expectedOp, originalTiling, valName);
+            }
+        } else {
+            processOffset(operand, opStorage, originalTiling, tilingIndex, axis, expectedShape);
+            opSlice = makeTile(rewriter, operation->getLoc(), expectedOp, originalTiling, valName);
+        }
+
+        _log.trace("Offset after {0}, shape {1} expectedOp {2}", originalTiling.offsets, originalTiling.shape,
+                   expectedOp);
 
         mapper.map(operand, opSlice);
     }
@@ -263,7 +283,7 @@ void VerticalFusionTilingRewriter::applyPipelinedTiling(const int64_t numTiles, 
 
 mlir::LogicalResult VerticalFusionTilingRewriter::matchAndRewrite(VPU::VerticalFusionOp vfOp,
                                                                   mlir::PatternRewriter& rewriter) const {
-    const auto tilingStrategy = parseIntArrayAttr<int64_t>(vfOp.getTilingStrategy().cast<mlir::ArrayAttr>());
+    const auto tilingStrategy = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(vfOp.getTilingStrategy()));
 
     const auto numTiledAxis = llvm::count_if(tilingStrategy, [](auto num) {
         return num > 1;
@@ -294,8 +314,8 @@ mlir::LogicalResult VerticalFusionTilingRewriter::matchAndRewrite(VPU::VerticalF
     const auto tilingProcedure = [&](int64_t index, mlir::Operation* op, mlir::Value& currentResult,
                                      Shape& currentTile) {
         for (auto operand : op->getOperands()) {
-            if (auto blockArg = operand.dyn_cast<mlir::BlockArgument>()) {
-                const auto valName = printToString("input {0}", index);
+            if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
+                const auto valName = printToString("ba_input {0}", index);
                 auto origInput = vfOp.getOperand(blockArg.getArgNumber());
                 auto tileInfo = tilingStorage.get(blockArg.getArgNumber(), index);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,27 +26,41 @@ namespace {
 
 class ResolveTaskLocationPass final : public VPUMI40XX::impl::ResolveTaskLocationBase<ResolveTaskLocationPass> {
 public:
-    ResolveTaskLocationPass(Logger log) {
+    explicit ResolveTaskLocationPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
-        // Needs to be in the order that RT expects
-        _supportedTaskTypes = {VPURegMapped::TaskType::DPUInvariant,
-                               VPURegMapped::TaskType::DPUVariant,
-                               VPURegMapped::TaskType::ActKernelRange,
-                               VPURegMapped::TaskType::ActKernelInvocation,
-                               VPURegMapped::TaskType::DMA,
-                               VPURegMapped::TaskType::M2I};
     }
 
 private:
+    struct TaskBufferSize {
+        TaskBufferSize(size_t dynamicSize, size_t staticSize): dynamicSize(dynamicSize), staticSize(staticSize){};
+        TaskBufferSize() = default;
+
+        size_t dynamicSize = 0;
+        size_t staticSize = 0;
+    };
+    template <typename Content>
+    using MetadataBuffersContainerType =
+            llvm::SmallVector<llvm::DenseMap<VPURegMapped::TaskType, llvm::SmallVector<Content>>>;
+    struct MetadataBuffersContainer {
+        MetadataBuffersContainerType<llvm::SmallVector<mlir::Value>> data;
+        MetadataBuffersContainerType<TaskBufferSize> sizes;
+    };
+
+    llvm::SmallVector<VPURegMapped::TaskType> _supportedTaskTypes = {VPURegMapped::TaskType::DPUInvariant,
+                                                                     VPURegMapped::TaskType::DPUVariant,
+                                                                     VPURegMapped::TaskType::ActKernelRange,
+                                                                     VPURegMapped::TaskType::ActKernelInvocation,
+                                                                     VPURegMapped::TaskType::DMA,
+                                                                     VPURegMapped::TaskType::M2I};
     struct MaxTileInfo {
         std::unordered_map<VPURegMapped::TaskType, size_t> maxTilePerTaskType;
         size_t maxUsedTile;
     };
 
     template <VPURegMapped::TaskType type>
-    std::array<VPURegMapped::TaskBufferSize, VPUMI40XX::MetadataBufferSize<type>::listCount>
-    getOptimalTaskCountsPerList(llvm::ArrayRef<size_t> defaultTaskCounts,
-                                VPUMI40XX::MappedInferenceOp mappedInferenceOp, const MaxTileInfo& maxTileInfo) {
+    std::array<TaskBufferSize, VPUMI40XX::MetadataBufferSize<type>::listCount> getOptimalTaskCountsPerList(
+            llvm::ArrayRef<size_t> defaultTaskCounts, VPUMI40XX::MappedInferenceOp mappedInferenceOp,
+            const MaxTileInfo& maxTileInfo) {
         VPUX_THROW_UNLESS(mappedInferenceOp != nullptr,
                           "Mapped Inference Op Interface member needs to be initialized first.");
         std::array<std::vector<size_t>, VPUMI40XX::MetadataBufferSize<type>::listCount> sizeCountPerListAndTile;
@@ -59,7 +73,7 @@ private:
             }
         }
 
-        std::array<VPURegMapped::TaskBufferSize, VPUMI40XX::MetadataBufferSize<type>::listCount> maxTaskCountsPerList;
+        std::array<TaskBufferSize, VPUMI40XX::MetadataBufferSize<type>::listCount> maxTaskCountsPerList;
 
         switch (type) {
         case VPURegMapped::TaskType::DMA: {
@@ -118,13 +132,15 @@ private:
             sizesPerList.resize(VPUMI40XX::MetadataBufferSize<type>::listCount);
             for (auto [listIdx, size] : sizesPerList | indexed) {
                 auto& taskBufferSize = size;
-                taskBufferSize =
-                        tileIdx < maxTileInfo.maxTilePerTaskType[type]
-                                ? optimalTaskCountsPerList[listIdx]
-                                : VPURegMapped::TaskBufferSize(0, optimalTaskCountsPerList[listIdx].staticSize);
+                taskBufferSize = tileIdx < maxTileInfo.maxTilePerTaskType[type]
+                                         ? optimalTaskCountsPerList[listIdx]
+                                         : TaskBufferSize(0, optimalTaskCountsPerList[listIdx].staticSize);
             }
         }
     }
+
+    void createTaskLocationBuffers(VPURegMapped::TaskBufferLayoutOp taskLayoutOp,
+                                   MetadataBuffersContainer& metadataBuffers);
 
     void safeRunOnFunc() final;
 };
@@ -143,6 +159,58 @@ const std::unordered_map<VPURegMapped::TaskType, size_t> taskBinarySize40XX = {
 // arch-specific way
 size_t getTaskBinarySize(VPURegMapped::TaskType taskType, [[maybe_unused]] VPU::ArchKind arch) {
     return taskBinarySize40XX.at(taskType);
+}
+
+void ResolveTaskLocationPass::createTaskLocationBuffers(VPURegMapped::TaskBufferLayoutOp taskLayoutOp,
+                                                        MetadataBuffersContainer& metadataBuffers) {
+    auto function = getOperation();
+    auto builder = mlir::OpBuilder::atBlockBegin(&function.getBody().front());
+    auto context = function.getContext();
+
+    auto populateTaskBuffers = [&](size_t tile, VPURegMapped::TaskType type, const auto& sizesPerTaskType) {
+        // order of DeclareTaskBuffer is important as it must be aligned with firmware expectations
+        // tile0: DPUInvariant -> DPUVariant -> Ranges -> Invocations -> DMA from DDR -> DMA from CMX
+        // tile1: DPUInvariant -> DPUVariant -> Ranges -> Invocations -> DMA from DDR -> DMA from CMX
+        // ...
+        const auto sizesPerList = sizesPerTaskType.lookup(type);
+        auto& metadataBuffersPerTaskType = metadataBuffers.data[tile][type];
+        metadataBuffersPerTaskType.resize(sizesPerList.size());
+        for (const auto& entryPerList : llvm::enumerate(sizesPerList)) {
+            const auto list = entryPerList.index();
+            const auto sizePerList =
+                    entryPerList.value().dynamicSize;  // can be modified from "dynamicSize" to "staticSize" if
+                                                       // generating all task buffers is ever needed
+
+            for (auto i : irange(sizePerList)) {
+                auto offsetAttr = mlir::IntegerAttr::get(vpux::getUInt64Type(context),
+                                                         taskLayoutOp.getTaskBufferOffset(type, tile, list, i));
+                auto declareTaskBufferOp = builder.create<VPUMI40XX::DeclareTaskBufferOp>(
+                        function.getLoc(),
+                        vpux::VPURegMapped::IndexType::get(context, checked_cast<uint32_t>(tile),
+                                                           checked_cast<uint32_t>(list), checked_cast<uint32_t>(i)),
+                        type, offsetAttr);
+                metadataBuffersPerTaskType[list].push_back(declareTaskBufferOp);
+            }
+        }
+    };
+
+    metadataBuffers.data.resize(metadataBuffers.sizes.size());
+    VPUX_THROW_WHEN(_supportedTaskTypes.empty(), "The _supportedTaskTypes was not populated by the arch-specificpass");
+    for (const auto& entryPerTile : llvm::enumerate(metadataBuffers.sizes)) {
+        const auto tile = entryPerTile.index();
+        const auto& sizesPerTaskType = entryPerTile.value();
+        for (auto& taskType : _supportedTaskTypes) {
+            populateTaskBuffers(tile, taskType, sizesPerTaskType);
+        }
+    }
+
+    for (auto task : function.getOps<VPURegMapped::TaskOpInterface>()) {
+        const auto type = task.getTaskType();
+        const auto index = task.getIndexType();
+        const auto& taskBuffers = metadataBuffers.data[index.getTileIdx()][type][index.getListIdx()];
+
+        task.setTaskLocation(taskBuffers[index.getValue() % taskBuffers.size()]);
+    }
 }
 
 void ResolveTaskLocationPass::safeRunOnFunc() {

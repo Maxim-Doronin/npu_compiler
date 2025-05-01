@@ -1,17 +1,21 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_OPTDYNAMICELTWISEWITHSHAPEOF
@@ -113,7 +117,7 @@ private:
 mlir::LogicalResult OptDynamicEltwiseWithShapeOf::matchAndRewrite(IE::ShapeOfOp shapeOfOp,
                                                                   mlir::PatternRewriter& rewriter) const {
     auto definingOp = shapeOfOp.getInput().getDefiningOp();
-    const auto outElemType = shapeOfOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(shapeOfOp.getOutput().getType()).getElementType();
     const auto output = definingOp->getResult(0);
 
     if (findOperandMatchingOutput(definingOp) != -1) {
@@ -129,10 +133,9 @@ mlir::LogicalResult OptDynamicEltwiseWithShapeOf::matchAndRewrite(IE::ShapeOfOp 
         if (inputOperand == nullptr) {
             return mlir::failure();
         }
-        const auto inElemType = inputOperand.getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto inElemType = mlir::cast<vpux::NDTypeInterface>(inputOperand.getType()).getElementType();
         auto shapedType = mlir::RankedTensorType::get({outputRank}, inElemType);
 
-        auto outBounds = vpux::getBounds(output);
         mlir::Value shapeTensor;
         if (inElemType.isSignedInteger(32)) {
             auto shapeValues = IE::replaceDynamicDimsWithValue<int32_t>(to_small_vector(outShape), -1);
@@ -142,9 +145,15 @@ mlir::LogicalResult OptDynamicEltwiseWithShapeOf::matchAndRewrite(IE::ShapeOfOp 
             shapeTensor = Const::createConst(rewriter, shapeOfOp->getLoc(), shapedType, ArrayRef(shapeValues));
         }
 
+        auto outputboundedType = mlir::dyn_cast<Core::BoundedTensorType>(output.getType());
+        VPUX_THROW_UNLESS(outputboundedType != nullptr, "Expected to get bounded output type, got {0}",
+                          output.getType());
+        auto outBounds = outputboundedType.getBounds();
+
         const auto reshapeLoc = appendLoc(shapeOfOp->getLoc(), "dynamic_reshape");
-        auto reshapeResult = rewriter.create<IE::DynamicReshapeOp>(
-                reshapeLoc, inputOperand, shapeTensor, getIntArrayAttr(this->getContext(), outShape), outBounds);
+        auto reshapeResult = rewriter.create<IE::DynamicReshapeOp>(reshapeLoc, inputOperand, shapeTensor,
+                                                                   getIntArrayAttr(getContext(), outShape),
+                                                                   getIntArrayAttr(getContext(), outBounds));
         auto newResult = rewriter.create<IE::ShapeOfOp>(shapeOfOp->getLoc(), reshapeResult, outElemType);
 
         rewriter.replaceOp(shapeOfOp, newResult);

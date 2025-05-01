@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 
@@ -65,8 +67,8 @@ bool DMAOutOfOrderOptimizationPass::isMemoryOverlap(VPURT::DeclareBufferOp bufOp
         }
     }
 
-    auto type1 = bufOp1.getBuffer().getType().cast<vpux::NDTypeInterface>();
-    auto type2 = bufOp2.getBuffer().getType().cast<vpux::NDTypeInterface>();
+    auto type1 = mlir::cast<vpux::NDTypeInterface>(bufOp1.getBuffer().getType());
+    auto type2 = mlir::cast<vpux::NDTypeInterface>(bufOp2.getBuffer().getType());
 
     // Need to check the offsets of the buffers to determine whether there is an overlap for other possible cases:
     // 1. when both buffers are on DDR

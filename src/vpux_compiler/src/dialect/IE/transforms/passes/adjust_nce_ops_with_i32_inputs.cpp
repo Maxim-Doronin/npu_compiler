@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTNCEOPSWITHI32INPUTS
@@ -42,13 +44,13 @@ template <class ConcreteOp>
 mlir::LogicalResult ConvertPrecisionToFP16<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
                                                                         mlir::PatternRewriter& rewriter) const {
     _log.trace("Found '{0}' Operation at '{1}'", origOp->getName(), origOp->getLoc());
-    auto outputElemType = origOp->getResult(0).getType().template dyn_cast<vpux::NDTypeInterface>().getElementType();
+    auto outputElemType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getElementType();
 
     mlir::IRMapping mapper;
     for (auto inputIter : origOp->getOperands() | indexed) {
         auto input = inputIter.value();
         auto index = inputIter.index();
-        const auto inputElemType = input.getType().template dyn_cast<vpux::NDTypeInterface>().getElementType();
+        const auto inputElemType = mlir::dyn_cast<vpux::NDTypeInterface>(input.getType()).getElementType();
         const auto elemTypeFP16 = mlir::Float16Type::get(inputElemType.getContext());
         auto inputLoc = appendLoc(origOp->getLoc(), "_Input_Convert_{0}", index);
         const auto inputCvtToFP16 =
@@ -102,7 +104,7 @@ void AdjustNCEOpsWithI32InputsPass::safeRunOnModule() {
     auto& ctx = getContext();
 
     const auto isLegalOp = [](mlir::Operation* op) {
-        auto outputElemType = op->getResult(0).getType().template dyn_cast<vpux::NDTypeInterface>().getElementType();
+        auto outputElemType = mlir::dyn_cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
 
         // Currently only encounter si32 type, if any other types found later, extend for other types.
         if (outputElemType.isSignedInteger(32)) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -30,7 +30,7 @@ mlir::LogicalResult vpux::VPU::EyeOp::inferReturnTypes(mlir::MLIRContext* ctx, s
         }
     }
 
-    const auto inType = eye.getDiagonalIndex().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(eye.getDiagonalIndex().getType());
     const auto outType = mlir::RankedTensorType::get(outShape, eye.getOutputType(), createTensorAttrFromType(inType));
     inferredReturnTypes.push_back(outType);
     return mlir::success();

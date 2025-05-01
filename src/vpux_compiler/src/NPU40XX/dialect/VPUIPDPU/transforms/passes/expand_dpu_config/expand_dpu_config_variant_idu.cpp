@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -28,9 +28,10 @@ mlir::LogicalResult buildIDUWorkloadSet(mlir::OpBuilder& builder, const mlir::Lo
 }
 
 mlir::LogicalResult buildIDUWeightSet(mlir::OpBuilder& builder, const mlir::Location& loc, const Logger& log,
-                                      int64_t outStartZ, int64_t outEndZ, std::optional<int64_t> outChannelOffset,
-                                      VPUIP::NCETaskType taskType, const vpux::NDTypeInterface& inActType,
-                                      const vpux::NDTypeInterface& outActType, const vpux::NDTypeInterface& weightsType,
+                                      int64_t inStartZ, int64_t inEndZ, int64_t outStartZ, int64_t outEndZ,
+                                      std::optional<int64_t> outChannelOffset, VPUIP::NCETaskType taskType,
+                                      const vpux::NDTypeInterface& inActType, const vpux::NDTypeInterface& outActType,
+                                      const vpux::NDTypeInterface& weightsType,
                                       std::optional<mlir::ArrayAttr> kernelSize) {
     // weight_start is updated during run-time relocation by addition with weight_table address
     auto outputZ = outActType.getShape()[Dims4D::Act::C];
@@ -38,6 +39,7 @@ mlir::LogicalResult buildIDUWeightSet(mlir::OpBuilder& builder, const mlir::Loca
     weightStart <<= 4;
 
     auto inputZ = inActType.getShape()[Dims4D::Act::C];
+    auto inSizeZ = size(inStartZ, inEndZ);
     auto outSizeZ = size(outStartZ, outEndZ);
     auto weightNum = outSizeZ;
     int64_t weightSize = 0;
@@ -69,7 +71,7 @@ mlir::LogicalResult buildIDUWeightSet(mlir::OpBuilder& builder, const mlir::Loca
     case VPUIP::NCETaskType::DWCONV:
     case VPUIP::NCETaskType::AVEPOOL:
     case VPUIP::NCETaskType::MAXPOOL:
-        weightSize = kernelX * kernelY * outSizeZ;
+        weightSize = kernelX * kernelY * inSizeZ;
         break;
     case VPUIP::NCETaskType::ELTWISE: {
         auto inputX = inActType.getShape()[Dims4D::Act::W], inputY = inActType.getShape()[Dims4D::Act::H];
@@ -213,10 +215,13 @@ mlir::LogicalResult vpux::VPUIPDPU::arch40xx::buildDPUVariantIDU(VPUASM::DPUVari
     }
 
     // IDUWeightSet
+    auto inStartZ = parseIntArrayAttr<int64_t>(origVarOp.getInStart())[2];
+    auto inEndZ = parseIntArrayAttr<int64_t>(origVarOp.getInEnd())[2];
     auto outStartZ = parseIntArrayAttr<int64_t>(origVarOp.getStart())[2];
     auto outEndZ = parseIntArrayAttr<int64_t>(origVarOp.getEnd())[2];
-    if (buildIDUWeightSet(builder, origVarOp.getLoc(), log, outStartZ, outEndZ, origInvOp.getOutChannelOffset(),
-                          origInvOp.getNceTaskType(), inActType, outActType, weightsType, origInvOp.getKernelSize())
+    if (buildIDUWeightSet(builder, origVarOp.getLoc(), log, inStartZ, inEndZ, outStartZ, outEndZ,
+                          origInvOp.getOutChannelOffset(), origInvOp.getNceTaskType(), inActType, outActType,
+                          weightsType, origInvOp.getKernelSize())
                 .failed()) {
         return mlir::failure();
     }

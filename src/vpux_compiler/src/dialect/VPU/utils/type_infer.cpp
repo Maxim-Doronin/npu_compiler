@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,9 @@
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -18,13 +20,18 @@ namespace VPU {
 
 mlir::LogicalResult inferReduceReturnTypes(mlir::Location loc, mlir::Value input, bool keepDims,
                                            SmallVector<int64_t>& axes,
-                                           mlir::SmallVectorImpl<mlir::Type>& inferredReturnTypes) {
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto inShape = inType.getShape().raw();
+                                           mlir::SmallVectorImpl<mlir::Type>& inferredReturnTypes,
+                                           mlir::ArrayAttr inputPadding, mlir::ArrayAttr outputPadding) {
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    auto inShape = SmallVector<int64_t>(inType.getShape().raw());
 
     bool isAllUnique = std::unique(axes.begin(), axes.end()) == axes.end();
     if (!isAllUnique) {
         return errorAt(loc, "Axes values should be unique");
+    }
+
+    if (mlir::failed(IE::unpadInputShape(inShape, inputPadding, loc))) {
+        return errorAt(loc, "Input padding {0} incompatible with input shape {1}", inputPadding, inShape);
     }
 
     // Add to outShape the values with indices not found in axes_set.
@@ -42,20 +49,19 @@ mlir::LogicalResult inferReduceReturnTypes(mlir::Location loc, mlir::Value input
         outShape = {1};
     }
 
+    if (mlir::failed(IE::padOutputShape(outShape, outputPadding, loc))) {
+        return errorAt(loc, "Output padding {0} incompatible with output shape {1}", outputPadding, outShape);
+    }
+
     const auto newOutputType =
             TypeComponents()
                     .setDimsOrder(keepDims ? inType.getDimsOrder()
                                            : vpux::IE::calculateReducedOutputLayout(inType.getDimsOrder(), axes))
                     .setShape(Shape(outShape));
-
-    const auto bounds =
-            mlir::isa<BoundedTypeInterface>(inType) ? mlir::cast<BoundedTypeInterface>(inType).getBounds() : nullptr;
     vpux::DimsOrder outOrder = newOutputType.dimsOrder.value();
-
-    auto outTensorAttr =
-            vpux::getTensorAttr(outOrder.toAffineMap(input.getType().getContext()), inType.getMemSpace(), bounds);
-
-    auto outputType = mlir::RankedTensorType::get(outShape, inType.getElementType(), outTensorAttr);
+    const auto tensorAttr = vpux::getTensorAttr(inType.getContext(), outOrder.toAffineMap(input.getType().getContext()),
+                                                inType.getMemSpace(), getBounds(input.getType()));
+    auto outputType = mlir::RankedTensorType::get(outShape, inType.getElementType(), tensorAttr);
 
     inferredReturnTypes.push_back(outputType);
 
@@ -66,18 +72,16 @@ void inferPermuteReturnTypes(mlir::Value input, mlir::AffineMap memPerm, mlir::A
                              SmallVectorImpl<mlir::Type>& inferredReturnTypes) {
     const auto inOrder = DimsOrder::fromValue(input);
     const auto outOrder = DimsOrder::fromAffineMap(dstOrder);
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
 
     const auto inShape = getShape(input);
     const auto inMemShape = inOrder.toMemoryOrder(inShape);
     const auto outMemShape = applyPerm(inMemShape, memPerm);
     const auto outShape = outOrder.toLogicalOrder(outMemShape);
-    const auto outBoundsAttr = permuteBounds(input.getContext(), inType.dyn_cast_or_null<vpux::BoundedTypeInterface>(),
-                                             inOrder, outOrder, memPerm);
 
     auto getOutputType = [&]() {
         auto elemType = inType.getElementType();
-        if (auto perAxisType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+        if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
             const auto origAxis = perAxisType.getQuantizedDimension();
             const auto inMemAxis = inOrder.dimPos(Dim(origAxis));
             const auto outMemAxis = DimsOrder::fromAffineMap(memPerm).dimPos(Dim(inMemAxis));
@@ -85,7 +89,7 @@ void inferPermuteReturnTypes(mlir::Value input, mlir::AffineMap memPerm, mlir::A
             elemType = changeAxis(perAxisType, outAxis.ind());
         }
 
-        if (auto distributedInput = inType.dyn_cast<VPU::DistributedTensorType>()) {
+        if (auto distributedInput = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(inType)) {
             auto outDistribution = applyPermutationOnDistributionInfoAttr(
                     distributedInput, memPerm, inType.getDimsOrder(), outOrder, inShape, outShape);
 
@@ -95,9 +99,9 @@ void inferPermuteReturnTypes(mlir::Value input, mlir::AffineMap memPerm, mlir::A
                     inType, memPerm, dstOrder);
 
             const auto dstDimsOrderAttr = mlir::AffineMapAttr::get(dstOrder);
-            return DistributedTensorType::get(inType.getContext(), outShape.raw(), elemType, dstDimsOrderAttr,
-                                              inType.getMemSpace(), outDistribution.value())
-                    .cast<NDTypeInterface>();
+            return mlir::cast<vpux::NDTypeInterface>(
+                    DistributedTensorType::get(inType.getContext(), outShape.raw(), elemType, dstDimsOrderAttr,
+                                               inType.getMemSpace(), outDistribution.value()));
         }
 
         return inType.changeDimsOrder(outOrder).changeShapeElemType(outShape, elemType);
@@ -105,8 +109,11 @@ void inferPermuteReturnTypes(mlir::Value input, mlir::AffineMap memPerm, mlir::A
 
     auto outType = getOutputType();
 
-    if (auto boundedOutType = outType.dyn_cast<vpux::BoundedTypeInterface>()) {
-        outType = boundedOutType.changeBounds(outBoundsAttr);
+    const auto outDynamicAttr = permuteDynamicAttribute(inType, inOrder, outOrder, memPerm);
+    if (auto boundedOutType = mlir::dyn_cast<Core::BoundedTensorType>(outType)) {
+        outType = boundedOutType.changeBounds(outDynamicAttr);
+    } else if (auto dynamicDimsMaskType = mlir::dyn_cast<Core::DynamicDimsMaskTensorType>(outType)) {
+        outType = dynamicDimsMaskType.changeDynamicDimsMask(outDynamicAttr);
     }
 
     inferredReturnTypes.push_back(outType);
@@ -114,9 +121,11 @@ void inferPermuteReturnTypes(mlir::Value input, mlir::AffineMap memPerm, mlir::A
 
 vpux::TensorAttr createTensorAttrFromType(vpux::NDTypeInterface inType) {
     auto ctx = inType.getContext();
-    const auto bounds =
-            mlir::isa<BoundedTypeInterface>(inType) ? mlir::cast<BoundedTypeInterface>(inType).getBounds() : nullptr;
-    return vpux::getTensorAttr(inType.getDimsOrder().toAffineMap(ctx), inType.getMemSpace(), bounds);
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(inType)) {
+        return vpux::getTensorAttr(ctx, inType.getDimsOrder().toAffineMap(ctx), inType.getMemSpace(),
+                                   boundedType.getBounds());
+    }
+    return vpux::getTensorAttr(ctx, inType.getDimsOrder().toAffineMap(ctx), inType.getMemSpace());
 }
 
 }  // namespace VPU

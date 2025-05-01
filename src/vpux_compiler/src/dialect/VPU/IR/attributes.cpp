@@ -96,7 +96,11 @@ double vpux::VPU::getDMABandwidth(ArchKind arch, VPU::RevisionID rev) {
     case VPU::ArchKind::NPU37XX:
         return VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_2_7) / VPU::getDpuFrequency(arch, rev);
     default:
-        return VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_4_0) / VPU::getDpuFrequency(arch, rev);
+        if (VPUNN::PerformanceMode::forceLegacy_G4) {
+            return VPUNN::get_dram_bandwidth_MBps_Legacy(VPUNN::VPUDevice::VPU_4_0) / VPU::getDpuFrequency(arch, rev);
+        } else {
+            return VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_4_0) / VPU::getDpuFrequency(arch, rev);
+        }
     }
 }
 
@@ -108,6 +112,7 @@ unsigned int vpux::VPU::getDpuFrequency(vpux::VPU::ArchKind arch, vpux::VPU::Rev
     switch (arch) {
     case VPU::ArchKind::NPU37XX:
         return VPUNN::get_dpu_fclk(VPUNN::VPUDevice::VPU_2_7); /*!< The value 1300 corresponds to Highvcc of dpuclk.
+                (See VPUX37XX HAS #voltage-and-frequency-targets section).
                  */
     case VPU::ArchKind::NPU40XX:
         if (rev >= VPU::RevisionID::REVISION_B) {
@@ -131,7 +136,11 @@ double vpux::VPU::getDmaBandwidthGBps(vpux::VPU::ArchKind arch) {
         BW = VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_2_7);  // 27000 MB/s
         break;
     default:
-        BW = VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_4_0);  // 45000 MB/s
+        if (VPUNN::PerformanceMode::forceLegacy_G4) {
+            BW = VPUNN::get_dram_bandwidth_MBps_Legacy(VPUNN::VPUDevice::VPU_4_0);  // 45000 MB/s
+        } else {
+            BW = VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_4_0);  // 136000 MB/s
+        }
         break;
     }
 
@@ -401,15 +410,15 @@ VPU::ArchKind vpux::VPU::getArch(mlir::Operation* op) {
     auto module = getModuleOp(op);
 
     if (auto attr = module->getAttr(archAttrName)) {
-        VPUX_THROW_UNLESS(attr.isa<VPU::ArchKindAttr>(), "Module attribute '{0}' has unsupported value '{1}'",
-                          archAttrName, attr);
-        return attr.cast<VPU::ArchKindAttr>().getValue();
+        VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::ArchKindAttr>(attr),
+                          "Module attribute '{0}' has unsupported value '{1}'", archAttrName, attr);
+        return mlir::cast<vpux::VPU::ArchKindAttr>(attr).getValue();
     }
 
     return VPU::ArchKind::UNKNOWN;
 }
 
-// To discern between NPU37XX and later on architectures
+// To discern between VPUX3XXX and later on architectures
 bool vpux::VPU::isArchVPUX3XXX(VPU::ArchKind arch) {
     return (arch == VPU::ArchKind::NPU37XX);
 }
@@ -421,7 +430,6 @@ bool vpux::VPU::isArchVPUX3XXX(VPU::ArchKind arch) {
 namespace {
 
 constexpr StringLiteral compilationModeAttrName = "VPU.compilationMode";
-constexpr StringLiteral descriptorHandleAttrName = "DescriptorHandle";
 
 }  // namespace
 
@@ -437,10 +445,10 @@ VPU::CompilationMode vpux::VPU::getCompilationMode(mlir::Operation* op) {
     auto module = getModuleOp(op);
 
     if (auto attr = module->getAttr(compilationModeAttrName)) {
-        VPUX_THROW_UNLESS(attr.isa<VPU::CompilationModeAttr>(), "Module attribute '{0}' has unsupported value '{1}'",
-                          compilationModeAttrName, attr);
+        VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::CompilationModeAttr>(attr),
+                          "Module attribute '{0}' has unsupported value '{1}'", compilationModeAttrName, attr);
 
-        return attr.cast<VPU::CompilationModeAttr>().getValue();
+        return mlir::cast<vpux::VPU::CompilationModeAttr>(attr).getValue();
     }
 
     // Use DefaultHW as a default mode
@@ -470,10 +478,10 @@ VPU::RevisionID vpux::VPU::getRevisionID(mlir::Operation* op) {
 
     if (module->hasAttr(revisionIDAttrName)) {
         if (auto attr = module->getAttr(revisionIDAttrName)) {
-            VPUX_THROW_UNLESS(attr.isa<VPU::RevisionIDAttr>(), "Module attribute '{0}' has unsupported value '{1}'",
-                              revisionIDAttrName, attr);
+            VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::RevisionIDAttr>(attr),
+                              "Module attribute '{0}' has unsupported value '{1}'", revisionIDAttrName, attr);
 
-            return attr.cast<VPU::RevisionIDAttr>().getValue();
+            return mlir::cast<vpux::VPU::RevisionIDAttr>(attr).getValue();
         }
     }
 
@@ -797,7 +805,7 @@ mlir::LogicalResult vpux::VPU::areDistributionNumClustersCompatible(mlir::Intege
 mlir::LogicalResult vpux::VPU::areDistributionElementTypesCompatible(mlir::Type inType, mlir::Type outType) {
     if (inType != outType) {
         // allow different quantization parameters
-        if (!inType.isa<mlir::quant::QuantizedType>() || !outType.isa<mlir::quant::QuantizedType>()) {
+        if (!mlir::isa<mlir::quant::QuantizedType>(inType) || !mlir::isa<mlir::quant::QuantizedType>(outType)) {
             return mlir::failure();
         }
         if (vpux::getElemTypeSize(inType) != vpux::getElemTypeSize(outType)) {

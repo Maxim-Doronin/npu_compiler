@@ -1,13 +1,17 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -19,6 +23,32 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+mlir::Value createConstContent(mlir::PatternRewriter& rewriter, mlir::Location loc, ArrayRef<int64_t> constShape,
+                               mlir::Type elemType, double padValue, DimsOrder dataOrder) {
+    const auto padDataStorageType =
+            mlir::RankedTensorType::get(constShape, mlir::Float32Type::get(rewriter.getContext()));
+    const auto padDataStorage = static_cast<float>(padValue);
+
+    return Const::createConst(rewriter, loc, padDataStorageType, ArrayRef(padDataStorage),
+                              [&](Const::ContentSetup& setup) -> Const::ContentSetup {
+                                  // TODO: #E148338 instead of reorder is the proper solution
+                                  return setup.castElemType(elemType).reorder(dataOrder);
+                              });
+}
+
+mlir::Type getConstElemType(ArrayRef<int64_t> constShape, size_t inputShapeSize, size_t reversedAxis,
+                            int64_t quantAxisOffset, mlir::Type inputType, mlir::Type outputType) {
+    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(outputType)) {
+        const auto qDim = perAxisQType.getQuantizedDimension();
+        if (reversedAxis == checked_cast<size_t>(qDim)) {
+            Shape offsets(SmallVector<int64_t>(inputShapeSize, 0));
+            offsets[Dim(qDim)] = quantAxisOffset;
+            return tileScalesAndZP(perAxisQType, ShapeRef(constShape), offsets);
+        }
+    }
+    return inputType;
+}
 
 //
 // ReplacePadWithConstAndConcat
@@ -60,9 +90,10 @@ mlir::LogicalResult ReplacePadWithConstAndConcat::matchAndRewrite(IE::PadOp orig
                       origPadOp->getLoc());
     const auto padValue = origPadOp.getPadValueAttr().value().convertToDouble();
 
-    const auto inputType = origPadOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origPadOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origPadOp.getOutput().getType());
     const auto inputShape = inputType.getShape().raw();
-    const auto outputShape = origPadOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    const auto outputShape = outputType.getShape().raw();
 
     auto midInput = origPadOp.getInput();
     const auto padsBeginValue = padsBegin.value();
@@ -70,6 +101,21 @@ mlir::LogicalResult ReplacePadWithConstAndConcat::matchAndRewrite(IE::PadOp orig
     VPUX_THROW_UNLESS(padsBeginValue.size() == inputShape.size() && padsEndValue.size() == inputShape.size(),
                       "`IE::PadOp` {0} shape size {1} mismatch with input size {2}", origPadOp.getLoc(),
                       padsBeginValue.size(), inputShape.size());
+
+    const auto addPaddingConstForConcat = [&](mlir::Location loc, ArrayRef<int64_t> constShape,
+                                              ArrayRef<int64_t> padsShapeValue, SmallVector<mlir::Value>& valueRange,
+                                              int64_t quantAxisOffset, size_t reversedAxis) {
+        if (padsShapeValue[reversedAxis] == 0) {
+            return;
+        }
+
+        auto constContentShape = to_small_vector(constShape);
+        constContentShape[reversedAxis] = padsShapeValue[reversedAxis];
+        auto constElemType = getConstElemType(constContentShape, inputShape.size(), reversedAxis, quantAxisOffset,
+                                              inputType.getElementType(), outputType.getElementType());
+        valueRange.push_back(createConstContent(rewriter, loc, constContentShape, constElemType, padValue,
+                                                inputType.getDimsOrder()));
+    };
 
     for (const auto reversedAxis : irange(inputShape.size()) | reversed) {
         if (padsBeginValue[reversedAxis] == 0 && padsEndValue[reversedAxis] == 0) {
@@ -83,22 +129,15 @@ mlir::LogicalResult ReplacePadWithConstAndConcat::matchAndRewrite(IE::PadOp orig
             constShape[ind] = ind < reversedAxis ? inputShape[ind] : outputShape[ind];
         }
         _log.nest().trace("Insert ConstOp convert from padsBegin index: {0}", reversedAxis);
-        if (padsBeginValue[reversedAxis] != 0) {
-            constShape[reversedAxis] = padsBeginValue[reversedAxis];
-            valueRange.push_back(vpux::IE::createPaddingConstForConcat(
-                    constShape, takeOpLoc(origPadOp, StringLiteral("pad_begin_{0}"), reversedAxis), inputType, padValue,
-                    rewriter));
-        }
+        int64_t beginOffset = 0;
+        addPaddingConstForConcat(appendLoc(origPadOp->getLoc(), "pad_begin_{0}", reversedAxis), constShape,
+                                 padsBeginValue, valueRange, beginOffset, reversedAxis);
 
         valueRange.push_back(midInput);
 
         _log.nest().trace("Insert ConstOp convert from padsEnd index: {0}", reversedAxis);
-        if (padsEndValue[reversedAxis] != 0) {
-            constShape[reversedAxis] = padsEndValue[reversedAxis];
-            valueRange.push_back(vpux::IE::createPaddingConstForConcat(
-                    constShape, takeOpLoc(origPadOp, StringLiteral("pad_end_{0}"), reversedAxis), inputType, padValue,
-                    rewriter));
-        }
+        addPaddingConstForConcat(appendLoc(origPadOp->getLoc(), "pad_end_{0}", reversedAxis), constShape, padsEndValue,
+                                 valueRange, padsBeginValue[reversedAxis] + inputShape[reversedAxis], reversedAxis);
 
         auto concat = rewriter.create<IE::ConcatOp>(takeOpLoc(origPadOp, StringLiteral("concat_{0}"), reversedAxis),
                                                     valueRange, reversedAxis);

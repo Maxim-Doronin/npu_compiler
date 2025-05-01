@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -85,7 +86,7 @@ mlir::LogicalResult AdjustFakeQuant::matchAndRewrite(IE::FakeQuantizeOp fakeQuan
     }
 
     // now the range is inLowValue > 0 or inHighValue < 0
-    const auto elemType = fakeQuantizeOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(fakeQuantizeOp.getInput().getType()).getElementType();
     const auto fqArgType = mlir::RankedTensorType::get({1, 1, 1, 1}, elemType);
     auto zeroConstInput = IE::createFQConst(ctx, fakeQuantizeOp->getLoc(), 0.0, fqArgType, rewriter);
     auto zeroConstOutput = IE::createFQConst(ctx, fakeQuantizeOp->getLoc(), 0.0, fqArgType, rewriter);

@@ -16,6 +16,7 @@
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
@@ -77,30 +78,30 @@ int64_t vpux::VPUIP::getMaxKernelSize(mlir::Operation* op) {
 
 double vpux::VPUIP::getMemoryDerateFactor(IE::MemoryResourceOp mem) {
     VPUX_THROW_UNLESS(mem.getKind() != nullptr, "Got empty memory resource kind");
-    VPUX_THROW_UNLESS(mem.getKind().isa<VPU::MemoryKindAttr>(), "Unsupported memory resource kind '{0}'",
+    VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::MemoryKindAttr>(mem.getKind()), "Unsupported memory resource kind '{0}'",
                       mem.getKind());
 
     auto attr = mem->getAttr(VPU::getMemoryDerateAttrName());
     VPUX_THROW_UNLESS(attr != nullptr, "Memory resource '{0}' has no '{1}' attribute", mem.getKind(),
                       VPU::getMemoryDerateAttrName());
-    VPUX_THROW_UNLESS(attr.isa<mlir::FloatAttr>(), "Memory resource '{0}' has wrong '{1}' attribute : '{2}'",
+    VPUX_THROW_UNLESS(mlir::isa<mlir::FloatAttr>(attr), "Memory resource '{0}' has wrong '{1}' attribute : '{2}'",
                       mem.getKind(), VPU::getMemoryDerateAttrName(), attr);
 
-    return attr.cast<mlir::FloatAttr>().getValueAsDouble();
+    return mlir::cast<mlir::FloatAttr>(attr).getValueAsDouble();
 }
 
 uint32_t vpux::VPUIP::getMemoryBandwidth(IE::MemoryResourceOp mem) {
     VPUX_THROW_UNLESS(mem.getKind() != nullptr, "Got empty memory resource kind");
-    VPUX_THROW_UNLESS(mem.getKind().isa<VPU::MemoryKindAttr>(), "Unsupported memory resource kind '{0}'",
+    VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::MemoryKindAttr>(mem.getKind()), "Unsupported memory resource kind '{0}'",
                       mem.getKind());
 
     auto attr = mem->getAttr(VPU::getMemoryBandwidthAttrName());
     VPUX_THROW_UNLESS(attr != nullptr, "Memory resource '{0}' has no '{1}' attribute", mem.getKind(),
                       VPU::getMemoryBandwidthAttrName());
-    VPUX_THROW_UNLESS(attr.isa<mlir::IntegerAttr>(), "Memory resource '{0}' has wrong '{1}' attribute : '{2}'",
+    VPUX_THROW_UNLESS(mlir::isa<mlir::IntegerAttr>(attr), "Memory resource '{0}' has wrong '{1}' attribute : '{2}'",
                       mem.getKind(), VPU::getMemoryBandwidthAttrName(), attr);
 
-    return checked_cast<uint32_t>(attr.cast<mlir::IntegerAttr>().getInt());
+    return checked_cast<uint32_t>(mlir::cast<mlir::IntegerAttr>(attr).getInt());
 }
 
 int64_t vpux::VPUIP::getNumTilesUsed(mlir::ModuleOp module) {
@@ -178,7 +179,7 @@ int64_t vpux::VPUIP::getNumberOfIndependentDmaQueues(mlir::Operation* parentOp) 
 
     const auto arch = VPU::getArch(module);
 
-    // On NPU40XX there is a dedicated Link Agent exposed depending on DMA
+    // On VPU4+ there is a dedicated Link Agent exposed depending on DMA
     // channel (CMX and DDR) thus the number of independent DMA FIFOs that
     // compiler needs to track is twice the number of DMA ports
     if (arch >= vpux::VPU::ArchKind::NPU40XX) {
@@ -215,9 +216,9 @@ mlir::Value getAlignedConstWeights(mlir::OpBuilder& builder, mlir::Location loc,
     const auto OC = flatWeightShape[Dims4D::Filter::OC];
     const auto flatWeightChannelsCount = flatWeightShape[Dims4D::Filter::IC];
     const auto alignedWeightShape = SmallVector<int64_t>{OC, flatWeightChannelsCount + padding, 1, 1};
-    const auto origFilterType = weightsConst.getOutput().getType().cast<vpux::NDTypeInterface>();
-    const auto outAllocType =
-            mlir::MemRefType::get(alignedWeightShape, origFilterType.getElementType()).cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(weightsConst.getOutput().getType());
+    const auto outAllocType = mlir::cast<vpux::NDTypeInterface>(
+            mlir::MemRefType::get(alignedWeightShape, origFilterType.getElementType()));
     const auto outAllocTypeNHWC = outAllocType.changeDimsOrder(DimsOrder::NHWC);
     auto alignedWeightsOp = builder.create<Const::DeclareOp>(loc, outAllocTypeNHWC, std::move(nhwcWeightsContentAttr));
 
@@ -228,7 +229,7 @@ mlir::Value getAlignedNonConstWeights(mlir::OpBuilder& builder, mlir::Location l
                                       ShapeRef flatWeightShape, int64_t padding) {
     auto ctx = builder.getContext();
     // Step 1: Flatten input to OCxICx1x1, where IC = filters * KY * KX.
-    const auto origFilterType = origFilter.getType().cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(origFilter.getType());
     const auto flatWeightType =
             origFilterType.changeShape(flatWeightShape).changeDimsOrder(DimsOrder::fromValue(origFilter));
     auto flatWeightsOp = builder.create<VPUIP::GenericReshapeOp>(loc, flatWeightType, origFilter);
@@ -245,24 +246,24 @@ mlir::Value getAlignedNonConstWeights(mlir::OpBuilder& builder, mlir::Location l
     const auto OC = flatWeightShape[Dims4D::Filter::OC];
     const auto flatWeightChannelsCount = flatWeightShape[Dims4D::Filter::IC];
     const auto alignedWeightShape = SmallVector<int64_t>{OC, flatWeightChannelsCount + padding, 1, 1};
-    const auto outShapedType =
-            mlir::MemRefType::get(alignedWeightShape, origFilterType.getElementType()).cast<vpux::NDTypeInterface>();
+    const auto outShapedType = mlir::cast<vpux::NDTypeInterface>(
+            mlir::MemRefType::get(alignedWeightShape, origFilterType.getElementType()));
     const auto outAllocType = outShapedType.changeDimsOrder(DimsOrder::NCHW);
 
     const auto padShape = SmallVector<int64_t>{OC, padding, 1, 1};
     const auto padShapedType =
-            mlir::RankedTensorType::get(padShape, origFilterType.getElementType()).cast<vpux::NDTypeInterface>();
+            mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(padShape, origFilterType.getElementType()));
     const auto padType = padShapedType.changeDimsOrder(DimsOrder::NCHW);
     const auto padAttr =
             Const::createConstContent(mlir::cast<mlir::RankedTensorType>(padType), ArrayRef(vpux::type::float16(0.f)));
 
     const auto padAllocType =
-            mlir::MemRefType::get(padShape, origFilterType.getElementType()).cast<vpux::NDTypeInterface>();
+            mlir::cast<vpux::NDTypeInterface>(mlir::MemRefType::get(padShape, origFilterType.getElementType()));
     const auto padAllocTypeNHWC = padAllocType.changeDimsOrder(DimsOrder::NCHW);
     auto paddedTensor = builder.create<Const::DeclareOp>(loc, padAllocTypeNHWC, Const::ContentAttr::get(padAttr));
 
     // Step 4: Concatenate flat NCHW input with padding.
-    auto subViewAlloc = builder.create<mlir::memref::AllocOp>(loc, outAllocType.cast<mlir::MemRefType>());
+    auto subViewAlloc = builder.create<mlir::memref::AllocOp>(loc, mlir::cast<mlir::MemRefType>(outAllocType));
 
     const SmallVector<int64_t> filterOffsets = {0, 0, 0, 0};
     const auto filterOffsetsAttr = getIntArrayAttr(ctx, filterOffsets);
@@ -301,7 +302,7 @@ mlir::Value vpux::VPUIP::alignDepthWiseWeightsTensor(mlir::OpBuilder& builder, m
     const auto KY = filterShape[Dims4D::Filter::KY];
     const auto KX = filterShape[Dims4D::Filter::KX];
 
-    const auto origFilterType = origFilter.getType().cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(origFilter.getType());
     const auto alignment = VPU::NCEInvariant::getAlignment(origFilterType.getElementType());
 
     const auto remainder = (filtersPerInChan * KY * KX) % alignment;
@@ -323,6 +324,7 @@ mlir::Value vpux::VPUIP::alignDepthWiseWeightsTensor(mlir::OpBuilder& builder, m
     }
 }
 
+// TODO: remove this when finalizing E#73766
 // In case operation is wrapped in NCEClusterTiling this method will return mlir::Value at parent level
 // corresponding to mlir::Value used by wrapped operation
 // In case operation is not wrapped in NCEClusterTiling then just return same mlir::Value
@@ -333,7 +335,7 @@ mlir::Value vpux::VPUIP::getTopBufferOfNCEClusterTiling(mlir::Operation* innerOp
 
     if (auto nceClustOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(innerOp->getParentOp())) {
         auto* bodyBlock = &nceClustOp.getBody().front();
-        const auto blockArg = buffer.dyn_cast<mlir::BlockArgument>();
+        const auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(buffer);
         VPUX_THROW_WHEN(blockArg == nullptr || blockArg.getOwner() != bodyBlock,
                         "Matching argument was not identified");
 
@@ -356,7 +358,7 @@ mlir::Type vpux::VPUIP::extractDataType(mlir::Value val) {
 }
 
 mlir::Type vpux::VPUIP::extractDataType(mlir::Type type) {
-    if (auto sparseType = type.dyn_cast<VPUIP::SparseBufferType>()) {
+    if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(type)) {
         return sparseType.getData();
     }
     return type;
@@ -401,7 +403,7 @@ vpux::NDTypeInterface changeShape(vpux::NDTypeInterface originType, ShapeRef sha
 
 vpux::NDTypeInterface changeShapeLeaveStrides(vpux::NDTypeInterface originType, StridesRef strides, ShapeRef shape,
                                               ShapeRef offset) {
-    VPUX_THROW_UNLESS((originType.isa<mlir::MemRefType>()),
+    VPUX_THROW_UNLESS((mlir::isa<mlir::MemRefType>(originType)),
                       "Only MemRefType is supported for 'changeShapeLeaveStrides'. Got '{0}'", originType);
     return originType.extractDenseTile(offset, shape).changeStrides(strides);
 }
@@ -409,7 +411,7 @@ vpux::NDTypeInterface changeShapeLeaveStrides(vpux::NDTypeInterface originType, 
 mlir::Type getElementType(VPUIP::DistributedBufferType distributedType, ShapeRef perClusterShape,
                           ShapeRef perClusterShapeOffset) {
     const auto elemType = distributedType.getElementType();
-    if (const auto qType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (const auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         return tileScalesAndZP(qType, perClusterShape, perClusterShapeOffset);
     }
     return elemType;
@@ -423,10 +425,10 @@ SmallVector<mlir::Value> getPerClusterBuffers(mlir::MLIRContext* ctx, mlir::Loca
                                               bool allowDiscontinuousBuffers) {
     const auto cmxNameAttr = mlir::FlatSymbolRefAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN));
 
-    auto compactTypeND = compactType.cast<vpux::NDTypeInterface>();
+    auto compactTypeND = mlir::cast<vpux::NDTypeInterface>(compactType);
 
     auto operandType = operand.getType();
-    auto distributedType = operandType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operandType);
 
     const auto distribution = distributedType.getDistribution();
@@ -567,9 +569,9 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
     }
 
     auto operandType = operand.getType();
-    vpux::NDTypeInterface compactType = operandType.dyn_cast<VPUIP::DistributedBufferType>() == nullptr
+    vpux::NDTypeInterface compactType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType) == nullptr
                                                 ? operandType
-                                                : distributedType.getCompactType().cast<vpux::NDTypeInterface>();
+                                                : mlir::cast<vpux::NDTypeInterface>(distributedType.getCompactType());
     const auto strideReqs = StrideReqs::compact(compactType.getShape().size());
     const auto isContinuousBufferType = strideReqs.checkStrides(compactType);
 
@@ -600,7 +602,7 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
             }
             VPURT::DeclareBufferOp newBuffer;
             Byte offset{declBuff.getByteOffset()};
-            vpux::VPU::MemoryKind memoryKind = operand.getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            vpux::VPU::MemoryKind memoryKind = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getMemoryKind();
             const auto newLoc = appendLoc(loc, "_{0}_cluster_{1}", bufferName, clusterId);
             if (memoryKind == VPU::MemoryKind::CMX_NN) {
                 const auto cmxNameAttr = mlir::FlatSymbolRefAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN));
@@ -611,8 +613,8 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
                         builder, insertionPoint, newLoc, buffType, VPURT::BufferSection::CMX_NN,
                         getIntArrayAttr(ctx, ArrayRef({clusterId})), offset.count(), declBuff.getSwizzlingKeyAttr());
             } else {
-                const auto inputType = swTaskOp.getInputs().front().getType().cast<NDTypeInterface>();
-                const auto outputType = swTaskOp.getOutputs().front().getType().cast<NDTypeInterface>();
+                const auto inputType = mlir::cast<vpux::NDTypeInterface>(swTaskOp.getInputs().front().getType());
+                const auto outputType = mlir::cast<vpux::NDTypeInterface>(swTaskOp.getOutputs().front().getType());
                 auto section = declBuff.getSection();
                 auto symbolAttr = vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(VPURT::getMemoryKind(section)));
                 auto sectionIndex = declBuff.getSectionIndex();
@@ -636,8 +638,8 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
                             outputType.getDimsOrder() == DimsOrder::NCHW;
 
                     if (tileNCHWOutOverH) {
-                        const auto distType = distributedType.changeElemType(buffType.getElementType())
-                                                      .cast<VPUIP::DistributedBufferType>();
+                        const auto distType = mlir::cast<vpux::VPUIP::DistributedBufferType>(
+                                distributedType.changeElemType(buffType.getElementType()));
 
                         const auto shape = buffType.getShape();
                         const auto strides = buffType.getStrides();
@@ -732,9 +734,9 @@ std::pair<outputBuffers, outputItiBuffers> VPUIP::getPerClusterOutputHaloBuffers
 
     VPUX_THROW_UNLESS(operand != nullptr, "Cluster operand should not be nullptr");
 
-    auto distributedType = operand.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operand.getType());
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operand.getType());
-    auto operandType = distributedType.getCompactType().cast<vpux::NDTypeInterface>();
+    auto operandType = mlir::cast<vpux::NDTypeInterface>(distributedType.getCompactType());
 
     auto computeShapes = distributedType.getPerClusterComputeShapes();
     VPUX_THROW_UNLESS(computeShapes.size() == checked_cast<size_t>(tileCount),
@@ -907,10 +909,10 @@ std::pair<outputBuffers, outputItiBuffers> VPUIP::getPerClusterOutputHaloBuffers
         // output_ITI_buff of halo producer NCEClusterTask should be populated with the output iti buffers of the
         // consumer NCEClusterTasks
         for (int64_t clusterId = 0; clusterId < tileCount; ++clusterId) {
-            if (const auto itiBuff = outputBuffers[clusterId].getType().dyn_cast<VPUIP::ITIBufferType>()) {
+            if (const auto itiBuff = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(outputBuffers[clusterId].getType())) {
                 for (const auto& outHalo : itiBuff.getOutwardHaloRegions()) {
                     for (const auto& inHalo : outHalo.getInwardHaloRegions()) {
-                        const auto haloTarget = inHalo.cast<VPUIP::HaloRegionAttr>().getClusterId().getInt();
+                        const auto haloTarget = mlir::cast<vpux::VPUIP::HaloRegionAttr>(inHalo).getClusterId().getInt();
                         if (llvm::find(outputItiBuffers[clusterId], outputBuffers[haloTarget]) ==
                             outputItiBuffers[clusterId].end()) {
                             outputItiBuffers[clusterId].push_back(outputBuffers[haloTarget]);
@@ -967,10 +969,10 @@ std::pair<outputBuffers, outputItiBuffers> VPUIP::getPerClusterOutputHaloBuffers
         auto insertionPoint = declBuff.getOperation();
         for (int64_t clusterId = 0; clusterId < tileCount; ++clusterId) {
             const auto symbolAttr = vpux::IndexedSymbolAttr::get(ctx, {cmxNameAttr, vpux::getIntAttr(ctx, clusterId)});
-            auto itiBuffType = VPUIP::ITIBufferType::get(ctx, distributedType.cast<NDTypeInterface>().getShape().raw(),
-                                                         operandType.getElementType(), distributedType.getLayout(),
-                                                         symbolAttr, nullptr, inwardHalosPerCluster[clusterId],
-                                                         outwardHalosPerCluster[clusterId]);
+            auto itiBuffType = VPUIP::ITIBufferType::get(
+                    ctx, mlir::cast<vpux::NDTypeInterface>(distributedType).getShape().raw(),
+                    operandType.getElementType(), distributedType.getLayout(), symbolAttr, nullptr,
+                    inwardHalosPerCluster[clusterId], outwardHalosPerCluster[clusterId]);
 
             const auto newLoc = appendLoc(loc, "_{0}_cluster_{1}", bufferName, clusterId);
             mlir::OpBuilder::InsertionGuard guard(builder);
@@ -1007,7 +1009,7 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterMemoryBuffers(mlir::MLIRConte
     }
 
     auto operandType = operand.getType();
-    auto distributedType = operandType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operandType);
 
     auto perClusterShapes = distributedType.getPerClusterMemoryShapes();
@@ -1107,7 +1109,7 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterComputeBuffers(mlir::MLIRCont
     }
 
     auto operandType = operand.getType();
-    auto distributedType = operandType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operandType);
 
     auto perClusterShapes = distributedType.getPerClusterComputeShapes();
@@ -1131,7 +1133,7 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWMemoryBuffers(mlir::MLIRCon
     }
 
     auto operandType = operand.getType();
-    auto distributedType = operandType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
 
     if (distributedType == nullptr) {  // input type is memref, need to use infos from output type
         auto resultType = swTaskOp->getResults().front().getType();
@@ -1190,7 +1192,7 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWComputeBuffers(mlir::MLIRCo
     }
 
     auto operandType = operand.getType();
-    auto distributedType = operandType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
 
     if (distributedType == nullptr) {
         auto inputType = swTaskOp->getOperand(0).getType();
@@ -1216,8 +1218,8 @@ SmallVector<mlir::Value> vpux::VPUIP::getSplitBuffers(mlir::MLIRContext* ctx, ml
     auto declBuff = operand.getDefiningOp<VPURT::DeclareBufferOp>();
     VPUX_THROW_UNLESS(declBuff != nullptr, "Failed to get buffer offset for operand: {0}", operand);
 
-    auto declBuffType = declBuff.getType().cast<vpux::NDTypeInterface>();
-    auto operandType = operand.getType().cast<vpux::NDTypeInterface>();
+    auto declBuffType = mlir::cast<vpux::NDTypeInterface>(declBuff.getType());
+    auto operandType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
 
     VPUX_THROW_UNLESS(shapes.size() == checked_cast<size_t>(splitNum), "Mismatch in shapes '{0}' and buffers '{1}'",
                       shapes.size(), splitNum);
@@ -1502,9 +1504,9 @@ mlir::Operation* vpux::VPUIP::getRootConst(mlir::Value val) {
 }
 
 std::optional<int64_t> vpux::VPUIP::getTilingDimIndex(mlir::Type type) {
-    if (auto distributedBufferType = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedBufferType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
         return getSWLayerDistributedTilingDimIndex(distributedBufferType);
-    } else if (auto distributedTensorType = type.dyn_cast<VPU::DistributedTensorType>()) {
+    } else if (auto distributedTensorType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(type)) {
         return getSWLayerDistributedTilingDimIndex(distributedTensorType);
     }
     VPUX_THROW("Unsupported type {0} for checking tiling dim", type);
@@ -1581,9 +1583,9 @@ bool hasShapeChangeAttr(const Const::ContentAttr& content) {
 
 bool inChannelGreaterThanAlignValue(Const::DeclareOp weightsInput) {
     const auto& weightsContentAttr = weightsInput.getContentAttr();
-    const auto origShape = weightsContentAttr.getBaseContent().getType().cast<NDTypeInterface>().getShape();
+    const auto origShape = mlir::cast<vpux::NDTypeInterface>(weightsContentAttr.getBaseContent().getType()).getShape();
     const auto channelAlignValue =
-            VPU::NCEInvariant::getAlignment(weightsInput.getType().cast<NDTypeInterface>().getElementType());
+            VPU::NCEInvariant::getAlignment(mlir::cast<vpux::NDTypeInterface>(weightsInput.getType()).getElementType());
 
     return origShape[Dims4D::Filter::IC] >= channelAlignValue;
 }
@@ -1597,7 +1599,7 @@ bool vpux::VPUIP::isOnlyPadOverIC(const Const::ContentAttr& content) {
 
     // Checks if the only padding applied is over IC dim
     for (auto& transform : transformations) {
-        if (auto padWithZeroAttr = transform.dyn_cast<vpux::Const::PadWithZeroAttr>()) {
+        if (auto padWithZeroAttr = mlir::dyn_cast<vpux::Const::PadWithZeroAttr>(transform)) {
             const auto padAfter = parseIntArrayAttr<int64_t>(padWithZeroAttr.getPadAfter());
             const auto padBefore = parseIntArrayAttr<int64_t>(padWithZeroAttr.getPadBefore());
 
@@ -1638,7 +1640,7 @@ bool vpux::VPUIP::canWeightsBeCompressed(VPUIP::NCEClusterTaskOp op) {
     }
 
     // E#106393 future work to enable compressed weights for sub byte types
-    if (isSubByteType(weights.getType().cast<vpux::NDTypeInterface>().getElementType())) {
+    if (isSubByteType(mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType())) {
         return false;
     }
 
@@ -1712,9 +1714,8 @@ bool vpux::VPUIP::canTilingWeightsBeCompressed(VPUIP::NCEClusterTaskOp nceOp) {
 
 // Disable the occurrence of accuracy issues in cluster copying under specific offset and multi cluster policies. More
 // detail in ticket: E#106836
-bool vpux::VPUIP::isChannelOffsetsAndTileDimCompatibleWithClusterCopy(SmallVector<int64_t> offsets,
-                                                                      int32_t tileIndexVal,
-                                                                      VPUIP::DistributedBufferType distributedType) {
+bool vpux::VPUIP::isChannelOffsetsAndTileDimCompatibleWithDistributedCopy(
+        SmallVector<int64_t> offsets, int32_t tileIndexVal, VPUIP::DistributedBufferType distributedType) {
     auto distributionMode = distributedType.getDistribution().getMode().getValue();
 
     if (distributionMode != VPU::DistributionMode::SEGMENTED && distributionMode != VPU::DistributionMode::OVERLAPPED) {
@@ -1770,13 +1771,13 @@ bool vpux::VPUIP::isCopyWithStaticStrides(VPUIP::CopyOp copyOp) {
 bool vpux::VPUIP::isCopyToDDR(VPUIP::CopyOp copyOp) {
     auto origOp = copyOp->getParentOfType<VPUIP::NCEClusterTilingOp>() == nullptr ? copyOp.getOperation()
                                                                                   : copyOp->getParentOp();
-    return origOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getMemoryKind() == VPU::MemoryKind::DDR;
+    return mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getMemoryKind() == VPU::MemoryKind::DDR;
 }
 
 bool vpux::VPUIP::isCopyFromDDR(VPUIP::CopyOp copyOp) {
     auto origOp = copyOp->getParentOfType<VPUIP::NCEClusterTilingOp>() == nullptr ? copyOp.getOperation()
                                                                                   : copyOp->getParentOp();
-    return origOp->getOperand(0).getType().cast<vpux::NDTypeInterface>().getMemoryKind() == VPU::MemoryKind::DDR;
+    return mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType()).getMemoryKind() == VPU::MemoryKind::DDR;
 }
 
 // The concept of striding levels means that tensor is not contiguous in some number of dimensions.
@@ -1831,7 +1832,7 @@ int64_t vpux::VPUIP::getStridingLevel(const vpux::NDTypeInterface& type) {
 }
 
 int64_t vpux::VPUIP::getStridingLevel(const mlir::Value val) {
-    auto type = VPUIP::extractDataType(val).cast<vpux::NDTypeInterface>();
+    auto type = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(val));
     return getStridingLevel(type);
 }
 
@@ -1854,7 +1855,7 @@ int64_t getFirstStridingMemDimIdx(const vpux::NDTypeInterface& type, ShapeRef sh
 }
 
 int64_t getFirstStridingMemDimIdx(const mlir::Value& val) {
-    auto type = VPUIP::extractDataType(val).cast<vpux::NDTypeInterface>();
+    auto type = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(val));
     return getFirstStridingMemDimIdx(type, type.getShape());
 }
 
@@ -1947,9 +1948,9 @@ bool vpux::VPUIP::isSplitNeededForLargePlanesNum(mlir::Operation* op) {
                       "isSplitNeededForLargePlanesNum: not a CopyOp or NNDMAOp");
     const auto arch = VPU::getArch(op);
     const auto inShape = getShape(op->getOperand(0));
-    const auto inType = VPUIP::extractDataType(op->getOperand(0)).cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(op->getOperand(0)));
     const auto outShape = getShape(op->getResult(0));
-    const auto outType = VPUIP::extractDataType(op->getResult(0)).cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(op->getResult(0)));
     return isSplitNeededForLargePlanesNum(arch, inType, inShape) ||
            isSplitNeededForLargePlanesNum(arch, outType, outShape);
 }
@@ -1972,10 +1973,10 @@ bool vpux::VPUIP::hasLegalStridingLevel(mlir::Operation* op) {
         return !isSplitNeededForLargePlanesNum(op);
     }
 
-    auto outerInType = VPUIP::extractDataType(op->getOperand(0)).cast<vpux::NDTypeInterface>();
-    auto outerOutType = VPUIP::extractDataType(op->getResult(0)).cast<vpux::NDTypeInterface>();
-    const auto inputDistType = outerInType.dyn_cast<VPUIP::DistributedBufferType>();
-    const auto outputDistType = outerOutType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto outerInType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(op->getOperand(0)));
+    auto outerOutType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(op->getResult(0)));
+    const auto inputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outerInType);
+    const auto outputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outerOutType);
     auto findLargestMemoryShape = [](ArrayRef<Shape> shapes) {
         auto iter = std::max_element(shapes.begin(), shapes.end(), [](ShapeRef a, ShapeRef b) {
             return a.totalSize() < b.totalSize();
@@ -2022,7 +2023,7 @@ bool VPUIP::isOpOnlySplitOnDim(VPUIP::SubViewOp op, Dim dim) {
 
 Byte VPUIP::getRequiredCMXSize(mlir::Operation* op) {
     auto isCMXUsed = [](mlir::Value value) {
-        if (auto type = value.getType().dyn_cast<vpux::NDTypeInterface>()) {
+        if (auto type = mlir::dyn_cast<vpux::NDTypeInterface>(value.getType())) {
             return type.getMemoryKind() == VPU::MemoryKind::CMX_NN;
         }
         return false;
@@ -2034,14 +2035,14 @@ Byte VPUIP::getRequiredCMXSize(mlir::Operation* op) {
         for (const auto& operand : op->getOperands()) {
             if (isCMXUsed(operand) &&
                 std::find(countedOperands.begin(), countedOperands.end(), operand) == countedOperands.end()) {
-                operandTypes.push_back(operand.getType().dyn_cast<vpux::NDTypeInterface>());
+                operandTypes.push_back(mlir::dyn_cast<vpux::NDTypeInterface>(operand.getType()));
                 countedOperands.push_back(operand);
             }
         }
     } else {
         for (const auto& operand : op->getOperands()) {
             if (isCMXUsed(operand)) {
-                operandTypes.push_back(operand.getType().dyn_cast<vpux::NDTypeInterface>());
+                operandTypes.push_back(mlir::dyn_cast<vpux::NDTypeInterface>(operand.getType()));
             }
         }
     }
@@ -2105,7 +2106,7 @@ mlir::Operation* VPUIP::findSETableOp(mlir::Value value) {
                     VPUX_THROW_UNLESS(mlir::isa<VPUIP::CopyOp>(taskOp), "Expected copy operation, got '{0}' at '{1}'",
                                       taskOp->getName(), taskOp->getLoc());
                 }
-                auto opResult = value.dyn_cast<mlir::OpResult>();
+                auto opResult = mlir::dyn_cast<mlir::OpResult>(value);
                 VPUX_THROW_WHEN(opResult == nullptr, "Value '{0}' cannot be converted to an op result", value);
                 const auto source = viewOp.getViewSource(opResult.getResultNumber());
                 return findSETableOp(source);
@@ -2130,12 +2131,7 @@ bool VPUIP::isEltwiseTheOnlyConsumer(VPUIP::NCEClusterTaskOp clusterTaskOp, mlir
                                      bool checkThroughCopyOps, Logger log) {
     // Utility function for checking if an operation is Copy or pure ViewLike op
     const auto isNoDataEffectOp = [&](mlir::Operation* op) {
-        auto clustOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(op);
-        if (clustOp == nullptr) {
-            return VPUIP::isPureViewOp(op) || (checkThroughCopyOps && mlir::isa<VPUIP::CopyOp>(op));
-        }
-        auto innerOp = clustOp.getInnerTaskOp();
-        return (checkThroughCopyOps && mlir::isa<VPUIP::CopyOp>(innerOp));
+        return VPUIP::isPureViewOp(op) || (checkThroughCopyOps && mlir::isa<VPUIP::CopyOp>(op));
     };
 
     // Utility function for checking that two different SubViews have the same function
@@ -2152,16 +2148,24 @@ bool VPUIP::isEltwiseTheOnlyConsumer(VPUIP::NCEClusterTaskOp clusterTaskOp, mlir
     // CopyOp()      CopyOp()
     //   \            /
     //    NCEEltwise()
-    const auto isThisUserOfOp = [&](mlir::Operation* userToCompare, mlir::Operation* upperOp) {
+    const auto isThisUserOfOp = [&](mlir::Operation* userToCompare, mlir::Operation* upperOp,
+                                    mlir::Value noDataEffectOpInput) {
         auto userOp = upperOp;
         while (userOp != nullptr && isNoDataEffectOp(userOp)) {
-            if (!userOp->getResult(0).hasOneUse()) {
+            auto usersSize = getUniqueMembersSize(userOp->getUsers());
+            if (usersSize != 1) {
                 return false;
             }
             userOp = *userOp->getResult(0).getUsers().begin();
         }
 
-        return userOp == userToCompare;
+        if (userOp == userToCompare) {
+            return true;
+        }
+        if (auto layerOp = mlir::dyn_cast_or_null<VPUIP::LayerOpInterface>(userOp)) {
+            return layerOp.getOutputs()[0] == noDataEffectOpInput;
+        }
+        return false;
     };
 
     // Utility function that checks if input of noDataEffectOp is used by only one Task Op
@@ -2186,11 +2190,9 @@ bool VPUIP::isEltwiseTheOnlyConsumer(VPUIP::NCEClusterTaskOp clusterTaskOp, mlir
                 }
             }
         } else {
-            auto nceClustOp = clusterTaskOp->getParentOfType<VPUIP::NCEClusterTilingOp>();
-            auto originalTaskOp = nceClustOp != nullptr ? nceClustOp.getOperation() : clusterTaskOp.getOperation();
             for (auto userOp : noDataEffectOpInput.getUsers()) {
-                if (!isThisUserOfOp(originalTaskOp, userOp)) {
-                    log.nest().trace("The NCEEltiwse root input is used by other TaskOp");
+                if (!isThisUserOfOp(clusterTaskOp, userOp, noDataEffectOpInput)) {
+                    log.nest().trace("The NCEEltwise root input is used by other TaskOp");
                     return false;
                 }
             }
@@ -2200,11 +2202,10 @@ bool VPUIP::isEltwiseTheOnlyConsumer(VPUIP::NCEClusterTaskOp clusterTaskOp, mlir
 
     // Move up over all pure ViewLikeOps and CopyOps to get the actual producer of the NCEEltwise's input
     auto potentialInputProducerValue = inputBuff;
-    auto nceClustOp = clusterTaskOp->getParentOfType<VPUIP::NCEClusterTilingOp>();
-    auto lastVisitedOp = nceClustOp != nullptr ? nceClustOp.getOperation() : clusterTaskOp.getOperation();
+    auto lastVisitedOp = clusterTaskOp.getOperation();
     do {
-        if (!potentialInputProducerValue.hasOneUse() &&
-            !isSupportedMultiUserScenario(lastVisitedOp, potentialInputProducerValue)) {
+        size_t usersSize = getUniqueMembersSize(potentialInputProducerValue.getUsers());
+        if (usersSize != 1 && !isSupportedMultiUserScenario(lastVisitedOp, potentialInputProducerValue)) {
             return false;
         }
         auto potentialInputProducerOp = potentialInputProducerValue.getDefiningOp();
@@ -2224,7 +2225,7 @@ bool VPUIP::isEltwiseTheOnlyConsumer(VPUIP::NCEClusterTaskOp clusterTaskOp, mlir
 //
 
 bool VPUIP::isBoundedBufferType(mlir::Value value) {
-    return value.getType().isa<VPUIP::BoundedBufferType>();
+    return mlir::isa<vpux::VPUIP::BoundedBufferType>(value.getType());
 }
 
 bool VPUIP::hasBoundedBuffers(mlir::Operation* op) {
@@ -2247,24 +2248,50 @@ bool VPUIP::hasUngroupedBoundedBuffers(VPUIP::SwKernelOp swKernelOp) {
     return !swKernelOp.getDynamicInputShapes().empty() || !swKernelOp.getDynamicOutputShapeBuffs().empty();
 }
 
+bool VPUIP::hasUngroupedInputBoundedBuffers(VPUIP::SwKernelOp swKernelOp) {
+    return !swKernelOp.getDynamicInputShapes().empty();
+}
+
 //
-// Dummy Buffer Utils
+// Dummy DMA and Buffer Utils
 //
 
-mlir::Value VPUIP::createDummyBuffer(mlir::OpBuilder& builder, mlir::Operation* insertionPoint) {
+mlir::Value VPUIP::createDummyBuffer(mlir::OpBuilder& builder, mlir::Operation* insertionPoint,
+                                     VPU::MemoryKind memKind) {
     auto ctx = builder.getContext();
     mlir::OpBuilder::InsertionGuard guard(builder);
     if (insertionPoint != nullptr) {
         builder.setInsertionPoint(insertionPoint);
     }
 
-    const auto nameAttr = mlir::FlatSymbolRefAttr::get(ctx, stringifyEnum(VPU::MemoryKind::DDR));
-    const auto ddrSymbolAttr = vpux::IndexedSymbolAttr::get(ctx, nameAttr);
+    const auto symbolAttr =
+            (memKind == VPU::MemoryKind::DDR ? vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(memKind))
+                                             : vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(memKind), 0));
     const auto layout = DimsOrder::NCHW.toAffineMap(ctx);
 
-    auto zeroBufferMemref = mlir::MemRefType::get({0, 0, 0, 0}, builder.getI32Type(), layout, ddrSymbolAttr);
-    return builder.create<VPURT::DeclareBufferOp>(builder.getUnknownLoc(), zeroBufferMemref, VPURT::BufferSection::DDR,
-                                                  0);
+    const auto zeroBufferMemref = mlir::MemRefType::get({0, 0, 0, 0}, builder.getI32Type(), layout, symbolAttr);
+
+    const auto sectionAttr = VPURT::BufferSectionAttr::get(builder.getContext(), VPURT::getBufferSection(memKind));
+    const mlir::ArrayAttr sectionIndexAttr =
+            (memKind == VPU::MemoryKind::DDR ? nullptr : getIntArrayAttr(builder, SmallVector<int64_t>{0}));
+
+    return builder.create<VPURT::DeclareBufferOp>(builder.getUnknownLoc(), zeroBufferMemref, sectionAttr,
+                                                  sectionIndexAttr, /*byteOffset=*/getIntAttr(builder, 0),
+                                                  /*swizzlingKey=*/nullptr);
+}
+
+VPURT::TaskOp VPUIP::createSyncDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                                   mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                                   llvm::StringLiteral opName) {
+    auto ctx = builder.getContext();
+    auto syncDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, opName));
+    auto portAttr = vpux::getIntAttr(ctx, port);
+
+    auto syncDMATask = VPURT::wrapIntoTaskOp<VPUIP::SyncDMAOp>(
+            builder, waitBarriers, updateBarriers, syncDmaLoc, input, output, portAttr,
+            /*isOutOfOrder*/ nullptr, /*isCritical*/ nullptr, /*dmaHwpId*/ nullptr,
+            /*dmaProfilingMetaData*/ nullptr, nullptr);
+    return syncDMATask->getParentOfType<VPURT::TaskOp>();
 }
 
 int64_t vpux::VPUIP::getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse,
@@ -2358,4 +2385,39 @@ void VPUIP::moveDeclarationsToTop(mlir::func::FuncOp& netFunc) {
     for (auto i : irange(allDeclOps.size() - 1)) {
         allDeclOps[i + 1]->moveAfter(allDeclOps[i]);
     }
+}
+
+mlir::Type vpux::VPUIP::getCompactBufferType(mlir::Type originalType) {
+    auto compactType = originalType;
+
+    if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(originalType)) {
+        compactType = distributedType.getCompactType();
+    } else if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(originalType)) {
+        if (auto distDataType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(sparseType.getData())) {
+            mlir::MemRefType dataType = distDataType.getCompactType();
+            mlir::MemRefType smType = nullptr;
+            if (sparseType.getSparsityMap() != nullptr &&
+                mlir::isa<vpux::VPUIP::DistributedBufferType>(sparseType.getSparsityMap())) {
+                smType = mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseType.getSparsityMap()).getCompactType();
+            }
+            mlir::MemRefType seType = nullptr;
+            if (sparseType.getStorageElementTable() != nullptr &&
+                mlir::isa<vpux::VPUIP::DistributedBufferType>(sparseType.getStorageElementTable())) {
+                seType = mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseType.getStorageElementTable())
+                                 .getCompactType();
+            }
+            compactType =
+                    vpux::VPUIP::SparseBufferType::get(dataType, smType, seType, sparseType.getIsWeights(),
+                                                       sparseType.getSparsityCompression(), sparseType.getSeAttr());
+        }
+    } else if (auto boundedType = mlir::dyn_cast<vpux::VPUIP::BoundedBufferType>(originalType)) {
+        if (auto distributedDataType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(boundedType.getData())) {
+            mlir::MemRefType dataType = distributedDataType.getCompactType();
+            mlir::MemRefType dynamicShapeType =
+                    mlir::cast<vpux::VPUIP::DistributedBufferType>(boundedType.getDynamicShape()).getCompactType();
+
+            compactType = vpux::VPUIP::BoundedBufferType::get(dataType, dynamicShapeType);
+        }
+    }
+    return compactType;
 }

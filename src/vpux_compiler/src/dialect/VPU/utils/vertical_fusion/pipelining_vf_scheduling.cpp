@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -51,7 +51,7 @@ bool PipeliningVFScheduling::validate(VFConfig& config, const TilingOperationSto
         for (auto operandIndex : irange(tilingSize - 1)) {
             auto offsets = opTiling.value().first.tiles[operandIndex].offsets;
 
-            auto operandType = operation->getOperand(operandIndex).getType().cast<vpux::NDTypeInterface>();
+            auto operandType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(operandIndex).getType());
             // looking for operands without tiling
             if (offsets != Shape(operandType.getRank(), 0)) {
                 continue;

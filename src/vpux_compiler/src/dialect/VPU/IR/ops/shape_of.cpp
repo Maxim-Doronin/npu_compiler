@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ mlir::LogicalResult VPU::ShapeOfOp::inferReturnTypes(mlir::MLIRContext* ctx, std
         return mlir::failure();
     }
 
-    const auto inType = shapeOf.getInput().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeOf.getInput().getType());
     const auto inRank = inType.getRank();
     const SmallVector<int64_t> outShape = {inRank};
     const auto outType = mlir::RankedTensorType::get(ArrayRef(outShape), getSInt32Type(ctx));

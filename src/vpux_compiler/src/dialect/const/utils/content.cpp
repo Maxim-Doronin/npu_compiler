@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/const/utils/content.hpp"
+#include <cstdint>
 
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/utils/core/numeric.hpp"
+
+#include <type_traits>
 
 using namespace vpux;
 
@@ -81,19 +84,27 @@ Const::Content vpux::Const::Content::copyUnownedBuffer(Const::Content&& origin) 
 
 namespace {
 
-template <class Range>
-void fillBuf(const Range& range, MutableArrayRef<char> buf) {
-    using value_type = typename Range::iterator::value_type;
-    static const auto VALUE_BYTE_SIZE = sizeof(value_type);
+template <typename DstType, typename SrcType>
+void fillBuf(ArrayRef<SrcType> src, MutableArrayRef<char> dst) {
+    constexpr auto VALUE_BYTE_SIZE = sizeof(DstType);
 
-    VPUX_THROW_UNLESS(buf.size() >= range.size() * VALUE_BYTE_SIZE,
-                      "Buffer with byte size '{0}' is not enough to hold actual elements with '{1}' byte size",
-                      buf.size(), range.size() * VALUE_BYTE_SIZE);
+    const auto convertedSrcSize = src.size() * VALUE_BYTE_SIZE;
+    VPUX_THROW_UNLESS(src.size() == 1 || dst.size() == convertedSrcSize,
+                      "Target buffer size '{0}' does not match source buffer size '{1}'", dst.size(), convertedSrcSize);
 
-    for (size_t i = 0; i < range.size(); ++i) {
-        auto* bufPtr = reinterpret_cast<value_type*>(buf.data() + i * VALUE_BYTE_SIZE);
-        *bufPtr = range[i];
+    const auto doCast = [](SrcType value) -> DstType {
+        // Note: unconditionally use CvtHelper as this is what the previous
+        // implementation did (`getValues<DstType>()`) to ensure the
+        // compatibility of results.
+        return Const::details::CvtHelper<DstType>::cvt(value);
+    };
+
+    auto* dstPtr = reinterpret_cast<DstType*>(dst.data());
+    if (bool isSplat = src.size() == 1; isSplat) {
+        std::fill_n(dstPtr, dst.size() / VALUE_BYTE_SIZE, doCast(src.front()));
+        return;
     }
+    std::transform(src.begin(), src.end(), dstPtr, doCast);
 }
 
 }  // namespace
@@ -167,6 +178,8 @@ void vpux::Const::Content::copyTo(MutableArrayRef<char> targetData) const {
         return;
     }
 
+    // E#160872: float16 splats are special due to (obscure) overflow semantics
+    // handling, but float16 non-splats are not special?!
     const bool isTrivialStorage = (elemType == _storageElemType);
     if (!_isSplat && isTrivialStorage) {
         VPUX_THROW_UNLESS(targetData.size() >= _data.size(),
@@ -177,9 +190,8 @@ void vpux::Const::Content::copyTo(MutableArrayRef<char> targetData) const {
         return;
     }
 
-    dispatchByElemType<void>(elemType, [this, targetData](auto dummy) {
-        using ElemT = std::decay_t<decltype(dummy)>;
-        fillBuf(this->getValues<ElemT>(), targetData);
+    read(elemType, [&](auto srcData, auto dummy) {
+        fillBuf<decltype(dummy)>(srcData, targetData);
     });
 }
 
@@ -188,7 +200,76 @@ void vpux::Const::Content::copyTo(MutableArrayRef<char> targetData) const {
 //
 
 void vpux::Const::Content::fillWithZero() {
-    if (auto perAxisQType = getType().getElementType().dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto perAxisQuantileType =
+                getType().getElementType().dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>()) {
+        const auto outShape = getType().getShape();
+        const auto order = getType().getDimsOrder();
+        const auto outMemShape = order.toMemoryOrder(outShape);
+
+        VPUX_THROW_UNLESS(outShape.size() == 4, "Unsupported shape size {0}", outShape.size());
+        VPUX_THROW_UNLESS(perAxisQuantileType.getQuantizedDimension() == 0,
+                          "Only per-channel quantization is supported");
+
+        const auto OC = outShape[Dims4D::Filter::OC];
+        const auto IC = outShape[Dims4D::Filter::IC];
+        const auto H = outShape[Dims4D::Filter::KY];
+        const auto W = outShape[Dims4D::Filter::KX];
+
+        const auto storageType = perAxisQuantileType.getStorageType();
+        const auto bitWidth = storageType.getIntOrFloatBitWidth();
+
+        VPUX_THROW_UNLESS(IC * H * W * bitWidth % 128 == 0,
+                          "Padded values must align to 16 bytes for palletized types.");
+
+        SmallVector<double> quantiles(perAxisQuantileType.getQuantiles());
+        const uint64_t zeroIdx = std::distance(quantiles.begin(), std::find(quantiles.begin(), quantiles.end(), 0.0));
+
+        VPUX_THROW_UNLESS(zeroIdx != quantiles.size(),
+                          "Missing zero (0) value from palletization LUT, which must be present for padding.");
+
+        loop_4d(LoopExecPolicy::Parallel, getType().getContext(), OC, IC, H, W,
+                [&](int64_t i, int64_t ic, int64_t h, int64_t w) {
+                    const auto fillChannel = [&](auto buffer) {
+                        using BufferType = std::decay_t<decltype(buffer)>;
+                        using ElemType = typename BufferType::value_type;
+
+                        const auto inMemIndND = order.toMemoryOrder(Shape{i, ic, h, w});
+                        const auto inMemInd1D = getMemIndex1D(inMemIndND, outMemShape);
+
+                        buffer[inMemInd1D] = checked_cast<ElemType>(zeroIdx);
+                    };
+
+                    mutate(fillChannel);
+                });
+
+    } else if (auto quantileType = getType().getElementType().dyn_cast_or_null<mlir::quant::QuantileQuantizedType>()) {
+        const auto outShape = getType().getShape();
+        const auto IC = outShape[Dims4D::Filter::IC];
+        const auto H = outShape[Dims4D::Filter::KY];
+        const auto W = outShape[Dims4D::Filter::KX];
+
+        const auto storageType = quantileType.getStorageType();
+        const auto bitWidth = storageType.getIntOrFloatBitWidth();
+
+        VPUX_THROW_UNLESS(IC * H * W * bitWidth % 128 == 0,
+                          "Padded values must align to 16 bytes for palletized types.");
+
+        SmallVector<double> quantiles(quantileType.getQuantiles());
+        const uint64_t zeroIdx = std::distance(quantiles.begin(), std::find(quantiles.begin(), quantiles.end(), 0.0));
+
+        VPUX_THROW_UNLESS(zeroIdx != quantiles.size(),
+                          "Missing zero (0) value from palletization LUT, which must be present for padding.");
+
+        const auto fillBuffer = [&](auto buffer) {
+            using BufferType = std::decay_t<decltype(buffer)>;
+            using ElemType = typename BufferType::value_type;
+
+            std::fill_n(buffer.data(), buffer.size(), checked_cast<ElemType>(zeroIdx));
+        };
+
+        mutate(fillBuffer);
+    } else if (auto perAxisQType =
+                       getType().getElementType().dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>()) {
         const auto outShape = getType().getShape();
         const auto order = getType().getDimsOrder();
         const auto outMemShape = order.toMemoryOrder(outShape);

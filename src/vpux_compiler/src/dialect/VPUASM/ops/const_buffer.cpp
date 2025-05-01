@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -46,4 +46,8 @@ void vpux::VPUASM::ConstBufferOp::build(mlir::OpBuilder&, mlir::OperationState& 
     props.sym_name = symName;
     props.buffer_type = mlir::TypeAttr::get(bufferType);
     props.content = std::move(content);
+}
+
+vpux::VPURT::BufferSection VPUASM::ConstBufferOp::getMemorySection() {
+    return getBufferType().getLocation().getSection();
 }

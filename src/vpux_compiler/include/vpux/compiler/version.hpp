@@ -10,12 +10,21 @@
 // This version is exposed via L0 API and reported as (read-only) plugin property NPU_COMPILER_VERSION
 //
 #define NPU_COMPILER_VERSION_MAJOR 7
-#define NPU_COMPILER_VERSION_MINOR 2
+#define NPU_COMPILER_VERSION_MINOR 20
 
 /*
 
 Change Log:
 -----------
+NPU Compiler 7.20.0
+  - Take NPU_QDQ_OPTIMIZATION property value to enable/disable adaptive stripping
+
+NPU Compiler 7.4.0
+  - Add option BATCH_COMPILER_MODE_SETTINGS and turn batch-compile-mode on 'debatch' by default
+
+NPU Compiler 7.3.0
+  - Remove model-hash option from NPU_COMPILATION_MODE_PARAMS
+
 NPU Compiler 7.2.0
   - Add NF4 datatype support
   - Decouple NPU Compiler version from VCL version

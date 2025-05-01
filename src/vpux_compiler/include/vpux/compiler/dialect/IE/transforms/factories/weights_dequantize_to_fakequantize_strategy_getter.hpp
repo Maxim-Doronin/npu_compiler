@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,7 +14,6 @@ namespace vpux::IE {
 /*
    Find right class to get strategies for particular platform
 */
-std::unique_ptr<IGreedilyPassStrategy> createWeightsDequantizeToFakeQuantizeStrategy(mlir::func::FuncOp funcOp,
-                                                                                     bool enableWDBlockArgumentInput);
+std::unique_ptr<IGreedilyPassStrategy> createWeightsDequantizeToFakeQuantizeStrategy(mlir::func::FuncOp funcOp);
 
 }  // namespace vpux::IE

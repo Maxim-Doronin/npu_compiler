@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,18 +12,12 @@ def VPUASM_Dialect : Dialect {
     let summary = "VPU NN Assembly dialect";
 
     let description = [{
-The **VPUMI Dialect** represents the Inference with the view and semantics of the NN RunTime.
-Additionally to the **VPUMI Dialect** it represents the tasks with **symbolic** relationships between them.
+        The **VPUASM Dialect** represents the inference with the view and semantics of the NN RunTime.
+        Unlike **VPUMI Dialect**, **VPUASM** imposes a **symbolic** representation, instead of a
+        **SSA use-def chain** one.
 
-It handles such VPU-specifics as:
-
-* Memory layout of tasks and operations.
-* Memory relationships as exposed by symbolic references.
-* As with **VPUMI** it represents the operational view of the NN RunTime.
-
-Main intent is to represent logic and passes that solve memory layout and relationship problems
-
-[./VPUASM/_ops_interfaces.md]
+        In addition, it is considered as the last architecture-independent dialect and is followed by
+        architecture-dependent dialects, such as NPUReg40XX.
     }];
 
     let name = "VPUASM";

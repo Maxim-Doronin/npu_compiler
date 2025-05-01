@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -217,6 +217,7 @@ const VPURT::BarrierConfig& vpux::VPURT::BarrierSimulator::getConfig(mlir::Value
 
 void vpux::VPURT::BarrierSimulator::parseBarriers(mlir::Operation* parentOp) {
     _isDynamicBarriers = false;
+    _wlmPageApproach = false;
 
     parentOp->walk([&](VPURT::DeclareVirtualBarrierOp barrierOp) {
         _isDynamicBarriers = true;
@@ -228,6 +229,19 @@ void vpux::VPURT::BarrierSimulator::parseBarriers(mlir::Operation* parentOp) {
         _barriersMap.insert({barrierOp, _barriers.size()});
         _barrierVID.insert({_barriers.size(), barrierOp});
         _barriers.emplace_back(barrierOp->getLoc());
+
+        // Check if barrier page (used for WLM subgraph approach) is configured
+        // on all barriers. Store page data to use it later when performing PID assignment
+        auto pageOpt = barrierOp.getWlmPage();
+        if (pageOpt.has_value()) {
+            if (vid == 0) {
+                _wlmPageApproach = true;
+            }
+            _pageToBarVidVecMap[pageOpt.value()].push_back(vid);
+        }
+        VPUX_THROW_UNLESS(_wlmPageApproach == pageOpt.has_value(),
+                          "Misalignment on WLM page approach setting, flag - {0}, barOp - {1}", _wlmPageApproach,
+                          barrierOp);
     });
 
     parentOp->walk([&](VPURT::ConfigureBarrierOp barrierOp) {
@@ -774,10 +788,16 @@ mlir::LogicalResult vpux::VPURT::BarrierSimulator::simulateBarriers(Logger log, 
                       getDmaProgressLog(), dpu, _nceTasks.size(), act, _actTasks.size(), m2i, _m2iTasks.size(), bar,
                       _barriers.size());
 
-            for (size_t b = 0; b < bar; ++b) {
-                if (_barriers[b].producerCount != 0 || _barriers[b].consumerCount != 0)
-                    log.debug("Barrier {0} mapped to real {1} with remaining producers: {2}, consumers: {3}", b,
-                              _barriers[b].realId, _barriers[b].producerCount, _barriers[b].consumerCount);
+            for (size_t pid = 0; pid < toVirtual.size(); pid++) {
+                auto vid = toVirtual[pid];
+                if (vid < 0) {
+                    log.debug("PID {0} not mapped", pid);
+                } else {
+                    log.debug("PID {0} VID {1}, producers: {2}, consumers: {3}", pid, vid, _barriers[vid].producerCount,
+                              _barriers[vid].consumerCount);
+                    VPUX_THROW_UNLESS(_barriers[vid].realId == static_cast<int64_t>(pid),
+                                      "Mismatch in barrier config: VID {0}", vid);
+                }
             }
 
             return mlir::failure();
@@ -793,9 +813,52 @@ mlir::LogicalResult vpux::VPURT::BarrierSimulator::simulateBarriers(Logger log, 
     return mlir::success();
 }
 
+mlir::LogicalResult vpux::VPURT::BarrierSimulator::simulateBarriersForWlmPageApproach(Logger log, int64_t numBarriers) {
+    VPUX_THROW_UNLESS(_isDynamicBarriers,
+                      "Unexpected dynamic barrier type for barrier simulation with WLM page approach");
+    VPUX_THROW_UNLESS(_wlmPageApproach, "Barrier simulator not initialized for WLM page approach");
+
+    // Since during simulation PIDs are not reassigned but provided in a separate data structure
+    // turn dynamic barrier flag off
+    _isDynamicBarriers = false;
+
+    const auto pageSize = static_cast<size_t>(numBarriers / 2);
+
+    for (size_t pageInd = 0; pageInd < _pageToBarVidVecMap.size(); pageInd++) {
+        size_t pidOffset = 0;
+        if (pageInd % 2 == 1) {
+            pidOffset += pageSize;
+        }
+
+        auto barVidVec = _pageToBarVidVecMap[pageInd];
+        VPUX_THROW_WHEN(barVidVec.size() > pageSize, "Number of barriers in page {0} not within limit of page size {1}",
+                        barVidVec.size(), pageSize);
+
+        for (size_t i = 0; i < barVidVec.size(); i++) {
+            // For each page use following barriers assignment
+            // Page0 PIDs : [0 - (numBarriers/2 - 1)]
+            // Page1 PIDs : [(numBarriers/2) - (numBarriers - 1)]
+            // Page2 PIDs : same as Page0
+            // Page3 PIDs : same as Page1
+            // ...
+            auto pid = pidOffset + i;
+            auto vid = barVidVec[i];
+            _barriers[vid].realId = pid;
+            _barrierPidToVidInstancesQueueMap[pid].push(vid);
+        }
+    }
+
+    _barrierProgrammingOrder.reserve(_barriers.size());
+
+    auto result = simulateBarriers(log, numBarriers);
+    _isDynamicBarriers = true;
+
+    return result;
+}
+
 // Simulate barriers with provided virtual to physical barrier configuration. Retrieve
 // order barriers were reprogrammed. This will later be used to reorder IR
-SmallVector<size_t> vpux::VPURT::BarrierSimulator::generateBarrierOrderWithSimulation(
+mlir::LogicalResult vpux::VPURT::BarrierSimulator::generateBarrierOrderWithSimulation(
         Logger log, int64_t numBarriers, SmallVector<size_t>& virtualToPhysicalBarrierMapping) {
     VPUX_THROW_UNLESS(_isDynamicBarriers,
                       "Unexpected dynamic barrier type for barrier simulation with manual barrier mapping configured");
@@ -812,11 +875,35 @@ SmallVector<size_t> vpux::VPURT::BarrierSimulator::generateBarrierOrderWithSimul
 
     auto result = simulateBarriers(log, numBarriers);
     _isDynamicBarriers = true;
-    if (mlir::failed(result)) {
-        return {};
+
+    return result;
+}
+
+// Method to update barrier order in IR based on how barriers were reprogrammed during simulation
+// Method used if barrier configuration was provided to the simulator and not defined during its execution
+void vpux::VPURT::BarrierSimulator::updateBarrierOrderInIr() {
+    VPUX_THROW_WHEN(_barrierProgrammingOrder.empty(), "No barriers order vector available");
+
+    VPURT::DeclareVirtualBarrierOp insertPoint = nullptr;
+    VPURT::DeclareVirtualBarrierOp finalBarOp = nullptr;
+    for (auto bar : _barrierProgrammingOrder) {
+        auto barOp = mlir::dyn_cast<VPURT::DeclareVirtualBarrierOp>(_barrierVID[bar]);
+        if (insertPoint) {
+            barOp->moveAfter(insertPoint);
+        }
+        insertPoint = barOp;
+
+        if (barOp.getIsFinalBarrier()) {
+            VPUX_THROW_UNLESS(finalBarOp == nullptr, "More then one final barrier: {0} and {1}", finalBarOp, barOp);
+            finalBarOp = barOp;
+        }
     }
 
-    return _barrierProgrammingOrder;
+    // Other passes expect final barrier to be at the end of IR barrier declarations block in the IR
+    auto lastBarOp = mlir::dyn_cast<VPURT::DeclareVirtualBarrierOp>(_barrierVID[_barrierProgrammingOrder.back()]);
+    if (finalBarOp != nullptr && lastBarOp != finalBarOp) {
+        finalBarOp->moveAfter(lastBarOp);
+    }
 }
 
 VPURT::BarrierSimulator::Status vpux::VPURT::BarrierSimulator::processSim(

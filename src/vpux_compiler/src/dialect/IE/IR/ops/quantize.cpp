@@ -1,11 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <vpux/compiler/utils/quantization.hpp>
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/adaptive_stripping_utils.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -20,7 +25,7 @@ mlir::LogicalResult vpux::IE::QuantizeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = quantize.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(quantize.getInput().getType());
     const auto dstElemType = quantize.getDstElemType();
 
     inferredReturnShapes.emplace_back(inType.getShape(), dstElemType);
@@ -34,8 +39,8 @@ mlir::LogicalResult vpux::IE::QuantizeOp::inferReturnTypeComponents(
 namespace {
 
 mlir::quant::QuantizedType extractQuantizedType(mlir::Value operand) {
-    const auto elemType = operand.getType().cast<mlir::ShapedType>().getElementType();
-    const auto quantType = elemType.dyn_cast<mlir::quant::QuantizedType>();
+    const auto elemType = mlir::cast<mlir::ShapedType>(operand.getType()).getElementType();
+    const auto quantType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType);
     VPUX_THROW_UNLESS(quantType != nullptr, "Type must be quantized, but provided {0}", elemType);
     return quantType;
 }
@@ -74,43 +79,45 @@ public:
 
 mlir::LogicalResult FuseFQsWithSimilarScales::matchAndRewrite(IE::QuantizeOp origOp,
                                                               mlir::PatternRewriter& rewriter) const {
+    // Check if adaptive stripping is enabled
+    auto moduleOp = getModuleOp(origOp);
+    auto setAdaptiveStrippingEnabled = VPU::hasEnableAdaptiveStripping(moduleOp);
+
+    if (!setAdaptiveStrippingEnabled) {
+        return mlir::failure();
+    }
+
     // Get the input of origOp
     mlir::Value origOpInput = origOp.getInput();
 
     // Get the defining operation of the first operand
     mlir::Operation* origOpProducer = origOpInput.getDefiningOp();
 
-    // Check if the producer is a Reshape or AffineReshape
-    if (!mlir::isa_and_nonnull<IE::ReshapeOp, IE::AffineReshapeOp>(origOpProducer)) {
+    // Check if the producer is Reshape, AffineReshape, Slice or Tile
+    // TODO: extend this check to other operations that attach ElemTypeInfoOpInterface
+    if (!mlir::isa_and_nonnull<IE::ReshapeOp, IE::AffineReshapeOp, IE::SliceOp, IE::TileOp, IE::TransposeOp>(
+                origOpProducer)) {
         return mlir::failure();
     }
 
-    mlir::Operation* reshapeOp = nullptr;
-    reshapeOp = origOpProducer;
-
-    // Check if reshapeOp has only one use
-    if (!reshapeOp->getResult(0).hasOneUse()) {
+    // Check if operation has only one use
+    if (!origOpProducer->getResult(0).hasOneUse()) {
         return mlir::failure();
     }
 
-    // Get the first operand of the reshapeOp
-    mlir::Value reshapeOpInput = reshapeOp->getOperand(0);
+    // Get the first operand of the operation
+    mlir::Value operationInput = origOpProducer->getOperand(0);
 
     // Get the defining operation of the first operand
-    mlir::Operation* reshapeOpProducer = reshapeOpInput.getDefiningOp();
+    mlir::Operation* operationProducer = operationInput.getDefiningOp();
 
     // Check if the producer is a Dequantize
-    if (!mlir::isa_and_nonnull<IE::DequantizeOp>(reshapeOpProducer)) {
+    if (!mlir::isa_and_nonnull<IE::DequantizeOp>(operationProducer)) {
         return mlir::failure();
     }
 
     IE::DequantizeOp dequantizeOp = nullptr;
-    dequantizeOp = mlir::dyn_cast<IE::DequantizeOp>(reshapeOpProducer);
-
-    // Check if dequantizeOp has only one use
-    if (!dequantizeOp->getResult(0).hasOneUse()) {
-        return mlir::failure();
-    }
+    dequantizeOp = mlir::dyn_cast<IE::DequantizeOp>(operationProducer);
 
     // Get the element types of the Quantize and Dequantize operations
     auto outputTypeQuantize = mlir::cast<mlir::ShapedType>(origOp.getType());
@@ -139,16 +146,15 @@ mlir::LogicalResult FuseFQsWithSimilarScales::matchAndRewrite(IE::QuantizeOp ori
     const auto dequantizeScale = inUniformType.getScale();
 
     // If the scales are similar, but not within a tolerance, fail pattern match
-    const auto quotient = quantizeScale / dequantizeScale;
-    if (quotient < 0.99 || quotient > 1.01) {
+    if (!areQuantizationScalesSimilar(quantizeScale, dequantizeScale)) {
         return mlir::failure();
     }
 
     // Set the insertion point to just after the original operation
     rewriter.setInsertionPointAfter(dequantizeOp.getInput().getDefiningOp());
 
-    // Clone the reshapeOp
-    auto* clonedReshapeOp = rewriter.clone(*reshapeOp);
+    // Clone the operation
+    auto* clonedReshapeOp = rewriter.clone(*origOpProducer);
 
     // Update the types of the cloned operation
     clonedReshapeOp->setOperand(0, dequantizeOp.getInput());

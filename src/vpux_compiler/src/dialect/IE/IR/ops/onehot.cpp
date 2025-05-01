@@ -1,10 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -19,7 +23,7 @@ mlir::LogicalResult vpux::IE::OneHotOp::verify() {
             return true;
         }
 
-        numElements = tensor.getType().cast<vpux::NDTypeInterface>().getNumElements();
+        numElements = mlir::cast<vpux::NDTypeInterface>(tensor.getType()).getNumElements();
         return numElements == 1;
     };
 
@@ -42,16 +46,11 @@ mlir::FailureOr<int64_t> extractDepth(mlir::Location loc, const mlir::Value& dep
     if (depthAttr != nullptr) {
         return depthAttr.getInt();
     } else if (depth != nullptr) {
-        auto depthConst = depth.getDefiningOp<Const::DeclareOp>();
-        if (depthConst == nullptr) {
-            return errorAt(loc, "Only constant input is supported");
+        auto depthValue = Const::getSplatValue<int64_t>(depth);
+        if (mlir::failed(depthValue)) {
+            return errorAt(loc, "OneHot depth must be a const scalar");
         }
-
-        if (const auto& attr = depthConst.getContentAttr(); !attr.isSplat()) {
-            return errorAt(loc, "OneHot depth must be a scalar");
-        }
-        const auto depthContent = depthConst.getContent();
-        return depthContent.getSplatValue<int64_t>();
+        return depthValue;
     }
 
     return errorAt(loc, "depth is not provided");
@@ -68,7 +67,7 @@ mlir::LogicalResult vpux::IE::OneHotOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = oneHot.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(oneHot.getInput().getType());
     const auto outElemType = oneHot.getOutputType();
 
     auto outShape = to_small_vector(inType.getShape());

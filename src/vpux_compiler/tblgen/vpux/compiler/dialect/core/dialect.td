@@ -18,6 +18,10 @@ def Core_Dialect : Dialect {
     let name = "Core";
 
     let cppNamespace = "vpux::Core";
+
+    let extraClassDeclaration = [{
+        static void setupExtraInterfaces(mlir::DialectRegistry& registry);
+    }];
 }
 
 #endif

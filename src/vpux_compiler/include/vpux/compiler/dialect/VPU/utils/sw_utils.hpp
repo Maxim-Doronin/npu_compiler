@@ -43,11 +43,17 @@ VPU::DistributionMode getSWInputTensorDistributionMode(VPU::MatMulOp op, VPU::Mu
                                                        vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::LSTMGatesOp lstmGatesOp, VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::GRUGatesOp gruGatesOp, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::MVN1NormalizeOp op, VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::MVN6Op op, VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::GatherOp op, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::GatherNDOp op, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::GridSampleOp op, VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::GatherElementsOp op, VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
@@ -55,7 +61,14 @@ VPU::DistributionMode getSWInputTensorDistributionMode(VPU::RMSOp op, VPU::Multi
                                                        vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::RoPEOp op, VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::SDPAOp op, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ReverseOp op, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::TopKOp op, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::RandomUniformOp randomUniformOp,
+                                                       VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
 
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ClusteredOpInterface clusteredOp,
@@ -89,11 +102,17 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::MatMulOp op, int64_t numClust
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::LSTMGatesOp lstmGatesOp, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::GRUGatesOp gruGatesOp, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::MVN1NormalizeOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::MVN6Op op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::GatherOp op, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::GatherNDOp op, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::GridSampleOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::GatherElementsOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
@@ -101,7 +120,14 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::RMSOp op, int64_t numClusters
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::RoPEOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::SDPAOp op, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ReverseOp op, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::TopKOp op, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::RandomUniformOp randomUniformOp,
+                                              int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
 }  // namespace VPU
 }  // namespace vpux

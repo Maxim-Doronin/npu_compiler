@@ -143,9 +143,9 @@ def Debatcher : PassBase<"debatcher", "vpux::FunctionPass"> {
 
     let options = [
         Option<
-            "extraArgs", "extra-args",
+            "debatcherIntputCoeffPartitions", "debatcher-input-coefficients-partitions",
             "std::string", [{""}],
-            "Debatcher extra arguments"
+            "Determines which dimension and what proportion debatching of input tensors should be done."
         >
     ];
 
@@ -225,7 +225,7 @@ def UseUserPrecision : PassBase<"use-user-precision", "vpux::ModulePass"> {
     let description = [{
         The pass is a part of `IECommon` pipeline.
 
-        This pass updates the CNNNetwork entry point function prototype and use user-provided precisions for its operands and results.
+        This pass updates the NetworkInfo entry point function prototype and use user-provided precisions for its operands and results.
         The pass inserts Convert operations from/to topology precisions.
     }];
 
@@ -312,6 +312,87 @@ def FuseRoPE : PassBase<"fuse-rope", "vpux::FunctionPass"> {
         fuse a sequence of ops to one RoPE.
     }];
     let constructor = "vpux::IE::createFuseRoPEPass()";
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// FuseSDPA
+//
+def FuseSDPA : PassBase<"fuse-sdpa", "vpux::FunctionPass"> {
+    let summary = "Fuse MatMul-Divide-Add-Softmax-MatMul to SDPA";
+    let description = [{
+        SDPA is a sequence of ops that is used to implement the Self-Attention mechanism.
+        We may encounter various types of patterns that can be integrated into SDPA, and this process is designed to address most of them, based on the input shapes.
+    }];
+    let constructor = "vpux::IE::createFuseSDPAPass()";
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// FuseDynamicQuantize
+//
+def FuseDynamicQuantize : PassBase<"fuse-dynamic-quantize", "vpux::FunctionPass"> {
+    let summary = "Fuse DynamicQuantizeLinear decomposed by OV to DynamicQuantize op";
+    let description = [{
+        fuse a sequence of ops to one DynamicQuantize.
+
+        Searching for the following pattern.
+
+        ```
+                                  [input]
+                            /        |      \
+                    (ReduceMin) (ReduceMax) (MultiPly)
+                          |          |         |
+                        (Min)      (Max)       |
+                       /     \       |         |
+               (Subtract)    (Subtract)        |
+                |             /        \      /
+                |    (Multiply)       (Divide)
+                |     /    |            |
+             (Divide)      |            |
+                |          |           /
+             (Clamp)    [scale]      /
+                |    \            /
+                |      \        /
+                |         (Add)
+                |           |
+                |        (Clamp)
+                |           |
+            [zero-point]  [quant-output]
+        ```
+
+        And fuse the ops excluding `ReduceMin` and `ReduceMax`.
+
+        ```
+                       [input]
+                    /     |    \
+            (ReduceMin)   |  (ReduceMax)
+                    \     |     /
+                    (DynamicQuantize)
+                    /     |      \
+             [scale] [zero-point] [quant-output]
+        ```
+    }];
+
+    let constructor = "vpux::IE::createFuseDynamicQuantizePass()";
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// OptimizeParallelLayers
+//
+def OptimizeParallelLayers : PassBase<"optimize-parallel-layers", "vpux::FunctionPass"> {
+    let summary = "Optimize parallel layers";
+    let description = [{
+        This pass consolidates parallel branches of computational layers to achieve better hardware utilization.
+    }];
+    let constructor = "vpux::IE::createOptimizeParallelLayersPass()";
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
@@ -1267,6 +1348,32 @@ def DecomposeLSTMSequence : PassBase<"decompose-lstm-sequence", "vpux::FunctionP
     ];
 }
 
+
+//
+// DecomposeGRUSequence
+//
+
+def DecomposeGRUSequence : PassBase<"decompose-gru-sequence", "vpux::FunctionPass"> {
+    let summary = "Decompose GRUSequenceOp";
+
+    let description = [{
+        This pass:
+        - Extracts the matrix multiplication of inputData and weights, and the
+          addition of biases from GRUSequence to allow them to run on the DPU.
+        - Convert an GRUSequenceLastPart operator to seqLength GRUCell operators.
+          Every GRUCell will be split in 1 MatMul and remaining GruGates operator
+          if shouldLinearBeforeReset is true. If shouldLinearBeforeReset is false,
+          Cell will be decompose in all basic operation components.
+    }];
+
+    let constructor = "vpux::IE::createDecomposeGRUSequencePass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+
 //
 // DecomposeLSTMCell
 //
@@ -1553,6 +1660,23 @@ def ConvertStridedSlice2Conv : PassBase<"convert-strided-slice-to-conv", "vpux::
     ];
 }
 
+//
+// SwapConvertWithSWOp
+//
+
+def SwapConvertWithSWOp : PassBase<"swap-convert-with-sw-op", "vpux::FunctionPass"> {
+    let summary = "Prepare ConvertOp for DPU fusion";
+
+    let description = [{
+        Swap Convert with LeakyRelu, AffineReshape, Concat, Reshape and Transpose.
+    }];
+
+    let constructor = "vpux::IE::createSwapConvertWithSWOpPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
 
 //
 // RunF16ToF32ConvertOnDPU
@@ -1839,14 +1963,6 @@ def HandleU16FakeQuantize : PassBase<"handle-u16-fake-quantize", "vpux::Function
 
     let constructor = "vpux::IE::createHandleU16FakeQuantizePass()";
 
-    let options = [
-        Option<
-            "enableU16FQToScaleShiftConversion", "enable-u16-fake-quantize-to-scale-shift-conversion",
-            "bool", "false",
-            "Enable U16 FakeQuantize to ScaleShift conversion"
-        >
-    ];
-
     let dependentDialects = [
         "vpux::IE::IEDialect",
         "mlir::quant::QuantizationDialect"
@@ -2033,14 +2149,6 @@ def WeightsDequantizeToFakeQuantize : PassBase<"weights-dequantize-to-fake-quant
         Constant (i8) -> Convert (to fp) -> FakeQuantize -> deducing levels and FakeQuantize limits according to actual values in the weights Constant
     }];
 
-    let options = [
-        Option<
-            "enableWDBlockArgumentInput", "enable-wd-blockarg-input",
-            "bool", "false",
-            "Enable WeightsDequantizeToFakeQuantizePass on structures with BlockArgument input"
-        >
-    ];
-
     let constructor = "vpux::IE::createWeightsDequantizeToFakeQuantizePass()";
 
     let dependentDialects = [
@@ -2141,14 +2249,6 @@ def ConvertToDequantize : PassBase<"convert-to-dequantize", "vpux::FunctionPass"
     }];
 
     let constructor = "vpux::IE::createConvertToDequantizePass()";
-
-    let options = [
-        Option<
-            "enableWDBlockArgumentInput", "enable-wd-blockarg-input",
-            "bool", "false",
-            "Enable ConvertToDequantize on structures with BlockArgument input"
-        >
-    ];
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -2255,6 +2355,27 @@ def FoldActivationBeforeFQ : PassBase<"fold-activation-before-fq", "vpux::Functi
     }];
 
     let constructor = "vpux::IE::createFoldActivationBeforeFQPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// AdjustFakeQuantizeParams
+//
+
+def AdjustFakeQuantizeParams : PassBase<"adjust-fake-quantize-params", "vpux::FunctionPass"> {
+    let summary = "Check FQ layers if output_high exceeds FP16 MAX and adjust FQ params to introduce scale shift layers";
+
+    let description = [{
+        The pass checks whether FQ range exceeds FP16 range. It searches for a subgraph until FQ range is in FP16 limits.
+        FQ params for the subgraph are modified such that input and output of the subgraph will be in FP16 range.
+
+        HandleU16FakeQuantize down the pipeline will convert the modified FQ layers to ScaleShift layers.
+    }];
+
+    let constructor = "vpux::IE::createAdjustFakeQuantizeParamsPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -2953,6 +3074,30 @@ def TransposeToPermuteCast : PassBase<"transpose-to-permute-cast", "vpux::Functi
 }
 
 //
+// HandleEltwiseWithSmallHeight
+//
+
+def HandleEltwiseWithSmallHeight : PassBase<"handle-eltwise-with-small-height", "vpux::FunctionPass"> {
+    let summary = "Optimize AddOp subgraphs with small height dimensions for multi-cluster strategy";
+
+    let description = [{
+        This pass identifies AddOp subgraphs with small height (H) dimensions and optimizes them for multi-cluster strategy SOH by reshaping the inputs.
+        1. Identify AddOp subgraphs with small H dimensions.
+        2. Reshape inputs to support multi-cluster execution.
+        3. Create a new AddOp with reshaped inputs.
+        4. Restore the original output shape.
+    }];
+
+
+    let constructor = "vpux::IE::createHandleEltwiseWithSmallHeightPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+
+//
 // PropagateAffineReshape
 //
 
@@ -3215,7 +3360,7 @@ def ExpandActivationWidth : PassBase<"expand-activation-width", "vpux::FunctionP
         Supported operations:
         * IE.PermuteQuantize
             To avoid blocking optimization of permuteQuantize, place the pass after buildMemPermuteProcessingPipeline()
-            for NPU37XX, NPU40XX.
+            for VPUX37XX+.
     }];
 
     let constructor = "vpux::IE::createExpandActivationWidthPass()";
@@ -3282,7 +3427,7 @@ def AdjustInputShape: PassBase<"adjust-input-shape", "vpux::FunctionPass"> {
            Insert ShapeCast ops to the outputs before the next non-eltwise op.
         2. Insert ShapeCast op and Expand op to the input of pooling ops when the pooling has KY=1, SY=1.
            Insert ShapeCast op, Slice Op and Expand op to the outputs.
-        Platforms NPU37XX, NPU40XX all benefit.
+        Platforms NPU37XX+ all benefit.
     }];
 
     let constructor = "vpux::IE::createAdjustInputShapePass()";
@@ -3494,10 +3639,10 @@ def ConvertReorderToPermuteQuantize : PassBase<"convert-reorder-to-permute-quant
 }
 
 //
-// PropagateMemPermuteThroughAdd
+// PropagateMemPermuteThroughEltwise
 //
 
-def PropagateMemPermuteThroughAdd : PassBase<"propagate-mem-permute-through-add", "vpux::FunctionPass"> {
+def PropagateMemPermuteThroughEltwise : PassBase<"propagate-mem-permute-through-eltwise", "vpux::FunctionPass"> {
     let summary = "Propagates IE.MemPermute through IE.Add when both inputs of IE.Add have IE.MemPermute";
 
     let description = [{
@@ -3513,10 +3658,14 @@ def PropagateMemPermuteThroughAdd : PassBase<"propagate-mem-permute-through-add"
                                                             IE.Add -> IE.ShapeCast
             IE.MemPermute -> IE.MemPermute -> IE.ShapeCast /
         ```
+        Also optimized for other elementwise operations like IE.Multiply, IE.Subtract.
         Canonicalization may simplify this when IE.MemPermute operations cancel one another
+        The pass need to have three IE.MemPermute before and after elementwise operation, they can have different
+        permutation. There is another pass "MovePermutePostEltwise" which is doing the opposite thing, which
+        needs to have two identical IE.MemPermute operations in the input, and then move them to after the output.
     }];
 
-    let constructor = "vpux::IE::createPropagateMemPermuteThroughAddPass()";
+    let constructor = "vpux::IE::createPropagateMemPermuteThroughEltwisePass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -4769,6 +4918,26 @@ def ConvertParallelSlicesToGather : PassBase<"convert-parallel-slices-to-gather"
 }
 
 //
+// ConvertGatherElementsToGather
+//
+
+def ConvertGatherElementsToGather : PassBase<"convert-gather-elements-to-gather", "vpux::FunctionPass"> {
+    let summary = "Convert GatherElements op to Gather op";
+
+    let description = [{
+        The pass is a part of `AdjustForVPU` pipeline.
+
+        This pass replaces suitable `GatherElements` operations with `Gather` operation.
+    }];
+
+    let constructor = "vpux::IE::createConvertGatherElementsToGatherPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
 // SwapOperationWithGather
 //
 
@@ -4913,6 +5082,49 @@ def ConvertVariadicSplitToStridedSlice : PassBase<"convert-variadic-split-to-str
     }];
 
     let constructor = "vpux::IE::createConvertVariadicSplitToStridedSlicePass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// ApplyDynamicBoundaryCorrection
+//
+
+def ApplyDynamicBoundaryCorrection : PassBase<"apply-dynamic-boundary-correction", "vpux::FunctionPass"> {
+    let summary = "Clear garbage from pad area for static tensors, which has been coverted to static tensors by DynamicExpandOp";
+
+    let description = [{
+        The "apply-dynamic-boundary-correction" pass addresses the issue of dynamic garbage in tensors when dynamic DPU operations are unsupported.
+        Operations computed using an upper bound process the entire tensor, including garbage, which can cause accuracy issues
+        in grouped operations like convolution or pooling. In case kernel size > 1 by dynamic dimension
+        This pass inserts a sequence of operations IE.DynamicDataMask -> IE.Multiply before each originally dynamic operation,
+        processed as static, to remove dynamic garbage.
+
+        The mask can be generated in two different modes:
+            - In terms of elements (MultiplyOp required to apply mask):
+                For fp16: `0x3c00`
+                For int8: `0x01`
+                For int32: `0x00000001`
+            - In terms of bit mask (BitwiseAndOp required to apply mask):
+                For fp16: `0xFFFF`
+                For int8: `0xFF`
+                For int32: `0xFFFFFFFF`
+        Currently the first option is used for all cases. The second option could be used in case of integer tensors
+        but there is the room for future optimizations
+
+        Example Before:
+            %1 = IE.Add(%0, %cst_0) : tensor<1x3x?x?xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x?x?xf16>
+            %2 = IE.Convolution(%1, %cst) : tensor<1x3x?x?xf16>, tensor<3x3x3x3xf16> -> tensor<1x3x?x?xf16>
+        Example After:
+            %1 = IE.Add(%0, %cst_0) : tensor<1x3x?x?xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x?x?xf16>
+            %mask = IE.DynamicDataMask(%1) : tensor<1x3x?x?xf16> -> tensor<1x3x?x?xf16>
+            %cleaned = IE.Multiply(%1, %mask) : tensor<1x3x?x?xf16>, tensor<1x3x?x?xf16> -> tensor<1x3x?x?xf16>
+            %2 = IE.Convolution(%cleaned, %cst) : tensor<1x3x?x?xf16>, tensor<3x3x3x3xf16> -> tensor<1x3x?x?xf16>
+    }];
+
+    let constructor = "vpux::IE::createApplyDynamicBoundaryCorrectionPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"

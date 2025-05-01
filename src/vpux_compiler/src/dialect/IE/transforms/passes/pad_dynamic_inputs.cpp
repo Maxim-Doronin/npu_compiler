@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -27,8 +29,7 @@ SmallVector<mlir::Operation*> getDynamicOperations(mlir::Operation* op, Logger l
     mlir::Operation* next = op;
     SmallVector<mlir::Operation*> dynamicOps;
     while (IE::needsStaticShape(next)) {
-        auto bounds = getBounds(next->getResult(0));
-        if (bounds == nullptr) {
+        if (!mlir::isa<Core::BoundedTensorType>(next->getResult(0).getType())) {
             log.trace("Op {0} at loc {1} does not have output bounds.", next->getName(), next->getLoc());
             return {};
         }
@@ -38,14 +39,15 @@ SmallVector<mlir::Operation*> getDynamicOperations(mlir::Operation* op, Logger l
         // Only data operand (operand 0) must be dynamic. Other operands must be static.
         // FIXME generalize this approach to cover any combination of static and dynamic operands.
         if (getShape(next->getOperand(0)).isStatic()) {
-            log.trace("Op {0} at loc {1} does not have dynamic operand 0.", next->getName(), next->getLoc());
-            return {};
+            return mlir::isa<IE::DynamicDataMaskOp>(next) ? dynamicOps : SmallVector<mlir::Operation*>{};
         }
         for (unsigned idx = 1; idx < next->getNumOperands(); idx++) {
             if (getShape(next->getOperand(idx)).isDynamic()) {
                 log.trace("Op {0} of type {1} has dynamic shapes on inputs that are not the first one.", next->getLoc(),
                           next->getName());
-                return {};
+                auto dynamicOpsOperand = getDynamicOperations(next->getOperand(idx).getDefiningOp(), log.nest(4));
+                dynamicOps.reserve(dynamicOps.size() + dynamicOpsOperand.size());
+                std::copy(dynamicOpsOperand.begin(), dynamicOpsOperand.end(), std::back_inserter(dynamicOps));
             }
         }
         next = next->getOperand(0).getDefiningOp();
@@ -55,10 +57,16 @@ SmallVector<mlir::Operation*> getDynamicOperations(mlir::Operation* op, Logger l
 
 void freezeOutputShape(mlir::Operation* op) {
     auto origType = mlir::cast<NDTypeInterface>(op->getResult(0).getType());
-    auto bounds = getBounds(op->getResult(0));
-    const auto newShape = parseIntArrayAttr<int64_t>(bounds);
+    auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(origType);
+    VPUX_THROW_UNLESS(boundedType != nullptr, "Expected to get BoundedTensorType at {0}", op->getResult(0).getLoc());
+    auto bounds = boundedType.getBounds();
+    const auto newShape = bounds.raw();
     const auto newType = mlir::RankedTensorType::get(newShape, origType.getElementType());
     op->getResult(0).setType(newType);
+    // TODO(#157061): outputType of DynamicDataMaskOp depends on an attribute
+    if (auto generateDynGarbageOp = mlir::dyn_cast<IE::DynamicDataMaskOp>(op)) {
+        generateDynGarbageOp.setOutputTensorType(newType);
+    }
 }
 
 void traverseDynamicSubgraph(IE::DynamicReshapeOp dynReshape, Logger log) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,9 +10,9 @@
 
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/dense_map.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/ring_buffer.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <llvm/ADT/SmallSet.h>
 
@@ -146,7 +146,7 @@ public:
     }
 
 public:
-    // Used to enabled PID assignment restrictions for WLM
+    // Used to enable PID assignment restrictions for WLM
     void configureForWlm(BarrierInfo& barrierInfo);
     const BarrierConfig& getConfig(mlir::Value bar) const;
 
@@ -155,8 +155,11 @@ public:
     mlir::LogicalResult checkProducerAndConsumerCount(Logger log) const;
     mlir::LogicalResult simulateBarriers(Logger log, std::optional<int64_t> numBarriers = std::nullopt,
                                          std::optional<bool> barrierLegalization = std::nullopt);
-    SmallVector<size_t> generateBarrierOrderWithSimulation(Logger log, int64_t numBarriers,
+    mlir::LogicalResult simulateBarriersForWlmPageApproach(Logger log, int64_t numBarriers);
+    mlir::LogicalResult generateBarrierOrderWithSimulation(Logger log, int64_t numBarriers,
                                                            SmallVector<size_t>& virtualToPhysicalBarrierMapping);
+
+    void updateBarrierOrderInIr();
     SmallVector<mlir::DenseSet<VPURT::DeclareVirtualBarrierOp>> getBarrierBatchesToLegalize();
     void linkNextIds(Logger log);
     void calculateBarrierBatchesForParallelTasks();
@@ -187,6 +190,7 @@ private:
     SmallVector<BarrierConfig> _barriers;
     bool _isDynamicBarriers = false;
     bool _wlmPidProgramming = false;
+    bool _wlmPageApproach = false;
 
     SmallVector<SmallVector<BarrierUserConfig>> _dmaTasks;
     std::unordered_map<SmallVector<DmaTaskIdx>, bool> _multiQueueDmaTaskStatus;
@@ -199,6 +203,9 @@ private:
     // barrier legalisation
     SmallVector<std::set<int64_t>> _barrierBatchesToLegalize;
     DenseMap<size_t, mlir::Operation*> _barrierVID;
+
+    // Mapping of barriers (VIDs) to page index (WLM subgraph approach)
+    DenseMap<size_t, SmallVector<size_t>> _pageToBarVidVecMap;
 
     // For each barrier PID (map key) store queue of VID instances
     // This is created only when generateBarrierOrderWithSimulation() is called

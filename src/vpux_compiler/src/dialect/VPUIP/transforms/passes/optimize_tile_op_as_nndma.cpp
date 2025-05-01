@@ -1,9 +1,10 @@
 
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
@@ -120,7 +121,7 @@ SmallVector<int64_t> FuseTileWithConcatClusteredCopy::extractRepeats(VPUIP::SwKe
     VPUX_THROW_UNLESS(arrayAttrs.size() == 2, "Wrong numbers of attribute at '{0}', expected 2 but got '{1}'",
                       kernelRun->getLoc(), arrayAttrs.size());
 
-    auto repeatsAttr = arrayAttrs.getValue()[1].dyn_cast<mlir::ArrayAttr>();
+    auto repeatsAttr = mlir::dyn_cast<mlir::ArrayAttr>(arrayAttrs.getValue()[1]);
     VPUX_THROW_UNLESS(repeatsAttr != nullptr, "Failed to extract repeatsAttr at '{0}'", kernelRun->getLoc());
 
     SmallVector<int64_t> repeatsAxes;
@@ -317,7 +318,7 @@ mlir::FailureOr<SmallVector<OutputPattern>> FuseTileWithConcatClusteredCopy::get
             return mlir::failure();
         }
 
-        auto outputType = childDistributedCopyOp->getResult(0).getType().cast<NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(childDistributedCopyOp->getResult(0).getType());
         const auto outReqs = StrideReqs::compact(outputType.getRank());
         if (!outReqs.checkStrides(outputType)) {
             _log.nest().trace("[{0}] Invalid output: output is strided", getDebugName());
@@ -350,7 +351,7 @@ bool FuseTileWithConcatClusteredCopy::checkOutputsDistributionCompatibility(Arra
 
         auto childClusterOp = output.distributedCopyOp;
         const auto distributedOutput = *childClusterOp.getOutputs().begin();
-        const auto distributedOutputType = distributedOutput.getType().cast<vpux::NDTypeInterface>();
+        const auto distributedOutputType = mlir::cast<vpux::NDTypeInterface>(distributedOutput.getType());
 
         auto tilingDimIndex = VPUIP::getTilingDimIndex(distributedOutputType);
         if (!tilingDimIndex.has_value()) {
@@ -405,7 +406,7 @@ mlir::LogicalResult FuseTileWithConcatClusteredCopy::matchAndRewrite(VPUIP::Conc
         auto childSubViewOp = output.subViewOp;
         auto childClusterOp = output.distributedCopyOp;
         const auto distributedOutput = *childClusterOp.getOutputs().begin();
-        const auto distributedOutputType = distributedOutput.getType().cast<vpux::NDTypeInterface>();
+        const auto distributedOutputType = mlir::cast<vpux::NDTypeInterface>(distributedOutput.getType());
 
         SmallVector<size_t> repeatAxes;
         const auto inShape = rootShape;
@@ -440,13 +441,14 @@ mlir::LogicalResult FuseTileWithConcatClusteredCopy::matchAndRewrite(VPUIP::Conc
             const auto axisAttr = mlir::IntegerAttr::get(getInt64Type(ctx), idx);
 
             if (i != repeatAxes.size() - 1) {
-                auto inputType = perAxisTileInput.getType().cast<vpux::NDTypeInterface>();
+                auto inputType = mlir::cast<vpux::NDTypeInterface>(perAxisTileInput.getType());
                 auto newOutShape = to_small_vector(inputType.getShape());
                 newOutShape[idx] = outShape[Dim(idx)];
 
                 auto newMemRefOutputType = inputType.changeShape(ShapeRef(newOutShape));
-                auto outputBuffer = rewriter.create<mlir::memref::AllocOp>(
-                        appendLoc(concatViewOp->getLoc(), "_new_buffer"), newMemRefOutputType.cast<mlir::MemRefType>());
+                auto outputBuffer =
+                        rewriter.create<mlir::memref::AllocOp>(appendLoc(concatViewOp->getLoc(), "_new_buffer"),
+                                                               mlir::cast<mlir::MemRefType>(newMemRefOutputType));
 
                 rewriter.setInsertionPointAfter(perAxisTileInput.getDefiningOp());
                 auto newPerAxisTileDMAOp = rewriter.create<VPUIP::PerAxisTileDMAOp>(

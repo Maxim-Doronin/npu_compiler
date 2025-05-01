@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,7 +10,7 @@
 namespace vpux::VPU::arch40xx {
 
 /*
-   Class for getting strategies for NPU40XX
+   Class for getting strategies for VPU40XX
 */
 
 class StrategyGetter : public arch37xx::StrategyGetter {

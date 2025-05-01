@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -51,9 +51,6 @@ constexpr uint64_t defaultActRtEntry = 0x1C000000;
 //  [28] FRC_TIMESTAMP_EN
 constexpr uint32_t defaultPerfMetricsMask = 0x1800E006;
 
-uint32_t getTileSelectMaskForBuffer(VPUASM::DeclareBufferOp buffer);
-uint32_t getTileSelectMaskForBuffer(VPUASM::DeclareTaskBufferOp taskBuffer);
-
 template <class OpType>
 OpType getOpFrom(ELF::SymbolReferenceMap& _symRefMap, std::optional<mlir::SymbolRefAttr> attr);
 
@@ -72,7 +69,7 @@ void fillNNrtConfig(npu40xx::nn_public::VpuNNShaveRuntimeConfigs& shv_rt_configs
     if (getIsActKernelInvocations) {
         shv_rt_configs.use_schedule_embedded_rt = false;
         shv_rt_configs.code_window_buffer_size = NPUReg40XX::defaultActRtCodeSectionSize;
-        // TODO: E#74314 nnActEntry.40xx.elf has a .versiondata section that contains a single uint32_t
+        // TODO: E#-74314 nnActEntry.40xx.elf has a .versiondata section that contains a single uint32_t
         // This should be read and set in mi.shvRtConfigs_.runtimeVersion_
         shv_rt_configs.runtime_version = 0;
         shv_rt_configs.runtime_entry = NPUReg40XX::defaultActRtEntry;
@@ -95,7 +92,7 @@ void fillNNrtConfig(npu40xx::nn_public::VpuNNShaveRuntimeConfigs& shv_rt_configs
         shv_rt_configs.stack_frames[1] = stackFrames->second;
     }
 
-    shv_rt_configs.stack_size = shaveStacksSize.value_or(0);
+    shv_rt_configs.stack_size = checked_cast<uint32_t>(shaveStacksSize.value_or(0));
 }
 
 }  // namespace NPUReg40XX

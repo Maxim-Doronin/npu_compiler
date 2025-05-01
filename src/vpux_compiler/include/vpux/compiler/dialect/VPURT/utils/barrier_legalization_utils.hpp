@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,6 +19,8 @@ bool verifyBarrierSlots(mlir::func::FuncOp func, Logger log);
 bool verifyOneWaitBarrierPerTask(mlir::func::FuncOp funcOp, Logger log);
 void orderExecutionTasksAndBarriers(mlir::func::FuncOp funcOp, BarrierInfo& barrierInfo, Logger log,
                                     bool orderByConsumption = false);
+size_t getFinalBarriersCount(mlir::func::FuncOp funcOp);
+bool addFinalBarrierIfNotExists(mlir::func::FuncOp funcOp, Logger log);
 
 // TaskOp queue related utility functions
 using TaskOpQueues = std::map<VPURT::TaskQueueType, SmallVector<uint32_t>>;

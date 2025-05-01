@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/core/function_outlining_splitter.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/IE/function_outlining_splitter.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/format.hpp"
 
 #include <llvm/ADT/STLExtras.h>
@@ -61,76 +64,6 @@ void moveOperationIfNeeded(mlir::Operation* op) {
 
 namespace outliner {
 
-struct FuncInfo {
-    SmallVector<mlir::Type> inputTypes;
-    SmallVector<mlir::Type> outputTypes;
-    std::string funcNames;
-};
-
-//
-// OutlinerBase
-//
-
-class OutlinerBase {
-public:
-    virtual ~OutlinerBase() = default;
-
-    virtual void outline(mlir::ModuleOp moduleOp, StringRef functionSuffix) {
-        IE::CNNNetworkOp netInfo;
-        mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
-
-        auto outlinedTargets = getOutliningTargets(netFunc);
-        if (outlinedTargets.empty()) {
-            _log.debug("Empty outline targets");
-            return;
-        }
-
-        _log.info("Creating {0} functions", outlinedTargets.size());
-
-        SmallVector<SmallVector<FuncInfo>> funcsInfo(outlinedTargets.size());
-        for (const auto& [targetIdx, slices] : outlinedTargets | indexed) {
-            const auto slice = slices.front();
-            SmallVector<mlir::Type> inputTypes;
-            SmallVector<mlir::Type> outputTypes;
-            for (const auto input : slice.inputs) {
-                inputTypes.push_back(input.getType());
-            }
-            for (const auto output : slice.outputs) {
-                outputTypes.push_back(output.getType());
-            }
-            auto funcName = printToString("{0}_{1}{2}", netFunc.getName(), functionSuffix, targetIdx + 1);
-            funcsInfo[targetIdx].push_back({std::move(inputTypes), std::move(outputTypes), std::move(funcName)});
-        }
-
-        buildFuncOps(moduleOp, funcsInfo, outlinedTargets);
-        buildCallOps(moduleOp, funcsInfo, outlinedTargets);
-    }
-
-protected:
-    OutlinerBase(std::unique_ptr<IFunctionOutliner> splitter, const Logger& log)
-            : _splitter(std::move(splitter)), _log(log) {
-    }
-
-    SmallVector<OutliningInstance> getOutliningTargets(mlir::func::FuncOp funcOp) {
-        return _splitter->getOutliningTargets(funcOp);
-    }
-
-    Logger getLogger() const {
-        return _log;
-    }
-
-private:
-    virtual void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
-                              ArrayRef<OutliningInstance> outlinedTargets) = 0;
-    virtual void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
-                              ArrayRef<OutliningInstance> outlinedTargets) = 0;
-
-private:
-    std::unique_ptr<IFunctionOutliner> _splitter;
-    Logger _log;
-};
-
 //
 // Naive
 //
@@ -138,7 +71,7 @@ private:
 class Naive final : public OutlinerBase {
 public:
     Naive(size_t numParts, const Logger& log)
-            : OutlinerBase(std::make_unique<FunctionOutlinerNaive>(numParts, log), log) {
+            : OutlinerBase(std::make_unique<vpux::IE::FunctionOutlinerNaive>(numParts, log), log) {
     }
 
     static constexpr StringRef name() {
@@ -148,9 +81,9 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -162,7 +95,7 @@ private:
             const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                           ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
             const auto funcLoc = appendLoc(netFunc.getLoc(), "_part{0}", targetIdx + 1);
-            auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcNames, funcType);
+            auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
             func.setPrivate();
 
             OpBuilderLogger builderLog(getLogger().nest());
@@ -198,9 +131,9 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         OpBuilderLogger builderLog(getLogger().nest());
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front(), &builderLog);
@@ -221,7 +154,7 @@ private:
             }
 
             const auto callLoc = appendLoc(netFunc.getLoc(), "_part{0}_call", targetIdx + 1);
-            auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcNames,
+            auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                               funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);
             for (const auto& res : newCall.getResults()) {
                 size_t idx = res.getResultNumber();
@@ -243,9 +176,9 @@ private:
 class RepeatingBlocks final : public OutlinerBase {
 public:
     RepeatingBlocks(size_t minOpsInBlock, size_t maxNumIterations, bool weightsAsInputs, const Logger& log)
-            : OutlinerBase(std::make_unique<FunctionOutlinerRepeatingBlocks>(minOpsInBlock, maxNumIterations,
-                                                                             /*separateFunctions=*/false,
-                                                                             weightsAsInputs, log),
+            : OutlinerBase(std::make_unique<vpux::IE::FunctionOutlinerRepeatingBlocks>(minOpsInBlock, maxNumIterations,
+                                                                                       /*separateFunctions=*/false,
+                                                                                       weightsAsInputs, log),
                            log) {
     }
 
@@ -256,9 +189,9 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -271,7 +204,7 @@ private:
             const auto funcLoc = appendLoc(netFunc.getLoc(), "_fn{0}", targetIdx + 1);
             const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                           ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
-            auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcNames, funcType);
+            auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
             func.setPrivate();
 
             OpBuilderLogger builderLog(getLogger().nest());
@@ -334,9 +267,9 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         OpBuilderLogger builderLog(getLogger().nest());
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front(), &builderLog);
@@ -364,7 +297,7 @@ private:
                 }
 
                 const auto callLoc = appendLoc(netFunc.getLoc(), "fn_{0}_call_{1}", targetIdx + 1, sliceIdx);
-                auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx].front().funcNames,
+                auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx].front().funcName,
                                                                   funcsInfo[targetIdx].front().outputTypes, newInputs);
                 for (const auto& res : newCall.getResults()) {
                     size_t idx = res.getResultNumber();
@@ -394,9 +327,9 @@ private:
 class RepeatingBlocksSeparateFunctions final : public OutlinerBase {
 public:
     RepeatingBlocksSeparateFunctions(size_t minOpsInBlock, size_t maxNumIterations, const Logger& log)
-            : OutlinerBase(std::make_unique<FunctionOutlinerRepeatingBlocks>(minOpsInBlock, maxNumIterations,
-                                                                             /*separateFunctions=*/true,
-                                                                             /*weightsAsInputs=*/false, log),
+            : OutlinerBase(std::make_unique<vpux::IE::FunctionOutlinerRepeatingBlocks>(minOpsInBlock, maxNumIterations,
+                                                                                       /*separateFunctions=*/true,
+                                                                                       /*weightsAsInputs=*/false, log),
                            log) {
     }
 
@@ -405,9 +338,9 @@ public:
     }
 
     void outline(mlir::ModuleOp moduleOp, StringRef functionSuffix) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         auto outlinedTargets = getOutliningTargets(netFunc);
         if (outlinedTargets.empty()) {
@@ -445,9 +378,9 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -459,7 +392,7 @@ private:
                 const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                               ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
                 auto func =
-                        builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcNames, funcType);
+                        builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
                 func.setPrivate();
 
                 auto builder = mlir::OpBuilder::atBlockEnd(func.addEntryBlock());
@@ -496,9 +429,9 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front());
         DenseMap<mlir::Value, mlir::Value> oldToNewArgMap;
@@ -526,7 +459,7 @@ private:
 
                 const auto callLoc = appendLoc(netFunc.getLoc(), "fn_{0}_call_{1}", targetIdx + 1, sliceIdx);
                 auto newCall =
-                        builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcNames,
+                        builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                            funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);
                 for (const auto& res : newCall.getResults()) {
                     size_t idx = res.getResultNumber();
@@ -560,7 +493,7 @@ private:
 
 class Batching final : public OutlinerBase {
 public:
-    Batching(const Logger& log): OutlinerBase(std::make_unique<FunctionOutlinerBatching>(log), log) {
+    Batching(const Logger& log): OutlinerBase(std::make_unique<vpux::IE::FunctionOutlinerBatching>(log), log) {
     }
 
     static constexpr StringRef name() {
@@ -570,9 +503,9 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -584,7 +517,7 @@ private:
             const auto funcLoc = appendLoc(netFunc.getLoc(), "_fn{0}_block{1}", targetIdx + 1, sliceIdx + 1);
             const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                           ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
-            auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcNames, funcType);
+            auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
             func.setPrivate();
 
             OpBuilderLogger builderLog(getLogger().nest());
@@ -620,9 +553,9 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp netFunc;
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
         OpBuilderLogger builderLog(getLogger().nest());
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front(), &builderLog);
@@ -651,7 +584,7 @@ private:
 
                 const auto callLoc = appendLoc(netFunc.getLoc(), "fn_{0}_call_{1}", targetIdx + 1, sliceIdx);
                 auto newCall =
-                        builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcNames,
+                        builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                            funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);
                 for (const auto& res : newCall.getResults()) {
                     size_t idx = res.getResultNumber();
@@ -683,7 +616,7 @@ public:
         Base::initLogger(log, Base::getArgumentName());
         Base::copyOptionValuesFrom(outlingOptions);
 
-        _options = vpux::OutlinerPassOptions::createFromString(functionOutlining);
+        _options = vpux::IE::OutlinerPassOptions::createFromString(functionOutlining);
     }
 
     mlir::LogicalResult initializeOptions(StringRef options) final;
@@ -693,7 +626,7 @@ private:
 
 private:
     std::string _mode;
-    vpux::OutlinerPassOptions _options;
+    vpux::IE::OutlinerPassOptions _options;
 };
 
 mlir::LogicalResult OutlinerPass::initializeOptions(StringRef options) {
@@ -703,7 +636,7 @@ mlir::LogicalResult OutlinerPass::initializeOptions(StringRef options) {
     }
 
     // Throws an exception if functionOutlining is not a valid string.
-    _options = vpux::OutlinerPassOptions::createFromString(functionOutlining);
+    _options = vpux::IE::OutlinerPassOptions::createFromString(functionOutlining);
 
     return mlir::success();
 }
@@ -727,7 +660,7 @@ void OutlinerPass::safeRunOnModule() {
                 signalPassFailure();
                 return;
             }
-            if (!_options.getIf<vpux::BatchingOptions>(0)) {
+            if (!_options.getIf<vpux::IE::BatchingOptions>(0)) {
                 mlir::emitError(moduleOp->getLoc(),
                                 "The module attribute 'VPU.debatch' expects 'BatchingOptions' only");
                 signalPassFailure();
@@ -736,7 +669,7 @@ void OutlinerPass::safeRunOnModule() {
             _log.info("{0} Outliner will use \"batching\" as the options has been requested explicilty", getName());
         } else {
             _log.info("{0} has detected debatching compile method, enforce \"batching\" outlining", getName());
-            _options = OutlinerPassOptions::createFromString("batching=''");
+            _options = vpux::IE::OutlinerPassOptions::createFromString("batching=''");
         }
     }
 
@@ -746,16 +679,16 @@ void OutlinerPass::safeRunOnModule() {
             break;
         }
 
-        if (const auto* opt = _options.getIf<vpux::NaiveOptions>(i)) {
+        if (const auto* opt = _options.getIf<vpux::IE::NaiveOptions>(i)) {
             outliner::Naive outliner(opt->numParts, _log);
             outliner.outline(moduleOp, "part");
-        } else if (const auto* opt = _options.getIf<vpux::RepeatingBlocksOptions>(i)) {
+        } else if (const auto* opt = _options.getIf<vpux::IE::RepeatingBlocksOptions>(i)) {
             outliner::RepeatingBlocks outliner(opt->minOpsInBlock, opt->maxNumIterations, opt->weightsAsInputs, _log);
             outliner.outline(moduleOp, "fn");
-        } else if (const auto* opt = _options.getIf<vpux::RepeatingBlocksSeparateFunctionsOptions>(i)) {
+        } else if (const auto* opt = _options.getIf<vpux::IE::RepeatingBlocksSeparateFunctionsOptions>(i)) {
             outliner::RepeatingBlocksSeparateFunctions outliner(opt->minOpsInBlock, opt->maxNumIterations, _log);
             outliner.outline(moduleOp, "fn");
-        } else if (const auto* opt = _options.getIf<vpux::BatchingOptions>(i)) {
+        } else if (const auto* opt = _options.getIf<vpux::IE::BatchingOptions>(i)) {
             std::ignore = opt;
             outliner::Batching outliner(_log);
             outliner.outline(moduleOp, "batching");

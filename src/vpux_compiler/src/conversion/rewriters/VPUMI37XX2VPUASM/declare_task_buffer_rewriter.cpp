@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,7 +10,7 @@ namespace vpux {
 namespace vpumi37xx2vpuasm {
 
 mlir::FailureOr<SymbolizationResult> DeclareTaskBufferRewriter::symbolize(
-        VPURegMapped::DeclareTaskBufferOp op, SymbolMapper&, mlir::ConversionPatternRewriter& rewriter) const {
+        VPUMI37XX::DeclareTaskBufferOp op, SymbolMapper&, mlir::ConversionPatternRewriter& rewriter) const {
     auto symName = findSym(op.getResult()).getRootReference();
     auto taskIdx = mlir::TypeAttr::get(op.getType());
 
@@ -21,7 +21,7 @@ mlir::FailureOr<SymbolizationResult> DeclareTaskBufferRewriter::symbolize(
 }
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> DeclareTaskBufferRewriter::getSymbolicNames(
-        VPURegMapped::DeclareTaskBufferOp op, size_t) {
+        VPUMI37XX::DeclareTaskBufferOp op, size_t) {
     auto opName = op->getName().stripDialect();
     auto taskTypeString = VPURegMapped::stringifyTaskType(op.getTaskType());
 

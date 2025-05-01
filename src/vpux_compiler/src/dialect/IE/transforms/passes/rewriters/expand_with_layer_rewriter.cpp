@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/rewriters/expand_with_layer_rewriter.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -70,7 +71,7 @@ mlir::LogicalResult ExpandWithLayer::matchAndRewrite(IE::ExpandOp origExpandOp, 
     // Input (1x1x512x512, NCWH) -> Reorder (1x1x512x512, NHWC) -> Expand (1x16x512x512, NHWC)
     // After Swap the Reorder cannot convert to PermuteDMA
     // Input (1x1x512x512, NCWH) -> Expand (1x16x512x512, NCWH) -> Reorder (1x16x512x512, NHWC)
-    auto expandOutType = origExpandOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto expandOutType = mlir::cast<vpux::NDTypeInterface>(origExpandOp.getOutput().getType());
     auto newOrderInType = expandOutType.changeDimsOrder(DimsOrder::fromValue(layerOp->getOperand(0)));
     auto newOrderOutType = expandOutType.changeDimsOrder(DimsOrder::fromValue(layerOp->getResult(0)));
     auto memPerm = getPermutationFromOrders(newOrderInType.getDimsOrder(), newOrderOutType.getDimsOrder(), ctx);

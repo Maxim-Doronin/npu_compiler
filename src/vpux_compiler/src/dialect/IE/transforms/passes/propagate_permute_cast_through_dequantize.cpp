@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <llvm/ADT/SmallVector.h>
 #include "vpux/compiler/NPU37XX/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -43,7 +44,7 @@ bool isSupportedDequantizeLayout(IE::PermuteCastOp permuteCastOp, IE::Dequantize
     const auto inputType = mlir::cast<NDTypeInterface>(dequantizeOp.getInput().getType());
     const auto quantizedType = mlir::cast<mlir::quant::QuantizedType>(inputType.getElementType());
     SmallVector<DimsOrder> supportedLayouts;
-    if (quantizedType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(quantizedType)) {
         const auto numDims = inputType.getRank();
         if (numDims == 3) {
             supportedLayouts = {DimsOrder::HWC};

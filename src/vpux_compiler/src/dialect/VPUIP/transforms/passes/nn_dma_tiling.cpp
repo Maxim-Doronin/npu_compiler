@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -58,15 +59,15 @@ Byte getDmaSize(VPUIP::NNDMAOp nndmaOp) {
 
     // Sparse data is composed of multiple buffers which will later get ungrouped into individual Copy operations
     // Therefore, the maximum buffer size is selected for tiling
-    if (auto sparseInput = nndmaOp.getInput().getType().dyn_cast<VPUIP::SparseBufferType>()) {
-        auto dataSize = sparseInput.getData().cast<vpux::NDTypeInterface>().getCompactAllocSize();
+    if (auto sparseInput = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(nndmaOp.getInput().getType())) {
+        auto dataSize = mlir::cast<vpux::NDTypeInterface>(sparseInput.getData()).getCompactAllocSize();
         auto sparsityMapSize =
                 (sparseInput.getSparsityMap() != nullptr)
-                        ? sparseInput.getSparsityMap().cast<vpux::NDTypeInterface>().getCompactAllocSize()
+                        ? mlir::cast<vpux::NDTypeInterface>(sparseInput.getSparsityMap()).getCompactAllocSize()
                         : Byte(0);
         auto seTableSize =
                 (sparseInput.getStorageElementTable() != nullptr)
-                        ? sparseInput.getStorageElementTable().cast<vpux::NDTypeInterface>().getCompactAllocSize()
+                        ? mlir::cast<vpux::NDTypeInterface>(sparseInput.getStorageElementTable()).getCompactAllocSize()
                         : Byte(0);
         return std::max({dataSize, sparsityMapSize, seTableSize});
     }
@@ -136,7 +137,7 @@ void SplitNNDMARewriter::createTiles(VPUIP::NNDMAOp nndmaOp, mlir::PatternRewrit
     const auto getTiledBuf = [](VPURT::DeclareBufferOp origBuf, vpux::ShapeRef subShape, vpux::Byte newOffset,
                                 mlir::Operation* insertionPoint,
                                 mlir::PatternRewriter& rewriter) -> VPURT::DeclareBufferOp {
-        auto origType = origBuf.getType().cast<NDTypeInterface>();
+        auto origType = mlir::cast<vpux::NDTypeInterface>(origBuf.getType());
         auto origStrides = origType.getStrides();
         auto newType = origType.changeShape(subShape);
         newType = newType.changeStrides(origStrides);
@@ -160,14 +161,14 @@ void SplitNNDMARewriter::createTiles(VPUIP::NNDMAOp nndmaOp, mlir::PatternRewrit
         auto inputNewBuffer =
                 getTiledBuf(inputDeclBuff, currentTileInShape, inputOffset, inputInsertionPoint, rewriter);
         inputInsertionPoint = inputNewBuffer.getResult().getDefiningOp();
-        auto origInputStrides = inputNewBuffer.getType().cast<NDTypeInterface>().getStrides();
+        auto origInputStrides = mlir::cast<vpux::NDTypeInterface>(inputNewBuffer.getType()).getStrides();
         inputOffset += Byte(currentTileInShape[tileDim] * origInputStrides[tileDim]);
 
         // Create new output buffer
         auto outputNewBuffer =
                 getTiledBuf(outputDeclBuff, currentTileOutShape, outputOffset, outputInsertionPoint, rewriter);
         outputInsertionPoint = outputNewBuffer.getResult().getDefiningOp();
-        auto origOutputStrides = outputDeclBuff.getType().cast<NDTypeInterface>().getStrides();
+        auto origOutputStrides = mlir::cast<vpux::NDTypeInterface>(outputDeclBuff.getType()).getStrides();
         outputOffset += Byte(currentTileOutShape[tileDim] * origOutputStrides[tileDim]);
 
         // Such distribution of tasks between ports may conflict with initial assumptions at memory scheduler level and

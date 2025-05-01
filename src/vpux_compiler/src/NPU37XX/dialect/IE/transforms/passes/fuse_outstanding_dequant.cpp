@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -64,6 +64,14 @@ private:
 
 mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp origOp,
                                                                mlir::PatternRewriter& rewriter) const {
+    // Get the Dequantize Op input and output types
+    const auto dequantInputType = origOp.getInput().getType();
+    const auto elemType = mlir::cast<mlir::ShapedType>(dequantInputType).getElementType();
+    const auto dequantUniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elemType);
+    const bool isPerChannel = mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
+
+    const auto dequantOutputType = origOp.getOutput().getType();
+
     auto maybeNCETask = origOp.getInput().getDefiningOp();
     if (maybeNCETask == nullptr) {
         return matchFailed(rewriter, origOp, "Producer is a block argument");
@@ -71,10 +79,6 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
     if (!maybeNCETask->getResult(0).hasOneUse()) {
         return matchFailed(rewriter, origOp, "NCE task has more than one consumer");
     }
-
-    const auto dequantType = origOp.getOutput().getType();
-    const bool isPerChannel =
-            dequantType.cast<vpux::NDTypeInterface>().getElementType().isa<mlir::quant::UniformQuantizedPerAxisType>();
 
     if (!mlir::isa<IE::LayerWithPostOpInterface>(maybeNCETask)) {
         SmallVector<mlir::Operation*> targetOps;
@@ -124,7 +128,7 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
 
         auto* newNCETask = rewriter.clone(*maybeNCETask);
         vpux::NDTypeInterface newType = newNCETask->getResult(0).getType();
-        newType = newType.changeElemType(dequantType.getElementType());
+        newType = newType.changeElemType(dequantOutputType.getElementType());
         newNCETask->getResult(0).setType(newType);
         newNCETask->moveBefore(targetOps.back());
 
@@ -151,9 +155,14 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
         }
 
         auto* newNCETask = rewriter.clone(*maybeNCETask);
-        newNCETask->getResult(0).setType(dequantType);
-
-        rewriter.replaceOp(origOp, newNCETask->getResult(0));
+        mlir::Value result = newNCETask->getResult(0);
+        result.setType(dequantOutputType);
+        if (dequantUniformType && !isPerChannel && !dequantUniformType.isSigned() &&
+            dequantUniformType.getZeroPoint() == 0) {
+            // Replace implicit ReLU in the Dequantize Op with an actual ReLU Op
+            result = rewriter.create<IE::ReLUOp>(takeOpLoc(origOp, "as_relu"), dequantOutputType, result);
+        }
+        rewriter.replaceOp(origOp, result);
         rewriter.eraseOp(maybeNCETask);
     }
 

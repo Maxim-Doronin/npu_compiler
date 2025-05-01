@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes/map_bilinear_interpolate_on_DPU.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -43,7 +44,7 @@ mlir::Value createGroupConvWeightsForBilinearInterp(mlir::PatternRewriter& rewri
         duplicatedWeights[2 * i] = static_cast<vpux::type::float16>(bilinearCoeffs[index]);
         duplicatedWeights[2 * i + 1] = static_cast<vpux::type::float16>(bilinearCoeffs[outputSize + index]);
     }
-    const auto elemType = input.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
     const auto weightsStorageType = mlir::RankedTensorType::get(weightShape.raw(), elemType);
     return Const::createConst(rewriter, loc, weightsStorageType, ArrayRef(duplicatedWeights));
 }
@@ -63,7 +64,7 @@ mlir::Value createGenericGroupConv(mlir::PatternRewriter& rewriter, mlir::Locati
                                                            outputSize);
     auto groupConvOp = rewriter.create<IE::GroupConvolutionOp>(
             loc, input, weights, /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, groupAttr,
-            /*post_opAttr=*/nullptr, /*clampAttr*/ nullptr, /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+            /*post_opAttr=*/nullptr, /*clampAttr*/ nullptr, /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
     return groupConvOp.getOutput();
 }
 
@@ -144,7 +145,7 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
                                                                      mlir::Location loc, mlir::Value input,
                                                                      int64_t inputSize, int64_t outputSize,
                                                                      vpux::Dim axis, IE::MapCoordFuncT mapCoord) const {
-    auto scaleInputType = input.getType().cast<vpux::NDTypeInterface>();
+    auto scaleInputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     auto scaleInputShape = scaleInputType.getShape().raw();
     mlir::SmallVector<mlir::Value> gatheredConcatInputs;
     // To generate one line/column from the output it is needed to take two consecutive lines/columns from the input
@@ -250,14 +251,14 @@ mlir::LogicalResult IE::MapBilinearInterpolateOnDPUBaseRewriter::matchAndRewrite
     auto mapCoord = IE::getMapCoordMethod(attrs.getCoordMode().getValue());
 
     // Get input shape info
-    auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inputShape = inputType.getShape().raw();
     auto inputW = inputShape[Dims4D::Act::W.ind()];
     auto inputH = inputShape[Dims4D::Act::H.ind()];
     auto inputC = inputShape[Dims4D::Act::C.ind()];
 
     // Get output shape info
-    auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShape = outputType.getShape().raw();
     auto outputW = outputShape[Dims4D::Act::W.ind()];
     auto outputH = outputShape[Dims4D::Act::H.ind()];
@@ -344,8 +345,8 @@ bool vpux::IE::isLegalInterpolateOp(IE::InterpolateOp op, bool interpolateAsSEOp
     }
 
     // If the input and output of the interpolate fits in CMX then use run interpolate on Shave
-    auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     Byte elemSizeBytes = inputType.getElemTypeSize().to<Byte>();
     Byte requiredCMXSize = inputType.getTotalAllocSize() + outputType.getTotalAllocSize();
 

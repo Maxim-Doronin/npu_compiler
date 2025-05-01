@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -49,7 +49,7 @@ mlir::LogicalResult vpux::VPU::BroadcastOp::inferReturnTypes(mlir::MLIRContext* 
         return mlir::failure();
     }
 
-    const auto inType = broadcast.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(broadcast.getInput().getType());
     auto inShape = to_small_vector(inType.getShape().raw());
     const auto broadcastMode = broadcast.getMode().value();
 

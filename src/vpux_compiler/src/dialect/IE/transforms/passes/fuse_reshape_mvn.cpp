@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -77,8 +79,8 @@ TargetOp ReshapeMVNPattern::getTargetOpWithSpecificLayoutAndSingleUser(mlir::Ope
                                                                        DimsOrder outTargetOrder) const {
     if (auto targetOp = mlir::dyn_cast_or_null<TargetOp>(op)) {
         if (targetOp->getResult(0).hasOneUse()) {
-            auto inType = targetOp->getOperand(0).getType().template cast<NDTypeInterface>();
-            auto outType = targetOp->getResult(0).getType().template cast<NDTypeInterface>();
+            auto inType = mlir::cast<vpux::NDTypeInterface>(targetOp->getOperand(0).getType());
+            auto outType = mlir::cast<vpux::NDTypeInterface>(targetOp->getResult(0).getType());
             if (inType.getRank() == 4 && outType.getRank() == 4 && inType.getDimsOrder() == inTargetOrder &&
                 outType.getDimsOrder() == outTargetOrder) {
                 return targetOp;
@@ -344,9 +346,9 @@ mlir::LogicalResult ReshapeMVNPattern::replacePattern() {
             auto permute = DimsOrder::fromAffineMap(reorderOp.getDstOrder());
             auto dequantize = reorderOp.getInput().getDefiningOp<IE::DequantizeOp>();
             auto quantizedConst = dequantize.getInput().getDefiningOp<Const::DeclareOp>();
-            const auto qType = quantizedConst.getType().cast<vpux::NDTypeInterface>();
-            const auto qElemType = qType.getElementType().cast<mlir::quant::QuantizedType>();
-            const auto outType = dequantize.getType().cast<vpux::NDTypeInterface>();
+            const auto qType = mlir::cast<vpux::NDTypeInterface>(quantizedConst.getType());
+            const auto qElemType = mlir::cast<mlir::quant::QuantizedType>(qType.getElementType());
+            const auto outType = mlir::cast<vpux::NDTypeInterface>(dequantize.getType());
             const auto newConstType = outType.changeElemType(qElemType.getExpressedType()).changeDimsOrder(permute);
             auto newConstAttr = quantizedConst.transformContentAttr().dequantize().reorder(permute).get();
 

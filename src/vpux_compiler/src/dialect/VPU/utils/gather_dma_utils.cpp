@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,9 +10,9 @@ namespace vpux::VPU {
 bool isLegalConvertToGatherDMA(VPU::GatherOp op, bool isElementTile, bool isIndicesTile, vpux::Logger log) {
     log.trace("Got Gather Op at {0}.", op->getLoc());
 
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
-    const auto indicesType = op.getIndices().getType().cast<vpux::NDTypeInterface>();
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(op.getIndices().getType());
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto arch = VPU::getArch(op);
 
     if (!op.getAxisValue().has_value()) {
@@ -52,7 +52,7 @@ bool isLegalConvertToGatherDMA(VPU::GatherOp op, bool isElementTile, bool isIndi
 
 Shape getSupportedNTilesOnDimforGather(ArrayRef<int64_t> tileDimOrder, mlir::Operation* baseOp, TilingMode tilingMode,
                                        Logger log) {
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     Shape nTilesOnDimforGather(outputShape.size(), 1);
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(baseOp);
@@ -84,7 +84,7 @@ Shape getSupportedNTilesOnDimforGather(ArrayRef<int64_t> tileDimOrder, mlir::Ope
 
 Shape getSupportedNTilesOnDimforGatherElements(DimArrRef tileDimOrder, mlir::Operation* baseOp, TilingMode tilingMode,
                                                Logger log) {
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     Shape nTilesOnDimforGatherElements(outputShape.size(), 1);
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(baseOp);

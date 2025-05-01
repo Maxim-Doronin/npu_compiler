@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@ mlir::LogicalResult vpux::VPU::DynamicQuantizeOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inType = quantize.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(quantize.getInput().getType());
 
     SmallVector<int64_t> scalarShape{1};
     const auto outScalarType = inType.changeShape(Shape(scalarShape));

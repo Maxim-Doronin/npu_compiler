@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -36,6 +36,16 @@ def AssignPhysicalBarriers : PassBase<"assign-physical-barriers", "vpux::Functio
             "virtualBarrierThresholdForWlmOpt", "workload-management-barrier-count-threshold",
             "int", "",
             "Threshold for WLM optimization"
+        >,
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+            )}]
         >
     ];
 }
@@ -157,8 +167,8 @@ def ReduceExceedingActiveCountBarriers : PassBase<"reduce-exceeding-active-count
     let description = [{
         This pass linearizes virtual barriers in the IR such that the number of active barriers at any time
         does not exceed the physical number of available barriers.
-        For NPU37XX and below: total producer variant count <= MAX_VARIANT_COUNT / 2 and total consumer variant count <= MAX_VARIANT_COUNT / 2
-        For NPU40XX and above: total producer + consumer variant count <= MAX_VARIANT_COUNT.
+        For VPU37XX and below: total producer variant count <= MAX_VARIANT_COUNT / 2 and total consumer variant count <= MAX_VARIANT_COUNT / 2
+        For VPU40XX and above: total producer + consumer variant count <= MAX_VARIANT_COUNT.
         With exceeding active barrier count:
         - parallel barriers can be merged
         - parallel consumers to barrier can be linearized
@@ -274,19 +284,6 @@ def InsertBarrierToMarkTheEndOfDescriptorGroup : PassBase<"insert-barrier-to-mar
     }];
 
     let constructor = "vpux::VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass()";
-
-    let options = [
-        Option<
-            "workloadManagementModeOpt", "workload-management-mode",
-            "vpux::WorkloadManagementMode", "",
-            "Setting which controls mode of WLM",
-            [{::llvm::cl::values(
-            clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "Legacy WLM"),
-            clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM with Barrier FIFO enabled")
-          )}]
-        >
-    ];
-
 }
 
 #endif

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -128,7 +128,7 @@ VPU::DistributionInfo VPU::getNCEExplicitDistributionInfo(VPU::NCEOpInterface nc
                                                           const vpux::VPU::OverlapDistributionParams& overlapParams) {
     VPUX_THROW_WHEN(nceOp == nullptr, "Cannot get HW DistributionInfo, is not a HW op");
 
-    if (distributionMode == DistributionMode::OVERLAPPED) {
+    if (distributionMode == DistributionMode::OVERLAPPED || overlapParams.hasNonnullComputeAndMemoryShapesOffsets()) {
         VPUX_THROW_WHEN(overlapParams.getMemoryShapes().empty() || overlapParams.getMemoryOffsets().empty() ||
                                 overlapParams.getComputeShapes().empty() || overlapParams.getComputeOffsets().empty(),
                         "memoryShapes, memoryOffsets, computeShapes, computeOffsets cannot be empty.");
@@ -561,14 +561,24 @@ VPU::DistributionInfoAttr vpux::VPU::getExplicitDistrAttrForSETable(VPU::Distrib
     auto getSETableShapesOffsets = [&](mlir::ArrayAttr shapesOffsetsAttr,
                                        const bool isOffset = false) -> mlir::ArrayAttr {
         auto shapesOffsetsVec = parseIntArrayOfArrayAttr<int64_t>(shapesOffsetsAttr);
-
+        int64_t idx = 0;
         for (auto& shapesOffsets : shapesOffsetsVec) {
             // In cases where tensor is SEGMENTED over C, SETable depth per cluster must be adjusted
-            shapesOffsets[Dims4D::Act::C.ind()] =
-                    isOffset ? shapesOffsets[Dims4D::Act::C.ind()] / static_cast<int64_t>(seSize)
-                             : divUp(shapesOffsets[Dims4D::Act::C.ind()], static_cast<int64_t>(seSize));
+            if (seSize == 0) {
+                if (VPU ::isSegmentedOverC(denseDataDistribution)) {
+                    // SeSize is zero when multi seSizes are used for DWConv, which means for each cluster, the SE table
+                    // depth is 1;
+                    shapesOffsets[Dims4D::Act::C.ind()] = isOffset ? idx : 1;
+                    idx++;
+                } else {
+                    shapesOffsets[Dims4D::Act::C.ind()] = isOffset ? 0 : static_cast<int64_t>(shapesOffsetsVec.size());
+                }
+            } else {
+                shapesOffsets[Dims4D::Act::C.ind()] =
+                        isOffset ? shapesOffsets[Dims4D::Act::C.ind()] / static_cast<int64_t>(seSize)
+                                 : divUp(shapesOffsets[Dims4D::Act::C.ind()], static_cast<int64_t>(seSize));
+            }
         }
-
         return getIntArrayOfArray(ctx, shapesOffsetsVec);
     };
 
@@ -596,9 +606,9 @@ VPU::DistributionInfoAttr VPU::getExplicitDistrAttrForActualDataFromSparseType(m
     auto ctx = origType.getContext();
 
     auto getDistribution = [](mlir::Type componentType) -> DistributionInfoAttr {
-        if (auto distributedTensor = componentType.dyn_cast<VPU::DistributedTensorType>()) {
+        if (auto distributedTensor = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(componentType)) {
             return distributedTensor.getDistribution();
-        } else if (auto distributedBuffer = componentType.dyn_cast<VPUIP::DistributedBufferType>()) {
+        } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(componentType)) {
             return distributedBuffer.getDistribution();
         }
 

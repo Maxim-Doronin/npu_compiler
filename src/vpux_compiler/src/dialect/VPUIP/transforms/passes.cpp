@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 namespace vpux::VPUIP {
 

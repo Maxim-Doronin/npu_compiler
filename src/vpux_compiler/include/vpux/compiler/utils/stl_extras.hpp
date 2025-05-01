@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,6 +19,7 @@ struct OpOrderCmp final {
 };
 
 struct ValueOrderCmp final {
+    static bool compare(mlir::Value lhs, mlir::Value rhs);
     bool operator()(mlir::Value lhs, mlir::Value rhs) const;
 };
 

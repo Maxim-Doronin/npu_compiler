@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -41,8 +41,8 @@ std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType) {
         return ODUDataBitWidth::ODU_DTYPE_2BIT;
     } else if (outDataType.isInteger(1)) {
         return ODUDataBitWidth::ODU_DTYPE_1BIT;
-    } else if (outDataType.isa<mlir::quant::QuantizedType>()) {
-        return getOutDataWidth(outDataType.cast<mlir::quant::QuantizedType>().getStorageType());
+    } else if (mlir::isa<mlir::quant::QuantizedType>(outDataType)) {
+        return getOutDataWidth(mlir::cast<mlir::quant::QuantizedType>(outDataType).getStorageType());
     }
 
     return outDataWidth;
@@ -51,9 +51,9 @@ std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType) {
 uint8_t getQuantZeroPoint(mlir::Type type) {
     uint8_t quantZeroPoint = 0;
 
-    if (const auto qType = type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
         quantZeroPoint = checked_cast<uint8_t>(qType.getZeroPoint());
-    } else if (const auto qPerAxisType = type.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto qPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
         auto qtypeQuantZp = qPerAxisType.getZeroPoints();
         quantZeroPoint = checked_cast<uint8_t>(qtypeQuantZp[0]);
     }
@@ -206,7 +206,7 @@ mlir::LogicalResult configureOutActivations(const Logger& log, ODUConfig::OutAct
         return mlir::failure();
     }
 
-    if (outDataType.isa<mlir::quant::QuantizedType>()) {
+    if (mlir::isa<mlir::quant::QuantizedType>(outDataType)) {
         config.dataWidth = outDataWidth.value();
     }
 

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 using namespace vpux;
 
@@ -27,8 +28,9 @@ mlir::LogicalResult vpux::IE::DivideOp::inferReturnTypeComponents(
     if (mlir::succeeded(outShapeRes)) {
         const auto outOrder =
                 in1Type.getRank() >= in2Type.getRank() ? vpux::getOrder(in1Type) : vpux::getOrder(in2Type);
-        const auto outDesc = getTensorAttr(outOrder, getMemorySpace(in1Type), getBounds(in1Type));
-        inferredReturnShapes.emplace_back(outShapeRes.value(), in1Type.getElementType(), outDesc);
+
+        const auto tensorAttr = getTensorAttr(ctx, outOrder, getMemorySpace(in1Type), getBounds(in1Type));
+        inferredReturnShapes.emplace_back(outShapeRes.value(), in1Type.getElementType(), tensorAttr);
     }
 
     return outShapeRes;

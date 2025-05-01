@@ -1,12 +1,15 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -42,6 +45,12 @@ mlir::LogicalResult FoldReLUBeforeFQ::matchAndRewrite(IE::ReLUOp reluOp, mlir::P
     for (auto user : reluOp.getResult().getUsers()) {
         auto fakeQuantOp = mlir::dyn_cast<IE::FakeQuantizeOp>(user);
         if (fakeQuantOp == nullptr) {
+            return mlir::failure();
+        }
+
+        auto levels = fakeQuantOp.getLevels();
+        // Maximum number of levels that exceeds I8/U8 storage type
+        if (!levels.has_value() || *levels > MAX_LEVELS) {
             return mlir::failure();
         }
 

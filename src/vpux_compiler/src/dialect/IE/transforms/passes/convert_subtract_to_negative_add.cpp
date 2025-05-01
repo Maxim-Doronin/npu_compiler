@@ -1,15 +1,19 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTSUBTRACTTOADD
@@ -47,7 +51,7 @@ mlir::Value createNegativeFqVal(mlir::PatternRewriter& rewriter, mlir::Location 
 
 IE::FakeQuantizeOp createNewFq(mlir::PatternRewriter& rewriter, mlir::Location loc, mlir::Value fqInput,
                                IE::FakeQuantizeOp initialFqOp) {
-    auto fqValType = initialFqOp.getInputHigh().getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto fqValType = mlir::cast<vpux::NDTypeInterface>(initialFqOp.getInputHigh().getType()).getElementType();
     const auto storageType = mlir::RankedTensorType::get({1, 1, 1, 1}, fqValType);
 
     mlir::Value inLow =
@@ -158,10 +162,10 @@ mlir::LogicalResult ConvertSubtractToDWConvAdd::matchAndRewrite(IE::SubtractOp s
             }
             auto negativeMulOp = rewriter.create<IE::MultiplyOp>(
                     takeOpLoc(mulOp, "neg"), negativeInput, otherInput, mulOp.getAutoBroadcastAttr(),
-                    /*post_op=*/nullptr, /*clamp=*/nullptr, /*output_channels=*/nullptr, /*input_channels=*/nullptr);
+                    /*post_op=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
             auto addOp = rewriter.replaceOpWithNewOp<IE::AddOp>(
                     subOp, input1, negativeMulOp.getOutput(), subOp.getAutoBroadcastAttr(),
-                    /*post_op=*/nullptr, /*clamp=*/nullptr, /*output_channels=*/nullptr, /*input_channels=*/nullptr);
+                    /*post_op=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
             extendOpLoc(addOp, "as_add");
             return mlir::success();
         };
@@ -173,7 +177,7 @@ mlir::LogicalResult ConvertSubtractToDWConvAdd::matchAndRewrite(IE::SubtractOp s
         }
     }
 
-    const auto outputType = subOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(subOp.getOutput().getType());
     auto outputChannel = outputType.getShape()[Dims4D::Act::C];
     auto constInput1Op = getInputConstantOp(input1);
     auto fqInput1 = input1.getDefiningOp<IE::FakeQuantizeOp>();
@@ -190,7 +194,7 @@ mlir::LogicalResult ConvertSubtractToDWConvAdd::matchAndRewrite(IE::SubtractOp s
         if (input1Shape.totalSize() == 1) {
             broadcastContentSetup = broadcastContentSetup.broadcast(Dims4D::Act::C, outputChannel);
         }
-        auto constInput1Type = constInput1Op.getType().cast<NDTypeInterface>();
+        auto constInput1Type = mlir::cast<vpux::NDTypeInterface>(constInput1Op.getType());
         auto newInput1Type = constInput1Type.changeShape(Shape(newInput1Shape));
         biasInput = rewriter.create<Const::DeclareOp>(subOpLoc, newInput1Type, broadcastContentSetup.get());
     }
@@ -230,7 +234,7 @@ mlir::LogicalResult ConvertSubtractToDWConvAdd::matchAndRewrite(IE::SubtractOp s
                 rewriter.create<IE::GroupConvolutionOp>(appendLoc(subOpLoc, "as_gconv"), input2, filter, biasInput,
                                                         stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, groupAttr,
                                                         /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr,
-                                                        /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+                                                        /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
         negativeInput = dwConv.getOutput();
         if (biasInput) {
             rewriter.replaceOp(subOp, negativeInput);
@@ -244,8 +248,8 @@ mlir::LogicalResult ConvertSubtractToDWConvAdd::matchAndRewrite(IE::SubtractOp s
 
     auto addOp =
             rewriter.replaceOpWithNewOp<IE::AddOp>(subOp, input1, negativeInput, subOp.getAutoBroadcastAttr(),
-                                                   /*post_op=*/nullptr, /*clamp=*/nullptr, /*output_channels=*/nullptr,
-                                                   /*input_channels=*/nullptr);
+                                                   /*post_op=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
+                                                   /*inputPadding=*/nullptr);
     extendOpLoc(addOp, "add_out");
     return mlir::success();
 }
@@ -273,19 +277,19 @@ void ConvertSubtractToAddPass::safeRunOnFunc() {
     auto func = getOperation();
 
     const auto isLegalSubtractOp = [&](IE::SubtractOp op) {
-        const auto input1Type = op.getInput1().getType().cast<vpux::NDTypeInterface>();
-        const auto input2Type = op.getInput2().getType().cast<vpux::NDTypeInterface>();
-        const auto outputType = op.getResult().getType().cast<vpux::NDTypeInterface>();
+        const auto input1Type = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType());
+        const auto input2Type = mlir::cast<vpux::NDTypeInterface>(op.getInput2().getType());
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getResult().getType());
 
         // SubTract with INTEGER input/ouput can not be executed as NCE op, and should be kept like Subtract and be
         // executed on shave.
-        const auto hasIntInput = input1Type.getElementType().isa<mlir::IntegerType>() ||
-                                 input2Type.getElementType().isa<mlir::IntegerType>();
+        const auto hasIntInput = mlir::isa<mlir::IntegerType>(input1Type.getElementType()) ||
+                                 mlir::isa<mlir::IntegerType>(input2Type.getElementType());
 
         // SubTract with FLOAT32 input/ouput can not be executed as NCE op, and should be kept like Subtract and be
         // executed on shave.
-        const auto hasFP32Input = input1Type.getElementType().isa<mlir::Float32Type>() ||
-                                  input2Type.getElementType().isa<mlir::Float32Type>();
+        const auto hasFP32Input = mlir::isa<mlir::Float32Type>(input1Type.getElementType()) ||
+                                  mlir::isa<mlir::Float32Type>(input2Type.getElementType());
         const auto convertGroupConv = getInputConstantOp(op.getInput2()) == nullptr;
 
         // Check if a broadcast operation is needed. If the input and output types do not match, and it cannot be

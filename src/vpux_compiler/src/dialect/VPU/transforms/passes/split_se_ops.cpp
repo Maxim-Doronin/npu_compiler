@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -76,7 +76,7 @@ bool SplitInterpolate::isLegalAndBenifitSplitInterpolate(NDTypeInterface inputTy
                                                          IE::InterpolateCoordModeAttr coordModeAttr) const {
     const auto inputElemType = inputType.getElementType();
     // If NCEInterpolate has a quantized type, splitting might cause accuracy issues
-    if (inputElemType.isa<mlir::quant::QuantizedType>()) {
+    if (mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
         return false;
     }
 
@@ -115,8 +115,8 @@ mlir::LogicalResult SplitInterpolate::matchAndRewrite(VPU::InterpolateOp origOp,
         return matchFailed(rewriter, origOp, "It is not NCEInterpolateOp");
     }
 
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto modeAttr = VPU::getNCEInterpolateModeAttr(origOp.getAttr().getMode());
     const auto coordModeAttr = origOp.getAttr().getCoordMode();
 
@@ -159,7 +159,8 @@ mlir::LogicalResult SplitInterpolate::matchAndRewrite(VPU::InterpolateOp origOp,
                                             origOp.getCoordinates(), origOp.getLambdas(), newSizesAttr, newScalesAttr,
                                             origOp.getAxesAttrAttr(), origOp.getTileOffsetAttrAttr(),
                                             origOp.getInitialInputDimsAttrAttr(), origOp.getInitialOutputDimsAttrAttr(),
-                                            origOp.getAttr(), origOp.getOutputChannelsAttr())
+                                            origOp.getAttr(), origOp.getOutputPaddingAttr(),
+                                            origOp.getInputPaddingAttr())
                 .getOutput();
     };
 
@@ -213,7 +214,7 @@ mlir::LogicalResult SplitRoll::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
         return matchFailed(rewriter, origOp, "It is not fit for NCE");
     }
 
-    const auto inputType = origOp.getData().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getData().getType());
     const auto inputShape = inputType.getShape();
     auto shiftAndAxesOrFail =
             IE::getShiftAndAxesForRollOp(origOp.getLoc(), origOp.getShift(), origOp.getAxes(), inputShape);
@@ -224,27 +225,27 @@ mlir::LogicalResult SplitRoll::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
     const auto shift = shiftAndAxes.shift;
     const auto axes = shiftAndAxes.axes;
 
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     if (!isLegalAndBenifitSplitRoll(origOp, inputType, outputType, shift)) {
         return matchFailed(rewriter, origOp, "It is not beneficial to split");
     }
 
     const auto newAxesElems = checked_cast<int64_t>(axes.size());
-    const auto axesDimOrder = origOp.getAxes().getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto axesDimOrder = mlir::cast<vpux::NDTypeInterface>(origOp.getAxes().getType()).getDimsOrder();
     const auto newAxesType =
             mlir::RankedTensorType::get(ArrayRef(newAxesElems), origOp.getAxes().getType().getElementType(),
-                                        getTensorAttr(rewriter.getContext(), axesDimOrder, nullptr, nullptr));
+                                        getTensorAttr(rewriter.getContext(), axesDimOrder, nullptr));
     const auto newAxesValue = Const::createConst(rewriter, origOp.getAxes().getLoc(), newAxesType,
                                                  ArrayRef({Dims4D::Act::H.ind(), Dims4D::Act::W.ind()}));
 
-    const auto shiftDimOrder = origOp.getShift().getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto shiftDimOrder = mlir::cast<vpux::NDTypeInterface>(origOp.getShift().getType()).getDimsOrder();
     const auto shiftLoc = origOp.getShift().getLoc();
 
     auto createSingleDimRollOp = [&](Dim dim, ArrayRef<int32_t> newShift, mlir::Value inputVal) {
         const auto newShiftElems = checked_cast<int64_t>(newShift.size());
         const auto newShiftType =
                 mlir::RankedTensorType::get(ArrayRef(newShiftElems), origOp.getShift().getType().getElementType(),
-                                            getTensorAttr(rewriter.getContext(), shiftDimOrder, nullptr, nullptr));
+                                            getTensorAttr(rewriter.getContext(), shiftDimOrder, nullptr));
         const auto shiftValue = Const::createConst(rewriter, shiftLoc, newShiftType, newShift);
         auto newLoc = appendLoc(origOp.getLoc(), "_roll_on_Dim_{0}", dim.ind());
         return rewriter.create<VPU::RollOp>(newLoc, inputVal, shiftValue, newAxesValue).getOutput();

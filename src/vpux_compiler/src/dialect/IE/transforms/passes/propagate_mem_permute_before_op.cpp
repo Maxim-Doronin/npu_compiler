@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_PROPAGATEMEMPERMUTEBEFOREOP
@@ -183,7 +185,7 @@ mlir::LogicalResult replaceWithNewSubGraph(mlir::Value affineReshape, mlir::Valu
                                                         newPermAttr);
 
     // Reshape to original output shape
-    auto outputType = permuteOp->getResult(0).getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(permuteOp->getResult(0).getType());
     auto outputShape = outputType.getMemShape();
     auto outputShapeAttr = getIntArrayAttr(ctx, outputShape);
     const auto reassociationMap =
@@ -280,8 +282,8 @@ mlir::LogicalResult OptimizeMemPermute::matchAndRewrite(IE::MemPermuteOp origOp,
     }
 
     // Check that tensor rank is 4, otherwise compilation fails in later passes
-    auto inType = affineReshape.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = affineReshape.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(affineReshape.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(affineReshape.getOutput().getType());
     auto inRank = inType.getRank();
     auto outRank = outType.getRank();
     if (inRank != 4 || outRank != 4) {
@@ -392,11 +394,12 @@ mlir::LogicalResult PropagatePermuteQuantize::movePermuteQuantize(mlir::Value af
     }
 
     // Reshape to original output shape
-    auto outputType = permuteQuantizeOp->getResult(0).getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(permuteQuantizeOp->getResult(0).getType());
     auto outputShape = outputType.getShape();
     auto outputShapeAttr = getIntArrayAttr(ctx, outputShape);
     auto outputReshape = rewriter.create<IE::ShapeCastOp>(
-            affineReshapeOp.getLoc(), newOp->getResult(0).getType().cast<NDTypeInterface>().changeShape(outputShape),
+            affineReshapeOp.getLoc(),
+            mlir::cast<vpux::NDTypeInterface>(newOp->getResult(0).getType()).changeShape(outputShape),
             newOp->getResult(0), outputShapeAttr);
     permuteQuantize.replaceAllUsesWith(outputReshape.getResult());
     rewriter.eraseOp(permuteQuantizeOp);
@@ -408,8 +411,10 @@ mlir::LogicalResult PropagatePermuteQuantize::matchAndRewrite(IE::PermuteQuantiz
                                                               mlir::PatternRewriter& rewriter) const {
     auto ctx = rewriter.getContext();
 
-    const auto permuteQuantizeInElemType = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto permuteQuantizeOutElemType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto permuteQuantizeInElemType =
+            mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getElementType();
+    const auto permuteQuantizeOutElemType =
+            mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getElementType();
     if (permuteQuantizeInElemType != permuteQuantizeOutElemType) {
         return mlir::failure();
     }
@@ -435,8 +440,8 @@ mlir::LogicalResult PropagatePermuteQuantize::matchAndRewrite(IE::PermuteQuantiz
 
     // Check that tensor rank is 4, otherwise compilation fails in later passes
     const int64_t SUPPORTED_RANK = 4;
-    auto inType = affineReshape.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = affineReshape.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(affineReshape.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(affineReshape.getOutput().getType());
     auto inRank = inType.getRank();
     auto outRank = outType.getRank();
     if (inRank != SUPPORTED_RANK || outRank != SUPPORTED_RANK) {
@@ -536,16 +541,16 @@ bool MoveThroughOpBase<ConcreteOp>::genericCheck(mlir::Operation* permuteOp) con
     }
 
     // The ConcreteOp must not have input or output quantized per axis
-    auto inElemType = op->getOperand(0).getType().dyn_cast<vpux::NDTypeInterface>().getElementType();
-    auto outElemType = op->getResult(0).getType().dyn_cast<vpux::NDTypeInterface>().getElementType();
-    if (inElemType.isa<mlir::quant::UniformQuantizedPerAxisType>() ||
-        outElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    auto inElemType = mlir::dyn_cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+    auto outElemType = mlir::dyn_cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inElemType) ||
+        mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outElemType)) {
         return false;
     }
 
     // E#127631: If MemPermute input is QuantizedType the storage type should not be sub byte quantization because this
     // would result in compilation error later
-    const auto quantType = inElemType.dyn_cast<mlir::quant::QuantizedType>();
+    const auto quantType = mlir::dyn_cast<mlir::quant::QuantizedType>(inElemType);
     if (quantType != nullptr) {
         return !vpux::isSubByteType(quantType.getStorageType());
     }
@@ -604,10 +609,9 @@ mlir::LogicalResult MoveThroughOpBase<ConcreteOp>::matchAndRewrite(ConcreteOp co
     mapper.map(concreteOp->getOperands(), newInputs);
     mlir::Operation* newOp = rewriter.clone(*concreteOp, mapper);
     auto newOutput = newOp->getResult(0);
-    newOutput.setType(
-            concreteOp->getResult(0).getType().template cast<vpux::NDTypeInterface>().changeDimsOrder(outOrder));
+    newOutput.setType(mlir::cast<vpux::NDTypeInterface>(concreteOp->getResult(0).getType()).changeDimsOrder(outOrder));
 
-    auto origOrder = permuteOp->getResult(0).getType().template cast<NDTypeInterface>().getDimsOrder();
+    auto origOrder = mlir::cast<vpux::NDTypeInterface>(permuteOp->getResult(0).getType()).getDimsOrder();
     auto newPermuteCast = rewriter.createOrFold<IE::PermuteCastOp>(
             permuteOp->getLoc(), newOp->getResult(0), origOrder.toAffineMap(ctx),
             mlir::AffineMap::getMultiDimIdentityMap(outOrder.numDims(), ctx));
@@ -648,7 +652,7 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::isPropagationBeneficialForConcatAndSli
         return false;
     }
 
-    auto permuteInType = permuteOp.getInput().getType().cast<NDTypeInterface>();
+    auto permuteInType = mlir::cast<vpux::NDTypeInterface>(permuteOp.getInput().getType());
     const auto permuteInMemShape = permuteInType.getMemShape();
     auto memPerm = permuteOp.getMemPerm();
     if (isTrivialPermute(permuteInMemShape, memPerm)) {
@@ -687,12 +691,106 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::isPropagationBeneficialForConcatAndSli
 
     const auto parentInShape = getShape(parentOp->getOperand(0));
     const auto parentOutShape = getShape(parentOp->getResult(0));
-    const auto benificialStrideDMA = isBeneficialStrideDMA(parentInShape, parentOutShape);
+    const auto beneficialStrideDMA = isBeneficialStrideDMA(parentInShape, parentOutShape);
 
-    // For ConcatOp, the propagation is beneficial once it benefits the stride DMA,
-    // bacause moving memPermute through ConcatOp brings no extra data movement
-    if (mlir::isa_and_nonnull<IE::ConcatOp>(parentOp)) {
-        return benificialStrideDMA;
+    auto isInputWithDuplicateSlice = [&](mlir::Value input) {
+        auto getSliceAxes = [&](IE::SliceOp sliceOp) -> SmallVector<uint64_t> {
+            auto sliceInShape = getShape(sliceOp.getSource());
+            auto sizes = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
+
+            SmallVector<uint64_t> sliceAxes;
+            for (size_t dimIdx = 0; dimIdx < sizes.size(); dimIdx++) {
+                if (sliceInShape[Dim(dimIdx)] != sizes[dimIdx]) {
+                    sliceAxes.push_back(static_cast<uint64_t>(dimIdx));
+                }
+            }
+
+            return sliceAxes;
+        };
+
+        IE::SliceOp firstSliceOp = nullptr;
+        for (auto user : input.getUsers()) {
+            firstSliceOp = mlir::dyn_cast_or_null<IE::SliceOp>(user);
+            if (firstSliceOp != nullptr) {
+                break;
+            }
+        }
+
+        if (firstSliceOp == nullptr) {
+            return false;
+        }
+
+        auto sliceAxes = getSliceAxes(firstSliceOp);
+        if (sliceAxes.size() != 1) {
+            return false;
+        }
+
+        uint64_t firstSliceAxe = sliceAxes.front();
+        int64_t sliceSize = 0;
+        SmallVector<IE::MemPermuteOp> memPermuteOps;
+        SmallVector<IE::MemPermuteOp> inputUserMemPermuteOps;
+
+        for (auto user : input.getUsers()) {
+            if (!mlir::isa_and_nonnull<IE::MemPermuteOp, IE::SliceOp>(user)) {
+                return false;
+            }
+
+            auto sliceOp = mlir::dyn_cast_or_null<IE::SliceOp>(user);
+            if (sliceOp == nullptr) {
+                auto memPermuteOp = mlir::dyn_cast_or_null<IE::MemPermuteOp>(user);
+                if (memPermuteOp != nullptr) {
+                    memPermuteOps.push_back(memPermuteOp);
+                    inputUserMemPermuteOps.push_back(memPermuteOp);
+                }
+                continue;
+            }
+
+            sliceAxes = getSliceAxes(sliceOp);
+            if (sliceAxes.size() != 1 || firstSliceAxe != sliceAxes.front()) {
+                return false;
+            }
+
+            const auto sliceShape = getShape(sliceOp.getResult()).raw();
+            sliceSize += sliceShape[firstSliceAxe];
+
+            if (!sliceOp.getResult().hasOneUse()) {
+                continue;
+            }
+
+            if (auto memPermuteOp = mlir::dyn_cast_or_null<IE::MemPermuteOp>(*sliceOp.getResult().getUsers().begin())) {
+                memPermuteOps.push_back(memPermuteOp);
+            }
+        }
+
+        // If input has MemPermute user, and the Slice's MemPermute user has the same permute, it's beneficial to
+        // propagate the MemPermute before Slice, otherwise it's not beneficial.
+        bool hasDuplicateMemPermute = false;
+
+        // For SliceOp, the propagation is beneficial once parent op has multi slice users, and total slice ops tensor
+        // size is bigger than the original size.
+        bool isSliceSizeGreaterThanInput = sliceSize > getShape(input).raw()[firstSliceAxe];
+
+        bool isSameMemPermute = false;
+        if (!memPermuteOps.empty()) {
+            // Check all MemPermute with same permutation.
+            const auto firstMemPermLayout = DimsOrder::fromAffineMap(memPermuteOps[0].getMemPermAttr().getValue());
+            isSameMemPermute = llvm::all_of(memPermuteOps, [firstMemPermLayout](IE::MemPermuteOp& memPermuteOp) {
+                return firstMemPermLayout == DimsOrder::fromAffineMap(memPermuteOp.getMemPermAttr().getValue());
+            });
+        }
+
+        if (inputUserMemPermuteOps.size() > 0 && isSameMemPermute) {
+            hasDuplicateMemPermute = true;
+        }
+
+        return hasDuplicateMemPermute || isSliceSizeGreaterThanInput;
+    };
+
+    if (auto sliceOp = mlir::dyn_cast_or_null<IE::SliceOp>(parentOp)) {
+        auto isDupSlice = isInputWithDuplicateSlice(sliceOp.getSource());
+        if (isDupSlice && beneficialStrideDMA) {
+            return true;
+        }
     }
 
     // For SliceOp, the propagation is beneficial with the additional condition
@@ -707,7 +805,7 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::isPropagationBeneficialForConcatAndSli
             return true;
         }
 
-        auto inputType = input.getType().cast<NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
         auto inputMemShape = inputType.getMemShape();
         if (isTrivialPermute(inputMemShape, memPerm)) {
             return true;
@@ -724,8 +822,34 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::isPropagationBeneficialForConcatAndSli
         const auto isNceHasOneUse = input.getDefiningOp()->hasOneUse();
         return isNceHasOneUse && doesFusedIntoNCE;
     };
-    const auto benificialPermutation = llvm::any_of(parentOp->getOperands(), isBeneficialPermutation);
-    return benificialStrideDMA && benificialPermutation;
+
+    if (auto concatOp = mlir::dyn_cast_or_null<IE::ConcatOp>(parentOp)) {
+        // For ConcatOp, the propagation is beneficial once it benefits the stride DMA,
+        // because moving memPermute through ConcatOp brings no extra data movement
+        if (beneficialStrideDMA) {
+            return true;
+        }
+
+        // In some cases, the propagation can introduce stride DMA on some inputs, but it can eliminate the MemPermute
+        // on other inputs.
+        // Experiments show that this is still beneficial overall for these cases.
+        int64_t beneficialLevel = 0;
+        for (auto input : concatOp.getInputs()) {
+            auto inShape = getShape(input);
+            if (!isBeneficialStrideDMA(inShape, parentOutShape)) {
+                beneficialLevel--;
+            } else {
+                if (isBeneficialPermutation(input)) {
+                    beneficialLevel++;
+                }
+            }
+        }
+
+        return beneficialLevel >= 0;
+    }
+
+    const auto beneficialPermutation = llvm::any_of(parentOp->getOperands(), isBeneficialPermutation);
+    return beneficialStrideDMA && beneficialPermutation;
 }
 
 template <class ConcreteOp>
@@ -808,8 +932,8 @@ bool MovePermuteQuantizeThroughOp<ConcreteOp>::checkMemPermutePattern(mlir::Oper
 
     // Check PermuteQuantize output element type.
     const auto permuteQuantizeOutElemType =
-            permuteQuantizeOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (permuteQuantizeOutElemType.isa<mlir::quant::QuantizedType>()) {
+            mlir::cast<vpux::NDTypeInterface>(permuteQuantizeOp.getOutput().getType()).getElementType();
+    if (mlir::isa<mlir::quant::QuantizedType>(permuteQuantizeOutElemType)) {
         return false;
     }
 
@@ -893,8 +1017,8 @@ mlir::LogicalResult MoveThroughShapeCast::matchAndRewrite(IE::ShapeCastOp shapeC
         return mlir::failure();
     }
 
-    const auto origReshapeInType = shapeCastOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    const auto origReshapeOutType = shapeCastOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto origReshapeInType = mlir::cast<vpux::NDTypeInterface>(shapeCastOp->getOperand(0).getType());
+    const auto origReshapeOutType = mlir::cast<vpux::NDTypeInterface>(shapeCastOp->getResult(0).getType());
     const auto origReshapeInShape = origReshapeInType.getShape();
     const auto origReshapeOutShape = origReshapeOutType.getShape();
     const auto origReshapeInMemShape = origReshapeInType.getMemShape();
@@ -939,7 +1063,7 @@ mlir::LogicalResult MoveThroughShapeCast::matchAndRewrite(IE::ShapeCastOp shapeC
                                                            identityOrderAttr, mlir::AffineMapAttr::get(newPerm));
 
     auto outputShapeAttr =
-            getIntArrayAttr(ctx, memPermuteOp.getOutput().getType().cast<NDTypeInterface>().getMemShape());
+            getIntArrayAttr(ctx, mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getOutput().getType()).getMemShape());
     auto newShapeCastOp =
             rewriter.create<IE::ShapeCastOp>(shapeCastOp->getLoc(), newMemPermute.getOutput(), outputShapeAttr);
 
@@ -1050,7 +1174,7 @@ mlir::LogicalResult MoveMemPermuteThroughReshape::matchAndRewrite(IE::ReshapeOp 
 
     // Create new Reshape
     rewriter.replaceOpWithNewOp<IE::ReshapeOp>(memPermuteOp, newMemPermuteOp.getOutput(), nullptr, false,
-                                               getIntArrayAttr(ctx, getShape(reshapeOp.getOutput())));
+                                               getIntArrayAttr(ctx, getShape(memPermuteOp.getOutput())));
 
     return mlir::success();
 }

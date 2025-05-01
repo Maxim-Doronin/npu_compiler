@@ -128,8 +128,11 @@ mlir::FailureOr<SmallVector<int64_t>> vpux::IE::broadcastEltwiseShape(ArrayRef<A
                     }
                 }
 
-                *outShapeRIter = std::max(in1ShapeIter != outShape.rend() ? *in1ShapeIter : 0,
-                                          in2ShapeIter != shapes[i].rend() ? *in2ShapeIter : 0);
+                auto in1Shape = in1ShapeIter != outShape.rend() ? *in1ShapeIter : 0;
+                auto in2Shape = in2ShapeIter != shapes[i].rend() ? *in2ShapeIter : 0;
+                *outShapeRIter = (in1Shape == mlir::ShapedType::kDynamic || in2Shape == mlir::ShapedType::kDynamic)
+                                         ? mlir::ShapedType::kDynamic
+                                         : std::max(in1Shape, in2Shape);
 
                 if (in1ShapeIter != outShape.rend()) {
                     ++in1ShapeIter;
@@ -473,7 +476,7 @@ mlir::FailureOr<Shape> vpux::IE::getShapeCastExpandedShapeInDimC(mlir::Operation
     if (originShape.empty()) {
         return mlir::failure();
     }
-    const auto inputType = operation->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType());
     const auto sizeToAlign = VPU::NCEInvariant::getAlignment(inputType.getElementType());
     const auto totalSize = originShape.totalSize();
 
@@ -497,7 +500,7 @@ mlir::FailureOr<Shape> vpux::IE::getShapeCastExpandedShapeInDimC(mlir::Operation
 
 mlir::FailureOr<Shape> vpux::IE::getShapeCastExpandedShapeKeepDimC(mlir::Operation* operation, ShapeRef originShape,
                                                                    Logger log) {
-    const auto inputType = operation->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType());
     const auto sizeToAlign = VPU::NCEInvariant::getAlignment(inputType.getElementType());
     auto channelSize = originShape[Dims4D::Act::C];
 
@@ -539,7 +542,7 @@ mlir::FailureOr<Shape> vpux::IE::getShapeCastExpandedShapeCanNotAlign(mlir::Oper
     if (inputShape.empty()) {
         return mlir::failure();
     }
-    const auto inputType = operation->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType());
     const auto sizeToAlign = VPU::NCEInvariant::getAlignment(inputType.getElementType());
     const auto totalSize = inputShape.totalSize();
 

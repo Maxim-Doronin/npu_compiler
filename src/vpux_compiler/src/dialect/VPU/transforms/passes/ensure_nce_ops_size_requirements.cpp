@@ -12,7 +12,10 @@
 #include "vpux/compiler/dialect/VPU/utils/mpe_engine_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_ENSURENCEOPSSIZEREQUIREMENTS
@@ -71,7 +74,7 @@ mlir::LogicalResult EnsureNCEOpSizeRequirements::matchAndRewrite(VPU::TilingBuil
     VPUX_THROW_WHEN(tilingInfo == nullptr, "Operation '{0}' doesn't implement TilingInfoOpInterface", op->getName());
     rewriter.setInsertionPoint(op);
 
-    const auto outputType = op->getResult(0).getType().cast<NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     Shape nTilesOnDim(outputShape.size(), 1);
     const auto log = _log.nest();
@@ -181,8 +184,8 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
     Shape nTilesOnDim(inputShape.size(), 1);
     nTilesOnDim[Dims4D::Act::C] = maxTiles;
     SmallVector<int64_t> alignment(inputShape.size(), 1);
-    auto inType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto weightsType = origOp.getFilter().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto weightsType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
     auto inAlignment = VPU::NCEInvariant::getAlignment(inType.getElementType());
     auto weightsAlignment = VPU::NCEInvariant::getAlignment(weightsType.getElementType());
     // Weights alignment requirement is IC * KH * KW aligned with weightsAlignment. For
@@ -213,7 +216,7 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
     std::vector<int32_t> weightsTableVec(weightsTableVecSize);
     std::copy(weightsTableValues.begin(), weightsTableValues.end(), weightsTableVec.begin());
 
-    auto filterType = origOp.getFilter().getType().cast<vpux::NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
     auto filterElemType = filterType.getElementType();
 
     // A stripped PPE is generated, ignoring post-op's and per-tensor scale/bias (since NCEConvolutionOp is not a
@@ -290,8 +293,10 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
         auto weightsTable = VPU::createWeightsTableTensor(rewriter, origOp->getLoc(), weightsTableVec);
         auto convOp = rewriter.create<VPU::NCEConvolutionOp>(
                 origOp.getLoc(), origOp.getType(), convInput.getResult(), weightSliceResult, weightsTable,
-                origOp.getStrides(), origOp.getPad(), strippedPpeAttr, origOp.getMpeEngineAttr(), rawKernelSliceShape,
-                origOp.getMultiClusterStrategyAttr(), origOp.getOutputChannelsAttr());
+                origOp.getWeightTableDataPtr(), origOp.getWeightTableSpPtr(), origOp.getWeightTableScale(),
+                origOp.getWeightTableBias(), origOp.getWeightZeroPoints(), origOp.getStrides(), origOp.getPad(),
+                strippedPpeAttr, origOp.getMpeEngineAttr(), rawKernelSliceShape, origOp.getMultiClusterStrategyAttr(),
+                origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
         convOps.push_back(convOp);
     }
@@ -300,7 +305,7 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
     // accumulates all its input channels into 1 output channel. Splitting the Convolutions into smaller Convolutions,
     // the outputs have to be added together.
     auto output = origOp->getResult(0);
-    auto targetEltwiseOutputType = output.getType().cast<vpux::NDTypeInterface>();
+    auto targetEltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     const auto opType = VPU::EltwiseType::ADD;
     SmallVector<VPU::NCEEltwiseOp> addOps;
     VPU::NCEEltwiseOp addResult;
@@ -317,10 +322,10 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
         auto addOperand = index == 0 ? convOps[index].getOutput() : addResult.getOutput();
 
         // NCEEltwise inType and outType are always same with ConvOp outType
-        addResult = rewriter.create<VPU::NCEEltwiseOp>(origOp->getLoc(), targetEltwiseOutputType, addOperand,
-                                                       convOps[index + 1].getOutput(), opType,
-                                                       (index == convOps.size() - 2 ? finalPpeAttr : strippedPpeAttr),
-                                                       nullptr, nullptr, origOp.getOutputChannelsAttr());
+        addResult = rewriter.create<VPU::NCEEltwiseOp>(
+                origOp->getLoc(), targetEltwiseOutputType, addOperand, convOps[index + 1].getOutput(), opType,
+                (index == convOps.size() - 2 ? finalPpeAttr : strippedPpeAttr), nullptr, nullptr,
+                origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
         // change NCEConv's output layout to supported NCEEltwise input layout
         // Eg: if NCEConv (inL=NHWC,outL=NCHW) splits into 3 small NCEConv:
@@ -338,12 +343,10 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
             const auto inputOrder2 = DimsOrder::fromValue(addResult.getInput2());
 
             if (supportOrder1 != inputOrder1 && supportOrder2 != inputOrder2) {
-                const auto newInput1Type =
-                        addResult.getInput1().getType().dyn_cast<vpux::NDTypeInterface>().changeDimsOrder(
-                                supportOrder1);
-                const auto newInput2Type =
-                        addResult.getInput2().getType().dyn_cast<vpux::NDTypeInterface>().changeDimsOrder(
-                                supportOrder2);
+                const auto newInput1Type = mlir::dyn_cast<vpux::NDTypeInterface>(addResult.getInput1().getType())
+                                                   .changeDimsOrder(supportOrder1);
+                const auto newInput2Type = mlir::dyn_cast<vpux::NDTypeInterface>(addResult.getInput2().getType())
+                                                   .changeDimsOrder(supportOrder2);
 
                 auto input1Op = addResult.getInput1().getDefiningOp();
                 auto input2Op = addResult.getInput2().getDefiningOp();

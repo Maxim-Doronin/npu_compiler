@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,16 +25,16 @@ mlir::LogicalResult vpux::VPU::TransposedConvolutionOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto featureType = convBackpropData.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto featureType = mlir::cast<vpux::NDTypeInterface>(convBackpropData.getInput().getType());
     const auto featureShape = featureType.getShape().raw();
     const auto outputShape = convBackpropData.getOutputShape();
-    const auto filterShape = convBackpropData.getFilter().getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    const auto filterShape = mlir::cast<vpux::NDTypeInterface>(convBackpropData.getFilter().getType()).getShape().raw();
 
     const auto dataPaddingBelow = parseIntArrayAttr<int64_t>(convBackpropData.getPadsEnd());
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(convBackpropData.getPadsBegin());
     const auto windowStrides = parseIntArrayAttr<int64_t>(convBackpropData.getStrides());
     const auto windowDilations = parseIntArrayAttr<int64_t>(convBackpropData.getDilations());
-    const auto outputPadding = parseIntArrayAttr<int64_t>(convBackpropData.getOutputPadding());
+    const auto outputPadding = parseIntArrayAttr<int64_t>(convBackpropData.getSpatialOutputPadding());
 
     if (outputShape != nullptr) {
         const SmallVector<ov::Dimension> nDataShape(std::next(featureShape.begin(), 2), featureShape.end());

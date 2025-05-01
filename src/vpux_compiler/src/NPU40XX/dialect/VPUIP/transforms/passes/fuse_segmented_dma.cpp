@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_cluster_tiling.hpp"
 
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/dma_fusion_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
@@ -23,7 +24,7 @@ using namespace vpux;
 namespace {
 
 std::optional<int64_t> getClusterId(mlir::Value val) {
-    if (val.getType().cast<NDTypeInterface>().getMemoryKind() != VPU::MemoryKind::CMX_NN) {
+    if (mlir::cast<vpux::NDTypeInterface>(val.getType()).getMemoryKind() != VPU::MemoryKind::CMX_NN) {
         return {};
     }
     auto bufOp = val.getDefiningOp<VPURT::DeclareBufferOp>();
@@ -48,16 +49,16 @@ std::optional<int64_t> getClusterId(VPURT::TaskOp taskOp) {
 // clang-format off
 
 // Prepare strides for DMAs inputs/outputs
-// Stride depends on memory space of tensor. 
+// Stride depends on memory space of tensor.
 // For DDR it's just distance between allocations. It can be major stride or
-// some value obtained from declarations in case of view on minor dimension, 
+// some value obtained from declarations in case of view on minor dimension,
 // see @FuseStridedBuffer2BufferDma test
-// For 40XX CMX this stride grows exponentially starting from 2_MB. 
+// For 40XX CMX this stride grows exponentially starting from 2_MB.
 // It happens because of 40XX addressing scheme, where tileId is encoded as bit mask, not regular address
 // 000001_XXX..XXX - Tile 0
 // 000010_XXX..XXX - Tile 1
 // 000100_XXX..XXX - Tile 2 and so on
-// As result of it, inter-cluster strides aren't same(2MB, 4MB, 8MB,...) 
+// As result of it, inter-cluster strides aren't same(2MB, 4MB, 8MB,...)
 // and we can fuse only 2 DMAs together
 
 // clang-format on
@@ -73,7 +74,7 @@ VPUIP::StrideInfo getStride(vpux::Logger log, SmallVector<VPURT::TaskOp> tasks, 
 
     auto firstTaskVal = input ? VPUIP::getInput(tasks[0]) : VPUIP::getOutput(tasks[0]);
     auto secondTaskVal = input ? VPUIP::getInput(tasks[1]) : VPUIP::getOutput(tasks[1]);
-    auto type = firstTaskVal.getType().cast<NDTypeInterface>();
+    auto type = mlir::cast<vpux::NDTypeInterface>(firstTaskVal.getType());
     auto memKind = type.getMemoryKind();
     if (memKind == VPU::MemoryKind::CMX_NN) {
         auto maybeClusterId = getClusterId(firstTaskVal);

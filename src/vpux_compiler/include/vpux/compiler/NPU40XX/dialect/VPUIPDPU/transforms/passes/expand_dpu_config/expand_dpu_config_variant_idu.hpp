@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,9 +12,10 @@ mlir::LogicalResult buildIDUWorkloadSet(mlir::OpBuilder& builder, const mlir::Lo
                                         const SmallVector<int64_t>&& inStart, const SmallVector<int64_t>&& inEnd);
 
 mlir::LogicalResult buildIDUWeightSet(mlir::OpBuilder& builder, const mlir::Location& loc, const Logger& log,
-                                      int64_t outStartZ, int64_t outEndZ, std::optional<int64_t> outChannelOffset,
-                                      VPUIP::NCETaskType taskType, const vpux::NDTypeInterface& inActType,
-                                      const vpux::NDTypeInterface& outActType, const vpux::NDTypeInterface& weightsType,
+                                      int64_t inStartZ, int64_t inEndZ, int64_t outStartZ, int64_t outEndZ,
+                                      std::optional<int64_t> outChannelOffset, VPUIP::NCETaskType taskType,
+                                      const vpux::NDTypeInterface& inActType, const vpux::NDTypeInterface& outActType,
+                                      const vpux::NDTypeInterface& weightsType,
                                       std::optional<mlir::ArrayAttr> kernelSize);
 
 mlir::LogicalResult buildIDUPadding(mlir::OpBuilder& builder, const mlir::Location& loc, const Logger&,

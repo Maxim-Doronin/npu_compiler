@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
@@ -184,7 +185,7 @@ mlir::FailureOr<DimsOrder> OptimizeReordersAcrossFunctionCallsPass::getProducers
         ArrayRef<IE::ReorderOp> producerOps) {
     DimsOrder inputOrder;
     for (auto producerOp : producerOps) {
-        auto operandType = producerOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+        auto operandType = mlir::cast<vpux::NDTypeInterface>(producerOp->getOperand(0).getType());
         if (inputOrder.empty()) {
             inputOrder = operandType.getDimsOrder();
             continue;
@@ -222,7 +223,7 @@ SmallVector<Usage> OptimizeReordersAcrossFunctionCallsPass::getCompatibleUsers(A
                 continue;
             }
             const auto actualInputOrder =
-                    userOp->getOperand(inputIdx).getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+                    mlir::cast<vpux::NDTypeInterface>(userOp->getOperand(inputIdx).getType()).getDimsOrder();
             inputsCompatible &= orderInfo.getInput(inputIdx) == actualInputOrder;
         }
         if (!inputsCompatible) {
@@ -230,7 +231,7 @@ SmallVector<Usage> OptimizeReordersAcrossFunctionCallsPass::getCompatibleUsers(A
         }
 
         const auto outputsCompatible = llvm::all_of(userOp->getResults(), [&](mlir::OpResult result) {
-            const auto actualResultOrder = result.getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+            const auto actualResultOrder = mlir::cast<vpux::NDTypeInterface>(result.getType()).getDimsOrder();
             const auto supportedResultOrder = orderInfo.getOutput(result.getResultNumber());
             return actualResultOrder == supportedResultOrder;
         });

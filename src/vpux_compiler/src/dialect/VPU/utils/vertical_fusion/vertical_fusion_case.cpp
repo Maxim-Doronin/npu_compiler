@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_case.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 using namespace vpux;
 using namespace VPU;
@@ -109,7 +110,7 @@ void VFCase::addCMXWriteSpills(const std::unique_ptr<VPU::LayerVPUNNCost>& costF
                              return op->getNumOperands() > 1 && op->hasTrait<VPU::EltwiseOp>();
                          })) {
         for (auto operand : inputOp->getOperands()) {
-            if (auto arg = operand.dyn_cast<mlir::BlockArgument>()) {
+            if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
                 auto previousOp = _config.getSubgraph().getOperand(arg.getArgNumber()).getDefiningOp();
                 if (mlir::isa_and_nonnull<Const::DeclareOp>(previousOp) || !isCmxOperation(previousOp, false) ||
                     isPrevOperationEarlyScheduled(previousOp, _config.getSubgraph())) {
@@ -120,23 +121,24 @@ void VFCase::addCMXWriteSpills(const std::unique_ptr<VPU::LayerVPUNNCost>& costF
                     previousOp = vfOp.getBody()->getTerminator()->getOperands().back().getDefiningOp();
                 }
 
-                auto operandType = operand.getType().cast<vpux::NDTypeInterface>();
+                auto operandType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
                 auto operandSize = operandType.getTotalAllocSize();
                 auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(previousOp);
                 if (clusteredOp != nullptr && clusteredOp->hasAttr(VPU::multiClusterStrategy)) {
-                    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, operandType.getShape(),
-                                                                  clusteredOp->getAttr(VPU::multiClusterStrategy)
-                                                                          .cast<VPU::MultiClusterStrategyAttr>()
-                                                                          .getValue());
+                    auto numClusters =
+                            VPU::getOptimalNumClusters(clusteredOp, operandType.getShape(),
+                                                       mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(
+                                                               clusteredOp->getAttr(VPU::multiClusterStrategy))
+                                                               .getValue());
                     auto clusterType = getDistributedOutputTypeFromOp(clusteredOp, operandType, numClusters);
-                    operandSize = clusterType.cast<vpux::NDTypeInterface>().getTotalAllocSize();
+                    operandSize = mlir::cast<vpux::NDTypeInterface>(clusterType).getTotalAllocSize();
                 }
 
                 if (!_vfScheduling->validate(_config, _vfTilingStorage, operandSize)) {
                     OutputTiling prevOpTiling;
                     if (previousOp->hasAttr(tilingStrategy)) {
-                        auto prevOpStrategy =
-                                parseIntArrayAttr<int64_t>(previousOp->getAttr(tilingStrategy).cast<mlir::ArrayAttr>());
+                        auto prevOpStrategy = parseIntArrayAttr<int64_t>(
+                                mlir::cast<mlir::ArrayAttr>(previousOp->getAttr(tilingStrategy)));
                         auto tiles =
                                 fillDividedTiles(previousOp, Shape(prevOpStrategy), getShape(previousOp->getResult(0)));
                         VPUX_THROW_WHEN(mlir::failed(tiles) || tiles.value().empty(),
@@ -181,7 +183,7 @@ VFConfig& VFCase::getConfig() {
 }
 
 mlir::ArrayAttr VFCase::getTiling() const {
-    auto outType = _config.getSubgraph()->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto outType = mlir::cast<vpux::NDTypeInterface>(_config.getSubgraph()->getResult(0).getType());
     auto tilingArray = SmallVector<int64_t>(outType.getRank(), 1);
     tilingArray[_axis.ind()] = _tilingNumber;
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@ llvm::SmallVector<mlir::FlatSymbolRefAttr> NNDMARewriter::getSymbolicNames(VPUMI
 }
 
 llvm::SmallVector<std::pair<uint32_t, int32_t>> NNDMARewriter::reduce_dims_for_dma(mlir::Value val) {
-    auto ndType = val.getType().cast<vpux::NDTypeInterface>();
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(val.getType());
     const auto memShape = ndType.getMemShape();
     const auto memStrides = ndType.getMemStrides();
     const Bit ndTypeElemSize = ndType.getElemTypeSize();
@@ -70,7 +70,7 @@ llvm::SmallVector<std::pair<uint32_t, int32_t>> NNDMARewriter::reduce_dims_for_d
 }
 
 VPUIP::DMADescriptorAttr NNDMARewriter::getDmaTransactionTraits(VPUMI37XX::NNDMAOp op, mlir::MLIRContext* ctx) const {
-    auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     const Bit elemSize = vpux::getElemTypeSize(inputType);
     auto totalSizeBits = alignMemSize(inputType.getNumElements() * elemSize, Byte(1));
     auto length = vpux::Byte(totalSizeBits).count();

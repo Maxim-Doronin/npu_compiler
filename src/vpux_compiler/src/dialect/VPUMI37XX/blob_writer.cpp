@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -53,8 +53,8 @@ VPUIP::DType createDType(mlir::Type type) {
         return VPUIP::DType_I2;
     } else if (type.isInteger(1)) {
         return VPUIP::DType_BIN;
-    } else if (type.isa<mlir::quant::QuantizedType>()) {
-        auto quant = type.cast<mlir::quant::QuantizedType>();
+    } else if (mlir::isa<mlir::quant::QuantizedType>(type)) {
+        auto quant = mlir::cast<mlir::quant::QuantizedType>(type);
         auto quantStorageType = quant.getStorageType();
         if (auto intType = mlir::cast<mlir::IntegerType>(quantStorageType)) {
             auto signedness = quant.isSigned() ? mlir::IntegerType::Signed : mlir::IntegerType::Unsigned;
@@ -207,7 +207,7 @@ VPUMI37XX::BlobWriter::TensorReference vpux::VPUMI37XX::BlobWriter::createTensor
         std::optional<uint64_t> descriptor) {
     VPUX_THROW_UNLESS(_tensors.count(val) == 0, "Value '{0}' was already serialized", val.getLoc());
     const auto ref =
-            createTensorRef(name, val.getType().cast<vpux::NDTypeInterface>(), section, sectionIndex, byteOffset,
+            createTensorRef(name, mlir::cast<vpux::NDTypeInterface>(val.getType()), section, sectionIndex, byteOffset,
                             sparsityMapOffset, storageElementOffset, storageElementSize, swizzlingKey, descriptor);
     _tensors.insert({val, ref});
     return ref;

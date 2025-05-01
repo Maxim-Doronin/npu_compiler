@@ -1,16 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 #include <llvm/Support/JSON.h>
 
-namespace vpux {
-namespace VPU {
+namespace vpux::VPU {
 
 llvm::Expected<llvm::json::Value> readManualStrategyJSON(StringRef fileName);
 void writeManualStrategyJSON(StringRef fileName, const llvm::json::Value& json);
@@ -25,8 +25,4 @@ void overwriteManualStrategy(llvm::json::Value& manualStrategy,
 void updateTilingStrategyInJSONForOperations(llvm::json::Value& json,
                                              llvm::MapVector<mlir::Location, mlir::Operation*>& operations);
 
-void saveMCSideLoadStrategyToFile(mlir::func::FuncOp func, StringRef strategyJsonPath,
-                                  const mlir::DenseMap<mlir::Operation*, size_t>& opToHash, StringRef modelHash);
-
-}  // namespace VPU
-}  // namespace vpux
+}  // namespace vpux::VPU

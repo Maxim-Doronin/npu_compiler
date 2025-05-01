@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 
@@ -372,7 +373,8 @@ void processCallOpWithInputBlockArg(mlir::Value calledFuncArg,
         // create new input buffer
         auto blockArgLoc = calledFuncArg.getLoc();
         auto blockArgType = calledFuncArg.getType();
-        auto newBufferOp = builder.create<mlir::memref::AllocOp>(blockArgLoc, blockArgType.cast<mlir::MemRefType>());
+        auto newBufferOp =
+                builder.create<mlir::memref::AllocOp>(blockArgLoc, mlir::cast<mlir::MemRefType>(blockArgType));
         auto newBufferResult = newBufferOp->getResult(0);
 
         // add input copy
@@ -435,7 +437,7 @@ void processCallOpWithOutputBlockArg(mlir::Value calledFuncArg,
     // create new buffer
     auto blockArgLoc = calledFuncArg.getLoc();
     auto blockArgType = calledFuncArg.getType();
-    auto newBufferOp = builder.create<mlir::memref::AllocOp>(blockArgLoc, blockArgType.cast<mlir::MemRefType>());
+    auto newBufferOp = builder.create<mlir::memref::AllocOp>(blockArgLoc, mlir::cast<mlir::MemRefType>(blockArgType));
     auto newBufferResult = newBufferOp->getResult(0);
 
     auto callOpArgIndex = getOperandIndex(callOp, calledFuncArg);
@@ -515,8 +517,8 @@ private:
 void AddCopyBetweenSWKernelsAndNetworkIOPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     mlir::func::FuncOp mainFuncOp;
-    vpux::IE::CNNNetworkOp cnnOp;
-    vpux::IE::CNNNetworkOp::getFromModule(moduleOp, cnnOp, mainFuncOp);
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
 
     mainFuncOp.walk([&](mlir::func::CallOp callOp) {
         auto calledFuncOp = vpux::getCalledFunction(callOp);

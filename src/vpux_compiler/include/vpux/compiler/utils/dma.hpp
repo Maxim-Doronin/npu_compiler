@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,7 +25,9 @@ int64_t getDMAQueueIdEncoding(int64_t port, std::optional<vpux::VPUIP::DmaChanne
 int64_t getDMAQueueIdEncoding(std::optional<vpux::VPUIP::DmaChannelType> channel);
 int64_t getDMAQueueIdEncoding(VPU::MemoryKind srcMemKind, VPU::ArchKind arch);
 
-VPUIP::DmaChannelType getDMAQueueTypeFromEncodedId(int64_t dmaQueueIdEncoding, VPU::ArchKind arch);
+int64_t getDMAPortFromEncodedId(int64_t dmaQueueIdEncoding);
+
+VPUIP::DmaChannelType getDMAChannelTypeFromEncodedId(int64_t dmaQueueIdEncoding, VPU::ArchKind arch);
 std::string getDMAChannelTypeAsString(VPUIP::DmaChannelType channelType, VPU::ArchKind arch);
 std::string getDMAChannelTypeAsString(int64_t dmaQueueIdEncoding, VPU::ArchKind arch);
 

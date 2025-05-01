@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -60,14 +60,14 @@ void WrapDistributedOpsInNCEClusterTiling::safeRunOnFunc() {
 
         // Check for any distributed operands
         auto hasDistributedOperand = llvm::any_of(origOp->getOperands().getTypes(), [](mlir::Type t) {
-            if (auto checkDistributed = t.dyn_cast<VPU::DistributedTypeInterface>()) {
+            if (auto checkDistributed = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(t)) {
                 return checkDistributed.containsDistributedTypes();
             }
             return false;
         });
         // Check for any distributed results
         bool hasDistributedResult = llvm::any_of(origOp->getResults().getTypes(), [](mlir::Type t) {
-            if (auto checkDistributed = t.dyn_cast<VPU::DistributedTypeInterface>()) {
+            if (auto checkDistributed = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(t)) {
                 return checkDistributed.containsDistributedTypes();
             }
             return false;

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
@@ -67,7 +68,7 @@ mlir::LogicalResult SwapDepth2SpaceAndScaleShift::matchAndRewrite(IE::DepthToSpa
         return mlir::failure();
     }
 
-    auto d2sInShape = d2sOp.getInput().getType().cast<vpux::NDTypeInterface>().getShape();
+    auto d2sInShape = mlir::cast<vpux::NDTypeInterface>(d2sOp.getInput().getType()).getShape();
 
     auto getNewValue = [&](mlir::Value origValue) {
         if (origValue == nullptr) {

@@ -1,20 +1,22 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/dynamic_shape_propagation.hpp"
 #include "vpux/compiler/utils/empty_node.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -58,14 +60,15 @@ mlir::LogicalResult vpux::VPU::StridedSliceOp::inferReturnTypes(
     const auto inputData = extractData(slice);
     const auto beginsShape =
             slice.getBegins() != nullptr
-                    ? SmallVector<int64_t>(slice.getBegins().getType().cast<mlir::ShapedType>().getShape())
+                    ? SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(slice.getBegins().getType()).getShape())
                     : SmallVector<int64_t>{};
-    const auto endsShape = slice.getEnds() != nullptr
-                                   ? SmallVector<int64_t>(slice.getEnds().getType().cast<mlir::ShapedType>().getShape())
-                                   : SmallVector<int64_t>{};
+    const auto endsShape =
+            slice.getEnds() != nullptr
+                    ? SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(slice.getEnds().getType()).getShape())
+                    : SmallVector<int64_t>{};
     const auto stridesShape =
             slice.getStrides() != nullptr
-                    ? SmallVector<int64_t>(slice.getStrides().getType().cast<mlir::ShapedType>().getShape())
+                    ? SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(slice.getStrides().getType()).getShape())
                     : SmallVector<int64_t>{};
 
     const auto beginMask = parseIntArrayAttr<int64_t>(slice.getBeginMask());
@@ -80,11 +83,15 @@ mlir::LogicalResult vpux::VPU::StridedSliceOp::inferReturnTypes(
                                                         inputData.strides, beginsShape, endsShape, stridesShape,
                                                         beginMask, endMask, newAxisMask, shrinkAxisMask, ellipsisMask);
 
-    const auto newShape = Shape(outputShapeInfo.shape);
-    auto outType = inDataType.changeShape(newShape);
-    if (!outputShapeInfo.bounds.empty()) {
-        outType = outType.cast<vpux::BoundedTypeInterface>().changeBounds(getIntArrayAttr(ctx, outputShapeInfo.bounds));
+    const auto outShape = Shape(outputShapeInfo.shape);
+
+    auto typeComponents = TypeComponents().setShape(outShape);
+
+    if (auto outBounds = outputShapeInfo.bounds; !outBounds.empty()) {
+        assignDynamicTypeComponents(typeComponents, slice.getBoundsRepresentation(), outShape.raw(), outBounds);
     }
+
+    auto outType = inDataType.changeTypeComponents(typeComponents);
     inferredReturnTypes.push_back(outType);
 
     return mlir::success();

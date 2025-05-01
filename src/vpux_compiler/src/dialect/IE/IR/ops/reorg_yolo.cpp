@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::IE::ReorgYoloOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = reorgYolo.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(reorgYolo.getInput().getType());
 
     if (reorgYolo.getStride() <= 0) {
         return errorAt(loc, "Stride should be a natural number");

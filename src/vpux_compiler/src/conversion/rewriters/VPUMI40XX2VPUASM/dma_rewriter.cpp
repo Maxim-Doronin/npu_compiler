@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,110 +24,122 @@ llvm::SmallVector<mlir::FlatSymbolRefAttr> NNDMARewriter::getSymbolicNames(VPUMI
 }
 
 VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp op, mlir::MLIRContext* ctx) const {
-    auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = op.getOutputBuffs()[0].getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    NDTypeInterface outputType;
+
+    auto outputBuffers = op.getOutputBuffs();
     const Bit elemSize = vpux::getElemTypeSize(inputType);
     auto totalSizeBits = alignMemSize(inputType.getNumElements() * elemSize, Byte(1));
     auto totalLength = vpux::Byte(totalSizeBits).count();
 
-    auto reduced_dims_input = vpux::reduceDimsForDma(inputType);
-    vpux::patchDimsForNPU37XX(reduced_dims_input);
-    auto reduced_dims_output = vpux::reduceDimsForDma(outputType);
-    vpux::patchDimsForNPU37XX(reduced_dims_output);
+    auto reducedDimsInput = vpux::reduceDimsForDma(inputType);
+    DMAPattern reducedDimsOutput;
+    vpux::patchDimsForNPU37XX(reducedDimsInput);
 
-    VPUX_THROW_WHEN(reduced_dims_input.dims.size() != reduced_dims_input.strides.size(),
-                    "Non matching rank between dims {0} and strides {1} for input", reduced_dims_input.dims.size(),
-                    reduced_dims_input.strides.size());
-    VPUX_THROW_WHEN(reduced_dims_output.dims.size() != reduced_dims_output.strides.size(),
-                    "Non matching rank between dims {0} and strides {1} for output", reduced_dims_output.dims.size(),
-                    reduced_dims_output.strides.size());
+    VPUX_THROW_WHEN(reducedDimsInput.dims.size() != reducedDimsInput.strides.size(),
+                    "Non matching rank between dims {0} and strides {1} for input", reducedDimsInput.dims.size(),
+                    reducedDimsInput.strides.size());
 
-    auto inputTransferRank = reduced_dims_input.dims.size();
-    auto outputTransferRank = reduced_dims_output.dims.size();
-
-    if (inputTransferRank > 2 || outputTransferRank > 2) {
-        _log.warning("cannot reduce dims to 2 for DMA; Reduced InSize: {0}, OutSize: {1}", inputTransferRank,
-                     outputTransferRank);
-        return nullptr;
-    }
+    auto inputTransferRank = reducedDimsInput.dims.size();
+    size_t outputTransferRank = 0;
 
     const auto inputInnerMostDim = inputTransferRank - 1;
-    const auto outputInnerMostDim = outputTransferRank - 1;
+    size_t outputInnerMostDim = 0;
 
-    auto src_width = reduced_dims_input.dims[inputInnerMostDim];
-    auto dst_width = reduced_dims_output.dims[outputInnerMostDim];
-    auto src_stride = reduced_dims_input.strides[inputInnerMostDim];
-    auto dst_stride = reduced_dims_output.strides[outputInnerMostDim];
+    auto srcWidth = reducedDimsInput.dims[inputInnerMostDim];
+    auto srcStride = reducedDimsInput.strides[inputInnerMostDim];
+    size_t dstWidth = 0;
+    size_t dstStride = 0;
 
-    uint32_t src_plane_stride = 0;
-    uint32_t dst_plane_stride = 0;
-    uint32_t plane_len = 0;
-    uint32_t num_planes = 0;
+    uint32_t srcPlaneStride = 0;
+    uint32_t dstPlaneStride = 0;
+    uint32_t planeLen = totalLength;
+    uint32_t numPlanes = 0;
 
-    if (inputTransferRank == 2 && outputTransferRank == 2) {
-        // 3D to 3D transaction
-        if (reduced_dims_input.dims[0] != reduced_dims_output.dims[0]) {
-            _log.error("DMA's don't have equal plane size {0} != {1}", reduced_dims_input.dims[0],
-                       reduced_dims_output.dims[0]);
+    if (outputBuffers.empty()) {
+        if (inputTransferRank == 2) {
+            srcPlaneStride = reducedDimsInput.strides[0];
+            numPlanes = totalLength / reducedDimsInput.dims[0];
+            planeLen = totalLength / numPlanes;
+        }
+    } else {
+        outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutputBuffs()[0].getType());
+        reducedDimsOutput = vpux::reduceDimsForDma(outputType);
+        vpux::patchDimsForNPU37XX(reducedDimsOutput);
+        VPUX_THROW_WHEN(reducedDimsOutput.dims.size() != reducedDimsOutput.strides.size(),
+                        "Non matching rank between dims {0} and strides {1} for output", reducedDimsOutput.dims.size(),
+                        reducedDimsOutput.strides.size());
+        outputTransferRank = reducedDimsOutput.dims.size();
+
+        if ((inputTransferRank > 2 || outputTransferRank > 2)) {
+            _log.warning("cannot reduce dims to 2 for DMA; Reduced InSize: {0}, OutSize: {1}", inputTransferRank,
+                         outputTransferRank);
             return nullptr;
         }
 
-        src_plane_stride = reduced_dims_input.strides[0];
-        dst_plane_stride = reduced_dims_output.strides[0];
-        num_planes = totalLength / reduced_dims_input.dims[0];
-        plane_len = totalLength / num_planes;
-    } else if (inputTransferRank == 2) {
-        // 3D to 2D transaction
-        src_plane_stride = reduced_dims_input.strides[0];
-        num_planes = totalLength / reduced_dims_input.dims[0];
+        outputInnerMostDim = outputTransferRank - 1;
+        dstWidth = reducedDimsOutput.dims[outputInnerMostDim];
+        dstStride = reducedDimsOutput.strides[outputInnerMostDim];
 
-        plane_len = totalLength / num_planes;
-        if (totalLength == static_cast<int64_t>(dst_width)) {
-            dst_width = plane_len;
-            dst_stride = plane_len;
-            dst_plane_stride = plane_len;
-        } else {
-            dst_plane_stride = (plane_len * dst_stride) / dst_width;
-            dst_width = std::min(static_cast<uint32_t>(dst_width), plane_len);
-            dst_stride = std::min(static_cast<uint32_t>(dst_stride), plane_len);
-        }
-    } else if (outputTransferRank == 2) {
-        // 2D to 3D transaction
-        dst_plane_stride = reduced_dims_output.strides[0];
-        num_planes = totalLength / reduced_dims_output.dims[0];
+        if ((inputTransferRank == 2 && outputTransferRank == 2)) {
+            // 3D to 3D transaction
+            if (reducedDimsInput.dims[0] != reducedDimsOutput.dims[0]) {
+                _log.error("DMA's don't have equal plane size {0} != {1}", reducedDimsInput.dims[0],
+                           reducedDimsOutput.dims[0]);
+                return nullptr;
+            }
+            srcPlaneStride = reducedDimsInput.strides[0];
+            dstPlaneStride = reducedDimsOutput.strides[0];
+            numPlanes = totalLength / reducedDimsInput.dims[0];
+            planeLen = totalLength / numPlanes;
+        } else if (inputTransferRank == 2) {
+            // 3D to 2D transaction
+            srcPlaneStride = reducedDimsInput.strides[0];
+            numPlanes = totalLength / reducedDimsInput.dims[0];
 
-        plane_len = totalLength / num_planes;
-        if (totalLength == static_cast<int64_t>(src_width)) {
-            src_width = plane_len;
-            src_stride = plane_len;
-            src_plane_stride = plane_len;
-        } else {
-            src_plane_stride = (plane_len * src_stride) / src_width;
-            src_width = std::min(static_cast<uint32_t>(src_width), plane_len);
-            src_stride = std::min(static_cast<uint32_t>(src_stride), plane_len);
+            planeLen = totalLength / numPlanes;
+
+            if (totalLength == static_cast<int64_t>(dstWidth)) {
+                dstWidth = planeLen;
+                dstStride = planeLen;
+                dstPlaneStride = planeLen;
+            } else {
+                dstPlaneStride = (planeLen * dstStride) / dstWidth;
+                dstWidth = std::min(static_cast<uint32_t>(dstWidth), planeLen);
+                dstStride = std::min(static_cast<uint32_t>(dstStride), planeLen);
+            }
+
+        } else if (outputTransferRank == 2) {
+            // 2D to 3D transaction
+            dstPlaneStride = reducedDimsOutput.strides[0];
+            numPlanes = totalLength / reducedDimsOutput.dims[0];
+
+            planeLen = totalLength / numPlanes;
+            if (totalLength == static_cast<int64_t>(srcWidth)) {
+                srcWidth = planeLen;
+                srcStride = planeLen;
+                srcPlaneStride = planeLen;
+            } else {
+                srcPlaneStride = (planeLen * srcStride) / srcWidth;
+                srcWidth = std::min(static_cast<uint32_t>(srcWidth), planeLen);
+                srcStride = std::min(static_cast<uint32_t>(srcStride), planeLen);
+            }
         }
-    } else {
-        src_plane_stride = 0;
-        dst_plane_stride = 0;
-        num_planes = 0;
-        plane_len = totalLength;
     }
 
-    VPUX_THROW_WHEN((num_planes > 0) && ((totalLength % num_planes) != 0),
+    VPUX_THROW_WHEN((numPlanes > 0) && ((totalLength % numPlanes) != 0),
                     "Number of planes is not a divisor of total transaction length");
-    VPUX_THROW_WHEN((num_planes > 0) && ((plane_len % src_width) != 0),
+    VPUX_THROW_WHEN((numPlanes > 0) && ((planeLen % srcWidth) != 0),
                     "Source width is not a divisor of transaction plane length");
-    VPUX_THROW_WHEN((num_planes > 0) && ((plane_len % dst_width) != 0),
-                    "Destination width is not a divisor of transaction plane length");
 
     auto attr = [&ctx](uint64_t val) -> mlir::IntegerAttr {
         auto i32Type = mlir::IntegerType::get(ctx, sizeof(uint32_t) * CHAR_BIT);
         return mlir::IntegerAttr::get(i32Type, val);
     };
 
-    auto transactionAttr = VPUIP::DMADescriptorAttr::get(ctx, attr(num_planes), attr(plane_len), attr(src_width),
-                                                         attr(src_stride), attr(src_plane_stride), attr(dst_width),
-                                                         attr(dst_stride), attr(dst_plane_stride));
+    auto transactionAttr =
+            VPUIP::DMADescriptorAttr::get(ctx, attr(numPlanes), attr(planeLen), attr(srcWidth), attr(srcStride),
+                                          attr(srcPlaneStride), attr(dstWidth), attr(dstStride), attr(dstPlaneStride));
 
     return transactionAttr;
 }
@@ -142,19 +154,23 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI40XX::NNDMAOp
     auto input = findSym(op.getInput());
 
     // Checking for CMX broadcast conditions, so first buff should be the same with all other buffers in the list
-    auto firstBuff = std::begin(op.getOutputBuffs());
-    auto isCmxNN = firstBuff.getBase()->get().getType().cast<NDTypeInterface>().getMemoryKind() ==
-                   vpux::VPU::MemoryKind::CMX_NN;
-
-    llvm::SmallVector<mlir::Attribute> outputSyms(op.getOutputBuffs().size());
+    auto outputBuffers = op.getOutputBuffs();
+    bool isCmxNN = false;
+    if (!outputBuffers.empty()) {
+        auto firstBuff = std::begin(op.getOutputBuffs());
+        isCmxNN = mlir::cast<vpux::NDTypeInterface>(firstBuff.getBase()->get().getType()).getMemoryKind() ==
+                  vpux::VPU::MemoryKind::CMX_NN;
+    }
+    llvm::SmallVector<mlir::Attribute> outputSyms(outputBuffers.size());
     llvm::SmallVector<int64_t, 6> tileIdx;
-    for (auto output : llvm::enumerate(op.getOutputBuffs())) {
+    for (auto output : llvm::enumerate(outputBuffers)) {
         auto outputIt = mapper.find(output.value());
         VPUX_THROW_WHEN(outputIt == mapper.end(), "Cannot find symbol name entry for {0}", op.getOperationName());
 
         outputSyms[output.index()] = outputIt->getSecond();
         if (isCmxNN) {
-            tileIdx.push_back(output.value().getType().cast<NDTypeInterface>().getMemSpace().getIndex().value());
+            tileIdx.push_back(
+                    mlir::cast<vpux::NDTypeInterface>(output.value().getType()).getMemSpace().getIndex().value());
         }
     }
 

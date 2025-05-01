@@ -12,6 +12,8 @@
 #include "vpu_dma_hw_40xx.h"
 #include "vpu_media_hw.h"
 #include "vpu_pwrmgr_api.h"
+#include "vpu_nnrt_wlm.h"
+#include "vpu_nnrt_common.h"
 
 /*
  * When a change is made to vpu_nnrt_api_40xx.h that breaks backwards compatibility
@@ -33,6 +35,23 @@
  *
  * API changelog
  * -------------
+ * 11.9:
+ *   - Added VpuManagedMappedInference::model_identifier to enable the compiler to assign a unique identifier
+ *     to an inference.
+ *
+ * 11.8.1:
+ *   - Added VpuActKernelInvocation::invo_index to track the ID of enqueued ActShave workloads.
+ *
+ * 11.8
+ *   - Added support for shave sub_unit selection for work items to allow compiler to specify
+ *     (if it wants to) which shave is to execute a work item.
+ *
+ * 11.7:
+ *   - Added VpuManagedMappedInference::inference_feature_cfg to allow the passing
+ *     of additional information.
+ *     Added disable_dma_sw_fifo_ to allow skipping the use of DMA SW FIFO
+ *     when it is not required by an inference.
+ *
  * 11.6:
  *   - Added VpuWorkItem::next_workitem_idx to allow a linked list of work items to be enqueued.
  *
@@ -42,10 +61,9 @@
  *     to allow runtime to efficiently fill barrier FIFOs.
  */
 #define VPU_NNRT_40XX_API_VER_MAJOR 11
-#define VPU_NNRT_40XX_API_VER_MINOR 6
-#define VPU_NNRT_40XX_API_VER_PATCH 0
+#define VPU_NNRT_40XX_API_VER_MINOR 9
+#define VPU_NNRT_40XX_API_VER_PATCH 2
 #define VPU_NNRT_40XX_API_VER ((VPU_NNRT_40XX_API_VER_MAJOR << 16) | VPU_NNRT_40XX_API_VER_MINOR)
-#define VPU_CONCAT_NNRT_API_VER(MAJOR, MINOR) (((MAJOR) << 16) | (MINOR))
 
 /* Index in the API version table, same for all HW generations */
 #define VPU_NNRT_40XX_API_VER_INDEX 7
@@ -57,11 +75,25 @@
  *
  * If a change preserves backwards compatibility then VPU_ACT_RT_VER_MINOR
  * should be incremented. It resets to 0 when the major version is incremented.
+ *
+ * Act Runtime changelog:
+ * ----------------------
+ * 1.10:
+ *   - Support for executing shave tasks directly from DDR (expects two FIFO pushes
+ *     with the full 32 bit AKI address and NW_PAGE is already correct)
+ *
+ * 1.9:
+ *   - Add clock gating support
+ *
+ * 1.8:
+ *   - Support Shave Shutdown control message
+ *
  */
 #define VPU_ACT_RT_VER_MAJOR 1
-#define VPU_ACT_RT_VER_MINOR 6
+#define VPU_ACT_RT_VER_MINOR 10
 #define VPU_ACT_RT_VER_PATCH 0
 #define VPU_ACT_RT_VER ((VPU_ACT_RT_VER_MAJOR << 16) | VPU_ACT_RT_VER_MINOR)
+#define VPU_CONCAT_NNRT_API_VER(MAJOR, MINOR) (((MAJOR) << 16) | (MINOR))
 
 /*
  * IMPORTANT:
@@ -120,36 +152,6 @@ struct VPU_ALIGNED_STRUCT(8) VpuPtr {
 
 static_assert(sizeof(VpuPtr<void>) == 8, "VpuPtr size != 8");
 
-template <typename T>
-struct VPU_ALIGNED_STRUCT(8) VpuTaskReference {
-    uint64_t reserved1;
-    uint64_t reserved2;
-    uint64_t reserved3;
-
-    uint64_t address;
-    uint64_t count;
-
-    T *data() { return reinterpret_cast<T *>(address); }
-    const T *data() const { return reinterpret_cast<T *>(address); }
-
-    T *data(int64_t offset) { return reinterpret_cast<T *>(address + offset); }
-    const T *data(int64_t offset) const { return reinterpret_cast<T *>(address + offset); }
-
-    uint64_t size() const { return count; };
-
-    T &at(uint32_t index, int64_t offset = 0) { return (reinterpret_cast<T *>(address + offset))[index]; }
-    const T &at(uint32_t index, int64_t offset = 0) const { return (reinterpret_cast<T *>(address + offset))[index]; }
-
-    template <class TD>
-    VpuTaskReference &operator=(TD fixedVector) {
-        address = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(fixedVector.data())) - fixedVector.apertureOffset();
-        count = static_cast<uint64_t>(fixedVector.size());
-        return *this;
-    }
-};
-
-static_assert(sizeof(VpuTaskReference<uint32_t>) == 40, "VpuTaskReference size != 40");
-
 typedef void(actKernelEntryFunction)(void *);
 
 struct VPU_ALIGNED_STRUCT(4) VpuTaskSchedulingBarrierConfig {
@@ -164,7 +166,8 @@ struct VPU_ALIGNED_STRUCT(8) VpuTaskBarrierDependency {
     uint64_t wait_mask_lo_;
     uint64_t post_mask_hi_;
     uint64_t post_mask_lo_;
-    uint8_t reserved_[8];
+    uint8_t deprecated_[2]; // Deprecated member, do not reuse until next API major version update
+    uint8_t pad_[6];
 };
 
 static_assert(sizeof(VpuTaskBarrierDependency) == 40, "VpuTaskBarrierDependency size != 40");
@@ -183,10 +186,11 @@ struct VPU_ALIGNED_STRUCT(32) VpuDPUInvariant {
     VpuDPUInvariantRegisters registers_;
     VpuTaskBarrierDependency barriers_;
     VpuTaskSchedulingBarrierConfig barriers_sched_;
-    uint8_t reserved_[8];
+    uint8_t deprecated0_[8]; // Deprecated member, do not reuse until next API major version update
     uint16_t variant_count_;
     uint8_t cluster_;
-    uint8_t pad_[5];
+    uint8_t deprecated1_[2]; // Deprecated member, do not reuse until next API major version update
+    uint8_t pad_[3];
 };
 
 static_assert(sizeof(VpuDPUInvariant) == 352, "VpuDPUInvariant size != 352");
@@ -198,7 +202,8 @@ struct VPU_ALIGNED_STRUCT(32) VpuDPUVariant {
     VpuDPUVariantRegisters registers_;
     VpuPtr<VpuDPUInvariant> invariant_;
     uint32_t invariant_index_;
-    uint8_t pad_[20];
+    uint8_t deprecated_[13]; // Deprecated member, do not reuse until next API major version update
+    uint8_t pad_[7];
 };
 
 static_assert(sizeof(VpuDPUVariant) == 224, "VpuDPUVariant size != 224");
@@ -207,28 +212,12 @@ static_assert(offsetof(VpuDPUVariant, invariant_index_) % 4 == 0, "Alignment err
 
 struct VPU_ALIGNED_STRUCT(4) VpuResourceRequirements {
     uint32_t nn_slice_length_;
-    uint8_t reserved_[6];
+    uint8_t deprecated_[6]; // Deprecated member, do not reuse until next API major version update
     uint8_t nn_slice_count_;
     uint8_t nn_barriers_;
 };
 
 static_assert(sizeof(VpuResourceRequirements) == 12, "VpuResourceRequirements size != 12");
-
-struct VPU_ALIGNED_STRUCT(8) VpuNNShaveRuntimeConfigs {
-    uint64_t reserved;
-    uint64_t runtime_entry; // when useScheduleEmbeddedRt = true this is a windowed address
-    uint64_t act_rt_window_base;
-    uint32_t stack_frames[VPU_AS_TOTAL];
-    uint32_t stack_size;
-    uint32_t code_window_buffer_size;
-    uint32_t perf_metrics_mask;
-    uint32_t runtime_version;
-    uint8_t use_schedule_embedded_rt; // when useScheduleEmbeddedRt = false; FW copies ActRt to this buffer
-                                      // when useScheduleEmbeddedRt = true; buffer already contains the ActRt
-    VpuHWPStatMode dpu_perf_mode;
-    uint8_t pad_[6];
-};
-static_assert(sizeof(VpuNNShaveRuntimeConfigs) == 96, "VpuNNShaveRuntimeConfigs size != 96");
 
 struct VPU_ALIGNED_STRUCT(32) VpuDMATask {
     DmaDescriptor transaction_;
@@ -246,7 +235,7 @@ struct VPU_ALIGNED_STRUCT(8) VpuActKernelRange {
     VpuPtr<actKernelEntryFunction> kernel_entry;
     VpuPtr<void> text_window_base;
     uint32_t code_size;
-    uint8_t reserved_[4];
+    uint8_t deprecated_[4]; // Deprecated member, do not reuse until next API major version update
     uint32_t kernel_invo_count;
     uint8_t pad1_[4];
 };
@@ -261,7 +250,7 @@ struct VPU_ALIGNED_STRUCT(32) VpuActKernelInvocation {
     VpuPtr<void> perf_packet_out;
     VpuTaskBarrierDependency barriers;
     VpuTaskSchedulingBarrierConfig barriers_sched;
-    uint8_t reserved_[4];
+    uint32_t invo_index;
     uint32_t invo_tile;
     uint32_t kernel_range_index;
     uint32_t next_aki_wl_addr;
@@ -324,7 +313,7 @@ struct VPU_ALIGNED_STRUCT(32) VpuMappedInference {
     VpuTaskReference<VpuBarrierCountConfig> barrier_configs;
     VpuNNShaveRuntimeConfigs shv_rt_configs;
     uint64_t hwp_workpoint_cfg_addr;
-    VpuTaskReference<uint8_t> managed_inference;
+    VpuTaskReference<VpuManagedMappedInference> managed_inference;
 };
 
 static_assert(sizeof(VpuMappedInference) == 1728, "VpuMappedInference size != 1728");

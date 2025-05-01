@@ -5,7 +5,9 @@
 
 #include "vpux/compiler/core/feasible_memory_scheduler_spilling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/profiling/common.hpp"
@@ -56,7 +58,7 @@ public:
 
         ++_count;
         if (mlir::isa_and_nonnull<VPUIP::DMATypeOpInterface>(op)) {
-            auto opType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+            auto opType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
             _size += opType.getCompactAllocSize().count();
         }
         bool counted = false;
@@ -143,7 +145,7 @@ std::string convertBytesToReadableSize(uint64_t bytes) {
 }
 
 bool isNameLocContainsStr(mlir::Location loc, const std::string& substr) {
-    if (auto nameLoc = loc.dyn_cast<mlir::NameLoc>()) {
+    if (auto nameLoc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
         return nameLoc.getName().str().find(substr) != std::string::npos;
     }
     return false;
@@ -153,7 +155,7 @@ bool isLocContainsStr(mlir::Location loc, const std::string& substr) {
     if (isNameLocContainsStr(loc, substr)) {
         return true;
     }
-    if (auto fusedLoc = loc.dyn_cast<mlir::FusedLoc>()) {
+    if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
         for (auto& loc : fusedLoc.getLocations()) {
             if (isNameLocContainsStr(loc, substr)) {
                 return true;
@@ -170,7 +172,7 @@ CountersVec getSpillCounter(const std::string& category) {
     const auto spillCategory = category == "DDR2CMX" ? "SPILL_READ" : "SPILL_WRITE";
     const auto targetSubstr = category == "DDR2CMX" ? SPILL_READ_OP_NAME_SUFFIX : SPILL_WRITE_OP_NAME_SUFFIX;
     return {std::make_shared<SpecificCategoryCounter>(spillCategory, [=](mlir::Operation* op) {
-        if (auto fusedLoc = op->getLoc().dyn_cast<mlir::FusedLoc>()) {
+        if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(op->getLoc())) {
             const auto locations = fusedLoc.getLocations();
             for (auto it = std::rbegin(locations); it != std::rend(locations); ++it) {
                 const auto loc = *it;
@@ -267,7 +269,7 @@ CountersVec getDMANestedCounters() {
         VPUX_THROW_WHEN(op == nullptr, "NULL operation provided");
 
         const auto checkArgMemSpace = [](mlir::Value operand, VPU::MemoryKind memKind) {
-            return operand.getType().cast<vpux::NDTypeInterface>().getMemoryKind() == memKind;
+            return mlir::cast<vpux::NDTypeInterface>(operand.getType()).getMemoryKind() == memKind;
         };
 
         if (auto dmaOp = mlir::dyn_cast<DMAType>(op)) {
@@ -433,7 +435,7 @@ public:
     }
 
     uint64_t getDataSize(mlir::Value buffer) {
-        const auto type = buffer.getType().cast<vpux::NDTypeInterface>();
+        const auto type = mlir::cast<vpux::NDTypeInterface>(buffer.getType());
         return type.getShape().totalSize() * type.getElemTypeSize().count() / CHAR_BIT;
     }
 
@@ -459,7 +461,7 @@ public:
                 totalCompressedConstantsAfterCompression_ += inputSize;
 
                 auto compressedConstantType =
-                        decompressDMAOp.getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+                        mlir::cast<vpux::NDTypeInterface>(decompressDMAOp.getOperand(0).getType()).getElementType();
 
                 if (compressedConstantType.isF16()) {
                     compressedF16constantsCounter_++;
@@ -518,7 +520,7 @@ public:
                     convertBytesToReadableSize(compressedF16constantsAfterCompression_),
                     (double)compressedF16constantsAfterCompression_ / compressedF16constantsBeforeCompression_ * 100);
         }
-        if (compressedConstantsCounter_ - compressedF16constantsCounter_ > 0) {
+        if (compressedConstantsCounter_ > compressedF16constantsCounter_) {
             log.nest().info(
                     "Int8 - count: {0}, size: {1}, compressed size: {2}, ({3}%)",
                     compressedConstantsCounter_ - compressedF16constantsCounter_,
@@ -565,7 +567,7 @@ public:
                 return;
             }
 
-            auto cstOpType = cstOp.getType().cast<vpux::NDTypeInterface>();
+            auto cstOpType = mlir::cast<vpux::NDTypeInterface>(cstOp.getType());
             auto size = cstOpType.getTotalAllocSize().count();
 
             if (vpux::getSwizzlingSchemeAttr(cstOpType)) {
@@ -620,10 +622,10 @@ std::tuple<uint64_t, uint64_t> getInputOutputSize(mlir::func::FuncOp funcOp) {
     auto results = funcOp.getResultTypes();
 
     for (auto& input : inputs) {
-        inputSize += input.cast<vpux::NDTypeInterface>().getTotalAllocSize().count();
+        inputSize += mlir::cast<vpux::NDTypeInterface>(input).getTotalAllocSize().count();
     }
     for (auto& result : results) {
-        outputSize += result.cast<vpux::NDTypeInterface>().getTotalAllocSize().count();
+        outputSize += mlir::cast<vpux::NDTypeInterface>(result).getTotalAllocSize().count();
     }
     // For every result we have entry in arguments
     inputSize -= outputSize;

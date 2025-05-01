@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -136,7 +137,7 @@ mlir::LogicalResult LegalizeNDMemPermute::matchAndRewrite(IE::MemPermuteOp origO
     // where Tiling for SW kernels is limited to 4D ops.
     // ToDo: Remove pass after limitation.
 
-    auto inputType = origOp.getInput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
 
     // do not apply pass for dynamic shapes
     if (inputType.getShape().isDynamic()) {
@@ -147,7 +148,7 @@ mlir::LogicalResult LegalizeNDMemPermute::matchAndRewrite(IE::MemPermuteOp origO
         return mlir::failure();
     }
 
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto permutation = origOp.getMemPerm();
 
     _log.trace("Got MemPermute op at '{0}' with shape '{1}' and permutation map '{2}'", origOp->getLoc(),

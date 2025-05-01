@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,7 +21,7 @@ mlir::LogicalResult vpux::IE::SeluOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = selu.getData().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(selu.getData().getType());
 
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 

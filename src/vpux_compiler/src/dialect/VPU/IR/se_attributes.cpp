@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -540,11 +540,10 @@ VPU::SEAttr VPU::SEInterpolateAttr::extractTile(ShapeRef outputTileOffset, Shape
     offsets[Dims4D::Act::H.ind()] = getDimOffset(Dims4D::Act::H, factors[VPU::SE_INTERPOLATE_FACTOR_H]);
     offsets[Dims4D::Act::W.ind()] = getDimOffset(Dims4D::Act::W, factors[VPU::SE_INTERPOLATE_FACTOR_W]);
 
-    return VPU::SEInterpolateAttr::get(getContext(), getMode(), getCoordinateTransformationMode(), getScale(),
-                                       getNearestMode(), getIntArrayAttr(getContext(), offsets),
-                                       getIntArrayAttr(getContext(), Shape(outputTileShape.raw())),
-                                       getInitialInputShape(), getInitialOutputShape())
-            .cast<VPU::SEAttr>();
+    return mlir::cast<vpux::VPU::SEAttr>(VPU::SEInterpolateAttr::get(
+            getContext(), getMode(), getCoordinateTransformationMode(), getScale(), getNearestMode(),
+            getIntArrayAttr(getContext(), offsets), getIntArrayAttr(getContext(), Shape(outputTileShape.raw())),
+            getInitialInputShape(), getInitialOutputShape()));
 }
 
 std::pair<Shape, Shape> VPU::SEInterpolateAttr::inferInputTileShapeAndOffset(ShapeRef outputTileOffset,
@@ -631,6 +630,41 @@ std::vector<int32_t> VPU::SEInterpolateAttr::computeSEOffsets(ShapeRef dataShape
                                 [&](ShapeRef outputCoord, ShapeRef inputShape) -> Shape {
                                     return backInferInputCoord(outputCoord, inputShape);
                                 });
+}
+
+std::vector<int32_t> VPU::SEInterpolateAttr::computeSEOffsetsWithMultiSeSize(ShapeRef dataShape,
+                                                                             StridesRef /*dataStrides*/, Byte elemSize,
+                                                                             ArrayRef<int64_t> seSizes) const {
+    auto getSeOffset = [&](Shape spatialDataShape, const int64_t seSz) {
+        spatialDataShape[Dims4D::Act::C] = seSz;
+
+        Shape outputShape = inferOutputShape(spatialDataShape);
+        outputShape[Dims4D::Act::C] = seSz;
+
+        return computeSpatialSEPtrs(getContext(), spatialDataShape, outputShape, elemSize, seSz, getOffsets(),
+                                    [&](ShapeRef outputCoord, ShapeRef inputShape) -> Shape {
+                                        Shape spatialOutputCoord = outputCoord.raw();
+                                        spatialOutputCoord[Dims4D::Act::C] = 0;
+                                        return backInferInputCoord(spatialOutputCoord, inputShape);
+                                    });
+    };
+
+    Shape curDataShape = dataShape.raw();
+    std::vector<std::vector<int32_t>> perSeDepthSeOffsetsList;
+    for (auto seSize : seSizes) {
+        curDataShape[Dims4D::Act::C] = seSize;
+        auto curSeOffsets = getSeOffset(curDataShape, seSize);
+        perSeDepthSeOffsetsList.push_back(std::move(curSeOffsets));
+    }
+
+    std::vector<int32_t> seOffsets;
+    seOffsets.reserve(perSeDepthSeOffsetsList.size() * perSeDepthSeOffsetsList[0].size());
+    for (auto i : irange(perSeDepthSeOffsetsList[0].size())) {
+        for (auto j : irange(perSeDepthSeOffsetsList.size())) {
+            seOffsets.push_back(perSeDepthSeOffsetsList[j][i]);
+        }
+    }
+    return seOffsets;
 }
 
 std::optional<VPU::SETileInfo> VPU::SEInterpolateAttr::getTileInfo() const {
@@ -894,10 +928,10 @@ VPU::SEAttr VPU::SEUpsamplingAttr::extractTile(ShapeRef outputTileOffset, ShapeR
     newPadding[VPU::SE_PAD_RIGHT] += factorW;
     newPadding[VPU::SE_PAD_BOTTOM] += factorH;
 
-    return VPU::SEUpsamplingAttr::get(getContext(), getFactors(), getIntArrayAttr(getContext(), newPadding),
-                                      getIntArrayAttr(getContext(), relativeOffsets),
-                                      getIntArrayAttr(getContext(), Shape(outputTileShape.raw())))
-            .cast<VPU::SEAttr>();
+    return mlir::cast<vpux::VPU::SEAttr>(
+            VPU::SEUpsamplingAttr::get(getContext(), getFactors(), getIntArrayAttr(getContext(), newPadding),
+                                       getIntArrayAttr(getContext(), relativeOffsets),
+                                       getIntArrayAttr(getContext(), Shape(outputTileShape.raw()))));
 }
 
 std::pair<Shape, Shape> VPU::SEUpsamplingAttr::inferInputTileShapeAndOffset(ShapeRef outputTileOffset,
@@ -926,6 +960,11 @@ std::vector<int32_t> VPU::SEUpsamplingAttr::computeSEOffsets(ShapeRef dataShape,
                                 [&](ShapeRef outputCoord, ShapeRef inputShape) -> Shape {
                                     return backInferInputCoord(outputCoord, inputShape);
                                 });
+}
+
+std::vector<int32_t> VPU::SEUpsamplingAttr::computeSEOffsetsWithMultiSeSize(ShapeRef, StridesRef, Byte,
+                                                                            ArrayRef<int64_t>) const {
+    VPUX_THROW("not supported");
 }
 
 std::optional<VPU::SETileInfo> VPU::SEUpsamplingAttr::getTileInfo() const {
@@ -1289,10 +1328,9 @@ VPU::SEAttr VPU::SEPaddingAttr::extractTile(ShapeRef outputTileOffset, ShapeRef 
     Shape relativeOffsets;
     std::tie(inputTileShape, inputTileOffset, relativeOffsets) =
             inferPadInputTileParams(outputTileOffset, outputTileShape, inputShape);
-    return VPU::SEPaddingAttr::get(getContext(), getMode(), getPadding(),
-                                   getIntArrayAttr(getContext(), relativeOffsets),
-                                   getIntArrayAttr(getContext(), Shape(outputTileShape.raw())))
-            .cast<VPU::SEAttr>();
+    return mlir::cast<vpux::VPU::SEAttr>(VPU::SEPaddingAttr::get(
+            getContext(), getMode(), getPadding(), getIntArrayAttr(getContext(), relativeOffsets),
+            getIntArrayAttr(getContext(), Shape(outputTileShape.raw()))));
 }
 
 std::pair<Shape, Shape> VPU::SEPaddingAttr::inferInputTileShapeAndOffset(ShapeRef outputTileOffset,
@@ -1310,6 +1348,11 @@ std::vector<int32_t> VPU::SEPaddingAttr::computeSEOffsets(ShapeRef dataShape, St
                                 [&](ShapeRef outputCoord, ShapeRef inputShape) -> Shape {
                                     return backInferInputCoord(outputCoord, inputShape);
                                 });
+}
+
+std::vector<int32_t> VPU::SEPaddingAttr::computeSEOffsetsWithMultiSeSize(ShapeRef, StridesRef, Byte,
+                                                                         ArrayRef<int64_t>) const {
+    VPUX_THROW("not supported");
 }
 
 std::optional<VPU::SETileInfo> VPU::SEPaddingAttr::getTileInfo() const {
@@ -1485,10 +1528,10 @@ VPU::SEAttr VPU::SERollAttr::extractTile(ShapeRef outputTileOffset, ShapeRef out
     const auto newShifts = Shape{getNewShift(SE_ROLL_SPATIAL_H), getNewShift(SE_ROLL_SPATIAL_W)};
 
     auto ctx = getContext();
-    return VPU::SERollAttr::get(ctx, getIntArrayAttr(ctx, newShifts), getAxes(),
-                                getIntArrayAttr(ctx, SmallVector<int64_t>(outputTileShape.size(), 0)),
-                                getIntArrayAttr(ctx, outputTileShape.raw()))
-            .cast<VPU::SEAttr>();
+    return mlir::cast<vpux::VPU::SEAttr>(
+            VPU::SERollAttr::get(ctx, getIntArrayAttr(ctx, newShifts), getAxes(),
+                                 getIntArrayAttr(ctx, SmallVector<int64_t>(outputTileShape.size(), 0)),
+                                 getIntArrayAttr(ctx, outputTileShape.raw())));
 }
 
 std::pair<Shape, Shape> VPU::SERollAttr::inferInputTileShapeAndOffset(ShapeRef outputTileOffset,
@@ -1559,6 +1602,11 @@ std::vector<int32_t> VPU::SERollAttr::computeSEOffsets(ShapeRef dataShape, Strid
                                 [&](ShapeRef outputCoord, ShapeRef inputShape) -> Shape {
                                     return backInferInputCoord(outputCoord, inputShape);
                                 });
+}
+
+std::vector<int32_t> VPU::SERollAttr::computeSEOffsetsWithMultiSeSize(ShapeRef, StridesRef, Byte,
+                                                                      ArrayRef<int64_t>) const {
+    VPUX_THROW("not supported");
 }
 
 std::optional<VPU::SETileInfo> VPU::SERollAttr::getTileInfo() const {
@@ -1703,15 +1751,13 @@ VPU::SEAttr VPU::SEDilatedConvAttr::extractTile(ShapeRef outputTileOffset, Shape
     // change input tile shape to full shape
     inputTileShape = backInferInputShape(outputTileShape);
 
-    auto attr = VPU::SEDilatedConvAttr::get(
-                        getContext(), getDilation(), getKernelStride(), getKernelSize(),  // keep the same
-                        getDataOffset(),  // Always use same offsets, they encode subconv position
-                        dataSizes,        // data size is a precise size of input data used
-                        /* offsets = */ getIntArrayAttr(getContext(), relativeOffsets),  // always zero
-                                                                                         /* sizes = */
-                        getIntArrayAttr(getContext(),
-                                        Shape(outputTileShape.raw())))  // exact output tile shape, provided by tiler
-                        .cast<VPU::SEAttr>();
+    auto attr = mlir::cast<vpux::VPU::SEAttr>(VPU::SEDilatedConvAttr::get(
+            getContext(), getDilation(), getKernelStride(), getKernelSize(),  // keep the same
+            getDataOffset(),  // Always use same offsets, they encode subconv position
+            dataSizes,        // data size is a precise size of input data used
+            /* offsets = */ getIntArrayAttr(getContext(), relativeOffsets),  // always zero
+                                                                             /* sizes = */
+            getIntArrayAttr(getContext(), Shape(outputTileShape.raw()))));
 
     // count from 0 offset
     inputTileOffset[Dims4D::Act::H] -= offsetH;
@@ -1748,6 +1794,42 @@ std::vector<int32_t> VPU::SEDilatedConvAttr::computeSEOffsets(ShapeRef dataShape
                                 [&](ShapeRef outputCoord, ShapeRef inputShape) -> Shape {
                                     return backInferInputCoord(outputCoord, inputShape);
                                 });
+}
+
+std::vector<int32_t> VPU::SEDilatedConvAttr::computeSEOffsetsWithMultiSeSize(ShapeRef dataShape,
+                                                                             [[maybe_unused]] StridesRef dataStrides,
+                                                                             Byte elemSize,
+                                                                             ArrayRef<int64_t> seSizes) const {
+    auto getSeOffset = [&](Shape spatialDataShape, const int64_t seSz) {
+        spatialDataShape[Dims4D::Act::C] = seSz;
+
+        Shape outputShape = inferOutputShape(spatialDataShape);
+        outputShape[Dims4D::Act::C] = seSz;
+
+        return computeSpatialSEPtrs(getContext(), spatialDataShape, outputShape, elemSize, seSz, getOffsets(),
+                                    [&](ShapeRef outputCoord, ShapeRef inputShape) -> Shape {
+                                        Shape spatialOutputCoord = outputCoord.raw();
+                                        spatialOutputCoord[Dims4D::Act::C] = 0;
+                                        return backInferInputCoord(spatialOutputCoord, inputShape);
+                                    });
+    };
+
+    Shape curDataShape = dataShape.raw();
+    std::vector<std::vector<int32_t>> perSeDepthSeOffsetsList;
+    for (auto seSize : seSizes) {
+        curDataShape[Dims4D::Act::C] = seSize;
+        auto curSeOffsets = getSeOffset(curDataShape, seSize);
+        perSeDepthSeOffsetsList.push_back(std::move(curSeOffsets));
+    }
+
+    std::vector<int32_t> seOffsets;
+    seOffsets.reserve(perSeDepthSeOffsetsList.size() * perSeDepthSeOffsetsList[0].size());
+    for (auto i : irange(perSeDepthSeOffsetsList[0].size())) {
+        for (auto j : irange(perSeDepthSeOffsetsList.size())) {
+            seOffsets.push_back(perSeDepthSeOffsetsList[j][i]);
+        }
+    }
+    return seOffsets;
 }
 
 std::optional<VPU::SETileInfo> VPU::SEDilatedConvAttr::getTileInfo() const {

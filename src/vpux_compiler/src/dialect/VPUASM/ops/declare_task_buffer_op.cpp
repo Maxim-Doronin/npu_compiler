@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -52,4 +52,8 @@ void VPUASM::DeclareTaskBufferOp::setMemoryOffset(mlir::IntegerAttr offset) {
 
 uint64_t VPUASM::DeclareTaskBufferOp::getMemoryOffset() {
     return getOffset().value_or(0);
+}
+
+vpux::VPURT::BufferSection VPUASM::DeclareTaskBufferOp::getMemorySection() {
+    return vpux::VPURT::BufferSection::CMX_NN;
 }

@@ -5,7 +5,6 @@
 
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
-#include "vpux/utils/core/logger.hpp"
 
 using namespace vpux;
 
@@ -14,7 +13,7 @@ using namespace vpux;
 //
 
 size_t VPUASM::DeclareBufferOp::getBinarySize(VPU::ArchKind) {
-    const auto type = getBufferType().getMemref().cast<vpux::NDTypeInterface>();
+    const auto type = mlir::cast<vpux::NDTypeInterface>(getBufferType().getMemref());
     return type.getTotalAllocSize().count();
 }
 
@@ -72,6 +71,10 @@ std::optional<ELF::SectionSignature> vpux::VPUASM::DeclareBufferOp::getSectionSi
         flags = ELF::SectionFlagsAttr::VPU_SHF_PROFOUTPUT | ELF::SectionFlagsAttr::SHF_WRITE |
                 ELF::SectionFlagsAttr::SHF_ALLOC;
         break;
+    case VPURT::BufferSection::Register:
+        type = ELF::SectionTypeAttr::SHT_NOBITS;
+        flags = ELF::SectionFlagsAttr::SHF_NONE;
+        break;
     default:
         return std::nullopt;
     }
@@ -80,6 +83,8 @@ std::optional<ELF::SectionSignature> vpux::VPUASM::DeclareBufferOp::getSectionSi
 
     if (isInputOrOutputBuffer || section == VPURT::BufferSection::ProfilingOutput) {
         name = ELF::generateSignature("io", buffType);
+    } else if (section == VPURT::BufferSection::Register) {
+        name = ELF::generateSignature("reg", buffType);
     }
 
     return ELF::SectionSignature(std::move(name), flags, type);
@@ -87,4 +92,8 @@ std::optional<ELF::SectionSignature> vpux::VPUASM::DeclareBufferOp::getSectionSi
 
 bool vpux::VPUASM::DeclareBufferOp::hasMemoryFootprint() {
     return false;
+}
+
+vpux::VPURT::BufferSection VPUASM::DeclareBufferOp::getMemorySection() {
+    return getBufferType().getLocation().getSection();
 }

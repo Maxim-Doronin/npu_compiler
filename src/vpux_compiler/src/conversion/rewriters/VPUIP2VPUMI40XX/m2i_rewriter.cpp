@@ -1,11 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/conversion/rewriters/VPUIP2VPUMI40XX/m2i_rewriter.hpp"
-
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 
 namespace vpux::vpuip2vpumi40xx {
@@ -14,7 +14,7 @@ mlir::LogicalResult M2IRewriter::matchAndRewrite(VPUIP::M2ITaskOp origOp, OpAdap
                                                  mlir::ConversionPatternRewriter& rewriter) const {
     auto ctx = origOp.getContext();
     const auto zeroIndex = VPURegMapped::IndexType::get(ctx, 0);
-
+    auto origTaskOp = origOp->getParentOfType<VPURT::TaskOp>();
     auto doCscAttr = origOp.getDoCscAttr().getValue() ? mlir::UnitAttr::get(ctx) : nullptr;
     auto doNormAttr = origOp.getDoNormAttr().getValue() ? mlir::UnitAttr::get(ctx) : nullptr;
 
@@ -35,8 +35,8 @@ mlir::LogicalResult M2IRewriter::matchAndRewrite(VPUIP::M2ITaskOp origOp, OpAdap
             mlir::ValueRange(),                             // updateBarriers
             mlir::IntegerAttr::get(getUInt64Type(ctx), 0),  // startAfter
             mlir::IntegerAttr::get(getUInt64Type(ctx), 0),  // cleanAfter
-            nullptr                                         // enqueueBarrier
-    );
+            nullptr,                                        // enqueueBarrier
+            origTaskOp.getWlmPageAttr());                   // wlmPageAttr
 
     rewriter.eraseOp(origOp);
     return mlir::success();

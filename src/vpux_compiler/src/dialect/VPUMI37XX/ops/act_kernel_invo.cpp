@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,8 +22,8 @@ void vpux::VPUMI37XX::ActKernelInvocationOp::serialize(elf::writer::BinaryDataSe
     nn_public::VpuActKernelInvocation actKernelInvocation;
     memset(reinterpret_cast<void*>(&actKernelInvocation), 0, sizeof(actKernelInvocation));
 
-    auto rangeIndex = getRangeIndex().getType().cast<VPURegMapped::IndexType>();
-    auto invoIndex = getType().cast<VPURegMapped::IndexType>();
+    auto rangeIndex = mlir::cast<vpux::VPURegMapped::IndexType>(getRangeIndex().getType());
+    auto invoIndex = mlir::cast<vpux::VPURegMapped::IndexType>(getType());
 
     actKernelInvocation.range = rangeIndex.getValue();
     actKernelInvocation.kernel_range_index = rangeIndex.getValue();
