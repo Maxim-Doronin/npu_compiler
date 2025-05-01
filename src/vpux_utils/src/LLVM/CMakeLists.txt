@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023 Intel Corporation.
+# Copyright (C) 2023-2025 Intel Corporation.
 # SPDX-License-Identifier: Apache 2.0
 #
 
@@ -16,7 +16,6 @@ set(TARGET_NAME npu_llvm_utils)
 
 list(APPEND SOURCES
                 ../core/error.cpp
-                ../core/logger.cpp
                 ../core/mask.cpp
                 ../core/mem_size.cpp
                 ../core/simple_math.cpp
@@ -51,11 +50,12 @@ target_include_directories(${TARGET_NAME}
 )
 
 add_dependencies(${TARGET_NAME}
+    npu_logger
     LLVMSupport
 )
 
 if(BUILD_SHARED_LIBS)
-    target_link_libraries(${TARGET_NAME} PRIVATE npu_core_utils PUBLIC LLVMSupport)
+    target_link_libraries(${TARGET_NAME} PRIVATE npu_core_utils PUBLIC npu_logger LLVMSupport)
 else()
-    bundle_static_library(${TARGET_NAME} npu_core_utils LLVMSupport)
+    bundle_static_library(${TARGET_NAME} npu_core_utils npu_logger LLVMSupport)
 endif()

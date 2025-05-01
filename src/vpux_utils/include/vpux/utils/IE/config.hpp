@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 #pragma once
 
 #include "intel_npu/config/config.hpp"
-#include "vpux/utils/core/common_logger.hpp"
+#include "vpux/utils/logger/common_logger.hpp"
 
 #include <openvino/runtime/properties.hpp>
 

@@ -23,18 +23,6 @@ namespace vpux::profiling {
 
 namespace {
 
-template <typename... Args>
-void warnOrFail(bool failOnError, vpux::Logger& log, bool condition, llvm::StringLiteral format, Args&&... params) {
-    if (condition) {
-        return;
-    }
-    if (failOnError) {
-        VPUX_THROW(format, std::forward<Args>(params)...);
-    } else {
-        log.warning(format, std::forward<Args>(params)...);
-    }
-}
-
 void fillTaskInfoWithParsedRawRecords(std::vector<TaskInfo>& vec, const RawProfilingRecords& rawTasks,
                                       FrequenciesSetup frequenciesSetup) {
     for (const auto& task : rawTasks) {
@@ -94,7 +82,7 @@ size_t findEarliestTask(size_t currentEngineEarliestTaskNs, const std::vector<st
 
 RawProfilingRecords parseDmaHwTaskProfiling(
         const flatbuffers::Vector<flatbuffers::Offset<ProfilingFB::DMATask>>* dmaTaskList, const void* output,
-        size_t outputLen) {
+        size_t outputLen, vpux::Logger& log, bool ignoreSanitizationErrors) {
     if (dmaTaskList == nullptr) {
         return {};
     }
@@ -114,7 +102,7 @@ RawProfilingRecords parseDmaHwTaskProfiling(
         auto outputBin = reinterpret_cast<const HwpDma40Data_t*>(output);
         const auto data = outputBin[recordNumber];
         const auto record = std::make_shared<RawProfilingDMA40Record>(data, task, recordNumber);
-        record->checkDataOrDie();
+        record->checkData(!ignoreSanitizationErrors, log);
         rawRecords.push_back(record);
     }
     return rawRecords;
@@ -170,7 +158,7 @@ bool hasExtendedActShaveRecord(TargetDevice device) {
 
 RawProfilingRecords parseActShaveTaskProfiling(
         const flatbuffers::Vector<flatbuffers::Offset<ProfilingFB::SWTask>>* shaveTaskList, const void* output,
-        size_t outputLen, TargetDevice device) {
+        size_t outputLen, TargetDevice device, Logger& log, bool ignoreSanitizationErrors) {
     if (shaveTaskList == nullptr) {
         return {};
     }
@@ -196,7 +184,7 @@ RawProfilingRecords parseActShaveTaskProfiling(
             const ActShaveData_t outputShave = reinterpret_cast<const ActShaveData_t*>(output)[currentPos];
             record = std::make_shared<RawProfilingACTRecord>(outputShave, taskMeta, currentPos);
         }
-        record->checkDataOrDie();
+        record->checkData(!ignoreSanitizationErrors, log);
         rawRecords.push_back(std::move(record));
     }
     VPUX_THROW_UNLESS(foundActShaveTasks == shaveTaskList->size(), "All ActShave tasks should be profiled");
@@ -205,7 +193,7 @@ RawProfilingRecords parseActShaveTaskProfiling(
 
 RawProfilingRecords parseM2ITaskProfiling(
         const flatbuffers::Vector<flatbuffers::Offset<ProfilingFB::M2ITask>>* m2iTaskList, const void* output,
-        size_t outputLen) {
+        size_t outputLen, Logger& log, bool ignoreSanitizationErrors) {
     if (m2iTaskList == nullptr) {
         return {};
     }
@@ -219,7 +207,7 @@ RawProfilingRecords parseM2ITaskProfiling(
     for (size_t taskIndex = 0; taskIndex < m2iTaskList->size(); taskIndex++) {
         const auto record =
                 std::make_shared<RawProfilingM2IRecord>(outputM2I[taskIndex], m2iTaskList->Get(taskIndex), taskIndex);
-        record->checkDataOrDie();
+        record->checkData(!ignoreSanitizationErrors, log);
         rawRecords.push_back(record);
     }
     return rawRecords;
@@ -277,7 +265,7 @@ RawProfilingRecords parseDPUTaskProfiling(
                     const auto taskWloadId = taskMeta->workloadIds()->Get(variantId);
                     bool isValidWorkloadIdConfiguration =
                             (dpuTimings.idu_wl_id == dpuTimings.odu_wl_id) && (dpuTimings.idu_wl_id == taskWloadId);
-                    warnOrFail(!ignoreSanitizationErrors, log, isValidWorkloadIdConfiguration,
+                    warnOrFail(!ignoreSanitizationErrors, log, !isValidWorkloadIdConfiguration,
                                "Wrong workload ID. Please report! Expected: {0}, but got IDU {1}, ODU {2}", taskWloadId,
                                dpuTimings.idu_wl_id, dpuTimings.odu_wl_id);
 
@@ -291,11 +279,8 @@ RawProfilingRecords parseDPUTaskProfiling(
                     record = std::make_shared<RawProfilingDPUHW27Record>(dpuTimings, taskMeta, variantId, currentPos,
                                                                          inClusterIndex);
                 }
-                // Check if record is initialized before using it
-                if (record != nullptr) {
-                    record->checkDataOrDie();
-                    rawRecords.push_back(record);
-                }
+                record->checkData(!ignoreSanitizationErrors, log);
+                rawRecords.push_back(record);
             }
             // continue increment of currentPos to walk over non-used data
             ++currentPos;
@@ -336,13 +321,14 @@ RawProfilingData parseProfilingTaskLists(const RawDataLayout& sections, TargetDe
             break;
         }
         case ExecutorType::DMA_HW: {
-            rawProfData.dmaTasks = parseDmaHwTaskProfiling(profilingSchema->dmaTasks(), profData + offset, length);
+            rawProfData.dmaTasks = parseDmaHwTaskProfiling(profilingSchema->dmaTasks(), profData + offset, length, log,
+                                                           ignoreSanitizationErrors);
             rawProfData.parseOrder.emplace_back(ExecutorType::DMA_HW, offset);
             break;
         }
         case ExecutorType::ACTSHAVE: {
-            rawProfData.swTasks =
-                    parseActShaveTaskProfiling(profilingSchema->swTasks(), profData + offset, length, device);
+            rawProfData.swTasks = parseActShaveTaskProfiling(profilingSchema->swTasks(), profData + offset, length,
+                                                             device, log, ignoreSanitizationErrors);
             rawProfData.parseOrder.emplace_back(ExecutorType::ACTSHAVE, offset);
             break;
         }
@@ -361,7 +347,8 @@ RawProfilingData parseProfilingTaskLists(const RawDataLayout& sections, TargetDe
             break;
         }
         case ExecutorType::M2I: {
-            rawProfData.m2iTasks = parseM2ITaskProfiling(profilingSchema->m2iTasks(), profData + offset, length);
+            rawProfData.m2iTasks = parseM2ITaskProfiling(profilingSchema->m2iTasks(), profData + offset, length, log,
+                                                         ignoreSanitizationErrors);
             rawProfData.parseOrder.emplace_back(ExecutorType::M2I, offset);
             break;
         }

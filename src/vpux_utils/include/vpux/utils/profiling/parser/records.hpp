@@ -10,7 +10,7 @@
 #include "parser.hpp"
 
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 #include "vpux/utils/profiling/common.hpp"
 #include "vpux/utils/profiling/parser/api.hpp"
 #include "vpux/utils/profiling/parser/hw.hpp"
@@ -37,6 +37,16 @@ namespace vpux::profiling {
 constexpr int COL_WIDTH_32 = 11;
 constexpr int COL_WIDTH_64 = 19;
 
+template <typename... Args>
+void warnOrFail(bool failOnError, vpux::Logger& log, bool condition, llvm::StringLiteral format, Args&&... params) {
+    if (condition) {
+        if (failOnError) {
+            VPUX_THROW(format, std::forward<Args>(params)...);
+        } else {
+            log.warning(format, std::forward<Args>(params)...);
+        }
+    }
+}
 class DebugFormattableRecordMixin {
 public:
     using ColDesc = std::vector<std::pair<std::string, int>>;
@@ -213,8 +223,10 @@ public:
         return taskInfo;
     }
 
-    virtual void checkDataOrDie() const {
-        VPUX_THROW("checkDataOrDie not implemented");
+    virtual void checkData(bool failOnError, Logger& log) const {
+        VPUX_UNUSED(failOnError);
+        VPUX_UNUSED(log);
+        VPUX_THROW("checkData not implemented");
     }
 
     virtual void sanitize(vpux::Logger&, FrequenciesSetup) const {
@@ -331,9 +343,9 @@ public:
             : RawProfilingDMARecord<HwpDma40Data_t>(record, metadata, inMemoryOffset) {
     }
 
-    void checkDataOrDie() const override {
-        VPUX_THROW_UNLESS(_record.rsvd == 0, "Reserved value must contain 0.");
-        VPUX_THROW_WHEN(_record.desc_addr == 0, "Invalid DMA descriptor address.");
+    void checkData(bool failOnError, Logger& log) const override {
+        warnOrFail(failOnError, log, _record.rsvd != 0, "Reserved value must contain 0.");
+        warnOrFail(failOnError, log, _record.desc_addr == 0, "Invalid DMA descriptor address.");
     }
 
     ExecutorType getExecutorType() const override {
@@ -447,10 +459,11 @@ public:
             : RawProfilingDPURecord(metadata, variantId, inMemoryOffset, inClusterIndex), _timestamps(timestamps) {
     }
 
-    void checkDataOrDie() const override {
-        VPUX_THROW_WHEN(_timestamps.idu_wl_duration == 0 && _timestamps.odu_wl_duration == 0,
-                        "Invalid DPU task duration");
-        VPUX_THROW_UNLESS(_timestamps.reserved3 == 0 && _timestamps.reserved8 == 0, "Reserved values must contain 0.");
+    void checkData(bool failOnError, Logger& log) const override {
+        warnOrFail(failOnError, log, _timestamps.idu_wl_duration == 0 && _timestamps.odu_wl_duration == 0,
+                   "Invalid DPU task duration");
+        warnOrFail(failOnError, log, _timestamps.reserved3 != 0 || _timestamps.reserved8 != 0,
+                   "Reserved values must contain 0");
     }
 
     ExecutorType getExecutorType() const override {
@@ -516,9 +529,9 @@ public:
             : RawProfilingDPURecord(metadata, variantId, inMemoryOffset, inClusterIndex), _timestamps(timestamps) {
     }
 
-    void checkDataOrDie() const override {
-        VPUX_THROW_WHEN(_timestamps.idu_wl_duration == 0 && _timestamps.odu_wl_duration == 0,
-                        "Invalid DPU task duration");
+    void checkData(bool failOnError, Logger& log) const override {
+        warnOrFail(failOnError, log, _timestamps.idu_wl_duration == 0 && _timestamps.odu_wl_duration == 0,
+                   "Invalid DPU task duration");
     }
 
     ExecutorType getExecutorType() const override {
@@ -607,8 +620,8 @@ public:
         return profInfoItem;
     }
 
-    void checkDataOrDie() const override {
-        VPUX_THROW_WHEN(_data.begin == 0 && _data.duration == 0, "Can't process ACT profiling data.");
+    void checkData(bool failOnError, Logger& log) const override {
+        warnOrFail(failOnError, log, _data.begin == 0 && _data.duration == 0, "Can't process ACT profiling data.");
     }
 
     ExecutorType getExecutorType() const override {
@@ -675,8 +688,8 @@ public:
         return profInfoItem;
     }
 
-    void checkDataOrDie() const override {
-        VPUX_THROW_WHEN(_data.begin == 0 && _data.duration == 0, "Can't process ACT profiling data.");
+    void checkData(bool failOnError, Logger& log) const override {
+        warnOrFail(failOnError, log, _data.begin == 0 && _data.duration == 0, "Can't process ACT profiling data.");
     }
 
     ExecutorType getExecutorType() const override {
@@ -732,8 +745,9 @@ public:
             : RawProfilingRecord(metadata), DebugFormattableRecordMixin(inMemoryOffset), _data(data) {
     }
 
-    void checkDataOrDie() const override {
-        VPUX_THROW_WHEN(_data.startTime == 0 && _data.finishTime == 0, "Can't process M2I profiling data.");
+    void checkData(bool failOnError, Logger& log) const override {
+        warnOrFail(failOnError, log, _data.startTime == 0 && _data.finishTime == 0,
+                   "Can't process M2I profiling data.");
     }
 
     ExecutorType getExecutorType() const override {

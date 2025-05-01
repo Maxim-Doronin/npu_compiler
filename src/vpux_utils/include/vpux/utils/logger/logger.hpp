@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,10 +9,10 @@
 
 #pragma once
 
-#include "vpux/utils/core/common_logger.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/string_ref.hpp"
+#include "vpux/utils/logger/common_logger.hpp"
 
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/WithColor.h>

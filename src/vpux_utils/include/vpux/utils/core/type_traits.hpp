@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -66,4 +66,15 @@ TYPE_PRINTER(unsigned int)
 TYPE_PRINTER(int64_t)
 TYPE_PRINTER(double)
 TYPE_PRINTER(std::string)
+
+//
+// always_false
+//
+
+// Allows always-failing static asserts during template instantiation.
+// Usage: `static_assert(vpux::always_false<T>, "error message");`
+// Ported from: thirdparty/llvm-project/libc/src/__support/CPP/type_traits/always_false.h
+template <typename...>
+constexpr bool always_false = false;
+
 }  // namespace vpux

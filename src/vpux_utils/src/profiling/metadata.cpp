@@ -14,7 +14,7 @@
 #include <sstream>
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 #include "vpux/utils/profiling/common.hpp"
 
 using vpux::checked_cast;

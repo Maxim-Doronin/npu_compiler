@@ -1,13 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 //
 
-#include "vpux/utils/core/logger.hpp"
-
-#include "vpux/utils/core/optional.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <llvm/ADT/SmallString.h>
 #include <llvm/Support/Debug.h>
@@ -39,36 +37,32 @@ void vpux::globalLogCb(const formatv_object_base& msg) {
 static const char* logLevelPrintout[] = {"NONE", "FATAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"};
 
 Logger& vpux::Logger::global() {
-    static std::optional<Logger> globalLogger = std::nullopt;
-
-    if (globalLogger.has_value()) {
-        return globalLogger.value();
-    }
-
+    static Logger globalLogger = []() {
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    LogLevel logLvl = LogLevel::Warning;
-    if (const auto env = std::getenv("OV_NPU_LOG_LEVEL")) {
-        auto logStr = std::string(env);
-        if (logStr == "LOG_NONE") {
-            logLvl = LogLevel::None;
-        } else if (logStr == "LOG_ERROR") {
-            logLvl = LogLevel::Error;
-        } else if (logStr == "LOG_WARNING") {
-            logLvl = LogLevel::Warning;
-        } else if (logStr == "LOG_INFO") {
-            logLvl = LogLevel::Info;
-        } else if (logStr == "LOG_DEBUG") {
-            logLvl = LogLevel::Debug;
-        } else if (logStr == "LOG_TRACE") {
-            logLvl = LogLevel::Trace;
+        LogLevel logLvl = LogLevel::Warning;
+        if (const auto env = std::getenv("OV_NPU_LOG_LEVEL")) {
+            auto logStr = std::string(env);
+            if (logStr == "LOG_NONE") {
+                logLvl = LogLevel::None;
+            } else if (logStr == "LOG_ERROR") {
+                logLvl = LogLevel::Error;
+            } else if (logStr == "LOG_WARNING") {
+                logLvl = LogLevel::Warning;
+            } else if (logStr == "LOG_INFO") {
+                logLvl = LogLevel::Info;
+            } else if (logStr == "LOG_DEBUG") {
+                logLvl = LogLevel::Debug;
+            } else if (logStr == "LOG_TRACE") {
+                logLvl = LogLevel::Trace;
+            }
         }
-    }
-    globalLogger = Logger("global", logLvl);
+        return Logger("global", logLvl);
 #else
-    globalLogger = Logger("global", LogLevel::None);
+        return Logger("global", LogLevel::None);
 #endif
+    }();
 
-    return globalLogger.value();
+    return globalLogger;
 }
 
 vpux::Logger::Logger(StringLiteral name, LogLevel lvl): _name(name), _logLevel(lvl) {
