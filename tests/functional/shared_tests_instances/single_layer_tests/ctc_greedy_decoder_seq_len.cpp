@@ -4,10 +4,7 @@
 //
 
 #include "single_op_tests/ctc_greedy_decoder_seq_len.hpp"
-
 #include <random>
-#include <vector>
-
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -128,6 +125,8 @@ TEST_P(CTCGreedyDecoderSeqLenLayerTestCommon, NPU3720_HW) {
 
 TEST_P(CTCGreedyDecoderSeqLenLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

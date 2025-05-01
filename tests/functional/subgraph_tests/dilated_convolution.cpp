@@ -1,13 +1,11 @@
-// Copyright (C) Intel Corporation
+//
+// Copyright (C) 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cstddef>
-#include <openvino/opsets/opset14.hpp>
 #include <vpu_ov2_layer_test.hpp>
 #include "openvino/opsets/opset1.hpp"
 
-#include "common_test_utils/node_builders/constant.hpp"
 #include "shared_test_classes/single_op/shape_of.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
@@ -92,7 +90,7 @@ TEST_P(SEPDilatedConvTestCommon, NPU4000_HW) {
     run(Platform::NPU4000);
 }
 
-std::vector<ov::Shape> inputSizesM = {{1, 64, 32, 32}, {1, 64, 64, 64}};
+std::vector<ov::Shape> inputSizesM = {{1, 64, 32, 32}, {1, 64, 64, 64}, {1, 960, 32, 32}};
 
 std::vector<std::vector<size_t>> dilationValsM = {{1, 1}, {2, 2}, {4, 4}};
 

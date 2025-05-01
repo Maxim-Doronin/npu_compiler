@@ -3,9 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
-#include "common_test_utils/test_constants.hpp"
 #include "single_op_tests/transpose.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -36,25 +33,6 @@ namespace {
 
 const std::vector<ov::element::Type> modelTypes = {
         ov::element::f16,
-};
-
-// MLIR 2D instantiation
-const std::vector<std::vector<ov::Shape>> inputShapes2D = {
-        std::vector<ov::Shape>{{50, 100}},
-};
-
-const std::vector<std::vector<size_t>> inputOrder2D = {
-        std::vector<size_t>{},
-};
-
-// MLIR 4D instantiation
-const std::vector<std::vector<ov::Shape>> inputShapes4D = {
-        std::vector<ov::Shape>{{1, 3, 100, 100}},
-};
-
-// Tracking number [E#85137]
-const std::vector<std::vector<size_t>> inputOrder4D = {
-        std::vector<size_t>{0, 3, 2, 1},
 };
 
 const std::vector<std::vector<ov::Shape>> inputShapesMemPerm = {
@@ -165,7 +143,7 @@ const auto paramsTransposeToDMA =
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Transpose_To_DMA, TransposeLayerTest_NPU3720, paramsTransposeToDMA,
                          TransposeLayerTest_NPU3720::getTestCaseName);
 
-/* ============= NPU4000  ============= */
+/* ============= NPU4+  ============= */
 
 const std::vector<std::vector<ov::Shape>> inShapesMemPerm = {std::vector<ov::Shape>{{1, 8, 80, 960}},
                                                              std::vector<ov::Shape>{{1, 3, 12, 16}}};

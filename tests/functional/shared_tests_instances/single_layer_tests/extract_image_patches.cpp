@@ -4,8 +4,6 @@
 //
 
 #include "single_op_tests/extract_image_patches.hpp"
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -33,8 +31,6 @@ using namespace ov::test;
 namespace {
 
 const std::vector<PadType> paddingType = {PadType::VALID, PadType::SAME_UPPER, PadType::SAME_LOWER};
-const std::vector<std::vector<size_t>> strides = {{5, 5}};
-const std::vector<std::vector<size_t>> rates = {{2, 2}};
 
 // FP16
 const auto test1ExtractImagePatchesParams = ::testing::Combine(

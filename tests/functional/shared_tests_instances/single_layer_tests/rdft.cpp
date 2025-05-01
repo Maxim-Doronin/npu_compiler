@@ -3,9 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "single_op_tests/rdft.hpp"
-#include <algorithm>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
 #include "common_test_utils/node_builders/rdft.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -15,7 +13,7 @@ namespace ov {
 namespace test {
 
 class RdftLayerTestCommon : public RDFTLayerTest, virtual public VpuOv2LayerTest {
-    // C-125993
+    // C#125993
     // Reduce resolution of ov::float16 data generation to prevent NaN values
     void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
         VpuOv2LayerTest::inputs.clear();
@@ -55,6 +53,8 @@ TEST_P(RdftLayerTestCommon, NPU3720) {
 TEST_P(RdftLayerTestCommon, NPU4000) {
     VpuOv2LayerTest::abs_threshold = 1.0;
     VpuOv2LayerTest::setDefaultHardwareMode();
+    // TODO E####-159644
+    VpuOv2LayerTest::setBatchCompilerMode("unroll");
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
 }  // namespace test

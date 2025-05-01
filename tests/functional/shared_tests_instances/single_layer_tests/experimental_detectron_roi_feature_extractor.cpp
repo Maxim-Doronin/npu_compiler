@@ -3,8 +3,6 @@
 //
 
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
-
 #include "single_op_tests/experimental_detectron_roifeatureextractor.hpp"
 #include "vpu_ov2_layer_test.hpp"
 

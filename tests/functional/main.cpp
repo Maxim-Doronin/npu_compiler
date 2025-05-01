@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,7 @@
 #include <functional_test_utils/summary/op_summary.hpp>
 #include <iostream>
 #include <sstream>
-#include <vpux/utils/core/logger.hpp>
+#include <vpux/utils/logger/logger.hpp>
 #include "gtest/gtest.h"
 #include "intel_npu/npu_private_properties.hpp"
 #include "vpu_test_report.hpp"

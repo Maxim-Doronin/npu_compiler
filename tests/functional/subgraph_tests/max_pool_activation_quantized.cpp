@@ -52,7 +52,9 @@ class MaxPoolWithActivationQuantizedTest :
 
         lastOutput = buildMaxPool(lastOutput);
 
-        lastOutput = utils::make_activation(lastOutput, ov::element::f16, activationType)->get_default_output();
+        lastOutput = activationType == utils::Swish
+                             ? utils::make_activation(lastOutput, ov::element::f16, activationType, ov::Shape{}, {1.f})
+                             : utils::make_activation(lastOutput, ov::element::f16, activationType);
 
         if (quantParams.outputQuant.has_value()) {
             lastOutput = utils::makeFakeQuantize(lastOutput, ov::element::f16, 256, *quantParams.outputQuant)
@@ -96,7 +98,7 @@ public:
     };
 };
 
-const std::vector<utils::ActivationTypes> activations = {utils::Tanh, utils::Sigmoid};
+const std::vector<utils::ActivationTypes> activations = {utils::Tanh, utils::Sigmoid, utils::Swish, utils::Gelu};
 
 const std::vector<MaxPoolQuantParams> quantParams = {
         MaxPoolQuantParams{FakeQuantizeParams({0.f}, {100.f}, {0.f}, {100.f}), std::nullopt},

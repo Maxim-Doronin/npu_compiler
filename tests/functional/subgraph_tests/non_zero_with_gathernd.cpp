@@ -1,11 +1,7 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <memory>
-#include <openvino/op/gather_nd.hpp>
-#include <openvino/op/not_equal.hpp>
-#include <shared_test_classes/base/ov_subgraph.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
 #include <common/print_test_case_name.hpp>

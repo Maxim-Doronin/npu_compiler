@@ -69,8 +69,8 @@ const auto paramsA = testing::Combine(testing::ValuesIn(inputShapesA), testing::
 const auto paramsB = testing::Combine(testing::ValuesIn(inputShapesB), testing::ValuesIn(stridesB),
                                       testing::ValuesIn(modelTypes), testing::Values(DEVICE_NPU));
 
-INSTANTIATE_TEST_CASE_P(smoke_ReorgYolo_a, ReorgYoloLayerTestCommon, paramsA,
-                        ReorgYoloLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_ReorgYolo_a, ReorgYoloLayerTestCommon, paramsA,
+                         ReorgYoloLayerTestCommon::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_ReorgYolo_b, ReorgYoloLayerTestCommon, paramsB,
                          ReorgYoloLayerTestCommon::getTestCaseName);

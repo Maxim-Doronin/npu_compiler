@@ -3,11 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <random>
-#include <vector>
-
-#include "common_test_utils/test_constants.hpp"
 #include "single_op_tests/fake_quantize.hpp"
+#include <random>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -89,31 +86,9 @@ const std::vector<std::vector<ov::Shape>> inputShapes = {{{1, 3, 10, 10}}};
 const std::vector<std::vector<size_t>> constShapes = {{1}, {1, 3, 1, 1}};
 const std::vector<size_t> levels = {16, 255, 256};
 
-const std::vector<std::vector<ov::Shape>> inputShapesND = {{{1, 512}}};
 const std::vector<std::vector<size_t>> constShapesND = {{1}};
 
 const std::vector<float> fqArgs = {0, 255, 0, 255};
-
-const auto fqParams = ::testing::Combine(
-        ::testing::ValuesIn(levels),       // fake quantize levels
-        ::testing::ValuesIn(constShapes),  // fake quantize inputs shape
-        ::testing::Values(fqArgs),  // fake quantize (inputLow, inputHigh, outputLow, outputHigh) or empty for random
-        ::testing::Values(ov::op::AutoBroadcastType::NUMPY));  // fake quantize broadcast mode
-
-const auto fqParamsND =
-        ::testing::Combine(::testing::ValuesIn(levels), ::testing::ValuesIn(constShapesND), ::testing::Values(fqArgs),
-                           ::testing::Values(ov::op::AutoBroadcastType::NUMPY));
-
-// TODO: support levels=16
-// "Can't convert 12 Bit to Byte" while working u4 precision (!quant.uniform<u4:f16, 0.5:128>)
-const std::vector<size_t> hw_levels = {255, 256};
-const auto hw_fqParams =
-        ::testing::Combine(::testing::ValuesIn(hw_levels), ::testing::ValuesIn(constShapes), ::testing::Values(fqArgs),
-                           ::testing::Values(ov::op::AutoBroadcastType::NUMPY));
-
-const auto hw_fqParamsND =
-        ::testing::Combine(::testing::ValuesIn(hw_levels), ::testing::ValuesIn(constShapesND),
-                           ::testing::Values(fqArgs), ::testing::Values(ov::op::AutoBroadcastType::NUMPY));
 
 // Per-Tensor
 const std::vector<size_t> u8qLevels = {256};

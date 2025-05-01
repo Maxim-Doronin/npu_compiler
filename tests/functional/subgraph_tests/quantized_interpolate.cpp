@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <common/utils.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
 #include "common_test_utils/node_builders/fake_quantize.hpp"
-#include "intel_npu/npu_private_properties.hpp"
 
 using namespace ov::test;
 namespace {
@@ -130,7 +128,7 @@ TEST_P(QuantizedSEInterpSubGraphTest_NPU4000_HW, HW) {
 
 std::vector<std::vector<float>> fqRanges = {{0.0f, 255.0f, 0.0f, 255.0f}};
 
-std::vector<std::vector<ov::Shape>> inputShapes = {{{1, 16, 16, 16}}, {{1, 48, 40, 40}}};
+std::vector<std::vector<ov::Shape>> inputShapes = {{{1, 16, 16, 16}}, {{1, 32, 40, 40}}, {{1, 160, 40, 40}}};
 
 std::vector<std::vector<float>> interpScales = {
         {1.0f, 1.0f, 2.0f, 2.0f}, {1.0f, 1.0f, 3.0f, 3.0f}, {1.0f, 1.0f, 4.0f, 4.0f}};
@@ -164,6 +162,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_QuantizedInterp_SW, QuantizedSEInterpSubGraphTest
 
 INSTANTIATE_TEST_SUITE_P(smoke_QuantizedInterp_HW, QuantizedSEInterpSubGraphTest_NPU4000_HW, basicCases,
                          QuantizedSEInterpSubGraphTest_NPU4000_HW::getTestCaseName);
+
+// TODO: E156484 - investigate accuracy issue
 
 // TODO: E156484 - investigate accuracy issue
 

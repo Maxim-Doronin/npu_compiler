@@ -3,10 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
-#include <common/functions.h>
-#include "common_test_utils/test_constants.hpp"
 #include "single_op_tests/group_convolution.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -140,11 +136,6 @@ const auto groupConv3DParams_ExplicitPadding = ::testing::Combine(
         ::testing::ValuesIn(kernels3d), ::testing::ValuesIn(strides3d), ::testing::ValuesIn(paddings3d),
         ::testing::ValuesIn(paddings3d), ::testing::ValuesIn(dilations3d), ::testing::Values(4), ::testing::Values(2),
         ::testing::Values(ov::op::PadType::EXPLICIT));
-const auto groupConv3DParams_AutoPadValid =
-        ::testing::Combine(::testing::ValuesIn(kernels3d), ::testing::ValuesIn(strides3d),
-                           ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),
-                           ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})), ::testing::ValuesIn(dilations3d),
-                           ::testing::Values(4), ::testing::Values(2), ::testing::Values(ov::op::PadType::VALID));
 
 INSTANTIATE_TEST_SUITE_P(smoke_GroupConvolution3D_ExplicitPadding, GroupConvolutionLayerTest_HW,
                          ::testing::Combine(groupConv3DParams_ExplicitPadding, ::testing::ValuesIn(modelTypes),

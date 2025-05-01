@@ -3,10 +3,7 @@
 //
 
 #include "single_op_tests/pooling.hpp"
-#include <common/functions.h>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
-#include "intel_npu/npu_private_properties.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -187,7 +184,7 @@ class PoolingLayerTest_NPU4000 : public PoolingLayerTest, virtual public VpuOv2L
 
 class PoolingLayerTestWithUnrollBatchingCompileMethod : public PoolingLayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] =
+        configuration[ov::intel_npu::batch_compiler_mode_settings.name()] =
                 "batch-compile-method=unroll batch-unroll-settings={skip-unroll-batch=true}";
     }
 };

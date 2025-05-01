@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include <vector>
-
-#include <common/functions.h>
-#include "common_test_utils/test_constants.hpp"
 #include "single_op_tests/psroi_pooling.hpp"
 #include "vpu_ov2_layer_test.hpp"
 

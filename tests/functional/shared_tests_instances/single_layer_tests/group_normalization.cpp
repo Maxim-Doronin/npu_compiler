@@ -4,7 +4,6 @@
 //
 
 #include "single_op_tests/group_normalization.hpp"
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;

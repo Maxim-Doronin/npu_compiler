@@ -1,8 +1,7 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/opsets/opset1.hpp"
 #include "openvino/opsets/opset6.hpp"
 
 #include <vpu_ov2_layer_test.hpp>
@@ -10,7 +9,7 @@
 using namespace ov::test::utils;
 using namespace ov::test;
 
-namespace WeightsDequantizeToFakeQuantizeDefinition {
+namespace WeightsDequantizeDefinition {
 
 enum class ZPType { INT8_T, FLOAT };
 
@@ -31,11 +30,9 @@ struct FQ_as_Mul_Sub_dequantize {
     size_t levels;
 };
 
-using WeightsDequantizeToFakeQuantizeTestParams = std::tuple<FQ_as_Mul_Sub_dequantize, ov::element::Type, std::string>;
+using WeightsDequantizeTestParams = std::tuple<FQ_as_Mul_Sub_dequantize, ov::element::Type, std::string>;
 
-class WeightsDequantizeToFakeQuantize :
-        public testing::WithParamInterface<WeightsDequantizeToFakeQuantizeTestParams>,
-        public VpuOv2LayerTest {
+class WeightsDequantize : public testing::WithParamInterface<WeightsDequantizeTestParams>, public VpuOv2LayerTest {
 public:
     void SetUp() override {
         const auto& params = GetParam();
@@ -86,7 +83,7 @@ public:
         rel_threshold = 0.5f;
     }
 
-    static std::string getTestCaseName(testing::TestParamInfo<WeightsDequantizeToFakeQuantizeTestParams> obj) {
+    static std::string getTestCaseName(testing::TestParamInfo<WeightsDequantizeTestParams> obj) {
         auto params = obj.param;
         FQ_as_Mul_Sub_dequantize test_case = std::get<0>(params);
         ov::element::Type precision = std::get<1>(params);
@@ -108,12 +105,12 @@ public:
 // Platform test definition
 //
 
-TEST_P(WeightsDequantizeToFakeQuantize, NPU3720_HW) {
+TEST_P(WeightsDequantize, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(WeightsDequantizeToFakeQuantize, NPU4000_HW) {
+TEST_P(WeightsDequantize, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
@@ -133,6 +130,6 @@ const auto basicCasesM = ::testing::Combine(
         ::testing::Values(DEVICE_NPU));
 // clang-format on
 
-INSTANTIATE_TEST_SUITE_P(precommit_WeightsDequantizeToFakeQuantize, WeightsDequantizeToFakeQuantize, basicCasesM,
-                         WeightsDequantizeToFakeQuantize::getTestCaseName);
-}  // namespace WeightsDequantizeToFakeQuantizeDefinition
+INSTANTIATE_TEST_SUITE_P(precommit_WeightsDequantize, WeightsDequantize, basicCasesM,
+                         WeightsDequantize::getTestCaseName);
+}  // namespace WeightsDequantizeDefinition

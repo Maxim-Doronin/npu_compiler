@@ -708,7 +708,9 @@ TEST_P(PreProcessTestCommon, NPU3720_HW) {
 class PreProcessTest_M2I : public PreProcessTestCommon {
 public:
     void SetUp() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-m2i=true";
+        // TODO: E129229
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-m2i=true workload-management-enable=false";
         PreProcessTestCommon::SetUp();
     }
 };
@@ -719,8 +721,6 @@ class PreProcessTest_M2I_u8_single_op : public PreProcessTest_M2I {};
 TEST_P(PreProcessTest_M2I_u8_single_op, NPU4000_HW) {
     abs_threshold = 1.001;
     setDefaultHardwareMode();
-    // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 
@@ -746,8 +746,6 @@ TEST_P(PreProcessTest_M2I_f16_no_csc, NPU4000_HW) {
     });
     abs_threshold = 1.001;
     setDefaultHardwareMode();
-    // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 

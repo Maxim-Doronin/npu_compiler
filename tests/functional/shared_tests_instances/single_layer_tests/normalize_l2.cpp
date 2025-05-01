@@ -4,7 +4,6 @@
 //
 
 #include "single_op_tests/normalize_l2.hpp"
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -24,6 +23,8 @@ TEST_P(NormalizeL2LayerTestCommon, NPU3720_HW) {
 TEST_P(NormalizeL2LayerTestCommon, NPU4000_HW) {
     abs_threshold = 0.02;
     setDefaultHardwareMode();
+    // TODO E####-159644
+    VpuOv2LayerTest::setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 

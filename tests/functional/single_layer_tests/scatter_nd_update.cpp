@@ -1,30 +1,15 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <algorithm>
-#include <cstdlib>
-#include <functional>
-#include <iterator>
-#include <numeric>
-
-#include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/core/dimension.hpp>
-#include <openvino/core/node_vector.hpp>
-#include <openvino/core/partial_shape.hpp>
-#include <openvino/core/type/element_type.hpp>
-#include <openvino/opsets/opset3.hpp>
-#include <openvino/opsets/opset4.hpp>
-#include <shared_test_classes/base/ov_subgraph.hpp>
-
-#include <llvm/ADT/STLExtras.h>
 #include <common/print_test_case_name.hpp>
 #include <common/random_generator.hpp>
+#include <common_test_utils/ov_tensor_utils.hpp>
+#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset4.hpp>
 #include <pretty_test_arguments.hpp>
 #include <vpu_ov2_layer_test.hpp>
-#include <vpux/utils/core/error.hpp>
-#include <vpux/utils/core/range.hpp>
 
 namespace {
 

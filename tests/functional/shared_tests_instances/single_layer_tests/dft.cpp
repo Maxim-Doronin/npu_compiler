@@ -4,10 +4,7 @@
 //
 
 #include "single_op_tests/dft.hpp"
-#include <algorithm>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
-#include "common_test_utils/node_builders/dft.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -17,7 +14,7 @@ namespace ov {
 namespace test {
 
 class DftLayerTestCommon : public DFTLayerTest, virtual public VpuOv2LayerTest {
-    // C-125993
+    // C#125993
     // Reduce resolution of ov::float16 data generation to prevent NaN values
     void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
         inputs.clear();
@@ -49,6 +46,8 @@ TEST_P(DftLayerTestCommon, NPU3720) {
 TEST_P(DftLayerTestCommon, NPU4000) {
     abs_threshold = 0.2;
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

@@ -3,8 +3,6 @@
 // SPDX-License-Identifier: Apache 2.0
 
 #include "single_op_tests/select.hpp"
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov {
@@ -36,6 +34,8 @@ class SelectLayerTestCommon : public SelectLayerTest, virtual public VpuOv2Layer
     }
 };
 
+class ShaveCodeGenSelectLayerTestCommon : public SelectLayerTestCommon {};
+
 TEST_P(SelectLayerTestCommon, NPU3720_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU3720);
@@ -45,10 +45,18 @@ TEST_P(SelectLayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(ShaveCodeGenSelectLayerTestCommon, NPU4000) {
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
+
 }  // namespace test
 }  // namespace ov
 
 using ov::test::SelectLayerTestCommon;
+using ov::test::ShaveCodeGenSelectLayerTestCommon;
 
 namespace {
 const std::vector<ov::element::Type> inputTypes = {ov::element::f16, ov::element::i32, ov::element::i64};
@@ -65,4 +73,6 @@ const auto selectTestParams = ::testing::Combine(
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Select, SelectLayerTestCommon, selectTestParams,
                          SelectLayerTestCommon::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Select, ShaveCodeGenSelectLayerTestCommon, selectTestParams,
+                         ShaveCodeGenSelectLayerTestCommon::getTestCaseName);
 }  // namespace

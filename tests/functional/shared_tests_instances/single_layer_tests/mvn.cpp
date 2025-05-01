@@ -3,9 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/op/mvn.hpp>
-#include <shared_test_classes/single_op/mvn.hpp>
 #include <single_op_tests/mvn.hpp>
 #include "vpu_ov2_layer_test.hpp"
 
@@ -103,6 +100,8 @@ TEST_P(Mvn1LayerTest_NPU3720, HW) {
 TEST_P(Mvn1LayerTest_NPU4000_HW, HW) {
     abs_threshold = 0.03;
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 
@@ -140,6 +139,8 @@ TEST_P(Mvn6LayerTestCommon, NPU3720_SW) {
 
 TEST_P(Mvn6LayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 // -------------- MVN6 F32 tests
@@ -151,6 +152,8 @@ TEST_P(Mvn6LayerTestCommonFP32, NPU3720_SW) {
 
 TEST_P(Mvn6LayerTestCommonFP32, NPU4000_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

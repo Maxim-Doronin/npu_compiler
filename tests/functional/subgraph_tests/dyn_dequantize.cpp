@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -80,6 +80,14 @@ const std::vector<DynDeQuantShapes> shapes = {
         {{3, 30, 128}, {3, 30, 1}, ov::element::i4, ov::element::f16},
         {{3, 30, 128}, {3, 1, 128}, ov::element::i4, ov::element::f16},
         {{3, 14, 12}, {3, 1, 12}, ov::element::i4, ov::element::f16},
+#if 0  // E#144929
+// Exception in CI (works with IMD):
+// "Exception from ..\src\plugins\intel_npu\src\compiler_adapter\src\driver_compiler_adapter.cpp:108:
+//  Incorrect precision: nf4"
+        {{16, 8, 32}, {1, 1, 1}, ov::element::nf4, ov::element::f16},
+        {{16, 8, 32}, {16, 1, 1}, ov::element::nf4, ov::element::f16},
+        {{16, 8, 32}, {1, 1, 32}, ov::element::nf4, ov::element::f16},
+#endif
 };
 
 // Tracking number [E#144857]

@@ -1,23 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpu_ov2_layer_test.hpp"
 
-#include <shared_test_classes/base/ov_subgraph.hpp>
-
-#include <common/functions.h>
-#include <common/print_test_case_name.hpp>
-#include <pretty_test_arguments.hpp>
-
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/core/type/element_type.hpp>
-#include <openvino/op/broadcast.hpp>
 #include <openvino/opsets/opset1.hpp>
-#include <openvino/opsets/opset3.hpp>
-#include <openvino/opsets/opset4.hpp>
-#include <openvino/opsets/opset5.hpp>
 #include <openvino/pass/manager.hpp>
 
 #include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>

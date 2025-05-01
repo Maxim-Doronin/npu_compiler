@@ -3,8 +3,6 @@
 //
 
 #include "single_op_tests/scatter_elements_update.hpp"
-#include <vector>
-
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov {

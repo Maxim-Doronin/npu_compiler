@@ -5,10 +5,6 @@
 
 #include "single_op_tests/gru_sequence.hpp"
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
-#include "openvino/pass/manager.hpp"
-#include "transformations/op_conversions/bidirectional_sequences_decomposition.hpp"
-#include "transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -37,7 +33,7 @@ TEST_P(GRUSequenceLayerTestCommon, NPU3720_HW) {
 TEST_P(GRUSequenceLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
+    configuration["NPU_COMPILATION_MODE_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 }  // namespace test
@@ -91,6 +87,28 @@ const std::vector<std::vector<ov::Shape>> iShapeSplit1Bi = {
         {{1, 1, 10}, {1, 2, 200}, {1}},
 };
 
+// Extracted from models Configuration
+const std::vector<bool> shouldLinearBeforeResetTarget{true};
+const std::vector<GRUDirection> directionTarget{GRUDirection::FORWARD};
+// Target resolution 1
+const std::vector<std::vector<ov::Shape>> iShapeTarget1 = {
+        {{1, 1, 256}, {1, 1, 256}, {1}},
+};
+const auto gruSequenceParamTarget1 = testing::Combine(
+        ::testing::Values(testMode), ::testing::ValuesIn(static_shapes_to_test_representation(iShapeTarget1)),
+        ::testing::Values(activations), ::testing::Values(clip), ::testing::ValuesIn(shouldLinearBeforeResetTarget),
+        ::testing::ValuesIn(directionTarget), ::testing::Values(InputLayerType::CONSTANT),
+        ::testing::Values(modelTypes), ::testing::Values(DEVICE_NPU));
+// Target resolution 2
+const std::vector<std::vector<ov::Shape>> iShapeTarget2 = {
+        {{2, 3, 256}, {2, 1, 256}, {2}},
+};
+const auto gruSequenceParamTarget2 = testing::Combine(
+        ::testing::Values(testMode), ::testing::ValuesIn(static_shapes_to_test_representation(iShapeTarget2)),
+        ::testing::Values(activations), ::testing::Values(clip), ::testing::ValuesIn(shouldLinearBeforeResetTarget),
+        ::testing::ValuesIn(directionTarget), ::testing::Values(InputLayerType::CONSTANT),
+        ::testing::Values(modelTypes), ::testing::Values(DEVICE_NPU));
+
 const auto gruSequenceParam0 = testing::Combine(
         ::testing::Values(testMode), ::testing::ValuesIn(static_shapes_to_test_representation(iShape)),
         ::testing::Values(activations), ::testing::Values(clip), ::testing::ValuesIn(shouldLinearBeforeReset),
@@ -127,18 +145,6 @@ const auto gruSequenceParam2Bi = testing::Combine(
         ::testing::ValuesIn(directionModeBi), ::testing::Values(InputLayerType::CONSTANT),
         ::testing::Values(modelTypes), ::testing::Values(DEVICE_NPU));
 
-const auto gruSequenceParam3 = testing::Combine(
-        ::testing::Values(testMode), ::testing::ValuesIn(static_shapes_to_test_representation(iShapeSplit1)),
-        ::testing::Values(activations), ::testing::Values(clip), ::testing::ValuesIn(shouldLinearBeforeReset),
-        ::testing::ValuesIn(directionMode), ::testing::Values(InputLayerType::CONSTANT), ::testing::Values(modelTypes),
-        ::testing::Values(DEVICE_NPU));
-
-const auto gruSequenceParam3Bi = testing::Combine(
-        ::testing::Values(testMode), ::testing::ValuesIn(static_shapes_to_test_representation(iShapeSplit1Bi)),
-        ::testing::Values(activations), ::testing::Values(clip), ::testing::ValuesIn(shouldLinearBeforeReset),
-        ::testing::ValuesIn(directionModeBi), ::testing::Values(InputLayerType::CONSTANT),
-        ::testing::Values(modelTypes), ::testing::Values(DEVICE_NPU));
-
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_GRUSequence, GRUSequenceLayerTestCommon, gruSequenceParam0,
                          GRUSequenceTest::getTestCaseName);
 
@@ -159,4 +165,10 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_GRUSequence_Tiling_BI, GRUSequenceLayer
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_GRUSequence_Split_BI, GRUSequenceLayerTestCommon, gruSequenceParam2Bi,
                          GRUSequenceTest::getTestCaseName);
 
+// Extracted from models Configuration
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_GRUSequence_Target1, GRUSequenceLayerTestCommon, gruSequenceParamTarget1,
+                         GRUSequenceTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_GRUSequence_Target2, GRUSequenceLayerTestCommon, gruSequenceParamTarget2,
+                         GRUSequenceTest::getTestCaseName);
 }  // namespace

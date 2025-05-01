@@ -65,7 +65,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_subtract_same_shape_const_inputs, SubtractSubGrap
                          }),
                          SubtractSubGraphTest_NPU3720::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_subtract_diff_shape_const_inputs, SubtractSubGraphTest_NPU3720,
+INSTANTIATE_TEST_SUITE_P(smoke_subtract_diff_shape_const_inputs, SubtractSubGraphTest_NPU3720,
                          ::testing::Values(SubtractTestParams{
                                  {1, 1, 2, 1},  // input1 shape
                                  {1, 1, 2, 4},  // input2 shape
@@ -280,7 +280,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_subtract_same_shapes_fq_act_inputs, SubtractFqAct
                          }),
                          SubtractFqActInputsSubGraphTest_NPU3720::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_subtract_diff_shapes_fq_act_inputs, SubtractFqActInputsSubGraphTest_NPU3720,
+INSTANTIATE_TEST_SUITE_P(smoke_subtract_diff_shapes_fq_act_inputs, SubtractFqActInputsSubGraphTest_NPU3720,
                          ::testing::Values(SubtractTestParams{
                                  {1, 1, 2, 1},  // input1 shape
                                  {1, 1, 2, 4},  // input2 shape

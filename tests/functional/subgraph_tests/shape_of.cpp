@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -68,7 +68,7 @@ public:
 //
 
 // TODO: [E#115058] Enable the test after adding dynamic shape support in the plugin
-TEST_F(ShapeOfTest, DISABLED_NPU3720_DYNAMIC_HW) {
+TEST_F(ShapeOfTest, DISABLED_NPU3720_HW_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }

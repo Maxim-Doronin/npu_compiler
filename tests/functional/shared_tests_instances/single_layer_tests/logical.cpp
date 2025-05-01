@@ -14,6 +14,7 @@ namespace test {
 
 class LogicalLayerTestCommon : public LogicalLayerTest, virtual public VpuOv2LayerTest {};
 class LogicalLayerTestHW : public LogicalLayerTestCommon {};
+class ShaveCodeGenLogicalLayerTestCommon : public LogicalLayerTestCommon {};
 
 TEST_P(LogicalLayerTestCommon, NPU3720_SW) {
     setReferenceSoftwareMode();
@@ -29,6 +30,13 @@ TEST_P(LogicalLayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(ShaveCodeGenLogicalLayerTestCommon, NPU4000) {
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -50,27 +58,6 @@ std::vector<std::vector<ov::Shape>> combineShapes(
     }
     return result;
 }
-
-std::map<ov::Shape, std::vector<ov::Shape>> inputShapes = {
-        {{1}, {{1}, {17}, {1, 1}, {2, 18}, {1, 1, 2}, {2, 2, 3}, {1, 1, 2, 3}}},
-        {{5}, {{1}, {1, 1}, {2, 5}, {1, 1, 1}, {2, 2, 5}}},
-        {{2, 200}, {{1}, {200}, {2, 2, 200}}},
-        {{1, 3, 20}, {{20}, {2, 1, 1}}},
-        {{2, 17, 3, 4}, {{2, 1, 3, 4}}},
-};
-
-std::map<ov::Shape, std::vector<ov::Shape>> inputShapesNot = {
-        {{5}, {}},
-        {{2, 200}, {}},
-        {{1, 3, 20}, {}},
-        {{1, 17, 3, 4}, {}},
-};
-
-std::vector<LogicalTypes> logicalOpTypes = {
-        LogicalTypes::LOGICAL_AND,
-        LogicalTypes::LOGICAL_OR,
-        LogicalTypes::LOGICAL_XOR,
-};
 
 std::vector<InputLayerType> secondInputTypes = {
         InputLayerType::CONSTANT,
@@ -137,4 +124,14 @@ INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_precommit_logical_not, LogicalLayerT
 INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_tiling, LogicalLayerTestHW, tiling_logical_params,
                          LogicalLayerTest::getTestCaseName);
 
+// [Tracking number E#109588]
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_logical, ShaveCodeGenLogicalLayerTestCommon, logical_params,
+                         ShaveCodeGenLogicalLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_precommit_logical, ShaveCodeGenLogicalLayerTestCommon,
+                         precommit_logical_params, ShaveCodeGenLogicalLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_precommit_logical_not, ShaveCodeGenLogicalLayerTestCommon,
+                         precommit_logical_params_not, ShaveCodeGenLogicalLayerTestCommon::getTestCaseName);
+// [Tracking number E#109588 and E#152367]
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_tiling, ShaveCodeGenLogicalLayerTestCommon, tiling_logical_params,
+                         ShaveCodeGenLogicalLayerTestCommon::getTestCaseName);
 }  // namespace

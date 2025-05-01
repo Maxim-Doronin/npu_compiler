@@ -2,18 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cstdint>
-
-#include <algorithm>
-#include <array>
-#include <string_view>
-#include <tuple>
-#include <vector>
-
-#include <llvm/Support/FormatVariadic.h>
-
 #include <vpu_ov2_layer_test.hpp>
-#include "common/functions.h"
 #include "openvino/opsets/opset1.hpp"
 
 #include <vpux/utils/core/error.hpp>
@@ -118,6 +107,8 @@ public:
             case ov::opset1::DepthToSpace::DepthToSpaceMode::BLOCKS_FIRST:
                 return "BLOCKS_FIRST";
             }
+
+            return "UNKNOWN";
         }(mode);
 
         constexpr auto shapeFmtStr = "{{{0}, {1}, {2}, {3}}}";
@@ -145,10 +136,6 @@ public:
                 .str();
     }
 };
-
-// CONV => tensor<1x32x800x1280xf16>, tensor<12x32x3x3xf16> -> tensor<1x12x800x1280xf16>
-// D2S  => tensor<1x12x800x1280xf16> -> tensor<1x3x1600x2560xf16>
-// ADD  => tensor<1x3x1600x2560xf16>, tensor<1x3x1600x2560xf16> -> tensor<1x3x1600x2560xf16>
 
 // Parameters
 std::vector<DepthToSpaceTestParams> testCases = {

@@ -4,8 +4,6 @@
 //
 
 #include "single_op_tests/lrn.hpp"
-#include <vector>
-#include "intel_npu/npu_private_properties.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;

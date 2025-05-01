@@ -1,10 +1,7 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <algorithm>
-
-#include <gtest/gtest-param-test.h>
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov::test::subgraph {

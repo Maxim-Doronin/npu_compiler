@@ -4,10 +4,7 @@
 //
 
 #include "shared_test_classes/single_op/softmax.hpp"
-#include <sstream>
-#include <vector>
 #include "pretty_test_arguments.hpp"
-#include "shared_test_classes/base/ov_subgraph.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov::test {
@@ -56,6 +53,7 @@ TEST_P(SoftMaxLayerTestCommon, NPU4000_SW) {
 TEST_P(SoftMaxLayerTestCommon, NPU4000_HW) {
     abs_threshold = 1e-3;
     setDefaultHardwareMode();
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace ov::test

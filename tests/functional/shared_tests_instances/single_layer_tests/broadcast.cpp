@@ -4,8 +4,6 @@
 //
 
 #include "single_op_tests/broadcast.hpp"
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;

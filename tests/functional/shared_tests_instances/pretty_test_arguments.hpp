@@ -18,21 +18,31 @@
 #include <type_traits>
 #include <vector>
 
-#define PRETTY_PARAM(name, type)                                                 \
-    class name {                                                                 \
-    public:                                                                      \
-        using paramType = type;                                                  \
-        name(paramType arg = paramType()): val_(std::move(arg)) {                \
-        }                                                                        \
-        operator paramType() const {                                             \
-            return val_;                                                         \
-        }                                                                        \
-                                                                                 \
-    private:                                                                     \
-        paramType val_;                                                          \
-    };                                                                           \
-    static inline void PrintTo(const name& param, ::std::ostream* os) {          \
-        *os << #name ": " << ::testing::PrintToString((name::paramType)(param)); \
+// Helpers to detect if the type has ::value_type attribute
+template <typename, typename = std::void_t<>>
+struct HasValueType : std::false_type {};
+
+template <typename T>
+struct HasValueType<T, std::void_t<typename T::value_type>> : std::true_type {};
+
+#define PRETTY_PARAM(name, type)                                                               \
+    class name {                                                                               \
+    public:                                                                                    \
+        using paramType = type;                                                                \
+        name(paramType arg = paramType()): val_(std::move(arg)) {                              \
+        }                                                                                      \
+        template <typename T = paramType, typename = std::enable_if_t<HasValueType<T>::value>> \
+        name(std::initializer_list<typename T::value_type> values): val_{values} {             \
+        }                                                                                      \
+        operator paramType() const {                                                           \
+            return val_;                                                                       \
+        }                                                                                      \
+                                                                                               \
+    private:                                                                                   \
+        paramType val_;                                                                        \
+    };                                                                                         \
+    static inline void PrintTo(const name& param, ::std::ostream* os) { /*NOLINT*/             \
+        *os << #name ": " << ::testing::PrintToString((name::paramType)(param));               \
     }
 
 PRETTY_PARAM(Device, std::string);

@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <openvino/core/type/float16.hpp>
-#include <openvino/op/matmul.hpp>
-#include <openvino/op/parameter.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
 namespace ov::test {

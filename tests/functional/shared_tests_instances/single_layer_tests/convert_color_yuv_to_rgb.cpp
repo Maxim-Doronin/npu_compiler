@@ -3,8 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "common_test_utils/test_constants.hpp"
-#include "intel_npu/npu_private_properties.hpp"
 #include "single_op_tests/convert_color_i420.hpp"
 #include "single_op_tests/convert_color_nv12.hpp"
 #include "vpu_ov2_layer_test.hpp"
@@ -19,12 +17,14 @@ class ConvertColorI420LayerTestCommon : public ConvertColorI420LayerTest, virtua
 
 class ConvertColorNV12M2ILayerTest : public ConvertColorNV12LayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-m2i=true";
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-m2i=true workload-management-enable=false";
     }
 };
 class ConvertColorI420M2ILayerTest : public ConvertColorI420LayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-m2i=true";
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-m2i=true workload-management-enable=false";
     }
 };
 

@@ -1,8 +1,9 @@
-// Copyright (C) 2024 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+//
+// Copyright (C) 2024-2025 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
 
 #include "single_op_tests/reverse.hpp"
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -49,6 +50,14 @@ TEST_P(ReverseLayerTestCommon, NPU4000_SW) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
+
+TEST_P(ReverseLayerTestCommon, NPU4000_HW) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    // TODO E####-159644
+    VpuOv2LayerTest::setBatchCompilerMode("unroll");
+    VpuOv2LayerTest::run(Platform::NPU4000);
+}
+
 }  // namespace test
 
 }  // namespace ov
@@ -71,6 +80,10 @@ const std::vector<std::vector<int>> indices3D = {{0}, {1, 2}, {0, 1, 2}};
 const std::vector<std::vector<size_t>> inputShapes4D = {{1, 1, 1, 2}, {2, 1, 2, 1}, {3, 2, 1, 1}, {5, 5, 5, 5}};
 const std::vector<std::vector<int>> indices4D = {{1}, {0, 1}, {0, 1, 3}, {0, 1, 2, 3}};
 
+const std::vector<std::vector<size_t>> inputShapesMC = {
+        {8, 64, 64, 2}, {3, 8, 1, 8}, {6, 1, 8, 8}, {1, 8, 8, 8}, {1, 1, 16, 16}};
+const std::vector<std::vector<int>> indicesMC = {{1, 2, 3}, {1, 3}, {0, 2}};
+
 const auto params1D =
         testing::Combine(testing::ValuesIn(inputShapes1D), testing::ValuesIn(indices1D), testing::ValuesIn(modes),
                          testing::ValuesIn(netPrecisions), testing::Values(ov::test::utils::DEVICE_NPU));
@@ -85,6 +98,10 @@ const auto params3D =
 
 const auto params4D =
         testing::Combine(testing::ValuesIn(inputShapes4D), testing::ValuesIn(indices4D), testing::ValuesIn(modes),
+                         testing::ValuesIn(netPrecisions), testing::Values(ov::test::utils::DEVICE_NPU));
+
+const auto paramsMC =
+        testing::Combine(testing::ValuesIn(inputShapesMC), testing::ValuesIn(indicesMC), testing::ValuesIn(modes),
                          testing::ValuesIn(netPrecisions), testing::Values(ov::test::utils::DEVICE_NPU));
 
 const std::vector<std::vector<size_t>> inputShapesPrecommit1D = {{1}, {2}};
@@ -119,6 +136,9 @@ INSTANTIATE_TEST_SUITE_P(smoke_Reverse_1D, ReverseLayerTestCommon, params1D, Rev
 INSTANTIATE_TEST_SUITE_P(smoke_Reverse_2D, ReverseLayerTestCommon, params2D, ReverseLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Reverse_3D, ReverseLayerTestCommon, params3D, ReverseLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Reverse_4D, ReverseLayerTestCommon, params4D, ReverseLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Reverse_MC, ReverseLayerTestCommon, paramsMC, ReverseLayerTest::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Reverse_1D, ReverseLayerTestCommon, paramsPrecommit1D,
                          ReverseLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Reverse_2D, ReverseLayerTestCommon, paramsPrecommit2D,
