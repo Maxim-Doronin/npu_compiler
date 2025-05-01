@@ -8,7 +8,7 @@
 module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x1000xf16>
   } outputsInfo : {
     DataInfo "softmax" : tensor<1x1000xf16>
@@ -23,10 +23,10 @@ module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   } profilingBuffDeclarations : {
   }
   func.func @main() {
-    %tb_dma_00 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %tb_dma_10 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
-    %tb_actkerrange_0 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
-    %tb_actkerinv_0 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
+    %tb_dma_00 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %tb_dma_10 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
+    %tb_actkerrange_0 = VPUMI40XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
+    %tb_actkerinv_0 = VPUMI40XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
     %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16, @DDR>
     %1 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16, @DDR>
     %2 = VPURT.DeclareBuffer <DDR> <0> {swizzlingKey = 0 : i64} -> memref<1048576xi8, @DDR>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // CHECK-LABEL: @SkipWhenMainHasNoCallOps
 module @SkipWhenMainHasNoCallOps {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -30,7 +30,7 @@ module @SkipWhenMainHasNoCallOps {
 
 // CHECK-LABEL: @MixedCallAndNonCallOps
 module @MixedCallAndNonCallOps {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -105,7 +105,7 @@ module @MixedCallAndNonCallOps {
 
 // CHECK-LABEL: @MixedCallAndNonCallOpsMultipleUsers
 module @MixedCallAndNonCallOpsMultipleUsers {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -183,7 +183,7 @@ module @MixedCallAndNonCallOpsMultipleUsers {
 
 // CHECK-LABEL: @OutlineConstantsInAllFunctions
 module @OutlineConstantsInAllFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -243,7 +243,7 @@ module @OutlineConstantsInAllFunctions {
 
 // CHECK-LABEL: @OutlineSurroundingOpsConsecutiveCalls
 module @OutlineSurroundingOpsConsecutiveCalls {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -308,7 +308,7 @@ module @OutlineSurroundingOpsConsecutiveCalls {
 
 // CHECK-LABEL: @OutlineDistributedTypes
 module @OutlineDistributedTypes {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -378,7 +378,7 @@ module @OutlineDistributedTypes {
 
 // CHECK-LABEL: @OutlineSparseTypes
 module @OutlineSparseTypes {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -446,7 +446,7 @@ module @OutlineSparseTypes {
                                            sparsity_map=!VPU.DistributedTensor<1x48x32x32xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
 
 module @OutlineSparseTypesCMX {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -531,7 +531,7 @@ module @OutlineSparseTypesCMX {
 
 // CHECK-LABEL: @OutlineSparseWeights
 module @OutlineSparseWeights {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x16x1x480xf16>
     } outputsInfo : {
@@ -557,7 +557,7 @@ module @OutlineSparseWeights {
         %weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
         %conv = VPU.NCE.Convolution(%call, %sparse_weights_cmx, %weights_table) {
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [16, 16, 1, 1], strides = [1, 1]
-                } -> !TensorType {
+                } : !TensorType, !SparseDistributedType, tensor<16x1x1x4xsi32> -> !TensorType {
                     VPU.DPU.Workload inOffsets [0, 0, 0, 0] inSizes [1, 16, 1, 480] outOffsets [0, 0, 0, 0] outSizes [1, 16, 1, 480] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
             }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -44,7 +44,7 @@ func.func @MergeWeightsSharedBeforeAffineReshape(%arg0: tensor<1x128x1x1xf16>, %
 
 
     // CHECK:       [[RESHAPE:%.+]]  = IE.AffineReshape([[INPUT3]])
-    // CHECK-SAME{LITERAL}         {dim_mapping = [[0], [1], [2], [2]], shape_value = [16, 128, 1, 1]} : tensor<16x128x1xf16> -> tensor<16x128x1x1xf16>
+    // CHECK-SAME{LITERAL}:        {dim_mapping = [[0], [1], [2], [2]], shape_value = [16, 128, 1, 1]} : tensor<16x128x1xf16> -> tensor<16x128x1x1xf16>
     // CHECK:       [[IN_CONCAT:%.+]]  = IE.Concat([[INPUT2]], [[INPUT1]], [[INPUT0]]) {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x128x1x1xf16>, tensor<1x128x1x1xf16>, tensor<1x128x1x1xf16> -> tensor<1x128x3x1xf16>
     // CHECK:       [[CONV:%.+]]  = IE.Convolution([[IN_CONCAT]], [[RESHAPE]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x128x3x1xf16>, tensor<16x128x1x1xf16> -> tensor<1x16x3x1xf16>
     // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[CONV]]  [0, 0, 0, 0] [1, 16, 1, 1] : tensor<1x16x3x1xf16> to tensor<1x16x1x1xf16>
@@ -125,7 +125,7 @@ func.func @MergeWeightsSharedBeforeAffineReshapeNewCase(%arg0: tensor<1x128x1x1x
     return %2, %5 : tensor<1x16x128x1xf16>, tensor<1x16x2x1xf16>
 
     // CHECK:       [[AFFINERESHAPE:%.+]]  = IE.AffineReshape([[INPUT2]])
-    // CHECK-SAME{LITERAL}         {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [16, 128, 1, 1]} : tensor<1x16x128x1xf16> -> tensor<16x128x1x1xf16>
+    // CHECK-SAME{LITERAL}:        {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [16, 128, 1, 1]} : tensor<1x16x128x1xf16> -> tensor<16x128x1x1xf16>
     // CHECK:       [[RELU:%.+]]  = IE.ReLU([[INPUT2]]) : tensor<1x16x128x1xf16> -> tensor<1x16x128x1xf16>
     // CHECK:       [[IN_CONCAT:%.+]] = IE.Concat([[INPUT1]], [[INPUT0]]) {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x128x1x1xf16>, tensor<1x128x1x1xf16> -> tensor<1x128x2x1xf16>
     // CHECK:       [[CONV:%.+]]  = IE.Convolution([[IN_CONCAT]], [[AFFINERESHAPE]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x128x2x1xf16>, tensor<16x128x1x1xf16> -> tensor<1x16x2x1xf16>

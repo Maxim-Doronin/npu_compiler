@@ -9,7 +9,7 @@
 func.func @ConvertNonDepthWiseGroupTransposedConvToConv(%arg0: tensor<1x32x64x64xf16>) -> tensor<1x32x128x128xf16> {
     %FILTERS = const.Declare tensor<2x16x16x4x4xf16> = dense<1.000000e+00> : tensor<2x16x16x4x4xf16>
 
-    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]} : tensor<1x32x64x64xf16>, tensor<2x16x16x4x4xf16> -> tensor<1x32x128x128xf16>
+    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]} : tensor<1x32x64x64xf16>, tensor<2x16x16x4x4xf16> -> tensor<1x32x128x128xf16>
     return %RESULT : tensor<1x32x128x128xf16>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<32x32x4x4xf16> = dense
@@ -36,7 +36,7 @@ func.func @FusePostOpReluIntoConv(%arg0: tensor<1x16x64x64xf16>) -> tensor<1x1x6
     // CHECK-DAG: [[CST:%.*]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00> : tensor<1x16x1x1xf16>
     // CHECK: [[VAL1:%.*]] = IE.Convolution(%arg0, [[CST]])
     // CHECK-SAME:    {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0],
-    // CHECK-SAME:    post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]}
+    // CHECK-SAME:    post_op = #IE.Relu<>, strides = [1, 1]}
     // CHECK-SAME:    : tensor<1x16x64x64xf16>, tensor<1x16x1x1xf16> -> tensor<1x1x64x64xf16>
 
     // CHECK: return [[VAL1]] : tensor<1x1x64x64xf16>

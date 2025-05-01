@@ -8,7 +8,7 @@
 // CHECK-LABEL: @ConvertTransposedConv2DToConv2D
 func.func @ConvertTransposedConv2DToConv2D(%input: tensor<1x32x23x30xf16>) -> tensor<1x16x46x60xf16> {
     %weights = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
-    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x46x60xf16>
+    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x46x60xf16>
     return %output : tensor<1x16x46x60xf16>
 
     // CHECK-DAG:   [[WEIGHTS:%.*]] = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
@@ -39,7 +39,7 @@ func.func @ConvertTransposedConv2DToConv2DFQFilterFQParamsReused(%input: tensor<
         levels = 256 : i64
     } : tensor<16x32x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<16x32x2x2xf16>
 
-    %output = IE.TransposedConvolution(%input, %weights_fq) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x46x60xf16>
+    %output = IE.TransposedConvolution(%input, %weights_fq) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x46x60xf16>
     return %output : tensor<1x16x46x60xf16>
 
     // CHECK-DAG:   [[WEIGHTS:%.*]] = const.Declare tensor<16x32x2x2xf16>
@@ -78,7 +78,7 @@ func.func @ConvertTransposedConv2DToConv2DFQFilterFQParamsUnique(%input: tensor<
         levels = 256 : i64
     } : tensor<16x32x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<16x32x2x2xf16>
 
-    %output = IE.TransposedConvolution(%input, %weights_fq) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x46x60xf16>
+    %output = IE.TransposedConvolution(%input, %weights_fq) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x46x60xf16>
     return %output : tensor<1x16x46x60xf16>
 
     // CHECK-DAG:   [[WEIGHTS:%.*]] = const.Declare tensor<16x32x2x2xf16>
@@ -139,7 +139,7 @@ func.func @ConvertTransposedConv2DToConv2DNonConstFilter(%input0: tensor<1x16x30
     %2 = IE.TransposedConvolution(%fq_input, %fq_weights) {
             dilations = [1, 1],
             operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-            output_padding = [0, 0],
+            spatial_output_padding = [0, 0],
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [2, 2]
@@ -160,9 +160,9 @@ func.func @ConvertTransposedConv2DToConv2DNonConstFilter(%input0: tensor<1x16x30
     // CHECK-SAME:      tensor<16x1x16x16xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<16x1x16x16xf16>
     // CHECK:       [[TRANSPOSED_CONV:%.*]] = IE.TransposedConvolution([[FQ1]], [[FQ2]])
     // CHECK-SAME:      dilations = [1, 1]
-    // CHECK-SAME:      output_padding = [0, 0],
     // CHECK-SAME:      pads_begin = [0, 0]
     // CHECK-SAME:      pads_end = [0, 0]
+    // CHECK-SAME:      spatial_output_padding = [0, 0],
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:      tensor<1x16x30x30xf16>, tensor<16x1x16x16xf16> -> tensor<1x16x74x74xf16>
     // CHECK:       return [[TRANSPOSED_CONV]]
@@ -173,7 +173,7 @@ func.func @ConvertTransposedConv2DToConv2DNonConstFilter(%input0: tensor<1x16x30
 // CHECK-LABEL: @ConvertTransposedConv2DToConv2DWhitOutputPadding
 func.func @ConvertTransposedConv2DToConv2DWhitOutputPadding(%input: tensor<1x32x23x30xf16>) -> tensor<1x16x47x61xf16> {
     %weights = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
-    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [1, 1]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x47x61xf16>
+    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [1, 1]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x47x61xf16>
     return %output : tensor<1x16x47x61xf16>
 
     // CHECK-DAG:   [[WEIGHTS:%.*]] = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
@@ -196,7 +196,7 @@ func.func @ConvertTransposedConv2DToConv2DWhitOutputPadding(%input: tensor<1x32x
 // CHECK-LABEL: @ConvertTransposedConv2DToConv2DWhitOutputPaddingNotFuse
 func.func  @ConvertTransposedConv2DToConv2DWhitOutputPaddingNotFuse(%input: tensor<1x32x7x7xf16>) -> tensor<1x16x6x6xf16> {
     %weights = const.Declare tensor<16x32x3x3xf16> = dense<1.000000e+00> : tensor<16x32x3x3xf16>
-    %output = IE.TransposedConvolution(%input, %weights) {strides = [1, 1], pads_begin = [2, 2], pads_end = [2, 2], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [1, 1]} : tensor<1x32x7x7xf16>, tensor<16x32x3x3xf16> -> tensor<1x16x6x6xf16>
+    %output = IE.TransposedConvolution(%input, %weights) {strides = [1, 1], pads_begin = [2, 2], pads_end = [2, 2], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [1, 1]} : tensor<1x32x7x7xf16>, tensor<16x32x3x3xf16> -> tensor<1x16x6x6xf16>
     return %output : tensor<1x16x6x6xf16>
 
     // CHECK:       [[WEIGHTS:%.*]] = const.Declare tensor<16x32x3x3xf16> = dense<1.000000e+00> : tensor<16x32x3x3xf16>
@@ -223,7 +223,7 @@ func.func  @ConvertTransposedConv2DToConv2DWhitOutputPaddingNotFuse(%input: tens
 // CHECK-LABEL: @ConvertTransposedConv2DToConv2DWhitAsymmetricPadding
 func.func @ConvertTransposedConv2DToConv2DWhitAsymmetricPadding(%input: tensor<1x128x24x42xf16>) -> tensor<1x128x48x84xf16> {
     %weights = const.Declare tensor<128x128x5x5xf16> = dense<1.000000e+00> : tensor<128x128x5x5xf16>
-    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [1, 1], pads_end = [2, 2], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0]} : tensor<1x128x24x42xf16>, tensor<128x128x5x5xf16> -> tensor<1x128x48x84xf16>
+    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [1, 1], pads_end = [2, 2], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0]} : tensor<1x128x24x42xf16>, tensor<128x128x5x5xf16> -> tensor<1x128x48x84xf16>
     return %output : tensor<1x128x48x84xf16>
 
     // CHECK-DAG:   [[WEIGHTS:%.*]] = const.Declare tensor<128x128x5x5xf16> = dense<1.000000e+00> : tensor<128x128x5x5xf16
@@ -246,7 +246,7 @@ func.func @ConvertTransposedConv2DToConv2DWhitAsymmetricPadding(%input: tensor<1
 // CHECK-LABEL: @ConvertTransposedConv2DToConv2DWhitPadding
 func.func @ConvertTransposedConv2DToConv2DWhitPadding(%input: tensor<1x128x24x42xf16>) -> tensor<1x128x48x83xf16> {
     %weights = const.Declare tensor<128x128x2x1xf16> = dense<1.000000e+00> : tensor<128x128x2x1xf16>
-    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0]} : tensor<1x128x24x42xf16>, tensor<128x128x2x1xf16> -> tensor<1x128x48x83xf16>
+    %output = IE.TransposedConvolution(%input, %weights) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0]} : tensor<1x128x24x42xf16>, tensor<128x128x2x1xf16> -> tensor<1x128x48x83xf16>
     return %output : tensor<1x128x48x83xf16>
 
     // CHECK:      [[WEIGHTS:%.*]] = const.Declare tensor<128x128x2x1xf16> = dense<1.000000e+00> : tensor<128x128x2x1xf16>
@@ -270,7 +270,7 @@ func.func @ConvertTransposedConv2DToConv2DWhitPadding(%input: tensor<1x128x24x42
 func.func @ConvertTransposedConv2DWithBiasToConv2D(%input: tensor<1x32x23x30xf16>) -> tensor<1x16x46x60xf16> {
     %weights = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
     %bias = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00> : tensor<1x16x1x1xf16>
-    %output = IE.TransposedConvolution(%input, %weights, %bias) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x46x60xf16>
+    %output = IE.TransposedConvolution(%input, %weights, %bias) {strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, spatial_output_padding = [0, 0]} : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x46x60xf16>
     return %output : tensor<1x16x46x60xf16>
 
     // CHECK-DAG:   [[WEIGHTS:%.*]] = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
@@ -296,7 +296,7 @@ func.func @ConvertTransposedConv2DWithBiasToConv2D(%input: tensor<1x32x23x30xf16
 func.func @ConvertTransposedConv2DWithOutputShapeToConv2D(%input: tensor<1x32x128x128xf16>) -> tensor<1x64x128x128xf16> {
     %weights = const.Declare tensor<64x32x2x2xf16> = dense<1.000000e+00> : tensor<64x32x2x2xf16>
     %output_shape = const.Declare tensor<2xsi32> = dense<128> : tensor<2xsi32>
-    %output = IE.TransposedConvolution(%input, %weights, %output_shape) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 1, 0>, output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64, 64], strides = [2, 2]} : tensor<1x32x128x128xf16>, tensor<64x32x2x2xf16>, tensor<2xsi32> -> tensor<1x64x128x128xf16>
+    %output = IE.TransposedConvolution(%input, %weights, %output_shape) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 1, 0>, spatial_output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64, 64], strides = [2, 2]} : tensor<1x32x128x128xf16>, tensor<64x32x2x2xf16>, tensor<2xsi32> -> tensor<1x64x128x128xf16>
     return %output : tensor<1x64x128x128xf16>
 
     // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<64x32x2x2xf16> = dense<1.000000e+00> : tensor<64x32x2x2xf16>
@@ -323,7 +323,7 @@ func.func @ConvertTransposedConv2DWithOutputShapeToConv2D(%input: tensor<1x32x12
 // CHECK-SAME:      ([[INPUT0:%.+]]: tensor<1x512x4x4xf16>, [[INPUT1:%.+]]: tensor<256x512x3x3xf16>)
 func.func @ConvertTransposedConv2DWithNonConstFilterToConv2D(%input0: tensor<1x512x4x4xf16>, %input1: tensor<256x512x3x3xf16>) -> tensor<1x256x9x9xf16> {
     %output = IE.TransposedConvolution(%input0, %input1) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x512x4x4xf16>, tensor<256x512x3x3xf16> -> tensor<1x256x9x9xf16>
 
     return %output : tensor<1x256x9x9xf16>

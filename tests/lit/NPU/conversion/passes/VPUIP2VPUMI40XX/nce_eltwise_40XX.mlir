@@ -8,7 +8,7 @@
 
 module @mainModule {
 
-  IE.CNNNetwork entryPoint : @singleEltwise inputsInfo : {
+  net.NetworkInfo entryPoint : @singleEltwise inputsInfo : {
     DataInfo "input_0" : tensor<1x32x56x56xui8>
     DataInfo "input_1" : tensor<1x32x56x56xui8>
   } outputsInfo : {
@@ -66,7 +66,7 @@ func.func @singleEltwise(%arg0: memref<1x32x56x56x!quant.uniform<u8<0:3>:f32, 1.
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-IE.CNNNetwork entryPoint : @singleDPU inputsInfo : {
+net.NetworkInfo entryPoint : @singleDPU inputsInfo : {
   DataInfo "dummy_input" : tensor<1x50x1x1xf16>
 } outputsInfo : {
   DataInfo "dummy_output" : tensor<1x50x1x1xf16>

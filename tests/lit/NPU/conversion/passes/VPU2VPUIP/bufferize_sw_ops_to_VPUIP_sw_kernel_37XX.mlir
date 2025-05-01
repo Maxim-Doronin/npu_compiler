@@ -61,3 +61,67 @@ func.func @StridedSlice3Dim(%input: tensor<3x40x40x15xf16>) -> tensor<3x20x20x5x
     // CHECK: [[OUTPUT_DDR:%.+]] = VPUIP.Copy inputs([[OUTPUT]] : memref<3x20x20x5xf16, [@CMX_NN, 0]>) outputs([[OUTPUT_BUFFER:%.+]] : memref<3x20x20x5xf16>) -> memref<3x20x20x5xf16>
     // CHECK: return [[OUTPUT_DDR]] : memref<3x20x20x5xf16>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDWithOriginalShape
+// CHECK-SAME:    [[INPUT_0:%.+]]: memref<1x16x180x16xf16>
+// CHECK-SAME:    [[INPUT_1:%.+]]: memref<1x16x1458x2xsi32>
+func.func @GatherNDWithOriginalShape(%arg0: tensor<1x16x180x16xf16>, %arg1: tensor<1x16x1458x2xsi32>) -> tensor<1x16x1458x16xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {
+                batch_dims = 2 : i64, original_shape = [1, 16, 18, 10, 16]
+            } : tensor<1x16x180x16xf16>, tensor<1x16x1458x2xsi32> -> tensor<1x16x1458x16xf16>
+
+    return %0 : tensor<1x16x1458x16xf16>
+
+    // CHECK:   [[ALLOC_DATA:%.+]] = memref.alloc() : memref<1x16x180x16xf16, [@CMX_NN, 0]>
+    // CHECK:   [[COPY_DATA:%.+]] = VPUIP.Copy inputs([[INPUT_0]] : memref<1x16x180x16xf16>) outputs([[ALLOC_DATA]] : memref<1x16x180x16xf16, [@CMX_NN, 0]>) -> memref<1x16x180x16xf16, [@CMX_NN, 0]>
+
+    // CHECK:   [[ALLOC_INDICES:%.+]] = memref.alloc() : memref<1x16x1458x2xsi32, [@CMX_NN, 0]>
+    // CHECK:   [[COPY_INDICES:%.+]] = VPUIP.Copy inputs([[INPUT_1]] : memref<1x16x1458x2xsi32>) outputs([[ALLOC_INDICES]] : memref<1x16x1458x2xsi32, [@CMX_NN, 0]>)
+
+    // CHECK:   [[ALLOC_OUT:%.+]] = memref.alloc() : memref<1x16x1458x16xf16, [@CMX_NN, 0]>
+    // CHECK:   [[GATHERND:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_GatherND
+    // CHECK-SAME:              inputs([[COPY_DATA]] as [[DATA:%.+]]: memref<1x16x180x16xf16, [@CMX_NN, 0]>, [[COPY_INDICES]] as [[INDICES:%.+]]: memref<1x16x1458x2xsi32, [@CMX_NN, 0]>)
+    // CHECK-SAME:              outputs([[ALLOC_OUT]] as [[OUT:%.+]]: memref<1x16x1458x16xf16, [@CMX_NN, 0]>)
+    // CHECK:   VPUIP.SW.Kernel.run
+    // CHECK-SAME{LITERAL}:     attrs = [2, [68719476741, 77309411338, 4294967312]]
+
+    // Note: 68719476741: 0x_10_00000005 (16, 5); 77309411338: 0x_12_0000000a (18, 10); 4294967312: 0x_1_00000010 (1, 16)
+
+    // CHECK:   [[ALLOC_RESULT:%.+]] = memref.alloc() : memref<1x16x1458x16xf16>
+    // CHECK:   [[ALLOC_DATA:%.+]] = VPUIP.Copy inputs([[GATHERND]] : memref<1x16x1458x16xf16, [@CMX_NN, 0]>) outputs([[ALLOC_RESULT]] : memref<1x16x1458x16xf16>) -> memref<1x16x1458x16xf16>
+
+    // CHECK: return [[ALLOC_DATA]] : memref<1x16x1458x16xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDWithoutOriginalShape
+// CHECK-SAME:    [[INPUT_0:%.+]]: memref<1x16x180x16xf16>
+// CHECK-SAME:    [[INPUT_1:%.+]]: memref<1x16x1458x1xsi32>
+func.func @GatherNDWithoutOriginalShape(%arg0: tensor<1x16x180x16xf16>, %arg1: tensor<1x16x1458x1xsi32>) -> tensor<1x16x1458x16xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {
+                batch_dims = 2 : i64
+            } : tensor<1x16x180x16xf16>, tensor<1x16x1458x1xsi32> -> tensor<1x16x1458x16xf16>
+
+    return %0 : tensor<1x16x1458x16xf16>
+
+    // CHECK:   [[ALLOC_DATA:%.+]] = memref.alloc() : memref<1x16x180x16xf16, [@CMX_NN, 0]>
+    // CHECK:   [[COPY_DATA:%.+]] = VPUIP.Copy inputs([[INPUT_0]] : memref<1x16x180x16xf16>) outputs([[ALLOC_DATA]] : memref<1x16x180x16xf16, [@CMX_NN, 0]>) -> memref<1x16x180x16xf16, [@CMX_NN, 0]>
+
+    // CHECK:   [[ALLOC_INDICES:%.+]] = memref.alloc() : memref<1x16x1458x1xsi32, [@CMX_NN, 0]>
+    // CHECK:   [[COPY_INDICES:%.+]] = VPUIP.Copy inputs([[INPUT_1]] : memref<1x16x1458x1xsi32>) outputs([[ALLOC_INDICES]] : memref<1x16x1458x1xsi32, [@CMX_NN, 0]>)
+
+    // CHECK:   [[ALLOC_OUT:%.+]] = memref.alloc() : memref<1x16x1458x16xf16, [@CMX_NN, 0]>
+    // CHECK:   [[GATHERND:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_GatherND
+    // CHECK-SAME:              inputs([[COPY_DATA]] as [[DATA:%.+]]: memref<1x16x180x16xf16, [@CMX_NN, 0]>, [[COPY_INDICES]] as [[INDICES:%.+]]: memref<1x16x1458x1xsi32, [@CMX_NN, 0]>)
+    // CHECK-SAME:              outputs([[ALLOC_OUT]] as [[OUT:%.+]]: memref<1x16x1458x16xf16, [@CMX_NN, 0]>)
+    // CHECK:   VPUIP.SW.Kernel.run
+    // CHECK-SAME{LITERAL}:     attrs = [2, [0]]
+
+    // CHECK:   [[ALLOC_RESULT:%.+]] = memref.alloc() : memref<1x16x1458x16xf16>
+    // CHECK:   [[COPY_RESULT:%.+]] = VPUIP.Copy inputs([[GATHERND]] : memref<1x16x1458x16xf16, [@CMX_NN, 0]>) outputs([[ALLOC_RESULT]] : memref<1x16x1458x16xf16>) -> memref<1x16x1458x16xf16>
+
+    // CHECK: return [[COPY_RESULT]] : memref<1x16x1458x16xf16>
+}

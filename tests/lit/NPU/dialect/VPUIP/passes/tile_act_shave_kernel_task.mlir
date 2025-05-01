@@ -3028,3 +3028,210 @@ func.func @NotTileDimWDynamicDequantize(%arg0: memref<1x1x1x128x!qElemType>, %ar
   // CHECK:     [[OUT_COPY:%.+]] = VPUIP.Copy inputs([[DQ]] : memref<1x1x1x128xf16, [@CMX_NN, 0]>) outputs([[ALLOC2]] : memref<1x1x1x128xf16>) -> memref<1x1x1x128xf16>
   // CHECK:     return [[OUT_COPY]] : memref<1x1x1x128xf16>
 }
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!DistributedBufferIn = !VPUIP.DistributedBuffer<
+  1x1x1x1xf32, #NCHW, @CMX_NN, {
+  mode = "DUPLICATED",
+  num_clusters = 2 : i64,
+  uniform_distributed_segments,
+  compute_shapes = [[1, 1, 1, 1], [1, 1, 1, 1]],
+  compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
+  memory_shapes = [[1, 1, 1, 1], [1, 1, 1, 1]],
+  memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]
+}>
+
+!DistributedBufferOut = !VPUIP.DistributedBuffer<
+  1x1x512x512xf32, #NCHW, @CMX_NN, {
+  mode = "SEGMENTED",
+  num_tiles = [1, 1, 2, 1],
+  num_clusters = 2 : i64,
+  uniform_distributed_segments,
+  compute_shapes = [[1, 1, 256, 512], [1, 1, 256, 512]],
+  compute_offsets = [[0, 0, 0, 0], [0, 0, 256, 0]],
+  memory_shapes = [[1, 1, 256, 512], [1, 1, 256, 512]],
+  memory_offsets = [[0, 0, 0, 0], [0, 0, 256, 0]]
+}>
+
+module @VPU.SW {
+  func.func private @builtin_RandomUniform(memref<*xf32, @CMX_NN>, memref<*xf32, @CMX_NN>) attributes {VPU.kernel_code = "random_uniform.cpp", VPU.kernel_entry = "random_uniform"}
+  func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+}
+
+// CHECK-LABEL:   @TileClusterRandomUniform
+// CHECK-SAME:    [[INPUT0:%.+]]: memref<1x1x1x1xf32>, [[INPUT1:%.+]]: memref<1x1x1x1xf32>
+func.func @TileClusterRandomUniform(%arg0: memref<1x1x1x1xf32>, %arg1: memref<1x1x1x1xf32>) -> memref<1x1x512x512xf32> {
+    %0 = VPURT.AllocDistributed -> !DistributedBufferIn
+    %1 = VPUIP.NCEClusterTiling inputs(%arg0 as %arg2: memref<1x1x1x1xf32>) outputs(%0 as %arg3: memref<1x1x1x1xf32, @CMX_NN>) -> !DistributedBufferIn {
+      %8 = VPUIP.Copy inputs(%arg2 : memref<1x1x1x1xf32>) outputs(%arg3 : memref<1x1x1x1xf32, @CMX_NN>) -> memref<1x1x1x1xf32, @CMX_NN>
+    }
+
+    %2 = VPURT.AllocDistributed -> !DistributedBufferIn
+    %3 = VPUIP.NCEClusterTiling inputs(%arg1 as %arg2: memref<1x1x1x1xf32>) outputs(%2 as %arg3: memref<1x1x1x1xf32, @CMX_NN>) -> !DistributedBufferIn {
+      %8 = VPUIP.Copy inputs(%arg2 : memref<1x1x1x1xf32>) outputs(%arg3 : memref<1x1x1x1xf32, @CMX_NN>) -> memref<1x1x1x1xf32, @CMX_NN>
+    }
+
+    %4 = VPURT.AllocDistributed -> !DistributedBufferOut
+    %5 = VPUIP.NCEClusterTiling inputs(%1 as %arg2: memref<1x1x1x1xf32, @CMX_NN>,
+                                       %3 as %arg3: memref<1x1x1x1xf32, @CMX_NN>)
+                                outputs(%4 as %arg4: memref<1x1x512x512xf32, @CMX_NN>)
+                                    -> !DistributedBufferOut {
+      %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_RandomUniform
+                  inputs(%arg2 as %arg5: memref<1x1x1x1xf32, @CMX_NN>,
+                         %arg3 as %arg6: memref<1x1x1x1xf32, @CMX_NN>)
+                  outputs(%arg4 as %arg7: memref<1x1x512x512xf32, @CMX_NN>) on tile 0 -> memref<1x1x512x512xf32, @CMX_NN>{
+        VPUIP.SW.Kernel.run {attrs = [0, 0]}(%arg5, %arg6, %arg7) : memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x512x512xf32, @CMX_NN>
+      }
+    }
+
+    %6 = memref.alloc() : memref<1x1x512x512xf32>
+    %7 = VPUIP.NCEClusterTiling inputs(%5 as %arg2: memref<1x1x512x512xf32, @CMX_NN>) outputs(%6 as %arg3: memref<1x1x512x512xf32>) -> memref<1x1x512x512xf32> {
+      %8 = VPUIP.Copy inputs(%arg2 : memref<1x1x512x512xf32, @CMX_NN>) outputs(%arg3 : memref<1x1x512x512xf32>) -> memref<1x1x512x512xf32>
+    }
+
+    return %7 : memref<1x1x512x512xf32>
+
+    // For RANDOMUNIFORM First Input
+    // CHECK:    [[INPUT0_ALLOC0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK:    [[INPUT0_TILE0:%.+]] = VPUIP.NCEClusterTiling
+    // CHECK:    [[INPUT0_ALLOC1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK:    [[INPUT0_TILE1:%.+]] = VPUIP.NCEClusterTiling
+
+    // For RANDOMUNIFORM Second Input
+    // CHECK:    [[INPUT1_ALLOC0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK:    [[INPUT1_TILE0:%.+]] = VPUIP.NCEClusterTiling
+    // CHECK:    [[INPUT1_ALLOC1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK:    [[INPUT1_TILE1:%.+]] = VPUIP.NCEClusterTiling
+
+    // For RANDOMUNIFORM Output
+    // CHECK:    [[RANDOMUNIFORM_OUT_TILE0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x256x512xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
+    // CHECK:    [[RANDOMUNIFORM_OUT_TILE1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x256x512xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
+
+    // CHECK:    [[RANDOMUNIFORM:%.+]]:2 = VPUIP.NCEClusterTiling
+    // CHECK:                     inputs([[INPUT0_TILE1]] as [[IN0_0:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>,
+    // CHECK:                            [[INPUT1_TILE1]] as [[IN1_0:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>,
+    // CHECK:                            [[INPUT0_TILE0]] as [[IN0_1:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>,
+    // CHECK:                            [[INPUT1_TILE0]] as [[IN1_1:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>)
+    // CHECK:                     outputs([[RANDOMUNIFORM_OUT_TILE1]] as [[OUT_0:[^:]+]]: memref<1x1x256x512xf32, @CMX_NN>,
+    // CHECK:                             [[RANDOMUNIFORM_OUT_TILE0]] as [[OUT_1:[^:]+]]: memref<1x1x256x512xf32, @CMX_NN>)
+    // CHECK:        VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_RandomUniform
+    // CHECK:                     inputs([[IN0_0:[^:]+]] as [[INNER_IN0_0:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>,
+    // CHECK:                            [[IN1_0:[^:]+]] as [[INNER_IN1_0:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>,
+    // CHECK:                            [[IN0_1:[^:]+]] as [[INNER_IN0_1:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>,
+    // CHECK:                            [[IN1_1:[^:]+]] as [[INNER_IN1_1:[^:]+]]: memref<1x1x1x1xf32, @CMX_NN>)
+    // CHECK:                     outputs([[OUT_0:[^:]+]] as [[INNER_OUT_0:[^:]+]]: memref<1x1x256x512xf32, @CMX_NN>,
+    // CHECK:                             [[OUT_1:[^:]+]] as [[INNER_OUT_1:[^:]+]]: memref<1x1x256x512xf32, @CMX_NN>)
+    // CHECK:        VPUIP.SW.Kernel.run {attrs = [0, 0]}([[INNER_IN0_0]], [[INNER_IN1_0]], [[INNER_OUT_0]]) : memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x256x512xf32, @CMX_NN>
+    // CHECK:        VPUIP.SW.Kernel.run {attrs = [0, 0]}([[INNER_IN0_1]], [[INNER_IN1_1]], [[INNER_OUT_1]]) : memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x256x512xf32, @CMX_NN>
+
+    // CHECK:    [[OUT_ALLOC:%.+]] = memref.alloc() : memref<1x1x512x512xf32>
+    // CHECK:    [[OUT_ALLOC_TILE0:%.+]] = VPUIP.SubView [[OUT_ALLOC]] [0, 0, 0, 0] [1, 1, 256, 512] : memref<1x1x512x512xf32> to memref<1x1x256x512xf32, {order = #NCHW, strides = [262144, 262144, 512, 1]}>
+    // CHECK:    [[OUT_TILE0:%.+]] = VPUIP.NCEClusterTiling
+    // CHECK:    [[OUT_ALLOC_TILE1:%.+]] = VPUIP.SubView [[OUT_ALLOC]] [0, 0, 256, 0] [1, 1, 256, 512] : memref<1x1x512x512xf32> to memref<1x1x256x512xf32, {order = #NCHW, strides = [262144, 262144, 512, 1]}>
+    // CHECK:    [[OUT_TILE1:%.+]] = VPUIP.NCEClusterTiling
+    // CHECK:    [[OUT:%.+]] = VPUIP.ConcatView inputs([[OUT_TILE0]], [[OUT_TILE1]] : memref<1x1x256x512xf32, {order = #NCHW, strides = [262144, 262144, 512, 1]}>, memref<1x1x256x512xf32, {order = #NCHW, strides = [262144, 262144, 512, 1]}>)
+    // CHECK:                                   outputs([[OUT_ALLOC]] : memref<1x1x512x512xf32>) -> memref<1x1x512x512xf32>
+
+    // CHECK:    return [[OUT]] : memref<1x1x512x512xf32>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+module @VPU.SW {
+  func.func private @builtin_RandomUniform(memref<*xf32, @CMX_NN>, memref<*xf32, @CMX_NN>) attributes {VPU.kernel_code = "random_uniform.cpp", VPU.kernel_entry = "random_uniform"}
+  func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+}
+
+// CHECK-LABEL:   @NotTileRandomUniform
+// CHECK-SAME:    [[INPUT0:%.+]]: memref<1x1x1x1xf32>, [[INPUT1:%.+]]: memref<1x1x1x1xf32>
+func.func @NotTileRandomUniform(%arg0: memref<1x1x1x1xf32>, %arg1: memref<1x1x1x1xf32>) -> memref<1x1x512x512xf32> {
+    %0 = memref.alloc() : memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    %1 = VPUIP.Copy inputs(%arg0 : memref<1x1x1x1xf32>) outputs(%0 : memref<1x1x1x1xf32, [@CMX_NN, 0]>) -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    %2 = memref.alloc() : memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    %3 = VPUIP.Copy inputs(%arg1 : memref<1x1x1x1xf32>) outputs(%2 : memref<1x1x1x1xf32, [@CMX_NN, 0]>) -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+
+    %4 = memref.alloc() : memref<1x1x512x512xf32>
+    %5 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_RandomUniform
+                inputs(%1 as %arg2: memref<1x1x1x1xf32, [@CMX_NN, 0]>,
+                       %3 as %arg3: memref<1x1x1x1xf32, [@CMX_NN, 0]>)
+                outputs(%4 as %arg4: memref<1x1x512x512xf32>) on tile 0 -> memref<1x1x512x512xf32>{
+      VPUIP.SW.Kernel.run {attrs = [1, 0]}(%arg2, %arg3, %arg4) : memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x512x512xf32>
+    }
+
+    return %5 : memref<1x1x512x512xf32>
+
+    // CHECK:    [[INPUT0_ALLOC:%.+]] = memref.alloc() : memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK:    [[INPUT0_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[INPUT1_ALLOC:%.+]] = memref.alloc() : memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK:    [[INPUT1_COPY:%.+]] = VPUIP.Copy
+
+    // CHECK:    [[RANDOMUNIFORM_ALLOC:%.+]] = memref.alloc() : memref<1x1x512x512xf32>
+    // CHECK:    [[RANDOMUNIFORM:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_RandomUniform
+    // CHECK:                                inputs([[INPUT0_COPY]] as {{[^:]+}}: memref<1x1x1x1xf32, [@CMX_NN, 0]>,
+    // CHECK:                                       [[INPUT1_COPY]] as {{[^:]+}}: memref<1x1x1x1xf32, [@CMX_NN, 0]>)
+    // CHECK:                                outputs([[RANDOMUNIFORM_ALLOC]] as {{[^:]+}}: memref<1x1x512x512xf32>)
+    // CHECK:                            VPUIP.SW.Kernel.run {attrs = [1, 0]}({{[^:]+}}, {{[^:]+}}, {{[^:]+}}) : memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x512x512xf32>
+
+    // CHECK:    return [[RANDOMUNIFORM]] : memref<1x1x512x512xf32>
+}
+
+// -----
+
+module @VPU.SW {
+  func.func private @builtin_GridSample(memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, i64) attributes {VPU.kernel_code = "grid_sample.cpp", VPU.kernel_entry = "grid_sample", VPU.task_type = @COMPUTE}
+  func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+}
+
+// CHECK-LABEL:   @TileGridSample
+// CHECK-SAME:    [[INPUT0:%.+]]: memref<1x32x48x720xf16>,
+// CHECK-SAME:    [[INPUT1:%.+]]: memref<1x48x720x2xf16>
+func.func @TileGridSample(%arg0: memref<1x32x48x720xf16>, %arg1: memref<1x48x720x2xf16>)
+        -> memref<1x32x48x720xf16> {
+    %input_alloc = memref.alloc() : memref<1x32x48x720xf16, [@CMX_NN, 0]>
+    %input_copy = VPUIP.Copy inputs(%arg0 : memref<1x32x48x720xf16>) outputs(%input_alloc : memref<1x32x48x720xf16, [@CMX_NN, 0]>) -> memref<1x32x48x720xf16, [@CMX_NN, 0]>
+
+    %indices_alloc = memref.alloc() : memref<1x48x720x2xf16, [@CMX_NN, 0]>
+    %indices_copy = VPUIP.Copy inputs(%arg1 : memref<1x48x720x2xf16>) outputs(%indices_alloc : memref<1x48x720x2xf16, [@CMX_NN, 0]>) -> memref<1x48x720x2xf16, [@CMX_NN, 0]>
+
+    %output_alloc = memref.alloc() : memref<1x32x48x720xf16, [@CMX_NN, 0]>
+
+    %grid_sample = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_GridSample inputs(%input_copy as %arg6: memref<1x32x48x720xf16, [@CMX_NN, 0]>, %indices_copy as %arg7: memref<1x48x720x2xf16, [@CMX_NN, 0]>) outputs(%output_alloc as %arg8: memref<1x32x48x720xf16, [@CMX_NN, 0]>) on tile 0 -> memref<1x32x48x720xf16, [@CMX_NN, 0]>{
+      VPUIP.SW.Kernel.run {attrs = [1, 0, 1]}(%arg6, %arg7, %arg8) : memref<1x32x48x720xf16, [@CMX_NN, 0]>, memref<1x48x720x2xf16, [@CMX_NN, 0]>, memref<1x32x48x720xf16, [@CMX_NN, 0]>
+    }
+
+    %res_alloc = memref.alloc() : memref<1x32x48x720xf16>
+    %res_copy  = VPUIP.Copy inputs(%grid_sample : memref<1x32x48x720xf16, [@CMX_NN, 0]>) outputs(%res_alloc : memref<1x32x48x720xf16>) -> memref<1x32x48x720xf16>
+    return %res_copy : memref<1x32x48x720xf16>
+
+    // CHECK:     [[ALLOC:%.+]] = memref.alloc() : memref<1x32x48x720xf16, [@CMX_NN, 0]>
+    // CHECK:     [[COPY_0:%.+]] = VPUIP.Copy inputs([[INPUT0]] : memref<1x32x48x720xf16>) outputs([[ALLOC]] : memref<1x32x48x720xf16, [@CMX_NN, 0]>) -> memref<1x32x48x720xf16, [@CMX_NN, 0]>
+
+    // CHECK:     [[ALLOC_0:%.+]] = memref.alloc() : memref<1x48x720x2xf16, [@CMX_NN, 0]>
+    // CHECK:     [[COPY_1:%.+]] = VPUIP.Copy inputs([[INPUT1]] : memref<1x48x720x2xf16>) outputs([[ALLOC_0]] : memref<1x48x720x2xf16, [@CMX_NN, 0]>) -> memref<1x48x720x2xf16, [@CMX_NN, 0]>
+
+    // CHECK:     [[ALLOC_1:%.+]] = memref.alloc() : memref<1x32x48x720xf16, [@CMX_NN, 0]>
+
+    // CHECK:     [[SLICE_2:%.+]] = VPUIP.SubView [[COPY_0]] [0, 0, 0, 0] [1, 16, 48, 720] : memref<1x32x48x720xf16, [@CMX_NN, 0]> to memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+    // CHECK:     [[SLICE_3:%.+]] = VPUIP.SubView [[ALLOC_1]] [0, 0, 0, 0] [1, 16, 48, 720] : memref<1x32x48x720xf16, [@CMX_NN, 0]> to memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+    // CHECK:     [[SLICE_4:%.+]] = VPUIP.SubView [[COPY_0]] [0, 16, 0, 0] [1, 16, 48, 720] : memref<1x32x48x720xf16, [@CMX_NN, 0]> to memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+    // CHECK:     [[SLICE_5:%.+]] = VPUIP.SubView [[ALLOC_1]] [0, 16, 0, 0] [1, 16, 48, 720] : memref<1x32x48x720xf16, [@CMX_NN, 0]> to memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+
+    // CHECK:     [[GRID_SAMPLE:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_GridSample
+    // CHECK-SAME:           inputs([[SLICE_2]] as %arg2: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[COPY_1]] as %arg3: memref<1x48x720x2xf16, [@CMX_NN, 0]>,
+    // CHECK-SAME:                  [[SLICE_4]] as %arg4: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[COPY_1]] as %arg5: memref<1x48x720x2xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:           outputs([[SLICE_3]] as %arg6: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[SLICE_5]] as %arg7: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:                  on tile 0 -> (memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>){
+    // CHECK:                             VPUIP.SW.Kernel.run {attrs = [1, 0, 1]}(%arg2, %arg3, %arg6) : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x48x720x2xf16, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+    // CHECK:                             VPUIP.SW.Kernel.run {attrs = [1, 0, 1]}(%arg4, %arg5, %arg7) : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x48x720x2xf16, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+    // CHECK:     }
+
+    // CHECK:     [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[GRID_SAMPLE]]#0, [[GRID_SAMPLE]]#1 : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>) outputs([[ALLOC_1]] : memref<1x32x48x720xf16, [@CMX_NN, 0]>) -> memref<1x32x48x720xf16, [@CMX_NN, 0]>
+    // CHECK:     [[RES_ALLOC:%.+]] = memref.alloc() : memref<1x32x48x720xf16>
+    // CHECK:     [[RES_COPY:%.+]] = VPUIP.Copy inputs([[CONCAT]] : memref<1x32x48x720xf16, [@CMX_NN, 0]>) outputs([[RES_ALLOC]] : memref<1x32x48x720xf16>) -> memref<1x32x48x720xf16>
+    // CHECK:     return [[RES_COPY]] : memref<1x32x48x720xf16>
+}

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 module @actShaveProfiling {
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x1x1x1000xf16>
   } outputsInfo :  {
     DataInfo "output" : tensor<1x1x1x1000xf16>

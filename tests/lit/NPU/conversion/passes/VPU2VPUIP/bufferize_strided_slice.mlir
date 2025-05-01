@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@
 func.func @DynamicStridedSliceI64Begins(
     %input: tensor<3x40x40x15xf16>,
     %begins: tensor<4xsi64>
-) -> tensor<?x?x?x?xf16, {bounds = [3, 40, 40, 15], order = #NCHW}> {
+) -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[3, 40, 40, 15]> : tensor<4xsi64>, order = #NCHW}> {
     %output = VPU.StridedSlice(%input, %begins) {
         begin_mask = [0, 0, 0, 0],
         ellipsis_mask = [0, 0, 0, 0],
@@ -22,7 +22,7 @@ func.func @DynamicStridedSliceI64Begins(
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
         shrink_axis_mask = [0, 0, 0, 0],
         strides_attr = [1, 1, 2, 3]
-    } : tensor<3x40x40x15xf16>, tensor<4xsi64> -> tensor<?x?x?x?xf16, {bounds = [3, 40, 40, 15], order = #NCHW}>
+    } : tensor<3x40x40x15xf16>, tensor<4xsi64> -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[3, 40, 40, 15]> : tensor<4xsi64>, order = #NCHW}>
 
-    return %output : tensor<?x?x?x?xf16, {bounds = [3, 40, 40, 15], order = #NCHW}>
+    return %output : tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[3, 40, 40, 15]> : tensor<4xsi64>, order = #NCHW}>
 }

@@ -24,11 +24,11 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>) -> (ten
       %1 = IE.Add(%arg3, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<2x3x4x5xf32>
       %2 = IE.Add(%arg2, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
       "IE.LoopTerminator"(%2, %1) : (tensor<1x4x6x10xf32>, tensor<2x3x4x5xf32>) -> ()
-    } num_iterations : 3 
-    slice_input_descs : [#IE.SliceInputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 0 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = 2 : i64>] 
-    invariant_input_descs : [] 
-    feedback_input_descs : [#IE.MergedInputPortMap<external_port_id = 1 : i64, internal_layer_id = 1 : i64, body_input_index = 1 : i64>] 
-    concat_output_descs : [#IE.ConcatOutputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 0 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = -1 : i64>] 
+    } num_iterations : 3
+    slice_input_descs : [#IE.SliceInputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 0 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = 2 : i64>]
+    invariant_input_descs : []
+    feedback_input_descs : [#IE.MergedInputPortMap<external_port_id = 1 : i64, internal_layer_id = 1 : i64, body_input_index = 1 : i64>]
+    concat_output_descs : [#IE.ConcatOutputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 0 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = -1 : i64>]
     invariant_output_descs : [#IE.InvariantOutputPortMap<external_port_id = 1 : i64, internal_layer_id = 1 : i64, iterations = -1 : i64>]
     (%arg0, %arg1) : tensor<3x4x6x10xf32>, tensor<2x3x4x5xf32> -> tensor<3x4x6x10xf32>, tensor<2x3x4x5xf32>
     return %0#0, %0#1 : tensor<3x4x6x10xf32>, tensor<2x3x4x5xf32>
@@ -66,8 +66,8 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>) -> (ten
     // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
     // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[ADDSLICE0]], [[ADDSLICE1]], [[ADDSLICE2]])
-    // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]]} :
-    // CHECK-SAME:            tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
+    // CHECK-SAME:       {per_axis = #IE.Concat<axis = 0 : i64>}
+    // CHECK-SAME:       : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
 
     // CHECK:       return [[CONCAT0]], [[ADD2]] : tensor<3x4x6x10xf32>, tensor<2x3x4x5xf32>
 
@@ -88,12 +88,12 @@ func.func @main(%arg0: tensor<2x3x4x5xf32>) -> (tensor<2x3x4x5xf32>) {
     ^bb0(%arg1: tensor<2x3x4x5xf32>):
       %1 = IE.Add(%arg1, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<2x3x4x5xf32>
       "IE.LoopTerminator"(%1) : (tensor<2x3x4x5xf32>) -> ()
-    } 
-    num_iterations : 3 
-    slice_input_descs : [] 
-    invariant_input_descs : [] 
-    feedback_input_descs : [#IE.MergedInputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, body_input_index = 0 : i64>] 
-    concat_output_descs : [] 
+    }
+    num_iterations : 3
+    slice_input_descs : []
+    invariant_input_descs : []
+    feedback_input_descs : [#IE.MergedInputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, body_input_index = 0 : i64>]
+    concat_output_descs : []
     invariant_output_descs : [#IE.InvariantOutputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, iterations = -1 : i64>]
     (%arg0) : tensor<2x3x4x5xf32> -> tensor<2x3x4x5xf32>
     return %0: tensor<2x3x4x5xf32>
@@ -132,12 +132,12 @@ func.func @main(%arg0: tensor<2x3x4x5xf32>) -> (tensor<2x15x4x5xf32>) {
     ^bb0(%arg1: tensor<2x3x4x5xf32>):
       %1 = IE.Add(%arg1, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<2x3x4x5xf32>
       "IE.LoopTerminator"(%1) : (tensor<2x3x4x5xf32>) -> ()
-    } 
-    num_iterations : 5 
-    slice_input_descs : [] 
-    invariant_input_descs : [] 
-    feedback_input_descs : [#IE.MergedInputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, body_input_index = 0 : i64>] 
-    concat_output_descs : [#IE.ConcatOutputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 1 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = -1 : i64>] 
+    }
+    num_iterations : 5
+    slice_input_descs : []
+    invariant_input_descs : []
+    feedback_input_descs : [#IE.MergedInputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, body_input_index = 0 : i64>]
+    concat_output_descs : [#IE.ConcatOutputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 1 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = -1 : i64>]
     invariant_output_descs : []
     (%arg0) : tensor<2x3x4x5xf32> -> tensor<2x15x4x5xf32>
     return %0: tensor<2x15x4x5xf32>
@@ -165,8 +165,8 @@ func.func @main(%arg0: tensor<2x3x4x5xf32>) -> (tensor<2x15x4x5xf32>) {
     // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<2x3x4x5xf32>
 
     // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[ADD0]], [[ADD1]], [[ADD2]], [[ADD3]], [[ADD4]])
-    // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [0, 3, 0, 0], [0, 6, 0, 0], [0, 9, 0, 0], [0, 12, 0, 0]]} :
-    // CHECK-SAME:            tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<2x15x4x5xf32>
+    // CHECK-SAME:      {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<2x15x4x5xf32>
 
     // CHECK:       return [[CONCAT0]] : tensor<2x15x4x5xf32>
 }

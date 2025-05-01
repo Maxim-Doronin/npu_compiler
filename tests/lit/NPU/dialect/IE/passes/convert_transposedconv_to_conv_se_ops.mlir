@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,7 +10,7 @@
 func.func @DoNotConvertTransposedConvToConv(%input: tensor<1x32x23x30xf16>) -> tensor<1x16x46x60xf16> {
     %weights = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
     %out = IE.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x46x60xf16>
     return %out : tensor<1x16x46x60xf16>
 
@@ -25,7 +25,7 @@ func.func @DoNotConvertTransposedConvToConv(%input: tensor<1x32x23x30xf16>) -> t
 // CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x30x30xf16>, [[WEIGHTS:%.+]]: tensor<16x1x16x16xf16>)
 func.func @DoNotConvertTransposedConvToConvNonConstFilter(%input: tensor<1x16x30x30xf16>, %weights: tensor<16x1x16x16xf16>) -> tensor<1x16x74x74xf16> {
     %out = IE.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x16x30x30xf16>, tensor<16x1x16x16xf16> -> tensor<1x16x74x74xf16>
 
     return %out : tensor<1x16x74x74xf16>
@@ -43,7 +43,7 @@ func.func @DoNotConvertTransposedConvToConvNonConstFilter(%input: tensor<1x16x30
 func.func @DoNotConvertTransposedConvToConvWithOutputPadding(%input: tensor<1x32x23x30xf16>) -> tensor<1x16x47x61xf16> {
     %weights = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
     %out = IE.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x32x23x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x47x61xf16>
     return %out : tensor<1x16x47x61xf16>
 
@@ -61,7 +61,7 @@ func.func @DoNotConvertTransposedConvToConvWithOutputPadding(%input: tensor<1x32
 func.func @ConvertTransposedConvToConvLargeKernelSize(%input: tensor<1x32x23x30xf16>) -> tensor<1x16x60x74xf16> {
     %weights = const.Declare tensor<16x32x16x16xf16> = dense<1.000000e+00> : tensor<16x32x16x16xf16>
     %out = IE.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x32x23x30xf16>, tensor<16x32x16x16xf16> -> tensor<1x16x60x74xf16>
     return %out : tensor<1x16x60x74xf16>
 

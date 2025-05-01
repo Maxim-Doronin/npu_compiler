@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="extraction-mode=gen-main" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-main" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // This test file focuses on testing view-like-only constant transformations
 
@@ -17,7 +17,7 @@
 
 // CHECK: @NoTransformations
 module @NoTransformations {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<4x1xf32>
     }
@@ -44,7 +44,7 @@ module @NoTransformations {
 
 // CHECK: @Reshape
 module @Reshape {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xf32>
     }
@@ -75,7 +75,7 @@ module @Reshape {
 
 // CHECK: @ReshapeNonIdentityOrder
 module @ReshapeNonIdentityOrder {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xf32, {order = #CN}>
     }
@@ -103,7 +103,7 @@ module @ReshapeNonIdentityOrder {
 
 // CHECK: @SubView
 module @SubView {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x1xf32>
     }
@@ -134,7 +134,7 @@ module @SubView {
 
 // CHECK: @LayoutCast
 module @LayoutCast {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<4x1xf32, {order = #CN}>
     }
@@ -167,7 +167,7 @@ module @LayoutCast {
 
 // CHECK: @TrivialMemPermute
 module @TrivialMemPermute {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<4x1xf32>
     }
@@ -199,7 +199,7 @@ module @TrivialMemPermute {
 
 // CHECK: @TrivialTranspose
 module @TrivialTranspose {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<1x4xf32>
     }
@@ -230,7 +230,7 @@ module @TrivialTranspose {
 
 // CHECK: @TrivialReorder
 module @TrivialReorder {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<4x1xf32, {order = #CN}>
     }

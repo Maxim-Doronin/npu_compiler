@@ -220,7 +220,7 @@ func.func @ExpandToSubviewOnlyWithTail(%arg0: tensor<1x5x4x4xf16>) -> tensor<1x8
     // CHECK-SAME:      outputs([[VAR1]] : memref<1x8x4x4xf16>) -> memref<1x8x4x4xf16>
 
     // CHECK: return
-    // CHECK-SAME： tensor<1x8x4x4xf16>
+    // CHECK-SAME: tensor<1x8x4x4xf16>
 }
 
 // -----

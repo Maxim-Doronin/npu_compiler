@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,16 +9,16 @@
 
 // CHECK-LABEL: ConvertReLU
 func.func @ConvertReLU(
-    %IN: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-) -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}> {
+    %IN: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+) -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}> {
     // CHECK:   [[IN:%.+]]: tensor<1x3x16x?xf32
 
     %RELU = IE.ReLU(%IN) :
-        tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+        tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[RELU:%.+]] = IE.ReLU([[IN]]) :
-    // CHECK-SAME:  tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK-SAME:  -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:  -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[DYN_DIM_IDX:%.+]] = arith.constant 3 : index
     // CHECK:   [[DYN_DIM_VALUE:%.+]] = tensor.dim [[RELU]], [[DYN_DIM_IDX]]
@@ -42,15 +42,15 @@ func.func @ConvertReLU(
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>,
     // CHECK-SAME:      shrink_axis_mask = [],
     // CHECK-SAME:      strides_attr = [1, 1, 1, 1]
-    // CHECK-SAME:  } : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[SLICE]], [[CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [1, 3, 16, 32],
     // CHECK-SAME:      output_shape = [1, 3, 16, -9223372036854775808]
-    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
-    return %RELU : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK:   return [[RESHAPE]] : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    return %RELU : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:   return [[RESHAPE]] : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 }
 
 // -----
@@ -59,16 +59,16 @@ func.func @ConvertReLU(
 
 // CHECK-LABEL: ConvertReLUTwoDynamicDims
 func.func @ConvertReLUTwoDynamicDims(
-    %IN: tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-) -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}> {
+    %IN: tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+) -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}> {
     // CHECK:   [[IN:%.+]]: tensor<1x?x16x?xf32
 
     %RELU = IE.ReLU(%IN) :
-        tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+        tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[RELU:%.+]] = IE.ReLU([[IN]]) :
-    // CHECK-SAME:  tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK-SAME:  -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:  -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[DYN_DIM_IDX_3:%.+]] = arith.constant 1 : index
     // CHECK:   [[DYN_DIM_3:%.+]] = tensor.dim [[RELU]], [[DYN_DIM_IDX_3]]
@@ -96,15 +96,15 @@ func.func @ConvertReLUTwoDynamicDims(
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>,
     // CHECK-SAME:      shrink_axis_mask = [],
     // CHECK-SAME:      strides_attr = [1, 1, 1, 1]
-    // CHECK-SAME:  } : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[SLICE]], [[CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [1, 3, 16, 32],
     // CHECK-SAME:      output_shape = [1, -9223372036854775808, 16, -9223372036854775808]
-    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
-    return %RELU : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK:   return [[RESHAPE]] : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    return %RELU : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:   return [[RESHAPE]] : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 }
 
 // -----
@@ -113,16 +113,16 @@ func.func @ConvertReLUTwoDynamicDims(
 
 // CHECK-LABEL: Convert3dReLU
 func.func @Convert3dReLU(
-    %IN: tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
-) -> tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}> {
+    %IN: tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
+) -> tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}> {
     // CHECK:   [[IN:%.+]]: tensor<3x16x?xf32
 
     %RELU = IE.ReLU(%IN) :
-        tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
-        -> tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+        tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
+        -> tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
     // CHECK: [[RELU:%.+]] = IE.ReLU([[IN]]) :
-    // CHECK-SAME:  tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
-    // CHECK-SAME:  -> tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+    // CHECK-SAME:  tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
+    // CHECK-SAME:  -> tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
 
     // CHECK:   [[DYN_DIM_IDX:%.+]] = arith.constant 2 : index
     // CHECK:   [[DYN_DIM_VALUE:%.+]] = tensor.dim [[RELU]], [[DYN_DIM_IDX]]
@@ -145,15 +145,15 @@ func.func @Convert3dReLU(
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>,
     // CHECK-SAME:      shrink_axis_mask = [],
     // CHECK-SAME:      strides_attr = [1, 1, 1]
-    // CHECK-SAME:  } : tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>, tensor<3xsi64> -> tensor<?x?x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+    // CHECK-SAME:  } : tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>, tensor<3xsi64> -> tensor<?x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
 
     // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[SLICE]], [[CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [3, 16, 32],
     // CHECK-SAME:      output_shape = [3, 16, -9223372036854775808]
-    // CHECK-SAME:  } : tensor<?x?x?xf32, {bounds = [3, 16, 32], order = #CHW}>, tensor<3xsi64> -> tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+    // CHECK-SAME:  } : tensor<?x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>, tensor<3xsi64> -> tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
 
-    return %RELU : tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
-    // CHECK:   return [[RESHAPE]] : tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+    return %RELU : tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
+    // CHECK:   return [[RESHAPE]] : tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
 }
 
 // -----
@@ -162,23 +162,23 @@ func.func @Convert3dReLU(
 
 // CHECK-LABEL: ReturnWithTwoOperands
 func.func @ReturnWithTwoOperands(
-    %IN: tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-) -> (tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>) {
+    %IN: tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+) -> (tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>) {
     // CHECK:   [[IN:%.+]]: tensor<1x?x16x?xf32
 
     %RELU_0 = IE.ReLU(%IN) :
-        tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+        tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[RELU_0:%.+]] = IE.ReLU([[IN]]) :
-    // CHECK-SAME:  tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK-SAME:  -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:  -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     %RELU_1 = IE.ReLU(%IN) :
-        tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+        tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[RELU_1:%.+]] = IE.ReLU([[IN]]) :
-    // CHECK-SAME:  tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK-SAME:  -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:  -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RELU_0_DYN_DIM_IDX_3:%.+]] = arith.constant 1 : index
     // CHECK:   [[RELU_0_DYN_DIM_3:%.+]] = tensor.dim [[RELU_0]], [[RELU_0_DYN_DIM_IDX_3]]
@@ -206,12 +206,12 @@ func.func @ReturnWithTwoOperands(
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>,
     // CHECK-SAME:      shrink_axis_mask = [],
     // CHECK-SAME:      strides_attr = [1, 1, 1, 1]
-    // CHECK-SAME:  } : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RESHAPE_0:%.+]] = IE.DynamicReshape([[SLICE_0]], [[RELU_0_CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [1, 3, 16, 32],
     // CHECK-SAME:      output_shape = [1, -9223372036854775808, 16, -9223372036854775808]
-    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RELU_1_DYN_DIM_IDX_3:%.+]] = arith.constant 1 : index
     // CHECK:   [[RELU_1_DYN_DIM_3:%.+]] = tensor.dim [[RELU_1]], [[RELU_1_DYN_DIM_IDX_3]]
@@ -239,14 +239,14 @@ func.func @ReturnWithTwoOperands(
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>,
     // CHECK-SAME:      shrink_axis_mask = [],
     // CHECK-SAME:      strides_attr = [1, 1, 1, 1]
-    // CHECK-SAME:  } : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RESHAPE_1:%.+]] = IE.DynamicReshape([[SLICE_1]], [[RELU_1_CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [1, 3, 16, 32],
     // CHECK-SAME:      output_shape = [1, -9223372036854775808, 16, -9223372036854775808]
-    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
-    return %RELU_0, %RELU_1 : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    return %RELU_0, %RELU_1 : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:   return [[RESHAPE_0]], [[RESHAPE_1]]
 }
 
@@ -256,12 +256,12 @@ func.func @ReturnWithTwoOperands(
 
 // CHECK-LABEL: SkipEmptyNets
 func.func @SkipEmptyNets(
-    %IN: tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-) -> tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}> {
+    %IN: tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+) -> tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}> {
     // CHECK:   [[IN:%.+]]: tensor<1x?x16x?xf32
 
-    return %IN : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK:   return [[IN]] : tensor<1x?x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    return %IN : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:   return [[IN]] : tensor<1x?x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 }
 
 // -----
@@ -270,20 +270,22 @@ func.func @SkipEmptyNets(
 
 // CHECK-LABEL: SkipOperationsWithoutReifyInterface
 func.func @SkipOperationsWithoutReifyInterface(
-    %IN: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>,
+    %IN: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>,
     %DIMS: tensor<4xsi64>
-) -> tensor<1x16x3x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}> {
-    // CHECK:       [[IN:%.+]]: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, [[DIMS:%.+]]: tensor<4xsi64>
+) -> tensor<1x16x3x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}> {
+    // CHECK:       ([[IN:%.+]]: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, [[DIMS:%.+]]: tensor<4xsi64>)
 
     %RESHAPE = IE.DynamicReshape(%IN, %DIMS) {
         output_bounds = [1, 3, 16, 32],
         output_shape = [1, 16, 3, -9223372036854775808]
-    } : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64>
-        -> tensor<1x16x3x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[IN]], [[DIMS]]) {
+    } : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64>
+        -> tensor<1x16x3x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[IN]], [[DIMS]]) {output_bounds = [1, 3, 16, 32], output_shape = [1, 16, 3, -9223372036854775808]} :
+    // CHECK-SAME: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64>
+    // CHECK-SAME: -> tensor<1x16x3x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
-    return %RESHAPE : tensor<1x16x3x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK:   return [[RESHAPE]] : tensor<1x16x3x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    return %RESHAPE : tensor<1x16x3x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:   return [[RESHAPE]] : tensor<1x16x3x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 }
 
 // -----
@@ -307,19 +309,19 @@ func.func @SkipReLUWithStaticShape(%IN: tensor<1x3x16x32xf32>) -> tensor<1x3x16x
 
 // CHECK-LABEL: ConvertReLUWithReshape
 func.func @ConvertReLUWithReshape(
-    %IN: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-) -> tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}> {
+    %IN: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+) -> tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}> {
     // CHECK:   [[IN:%.+]]: tensor<1x3x16x?xf32
 
     %OUT_SHAPE = const.Declare tensor<3xsi64> = dense<[3, 16, -1]> : tensor<3xsi64>
     // CHECK:   [[OUT_SHAPE:%.+]] = const.Declare tensor<3xsi64> = dense<[3, 16, -1]> : tensor<3xsi64>
 
     %RELU = IE.ReLU(%IN) :
-        tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+        tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[RELU:%.+]] = IE.ReLU([[IN]]) :
-    // CHECK-SAME:  tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK-SAME:  -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:  -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[DYN_DIM_IDX:%.+]] = arith.constant 3 : index
     // CHECK:   [[DYN_DIM_VALUE:%.+]] = tensor.dim [[RELU]], [[DYN_DIM_IDX]]
@@ -343,27 +345,27 @@ func.func @ConvertReLUWithReshape(
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>,
     // CHECK-SAME:      shrink_axis_mask = [],
     // CHECK-SAME:      strides_attr = [1, 1, 1, 1]
-    // CHECK-SAME:  } : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[SLICE]], [[CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [1, 3, 16, 32],
     // CHECK-SAME:      output_shape = [1, 3, 16, -9223372036854775808]
-    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     %OUT_RESHAPE = IE.DynamicReshape(%RELU, %OUT_SHAPE) {
         output_bounds = [3, 16, 32],
         output_shape = [3, 16, -9223372036854775808]
-    } : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<3xsi64>
-        -> tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+    } : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<3xsi64>
+        -> tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
 
     // CHECK:   [[OUT_RESHAPE:%.+]] = IE.DynamicReshape([[RESHAPE]], [[OUT_SHAPE]]) {
     // CHECK-SAME:      output_bounds = [3, 16, 32],
     // CHECK-SAME:      output_shape = [3, 16, -9223372036854775808]
-    // CHECK-SAME:  } : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>, tensor<3xsi64>
-    // CHECK-SAME:      -> tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+    // CHECK-SAME:  } : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>, tensor<3xsi64>
+    // CHECK-SAME:      -> tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
 
-    return %OUT_RESHAPE : tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
-    // CHECK:   return [[OUT_RESHAPE]] : tensor<3x16x?xf32, {bounds = [3, 16, 32], order = #CHW}>
+    return %OUT_RESHAPE : tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
+    // CHECK:   return [[OUT_RESHAPE]] : tensor<3x16x?xf32, {bounds = #const.OpaqueI64Elements<[3, 16, 32]> : tensor<3xsi64>, order = #CHW}>
 }
 
 // -----
@@ -373,16 +375,16 @@ func.func @ConvertReLUWithReshape(
 
 // CHECK-LABEL: ConvertTransposeWithDynamicReshape
 func.func @ConvertTransposeWithDynamicReshape(
-    %IN: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-) -> tensor<?x1x16x3xf32, {bounds = [32, 1, 16, 3], order = #NCHW}> {
+    %IN: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+) -> tensor<?x1x16x3xf32, {bounds = #const.OpaqueI64Elements<[32, 1, 16, 3]> : tensor<4xsi64>, order = #NCHW}> {
     // CHECK:   [[IN:%.+]]: tensor<1x3x16x?xf32
 
     %TRANSPOSE = IE.Transpose(%IN) {order_value = #WNHC} :
-        tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<?x1x16x3xf32, {bounds = [32, 1, 16, 3], order = #NCHW}>
+        tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<?x1x16x3xf32, {bounds = #const.OpaqueI64Elements<[32, 1, 16, 3]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[IN]])
-    // CHECK-SAME:  : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK-SAME:  -> tensor<?x1x16x3xf32, {bounds = [32, 1, 16, 3], order = #NCHW}>
+    // CHECK-SAME:  : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:  -> tensor<?x1x16x3xf32, {bounds = #const.OpaqueI64Elements<[32, 1, 16, 3]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK-DAG:   [[STATIC_DIM_1:%.+]] = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
     // CHECK-DAG:   [[STATIC_DIM_3:%.+]] = const.Declare tensor<1xsi64> = dense<3> : tensor<1xsi64>
@@ -401,11 +403,11 @@ func.func @ConvertTransposeWithDynamicReshape(
     // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[TRANSPOSE]], [[CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [32, 1, 16, 3],
     // CHECK-SAME:      output_shape = [-9223372036854775808, 1, 16, 3]
-    // CHECK-SAME:  } : tensor<?x1x16x3xf32, {bounds = [32, 1, 16, 3], order = #NCHW}>, tensor<4xsi64>
-    // CHECK-SAME:    -> tensor<?x1x16x3xf32, {bounds = [32, 1, 16, 3], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<?x1x16x3xf32, {bounds = #const.OpaqueI64Elements<[32, 1, 16, 3]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64>
+    // CHECK-SAME:    -> tensor<?x1x16x3xf32, {bounds = #const.OpaqueI64Elements<[32, 1, 16, 3]> : tensor<4xsi64>, order = #NCHW}>
 
-    return %TRANSPOSE : tensor<?x1x16x3xf32, {bounds = [32, 1, 16, 3], order = #NCHW}>
-    // CHECK:   return [[RESHAPE]] : tensor<?x1x16x3xf32, {bounds = [32, 1, 16, 3], order = #NCHW}>
+    return %TRANSPOSE : tensor<?x1x16x3xf32, {bounds = #const.OpaqueI64Elements<[32, 1, 16, 3]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:   return [[RESHAPE]] : tensor<?x1x16x3xf32, {bounds = #const.OpaqueI64Elements<[32, 1, 16, 3]> : tensor<4xsi64>, order = #NCHW}>
 }
 
 // -----
@@ -416,16 +418,16 @@ func.func @ConvertTransposeWithDynamicReshape(
 
 // CHECK-LABEL: ConvertTransposeWithStridedSlice
 func.func @ConvertTransposeWithStridedSlice(
-    %IN: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-) -> tensor<3x?x1x16xf32, {bounds = [3, 32, 1, 16], order = #NCHW}> {
+    %IN: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+) -> tensor<3x?x1x16xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}> {
     // CHECK:   [[IN:%.+]]: tensor<1x3x16x?xf32
 
     %TRANSPOSE = IE.Transpose(%IN) {order_value = #CWNH} :
-        tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<3x?x1x16xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>
+        tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<3x?x1x16xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[IN]])
-    // CHECK-SAME:  : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-    // CHECK-SAME:  -> tensor<3x?x1x16xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>
+    // CHECK-SAME:  : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:  -> tensor<3x?x1x16xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK-DAG:   [[DYN_DIM_IDX:%.+]] = arith.constant 1 : index
     // CHECK-DAG:   [[DYN_DIM_VALUE:%.+]] = tensor.dim [[TRANSPOSE]], [[DYN_DIM_IDX]]
@@ -450,15 +452,15 @@ func.func @ConvertTransposeWithStridedSlice(
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>,
     // CHECK-SAME:      shrink_axis_mask = [],
     // CHECK-SAME:      strides_attr = [1, 1, 1, 1]
-    // CHECK-SAME:  } : tensor<3x?x1x16xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>, tensor<4xsi64>
-    // CHECK-SAME:    -> tensor<?x?x?x?xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<3x?x1x16xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64>
+    // CHECK-SAME:    -> tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:   [[RESHAPE:%.+]] = IE.DynamicReshape([[SLICE]], [[CONCAT_DIMS]]) {
     // CHECK-SAME:      output_bounds = [3, 32, 1, 16],
     // CHECK-SAME:      output_shape = [3,  -9223372036854775808, 1, 16]
-    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>, tensor<4xsi64>
-    // CHECK-SAME:    -> tensor<3x?x1x16xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<?x?x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64>
+    // CHECK-SAME:    -> tensor<3x?x1x16xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>
 
-    return %TRANSPOSE : tensor<3x?x1x16xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>
-    // CHECK:   return [[RESHAPE]] : tensor<3x?x1x16xf32, {bounds = [3, 32, 1, 16], order = #NCHW}>
+    return %TRANSPOSE : tensor<3x?x1x16xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:   return [[RESHAPE]] : tensor<3x?x1x16xf32, {bounds = #const.OpaqueI64Elements<[3, 32, 1, 16]> : tensor<4xsi64>, order = #NCHW}>
 }

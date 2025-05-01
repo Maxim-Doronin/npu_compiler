@@ -366,3 +366,32 @@ func.func @UnrollAveragePoolingBatch(%arg0: tensor<2x128x32x64xf16>) -> tensor<2
 
     // CHECK:   return [[CONCAT]] : tensor<2x128x32x64xf16>
 }
+
+// -----
+
+// CHECK-LABEL: @UnrollTransposedConv
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x64x38x16xf16>
+func.func @UnrollTransposedConv(%arg0: tensor<2x64x38x16xf16>) -> tensor<2x64x38x32xf16> {
+    %cst = const.Declare tensor<64x64x1x3xf16> = dense<1.000000e+00> : tensor<64x64x1x3xf16>
+
+    %0 = IE.TransposedConvolution(%arg0, %cst) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 1], pads_begin = [0, 1], pads_end = [0, 1], strides = [1, 2]} : tensor<2x64x38x16xf16>, tensor<64x64x1x3xf16> -> tensor<2x64x38x32xf16>
+
+    return %0 : tensor<2x64x38x32xf16>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<64x64x1x3xf16> = dense<1.000000e+00> : tensor<64x64x1x3xf16>
+
+    // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 64, 38, 16] :
+    // CHECK-SAME:      tensor<2x64x38x16xf16> to tensor<1x64x38x16xf16>
+    // CHECK:       [[TRANSPOSED_CONV_0:%.+]] = IE.TransposedConvolution([[SLICE_0]], [[CST]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 1], pads_end = [0, 1], spatial_output_padding = [0, 1], strides = [1, 2]} :
+    // CHECK-SAME:      tensor<1x64x38x16xf16>, tensor<64x64x1x3xf16> -> tensor<1x64x38x32xf16>
+
+    // CHECK:       [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [1, 0, 0, 0] [1, 64, 38, 16] :
+    // CHECK-SAME:      tensor<2x64x38x16xf16> to tensor<1x64x38x16xf16>
+    // CHECK:       [[TRANSPOSED_CONV_1:%.+]] = IE.TransposedConvolution([[SLICE_1]], [[CST]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 1], pads_end = [0, 1], spatial_output_padding = [0, 1], strides = [1, 2]} :
+    // CHECK-SAME:      tensor<1x64x38x16xf16>, tensor<64x64x1x3xf16> -> tensor<1x64x38x32xf16>
+
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[TRANSPOSED_CONV_0]], [[TRANSPOSED_CONV_1]]) {per_axis = #IE.Concat<axis = 0 : i64>} :
+    // CHECK-SAME:      tensor<1x64x38x32xf16>, tensor<1x64x38x32xf16> -> tensor<2x64x38x32xf16>
+
+    // CHECK:       return [[CONCAT]] : tensor<2x64x38x32xf16>
+}

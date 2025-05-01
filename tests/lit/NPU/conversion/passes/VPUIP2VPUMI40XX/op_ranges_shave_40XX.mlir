@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,13 +8,13 @@
 
 module @SingleShaveTile0 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "softmax" : tensor<1x1000xf16>
+        DataInfo "softmax" : tensor<1x1000xf16>
     }
 
 module @VPU.SW {
@@ -52,13 +52,13 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
 
 module @ThreeShaveTile0 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "softmax" : tensor<1x1000xf16>
+        DataInfo "softmax" : tensor<1x1000xf16>
     }
 
 module @VPU.SW {
@@ -114,13 +114,13 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
 
 module @SingleShaveTile2 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "softmax" : tensor<1x1000xf16>
+        DataInfo "softmax" : tensor<1x1000xf16>
     }
 
 module @VPU.SW {
@@ -158,13 +158,13 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
 
 module @ThreeShaveTile0 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "softmax" : tensor<1x1000xf16>
+        DataInfo "softmax" : tensor<1x1000xf16>
     }
 
 module @VPU.SW {

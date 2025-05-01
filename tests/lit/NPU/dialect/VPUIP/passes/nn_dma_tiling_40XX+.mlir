@@ -32,8 +32,8 @@ func.func @DoNotSplitNNDMA(%input: !Input_DDR, %output: !Output_CMX) -> !Output_
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF0]] : memref<1x4x360x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_BUF]] : memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF0]] : memref<1x4x360x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_BUF]] : memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>)
 
     // CHECK:      return [[OUTPUT_BUF]] : memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>
 }
@@ -67,8 +67,8 @@ func.func @DoNotSplit5DNNDMAWithLevel3Striding(%input: !Input_DDR, %output: !Out
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF0]] : memref<1x32x64x64x1xf16, {order = #NCDHW, strides = [2097152, 65536, 512, 2, 1]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_BUF]] : memref<1x32x64x64x1xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF0]] : memref<1x32x64x64x1xf16, {order = #NCDHW, strides = [2097152, 65536, 512, 2, 1]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_BUF]] : memref<1x32x64x64x1xf16, [@CMX_NN, 0]>)
 
     // CHECK:      return [[OUTPUT_BUF]] : memref<1x32x64x64x1xf16, [@CMX_NN, 0]>
 }

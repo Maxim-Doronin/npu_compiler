@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ func.func @ApplySwizzlingToSwizzledConstant() -> !BufferDdr {
 func.func @ApplySwizzlingToNonSwizzledConstant() -> memref<512x1x1x1xui8> {
     %0 = const.Declare memref<512x1x1x1xui8> = dense<0> : tensor<512x1x1x1xui8>
     return %0 : memref<512x1x1x1xui8>
-    // CHECK-NOT #const.SwizzleConstant
+    // CHECK-NOT: #const.SwizzleConstant
 }
 
 // -----
@@ -40,5 +40,5 @@ func.func @ApplySwizzlingToSwizzledConstant5D() -> !BufferDdr {
 func.func @ApplySwizzlingToNonSwizzledConstant5D() -> memref<512x1x1x1x1xui8> {
     %0 = const.Declare memref<512x1x1x1x1xui8> = dense<0> : tensor<512x1x1x1x1xui8>
     return %0 : memref<512x1x1x1x1xui8>
-    // CHECK-NOT #const.SwizzleConstant
+    // CHECK-NOT: #const.SwizzleConstant
 }

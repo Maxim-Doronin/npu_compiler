@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file -inline %s | FileCheck %s
+// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file --dispatched-inliner %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 module @CallChain {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz

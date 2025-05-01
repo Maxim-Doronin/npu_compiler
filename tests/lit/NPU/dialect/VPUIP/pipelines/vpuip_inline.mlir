@@ -1,15 +1,15 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file -inline --move-declarations-to-top %s | FileCheck %s --strict-whitespace
+// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --dispatched-inliner --move-declarations-to-top %s | FileCheck %s --strict-whitespace
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // foo1 -> foo2
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -100,7 +100,7 @@ module @TwoFunctions {
 
 // CHECK-LABEL: @ThreeFunctions
 module @ThreeFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -220,7 +220,7 @@ module @ThreeFunctions {
 
 // CHECK-LABEL: @ThreeFunctions
 module @ThreeFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -333,7 +333,7 @@ module @ThreeFunctions {
 
 // CHECK-LABEL: @ThreeFunctions
 module @ThreeFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<1x6x64x64xf16>
     } outputsInfo : {
@@ -360,7 +360,7 @@ module @ThreeFunctions {
         VPURT.Task {
             %5 = VPUIP.NNDMA {port = 1 : i64} inputs(%4 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
-        return  %arg1, %arg2 : memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>
+        return %arg1, %arg2 : memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>
     }
 
     func.func @main(%arg0: memref<1x6x64x64xf16, @DDR>, %arg1: memref<1x3x64x64xf16, @DDR>, %arg2: memref<1x3x64x64xf16, @DDR>) -> (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) {
@@ -419,7 +419,7 @@ module @ThreeFunctions {
 
 // CHECK-LABEL: @TwoFunctionsEachWithSingleExecutionQueue
 module @TwoFunctionsEachWithSingleExecutionQueue {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -506,7 +506,7 @@ module @TwoFunctionsEachWithSingleExecutionQueue {
 
 // CHECK-LABEL: @MultiShaveFunction
 module @MultiShaveFunction {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<1x1x2x64xf16>
     } outputsInfo : {

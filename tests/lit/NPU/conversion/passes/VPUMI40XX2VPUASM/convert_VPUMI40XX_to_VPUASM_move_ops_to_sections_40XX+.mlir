@@ -10,13 +10,13 @@
 module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @oneDma inputsInfo : {
+  net.NetworkInfo entryPoint : @oneDma inputsInfo : {
     DataInfo "input" : tensor<1x2x3x4xf16>
   } outputsInfo : {
     DataInfo "output" : tensor<1x2x3x4xf16>
   }
   func.func @oneDma() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
     %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x2x3x4xf16, {order = #NHWC}, @DDR>
     %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x2x3x4xf16, {order = #NHWC}, @DDR>
     %3 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%0 : !VPURegMapped.Index<0:0:0>) inputs(%1 : memref<1x2x3x4xf16, {order = #NHWC}, @DDR>) outputs(%2 : memref<1x2x3x4xf16, {order = #NHWC}, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
@@ -29,19 +29,19 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 
 //CHECK: ELF.Main @ELFMain
 
-//CHECK-DAG: ELF.CreateLogicalSection [[MetadataTaskSec:@.*]] aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE")
+//CHECK-DAG: ELF.CreateLogicalSection [[MetadataTaskSec:@.*]] aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>)
 //CHECK-NEXT: VPUASM.DeclareTaskBuffer {{.*}} idx(!VPURegMapped.Index<0:0:0>) <DMA>
 
-//CHECK-DAG: ELF.CreateLogicalSection [[NetworkInput:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USERINPUT")
+//CHECK-DAG: ELF.CreateLogicalSection [[NetworkInput:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USERINPUT") secLocation(<NetworkInput>)
 //CHECK-NEXT: VPUASM.DeclareBuffer {{.*}} !VPUASM.Buffer< "NetworkInput"[0]
 
-//CHECK-DAG: ELF.CreateLogicalSection [[NetworkOutput:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USEROUTPUT")
+//CHECK-DAG: ELF.CreateLogicalSection [[NetworkOutput:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USEROUTPUT") secLocation(<NetworkOutput>)
 //CHECK-NEXT: VPUASM.DeclareBuffer {{.*}} !VPUASM.Buffer< "NetworkOutput"[0]
 
-//CHECK-DAG: ELF.CreateSection [[DMA0SEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+//CHECK-DAG: ELF.CreateSection [[DMA0SEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
 //CHECK-NEXT: VPUASM.NNDMA @NNDMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>)
 
-//CHECK-DAG: ELF.CreateSection [[MappedInferenceSection:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC)
+//CHECK-DAG: ELF.CreateSection [[MappedInferenceSection:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>)
 //CHECK-NEXT: VPUASM.MappedInference
 
 // -----
@@ -50,19 +50,19 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @twoDma inputsInfo : {
+  net.NetworkInfo entryPoint : @twoDma inputsInfo : {
     DataInfo "input_0" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x16x16x16xf16>
     DataInfo "output_1" : tensor<1x16x16x16xf16>
   }
   func.func @twoDma() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %1 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
-    %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
-    %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
-    %4 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
-    %5 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:2>
+    %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %1 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+    %2 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
+    %3 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
+    %4 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
+    %5 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:2>
     %6 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, {order = #NHWC}, @DDR>
     %7 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, {order = #NHWC}, @DDR>
     %8 = VPURT.DeclareBuffer <NetworkOutput> [1] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, {order = #NHWC}, @DDR>
@@ -85,7 +85,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 
 //CHECK: ELF.Main @ELFMain {
 
-//CHECK-DAG: ELF.CreateLogicalSection [[MetadataSec:@.*]] aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE")
+//CHECK-DAG: ELF.CreateLogicalSection [[MetadataSec:@.*]] aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>)
 //CHECK-NEXT: VPUASM.DeclareTaskBuffer [[DMATASKBUFF00:@.*]] idx(!VPURegMapped.Index<0:0:0>) <DMA>
 //CHECK-NEXT: VPUASM.DeclareTaskBuffer [[DMATASKBUFF01:@.*]] idx(!VPURegMapped.Index<0:0:1>) <DMA>
 //CHECK-NEXT: VPUASM.DeclareTaskBuffer [[DMATASKBUFF02:@.*]] idx(!VPURegMapped.Index<0:0:2>) <DMA>
@@ -93,26 +93,26 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 //CHECK-NEXT: VPUASM.DeclareTaskBuffer [[DMATASKBUFF11:@.*]] idx(!VPURegMapped.Index<0:1:1>) <DMA>
 //CHECK-NEXT: VPUASM.DeclareTaskBuffer [[DMATASKBUFF12:@.*]] idx(!VPURegMapped.Index<0:1:2>) <DMA>
 
-//CHECK-DAG: ELF.CreateLogicalSection [[NetworkInput:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USERINPUT")
+//CHECK-DAG: ELF.CreateLogicalSection [[NetworkInput:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USERINPUT") secLocation(<NetworkInput>)
 //CHECK-NEXT: VPUASM.DeclareBuffer {{.*}} !VPUASM.Buffer< "NetworkInput"[0]
 
-//CHECK-DAG: ELF.CreateLogicalSection [[NetworkOutput0:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USEROUTPUT")
+//CHECK-DAG: ELF.CreateLogicalSection [[NetworkOutput0:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USEROUTPUT") secLocation(<NetworkOutput>)
 //CHECK-NEXT: VPUASM.DeclareBuffer {{.*}} !VPUASM.Buffer< "NetworkOutput"[0]
 
-//CHECK-DAG: ELF.CreateLogicalSection [[NetworkOutput1:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USEROUTPUT")
+//CHECK-DAG: ELF.CreateLogicalSection [[NetworkOutput1:@.*]] aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USEROUTPUT") secLocation(<NetworkOutput>)
 //CHECK-NEXT: VPUASM.DeclareBuffer {{.*}} !VPUASM.Buffer< "NetworkOutput"[1]
 
-//CHECK-DAG: ELF.CreateLogicalSection [[NNCMX0:@.*]] aligned(64) secType(VPU_SHT_CMX_WORKSPACE) secFlags("SHF_NONE") {
+//CHECK-DAG: ELF.CreateLogicalSection [[NNCMX0:@.*]] aligned(64) secType(VPU_SHT_CMX_WORKSPACE) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
 //CHECK-NEXT: VPUASM.DeclareBuffer [[BUFF0:@.*]] !VPUASM.Buffer< "CMX_NN"[0]
 
-//CHECK-DAG: ELF.CreateLogicalSection [[NNCMX1:@.*]] aligned(64) secType(VPU_SHT_CMX_WORKSPACE) secFlags("SHF_NONE") {
+//CHECK-DAG: ELF.CreateLogicalSection [[NNCMX1:@.*]] aligned(64) secType(VPU_SHT_CMX_WORKSPACE) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
 //CHECK-NEXT: VPUASM.DeclareBuffer [[BUFF1:@.*]] !VPUASM.Buffer< "CMX_NN"[1]
 
-//CHECK-DAG: ELF.CreateSection [[BARRSEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+//CHECK-DAG: ELF.CreateSection [[BARRSEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
 //CHECK-NEXT: VPUASM.ConfigureBarrier [[BARR0:@.*]] idx(!VPURegMapped.Index<0:0:0>)
 //CHECK-NEXT: VPUASM.ConfigureBarrier [[BARR1:@.*]] idx(!VPURegMapped.Index<0:0:1>)
 
-//CHECK-DAG: ELF.CreateSection [[DMA0SEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC)
+//CHECK-DAG: ELF.CreateSection [[DMA0SEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>)
 //CHECK-NEXT: VPUASM.NNDMA [[DMA00:@.*]] idx(!VPURegMapped.Index<0:0:0>) taskLocation([[MetadataSec]]::[[DMATASKBUFF00]])
     //CHECK-SAME: outputs([
     //CHECK-SAME: [[NNCMX0]]::[[BUFF0]]])
@@ -124,7 +124,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 //CHECK-NEXT: VPUASM.NNDMA [[DMA02:@.*]] idx(!VPURegMapped.Index<0:0:2>) taskLocation([[MetadataSec]]::[[DMATASKBUFF02]])
     //CHECK-SAME: input([[NNCMX0]]::[[BUFF0]])
 
-//CHECK-DAG: ELF.CreateSection [[DMA1SEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC)
+//CHECK-DAG: ELF.CreateSection [[DMA1SEC:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>)
 //CHECK-NEXT: VPUASM.NNDMA [[DMA10:@.*]] idx(!VPURegMapped.Index<0:1:0>) taskLocation([[MetadataSec]]::[[DMATASKBUFF10]])
     //CHECK-SAME: outputs([
     //CHECK-SAME: [[NNCMX1]]::[[BUFF1]]])
@@ -136,7 +136,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 //CHECK-NEXT: VPUASM.NNDMA [[DMA12:@.*]] idx(!VPURegMapped.Index<0:1:2>) taskLocation([[MetadataSec]]::[[DMATASKBUFF12]])
     //CHECK-SAME: input([[NNCMX1]]::[[BUFF1]])
 
-//CHECK-DAG: ELF.CreateSection [[MappedInferenceSection:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+//CHECK-DAG: ELF.CreateSection [[MappedInferenceSection:@.*]] aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
 //CHECK-NEXT: VPUASM.MappedInference @MappedInference
     //CHECK-SAME: dmas([
     //CHECK-SAME: [

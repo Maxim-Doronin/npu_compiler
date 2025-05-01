@@ -78,7 +78,7 @@ func.func @ConcatClusterTilingWithExplicitDistributedAttrAndConstantSecondInput(
             ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = -128 : i64, clamp_high = 127 : i64,
                 lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.0999755859375 : f64>,
             rawFilterShape = [128, 128, 3, 1], strides = [1, 1]}
-             -> !ConcatInputConvOutputDistributed
+             : !ConvInputDistributed, tensor<128x128x3x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConcatInputConvOutputDistributed
 
     %convOutDDR = VPU.Copy(%convOutput) : !ConcatInputConvOutputDistributed -> tensor<1x128x16x157xf16, {order = #NHWC}>
 
@@ -93,7 +93,7 @@ func.func @ConcatClusterTilingWithExplicitDistributedAttrAndConstantSecondInput(
             ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = -128 : i64, clamp_high = 127 : i64,
                 lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.0999755859375 : f64>,
             rawFilterShape = [128, 128, 3, 3], strides = [1, 1]}
-             -> !SecondConvOutputDistributed
+             : !ConcatOutputDistributed, tensor<128x128x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !SecondConvOutputDistributed
 
     return %output: !SecondConvOutputDistributed
 
@@ -122,7 +122,7 @@ func.func @ConcatClusterTilingWithExplicitDistributedAttrAndConstantSecondInput(
     //CHECK-SAME{LITERAL}:                compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0]],
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 128, 9, 157], [1, 128, 9, 157]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0]]}>
-    
+
     //CHECK:        [[CONCAT_OUTPUT:%.*]] = VPU.Concat([[CST_INPUT]], [[CONV_OUTPUT]])
     //CHECK-SAME{LITERAL}:             {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} :
     //CHECK-SAME:       !VPU.DistributedTensor<1x128x16x1xf16, #NHWC, @CMX_NN
@@ -258,7 +258,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 64, 1, 1], strides = [1, 1]}
-             -> !ConvOut0
+             : !ConvIn0, tensor<64x64x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut0
 
     %conv0OutDDR = VPU.Copy(%conv0Output) : !ConvOut0 -> !ConvInOut0_DDR
 
@@ -268,7 +268,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1], strides = [1, 1]}
-             -> !ConvOut1
+             : !ConvIn1, tensor<16x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut1
 
     %conv1OutDDR = VPU.Copy(%conv1Output) : !ConvOut1 -> !ConvInOut1_DDR
 
@@ -283,7 +283,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 1, right = 1, top = 1, bottom = 1>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 80, 3, 3], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn23, tensor<64x80x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
     %slice1 = VPU.Slice %concatOut [0, 0, 8, 0] [1, 80, 12, 32] : tensor<1x80x20x32xf16, {mem_space = @DDR, order = #NHWC}> to !ConvIn23_DDR
 
@@ -293,7 +293,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 2, right = 2, top = 2, bottom = 2>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 80, 5, 5], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn23, tensor<64x80x5x5xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
     return %output0, %output1: !ConvOut23, !ConvOut23
 
@@ -480,7 +480,7 @@ func.func @SOHProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1], strides = [1, 1]}
-             -> !ConvOut0
+             : !ConvIn0, tensor<16x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut0
 
     %conv0OutDDR = VPU.Copy(%conv0Output) : !ConvOut0 -> !ConvInOut0_DDR
 
@@ -490,7 +490,7 @@ func.func @SOHProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-             -> !ConvOut1
+             : !ConvIn1, tensor<32x32x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<32x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut1
 
     %conv1OutDDR = VPU.Copy(%conv1Output) : !ConvOut1 -> !ConvInOut1_DDR
 
@@ -505,7 +505,7 @@ func.func @SOHProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 1, right = 1, top = 1, bottom = 1>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [48, 48, 3, 3], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn23, tensor<48x48x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<48x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
     %slice1 = VPU.Slice %concatOut [0, 0, 0, 0] [1, 48, 4, 10] : tensor<1x48x8x10xf16, {mem_space = @DDR, order = #NHWC}> to !ConvIn23_DDR
 
@@ -515,7 +515,7 @@ func.func @SOHProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [48, 48, 1, 1], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn23, tensor<48x48x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<48x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
     return %output0, %output1: !ConvOut23, !ConvOut23
 }
@@ -634,7 +634,7 @@ func.func @SOKProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [32, 16, 1, 1], strides = [1, 1]}
-             -> !ConvOut0
+             : !ConvIn01, tensor<32x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<32x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut0
 
     %conv0OutDDR = VPU.Copy(%conv0Output) : !ConvOut0 -> !ConvOut0_DDR
 
@@ -642,7 +642,7 @@ func.func @SOKProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 16, 1, 1], strides = [1, 1]}
-             -> !ConvOut1
+             : !ConvIn01, tensor<64x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut1
 
     %conv1OutDDR = VPU.Copy(%conv1Output) : !ConvOut1 -> !ConvOut1_DDR
 
@@ -657,7 +657,7 @@ func.func @SOKProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [96, 96, 1, 1], strides = [1, 1]}
-             -> !ConvOut2
+             : !ConvIn2, tensor<96x96x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<96x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut2
 
     %slice1 = VPU.Slice %concatOut [0, 0, 4, 0] [1, 96, 6, 10] : tensor<1x96x10x10xf16, {mem_space = @DDR, order = #NHWC}> to !ConvIn3_DDR
 
@@ -667,7 +667,7 @@ func.func @SOKProducersSOHConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [96, 96, 1, 1], strides = [1, 1]}
-             -> !ConvOut3
+             : !ConvIn3, tensor<96x96x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<96x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut3
 
     return %output0, %output1: !ConvOut2, !ConvOut3
 
@@ -845,7 +845,7 @@ func.func @SparseConvolution(%input: !SparseConvInput,
             ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = -128 : i64, clamp_high = 127 : i64,
                 lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.0999755859375 : f64>,
             rawFilterShape = [128, 256, 3, 3], strides = [2, 2]}
-                -> !SparseDistributedOutput
+                : !SparseDistributedInput, !WeightsType, !WeightsTableType -> !SparseDistributedOutput
 
     // Convolution 0 output copy
     %2 = VPU.Copy(%1) : !SparseDistributedOutput -> !SparseConvOutput
@@ -856,7 +856,7 @@ func.func @SparseConvolution(%input: !SparseConvInput,
             ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = -128 : i64, clamp_high = 127 : i64,
                 lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.0999755859375 : f64>,
             rawFilterShape = [128, 256, 3, 3], strides = [2, 2]}
-                -> !SparseDistributedOutput
+                : !SparseDistributedInput, !WeightsType, !WeightsTableType -> !SparseDistributedOutput
 
     // Convolution 1 output copy
     %4 = VPU.Copy(%3) : !SparseDistributedOutput -> !SparseConvOutput
@@ -873,7 +873,7 @@ func.func @SparseConvolution(%input: !SparseConvInput,
             ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = -128 : i64, clamp_high = 127 : i64,
                 lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.0999755859375 : f64>,
             rawFilterShape = [128, 256, 3, 3], strides = [2, 2]}
-             -> !SparseConv2OutDist
+             : !SparseConcatOutputDist, !WeightsType, !WeightsTableType -> !SparseConv2OutDist
 
     %8 = VPU.Copy(%7) : !SparseConv2OutDist -> !SparseConv2OutDDR
 
@@ -1063,7 +1063,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 64, 1, 1], strides = [1, 1]}
-             -> !ConvOut0
+             : !ConvIn0, tensor<64x64x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut0
 
     %conv0OutDDR = VPU.Copy(%conv0Output) : !ConvOut0 -> !ConvInOut0_DDR
 
@@ -1073,7 +1073,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-             -> !ConvOut1
+             : !ConvIn1, tensor<32x32x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<32x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut1
 
     %conv1OutDDR = VPU.Copy(%conv1Output) : !ConvOut1 -> !ConvInOut1_DDR
 
@@ -1088,7 +1088,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 1, right = 1, top = 1, bottom = 1>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 96, 3, 3], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn23, tensor<64x96x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
     %slice1 = VPU.Slice %concatOut [0, 0, 8, 0] [1, 96, 12, 32] : tensor<1x96x20x32xf16, {mem_space = @DDR, order = #NHWC}> to !ConvIn23_DDR
 
@@ -1098,7 +1098,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
             pad = #VPU.Padding<left = 2, right = 2, top = 2, bottom = 2>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 96, 5, 5], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn23, tensor<64x96x5x5xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
     return %output0, %output1: !ConvOut23, !ConvOut23
 
@@ -1356,7 +1356,7 @@ func.func @ComplexConcatWithExplicitDistribution(
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 64, 1, 1], strides = [1, 1]}
-             -> !ConvOut0
+             : !ConvIn0, tensor<64x64x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut0
 
     %conv0OutDDR = VPU.Copy(%conv0Output) : !ConvOut0 -> !ConvInOut0_DDR
 
@@ -1366,7 +1366,7 @@ func.func @ComplexConcatWithExplicitDistribution(
             pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-             -> !ConvOut1
+             : !ConvIn1, tensor<32x32x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<32x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut1
 
     %conv1OutDDR = VPU.Copy(%conv1Output) : !ConvOut1 -> !ConvInOut1_DDR
 
@@ -1380,7 +1380,7 @@ func.func @ComplexConcatWithExplicitDistribution(
             pad = #VPU.Padding<left = 1, right = 1, top = 1, bottom = 1>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 96, 3, 3], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn2, tensor<64x96x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
     %interpInCMX = VPU.Copy(%input2) { out_mem_space = @CMX_NN } : !InterpIn_DDR -> !InterpIn
 
@@ -1413,7 +1413,7 @@ func.func @ComplexConcatWithExplicitDistribution(
             pad = #VPU.Padding<left = 1, right = 1, top = 1, bottom = 1>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
             rawFilterShape = [64, 80, 3, 3], strides = [1, 1]}
-             -> !ConvOut23
+             : !ConvIn3, tensor<64x80x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
 
 
     return %output0, %output1: !ConvOut23, !ConvOut23
@@ -1792,7 +1792,7 @@ func.func @InsertAvgPoolingWhenNCEOpHasExtraUser(%arg0: tensor<1x64x36x36xf16, {
                 lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
                 rawFilterShape = [64, 64, 1, 1],
                 strides = [1, 1]
-            } -> !Distributed
+            } : !Distributed, !Distributed2, !Distributed3 -> !Distributed
 
     %4 = VPU.Copy(%3) : !Distributed -> tensor<1x64x36x36xf16, {order = #NHWC}>
     // Input 2 of Concat
@@ -1960,4 +1960,132 @@ func.func @InsertAvgPoolingWhenNCEOpHasExtraUser(%arg0: tensor<1x64x36x36xf16, {
     // CHECK-SAME:                       -> tensor<1x128x36x36xf16, {order = #NHWC}>
 
     // CHECK:       return [[COPY_OUT]] : tensor<1x128x36x36xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!ConvIn0 = !VPU.DistributedTensor<
+    1x64x20x32xf16, #NHWC, @CMX_NN, {
+    mode = "OVERLAPPED",
+    num_tiles = [1, 1, 1, 2],
+    num_clusters = 2,
+    compute_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]],
+    memory_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]]
+}>
+
+!ConvIn1 = !VPU.DistributedTensor<
+    1x64x20x32xf16, #NHWC, @CMX_NN, {
+    mode = "OVERLAPPED",
+    num_tiles = [1, 1, 1, 2],
+    num_clusters = 2,
+    compute_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]],
+    memory_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]]
+}>
+
+!ConvOut0 = !VPU.DistributedTensor<
+    1x64x20x32xf16, #NHWC, @CMX_NN, {
+    mode = "OVERLAPPED",
+    num_tiles = [1, 1, 1, 2],
+    num_clusters = 2,
+    compute_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]],
+    memory_shapes = [[1, 64, 20, 18], [1, 64, 20, 18]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 14]]
+}>
+
+!ConvOut1 = !VPU.DistributedTensor<
+    1x64x20x32xf16, #NHWC, @CMX_NN, {
+    mode = "OVERLAPPED",
+    num_tiles = [1, 1, 1, 2],
+    num_clusters = 2,
+    compute_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]],
+    memory_shapes = [[1, 64, 20, 18], [1, 64, 20, 18]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 14]]
+}>
+
+!ConvIn23 = !VPU.DistributedTensor<
+    1x64x12x32xf16, #NHWC, @CMX_NN, {
+    mode = "OVERLAPPED",
+    num_tiles = [1, 1, 1, 2],
+    num_clusters = 2,
+    compute_shapes = [[1, 64, 12, 18], [1, 64, 12, 18]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 14]],
+    memory_shapes = [[1, 64, 12, 18], [1, 64, 12, 18]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 14]]
+}>
+
+!ConvOut23 = !VPU.DistributedTensor<
+    1x64x12x32xf16, #NHWC, @CMX_NN, {
+    mode = "OVERLAPPED",
+    num_tiles = [1, 1, 1, 2],
+    num_clusters = 2,
+    compute_shapes = [[1, 64, 12, 16], [1, 64, 12, 16]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]],
+    memory_shapes = [[1, 64, 12, 16], [1, 64, 12, 16]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]]
+}>
+
+!ConvInOut0_DDR = tensor<1x64x20x32xf16, {mem_space = @DDR, order = #NHWC}>
+!ConvInOut1_DDR = tensor<1x64x20x32xf16, {mem_space = @DDR, order = #NHWC}>
+!ConvIn23_DDR = tensor<1x64x12x32xf16, {mem_space = @DDR, order = #NHWC}>
+
+// CHECK-LABEL: @DisableCMXConcatWhenConcatAxisIsHigher
+func.func @DisableCMXConcatWhenConcatAxisIsHigher(
+        %input0: !ConvInOut0_DDR,
+        %input1: !ConvInOut1_DDR,
+        %weights0: tensor<64x64x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>,
+        %weights1: tensor<64x64x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>,
+        %weights2: tensor<64x64x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>,
+        %weightsTable0: tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>,
+        %weightsTable1: tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>)
+           -> !ConvOut23 {
+
+    %input0CMX = VPU.Copy(%input0) { out_mem_space = @CMX_NN } : !ConvInOut0_DDR
+     -> !ConvIn0
+
+    %conv0Output = VPU.NCE.Convolution(%input0CMX, %weights0, %weightsTable0) {
+            pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
+            ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
+            rawFilterShape = [64, 64, 1, 1], strides = [1, 1]}
+             : !ConvIn0, tensor<64x64x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut0
+
+    %conv0OutDDR = VPU.Copy(%conv0Output) : !ConvOut0 -> !ConvInOut0_DDR
+
+    %input1CMX = VPU.Copy(%input1) { out_mem_space = @CMX_NN } : !ConvInOut1_DDR -> !ConvIn1
+
+    %conv1Output = VPU.NCE.Convolution(%input1CMX, %weights1, %weightsTable1) {
+            pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>,
+            ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
+            rawFilterShape = [64, 64, 1, 1], strides = [1, 1]}
+             : !ConvIn1, tensor<64x64x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut1
+
+    %conv1OutDDR = VPU.Copy(%conv1Output) : !ConvOut1 -> !ConvInOut1_DDR
+
+    %concatOut = VPU.Concat(%conv0OutDDR, %conv1OutDDR) {static_offsets = [[0, 0, 0, 0], [0, 0, 20, 0]]} :
+        !ConvInOut0_DDR, !ConvInOut1_DDR -> tensor<1x64x40x32xf16, {mem_space = @DDR, order = #NHWC}>
+
+    %slice0 = VPU.Slice %concatOut [0, 0, 0, 0] [1, 64, 12, 32] : tensor<1x64x40x32xf16, {mem_space = @DDR, order = #NHWC}> to !ConvIn23_DDR
+
+    %input2CMX = VPU.Copy(%slice0) {out_mem_space = @CMX_NN} : !ConvIn23_DDR -> !ConvIn23
+
+    %output0 = VPU.NCE.Convolution(%input2CMX, %weights2, %weightsTable0) {
+            pad = #VPU.Padding<left = 1, right = 1, top = 1, bottom = 1>,
+            ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64>,
+            rawFilterShape = [64, 64, 3, 3], strides = [1, 1]}
+             : !ConvIn23, tensor<64x64x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !ConvOut23
+
+    return %output0 : !ConvOut23
+
+    // CHECK:               VPU.Concat
+    // CHECK-SAME{LITERAL}:   {static_offsets = [[0, 0, 0, 0], [0, 0, 20, 0]]}
+    // CHECK-SAME:              : tensor<1x64x20x32xf16, {mem_space = @DDR, order = #NHWC}>, tensor<1x64x20x32xf16, {mem_space = @DDR, order = #NHWC}>
+    // CHECK-SAME:              -> tensor<1x64x40x32xf16, {mem_space = @DDR, order = #NHWC}>
 }

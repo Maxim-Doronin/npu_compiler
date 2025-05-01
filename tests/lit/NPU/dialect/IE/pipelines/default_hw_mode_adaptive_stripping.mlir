@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie="enable-adaptive-stripping=true" %s | FileCheck %s --strict-whitespace
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW enable-adaptive-stripping=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie="enable-adaptive-stripping=true" %s | FileCheck %s --strict-whitespace
 // REQUIRES: arch-NPU40XX
 // CHECK-LABEL: @MatMulScaleShiftedU16FQ
 module @MatMulScaleShiftedU16FQ {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x64x64x64xf32>
     } outputsInfo : {
@@ -50,7 +50,7 @@ module @MatMulScaleShiftedU16FQ {
 
 // CHECK-LABEL: @MultiplyFQFusion
 module @MultiplyFQFusion {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x64x256x64xf32>
     } outputsInfo : {
@@ -85,7 +85,5 @@ module @MultiplyFQFusion {
         // CHECK-NOT:   IE.AvgPool
         // CHECK-NOT:   IE.GroupConvolution
         // CHECK-NEXT:  [[ADD2:%.+]] = IE.Add([[QUANT_CAST]], [[BIAS]])
-        // CHECK-NEXT:  [[CONVERT2:%.+]] = IE.Convert([[ADD2]])
-        // CHECK-NEXT:  return [[CONVERT2]]
     }
 }

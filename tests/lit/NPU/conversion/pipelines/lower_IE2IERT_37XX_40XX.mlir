@@ -18,7 +18,7 @@
 //
 
 module @Network {
-    IE.CNNNetwork entryPoint : @SingleLayer
+    net.NetworkInfo entryPoint : @SingleLayer
     inputsInfo : {
         DataInfo "input" : tensor<1x1000xf16>
     } outputsInfo : {
@@ -47,7 +47,7 @@ func.func @SingleLayer(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
 // -----
 
 module @Network {
-    IE.CNNNetwork entryPoint : @ConstantLayer
+    net.NetworkInfo entryPoint : @ConstantLayer
     inputsInfo : {
     } outputsInfo : {
         DataInfo "output" : tensor<1x2x2x2xf16>
@@ -67,7 +67,7 @@ func.func @ConstantLayer() -> tensor<1x2x2x2xf16> {
 // -----
 
 module @Network {
-    IE.CNNNetwork entryPoint : @Reshape
+    net.NetworkInfo entryPoint : @Reshape
     inputsInfo : {
         DataInfo "input" : tensor<1x512x1x1xf32>
     } outputsInfo : {
@@ -88,7 +88,7 @@ func.func @Reshape(%arg0 : tensor<1x512x1x1xf32>) -> tensor<1x512xf32> {
 // -----
 
 module @Network {
-    IE.CNNNetwork entryPoint : @ReshapeInGraph
+    net.NetworkInfo entryPoint : @ReshapeInGraph
     inputsInfo : {
         DataInfo "input" : tensor<1x512x1x1xf32>
     } outputsInfo : {

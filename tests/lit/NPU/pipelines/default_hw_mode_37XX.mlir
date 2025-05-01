@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022 - 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -16,7 +16,7 @@ module @Convolution {
     // CHECK-DAG:  {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
     // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @SHAVE_NN
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
@@ -82,7 +82,7 @@ module @ScaleShiftSubgraph {
     // CHECK-DAG:  {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
     // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @SHAVE_NN
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x256x20x20xf32>
     } outputsInfo : {
@@ -183,12 +183,12 @@ module @DynamicReshape {
     // CHECK-DAG:  {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
     // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @SHAVE_NN
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "Parameter_57" : tensor<1x3x10x16xf32>
     } outputsInfo : {
         DataInfo "Reshape_65" : tensor<1x1x2x240xf32>
     }
-    // CHECK:   IE.CNNNetwork
+    // CHECK:   net.NetworkInfo
     // CHECK-SAME:  inputsInfo
     // CHECK:       DataInfo "Parameter_57" : tensor<1x3x10x16xf32>
     // CHECK:       DataInfo "vpux_ie_shape_Parameter_57" : tensor<4xsi32>
@@ -202,11 +202,14 @@ module @DynamicReshape {
     // CHECK-SAME:      [[ARG1:%.+]]: memref<1x1x2x240xf32, @DDR>,
     // CHECK-SAME:      [[SHAPE0:%.+]]: memref<4xsi32, @DDR>
     // CHECK-SAME:      -> (memref<1x1x2x240xf32, @DDR>, memref<4xsi32, @DDR>)
-    func.func @main(%arg0: tensor<1x3x?x?xf32, {bounds = [1, 3, 10, 16], order = #NCHW}>) -> tensor<1x1x2x?xf32, {bounds = [1, 1, 2, 240], order = #NCHW}> {
-
+    func.func @main(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}> {    
+    
         %cst = const.Declare tensor<4xsi64> = dense<[1, 1, 2, -1]> : tensor<4xsi64>
-        %0 = IE.DynamicReshape(%arg0, %cst) {output_bounds = [1, 1, 2, 240], output_shape = [1, 1, 2, -9223372036854775808]} : tensor<1x3x?x?xf32, {bounds = [1, 3, 10, 16], order = #NCHW}>, tensor<4xsi64> -> tensor<1x1x2x?xf32, {bounds = [1, 1, 2, 240], order = #NCHW}>
-        return %0 : tensor<1x1x2x?xf32, {bounds = [1, 1, 2, 240], order = #NCHW}>
+        %0 = IE.DynamicReshape(%arg0, %cst) {output_bounds = [1, 1, 2, 240], output_shape = [1, 1, 2, -9223372036854775808]} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
+        return %0 : tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
+
+        // CHECK:       [[input_output_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <{{[0-9]+}}> -> memref<1x3x10x16xf16, [@CMX_NN, 0]>				
+        // CHECK:       [[input_output_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <{{[0-9]+}}> -> memref<1x1x2x240xf16, [@CMX_NN, 0]>
 
         // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier) {
         // CHECK:       [[convert:%.+]], [[convert_shape:%.+]] = VPUIP.SW.Kernel
@@ -225,9 +228,83 @@ module @DynamicReshape {
         // CHECK-SAME:          dynamicOutputShapesMap = array<i32: 0>
         // CHECK-SAME:          resultSegmentSizes = array<i32: 1, 1, 0>
         // CHECK-SAME:      @VPU.SW::@builtin_DynamicReshape
-        // CHECK-SAME:          inputs({{%[0-9]+}} as {{%arg[0-9]+}}: memref<1x3x10x16xf16, [@CMX_NN, 0]>, {{%[0-9]+}} as {{%arg[0-9]+}}: memref<4xsi32, [@CMX_NN, 0]>)
+        // CHECK-SAME:          inputs([[input_output_2]] as {{%arg[0-9]+}}: memref<1x1x2x240xf16, [@CMX_NN, 0]>, {{%[0-9]+}} as {{%arg[0-9]+}}: memref<4xsi32, [@CMX_NN, 0]>)
         // CHECK-SAME:          dynamicInputShapes({{%[0-9]+}} : memref<4xsi32, [@CMX_NN, 0]>)
-        // CHECK-SAME:          outputs({{%[0-9]+}} as {{%arg[0-9]+}}: memref<1x1x2x240xf16, [@CMX_NN, 0]>
+        // CHECK-SAME:          outputs([[input_output_2]] as {{%arg[0-9]+}}: memref<1x1x2x240xf16, [@CMX_NN, 0]>
+        // CHECK-SAME:          dynamicOutputShapes({{%.+}} : memref<4xsi32, [@CMX_NN, 0]>)
+   
+        // CHECK:       return {{%.+}}, {{%.+}} : memref<1x1x2x240xf32, @DDR>, memref<4xsi32, @DDR>
+    }
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK-LABEL: @DynamicReshape
+module @DynamicReshape {
+    // CHECK-DAG:  {{  }}VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration
+    // CHECK-DAG:  {{  }}module @VPU.SW {
+    // CHECK-DAG:  {{    }}func.func private @builtin_DynamicReshape
+    // CHECK-DAG:  {{    }}func.func private @builtin_Convert
+    // CHECK-DAG:  {{    }}func.func private @runtime
+    // CHECK-DAG:  {{  }}IE.ExecutorResource 2 of @DMA_NN
+    // CHECK-DAG:  {{  }}IE.TileResource {activity_factor = {{.+}} : f64} 2 of @NCE at 1.300000e+03 MHz
+    // CHECK-DAG:  {{    }}builtin.module @ReservedMemory {
+    // CHECK-DAG:  {{      }}module @SWKernelPrefetchingReservedMemory {
+    // CHECK-DAG:  {{        }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN offset {{[0-9]+}}
+    // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN_FragmentationAware
+    // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = {{.+}} : f64}
+    // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @DPU
+    // CHECK-DAG:  {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
+    // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @SHAVE_NN
+
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "Parameter_57" : tensor<3x10x16xf32>
+    } outputsInfo : {
+        DataInfo "Reshape_65" : tensor<1x1x2x240xf32>
+    }
+    // CHECK:   net.NetworkInfo
+    // CHECK-SAME:  inputsInfo
+    // CHECK:       DataInfo "Parameter_57" : tensor<3x10x16xf32>
+    // CHECK:       DataInfo "vpux_ie_shape_Parameter_57" : tensor<3xsi32>
+    // CHECK:       outputsInfo
+    // CHECK:       DataInfo "Reshape_65" : tensor<1x1x2x240xf32>
+    // CHECK:       DataInfo "vpux_ie_shape_Reshape_65" : tensor<4xsi32>
+
+    // CHECK:       func.func @main(
+    // CHECK-SAME:      [[ARG0:%.+]]: memref<3x10x16xf32, @DDR>,
+    // CHECK-SAME:      [[SHAPE0:%.+]]: memref<3xsi32, @DDR>,
+    // CHECK-SAME:      [[ARG1:%.+]]: memref<1x1x2x240xf32, @DDR>,
+    // CHECK-SAME:      [[SHAPE0:%.+]]: memref<4xsi32, @DDR>
+    // CHECK-SAME:      -> (memref<1x1x2x240xf32, @DDR>, memref<4xsi32, @DDR>)
+    func.func @main(%arg0: tensor<3x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 10, 16]> : tensor<3xsi64>, order = #CHW}>) -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}> {
+
+        %cst = const.Declare tensor<4xsi64> = dense<[1, 1, 2, -1]> : tensor<4xsi64>
+        %0 = IE.DynamicReshape(%arg0, %cst) {output_bounds = [1, 1, 2, 240], output_shape = [1, 1, 2, -9223372036854775808]} : tensor<3x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 10, 16]> : tensor<3xsi64>, order = #CHW}>, tensor<4xsi64> -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
+        return %0 : tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
+        
+        // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier) {
+        // CHECK:       [[convert:%.+]], [[convert_shape:%.+]] = VPUIP.SW.Kernel
+        // CHECK-SAME:          dynamicInputShapesMap = array<i32: 0>
+        // CHECK-SAME:          dynamicOutputShapesMap = array<i32: 0>
+        // CHECK-SAME:          resultSegmentSizes = array<i32: 1, 1, 0>
+        // CHECK-SAME:      @VPU.SW::@builtin_Convert
+        // CHECK-SAME:          inputs({{%.+}} as {{%.+}}: memref<3x10x16xf32, [@CMX_NN, 0]>)
+        // CHECK-SAME:          dynamicInputShapes({{%[0-9]+}} : memref<3xsi32, [@CMX_NN, 0]>)
+        // CHECK-SAME:          outputs({{%.+}} as {{%.+}}: memref<3x10x16xf16, [@CMX_NN, 0]>)
+        // CHECK-SAME:          dynamicOutputShapes({{%.+}} : memref<3xsi32, [@CMX_NN, 0]>)
+
+        // CHECK:       VPURT.Task waits([[barrier_1]] : !VPURT.Barrier) updates([[barrier_2:%.+]] : !VPURT.Barrier) {
+        // CHECK:       [[reshape:%.+]], [[reshape_shape:%.+]] = VPUIP.SW.Kernel
+        // CHECK-SAME:          dynamicInputShapesMap = array<i32: 0, -1>
+        // CHECK-SAME:          dynamicOutputShapesMap = array<i32: 0>
+        // CHECK-SAME:          resultSegmentSizes = array<i32: 1, 1, 0>
+        // CHECK-SAME:      @VPU.SW::@builtin_DynamicReshape
+        // CHECK-SAME:          inputs({{%[0-9]+}} as {{%arg[0-9]+}}: memref<3x10x16xf16, [@CMX_NN, 0]>, {{%[0-9]+}} as {{%arg[0-9]+}}: memref<4xsi32, [@CMX_NN, 0]>)
+        // CHECK-SAME:          dynamicInputShapes({{%[0-9]+}} : memref<3xsi32, [@CMX_NN, 0]>)
+        // CHECK-SAME:          outputs({{%[0-9]+}} as {{%arg[0-9]+}}: memref<1x1x2x240xf16, [@CMX_NN, 0]>)
         // CHECK-SAME:          dynamicOutputShapes({{%.+}} : memref<4xsi32, [@CMX_NN, 0]>)
 
         // CHECK:       VPURT.Task waits([[barrier_2:%.+]] : !VPURT.Barrier) updates([[barrier_3:%.+]] : !VPURT.Barrier) {
@@ -254,7 +331,7 @@ module @BatchedGroupConvWithBroadcast {
   // CHECK-DAG:  {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
   // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @SHAVE_NN
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_1" : tensor<4x1x2x2xf16>
     DataInfo "Parameter_2" : tensor<1x1x3x3xf16>
   } outputsInfo : {

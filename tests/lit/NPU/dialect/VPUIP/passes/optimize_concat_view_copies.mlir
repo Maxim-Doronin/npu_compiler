@@ -2387,14 +2387,12 @@ func.func @FuseConcatViewOpsWhen1stLevelConcatHasStrides(
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs(%arg1 : !VPUIP.DistributedBuffer<1x16x112x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED|MULTICASTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)
     // CHECK-SAME:     outputs([[SUBVIEW_1]] : memref<1x16x112x224xf16, {order = #NHWC, strides = [1605632, 1, 14336, 32]}, @DDR>) -> memref<1x16x112x224xf16, {order = #NHWC, strides = [1605632, 1, 14336, 32]}, @DDR>
-    // CHECK        }
 
     // CHECK:       [[SUBVIEW_2:%.+]] = VPUIP.SubView [[OUTPUT_BUFF]] [0, 16, 0, 0] [1, 16, 112, 224] [1, 1, 2, 1] :
     // CHECK-SAME:          memref<1x32x224x224xf16, #NHWC, @DDR> to memref<1x16x112x224xf16, {order = #NHWC, strides = [1605632, 1, 14336, 32]}, @DDR>
     // CHECK:    [[COPY_2:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs(%arg2 : !VPUIP.DistributedBuffer<1x16x112x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED|MULTICASTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)
     // CHECK-SAME:     outputs([[SUBVIEW_2]] : memref<1x16x112x224xf16, {order = #NHWC, strides = [1605632, 1, 14336, 32]}, @DDR>) -> memref<1x16x112x224xf16, {order = #NHWC, strides = [1605632, 1, 14336, 32]}, @DDR>
-    // CHECK        }
 
     // CHECK:       [[SUBVIEW_3:%.+]] = VPUIP.SubView [[OUTPUT_BUFF]] [0, 16, 1, 0] [1, 16, 112, 224] [1, 1, 2, 1] :
     // CHECK-SAME:          memref<1x32x224x224xf16, #NHWC, @DDR> to memref<1x16x112x224xf16, {order = #NHWC, strides = [1605632, 1, 14336, 32]}, @DDR>
@@ -5678,7 +5676,7 @@ func.func @SplitUnbalancedConcatWithoutReshapeConsumer(%arg0 : !Arg0T, %arg1 : !
     // CHECK:       [[SUBVIEW_LEFT0:%.+]] = VPUIP.SubView [[LEFT_PERMUTE_CAST]] [0, 0, 0, 0] [1, 96, 8, 1023]
     // CHECK-SAME:      : memref<1x96x32x1023xf16, #NHWC, @DDR> to memref<1x96x8x1023xf16, {order = #NHWC, strides = [3142656, 1, 98208, 96]}, @DDR>
     // CHECK:       [[SUBVIEW_LEFT_DST0:%.+]] = VPUIP.SubView [[BRANCH_0_CONCAT_BUFF]] [0, 0, 0, 0] [1, 96, 8, 1023]
-    // CHECK-SAME       : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
+    // CHECK-SAME:      : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
     // CHECK-SAME:      to !VPUIP.DistributedBuffer<1x96x8x1023xf16, {order = #NHWC, strides = [786432, 1, 98304, 96]}, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
@@ -5694,7 +5692,7 @@ func.func @SplitUnbalancedConcatWithoutReshapeConsumer(%arg0 : !Arg0T, %arg1 : !
     // CHECK:       [[SUBVIEW_RIGHT0:%.+]] = VPUIP.SubView [[RIGHT_PERMUTE_CAST]] [0, 0, 0, 0] [1, 96, 8, 1]
     // CHECK-SAME:      : memref<1x96x32x1xf16, #NHWC, @DDR> to memref<1x96x8x1xf16, {order = #NHWC, strides = [3072, 1, 96, 96]}, @DDR>
     // CHECK:       [[SUBVIEW_RIGHT_DST0:%.+]] = VPUIP.SubView [[BRANCH_0_CONCAT_BUFF]] [0, 0, 0, 1023] [1, 96, 8, 1]
-    // CHECK-SAME       : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
+    // CHECK-SAME:      : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
     // CHECK-SAME:      to !VPUIP.DistributedBuffer<1x96x8x1xf16, {order = #NHWC, strides = [786432, 1, 98304, 96]}, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
@@ -5728,7 +5726,7 @@ func.func @SplitUnbalancedConcatWithoutReshapeConsumer(%arg0 : !Arg0T, %arg1 : !
     // CHECK:       [[SUBVIEW_LEFT1:%.+]] = VPUIP.SubView [[LEFT_PERMUTE_CAST]] [0, 0, 8, 0] [1, 96, 8, 1023]
     // CHECK-SAME:      : memref<1x96x32x1023xf16, #NHWC, @DDR> to memref<1x96x8x1023xf16, {order = #NHWC, strides = [3142656, 1, 98208, 96]}, @DDR>
     // CHECK:       [[SUBVIEW_LEFT_DST1:%.+]] = VPUIP.SubView [[BRANCH_1_CONCAT_BUFF]] [0, 0, 0, 0] [1, 96, 8, 1023]
-    // CHECK-SAME       : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
+    // CHECK-SAME:      : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
     // CHECK-SAME:      to !VPUIP.DistributedBuffer<1x96x8x1023xf16, {order = #NHWC, strides = [786432, 1, 98304, 96]}, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
@@ -5744,7 +5742,7 @@ func.func @SplitUnbalancedConcatWithoutReshapeConsumer(%arg0 : !Arg0T, %arg1 : !
     // CHECK:       [[SUBVIEW_RIGHT1:%.+]] = VPUIP.SubView [[RIGHT_PERMUTE_CAST]] [0, 0, 8, 0] [1, 96, 8, 1]
     // CHECK-SAME:      : memref<1x96x32x1xf16, #NHWC, @DDR> to memref<1x96x8x1xf16, {order = #NHWC, strides = [3072, 1, 96, 96]}, @DDR>
     // CHECK:       [[SUBVIEW_RIGHT_DST1:%.+]] = VPUIP.SubView [[BRANCH_1_CONCAT_BUFF]] [0, 0, 0, 1023] [1, 96, 8, 1]
-    // CHECK-SAME       : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
+    // CHECK-SAME:      : !VPUIP.DistributedBuffer<1x96x8x1024xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
     // CHECK-SAME:      to !VPUIP.DistributedBuffer<1x96x8x1xf16, {order = #NHWC, strides = [786432, 1, 98304, 96]}, @CMX_NN,
     // CHECK-SAME:          mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
@@ -6561,7 +6559,7 @@ func.func @OptimizeDDR2DDRCopyInputsOfConcatViewWithSegmentedCopyUserImplicitSha
 
     // CHECK: [[SHAPECAST0:%.+]] = VPUIP.ShapeCast {shape = [1, 2, 80, 40]} inputs([[CONCAT]]
     // CHECK:  -> !VPUIP.DistributedBuffer<1x2x80x40xf16, #NCHW, @CMX_NN
-    // CHECK-SAMEL         mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
+    // CHECK-SAME:         mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
 
     // CHECK: [[PERMUTECAST:%.+]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NCHW}
     // CHECK:  inputs([[SHAPECAST0]] : !VPUIP.DistributedBuffer<1x2x80x40xf16, #NCHW, @CMX_NN

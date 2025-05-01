@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 // CHECK-LABEL: @NotConvertAddToFP16
 module @NotConvertAddToFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x1x4096xf32>
@@ -44,7 +44,7 @@ func.func @main(%input: tensor<1x1x4096xf32>) -> tensor<1x1x1xf32> {
 // CHECK-LABEL: @ConvertAddToFP16
 module @ConvertAddToFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x4x16x16xf32>

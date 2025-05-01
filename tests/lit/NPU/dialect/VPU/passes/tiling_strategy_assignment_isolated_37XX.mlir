@@ -303,7 +303,7 @@ func.func @NoTilingClusterNCEConv(%arg0: tensor<1x32x100x100xf16, {mem_space = @
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [128, 32, 3, 3],
                 strides = [1, 1]
-            } -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
+            } : tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
       VPU.Yield %1
     }
 
@@ -632,7 +632,7 @@ func.func @SplitNCEConvOverOH(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) ->
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [256, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x256x64x64xf16, {order = #NHWC}>
+    } : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32, {order = #NCHW}> -> tensor<1x256x64x64xf16, {order = #NHWC}>
 
     return %0 : tensor<1x256x64x64xf16, {order = #NHWC}>
 
@@ -670,7 +670,7 @@ func.func @SplitQuantNCEConvOverOC(%arg0: tensor<1x32x64x64x!qElemType, {order =
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [512, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x64x64x!qElemType, {order = #NHWC}>, tensor<512x32x3x3x!qElemType2, {order = #NHWC}>, tensor<512x1x1x4xsi32, {order = #NCHW}> -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
@@ -790,7 +790,7 @@ func.func @SigmoidSplitOverW(%arg0: tensor<1x8x80x1280xf16>) -> tensor<1x8x80x12
 
     // CHECK:       [[OUTPUT:%.+]] = VPU.Sigmoid([[INPUT]]) {
     // CHECK-SAME:          tilingStrategy = [1, 1, 1, 2]}
-    // CHECK-SAME       : tensor<1x8x80x1280xf16> -> tensor<1x8x80x1280xf16>
+    // CHECK-SAME:      : tensor<1x8x80x1280xf16> -> tensor<1x8x80x1280xf16>
 
     // CHECK:       return [[OUTPUT]] : tensor<1x8x80x1280xf16>
 }
@@ -961,7 +961,7 @@ func.func @SplitSparseNCEConvOverOH(%arg0: tensor<1x32x80x80xf16, {order = #NHWC
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [160, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x160x80x80xf16, {order = #NHWC}>
+    } : tensor<1x32x80x80xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<160x32x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<160x1x1x384xi1>, is_weights>, tensor<160x1x1x4xsi32, {order = #NCHW}> -> tensor<1x160x80x80xf16, {order = #NHWC}>
 
     return %0 : tensor<1x160x80x80xf16, {order = #NHWC}>
 
@@ -1010,7 +1010,7 @@ func.func @SplitSparseQuantNCEConvOverOH(%arg0: tensor<1x32x80x80x!qElemType, {o
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [320, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x80x80x!qElemType, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<320x32x3x3x!qElemType2, {order = #NHWC}>, sparsity_map=tensor<320x1x1x384xi1>, is_weights>, tensor<320x1x1x4xsi32, {order = #NCHW}> -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
@@ -1605,7 +1605,7 @@ func.func @AccumulateSplitOverH(%arg0: tensor<1x4096x1024x1xf16, {order = #NHWC}
     // CHECK: [[RHS_SCALE:%.*]] = const.Declare tensor<1x4096x1x1xf16, {order = #NHWC}> = dense<2.000000e+00> : tensor<1x4096x1x1xf16>, [#const.Reorder<#NHWC>]
     // CHECK: [[ACCUMULATE:%.+]] = VPU.Accumulate([[INPUT1]], [[INPUT2]], [[LHS_SCALE]], [[RHS_SCALE]]) {
     // CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
-    // CHECK-SAME:    tilingStrategy = [1, 11, 1, 1]
+    // CHECK-SAME:    tilingStrategy = [1, 12, 1, 1]
     // CHECK-SAME:    } : tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}> -> tensor<1x4096x1024x1xf16, {order = #NHWC}>
     // CHECK: return [[ACCUMULATE]] : tensor<1x4096x1024x1xf16, {order = #NHWC}>
 
@@ -1686,4 +1686,105 @@ func.func @SplitGridSample(%arg0: tensor<1x4x960x544xf16>, %arg1: tensor<1x960x5
     // CHECK-SAME:     : tensor<1x4x960x544xf16>, tensor<1x960x544x2xf16> -> tensor<1x4x960x544xf16>
 
     // CHECK:       return [[GRID_SAMPLE]] : tensor<1x4x960x544xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDSplitWithoutOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x16x32x56x16xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x16x14580x2xsi32>
+func.func @GatherNDSplitWithoutOriginalShape(%arg0: tensor<1x16x32x56x16xf16>, %arg1: tensor<1x16x14580x2xsi32>) -> tensor<1x16x14580x16xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 2 : i64
+                    } : tensor<1x16x32x56x16xf16>, tensor<1x16x14580x2xsi32> -> tensor<1x16x14580x16xf16>
+
+    return %0 : tensor<1x16x14580x16xf16>
+
+    // CHECK:       [[GATHER:%.+]] = VPU.GatherND([[INPUT_0]], [[INPUT_1]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64,
+    // CHECK-SAME:               tilingStrategy = [1, 6, 1, 1]}
+    // CHECK-SAME:           : tensor<1x16x32x56x16xf16>, tensor<1x16x14580x2xsi32> -> tensor<1x16x14580x16xf16>
+
+    // CHECK: return [[GATHER]] : tensor<1x16x14580x16xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherND4DSplitWithOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x16x1792x16xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x16x14580x2xsi32>
+func.func @GatherND4DSplitWithOriginalShape(%arg0: tensor<1x16x1792x16xf16>, %arg1: tensor<1x16x14580x2xsi32>) -> tensor<1x16x14580x16xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 2 : i64, original_shape = [1, 16, 32, 56, 16]
+                    } : tensor<1x16x1792x16xf16>, tensor<1x16x14580x2xsi32> -> tensor<1x16x14580x16xf16>
+
+    return %0 : tensor<1x16x14580x16xf16>
+
+    // CHECK:       [[GATHER:%.+]] = VPU.GatherND([[INPUT_0]], [[INPUT_1]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64,
+    // CHECK-SAME:               original_shape = [1, 16, 32, 56, 16],
+    // CHECK-SAME:               tilingStrategy = [1, 6, 1, 1]}
+    // CHECK-SAME:           : tensor<1x16x1792x16xf16>, tensor<1x16x14580x2xsi32> -> tensor<1x16x14580x16xf16>
+
+    // CHECK: return [[GATHER]] : tensor<1x16x14580x16xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDSplitAtIndicesWithoutOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x9x16x8xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x104580x2xsi32>
+func.func @GatherNDSplitAtIndicesWithoutOriginalShape(%arg0: tensor<1x9x16x8xf16>, %arg1: tensor<1x104580x2xsi32>) -> tensor<1x104580x8xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 1 : i64
+                    } : tensor<1x9x16x8xf16>, tensor<1x104580x2xsi32> -> tensor<1x104580x8xf16>
+
+    return %0 : tensor<1x104580x8xf16>
+
+    // CHECK:       [[GATHER:%.+]] = VPU.GatherND([[INPUT_0]], [[INPUT_1]]) {
+    // CHECK-SAME:               batch_dims = 1 : i64,
+    // CHECK-SAME:               tilingStrategy = [1, 2, 1]}
+    // CHECK-SAME:           : tensor<1x9x16x8xf16>, tensor<1x104580x2xsi32> -> tensor<1x104580x8xf16>
+
+    // CHECK: return [[GATHER]] : tensor<1x104580x8xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDSplitAtIndicesWithOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x1x144x8xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x1x104580x2xsi32>
+func.func @GatherNDSplitAtIndicesWithOriginalShape(%arg0: tensor<1x1x144x8xf16>, %arg1: tensor<1x1x104580x2xsi32>) -> tensor<1x1x104580x8xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 2 : i64, original_shape = [1, 1, 9, 16, 8]
+                    } : tensor<1x1x144x8xf16>, tensor<1x1x104580x2xsi32> -> tensor<1x1x104580x8xf16>
+
+    return %0 : tensor<1x1x104580x8xf16>
+
+    // CHECK:       [[GATHER:%.+]] = VPU.GatherND([[INPUT_0]], [[INPUT_1]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64,
+    // CHECK-SAME:               tilingStrategy = [1, 1, 2, 1]}
+    // CHECK-SAME:           : tensor<1x1x144x8xf16>, tensor<1x1x104580x2xsi32> -> tensor<1x1x104580x8xf16>
+
+    // CHECK: return [[GATHER]] : tensor<1x1x104580x8xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ClampTilingNumForAlignment
+!qElemType = !quant.uniform<i4:f32, 1.000000e+00>
+module @ClampTilingNumForAlignment {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input0" tensorNames = ["input0"] : tensor<1x32x128x11008xsi4>
+    DataInfo "input1" tensorNames = ["input1"] : tensor<1x32x1x11008xf32>
+  } outputsInfo : {
+    DataInfo "output" tensorNames = ["output"] : tensor<1x32x128x11008xf16>
+  }
+  func.func @main( %arg16: tensor<1x32x128x11008xsi4>, %arg17: tensor<1x32x1x11008xf32>) -> (tensor<1x32x128x11008xf16>) {
+    %552 = VPU.QuantizeCast(%arg16) {dstElemType = !qElemType} : tensor<1x32x128x11008xsi4> -> tensor<1x32x128x11008x!qElemType>
+    %554 = VPU.Convert(%arg17) {dstElemType = f16} : tensor<1x32x1x11008xf32> -> tensor<1x32x1x11008xf16>
+    %555 = VPU.DynamicDequantize(%552, %554) {dstElemType = f16} : tensor<1x32x128x11008x!qElemType>, tensor<1x32x1x11008xf16> -> tensor<1x32x128x11008xf16>
+    return %555 : tensor<1x32x128x11008xf16>
+    // CHECK:   func.func @main([[ARG0:%.+]]: tensor<1x32x128x11008xsi4>, [[ARG1:%.+]]: tensor<1x32x1x11008xf32>) -> tensor<1x32x128x11008xf16> {
+        // CHECK:       [[QUANTIZECAST0:%.+]] = VPU.QuantizeCast([[ARG0]]) {dstElemType = !qElemType} : tensor<1x32x128x11008xsi4> -> tensor<1x32x128x11008x!qElemType>
+        // CHECK:       [[CONVERT0:%.+]] = VPU.Convert([[ARG1]]) {dstElemType = f16, tilingStrategy = [1, 1, 1, 2]} : tensor<1x32x1x11008xf32> -> tensor<1x32x1x11008xf16>
+        // CHECK:       [[DYNAMICDEQUANTIZE0:%.+]] = VPU.DynamicDequantize([[QUANTIZECAST0]], [[CONVERT0]]) {dstElemType = f16, tilingStrategy = [1, 2, 64, 1]} : tensor<1x32x128x11008x!qElemType>, tensor<1x32x1x11008xf16> -> tensor<1x32x128x11008xf16>
+        // CHECK:       return [[DYNAMICDEQUANTIZE0]] : tensor<1x32x128x11008xf16>
+  }
 }

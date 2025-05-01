@@ -24,11 +24,11 @@ func.func @ConvertBilinearToStridedConcatAndConv_V1(%arg0: tensor<1x20x96x176xf1
     // CHECK:       [[SLICE0:%.+]] = IE.Slice [[CONCAT1]] [0, 0, 0, 0] [1, 20, 384, 1] : tensor<1x20x384x704xf16> to tensor<1x20x384x1xf16>
     // CHECK:       [[SLICE1:%.+]] = IE.Slice [[CONCAT1]] [0, 0, 0, 703] [1, 20, 384, 1] : tensor<1x20x384x704xf16> to tensor<1x20x384x1xf16>
     // CHECK:       [[CONCAT2:%.+]] = IE.Concat([[SLICE0]], [[CONCAT1]], [[SLICE1]])
-    // CHECK{LITERAL}   {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 0, 705]]} : tensor<1x20x384x1xf16>, tensor<1x20x384x704xf16>, tensor<1x20x384x1xf16> -> tensor<1x20x384x706xf16>
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 0, 705]]} : tensor<1x20x384x1xf16>, tensor<1x20x384x704xf16>, tensor<1x20x384x1xf16> -> tensor<1x20x384x706xf16>
     // CHECK:       [[SLICE2:%.+]] = IE.Slice [[CONCAT2]] [0, 0, 0, 0] [1, 20, 1, 706] : tensor<1x20x384x706xf16> to tensor<1x20x1x706xf16>
     // CHECK:       [[SLICE3:%.+]] = IE.Slice [[CONCAT2]] [0, 0, 383, 0] [1, 20, 1, 706] : tensor<1x20x384x706xf16> to tensor<1x20x1x706xf16>
     // CHECK:       [[CONCAT3:%.+]] = IE.Concat([[SLICE2]], [[CONCAT2]], [[SLICE3]])
-    // CHECK{LITERAL}   {static_offsets = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 385, 0]]} : tensor<1x20x1x706xf16>, tensor<1x20x384x706xf16>, tensor<1x20x1x706xf16> -> tensor<1x20x386x706xf16>
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 385, 0]]} : tensor<1x20x1x706xf16>, tensor<1x20x384x706xf16>, tensor<1x20x1x706xf16> -> tensor<1x20x386x706xf16>
     // CHECK:       [[GROUPCONV:%.+]] = IE.GroupConvolution([[CONCAT3]], {{[^:]+}}) {dilations = [1, 1], groups = 20 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x20x386x706xf16>, tensor<20x1x4x4xf16> -> tensor<1x20x192x352xf16>
 
     // CHECK:       return [[GROUPCONV]] : tensor<1x20x192x352xf16>
@@ -51,10 +51,10 @@ func.func @ConvertBilinearToStridedConcatAndConv_V2(%arg0: tensor<1x32x96x176xf1
 
     // CHECK:       [[SLICE0:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 175] [1, 32, 96, 1] : tensor<1x32x96x176xf16> to tensor<1x32x96x1xf16>
     // CHECK:       [[CONCAT0:%.+]] = IE.Concat({{[^:]+}}, [[SLICE0]])
-    // CHECK{LITERAL}   {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 176]]} : tensor<1x32x96x176xf16>, tensor<1x32x96x1xf16> -> tensor<1x32x96x177xf16>
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 176]]} : tensor<1x32x96x176xf16>, tensor<1x32x96x1xf16> -> tensor<1x32x96x177xf16>
     // CHECK:       [[SLICE1:%.+]] = IE.Slice [[CONCAT0]] [0, 0, 95, 0] [1, 32, 1, 177] : tensor<1x32x96x177xf16> to tensor<1x32x1x177xf16>
     // CHECK:       [[CONCAT1:%.+]] = IE.Concat([[CONCAT0]], [[SLICE1]])
-    // CHECK{LITERAL}   {static_offsets = [[0, 0, 0, 0], [0, 0, 96, 0]]} : tensor<1x32x96x177xf16>, tensor<1x32x1x177xf16> -> tensor<1x32x97x177xf16>
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 96, 0]]} : tensor<1x32x96x177xf16>, tensor<1x32x1x177xf16> -> tensor<1x32x97x177xf16>
     // CHECK:       [[SLICE2:%.+]] = IE.Slice [[CONCAT1]] [0, 0, 0, 0] [1, 32, 97, 176] : tensor<1x32x97x177xf16> to tensor<1x32x97x176xf16>
     // CHECK:       [[MAXPOOL:%.+]] = IE.MaxPool({{[^:]+}}) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x32x96x176xf16> -> tensor<1x32x96x176xf16>
     // CHECK:       [[GROUPCONV0:%.+]] = IE.GroupConvolution([[CONCAT0]], {{[^:]+}}) {dilations = [1, 1], groups = 32 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x96x177xf16>, tensor<32x1x1x2xf16> -> tensor<1x32x96x176xf16>
@@ -101,10 +101,10 @@ func.func @ConvertBilinearWithFQToStridedConcatAndConv(%arg0: tensor<1x16x96x176
     // CHECK-SAME:      tensor<1x16x96x176xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x16x96x176xf16>
     // CHECK:       [[SLICE0:%.+]] = IE.Slice [[FQ0]] [0, 0, 0, 175] [1, 16, 96, 1] : tensor<1x16x96x176xf16> to tensor<1x16x96x1xf16>
     // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[FQ0]], [[SLICE0]])
-    // CHECK{LITERAL}   {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 176]]} : tensor<1x16x96x176xf16>, tensor<1x16x96x1xf16> -> tensor<1x16x96x177xf16>
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 176]]} : tensor<1x16x96x176xf16>, tensor<1x16x96x1xf16> -> tensor<1x16x96x177xf16>
     // CHECK:       [[SLICE1:%.+]] = IE.Slice [[CONCAT0]] [0, 0, 95, 0] [1, 16, 1, 177] : tensor<1x16x96x177xf16> to tensor<1x16x1x177xf16>
     // CHECK:       [[CONCAT1:%.+]] = IE.Concat([[CONCAT0]], [[SLICE1]])
-    // CHECK{LITERAL}   {static_offsets = [[0, 0, 0, 0], [0, 0, 96, 0]]} : tensor<1x16x96x177xf16>, tensor<1x16x1x177xf16> -> tensor<1x16x97x177xf16>
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 96, 0]]} : tensor<1x16x96x177xf16>, tensor<1x16x1x177xf16> -> tensor<1x16x97x177xf16>
     // CHECK:       [[SLICE2:%.+]] = IE.Slice [[CONCAT1]] [0, 0, 0, 0] [1, 16, 97, 176] : tensor<1x16x97x177xf16> to tensor<1x16x97x176xf16>
     // CHECK:       [[FQ1:%.+]] = IE.FakeQuantize({{[^:]+}}, {{[^:]+}}, {{[^:]+}}, {{[^:]+}}, {{[^:]+}}) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} :
     // CHECK-SAME:      tensor<16x1x1x1xf16>, tensor<f16>, tensor<f16>, tensor<f16>, tensor<f16> -> tensor<16x1x1x1xf16>

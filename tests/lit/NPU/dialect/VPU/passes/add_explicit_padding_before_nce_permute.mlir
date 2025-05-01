@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -35,7 +35,7 @@ func.func @InsertExplicitPadding(%arg0:  tensor<1x166x1x16xf16>) -> tensor<1x160
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [160, 176, 1, 3], strides = [1, 1]}
-        -> tensor<1x160x1x1xf16, {order = #NHWC}>
+        : tensor<1x176x1x3xf16, {order = #NHWC}>, tensor<160x176x1x3xf16, {order = #NHWC}>, tensor<160x1x1x4xsi32> -> tensor<1x160x1x1xf16, {order = #NHWC}>
 
 
     return %conv : tensor<1x160x1x1xf16, {order = #NHWC}>
@@ -111,7 +111,7 @@ func.func @NCEPermuteDepthConvWeightsSparseConv(%arg0: tensor<1x3x257x257xf16>) 
     %conv = VPU.NCE.Convolution(%depth_conv, %weights_sparse_group, %conv_weights_table)
         {ppe = #VPU.PPEStub<>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [16, 16, 3, 3], strides = [2, 2]}
-        -> tensor<1x16x129x129xf16, {order = #NHWC}>
+        : tensor<1x16x257x257xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights, #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<27> : tensor<16xi64>, alignment = 16 : i64>>, tensor<16x1x1x4xsi32> -> tensor<1x16x129x129xf16, {order = #NHWC}>
 
     return %conv : tensor<1x16x129x129xf16, {order = #NHWC}>
 

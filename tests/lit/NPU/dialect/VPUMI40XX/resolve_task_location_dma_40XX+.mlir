@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -29,12 +29,12 @@ func.func @multiDMA() {
 }
 
 // CHECK: func.func @multiDMA()
-//CHECK-DAG: [[TB000:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:0>
-//CHECK-DAG: [[TB001:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:1>
-//CHECK-DAG: [[TB010:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:0>
-//CHECK-DAG: [[TB100:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<1:0:0>
-//CHECK-DAG: [[TB101:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<1:0:1>
-//CHECK-DAG: [[TB110:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<1:1:0>
+//CHECK-DAG: [[TB000:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:0>
+//CHECK-DAG: [[TB001:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:1>
+//CHECK-DAG: [[TB010:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:0>
+//CHECK-DAG: [[TB100:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<1:0:0>
+//CHECK-DAG: [[TB101:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<1:0:1>
+//CHECK-DAG: [[TB110:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<1:1:0>
 
 //CHECK-DAG: VPURegMapped.TaskBufferLayout
 
@@ -100,40 +100,40 @@ func.func @manyDDRDMATasks() {
 
 //CHECK: func.func @manyDDRDMATasks
 
-//CHECK: [[TB0:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:0>
-//CHECK: [[TB1:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:1>
-//CHECK: [[TB2:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:2>
-//CHECK: [[TB3:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:3>
-//CHECK: [[TB4:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:4>
-//CHECK: [[TB5:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:5>
-//CHECK: [[TB6:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:6>
-//CHECK: [[TB7:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:7>
-//CHECK: [[TB8:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:8>
-//CHECK: [[TB9:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:9>
-//CHECK: [[TB10:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:10>
-//CHECK: [[TB11:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:11>
-//CHECK: [[TB12:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:12>
-//CHECK: [[TB13:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:13>
-//CHECK: [[TB14:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:14>
-//CHECK: [[TB15:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:15>
-//CHECK: [[TB16:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:16>
-//CHECK: [[TB17:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:17>
-//CHECK: [[TB18:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:18>
-//CHECK: [[TB19:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:19>
-//CHECK: [[TB20:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:20>
-//CHECK: [[TB21:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:21>
-//CHECK: [[TB22:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:22>
-//CHECK: [[TB23:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:23>
-//CHECK: [[TB24:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:24>
-//CHECK: [[TB25:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:25>
-//CHECK: [[TB26:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:26>
-//CHECK: [[TB27:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:27>
-//CHECK: [[TB28:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:28>
-//CHECK: [[TB29:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:29>
-//CHECK: [[TB30:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:30>
-//CHECK: [[TB31:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:31>
-//CHECK: [[TB32:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:32>
-//CHECK: [[TB33:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:33>
+//CHECK: [[TB0:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:0>
+//CHECK: [[TB1:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:1>
+//CHECK: [[TB2:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:2>
+//CHECK: [[TB3:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:3>
+//CHECK: [[TB4:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:4>
+//CHECK: [[TB5:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:5>
+//CHECK: [[TB6:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:6>
+//CHECK: [[TB7:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:7>
+//CHECK: [[TB8:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:8>
+//CHECK: [[TB9:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:9>
+//CHECK: [[TB10:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:10>
+//CHECK: [[TB11:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:11>
+//CHECK: [[TB12:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:12>
+//CHECK: [[TB13:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:13>
+//CHECK: [[TB14:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:14>
+//CHECK: [[TB15:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:15>
+//CHECK: [[TB16:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:16>
+//CHECK: [[TB17:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:17>
+//CHECK: [[TB18:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:18>
+//CHECK: [[TB19:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:19>
+//CHECK: [[TB20:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:20>
+//CHECK: [[TB21:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:21>
+//CHECK: [[TB22:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:22>
+//CHECK: [[TB23:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:23>
+//CHECK: [[TB24:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:24>
+//CHECK: [[TB25:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:25>
+//CHECK: [[TB26:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:26>
+//CHECK: [[TB27:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:27>
+//CHECK: [[TB28:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:28>
+//CHECK: [[TB29:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:29>
+//CHECK: [[TB30:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:30>
+//CHECK: [[TB31:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:31>
+//CHECK: [[TB32:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:32>
+//CHECK: [[TB33:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:0:33>
 
 //CHECK-DAG: VPURegMapped.TaskBufferLayout
 
@@ -287,40 +287,40 @@ func.func @manyCMXDDRTasks() {
 
 //CHECK: func.func @manyCMXDDRTasks
 
-//CHECK: [[TB0:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:0>
-//CHECK: [[TB1:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:1>
-//CHECK: [[TB2:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:2>
-//CHECK: [[TB3:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:3>
-//CHECK: [[TB4:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:4>
-//CHECK: [[TB5:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:5>
-//CHECK: [[TB6:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:6>
-//CHECK: [[TB7:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:7>
-//CHECK: [[TB8:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:8>
-//CHECK: [[TB9:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:9>
-//CHECK: [[TB10:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:10>
-//CHECK: [[TB11:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:11>
-//CHECK: [[TB12:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:12>
-//CHECK: [[TB13:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:13>
-//CHECK: [[TB14:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:14>
-//CHECK: [[TB15:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:15>
-//CHECK: [[TB16:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:16>
-//CHECK: [[TB17:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:17>
-//CHECK: [[TB18:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:18>
-//CHECK: [[TB19:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:19>
-//CHECK: [[TB20:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:20>
-//CHECK: [[TB21:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:21>
-//CHECK: [[TB22:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:22>
-//CHECK: [[TB23:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:23>
-//CHECK: [[TB24:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:24>
-//CHECK: [[TB25:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:25>
-//CHECK: [[TB26:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:26>
-//CHECK: [[TB27:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:27>
-//CHECK: [[TB28:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:28>
-//CHECK: [[TB29:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:29>
-//CHECK: [[TB30:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:30>
-//CHECK: [[TB31:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:31>
-//CHECK: [[TB32:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:32>
-//CHECK: [[TB33:%.*]] = VPURegMapped.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:33>
+//CHECK: [[TB0:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:0>
+//CHECK: [[TB1:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:1>
+//CHECK: [[TB2:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:2>
+//CHECK: [[TB3:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:3>
+//CHECK: [[TB4:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:4>
+//CHECK: [[TB5:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:5>
+//CHECK: [[TB6:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:6>
+//CHECK: [[TB7:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:7>
+//CHECK: [[TB8:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:8>
+//CHECK: [[TB9:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:9>
+//CHECK: [[TB10:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:10>
+//CHECK: [[TB11:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:11>
+//CHECK: [[TB12:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:12>
+//CHECK: [[TB13:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:13>
+//CHECK: [[TB14:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:14>
+//CHECK: [[TB15:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:15>
+//CHECK: [[TB16:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:16>
+//CHECK: [[TB17:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:17>
+//CHECK: [[TB18:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:18>
+//CHECK: [[TB19:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:19>
+//CHECK: [[TB20:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:20>
+//CHECK: [[TB21:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:21>
+//CHECK: [[TB22:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:22>
+//CHECK: [[TB23:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:23>
+//CHECK: [[TB24:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:24>
+//CHECK: [[TB25:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:25>
+//CHECK: [[TB26:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:26>
+//CHECK: [[TB27:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:27>
+//CHECK: [[TB28:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:28>
+//CHECK: [[TB29:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:29>
+//CHECK: [[TB30:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:30>
+//CHECK: [[TB31:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:31>
+//CHECK: [[TB32:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:32>
+//CHECK: [[TB33:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <DMA> -> !VPURegMapped.Index<0:1:33>
 
 //CHECK-DAG: VPURegMapped.TaskBufferLayout
 

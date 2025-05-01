@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @read_after_write_act_dma_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @read_after_write_act_dma_f16_f16 inputsInfo : {
     DataInfo "input" : tensor<1x10x2x3xf16>
   } outputsInfo : {
     DataInfo "output" : tensor<1x10x2x3xf16>
@@ -24,11 +24,11 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
       VPUASM.DeclareKernelEntry @DeclareKernelEntry3 : "activation_sigmoid"
       VPUASM.DeclareKernelEntry @DeclareKernelEntry4 : "activation_sigmoid"
       VPUASM.DeclareKernelEntry @DeclareKernelEntry5 : "activation_sigmoid"
-      ELF.CreateLogicalSection @program.DMA.cmx.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") {
+      ELF.CreateLogicalSection @program.DMA.cmx.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         //CHECK:  ELF.CreateLogicalSection @program.DMA.cmx.0.0 aligned(1)
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DMA>
       }
-      ELF.CreateLogicalSection @program.DMA.cmx.0.1 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") {
+      ELF.CreateLogicalSection @program.DMA.cmx.0.1 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         //CHECK:  ELF.CreateLogicalSection @program.DMA.cmx.0.1 aligned(1)
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_1_0 idx(!VPURegMapped.Index<0:1:0>) <DMA>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_1_1 idx(!VPURegMapped.Index<0:1:1>) <DMA>
@@ -38,7 +38,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_1_5 idx(!VPURegMapped.Index<0:1:5>) <DMA>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_1_6 idx(!VPURegMapped.Index<0:1:6>) <DMA>
       }
-      ELF.CreateLogicalSection @program.ActKernelRange.cmx.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") {
+      ELF.CreateLogicalSection @program.ActKernelRange.cmx.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         //CHECK:  ELF.CreateLogicalSection @program.ActKernelRange.cmx.0.0 aligned(1)
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelRange_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <ActKernelRange>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelRange_0_0_1 idx(!VPURegMapped.Index<0:0:1>) <ActKernelRange>
@@ -47,7 +47,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelRange_0_0_4 idx(!VPURegMapped.Index<0:0:4>) <ActKernelRange>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelRange_0_0_5 idx(!VPURegMapped.Index<0:0:5>) <ActKernelRange>
       }
-      ELF.CreateLogicalSection @program.ActKernelInvocation.cmx.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") {
+      ELF.CreateLogicalSection @program.ActKernelInvocation.cmx.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         //CHECK:  ELF.CreateLogicalSection @program.ActKernelInvocation.cmx.0.0 aligned(1)
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelInvocation_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <ActKernelInvocation>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelInvocation_0_0_1 idx(!VPURegMapped.Index<0:0:1>) <ActKernelInvocation>
@@ -56,7 +56,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelInvocation_0_0_4 idx(!VPURegMapped.Index<0:0:4>) <ActKernelInvocation>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelInvocation_0_0_5 idx(!VPURegMapped.Index<0:0:5>) <ActKernelInvocation>
       }
-      ELF.CreateLogicalSection @buffer.CMX_NN.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") {
+      ELF.CreateLogicalSection @buffer.CMX_NN.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         //CHECK:  ELF.CreateLogicalSection @buffer.CMX_NN.0 aligned(1)
         VPUASM.DeclareBuffer @DeclareBuffer2 !VPUASM.Buffer< "CMX_NN"[0] <0> : memref<1x10x2x3xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
         VPUASM.DeclareBuffer @DeclareBuffer3 !VPUASM.Buffer< "CMX_NN"[0] <0> : memref<1x1x1x1xsi8, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
@@ -73,7 +73,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.DeclareBuffer @DeclareBuffer14 !VPUASM.Buffer< "CMX_NN"[0] <720> : memref<1x10x2x3xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
         VPUASM.DeclareBuffer @DeclareBuffer15 !VPUASM.Buffer< "CMX_NN"[0] <719> : memref<1x1x1x1xsi8, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
       }
-      ELF.CreateSection @text.shave aligned(1024) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") {
+      ELF.CreateSection @text.shave aligned(1024) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @text.shave aligned(1024)
         VPUASM.DeclareKernelText @DeclareKernelText0 : "activation_sigmoid"
         //CHECK:  ELF.Pad size(480)
@@ -86,8 +86,9 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.DeclareKernelText @DeclareKernelText4 : "activation_sigmoid"
         //CHECK:  ELF.Pad size(480)
         VPUASM.DeclareKernelText @DeclareKernelText5 : "activation_sigmoid"
+        //CHECK:  ELF.Pad size(128)
       }
-      ELF.CreateSection @program.shave.data aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") {
+      ELF.CreateSection @program.shave.data aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @program.shave.data aligned(1024)
         VPUASM.DeclareKernelData @DeclareKernelArgs0 : "activation_sigmoid"
         VPUASM.DeclareKernelData @DeclareKernelArgs1 : "activation_sigmoid"
@@ -95,8 +96,9 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.DeclareKernelData @DeclareKernelArgs3 : "activation_sigmoid"
         VPUASM.DeclareKernelData @DeclareKernelArgs4 : "activation_sigmoid"
         VPUASM.DeclareKernelData @DeclareKernelArgs5 : "activation_sigmoid"
+        //CHECK:  ELF.Pad size(128)
       }
-      ELF.CreateSection @program.shave.parameter aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") {
+      ELF.CreateSection @program.shave.parameter aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @program.shave.parameter aligned(64)
         VPUASM.KernelParams @KernelParams0 inputs([@buffer.CMX_NN.0::@DeclareBuffer2]) outputs([@buffer.CMX_NN.0::@DeclareBuffer5]) dynamicInputShapes([]) dynamicOutputShapes([]) kernel_type("activation_sigmoid") kernel_params(dense<[0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 49, 36, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 49, 36, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]> : vector<72xui8>)
         //CHECK:  ELF.Pad size(24)
@@ -109,8 +111,9 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.KernelParams @KernelParams4 inputs([@buffer.CMX_NN.0::@DeclareBuffer10]) outputs([@buffer.CMX_NN.0::@DeclareBuffer12]) dynamicInputShapes([]) dynamicOutputShapes([]) kernel_type("activation_sigmoid") kernel_params(dense<[0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 49, 36, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 49, 36, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]> : vector<72xui8>)
         //CHECK:  ELF.Pad size(24)
         VPUASM.KernelParams @KernelParams5 inputs([@buffer.CMX_NN.0::@DeclareBuffer12]) outputs([@buffer.CMX_NN.0::@DeclareBuffer14]) dynamicInputShapes([]) dynamicOutputShapes([]) kernel_type("activation_sigmoid") kernel_params(dense<[0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 49, 36, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 49, 36, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]> : vector<72xui8>)
+        //CHECK:  ELF.Pad size(128)
       }
-      ELF.CreateSection @program.barrier aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") {
+      ELF.CreateSection @program.barrier aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @program.barrier aligned(64)
         VPUASM.ConfigureBarrier @ConfigureBarrier0 idx(!VPURegMapped.Index<0:0:0>) (0) => (-1) counts(1 : 1)
         VPUASM.ConfigureBarrier @ConfigureBarrier1 idx(!VPURegMapped.Index<0:0:1>) (1) => (-1) counts(1 : 1)
@@ -126,11 +129,11 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.ConfigureBarrier @ConfigureBarrier11 idx(!VPURegMapped.Index<0:0:11>) (11) => (-1) counts(1 : 1)
         VPUASM.ConfigureBarrier @ConfigureBarrier12 idx(!VPURegMapped.Index<0:0:12>) (12) => (-1) counts(1 : 1)
       }
-      ELF.CreateSection @task.dma.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") {
+      ELF.CreateSection @task.dma.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @task.dma.0.0 aligned(64)
         VPUASM.NNDMA @NNDMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>) taskLocation(@program.DMA.cmx.0.0::@DeclareTaskBuffer_DMA_0_0_0) input(@DeclareBuffer0) outputs([@buffer.CMX_NN.0::@DeclareBuffer2]) waits([]) updates([0 : ui8]) start_after(1) clean_after(0) dma_descriptor(<numPlanes = 0 : i4, len = -8 : i4, srcWidth = -8 : i4, srcStride = -8 : i4, srcPlaneStride = 0 : i4, dstWidth = -8 : i4, dstStride = -8 : i4, dstPlaneStride = 0 : i4>) acceleration_mode(<DISABLE>)
       }
-      ELF.CreateSection @task.dma.0.1 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") {
+      ELF.CreateSection @task.dma.0.1 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @task.dma.0.1 aligned(64)
         VPUASM.NNDMA @NNDMA_0_1_0 idx(!VPURegMapped.Index<0:1:0>) taskLocation(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_0) links(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_1) input(@buffer.CMX_NN.0::@DeclareBuffer3) outputs([@buffer.CMX_NN.0::@DeclareBuffer4]) waits([1 : ui8]) updates([2 : ui8]) start_after(3) clean_after(2) dma_descriptor(<numPlanes = 0 : i4, len = 1 : i4, srcWidth = 1 : i4, srcStride = 1 : i4, srcPlaneStride = 0 : i4, dstWidth = 1 : i4, dstStride = 1 : i4, dstPlaneStride = 0 : i4>) acceleration_mode(<DISABLE>)
         VPUASM.NNDMA @NNDMA_0_1_1 idx(!VPURegMapped.Index<0:1:1>) taskLocation(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_1) links(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_2) input(@buffer.CMX_NN.0::@DeclareBuffer3) outputs([@buffer.CMX_NN.0::@DeclareBuffer7]) waits([3 : ui8]) updates([4 : ui8]) start_after(5) clean_after(4) dma_descriptor(<numPlanes = 0 : i4, len = 1 : i4, srcWidth = 1 : i4, srcStride = 1 : i4, srcPlaneStride = 0 : i4, dstWidth = 1 : i4, dstStride = 1 : i4, dstPlaneStride = 0 : i4>) acceleration_mode(<DISABLE>)
@@ -140,7 +143,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.NNDMA @NNDMA_0_1_5 idx(!VPURegMapped.Index<0:1:5>) taskLocation(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_5) links(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_6) input(@buffer.CMX_NN.0::@DeclareBuffer3) outputs([@buffer.CMX_NN.0::@DeclareBuffer15]) waits([11 : ui8]) updates([12 : ui8]) start_after(13) clean_after(12) dma_descriptor(<numPlanes = 0 : i4, len = 1 : i4, srcWidth = 1 : i4, srcStride = 1 : i4, srcPlaneStride = 0 : i4, dstWidth = 1 : i4, dstStride = 1 : i4, dstPlaneStride = 0 : i4>) acceleration_mode(<DISABLE>)
         VPUASM.NNDMA @NNDMA_0_1_6 idx(!VPURegMapped.Index<0:1:6>) taskLocation(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_6) input(@buffer.CMX_NN.0::@DeclareBuffer14) outputs([@DeclareBuffer1]) waits([12 : ui8]) updates([]) start_after(13) clean_after(12) dma_descriptor(<numPlanes = 0 : i4, len = -8 : i4, srcWidth = -8 : i4, srcStride = -8 : i4, srcPlaneStride = 0 : i4, dstWidth = -8 : i4, dstStride = -8 : i4, dstPlaneStride = 0 : i4>) acceleration_mode(<DISABLE>)
       }
-      ELF.CreateSection @task.shave.range.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") {
+      ELF.CreateSection @task.shave.range.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @task.shave.range.0.0 aligned(64)
         VPUASM.ActKernelRange @ActKernelRange0 idx(!VPURegMapped.Index<0:0:0>) taskLocation(@program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_0) kernelTaskType(@COMPUTE) calls @text.shave::@DeclareKernelText0 : @DeclareKernelEntry0
         VPUASM.ActKernelRange @ActKernelRange1 idx(!VPURegMapped.Index<0:0:1>) taskLocation(@program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_1) kernelTaskType(@COMPUTE) calls @text.shave::@DeclareKernelText1 : @DeclareKernelEntry1
@@ -149,7 +152,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.ActKernelRange @ActKernelRange4 idx(!VPURegMapped.Index<0:0:4>) taskLocation(@program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_4) kernelTaskType(@COMPUTE) calls @text.shave::@DeclareKernelText4 : @DeclareKernelEntry4
         VPUASM.ActKernelRange @ActKernelRange5 idx(!VPURegMapped.Index<0:0:5>) taskLocation(@program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_5) kernelTaskType(@COMPUTE) calls @text.shave::@DeclareKernelText5 : @DeclareKernelEntry5
       }
-      ELF.CreateSection @task.shave.invocation.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") {
+      ELF.CreateSection @task.shave.invocation.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @task.shave.invocation.0.0 aligned(64)
         VPUASM.ActKernelInvocation @ActKernelInvocation0 idx(!VPURegMapped.Index<0:0:0>) taskLocation(@program.ActKernelInvocation.cmx.0.0::@DeclareTaskBuffer_ActKernelInvocation_0_0_0) -> @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_0(kernel_data : @program.shave.data::@DeclareKernelArgs0, kernel_params : @program.shave.parameter::@KernelParams0) waits([0 : ui8]) updates([1 : ui8]) tile(0) start_after(2) clean_after(1) range_index(0)
         VPUASM.ActKernelInvocation @ActKernelInvocation1 idx(!VPURegMapped.Index<0:0:1>) taskLocation(@program.ActKernelInvocation.cmx.0.0::@DeclareTaskBuffer_ActKernelInvocation_0_0_1) -> @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_1(kernel_data : @program.shave.data::@DeclareKernelArgs1, kernel_params : @program.shave.parameter::@KernelParams1) waits([2 : ui8]) updates([3 : ui8]) tile(0) start_after(4) clean_after(3) range_index(1)
@@ -158,11 +161,11 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.ActKernelInvocation @ActKernelInvocation4 idx(!VPURegMapped.Index<0:0:4>) taskLocation(@program.ActKernelInvocation.cmx.0.0::@DeclareTaskBuffer_ActKernelInvocation_0_0_4) -> @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_4(kernel_data : @program.shave.data::@DeclareKernelArgs4, kernel_params : @program.shave.parameter::@KernelParams4) waits([8 : ui8]) updates([9 : ui8]) tile(0) start_after(10) clean_after(9) range_index(4)
         VPUASM.ActKernelInvocation @ActKernelInvocation5 idx(!VPURegMapped.Index<0:0:5>) taskLocation(@program.ActKernelInvocation.cmx.0.0::@DeclareTaskBuffer_ActKernelInvocation_0_0_5) -> @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange_0_0_5(kernel_data : @program.shave.data::@DeclareKernelArgs5, kernel_params : @program.shave.parameter::@KernelParams5) waits([10 : ui8]) updates([11 : ui8]) tile(0) start_after(12) clean_after(11) range_index(5)
       }
-      ELF.CreateSection @note.MappedInferenceVersion aligned(4) secType(SHT_NOTE) secFlags("SHF_NONE") {
+      ELF.CreateSection @note.MappedInferenceVersion aligned(4) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @note.MappedInferenceVersion aligned(4)
         VPUASM.MappedInferenceVersion @MappedInferenceVersion_0_0(11 _ 4 _ 10)
       }
-      ELF.CreateSection @program.mapped_inference aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") {
+      ELF.CreateSection @program.mapped_inference aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
         //CHECK:  ELF.CreateSection @program.mapped_inference aligned(64)
         VPUASM.MappedInference @MappedInference : dmas([[@task.dma.0.0::@NNDMA_0_0_0, @task.dma.0.1::@NNDMA_0_1_0]]) actKernelRanges([@task.shave.range.0.0::@ActKernelRange0]) actKernelInvocations([@task.shave.invocation.0.0::@ActKernelInvocation0]) barriers(@program.barrier::@ConfigureBarrier0) dmaCount([[1, 7], [0, 0]]) invariantCount([0, 0]) variantCount([0, 0]) actKernelRangesCount([6, 0]) actKernelInvocationsCount([6, 0]) mediaCount(0) barrierCount(13) mappedInferenceVersion(@note.MappedInferenceVersion::@MappedInferenceVersion_0_0)
       }
@@ -184,7 +187,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         ELF.Symbol @elfsym.program.mapped_inference of(@program.mapped_inference) type(<STT_SECTION>) size(0) value(0)
         ELF.Symbol @entry of(@program.mapped_inference::@MappedInference) type(<VPU_STT_ENTRY>) size(0) value(0)
       }
-      ELF.CreateMetadataSection @MetadataSection aligned(8) secFlags("SHF_NONE") {
+      ELF.CreateMetadataSection @MetadataSection aligned(8) secFlags("SHF_NONE")  {
         VPUASM.NetworkMetadata @NetworkMetadata
       }
     }

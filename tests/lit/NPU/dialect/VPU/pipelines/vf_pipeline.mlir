@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 module @Do_not_Canocalize_VF_op_with_outline {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input"  : tensor<1x64x300x300xf32>
   } outputsInfo : {
     DataInfo "output" : tensor<1x64x300x300xf32>

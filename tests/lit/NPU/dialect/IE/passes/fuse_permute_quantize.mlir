@@ -284,7 +284,7 @@ func.func @NotFuseWithDifferentInOutOrderAvgPool(%arg0: tensor<1x3x62x62xf16>) -
 
 func.func @NotFuseWithPostOpAvgPool(%arg0: tensor<1x3x62x62xf16>) -> tensor<1x3x62x62x!qElemType, {order = #NHWC}> {
   %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x3x62x62xf16> -> tensor<1x3x62x62xf16, {order = #NHWC}>
-  %1 = IE.AvgPool(%0) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3x62x62xf16, {order = #NHWC}> -> tensor<1x3x62x62x!quant.uniform<u8:f16, 2.000000e+00>, {order = #NHWC}>
+  %1 = IE.AvgPool(%0) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3x62x62xf16, {order = #NHWC}> -> tensor<1x3x62x62x!quant.uniform<u8:f16, 2.000000e+00>, {order = #NHWC}>
   return %1 : tensor<1x3x62x62x!qElemType, {order = #NHWC}>
 
 // CHECK-LABEL: @NotFuseWithPostOpAvgPool

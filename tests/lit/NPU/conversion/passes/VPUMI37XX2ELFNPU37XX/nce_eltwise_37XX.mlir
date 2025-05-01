@@ -10,7 +10,7 @@
 !qElemType = !quant.uniform<u8<0:3>:f32, 1.000000e+00>
 !qElemType1 = !quant.uniform<u8:f32, 1.000000e+00>
 module @mainModule {
-  IE.CNNNetwork entryPoint : @singleEltwise inputsInfo : {
+  net.NetworkInfo entryPoint : @singleEltwise inputsInfo : {
     DataInfo "input_0" : tensor<1x32x56x56xui8>
     DataInfo "input_1" : tensor<1x32x56x56xui8>
   } outputsInfo : {

@@ -10,7 +10,7 @@
 // CHECK-LABEL: @InOutNHCW
 module @InOutNHCW {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x8x4x2xf16>
@@ -48,7 +48,7 @@ func.func @main(%arg0: tensor<1x8x4x2xf16, {order = #NHCW}>) -> tensor<1x8x4x2xf
 // CHECK-LABEL: @DifferentOrders
 module @DifferentOrders {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x8x4x2xf16>
@@ -74,7 +74,7 @@ func.func @main(%arg0: tensor<1x8x4x2xf16>) -> tensor<1x8x4x2xf16, {order = #NHW
 // CHECK-LABEL: @HwOp
 module @HwOp {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x30x30xf16>
@@ -108,7 +108,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x15x13xf16> {
 // CHECK-LABEL: @HwOpSameInputs
 module @HwOpSameInputs {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x30x25xf16>
@@ -144,7 +144,7 @@ func.func @main(%arg0: tensor<1x16x30x25xf16>) -> tensor<1x16x30x25xf16> {
 // CHECK-LABEL: @SwAddOp
 module @SwAddOp {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x3x676x2xf16>
@@ -174,7 +174,7 @@ func.func @main(%arg0: tensor<1x3x676x2xf16>) -> tensor<1x3x676x2xf16> {
 // CHECK-LABEL: @HwOpDifferentDstOrder
 module @HwOpDifferentDstOrder {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x30x25xf16>
@@ -253,7 +253,7 @@ func.func @main(%arg0: tensor<1x50x56x56xf16, {order = #NHWC}>, %arg1: tensor<1x
 // CHECK-LABEL: @DoNotAdjustInterpolateNearestLayout
 module @DoNotAdjustInterpolateNearestLayout {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x3x30x30xf16>
@@ -286,7 +286,7 @@ func.func @main(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x60x60xf16> {
     // CHECK-SAME:      sizes_attr = [60, 60]
     // CHECK-SAME:      -> tensor<1x3x60x60xf16>
 
-    // CHECK        return [[INTERP]]
+    // CHECK:       return [[INTERP]]
 }
 }
 
@@ -295,7 +295,7 @@ func.func @main(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x60x60xf16> {
 // CHECK-LABEL: @DoNotAdjustInterpolateLinearLayout
 module @DoNotAdjustInterpolateLinearLayout {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x3x30x30xf16>
@@ -328,7 +328,7 @@ func.func @main(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x60x60xf16> {
     // CHECK-SAME:      sizes_attr = [60, 60]
     // CHECK-SAME:      -> tensor<1x3x60x60xf16>
 
-    // CHECK        return [[INTERP]]
+    // CHECK:       return [[INTERP]]
 }
 }
 
@@ -338,11 +338,11 @@ func.func @main(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x60x60xf16> {
 #NC = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: NonZeroMemoryLayout
-func.func  @NonZeroMemoryLayout(%arg0: tensor<1x3x3xsi32, {order = #HWC}>) -> tensor<3x?xsi32, {bounds = [3, 9], order = #NC}> {
+func.func  @NonZeroMemoryLayout(%arg0: tensor<1x3x3xsi32, {order = #HWC}>) -> tensor<3x?xsi32, {bounds = #const.OpaqueI64Elements<[3, 9]> : tensor<2xsi64>, order = #NC}> {
     // CHECK:       [[INPUT:%arg.*]]: tensor<1x3x3xsi32, {order = #HWC}>
 
-    %0 = IE.NonZero(%arg0) {dstElemType = si32} : tensor<1x3x3xsi32, {order = #HWC}> -> tensor<3x?xsi32, {bounds = [3, 9], order = #NC}>
-    return %0 : tensor<3x?xsi32, {bounds = [3, 9], order = #NC}>
+    %0 = IE.NonZero(%arg0) {dstElemType = si32} : tensor<1x3x3xsi32, {order = #HWC}> -> tensor<3x?xsi32, {bounds = #const.OpaqueI64Elements<[3, 9]> : tensor<2xsi64>, order = #NC}>
+    return %0 : tensor<3x?xsi32, {bounds = #const.OpaqueI64Elements<[3, 9]> : tensor<2xsi64>, order = #NC}>
 
     // CHECK:       [[CHW_INPUT:%.*]] = IE.Reorder([[INPUT]])
     // CHECK-SAME:     dstOrder = #CHW

@@ -90,7 +90,7 @@ func.func @Fold(%arg0: tensor<1x3x512x512xf16>) -> tensor<1x3x512x512xf16> {
 
     return %0 : tensor<1x3x512x512xf16>
 
-    // CHECK-NOT    IE.Interpolate
+    // CHECK-NOT:    IE.Interpolate
     // CHECK:       return %arg0 : tensor<1x3x512x512xf16>
 }
 

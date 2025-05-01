@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -159,32 +159,6 @@ func.func @ConvertFP16ToFP32UsingSW(%input: tensor<1x3x4x4xf16>) -> tensor<1x3x4
     // CHECK: [[OUTPUT_BUFFER:%.+]] = memref.alloc() : memref<1x3x4x4xf32>
     // CHECK: [[OUTPUT_DDR:%.+]] = VPUIP.Copy inputs([[OUTPUT]] : memref<1x3x4x4xf32, [@CMX_NN, 0]>) outputs([[OUTPUT_BUFFER]] : memref<1x3x4x4xf32>) -> memref<1x3x4x4xf32>
     // CHECK: return [[OUTPUT_DDR]] : memref<1x3x4x4xf32>
-}
-
-// -----
-
-// CHECK:  module @VPU.SW {
-// CHECK-NEXT:    func.func private @builtin_Convert(memref<*xf16>, memref<*xf32>) attributes {VPU.kernel_code = "convert.cpp", VPU.kernel_entry = "convert", VPU.kernel_name = "convert", VPU.task_type = @COMPUTE}
-// CHECK-NEXT:    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
-// CHECK-NEXT:  }
-
-// CHECK-LABEL:  func.func @NCEClusterTilingConvertFP16ToFP32
-// CHECK-SAME:      ([[ARG:%.+]]: memref<1x3x4x4xf16>)
-func.func @NCEClusterTilingConvertFP16ToFP32(%input: tensor<1x3x4x4xf16>) -> tensor<1x3x4x4xf32> {
-    %output = VPU.NCE.ClusterTiling (%input as %arg0: tensor<1x3x4x4xf16>) -> tensor<1x3x4x4xf32> {
-        %cvt = VPU.Convert(%arg0) {dstElemType = f32} : tensor<1x3x4x4xf16> -> tensor<1x3x4x4xf32>
-        VPU.Yield %cvt
-    }
-    return %output : tensor<1x3x4x4xf32>
-
-    // CHECK: [[OUTBUF:%.+]] = memref.alloc() : memref<1x3x4x4xf32>
-    // CHECK: [[OUTPUT:%.+]] = VPUIP.NCEClusterTiling inputs([[ARG]] as {{[^:]+}}: memref<1x3x4x4xf16>) outputs([[OUTBUF]] as {{[^:]+}}: memref<1x3x4x4xf32>) -> memref<1x3x4x4xf32> {
-    // CHECK:   [[SWKERNEL_OUTPUT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Convert inputs({{[^:]+}} as {{[^:]+}}: memref<1x3x4x4xf16>) outputs({{[^:]+}} as {{[^:]+}}: memref<1x3x4x4xf32>) on tile 0 -> memref<1x3x4x4xf32>{
-    // CHECK:     VPUIP.SW.Kernel.run({{[^:]+}}, {{[^:]+}}) : memref<1x3x4x4xf16>, memref<1x3x4x4xf32>
-    // CHECK:   }
-    // CHECK: }
-
-    // CHECK: return [[OUTPUT]] : memref<1x3x4x4xf32>
 }
 
 // -----
@@ -700,8 +674,8 @@ func.func @BucketizeSWLayer(%input0: tensor<1x20x20xf16>, %input1: tensor<100xf1
 // CHECK-LABEL: @TensorsWithBounds
 // CHECK-SAME:          ([[ARG:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>) ->
 // CHECK-SAME:          !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>
-func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}>) -> tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}> {
-    %0 = VPU.ReLU(%arg0) : tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}> -> tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}>
+func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}>) -> tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}> {
+    %0 = VPU.ReLU(%arg0) : tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}> -> tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}>
 
 // CHECK:       [[INPUT_DATA:%.+]] = memref.alloc() : memref<1x18x3x3xf32, #NHWC, [@CMX_NN, 0]>
 // CHECK:       [[INPUT_SHAPE:%.+]] = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
@@ -729,7 +703,7 @@ func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3]
 // CHECK-SAME:    outputs([[OUTPUT_BOUNDED_BUFFER]] : !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>)
 // CHECK-SAME:    -> !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>
 
-    return %0 : tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}>
+    return %0 : tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}>
     // CHECK: return
     // CHECK-SAME: !VPUIP.BoundedBuffer<
     // CHECK-SAME:  data=memref<1x18x3x3xf32, #NHWC>,
@@ -742,10 +716,10 @@ func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3]
 
 // CHECK-LABEL: @ShapeOf
 // CHECK-SAME:          ([[ARG:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x8x48x48xf16>, dynamic_shape=memref<4xsi32>>)
-func.func @ShapeOf(%DATA: tensor<1x8x?x?xf16, {bounds = [1, 8, 48, 48], order = #NCHW}>) -> tensor<4xsi32> {
+func.func @ShapeOf(%DATA: tensor<1x8x48x48xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>) -> tensor<4xsi32> {
 
     %SHAPE_OF = VPU.ShapeOf(%DATA) :
-        tensor<1x8x?x?xf16, {bounds = [1, 8, 48, 48], order = #NCHW}> -> tensor<4xsi32>
+        tensor<1x8x48x48xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi32>
 
     // CHECK:       {{%.+}}, [[SHAPE:%.+]] = VPUIP.UngroupBoundedBuffer([[ARG]])
 
@@ -803,14 +777,14 @@ func.func @SkipStaticPermuteCast(%arg0: tensor<1x32x32x16xf16, {order = #NCHW}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @DynamicPermuteCast
 // CHECK-SAME:         ([[ARG:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x32x64x16xf16>, dynamic_shape=memref<4xsi32>>)
-func.func @DynamicPermuteCast(%arg: tensor<1x?x?x16xf16, {bounds = [1, 32, 64, 16], order = #NCHW}>)
-   -> (tensor<1x16x?x?xf16, {bounds = [1, 16, 32, 64], order = #NHWC}>) {
+func.func @DynamicPermuteCast(%arg: tensor<1x32x64x16xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 1, 1, 0]>: tensor<4xsi64>, order = #NCHW}>)
+   -> (tensor<1x16x32x64xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NHWC}>) {
 
     %permute_cast = VPU.PermuteCast(%arg) {
         dst_order = #NHWC,
         mem_perm = #NCHW
-    } : tensor<1x?x?x16xf16, {bounds = [1, 32, 64, 16], order = #NCHW}>
-        -> tensor<1x16x?x?xf16, {bounds = [1, 16, 32, 64], order = #NHWC}>
+    } : tensor<1x32x64x16xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 1, 1, 0]>: tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x16x32x64xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NHWC}>
     // CHECK: [[IN_DATA:%.+]] = memref.alloc() : memref<1x32x64x16xf16, [@CMX_NN, 0]>
     // CHECK: [[IN_SHAPE:%.+]] = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
     // CHECK: [[IN_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[IN_DATA]], [[IN_SHAPE]])
@@ -835,7 +809,7 @@ func.func @DynamicPermuteCast(%arg: tensor<1x?x?x16xf16, {bounds = [1, 32, 64, 1
     // CHECK-SAME: inputs([[SW_OP_RESULT]]
     // CHECK-SAME: outputs([[RES_BOUNDED_BUFFER]]
 
-    return %permute_cast : tensor<1x16x?x?xf16, {bounds = [1, 16, 32, 64], order = #NHWC}>
+    return %permute_cast : tensor<1x16x32x64xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NHWC}>
     // CHECK: return [[COPY_OUT]] : !VPUIP.BoundedBuffer<data=memref<1x16x32x64xf16, #NHWC>, dynamic_shape=memref<4xsi32>
 }
 
@@ -1038,12 +1012,12 @@ func.func @GRUSequenceLastPartWithDDRAccess_(%arg0: tensor<1x1x1x3072xf16>, %arg
 // CHECK-SAME:         ([[ARG0:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x2x3x8xf16>, dynamic_shape=memref<4xsi32>>,
 // CHECK-SAME:         [[ARG1:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x2x3x8xf16>, dynamic_shape=memref<4xsi32>>)
 // CHECK-SAME:         -> !VPUIP.BoundedBuffer<data=memref<1x4x3x8xf16>, dynamic_shape=memref<4xsi32>>
-func.func @ConcatSWLayer(%arg0: tensor<1x2x3x?xf16, {bounds = [1, 2, 3, 8], order = #NCHW}>,
-                                %arg1: tensor<1x2x3x?xf16, {bounds = [1, 2, 3, 8], order = #NCHW}>)
-                                -> tensor<1x4x3x?xf16, {bounds = [1, 4, 3, 8], order = #NCHW}> {
+func.func @ConcatSWLayer(%arg0: tensor<1x2x3x8xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NCHW}>,
+                                %arg1: tensor<1x2x3x8xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NCHW}>)
+                                -> tensor<1x4x3x8xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NCHW}> {
 
-    %0 = VPU.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0]]} : tensor<1x2x3x?xf16, {bounds = [1, 2, 3, 8], order = #NCHW}>, tensor<1x2x3x?xf16, {bounds = [1, 2, 3, 8], order = #NCHW}> -> tensor<1x4x3x?xf16, {bounds = [1, 4, 3, 8], order = #NCHW}>
-    return %0 : tensor<1x4x3x?xf16, {bounds = [1, 4, 3, 8], order = #NCHW}>
+    %0 = VPU.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0]]} : tensor<1x2x3x8xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NCHW}>, tensor<1x2x3x8xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NCHW}> -> tensor<1x4x3x8xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NCHW}>
+    return %0 : tensor<1x4x3x8xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:  [[ALLOC:%.+]] = memref.alloc() : memref<1x2x3x8xf16, [@CMX_NN, 0]>
     // CHECK:  [[ALLOC0:%.+]] = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
@@ -1187,18 +1161,18 @@ func.func @DeformableConvolutionSWLayer(%arg0: tensor<1x128x19x19xf16>, %arg1: t
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 module @DynamicBroadcastShapeSubgraph {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_1" : tensor<4x1x1xf16>
     DataInfo "input_0" : tensor<1x4x5x5xf16>
   } outputsInfo : {
     DataInfo "Broadcast_63" friendlyName = "Result_67" : tensor<1x4x5x5xf16>
   }
   // CHECK: func.func @main([[ARG0:%.+]]: memref<4x1x1xf16>, [[ARG1:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x4x5x5xf16>, dynamic_shape=memref<4xsi32>>) -> !VPUIP.BoundedBuffer<data=memref<1x4x5x5xf16>, dynamic_shape=memref<4xsi32>> {
-  func.func @main(%arg0: tensor<4x1x1xf16>, %arg1: tensor<1x4x?x?xf16, {bounds = [1, 4, 5, 5], order = #NCHW}>) -> tensor<1x4x?x?xf16, {bounds = [1, 4, 5, 5], order = #NCHW}> {
-    %0 = VPU.ShapeOf(%arg1) : tensor<1x4x?x?xf16, {bounds = [1, 4, 5, 5], order = #NCHW}> -> tensor<4xsi32>
+  func.func @main(%arg0: tensor<4x1x1xf16>, %arg1: tensor<1x4x5x5xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>) -> tensor<1x4x5x5xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}> {
+    %0 = VPU.ShapeOf(%arg1) : tensor<1x4x5x5xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi32>
     %1 = VPU.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 4, 1, 1]} : tensor<4x1x1xf16> -> tensor<1x4x1x1xf16>
-    %2 = VPU.DynamicTile(%1, %0) {output_bounds = [1, 4, 5, 5], output_shape = [1, 4, -9223372036854775808, -9223372036854775808]} : tensor<1x4x1x1xf16>, tensor<4xsi32> -> tensor<1x4x?x?xf16, {bounds = [1, 4, 5, 5], order = #NCHW}>
-    return %2 : tensor<1x4x?x?xf16, {bounds = [1, 4, 5, 5], order = #NCHW}>
+    %2 = VPU.DynamicTile(%1, %0) {bounds_representation = #VPU.bounds_representation<DYNAMIC_DIMS_MASK>, output_bounds = [1, 4, 5, 5], output_shape = [1, 4, -9223372036854775808, -9223372036854775808]} : tensor<1x4x1x1xf16>, tensor<4xsi32> -> tensor<1x4x5x5xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>
+    return %2 : tensor<1x4x5x5xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:       {{%.+}}, [[SHAPE:%.+]] = VPUIP.UngroupBoundedBuffer([[ARG1]])
     // CHECK:       [[ALLOC_SHAPE:%.+]] = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
@@ -1244,9 +1218,9 @@ module @DynamicBroadcastShapeSubgraph {
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK: func.func @DynamicTileFromBroadcast([[ARG0:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x1x10xsi64>, dynamic_shape=memref<3xsi32>>, [[ARG1:%.+]]: memref<4xsi32>) -> !VPUIP.BoundedBuffer<data=memref<1x1x10x5xsi64>, dynamic_shape=memref<4xsi32>> {
-func.func @DynamicTileFromBroadcast(%arg0: tensor<1x1x?xsi64, {bounds = [1, 1, 10], order = #CHW}>, %arg1: tensor<4xsi32>) -> tensor<1x1x?x?xsi64, {bounds = [1, 1, 10, 5], order = #NCHW}> {
-    %0 = VPU.DynamicTile(%arg0, %arg1) {output_bounds = [1, 1, 10, 5], output_shape = [1, 1, -9223372036854775808, -9223372036854775808]} : tensor<1x1x?xsi64, {bounds = [1, 1, 10], order = #CHW}>, tensor<4xsi32> -> tensor<1x1x?x?xsi64, {bounds = [1, 1, 10, 5], order = #NCHW}>
-    return %0 : tensor<1x1x?x?xsi64, {bounds = [1, 1, 10, 5], order = #NCHW}>
+func.func @DynamicTileFromBroadcast(%arg0: tensor<1x1x10xsi64, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1]>: tensor<3xsi64>, order = #CHW}>, %arg1: tensor<4xsi32>) -> tensor<1x1x10x5xsi64, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}> {
+    %0 = VPU.DynamicTile(%arg0, %arg1) {bounds_representation = #VPU.bounds_representation<DYNAMIC_DIMS_MASK>, output_bounds =[1, 1, 10, 5], output_shape = [1, 1, -9223372036854775808, -9223372036854775808]} : tensor<1x1x10xsi64, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1]>: tensor<3xsi64>, order = #CHW}>, tensor<4xsi32> -> tensor<1x1x10x5xsi64, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>
+    return %0 : tensor<1x1x10x5xsi64, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:    [[ALLOC:%.+]] = memref.alloc() : memref<1x1x10xsi64, [@CMX_NN, 0]>
     // CHECK:    [[ALLOC_0:%.+]] = memref.alloc() : memref<3xsi32, [@CMX_NN, 0]>
@@ -1284,9 +1258,9 @@ func.func @DynamicTileFromBroadcast(%arg0: tensor<1x1x?xsi64, {bounds = [1, 1, 1
 
 // CHECK-LABEL:  func.func @Range
 // CHECK-SAME:      [[INPUT0:%.+]]: memref<1xf32>, [[INPUT1:%.+]]: memref<1xf32>, [[INPUT2:%.+]]: memref<1xf32>
-func.func @Range(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>) -> tensor<?xf32, {bounds = [1024], order = #C}> {
-    %0 = VPU.Range(%arg0, %arg1, %arg2) {__inplace_operands_attr__ = ["true", "true", "true"], dstElemType = f32} : tensor<1xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<?xf32, {bounds = [1024], order = #C}>
-    return {__inplace_operands_attr__ = ["true"]} %0 : tensor<?xf32, {bounds = [1024], order = #C}>
+func.func @Range(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>) -> tensor<1024xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[1]>: tensor<1xsi64>, order = #C}> {
+    %0 = VPU.Range(%arg0, %arg1, %arg2) {bounds_representation = #VPU.bounds_representation<DYNAMIC_DIMS_MASK>, __inplace_operands_attr__ = ["true", "true", "true"], dstElemType = f32} : tensor<1xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1024xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[1]>: tensor<1xsi64>, order = #C}>
+    return {__inplace_operands_attr__ = ["true"]} %0 : tensor<1024xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[1]>: tensor<1xsi64>, order = #C}>
 
     // CHECK:    [[ALLOC:%.+]] = memref.alloc() : memref<1xf32, [@CMX_NN, 0]>
     // CHECK:    [[COPY0:%.+]] = VPUIP.Copy inputs([[INPUT0]] : memref<1xf32>) outputs([[ALLOC]] : memref<1xf32, [@CMX_NN, 0]>) -> memref<1xf32, [@CMX_NN, 0]>
@@ -1319,8 +1293,8 @@ func.func @Range(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32
 // CHECK-LABEL:  func.func @DynamicExpandSWLayer
 // CHECK-SAME:     ([[INPUT:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x3x20x20xf16>, dynamic_shape=memref<4xsi32>>) -> memref<1x3x20x20xf16>
 
-func.func @DynamicExpandSWLayer(%input: tensor<1x3x?x?xf16, {bounds = [1, 3, 20, 20], order = #NCHW}>) -> tensor<1x3x20x20xf16> {
-    %output = VPU.DynamicExpand(%input) : tensor<1x3x?x?xf16, {bounds = [1, 3, 20, 20], order = #NCHW}> -> tensor<1x3x20x20xf16>
+func.func @DynamicExpandSWLayer(%input: tensor<1x3x20x20xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>) -> tensor<1x3x20x20xf16> {
+    %output = VPU.DynamicExpand(%input) : tensor<1x3x20x20xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}> -> tensor<1x3x20x20xf16>
     return %output : tensor<1x3x20x20xf16>
 
 // CHECK: [[BUFF:%.+]] = VPUIP.GroupBoundedBuffer([[ALLOC_UPPERBOUND:%.+]], [[ALLOC_DYN_SHAPE:%.+]]) : memref<1x3x20x20xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]> -> !VPUIP.BoundedBuffer<data=memref<1x3x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
@@ -1387,8 +1361,8 @@ func.func @PopulateWeightTableSWLayer(%input: tensor<4096x1x1x1xf16, {mem_space 
 // CHECK-LABEL:  func.func @DynamicExpandSWLayerFP32
 // CHECK-SAME:     ([[INPUT:%.+]]: !VPUIP.BoundedBuffer<data=memref<1x3x20x20xf32>, dynamic_shape=memref<4xsi32>>) -> memref<1x3x20x20xf32>
 
-func.func @DynamicExpandSWLayerFP32(%input: tensor<1x3x?x?xf32, {bounds = [1, 3, 20, 20], order = #NCHW}>) -> tensor<1x3x20x20xf32> {
-    %output = VPU.DynamicExpand(%input) : tensor<1x3x?x?xf32, {bounds = [1, 3, 20, 20], order = #NCHW}> -> tensor<1x3x20x20xf32>
+func.func @DynamicExpandSWLayerFP32(%input: tensor<1x3x20x20xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}>) -> tensor<1x3x20x20xf32> {
+    %output = VPU.DynamicExpand(%input) : tensor<1x3x20x20xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]>: tensor<4xsi64>, order = #NCHW}> -> tensor<1x3x20x20xf32>
     return %output : tensor<1x3x20x20xf32>
 
 // CHECK: [[BUFF:%.+]] = VPUIP.GroupBoundedBuffer([[ALLOC_UPPERBOUND:%.+]], [[ALLOC_DYN_SHAPE:%.+]]) : memref<1x3x20x20xf32, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]> -> !VPUIP.BoundedBuffer<data=memref<1x3x20x20xf32, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
@@ -1464,4 +1438,174 @@ func.func @RoPE(%input: tensor<1x32x1x64xf32>, %input_cos: tensor<1x1x1x64xf32>,
     // CHECK: [[ALLOC3:%.+]] = memref.alloc() : memref<1x32x1x64xf32>
     // CHECK: [[COPY3:%.+]] = VPUIP.Copy inputs([[RES]] : memref<1x32x1x64xf32, [@CMX_NN, 0]>) outputs([[ALLOC3]] : memref<1x32x1x64xf32>) -> memref<1x32x1x64xf32>
     // CHECK: return [[COPY3]] : memref<1x32x1x64xf32>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// module @executors {
+// IE.TileResource 6 of @NCE at 1.700000e+03 MHz
+
+!InputTensor0 = !VPU.DistributedTensor<
+    1x32x44x44xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 6, 1],
+    num_clusters = 6 : i64,
+    uniform_distributed_segments,
+    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]
+}>
+
+!InputTensor1 = !VPU.DistributedTensor<
+    1x1x44x44xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 6, 1],
+    num_clusters = 6 : i64,
+    uniform_distributed_segments,
+    compute_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+    memory_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]
+}>
+
+!OutputTensor = !VPU.DistributedTensor<
+    1x32x44x44xi8, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 6, 1],
+    num_clusters = 6 : i64,
+    uniform_distributed_segments,
+    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]
+}>
+
+// CHECK-LABEL:   @EqualSWSOHTileNotAtBroadcastAxis
+// CHECK-SAME:    [[INPUT_0:%.+]]: memref<1x32x44x44xf16, @CMX_NN>, [[INPUT_1:%.+]]: memref<1x1x44x44xf16, @CMX_NN>
+ func.func @EqualSWSOHTileNotAtBroadcastAxis(%arg0: tensor<1x32x44x44xf16, {mem_space = @CMX_NN, order = #NCHW}>, %arg1: tensor<1x1x44x44xf16, {mem_space = @CMX_NN, order = #NCHW}>) -> tensor<1x32x44x44xi8, {mem_space = @CMX_NN, order = #NCHW}> {
+
+    %0 = VPU.Copy(%arg0) {out_mem_space = @CMX_NN} : tensor<1x32x44x44xf16, {mem_space = @CMX_NN, order = #NCHW}> -> !InputTensor0
+    %1 = VPU.Copy(%arg1) {out_mem_space = @CMX_NN} : tensor<1x1x44x44xf16, {mem_space = @CMX_NN, order = #NCHW}> -> !InputTensor1
+
+    %2 = VPU.Equal(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : !InputTensor0, !InputTensor1 -> !OutputTensor
+
+    %3 = VPU.Copy(%2) {out_mem_space = @CMX_NN} : !OutputTensor -> tensor<1x32x44x44xi8, {mem_space = @CMX_NN, order = #NCHW}>
+
+    return %3 : tensor<1x32x44x44xi8, {mem_space = @CMX_NN, order = #NCHW}>
+
+// CHECK:       [[ALLOC0:%.+]] = VPURT.AllocDistributed
+// CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>
+
+// CHECK:    [[COPY0:%.+]] = VPUIP.Copy inputs([[INPUT_0]] : memref<1x32x44x44xf16, @CMX_NN>)
+// CHECK-SAME:    outputs([[ALLOC0]] : !VPUIP.DistributedBuffer<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>)
+// CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>
+
+// CHECK:       [[ALLOC1:%.+]] = VPURT.AllocDistributed
+// CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x1x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>
+
+// CHECK:    [[COPY1:%.+]] = VPUIP.Copy inputs([[INPUT_1]] : memref<1x1x44x44xf16, @CMX_NN>)
+// CHECK-SAME:    outputs([[ALLOC1]] : !VPUIP.DistributedBuffer<1x1x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>)
+// CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x1x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>
+
+// CHECK:    [[ALLOC_OUT:%.+]] = VPURT.AllocDistributed
+// CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x32x44x44xi8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>
+
+// CHECK:         [[SW_OP_RESULT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Equal
+// CHECK-SAME:    inputs([[COPY0]] as [[INNER0:[^:]+]]: !VPUIP.DistributedBuffer<1x32x44x44xf16, #NCHW, @CMX_NN,
+// CHECK-SAME:    {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>,
+// CHECK-SAME:    [[COPY1]] as [[INNER1:[^:]+]]: !VPUIP.DistributedBuffer<1x1x44x44xf16, #NCHW, @CMX_NN,
+// CHECK-SAME:    {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 1, 8, 44], [1, 1, 8, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44], [1, 1, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>)
+// CHECK-SAME:    outputs([[ALLOC_OUT]] as [[INNER_OUT0:[^:]+]]: !VPUIP.DistributedBuffer<1x32x44x44xi8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>)
+// CHECK-SAME:    on tile 0 -> !VPUIP.DistributedBuffer<1x32x44x44xi8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>{
+
+// CHECK:           VPUIP.SW.Kernel.run([[INNER0]], [[INNER1]], [[INNER_OUT0]])
+// CHECK-SAME:          !VPUIP.DistributedBuffer<1x32x44x44xi8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:        compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:        memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>
+
+// CHECK:    [[OUT_MEMREF:%.+]] = memref.alloc() : memref<1x32x44x44xi8, @CMX_NN>
+
+// CHECK:    [[OUT_COPY:%.+]] = VPUIP.Copy
+// CHECK-SAME:             inputs(%results : !VPUIP.DistributedBuffer<1x32x44x44xi8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
+// CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
+// CHECK-SAME{LITERAL}:    memory_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]]}>)
+// CHECK-SAME:             outputs([[OUT_MEMREF]] : memref<1x32x44x44xi8, @CMX_NN>) -> memref<1x32x44x44xi8, @CMX_NN>
+
+// CHECK:    return [[OUT_COPY]] : memref<1x32x44x44xi8, @CMX_NN>
+}
+
+// -----
+
+// CHECK:  module @VPU.SW {
+// CHECK-NEXT:    func.func private @builtin_DynamicDataMask(memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>) attributes {VPU.kernel_code = "dynamic_data_mask.cpp", VPU.kernel_entry = "dynamic_data_mask", VPU.kernel_name = "dynamic_data_mask", VPU.task_type = @COMPUTE}
+// CHECK-NEXT:    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+// CHECK-NEXT:    }
+
+// CHECK-LABEL:  func.func @DynamicDataMask
+// CHECK-SAME:      ([[INPUT:%.+]]: memref<4xsi32>
+func.func @DynamicDataMask(%arg0: tensor<4xsi32>) -> tensor<1x3x32x32xf16> {
+    %0 = VPU.DynamicDataMask(%arg0) {outputTensorType = tensor<1x3x32x32xf16>} : tensor<4xsi32> -> tensor<1x3x32x32xf16>
+    return %0 : tensor<1x3x32x32xf16>
+
+    // CHECK: [[ALLOC:%.+]] = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
+    // CHECK: [[COPY0:%.+]] = VPUIP.Copy inputs([[INPUT]] : memref<4xsi32>) outputs([[ALLOC]] : memref<4xsi32, [@CMX_NN, 0]>) -> memref<4xsi32, [@CMX_NN, 0]>
+    // CHECK: [[ALLOC0:%.+]] = memref.alloc() : memref<1x3x32x32xf16, [@CMX_NN, 0]>
+    // CHECK: [[RES:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_DynamicDataMask inputs([[COPY0]] as {{[^:]+}}: memref<4xsi32, [@CMX_NN, 0]>) outputs([[ALLOC0]] as {{[^:]+}}: memref<1x3x32x32xf16, [@CMX_NN, 0]>) on tile 0 -> memref<1x3x32x32xf16, [@CMX_NN, 0]>
+    // CHECK:      VPUIP.SW.Kernel.run({{[^:]+}}, {{[^:]+}}) : memref<4xsi32, [@CMX_NN, 0]>, memref<1x3x32x32xf16, [@CMX_NN, 0]>
+    // CHECK: }
+    // CHECK: [[ALLOC1:%.+]] = memref.alloc() : memref<1x3x32x32xf16>
+    // CHECK: [[COPY3:%.+]] = VPUIP.Copy inputs([[RES]] : memref<1x3x32x32xf16, [@CMX_NN, 0]>) outputs([[ALLOC1]] : memref<1x3x32x32xf16>) -> memref<1x3x32x32xf16>
+    // CHECK: return [[COPY3]] : memref<1x3x32x32xf16>
+
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ func.func @SuperdenseNCEConvolution(%arg0: tensor<1x16x15x15xf16, {mem_space = @
         ppe = #VPU.PPEStub<>,
         rawFilterShape = [16, 16, 1, 1],
         strides = [1, 1]
-    } -> tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}> {
+    } : tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NHWC}> -> tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}> {
         VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> #VPU.mpe_mode<CUBOID_16x16>
     }
 

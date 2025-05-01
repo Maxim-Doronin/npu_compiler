@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -66,7 +66,7 @@ func.func @SplitNCEConvOverC(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> 
         ppe = #VPU.PPEStub<>,
         rawFilterShape = [256, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x256x64x64xf16, {order = #NHWC}>
+    } : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x64x64xf16, {order = #NHWC}>
 
     return %0 : tensor<1x256x64x64xf16, {order = #NHWC}>
 
@@ -124,6 +124,6 @@ func.func @PermuteTiling(%arg0: tensor<1x512x64x640xf16>) -> tensor<1x512x64x640
     return %0 : tensor<1x512x64x640xf16, {order = #NHWC}>
 
     // CHECK:       [[RET:%.*]] = VPU.NCE.Permute([[INPUT]]) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 512 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
-    // CHECK-SAME{LITERAL}              tilingStrategy = [1, 1, 32, 1]} -> tensor<1x512x64x640xf16, {order = #NHWC}>
-    //CHECK:        return [[RET]] : tensor<1x512x64x640xf16, {order = #NHWC}>
+    // CHECK-SAME:       tilingStrategy = [1, 22, 1, 1]} -> tensor<1x512x64x640xf16, {order = #NHWC}>
+    // CHECK:        return [[RET]] : tensor<1x512x64x640xf16, {order = #NHWC}>
 }

@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU40XX
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 module @SingleCosLayer {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
   } outputsInfo : {
     DataInfo "cos" : tensor<1x1x1x1000xf16>
@@ -22,7 +22,7 @@ module @SingleCosLayer {
     return %0 : tensor<1x1x1x1000xf16>
   }
 }
-
+  // CHECK: module @SingleCosLayer
   // CHECK: module @VPU.SW
   // CHECK: func.func @generated_0
   // CHECK-SAME: [[VAR0:%.+]]: tensor<1x1x1x1000xf16>,
@@ -42,3 +42,50 @@ module @SingleCosLayer {
   // CHECK-SAME: callee = @VPU.SW::@generated_0
   // CHECK-SAME: tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
   // CHECK: return [[GENERIC_SW_LAYER_RES]] : tensor<1x1x1x1000xf16>
+
+// -----
+// Checks that the outlined function contains the -1 constant even if that originally
+// wasn't in the linalg.generic region.
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+module @TestIsolateFromAbove {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input0" : tensor<1x1x256x56xsi32>
+  } outputsInfo : {
+    DataInfo "output0" : tensor<1x1x256x56xsi32>
+  }
+
+  func.func @main(%arg0: tensor<1x1x256x56xsi32>) -> tensor<1x1x256x56xsi32> {
+    %ct = arith.constant -1 : i32
+    %1 = tensor.bitcast %arg0 : tensor<1x1x256x56xsi32> to tensor<1x1x256x56xi32>
+    %2 = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%1 : tensor<1x1x256x56xi32>) outs(%1 : tensor<1x1x256x56xi32>) {
+    ^bb0(%in: i32, %out: i32):
+      %5 = arith.xori %in, %ct : i32
+      linalg.yield %5 : i32
+    } -> tensor<1x1x256x56xi32>
+    %3 = tensor.bitcast %2 : tensor<1x1x256x56xi32> to tensor<1x1x256x56xsi32>
+    return %3 : tensor<1x1x256x56xsi32>
+  }
+}
+
+  // CHECK: module @TestIsolateFromAbove
+  // CHECK: module @VPU.SW
+  // CHECK: func.func @generated_0
+  // CHECK-SAME: [[VAR0:%.+]]: tensor<1x1x256x56xi32>,
+  // CHECK-SAME: [[VAR1:%.+]]: tensor<1x1x256x56xi32>
+  // CHECK-SAME: -> tensor<1x1x256x56xi32>
+  // CHECK: [[COMPUTATION_RESULT:%.+]] = linalg.generic
+  // CHECK-SAME: ins([[VAR0]]
+  // CHECK-SAME: outs([[VAR1]]
+  // CHECK: [[CONST:%.+]] = arith.constant -1 : i32
+  // CHECK: [[SCALAR_RES:%.+]] = arith.xori {{.*}}, [[CONST]] : i32
+  // CHECK: linalg.yield [[SCALAR_RES]]
+
+  // CHECK: func.func @main
+  // CHECK-NOT: arith.constant
+  // CHECK-NOT: tensor.bitcast
+  // CHECK: [[GENERIC_SW_LAYER_RES:%.+]] = VPU.GenericSwLayer
+  // CHECK-SAME: callee = @VPU.SW::@generated_0
+  // CHECK-SAME: tensor<1x1x256x56xsi32> -> tensor<1x1x256x56xsi32>
+  // CHECK-NOT: tensor.bitcast
+  // CHECK: return [[GENERIC_SW_LAYER_RES]] : tensor<1x1x256x56xsi32>

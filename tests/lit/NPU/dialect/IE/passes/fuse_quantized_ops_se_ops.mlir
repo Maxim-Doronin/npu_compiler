@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -111,7 +111,7 @@ func.func @FuseQuantParamsIntoTransposedConv(%arg0: tensor<1x3x16x16xf16>) -> te
   %4 = IE.TransposedConvolution(%2, %3) {
       dilations = [1, 1],
       operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-      output_padding = [0, 0],
+      spatial_output_padding = [0, 0],
       pads_begin = [1, 1],
       pads_end = [1, 1],
       strides = [2, 2]
@@ -126,9 +126,9 @@ func.func @FuseQuantParamsIntoTransposedConv(%arg0: tensor<1x3x16x16xf16>) -> te
   //CHECK: [[VAL2:%.*]] = IE.TransposedConvolution([[VAL1]], [[CST]]) {
   //CHECK-SAME:   dilations = [1, 1],
   //CHECK-SAME:   operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-  //CHECK-SAME:   output_padding = [0, 0],
   //CHECK-SAME:   pads_begin = [1, 1],
   //CHECK-SAME:   pads_end = [1, 1],
+  //CHECK-SAME:   spatial_output_padding = [0, 0],
   //CHECK-SAME:   strides = [2, 2]
   //CHECK-SAME:   } : tensor<1x3x16x16x!qElemType1>, tensor<3x3x4x4x!qElemType>
   //CHECK-SAME:    -> tensor<1x3x32x32x!qElemType2>

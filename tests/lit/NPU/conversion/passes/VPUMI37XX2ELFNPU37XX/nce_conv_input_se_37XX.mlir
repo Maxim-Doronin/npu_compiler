@@ -8,7 +8,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
-  IE.CNNNetwork entryPoint : @conv_input_se_soh_f16_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @conv_input_se_soh_f16_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x32x32x32xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x64x16x32xf16>
@@ -79,3 +79,146 @@ module @mainModule {
 //CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32_MULTICAST_BASE>
 //CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32_MULTICAST_BASE>
 //CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
+
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!SMapDistributed = !VPUIP.DistributedBuffer<1x96x37x256xi1, #NHWC, @CMX_NN, {
+  mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1],
+  compute_shapes = [[1, 64, 37, 256], [1, 32, 37, 256]], compute_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]],
+  memory_shapes = [[1, 64, 37, 256], [1, 32, 37, 256]], memory_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]
+}>
+
+!SETableDistributed = !VPUIP.DistributedBuffer<1x2x37x256xi32, #NHWC, @CMX_NN, {
+  mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 1, 1, 1],
+  compute_shapes = [[1, 1, 37, 256], [1, 1, 37, 256]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+  memory_shapes = [[1, 1, 37, 256], [1, 1, 37, 256]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]
+}>
+
+net.NetworkInfo entryPoint : @sep_multiple_clusters_dpu_sok_f16_f16_f16 inputsInfo : {
+  DataInfo "input_0" : tensor<1x96x128x128xf16>
+} outputsInfo : {
+  DataInfo "output_0" : tensor<1x96x256x256xf16>
+}
+
+func.func @sep_multiple_clusters_dpu_sok_f16_f16_f16() {
+  %0 = VPUMI37XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
+  %1 = VPUMI37XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8}<1, -1> -> !VPURegMapped.Index<0:0:1>
+
+  %2 = VPURT.DeclareBuffer <CMX_NN> [0] <1214464> -> memref<1x64x37x256xf16, #NHWC, [@CMX_NN, 0]>
+  %3 = VPURT.DeclareBuffer <CMX_NN> [0] <1574912> -> memref<1x64x37x256xi1, #NHWC, [@CMX_NN, 0]>
+  %4 = VPURT.DeclareBuffer <CMX_NN> [0] <1650688> -> memref<1x1x37x256xi32, #NHWC, [@CMX_NN, 0]>
+  %5 = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<64x16x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
+  %6 = VPURT.DeclareBuffer <CMX_NN> [0] <1703936> {swizzlingKey = 5 : i64} -> memref<64x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
+  %7 = VPURT.DeclareBuffer <CMX_NN> <1574912> -> !SMapDistributed
+  %8 = VPURT.DeclareBuffer <CMX_NN> <1650688> -> !SETableDistributed
+  %9 = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<1x64x37x256xf16, #NHWC, [@CMX_NN, 0]>
+  %10 = VPURT.DeclareBuffer <CMX_NN> [1] <1214464> -> memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>
+  %11 = VPURT.DeclareBuffer <CMX_NN> [1] <1574912> -> memref<1x32x37x256xi1, #NHWC, [@CMX_NN, 1]>
+  %12 = VPURT.DeclareBuffer <CMX_NN> [1] <1650688> -> memref<1x1x37x256xi32, #NHWC, [@CMX_NN, 1]>
+  %13 = VPURT.DeclareBuffer <CMX_NN> [1] <0> {swizzlingKey = 5 : i64} -> memref<32x16x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 1]>
+  %14 = VPURT.DeclareBuffer <CMX_NN> [1] <1703936> {swizzlingKey = 5 : i64} -> memref<32x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 1]>
+  %15 = VPURT.DeclareBuffer <CMX_NN> [1] <2048> -> memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>
+
+  %16 = VPUMI37XX.DPUInvariant {clean_after = 8 : ui64,
+  input_se_size = 64 : i64, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+  kernel_size = [1, 1], kernel_strides = [1, 1],
+  mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>,
+  nce_task_type = #VPUIP.nce_task_type<DWCONV>, start_after = 9 : ui64}
+    input(%2 : memref<1x64x37x256xf16, #NHWC, [@CMX_NN, 0]>)
+    input_sparsity_map(%3 : memref<1x64x37x256xi1, #NHWC, [@CMX_NN, 0]>)
+    input_storage_element_table(%4 : memref<1x1x37x256xi32, #NHWC, [@CMX_NN, 0]>)
+    weights(%5 : memref<64x16x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+    weight_table(%6 : memref<64x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+    parent_input(%2 : memref<1x64x37x256xf16, #NHWC, [@CMX_NN, 0]>)
+    parent_input_sparsity_map(%7 : !SMapDistributed)
+    parent_input_storage_element_table(%8 : !SETableDistributed)
+    parent_output(%9 : memref<1x64x37x256xf16, #NHWC, [@CMX_NN, 0]>)
+    outputs(%9 : memref<1x64x37x256xf16, #NHWC, [@CMX_NN, 0]>)
+    waits(%0 : !VPURegMapped.Index<0:0:0>) updates(%1 : !VPURegMapped.Index<0:0:1>) -> <0:0:4>
+  PPE : {
+    VPUMI37XX.PPETask {ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>}
+  }
+  %17 = VPUMI37XX.DPUInvariant {clean_after = 8 : ui64,
+  input_se_size = 32 : i64, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+  kernel_size = [1, 1], kernel_strides = [1, 1],
+  mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>,
+  nce_task_type = #VPUIP.nce_task_type<DWCONV>, start_after = 9 : ui64}
+    input(%10 : memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>)
+    input_sparsity_map(%11 : memref<1x32x37x256xi1, #NHWC, [@CMX_NN, 1]>)
+    input_storage_element_table(%12 : memref<1x1x37x256xi32, #NHWC, [@CMX_NN, 1]>)
+    weights(%13 : memref<32x16x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 1]>)
+    weight_table(%14 : memref<32x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 1]>)
+    parent_input(%10 : memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>)
+    parent_input_sparsity_map(%7 : !SMapDistributed)
+    parent_input_storage_element_table(%8 : !SETableDistributed)
+    parent_output(%15 : memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>)
+    outputs(%15 : memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>)
+    waits(%0 : !VPURegMapped.Index<0:0:0>) updates(%1 : !VPURegMapped.Index<0:0:1>) -> <0:0:5>
+  PPE : {
+    VPUMI37XX.PPETask {ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>}
+  }
+
+  %18 = "VPUMI37XX.DPUVariant"(%16) <{
+    cluster_id = 0 : i64, end = [255, 36, 63], start = [0, 0, 0],
+    mpe_mode = #VPU.mpe_mode<CUBOID_16x16>,
+    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}>
+      : (!VPURegMapped.Index<0:0:4>) -> !VPURegMapped.Index<0:0:4>
+  %19 = "VPUMI37XX.DPUVariant"(%17) <{
+    cluster_id = 1 : i64, end = [255, 36, 31], start = [0, 0, 0],
+    mpe_mode = #VPU.mpe_mode<CUBOID_16x16>,
+    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}>
+      : (!VPURegMapped.Index<0:0:5>) -> !VPURegMapped.Index<0:0:5>
+
+  %20 = VPUMI37XX.MappedInference
+    invariants(%16 : !VPURegMapped.Index<0:0:4>) variants(%18 : !VPURegMapped.Index<0:0:4>)
+    dmaCount([0, 0]) invariantCount(2) variantCount(2)
+    actKernelRangesCount(0) actKernelInvocationsCount(0) barrierCount(0) -> !VPURegMapped.Index<0:0:0>
+  return
+}
+
+//CHECK: [[INV0:%.+]] = VPUMI37XX.DPUInvariant {clean_after = 8 : ui64, input_se_size = 64 : i64
+//CHECK: [[INV1:%.+]] = VPUMI37XX.DPUInvariant {clean_after = 8 : ui64, input_se_size = 32 : i64
+
+// Cluster 0 invariant
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(92) <R_VPU_32> {{.+}} 1214464
+//CHECK-SAME:    description = "Input (act_offset[0]) in DPU Invariant reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(264) <R_VPU_64_LSHIFT> {{.+}} 0
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(272) <R_VPU_64_LSHIFT> {{.+}} 0
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(96) <R_VPU_32> {{.+}} 3311616
+//CHECK-SAME:    description = "Input (act_offset[1]) in DPU invariant registers reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(4) <R_VPU_32> {{.+}} 1574912
+//CHECK-SAME:    description = "Input sparsity map (sparsity_addr in se_sp_addr[0]) in DPU invariant registers for input sparsity map reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(0) <R_VPU_32> {{.+}} 1650688
+//CHECK-SAME:    description = "Input se table (se_sp_addr[0]) in DPU invariant registers for input storage element table reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(116) <R_VPU_32> {{.+}} 0
+//CHECK-SAME:    description = "Weights (wt_offset, for ELTWISE) in DPU invariant registers reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(160) <R_VPU_32_MULTICAST_BASE> {{.+}} 2048
+//CHECK-SAME:    description = "Base (base_adr[0]) offset in DPU reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(164) <R_VPU_32_MULTICAST_BASE> {{.+}} 2048
+//CHECK-SAME:    description = "Base (base_adr[1]) offset in DPU reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV0]] : !VPURegMapped.Index<0:0:4>) offset(60) <R_VPU_32> {{.+}} 1703936
+//CHECK-SAME:    description = "Weights table (weight_start) in DPU invariant registers reloc
+
+// Cluster 1 invariant
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(92) <R_VPU_32> {{.+}} 3311616
+//CHECK-SAME:    description = "Input (act_offset[0]) in DPU Invariant reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(264) <R_VPU_64_LSHIFT> {{.+}} 0
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(272) <R_VPU_64_LSHIFT> {{.+}} 0
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(96) <R_VPU_32> {{.+}} 5408768
+//CHECK-SAME:    description = "Input (act_offset[1]) in DPU invariant registers reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(4) <R_VPU_32> {{.+}} 3672064
+//CHECK-SAME:    description = "Input sparsity map (sparsity_addr in se_sp_addr[0]) in DPU invariant registers for input sparsity map reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(0) <R_VPU_32> {{.+}} 3747840
+//CHECK-SAME:    description = "Input se table (se_sp_addr[0]) in DPU invariant registers for input storage element table reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(116) <R_VPU_32> {{.+}} 2097152
+//CHECK-SAME:    description = "Weights (wt_offset, for ELTWISE) in DPU invariant registers reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(160) <R_VPU_32_MULTICAST_BASE> {{.+}} 2099200
+//CHECK-SAME:    description = "Base (base_adr[0]) offset in DPU reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(164) <R_VPU_32_MULTICAST_BASE> {{.+}} 2099200
+//CHECK-SAME:    description = "Base (base_adr[1]) offset in DPU reloc
+//CHECK:  ELFNPU37XX.Reloc baseOp([[INV1]] : !VPURegMapped.Index<0:0:5>) offset(60) <R_VPU_32> {{.+}} 3801088
+//CHECK-SAME:    description = "Weights table (weight_start) in DPU invariant registers reloc

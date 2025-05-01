@@ -8,7 +8,7 @@
 // CHECK-LABEL: @AdjustPadLayout
 module @AdjustPadLayout {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x30x30xf16>
@@ -35,7 +35,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x33x33xf16> {
 
     // CHECK:       [[OUTPUT:%.*]] = IE.Reorder([[PAD]]) {dstOrder = #NCHW} : tensor<1x16x33x33xf16, {order = #NHWC}> -> tensor<1x16x33x33xf16>
 
-    // CHECK        return [[OUTPUT]]
+    // CHECK:       return [[OUTPUT]]
 }
 }
 
@@ -44,7 +44,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x33x33xf16> {
 // CHECK-LABEL: @AdjustRollLayout
 module @AdjustRollLayout {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x23x30xf16>
@@ -67,7 +67,7 @@ func.func @main(%input: tensor<1x16x23x30xf16>) -> tensor<1x16x23x30xf16> {
     // CHECK:       [[ROLL:%.+]] = IE.Roll([[INPUT_REORDERED]], [[SHIFT]], [[AXES]]) : tensor<1x16x23x30xf16, {order = #NHWC}>, tensor<1xsi32>, tensor<1xsi32>
     // CHECK-SAME:  -> tensor<1x16x23x30xf16, {order = #NHWC}>
     // CHECK:       [[OUTPUT:%.*]] = IE.Reorder([[ROLL]]) {dstOrder = #NCHW} : tensor<1x16x23x30xf16, {order = #NHWC}> -> tensor<1x16x23x30xf16>
-    // CHECK        return [[OUTPUT]]
+    // CHECK:       return [[OUTPUT]]
 }
 }
 
@@ -76,7 +76,7 @@ func.func @main(%input: tensor<1x16x23x30xf16>) -> tensor<1x16x23x30xf16> {
 // CHECK-LABEL: @NotAdjustRollLayoutBecauseAtC
 module @NotAdjustRollLayoutBecauseAtC {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x23x30xf16>
@@ -98,6 +98,6 @@ func.func @main(%input: tensor<1x16x23x30xf16>) -> tensor<1x16x23x30xf16> {
 
     // CHECK:       [[ROLL:%.+]] = IE.Roll([[INPUT]], [[SHIFT]], [[AXES]]) : tensor<1x16x23x30xf16>, tensor<1xsi32>, tensor<2xsi32>
     // CHECK-SAME:  -> tensor<1x16x23x30xf16>
-    // CHECK        return [[OUTPUT]]
+    // CHECK:       return [[ROLL]]
 }
 }

@@ -38,13 +38,13 @@ func.func @SplitNNDMAWithLargePlanesNum(%input: !Input_DDR, %output: !Output_CMX
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF0]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_CMX_BUF0]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [311040, 1, 864, 4]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF0]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_CMX_BUF0]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [311040, 1, 864, 4]}, [@CMX_NN, 0]>)
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF1]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_CMX_BUF1]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [311040, 1, 864, 4]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF1]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_CMX_BUF1]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [311040, 1, 864, 4]}, [@CMX_NN, 0]>)
 
     // CHECK:      return [[OUTPUT_BUF]] : memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>
 }
@@ -85,18 +85,18 @@ func.func @UnevenSplitNNDMAWithLargePlanesNum(%input: !Input_DDR, %output: !Outp
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF0]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_CMX_BUF0]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [442368, 1, 864, 4]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF0]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_CMX_BUF0]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [442368, 1, 864, 4]}, [@CMX_NN, 0]>)
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF1]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_CMX_BUF1]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [442368, 1, 864, 4]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF1]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_CMX_BUF1]] : memref<1x4x171x216xf16, {order = #NHWC, strides = [442368, 1, 864, 4]}, [@CMX_NN, 0]>)
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF2]] : memref<1x4x170x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_CMX_BUF2]] : memref<1x4x170x216xf16, {order = #NHWC, strides = [442368, 1, 864, 4]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF2]] : memref<1x4x170x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_CMX_BUF2]] : memref<1x4x170x216xf16, {order = #NHWC, strides = [442368, 1, 864, 4]}, [@CMX_NN, 0]>)
 
     // CHECK:      return [[OUTPUT_BUF]] : memref<1x4x512x216xf16, #NHWC, [@CMX_NN, 0]>
 }
@@ -130,10 +130,10 @@ func.func @NotSplitNNDMAIfValidNumPlanes(%input: !Input_DDR, %output: !Output_CM
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF0]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_BUF]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [311040, 1, 864, 4]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF0]] : memref<1x4x180x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_BUF]] : memref<1x4x180x216xf16, #NHWC, [@CMX_NN, 0]>)
 
-    // CHECK:      return [[OUTPUT_BUF]] : memref<1x4x180x216xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:      return [[OUTPUT_BUF]]
 }
 
 // -----
@@ -165,8 +165,8 @@ func.func @NotSplitNNDMAIfSingleStrideLevel(%input: !Input_DDR, %output: !Output
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF0]] : memref<1x4x360x216xf16, {order = #NHWC, strides = [3110400, 1, 8640, 4]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_BUF]] : memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF0]] : memref<1x4x360x216xf16, {order = #NHWC, strides = [3110400, 1, 8640, 4]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_BUF]] : memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:      return [[OUTPUT_BUF]] : memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>
 }
@@ -206,13 +206,13 @@ func.func @AvoidChangeMemSpaceForDistributedBufferTypeOutput(%input: !Input_DDR,
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF_0]] : memref<1x256x180x3xf16, {order = #NHWC, strides = [117964800, 1, 327680, 512]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_BUF_1]] : !VPUIP.DistributedBuffer<1x256x180x3xf16, {order = #NHWC, strides = [276480, 1, 768, 256]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF_0]] : memref<1x256x180x3xf16, {order = #NHWC, strides = [117964800, 1, 327680, 512]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_BUF_1]] : !VPUIP.DistributedBuffer<1x256x180x3xf16, {order = #NHWC, strides = [276480, 1, 768, 256]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
-    // CHECK-SAME    inputs([[INPUT_DDR_BUF_1]] : memref<1x256x180x3xf16, {order = #NHWC, strides = [117964800, 1, 327680, 512]}, @DDR>)
-    // CHECK-SAME    outputs([[OUTPUT_BUF_2]] : !VPUIP.DistributedBuffer<1x256x180x3xf16, {order = #NHWC, strides = [276480, 1, 768, 256]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
+    // CHECK-SAME:   inputs([[INPUT_DDR_BUF_1]] : memref<1x256x180x3xf16, {order = #NHWC, strides = [117964800, 1, 327680, 512]}, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT_BUF_2]] : !VPUIP.DistributedBuffer<1x256x180x3xf16, {order = #NHWC, strides = [276480, 1, 768, 256]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
     // CHECK:      return [[OUTPUT_BUF_0]] : !VPUIP.DistributedBuffer<1x256x360x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 }

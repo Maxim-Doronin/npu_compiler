@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 module @OneInputOneOutput {
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
@@ -73,7 +73,7 @@ module @OneInputOneOutput {
 
 module @OneInputMultipleOutputs {
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
@@ -145,7 +145,7 @@ module @OneInputMultipleOutputs {
 
 module @MultipleInputsOneOutput {
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x3x62x62xf16>
         DataInfo "input1" : tensor<1x48x60x60xf16>
@@ -214,7 +214,7 @@ module @MultipleInputsOneOutput {
 
 module @MultipleInputsMultipleOutputs {
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x3x62x62xf16>
         DataInfo "input1" : tensor<1x48x60x60xf16>

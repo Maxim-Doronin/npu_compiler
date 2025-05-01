@@ -8,7 +8,7 @@
 // CHECK-LABEL: @LinearGraph
 module @LinearGraph {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x1x1x1000xf16>
@@ -116,7 +116,7 @@ builtin.module @ReservedMemory {
 
 // CHECK:  IE.MemoryResource 512 bytes of @DDR offset 0
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x1x1x1000xf16>

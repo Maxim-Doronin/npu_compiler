@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -106,7 +106,7 @@ func.func @InterpolateLinearAlignCorners(%arg0: tensor<1x3x6x6xf16>) -> tensor<1
 func.func @TransposedConvolution(%arg0: tensor<1x32x30x30xf16>) -> tensor<1x16x60x60xf16> {
     %cst = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>
     %0 = IE.TransposedConvolution(%arg0, %cst) {
-        strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0]
+        strides = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0]
     } : tensor<1x32x30x30xf16>, tensor<16x32x2x2xf16> -> tensor<1x16x60x60xf16>
     return %0 : tensor<1x16x60x60xf16>
 

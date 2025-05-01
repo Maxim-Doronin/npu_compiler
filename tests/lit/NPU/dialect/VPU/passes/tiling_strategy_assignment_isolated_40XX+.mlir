@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -265,7 +265,7 @@ func.func @NoTilingClusterNCEConv(%arg0: tensor<1x32x100x100xf16, {mem_space = @
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [128, 32, 3, 3],
                 strides = [1, 1]
-            } -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
+            } : tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
       VPU.Yield %1
     }
 
@@ -750,7 +750,7 @@ func.func @SplitNCEConvOverOH(%arg0: tensor<1x32x64x48xf16, {order = #NHWC}>) ->
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [256, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x256x64x48xf16, {order = #NHWC}>
+    } : tensor<1x32x64x48xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x64x48xf16, {order = #NHWC}>
 
     return %0 : tensor<1x256x64x48xf16, {order = #NHWC}>
 
@@ -797,7 +797,7 @@ func.func @SplitQuantNCEConvOverOC(%arg0: tensor<1x32x64x64x!qElemType, {order =
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [512, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x64x64x!qElemType, {order = #NHWC}>, tensor<512x32x3x3x!qElemType2, {order = #NHWC}>, tensor<512x1x1x4xsi32, {order = #NCHW}> -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
@@ -841,7 +841,7 @@ func.func @SplitI4QuantNCEConvOverOC(%arg0: tensor<1x128x256x4xf16, {order = #NH
         ppe = #VPU.PPEStub<>,
         pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         rawFilterShape = [6320, 128, 1, 1], strides = [1, 1]
-    } -> tensor<1x6320x256x4xf16, {order = #NHWC}>
+    } : tensor<1x128x256x4xf16, {order = #NHWC}>, tensor<6320x128x1x1x!qElemType, {order = #NHWC}>, tensor<6320x1x1x4xsi32, {order = #NCHW}> -> tensor<1x6320x256x4xf16, {order = #NHWC}>
 
     return %0 : tensor<1x6320x256x4xf16, {order = #NHWC}>
 
@@ -1007,7 +1007,7 @@ func.func @SigmoidSplitOverW(%arg0: tensor<1x8x80x960xf16>) -> tensor<1x8x80x960
 
     // CHECK:       [[OUTPUT:%.+]] = VPU.Sigmoid([[INPUT]]) {
     // CHECK-SAME:          tilingStrategy = [1, 1, 1, 2]}
-    // CHECK-SAME       : tensor<1x8x80x960xf16> -> tensor<1x8x80x960xf16>
+    // CHECK-SAME:      : tensor<1x8x80x960xf16> -> tensor<1x8x80x960xf16>
 
     // CHECK:       return [[OUTPUT]] : tensor<1x8x80x960xf16>
 }
@@ -1277,7 +1277,7 @@ func.func @SplitSparseNCEConvOverOH(%arg0: tensor<1x32x80x60xf16, {order = #NHWC
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [160, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x160x80x60xf16, {order = #NHWC}>
+    } : tensor<1x32x80x60xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<160x32x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<160x1x1x384xi1>, is_weights>, tensor<160x1x1x4xsi32, {order = #NCHW}> -> tensor<1x160x80x60xf16, {order = #NHWC}>
 
     return %0 : tensor<1x160x80x60xf16, {order = #NHWC}>
 
@@ -1335,7 +1335,7 @@ func.func @SplitSparseQuantNCEConvOverOH(%arg0: tensor<1x32x80x80x!qElemType, {o
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [320, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x80x80x!qElemType, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<320x32x3x3x!qElemType2, {order = #NHWC}>, sparsity_map=tensor<320x1x1x384xi1>, is_weights>, tensor<320x1x1x4xsi32, {order = #NCHW}> -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
@@ -1673,4 +1673,146 @@ module @executors {
 
     // CHECK:       VPU.DynamicDequantize
     // CHECK-SAME:  tilingStrategy = [1, 1, 2, 1]
+}
+
+// -----
+
+// CHECK-LABEL: @ClampTilingNumForAlignment
+!qElemType = !quant.uniform<i4:f32, 1.000000e+00>
+module @ClampTilingNumForAlignment {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input0" tensorNames = ["input0"] : tensor<1x32x128x11008xsi4>
+    DataInfo "input1" tensorNames = ["input1"] : tensor<1x32x1x11008xf32>
+  } outputsInfo : {
+    DataInfo "output" tensorNames = ["output"] : tensor<1x32x128x11008xf16>
+  }
+  func.func @main( %arg16: tensor<1x32x128x11008xsi4>, %arg17: tensor<1x32x1x11008xf32>) -> (tensor<1x32x128x11008xf16>) {
+    %552 = VPU.QuantizeCast(%arg16) {dstElemType = !qElemType} : tensor<1x32x128x11008xsi4> -> tensor<1x32x128x11008x!qElemType>
+    %554 = VPU.Convert(%arg17) {dstElemType = f16} : tensor<1x32x1x11008xf32> -> tensor<1x32x1x11008xf16>
+    %555 = VPU.DynamicDequantize(%552, %554) {dstElemType = f16} : tensor<1x32x128x11008x!qElemType>, tensor<1x32x1x11008xf16> -> tensor<1x32x128x11008xf16>
+    return %555 : tensor<1x32x128x11008xf16>
+    // CHECK:   func.func @main([[ARG0:%.+]]: tensor<1x32x128x11008xsi4>, [[ARG1:%.+]]: tensor<1x32x1x11008xf32>) -> tensor<1x32x128x11008xf16> {
+        // CHECK:       [[QUANTIZECAST0:%.+]] = VPU.QuantizeCast([[ARG0]]) {dstElemType = !qElemType} : tensor<1x32x128x11008xsi4> -> tensor<1x32x128x11008x!qElemType>
+        // CHECK:       [[CONVERT0:%.+]] = VPU.Convert([[ARG1]]) {dstElemType = f16, tilingStrategy = [1, 1, 1, 2]} : tensor<1x32x1x11008xf32> -> tensor<1x32x1x11008xf16>
+        // CHECK:       [[DYNAMICDEQUANTIZE0:%.+]] = VPU.DynamicDequantize([[QUANTIZECAST0]], [[CONVERT0]]) {dstElemType = f16, tilingStrategy = [1, 2, 64, 1]} : tensor<1x32x128x11008x!qElemType>, tensor<1x32x1x11008xf16> -> tensor<1x32x128x11008xf16>
+        // CHECK:       return [[DYNAMICDEQUANTIZE0]] : tensor<1x32x128x11008xf16>
+  }
+}
+
+// -----
+
+module @executors {
+    IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
+        IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
+        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    }
+    // CHECK-LABEL:   @MultiplyNotAlign
+    // CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x512x48x336xf16>,
+    // CHECK-SAME:     [[INPUT1:%.+]]: tensor<1x512x48x336xf16>)
+    func.func @MultiplyNotAlign(%arg0: tensor<1x512x48x336xf16>, %arg1: tensor<1x512x48x336xf16>) -> tensor<1x512x48x336xf16> {
+        %0 = VPU.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+                    tensor<1x512x48x336xf16>, tensor<1x512x48x336xf16> -> tensor<1x512x48x336xf16>
+
+        return %0 : tensor<1x512x48x336xf16>
+
+
+        // CHECK: tilingStrategy = [1, 35, 1, 1]
+    }
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+module @TilingForDWConvSEP {
+    IE.TileResource 4 of @NCE at 6.000000e+02 MHz
+
+// CHECK-LABEL: @DWConvWithSEPSOK
+func.func @DWConvWithSEPSOK(%arg0: tensor<1x288x1x1xf16, {order = #NHWC}>) -> tensor<1x288x2x2xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<288x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<288x16x1x1xf16>, [#const.Reorder<#NHWC>]
+    %weights_table = const.Declare tensor<288x1x1x4xsi32> = dense<1> : tensor<288x1x1x4xsi32>
+    %sparsity_map = const.Declare tensor<1x288x2x2xi1> = dense<1> : tensor<1x288x2x2xi1>
+
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 18, seSize = 16, dataShape = [1, 288, 1, 1],
+        seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
+                                    scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>
+    } -> tensor<1x18x2x2xi32, {order = #NHWC}>
+
+    %input = VPU.GroupSparseTensor(%arg0, %sparsity_map, %storage_element) {
+        seAttr = #VPU.SEInterpolate<
+            mode = <NEAREST>,
+            coordinate_transformation_mode = <ASYMMETRIC>,
+            scale = [1.0, 1.0, 2.0, 2.0],
+            nearest_mode = <FLOOR>,
+            offsets = [0, 0, 0, 0],
+            sizes = [1, 288, 2, 2]>
+    } -> !VPU.SparseTensor<data=tensor<1x288x1x1xf16, {order = #NHWC}>,
+                           sparsity_map=tensor<1x288x2x2xi1>,
+                           storage_element_table=tensor<1x18x2x2xi32, {order = #NHWC}>,
+                           #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
+                                              scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>>
+
+    %interpolate = VPU.NCE.DepthConvolution(%input, %weights, %weights_table) {
+        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        ppe = #VPU.PPEStub<>,
+        rawFilterShape = [288, 1, 1, 1],
+        strides = [1, 1]
+    } -> tensor<1x288x2x2xf16, {order = #NHWC}>
+
+    return %interpolate : tensor<1x288x2x2xf16, {order = #NHWC}>
+
+    // To satisfy DW.Conv + SEP requirements for workload channels, the op is
+    // tiled into 2 slices, each with 144 channels; each individual op will then
+    // be multiclustered with [64, 32, 32, 16] channels/cluster
+
+    // CHECK:       VPU.NCE.DepthConvolution
+    // CHECK-SAME:     tilingStrategy = [1, 2, 1, 1]
+}
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @DWConvWithSEPNoMC
+func.func @DWConvWithSEPNoMC(%arg0: tensor<1x288x1x1xf16, {order = #NHWC}>) -> tensor<1x288x2x2xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<288x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<288x16x1x1xf16>, [#const.Reorder<#NHWC>]
+    %weights_table = const.Declare tensor<288x1x1x4xsi32> = dense<1> : tensor<288x1x1x4xsi32>
+    %sparsity_map = const.Declare tensor<1x288x2x2xi1> = dense<1> : tensor<1x288x2x2xi1>
+
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 18, seSize = 16, dataShape = [1, 288, 1, 1],
+        seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
+                                    scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>
+    } -> tensor<1x18x2x2xi32, {order = #NHWC}>
+
+    %input = VPU.GroupSparseTensor(%arg0, %sparsity_map, %storage_element) {
+        seAttr = #VPU.SEInterpolate<
+            mode = <NEAREST>,
+            coordinate_transformation_mode = <ASYMMETRIC>,
+            scale = [1.0, 1.0, 2.0, 2.0],
+            nearest_mode = <FLOOR>,
+            offsets = [0, 0, 0, 0],
+            sizes = [1, 288, 2, 2]>
+    } -> !VPU.SparseTensor<data=tensor<1x288x1x1xf16, {order = #NHWC}>,
+                           sparsity_map=tensor<1x288x2x2xi1>,
+                           storage_element_table=tensor<1x18x2x2xi32, {order = #NHWC}>,
+                           #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
+                                              scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>>
+
+    %interpolate = VPU.NCE.DepthConvolution(%input, %weights, %weights_table) {
+        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        ppe = #VPU.PPEStub<>,
+        rawFilterShape = [288, 1, 1, 1],
+        strides = [1, 1]
+    } -> tensor<1x288x2x2xf16, {order = #NHWC}>
+
+    return %interpolate : tensor<1x288x2x2xf16, {order = #NHWC}>
+
+    // To satisfy DW.Conv + SEP requirements for workload channels, the op is
+    // tiled into 5 slices on channels, with division:
+    // [64, 64, 64, 64, 32]
+
+    // CHECK:       VPU.NCE.DepthConvolution
+    // CHECK-SAME:     tilingStrategy = [1, 5, 1, 1]
 }

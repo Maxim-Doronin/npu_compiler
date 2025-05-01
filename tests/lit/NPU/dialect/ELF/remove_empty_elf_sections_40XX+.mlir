@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,19 +7,19 @@
 // REQUIRES: arch-NPU40XX
 func.func @oneDma() {
   ELF.Main @ELFMain {
-    ELF.CreateLogicalSection @buffer.CMX_NN aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") {
+    ELF.CreateLogicalSection @buffer.CMX_NN aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") secLocation(<DDR>) {
       VPUASM.DeclareBuffer @DeclareBuffer !VPUASM.Buffer< "CMX_NN"[0] <0> : memref<1x10x2x3xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]> :  swizzling(0)>
     }
-    ELF.CreateLogicalSection @program.metadata.cmx aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") {
+    ELF.CreateLogicalSection @program.metadata.cmx aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<DDR>) {
       VPUASM.DeclareTaskBuffer @DeclareTaskBuffer idx(!VPURegMapped.Index<0:0:0>) <ActKernelInvocation> {elfMemOffsetAttrKey = 53760 : ui64}
     }
-    ELF.CreateLogicalSection @buffer.empty aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") {
+    ELF.CreateLogicalSection @buffer.empty aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") secLocation(<DDR>) {
     }
     VPUASM.DeclareKernelEntry @DeclareKernelEntry : "activation_sigmoid"
-    ELF.CreateSection @shave.text aligned(1024) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+    ELF.CreateSection @shave.text aligned(1024) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
       VPUASM.DeclareKernelText @DeclareKernelText {elfMemOffsetAttrKey = 0 : ui64} : "activation_sigmoid"
     }
-    ELF.CreateSection @data.empty aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) {
+    ELF.CreateSection @data.empty aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>) {
     }
     ELF.CreateSymbolTableSection @symtab.0 secFlags("SHF_NONE") {
       ELF.Symbol @elfsym.buffer.empty of(@buffer.empty) type(<STT_SECTION>) size(0) value(0)

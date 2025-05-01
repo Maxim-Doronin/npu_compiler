@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -46,7 +46,7 @@ func.func @CheckConv(%input: !InputDistributed, %weights: !WeightsDistributed,
     %convOut= VPU.NCE.Convolution(%input, %weights, %wt) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
                                                           pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                                                           ppe = #VPU.PPEStub<>,
-                                                          rawFilterShape = [80, 64, 3, 3], strides = [1, 1]} -> !OutputDistributed
+                                                          rawFilterShape = [80, 64, 3, 3], strides = [1, 1]} : !InputDistributed, !WeightsDistributed, !WeightsTableDistributed -> !OutputDistributed
     return %convOut : !OutputDistributed
 }
 

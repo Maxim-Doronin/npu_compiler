@@ -18,7 +18,7 @@ func.func @LowerSparsifyOpF16(%arg0: !defaultType, %wt: tensor<16x1x1x4xsi32>, %
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> !defaultType
+        } : !sparseType, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !defaultType
 
     return %1 : !defaultType
 
@@ -37,7 +37,8 @@ func.func @LowerSparsifyOpF16(%arg0: !defaultType, %wt: tensor<16x1x1x4xsi32>, %
     // CHECK-SAME:          ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:          rawFilterShape = [16, 16, 1, 1],
     // CHECK-SAME:          strides = [1, 1]
-    // CHECK-SAME:      } -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
+    // CHECK-SAME:      }
+    // CHECK-SAME:      -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
 
     // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
     // CHECK:       return [[VAL1]]
@@ -57,7 +58,7 @@ func.func @LowerSparsifyOpUniformQuant(%arg0: !defaultType, %wt: tensor<16x1x1x4
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> !defaultType
+        } : !sparseType, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !defaultType
 
     return %1 : !defaultType
 
@@ -76,7 +77,8 @@ func.func @LowerSparsifyOpUniformQuant(%arg0: !defaultType, %wt: tensor<16x1x1x4
     // CHECK-SAME:        ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:        rawFilterShape = [16, 16, 1, 1],
     // CHECK-SAME:        strides = [1, 1]
-    // CHECK-SAME:    } -> !VPU.SparseTensor<data=tensor<1x16x16x16x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
+    // CHECK-SAME:    }
+    // CHECK-SAME:    -> !VPU.SparseTensor<data=tensor<1x16x16x16x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
 
     // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
     // CHECK:       return [[VAL1]]
@@ -100,7 +102,7 @@ func.func @LowerSparsifyOpPerAxisQuant(%arg0: !defaultType, %wt: tensor<16x1x1x4
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> !defaultType
+        } : !sparseType, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !defaultType
 
     return %1 : !defaultType
 
@@ -120,7 +122,8 @@ func.func @LowerSparsifyOpPerAxisQuant(%arg0: !defaultType, %wt: tensor<16x1x1x4
     // CHECK-SAME:        ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:        rawFilterShape = [16, 16, 1, 1],
     // CHECK-SAME:        strides = [1, 1]
-    // CHECK-SAME:    } -> !VPU.SparseTensor<data=tensor<1x16x16x16x!qElemType1, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
+    // CHECK-SAME:    }
+    // CHECK-SAME:    -> !VPU.SparseTensor<data=tensor<1x16x16x16x!qElemType1, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
     // CHECK:       [[VAL2:%.+]] = VPU.QuantizeCast([[VAL1]]) {dstElemType = !qElemType}
     // CHECK-SAME:     : !VPU.SparseTensor<data=tensor<1x16x16x16x!qElemType1, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
     // CHECK-SAME:    -> !VPU.SparseTensor<data=tensor<1x16x16x16x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x16x16x16xi1, {order = #NHWC}>>
@@ -142,7 +145,7 @@ func.func @LowerDesparsifyOpF16(%arg0: !defaultType, %wt: tensor<16x1x1x4xsi32>,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> !sparseType
+        } : !defaultType, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !sparseType
     %1 = VPU.Desparsify(%0) : !sparseType -> !defaultType
 
     return %1 : !defaultType
@@ -170,7 +173,7 @@ func.func @LowerDesparsifyOpQuantUniform(%arg0: !defaultType, %wt: tensor<16x1x1
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> !sparseType
+        } : !defaultType, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !sparseType
     %1 = VPU.Desparsify(%0) : !sparseType -> !defaultType
 
     return %1 : !defaultType
@@ -202,7 +205,7 @@ func.func @LowerDesparsifyOpPerAxisQuant(%arg0: !defaultType, %wt: tensor<16x1x1
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> !sparseType
+        } : !defaultType, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !sparseType
     %1 = VPU.Desparsify(%0) : !sparseType -> !defaultType
 
     return %1 : !defaultType

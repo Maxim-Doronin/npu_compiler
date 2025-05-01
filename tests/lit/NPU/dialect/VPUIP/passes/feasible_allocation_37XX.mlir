@@ -11,7 +11,7 @@
 // CHECK-LABEL: @Spilling
 module @Spilling {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x96x96xf16>
@@ -161,7 +161,7 @@ func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16,
 // CHECK-LABEL: @SpillingOpWith2Outputs
 module @SpillingOpWith2Outputs {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x96x96xf16>
@@ -170,7 +170,8 @@ IE.CNNNetwork
         DataInfo "prob" : tensor<1x32x96x96xf16>
     }
 
-// CHECK-LABEL: @main
+// CHECK-LABEL: func.func @main
+// CHECK-SAME:  ([[IN:%.+]]: memref<1x32x96x96xf16, #NHWC>, [[OUT:%.+]]: memref<1x32x96x96xf16, #NHWC>)
 func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16, #NHWC>) -> memref<1x32x96x96xf16, #NHWC> {
     %cst0 = const.Declare memref<1x32x96x96xf16, #NHWC> = dense<2.0> : tensor<1x32x96x96xf16>, [#const.Reorder<#NHWC>]
     %wt = const.Declare memref<16x1x1x4xsi32, [@CMX_NN, 0]> = dense<1> : tensor<16x1x1x4xsi32>
@@ -283,32 +284,36 @@ func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16,
     return %3 : memref<1x32x96x96xf16, #NHWC>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
-    // CHECK-NEXT       VPUIP.NNDMA
-    // CHECK:       [[T1:%.+]], [[R1:%.+]]:2 = async.execute {{.*}} ([[R0]] as %arg2: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>)
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME        task_type = #VPUIP.nce_task_type<MAXPOOL>
-    // CHECK-SAME        inputs(%arg2 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>) outputs([[BUF1:%.*]] :
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME        task_type = #VPUIP.nce_task_type<MAXPOOL>
-    // CHECK-SAME        inputs(%arg2 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>) outputs([[BUF2:%.*]] :
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK:       [[T1:%.+]], [[R1:%.+]]:2 = async.execute {{.*}} ([[R0]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>)
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:       task_type = #VPUIP.nce_task_type<MAXPOOL>
+    // CHECK-SAME:       input([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:       outputs([[BUF1:[^:]+]]
+    // CHECK:           VPUIP.NCEClusterTask
+    // CHECK-SAME:       task_type = #VPUIP.nce_task_type<MAXPOOL>
+    // CHECK-SAME:       input([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:       outputs([[BUF2:[^:]+]]
     // CHECK:       [[T_SPILL_WRITE:%.+]], [[R_SPILL_WRITE:%.+]] = async.execute
-    // CHECK-NEXT       VPUIP.NNDMA inputs([[BUF2]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK-SAME       -> memref<1x32x96x96xf16, #NHWC, @DDR>
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       inputs([[BUF2]]: memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:      -> memref<1x32x96x96xf16, #NHWC, @DDR>
     // CHECK:       [[T2:%.+]], [[R2:%.+]] = async.execute
-    // CHECK-NEXT       VPUIP.NNDMA
-    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute {{.*}} ([[R1]]#0 as %arg2: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME         task_type = #VPUIP.nce_task_type<ELTWISE>
-    // CHECK-SAME         inputs(%arg2 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:       [[T_SPILL_READ:%.+]], [[R_SPILL_READ:%.+]] = async.execute {{.*}} ([[R_SPILL_WRITE]] as %arg2: !async.value<memref<1x32x96x96xf16, #NHWC, @DDR>>)
-    // CHECK-NEXT       VPUIP.NNDMA inputs(%arg2 : memref<1x32x96x96xf16, #NHWC, @DDR>)
-    // CHECK-SAME       -> memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute {{.*}} ([[R_SPILL_READ]] as %arg2: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME         task_type = #VPUIP.nce_task_type<ELTWISE>
-    // CHECK-SAME         inputs(%arg2 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute {{.*}} ([[R6]] as %arg2: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK-NEXT       VPUIP.NNDMA
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute {{.*}} ([[R1]]#0 as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
+    // CHECK-SAME:        input([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK:       [[T_SPILL_READ:%.+]], [[R_SPILL_READ:%.+]] = async.execute {{.*}} ([[R_SPILL_WRITE]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, @DDR>>)
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       inputs([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, @DDR>)
+    // CHECK-SAME:      -> memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute {{.*}} ([[R_SPILL_READ]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
+    // CHECK-SAME:        input([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute {{.*}} ([[R6]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK-NEXT:      VPUIP.NNDMA
 }
 
 }
@@ -321,7 +326,7 @@ func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16,
 // CHECK-LABEL: @SpillingOfSubViewBuffer
 module @SpillingOfSubViewBuffer {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x64x64xf16>
@@ -603,7 +608,7 @@ func.func @main(%in: memref<1x32x64x64xf16, #NHWC>, %out: memref<1x32x64x64xf16,
 // CHECK-LABEL: @SpillWriteOptimize
 module @SpillWriteOptimize {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x48x75x75xf16>
@@ -826,7 +831,7 @@ func.func @main(%in: memref<1x48x75x75xf16, #NHWC>, %out: memref<1x48x75x75xf16,
 // CHECK-LABEL: @ControlEdgeOverlapMemory
 module @ControlEdgeOverlapMemory {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x112x112xf16>
@@ -958,7 +963,7 @@ func.func @main(%in: memref<1x32x112x112xf16, #NHWC>, %out0: memref<1x32x112x112
 // CHECK-LABEL: @ControlEdgeOverlapMemoryCheckProdCons
 module @ControlEdgeOverlapMemoryCheckProdCons {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x80x60x60xf16>
@@ -1178,7 +1183,7 @@ func.func @main(%in: memref<1x80x60x60xf16, #NHWC>, %out: memref<1x80x60x60xf16,
 // CHECK-LABEL: @SingleConvWithClusteringAndDmaPortDistribution
 module @SingleConvWithClusteringAndDmaPortDistribution {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x16x16xf16>
@@ -1331,7 +1336,7 @@ func.func @main(%input: !Input_DDR) -> !Output_DDR {
 // CHECK-LABEL: @SpillingWithClustering
 module @SpillingWithClustering {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x64x64x64xf16>
@@ -1538,7 +1543,7 @@ func.func @main(%input: !BufMemrefDDR) -> !BufMemrefDDR {
 // CHECK-LABEL: @Prefetching
 module @Prefetching {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x16x16xf16>
@@ -1674,7 +1679,7 @@ func.func @main(%in: memref<1x32x16x16xf16, #NHWC>, %out: memref<1x128x4x4xf16, 
 // CHECK-LABEL: @PipelineShaveAct
 module @PipelineShaveAct {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "in0" : tensor<1x32x48x48xf16>
@@ -1864,7 +1869,7 @@ func.func @main(%in0: memref<1x32x48x48xf16, #NHWC>, %in1: memref<1x32x48x48xf16
 // CHECK-LABEL: @PrefetchNoActSpillAtEndAndWrongOrder
 module @PrefetchNoActSpillAtEndAndWrongOrder {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x1x1x1000xf16>

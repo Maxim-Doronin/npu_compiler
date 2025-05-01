@@ -140,7 +140,7 @@ func.func @NotAdjustWithPerChannelQuantize(%arg0: tensor<1x3x30x30xf16>) -> tens
 
     // CHECK-DAG:       [[LOW:%.*]] = const.Declare tensor<1x3x1x1xf16> = dense<0.000000e+00> : tensor<1x3x1x1xf16>
     // CHECK-DAG:       [[HIGH:%.*]] = const.Declare tensor<1x3x1x1xf16> =
-    // CHECK-SAME{LITERAL}          dense<[[[[5.000000e+00]], [[6.000000e+00]], [[5.000000e+00]]]]> : tensor<1x3x1x1xf16>
+    // CHECK-SAME{LITERAL}:          dense<[[[[5.000000e+00]], [[6.000000e+00]], [[5.000000e+00]]]]> : tensor<1x3x1x1xf16>
     // CHECK:           [[FQ:%.*]] = IE.FakeQuantize
     // CHECK:           [[MAXPOOL:%.*]] = IE.MaxPool
     // CHECK:           return [[MAXPOOL]]

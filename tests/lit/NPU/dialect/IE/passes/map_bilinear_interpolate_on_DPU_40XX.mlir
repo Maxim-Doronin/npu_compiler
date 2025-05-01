@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,9 +7,9 @@
 // REQUIRES: arch-NPU40XX
 
 
-// CHECK-LABEL: @MapBilinearPytorchHalfPixelInterpolateOnDPU
+// CHECK-LABEL: @DoNotMapBilinearPytorchHalfPixelInterpolateOnDPU
 // CHECK-SAME:    [[INPUT:%.+]]: tensor<1x128x72x72xf16>
-func.func @MapBilinearPytorchHalfPixelInterpolateOnDPU(%arg0: tensor<1x128x72x72xf16>) -> tensor<1x128x140x140xf16> {
+func.func @DoNotMapBilinearPytorchHalfPixelInterpolateOnDPU(%arg0: tensor<1x128x72x72xf16>) -> tensor<1x128x140x140xf16> {
     %0 = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <PYTORCH_HALF_PIXEL>, nearest_mode = <FLOOR>,
         antialias = false,
         pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0],
@@ -35,9 +35,9 @@ func.func @MapBilinearPytorchHalfPixelInterpolateOnDPU(%arg0: tensor<1x128x72x72
 
 // -----
 
-// CHECK-LABEL: @MapBilinearAsymmetricInterpolateOnDPU
+// CHECK-LABEL: @DoNotMapBilinearAsymmetricInterpolateOnDPU
 // CHECK-SAME:    [[INPUT:%.+]]: tensor<1x21x65x65xf16>
-func.func @MapBilinearAsymmetricInterpolateOnDPU(%arg0: tensor<1x21x65x65xf16>) -> tensor<1x21x513x513xf16> {
+func.func @DoNotMapBilinearAsymmetricInterpolateOnDPU(%arg0: tensor<1x21x65x65xf16>) -> tensor<1x21x513x513xf16> {
     %0 = IE.Interpolate(%arg0) {
         attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SCALES>, coord_mode = <ASYMMETRIC>, nearest_mode = <ROUND_PREFER_FLOOR>,
         antialias = false,
@@ -66,9 +66,9 @@ func.func @MapBilinearAsymmetricInterpolateOnDPU(%arg0: tensor<1x21x65x65xf16>) 
 
 // -----
 
-// CHECK-LABEL: @MapBilinearAlignCornersInterpolateOnDPU
+// CHECK-LABEL: @DoNotMapBilinearAlignCornersInterpolateOnDPU
 // CHECK-SAME:    [[INPUT:%.+]]: tensor<1x32x180x320xf16>
-func.func @MapBilinearAlignCornersInterpolateOnDPU(%arg0: tensor<1x32x180x320xf16>) -> tensor<1x32x92x120xf16> {
+func.func @DoNotMapBilinearAlignCornersInterpolateOnDPU(%arg0: tensor<1x32x180x320xf16>) -> tensor<1x32x92x120xf16> {
     %0 = IE.Interpolate(%arg0) {
         attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>,
         antialias = false,

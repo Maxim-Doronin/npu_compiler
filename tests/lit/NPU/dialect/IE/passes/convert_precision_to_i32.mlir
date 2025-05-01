@@ -43,18 +43,17 @@ func.func @OneHotConvert(%arg0: tensor<1x100xsi64>) -> tensor<1x30x100xsi64> {
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @ShapeOf
-func.func @ShapeOf(%arg0: tensor<1x8x?x?xf16, {bounds = [1, 8, 384, 384], order = #NCHW}>)
-    -> tensor<4xsi64> {
+func.func @ShapeOf(%arg0: tensor<1x8x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 8, 384, 384]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<4xsi32> {
     %SHAPE_OF = IE.ShapeOf(%arg0) {
-        dstElemType = si64
-    } : tensor<1x8x?x?xf16, {bounds = [1, 8, 384, 384], order = #NCHW}> -> tensor<4xsi64>
+        dstElemType = si32
+    } : tensor<1x8x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 8, 384, 384]> : tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi32>
 
     // CHECK: [[SHAPE_OF:%.*]] = IE.ShapeOf(%arg0) {
     // CHECK-SAME:      dstElemType = si32
-    // CHECK-SAME:  } : tensor<1x8x?x?xf16, {bounds = [1, 8, 384, 384], order = #NCHW}>
+    // CHECK-SAME:  } : tensor<1x8x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 8, 384, 384]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK-SAME:      -> tensor<4xsi32>
 
-    return %SHAPE_OF : tensor<4xsi64>
+    return %SHAPE_OF : tensor<4xsi32>
 
     // CHECK:   return [[SHAPE_OF]] : tensor<4xsi32>
 }
@@ -74,7 +73,7 @@ func.func @AddOp(%arg0: tensor<1x5x16x32xui64>, %arg1: tensor<1x5x16x32xui64>) -
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         // CHECK: DataInfo "input" : tensor<1x48x60x60xsi64>
         DataInfo "input" : tensor<1x48x60x60xsi64>
     } outputsInfo : {

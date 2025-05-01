@@ -6,7 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-func-args-to-declarations --canonicalize --move-declarations-to-top %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 module @WithoutInputs {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<10xf16>
     } outputsInfo : {
@@ -34,7 +34,7 @@ module @WithoutInputs {
 // -----
 
 module @SimpleGraph {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<10xf16>
     } outputsInfo : {
@@ -61,7 +61,7 @@ module @SimpleGraph {
 // -----
 
 module @TwoInOuts {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input1" : tensor<2xf16>
         DataInfo "input2" : tensor<2xf16>
@@ -100,7 +100,7 @@ module @TwoInOuts {
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -203,7 +203,7 @@ module @TwoFunctions {
 
 // CHECK-LABEL: @ThreeFunctions
 module @ThreeFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x10x10x12xf16>
     } outputsInfo : {
@@ -360,7 +360,7 @@ module @ThreeFunctions {
 // -----
 
 module @FuncArgHasNoUses {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x4x5x5xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x4x5x5xf16>
@@ -431,7 +431,7 @@ module @FuncArgHasNoUses {
 
 // CHECK-LABEL: @NestedFunctionsNetworkInputOutput
 module @NestedFunctionsNetworkInputOutput {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -455,7 +455,7 @@ module @NestedFunctionsNetworkInputOutput {
         // buffers allocated by main func
         // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x3x64x64xf16, @DDR>
         // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x3x64x64xf16, @DDR>
-        
+
         // CHECK-DAG: [[TMP:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK-DAG: [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
@@ -506,7 +506,7 @@ module @NestedFunctionsNetworkInputOutput {
 
 // CHECK-LABEL: @NestedFunctionsDDR
 module @NestedFunctionsDDR {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -530,7 +530,7 @@ module @NestedFunctionsDDR {
         // buffers allocated by main func
         // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <DDR> <24576> -> memref<1x3x64x64xf16, @DDR>
         // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <DDR> <49152> -> memref<1x3x64x64xf16, @DDR>
-        
+
         // CHECK-DAG: [[TMP:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK-DAG: [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
@@ -602,7 +602,7 @@ module @NestedFunctionsDDR {
 
 // CHECK-LABEL: @NestedFunctionsMiddleAllocateBuffers
 module @NestedFunctionsMiddleAllocateBuffers {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {
@@ -626,7 +626,7 @@ module @NestedFunctionsMiddleAllocateBuffers {
         // buffers allocated by parent func - foo1
         // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <DDR> <73728> -> memref<1x3x64x64xf16, @DDR>
         // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <DDR> <98304> -> memref<1x3x64x64xf16, @DDR>
-        
+
         // CHECK-DAG: [[TMP:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK-DAG: [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
@@ -721,7 +721,7 @@ module @NestedFunctionsMiddleAllocateBuffers {
 
 // CHECK-LABEL: @NestedFunctionsWithViewOps
 module @NestedFunctionsWithViewOps {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x4x64x64xf16>
     } outputsInfo : {
@@ -740,13 +740,13 @@ module @NestedFunctionsWithViewOps {
         VPURT.Task waits(%1 : !VPURT.Barrier) {
             %3 = VPUIP.NNDMA {port = 1 : i64} inputs(%0 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>) -> memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
         }
-        
+
         return %arg1 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
 
         // buffers allocated by parent func - foo1
         // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x4x64x64xf16, @DDR>
         // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x8x32x64xf16, @DDR>
-        
+
         // CHECK-DAG: [[TMP:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>
         // CHECK-DAG: [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
@@ -765,7 +765,7 @@ module @NestedFunctionsWithViewOps {
     }
 
     // CHECK: func.func private @foo1([[ARG0:%.+]]: memref<1x3x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>, [[ARG1:%.+]]: memref<1x8x32x64xf16, @DDR>)
-    func.func private @foo1(%arg0: memref<1x3x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>, %arg1: memref<1x8x32x64xf16, @DDR>) -> memref<1x8x32x64xf16, @DDR> {       
+    func.func private @foo1(%arg0: memref<1x3x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>, %arg1: memref<1x8x32x64xf16, @DDR>) -> memref<1x8x32x64xf16, @DDR> {
         %0 = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 2, 64, 64] : memref<1x3x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR> to memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
         %1 = VPUIP.GenericReshape inputs(%arg1 : memref<1x8x32x64xf16, @DDR>) -> memref<1x4x64x64xf16, @DDR>
         %2 = VPUIP.SubView %1 [0, 0, 0, 0] [1, 2, 64, 64] : memref<1x4x64x64xf16, @DDR> to memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,7 +15,7 @@ module @ThreeFunctions {
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16>
     } outputsInfo : {
@@ -210,7 +210,7 @@ module @ThreeFunctions {
 
 // CHECK-LABEL: @ThreeFunctionsTemporaryBuffer
 module @ThreeFunctionsTemporaryBuffer {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x8x10x10xf16>
     } outputsInfo : {
@@ -370,7 +370,7 @@ module @ThreeFunctionsReservedMem {
 
     // CHECK: IE.MemoryResource 512 bytes of @DDR offset 0
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16>
     } outputsInfo : {

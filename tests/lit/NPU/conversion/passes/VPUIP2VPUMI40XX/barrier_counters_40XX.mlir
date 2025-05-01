@@ -18,7 +18,7 @@ module @VPU.SW {
   func.func private @builtin_MemPermute(memref<*x!qElemType, [@CMX_NN, 0]>, memref<*x!qElemType, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"}
   func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
-IE.CNNNetwork entryPoint : @barrier_counters inputsInfo : {
+net.NetworkInfo entryPoint : @barrier_counters inputsInfo : {
   DataInfo "input_0" : tensor<1x32x32x32xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x64x16x32xf16>
@@ -93,7 +93,7 @@ module @VPU.SW {
   func.func private @builtin_MemPermute(memref<*x!qElemType, [@CMX_NN, 0]>, memref<*x!qElemType, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"}
   func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
-IE.CNNNetwork entryPoint : @barrier_counters inputsInfo : {
+net.NetworkInfo entryPoint : @barrier_counters inputsInfo : {
   DataInfo "input_0" : tensor<1x32x32x32xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x64x16x32xf16>

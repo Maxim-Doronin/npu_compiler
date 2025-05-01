@@ -8,7 +8,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @Test {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
       DataInfo "input_0" : tensor<1x16x16x16xf16>
       DataInfo "input_1" : tensor<16x1x1x1xi64>
   } outputsInfo : {
@@ -16,11 +16,11 @@ module @Test {
   }
   func.func @main() {
     ELF.Main @ELFMain {
-        ELF.CreateLogicalSection @builtin.data.nncmx0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) {
+        ELF.CreateLogicalSection @builtin.data.nncmx0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
             VPUASM.DeclareBuffer @DeclareBuffer_ActOut !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
             VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <131200> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
         }
-        ELF.CreateLogicalSection @builtin.tasks.DPUInvariant0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) {
+        ELF.CreateLogicalSection @builtin.tasks.DPUInvariant0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
             VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
             VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_1 idx(!VPURegMapped.Index<0:0:1>) <DPUInvariant>
             VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_2 idx(!VPURegMapped.Index<0:0:2>) <DPUInvariant>
@@ -28,7 +28,7 @@ module @Test {
             VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_4 idx(!VPURegMapped.Index<0:0:4>) <DPUInvariant>
         }
 
-        ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+        ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
             // Use case #1a: u8 DPU in, u8 DPU out - with activation scaling
             VPUIPDPU.DPUInvariant @DPUInvariant1a
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
@@ -522,7 +522,7 @@ module @Test {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @ProfilingTest {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
       DataInfo "input_0" : tensor<1x16x16x16xf16>
       DataInfo "input_1" : tensor<16x1x1x1xi64>
   } outputsInfo : {
@@ -532,16 +532,16 @@ module @ProfilingTest {
   }
   func.func @main() {
     ELF.Main @ELFMain {
-        ELF.CreateLogicalSection @builtin.data.nncmx0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) {
+        ELF.CreateLogicalSection @builtin.data.nncmx0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
             VPUASM.DeclareBuffer @DeclareBuffer_WeightTable !VPUASM.Buffer< "CMX_NN"[0] <0> : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
             VPUASM.DeclareBuffer @DeclareBuffer_ActOut !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
             VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <131200> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
             VPUASM.DeclareBuffer @DeclareBuffer_ProfilingData !VPUASM.Buffer< "CMX_NN"[0] <139392> : memref<4xui64, [@CMX_NN, 0]> :  swizzling(0)>
         }
-        ELF.CreateLogicalSection @builtin.tasks.DPUInvariant0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) {
+        ELF.CreateLogicalSection @builtin.tasks.DPUInvariant0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
             VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
         }
-        ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+        ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
             // Use case: default initialized values + profiling
             VPUIPDPU.DPUInvariant @DPUInvariantProf
             // CHECK-NOT:   VPUIPDPU.DPUInvariant

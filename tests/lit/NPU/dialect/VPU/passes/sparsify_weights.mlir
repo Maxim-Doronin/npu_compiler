@@ -15,7 +15,7 @@ func.func @DoNotSparsifyFullyDense(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK-NOT:  const.Sparsify
@@ -37,7 +37,7 @@ func.func @SparsifyFullySparse(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -66,13 +66,13 @@ func.func @SparsifyWithMultiUsers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     %2 = VPU.NCE.Convolution(%arg2, %weights, %arg3) {
             ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1, %2: tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -104,7 +104,7 @@ func.func @DonotSparisfyforFragmentation(%arg0:tensor<1x128x32x1xf16, {order = #
         clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
         lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
         rawFilterShape = [128, 128, 1, 1], strides = [1, 1]}
-        -> tensor<1x128x8x4xf16, {order = #NHWC}>
+        : tensor<1x128x8x4xf16, {order = #NHWC}>, tensor<128x128x1x1xf16, {order = #NHWC}>, tensor<128x1x1x4xsi32> -> tensor<1x128x8x4xf16, {order = #NHWC}>
     return %1 : tensor<1x128x8x4xf16, {order = #NHWC}>
 
     // CHECK:    [[CST:%.+]] = const.Declare tensor<128x1x1x4xsi32> = dense<4> : tensor<128x1x1x4xsi32>
@@ -118,6 +118,7 @@ func.func @DonotSparisfyforFragmentation(%arg0:tensor<1x128x32x1xf16, {order = #
     // CHECK-SAME:  ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
     // CHECK-SAME:  lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:  rawFilterShape = [128, 128, 1, 1],
-    // CHECK-SAME:  strides = [1, 1]} -> tensor<1x128x8x4xf16, {order = #NHWC}>
+    // CHECK-SAME:  strides = [1, 1]}
+    // CHECK-SAME:  -> tensor<1x128x8x4xf16, {order = #NHWC}>
     // CHECK:    return [[CONV]] : tensor<1x128x8x4xf16, {order = #NHWC}>
 }

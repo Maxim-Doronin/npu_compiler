@@ -9,6 +9,7 @@
 !qElemType1 = !quant.uniform<u8:f16, 1.1534313725490195:128>
 !qElemType2 = !quant.uniform<u8:f16, 2.4627450980392158>
 !qElemType3 = !quant.uniform<u8:f16, 0.0039215686274509803>
+!qElemType4 = !quant.uniform<u8:f16, 0.0038988489730685367:128>
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
@@ -187,4 +188,32 @@ func.func @RemoveQuantConcatMultipleElemTypeDequantSeq(%arg0: tensor<1x12800x2x1
   //CHECK: [[VAL7:%.+]] = IE.AffineReshape([[VAL6]])
   //CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [3], [3]], shape_value = [1, 16800, 2, 1]} : tensor<1x1x16800x2xf16> -> tensor<1x16800x2x1xf16>
   //CHECK: return [[VAL7]]
+}
+
+// CHECK-LABEL: @Remove_Quant_Input_SideTap_Concat_Dequant_Seq
+func.func @Remove_Quant_Input_SideTap_Concat_Dequant_Seq(%arg0: tensor<1x1x40x64xf16>, %arg1: tensor<1x100x40x64xf16>) -> (tensor<1x101x40x64xf16>, tensor<1x1x40x64xf16>) {
+    %0 = IE.Quantize(%arg1) {dstElemType = !qElemType4} : tensor<1x100x40x64xf16> -> tensor<1x100x40x64x!qElemType4>
+    %1 = IE.Clamp(%0) {max = 0.49297687411308289 : f64, min = -0.49685856699943542 : f64} : tensor<1x100x40x64x!qElemType4> -> tensor<1x100x40x64x!qElemType4>
+    %2 = IE.Quantize(%arg0) {dstElemType = !qElemType4} : tensor<1x1x40x64xf16> -> tensor<1x1x40x64x!qElemType4>
+    %3 = IE.Clamp(%2) {max = 0.4860345721244812 : f64, min = -0.48986160755157471 : f64} : tensor<1x1x40x64x!qElemType4> -> tensor<1x1x40x64x!qElemType4>
+    %sidetap = IE.Dequantize(%3) {dstElemType = f16} : tensor<1x1x40x64x!qElemType4> -> tensor<1x1x40x64xf16>
+    %5 = IE.Concat(%1, %3) {static_offsets = [[0, 0, 0, 0], [0, 100, 0, 0]]} : tensor<1x100x40x64x!qElemType4>, tensor<1x1x40x64x!qElemType4> -> tensor<1x101x40x64x!qElemType4>
+    %6 = IE.Dequantize(%5) {dstElemType = f16} : tensor<1x101x40x64x!qElemType4> -> tensor<1x101x40x64xf16>
+    return %6, %sidetap : tensor<1x101x40x64xf16>, tensor<1x1x40x64xf16>
+    // CHECK-NOT:  IE.Quantize
+    // CHECK-NOT:  IE.Dequantize
+    // CHECK: return
+}
+
+// CHECK-LABEL:  @Ignore_Pattern_FuncOpArg_ElemTypeInfoOp_ConcatOp
+func.func @Ignore_Pattern_FuncOpArg_ElemTypeInfoOp_ConcatOp(%arg0: tensor<1x1x1440x320xf16>, %arg1: tensor<1x2x1x1xf16>) -> tensor<1x2x1440x160xf16> {
+  %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 1440, 160] : tensor<1x1x1440x320xf16> to tensor<1x1x1440x160xf16>
+  %1 = IE.Slice %arg0 [0, 0, 0, 160] [1, 1, 1440, 160] : tensor<1x1x1440x320xf16> to tensor<1x1x1440x160xf16>
+  %2 = IE.Concat(%0, %1) {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x1440x160xf16>, tensor<1x1x1440x160xf16> -> tensor<1x2x1440x160xf16>
+  return %2 : tensor<1x2x1440x160xf16>
+
+  //CHECK: [[VAL0:%.+]] = IE.Slice %arg0
+  //CHECK: [[VAL1:%.+]] = IE.Slice %arg0
+  //CHECK: [[VAL2:%.+]] = IE.Concat([[VAL0]], [[VAL1]])
+  //CHECK: return [[VAL2]]
 }

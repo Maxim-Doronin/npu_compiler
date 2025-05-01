@@ -36,7 +36,7 @@ func.func @HandleLargeKernelsConv(%arg0 : tensor<1x1x1x32000xf16>) -> tensor<1x6
 // CHECK-LABEL: @HandleLargeKernelsConvWithPostOp
 func.func @HandleLargeKernelsConvWithPostOp(%arg0 : tensor<1x1x1x32000xf16>) -> tensor<1x64x1x2000xf16> {
     %cst = const.Declare tensor<64x1x1x33xf16> = dense<1.000000e+00> : tensor<64x1x1x33xf16>
-    %conv = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 16], pads_end = [0, 16], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 16]} : tensor<1x1x1x32000xf16>, tensor<64x1x1x33xf16> -> tensor<1x64x1x2000xf16>
+    %conv = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 16], pads_end = [0, 16], post_op = #IE.Relu<>, strides = [1, 16]} : tensor<1x1x1x32000xf16>, tensor<64x1x1x33xf16> -> tensor<1x64x1x2000xf16>
 
     return %conv : tensor<1x64x1x2000xf16>
 
@@ -53,7 +53,7 @@ func.func @HandleLargeKernelsConvWithPostOp(%arg0 : tensor<1x1x1x32000xf16>) -> 
     // CHECK: [[Add0:%.+]] = IE.Add([[CONV0]], [[CONV1]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x64x1x2000xf16>, tensor<1x64x1x2000xf16> -> tensor<1x64x1x2000xf16>
     // CHECK: [[SLICEACT2:%.+]] = IE.Slice [[CONCAT]] [0, 0, 0, 22] [1, 1, 1, 31995] : tensor<1x1x1x32032xf16> to tensor<1x1x1x31995xf16>
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[SLICEACT2]], [[CST_1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 16]} : tensor<1x1x1x31995xf16>, tensor<64x1x1x11xf16> -> tensor<1x64x1x2000xf16>
-    // CHECK: [[Add1:%.+]] = IE.Add([[Add0]], [[CONV2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>} : tensor<1x64x1x2000xf16>, tensor<1x64x1x2000xf16> -> tensor<1x64x1x2000xf16>
+    // CHECK: [[Add1:%.+]] = IE.Add([[Add0]], [[CONV2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.Relu<>} : tensor<1x64x1x2000xf16>, tensor<1x64x1x2000xf16> -> tensor<1x64x1x2000xf16>
 
     // CHECK: return [[Add1]] : tensor<1x64x1x2000xf16>
 }
@@ -258,3 +258,37 @@ func.func @HandleLargeKernelConvWithGCDWhenOneDimOnH(%arg0 : tensor<1x1x80000x1x
     // CHECK: [[ADD:%.+]] = IE.Add([[CONV_0]], [[CONV_1]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x257x497x1xf16>, tensor<1x257x497x1xf16> -> tensor<1x257x497x1xf16>
     // CHECK: return [[ADD]] : tensor<1x257x497x1xf16>
 }
+
+// CHECK-LABEL: @HandleLargeKernelsConvWithDifferentPadding
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<1x19x1024x1024xf16>
+func.func @HandleLargeKernelsConvWithDifferentPadding(%arg0: tensor<1x19x1024x1024xf16>) -> tensor<1x19x1024x1024xf16> {
+    %cst = const.Declare tensor<19x19x16x16xf16> = dense<1.000000e+00> : tensor<19x19x16x16xf32>, [#const.CastElemType<f16>]
+
+    %conv = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [7, 7], pads_end = [8, 8], strides = [1, 1]} : tensor<1x19x1024x1024xf16>, tensor<19x19x16x16xf16> -> tensor<1x19x1024x1024xf16>
+    return %conv : tensor<1x19x1024x1024xf16>
+
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x19x8x1039xf16> = dense<0.000000e+00> : tensor<1x19x8x1039xf16>
+    // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x19x7x1039xf16> = dense<0.000000e+00> : tensor<1x19x7x1039xf16>
+    // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<19x19x11x11xf16> = dense<1.000000e+00> : tensor<19x19x16x16xf32>, [#const.SubView<[0, 0, 0, 0], [19, 19, 11, 11]>, #const.CastElemType<f16>]
+    // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<19x19x11x5xf16> = dense<1.000000e+00> : tensor<19x19x16x16xf32>, [#const.SubView<[0, 0, 0, 11], [19, 19, 11, 5]>, #const.CastElemType<f16>]
+    // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<19x19x5x11xf16> = dense<1.000000e+00> : tensor<19x19x16x16xf32>, [#const.SubView<[0, 0, 11, 0], [19, 19, 5, 11]>, #const.CastElemType<f16>]
+    // CHECK-DAG: [[CST_4:%.+]] = const.Declare tensor<19x19x5x5xf16> = dense<1.000000e+00> : tensor<19x19x16x16xf32>, [#const.SubView<[0, 0, 11, 11], [19, 19, 5, 5]>, #const.CastElemType<f16>]
+    // CHECK-DAG: [[CST_5:%.+]] = const.Declare tensor<1x19x1024x7xf16> = dense<0.000000e+00> : tensor<1x19x1024x7xf16>
+    // CHECK-DAG: [[CST_6:%.+]] = const.Declare tensor<1x19x1024x8xf16> = dense<0.000000e+00> : tensor<1x19x1024x8xf16>
+    
+    // CHECK: [[CONCAT_0:%.+]] = IE.Concat([[CST_5]], [[INPUT]], [[CST_6]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x19x1024x7xf16>, tensor<1x19x1024x1024xf16>, tensor<1x19x1024x8xf16> -> tensor<1x19x1024x1039xf16>
+    // CHECK: [[CONCAT_1:%.+]] = IE.Concat([[CST_0]], [[CONCAT_0]], [[CST]]) {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x19x7x1039xf16>, tensor<1x19x1024x1039xf16>, tensor<1x19x8x1039xf16> -> tensor<1x19x1039x1039xf16>
+    // CHECK: [[SLICE_0:%.+]] = IE.Slice [[CONCAT_1]] [0, 0, 0, 0] [1, 19, 1034, 1034] : tensor<1x19x1039x1039xf16> to tensor<1x19x1034x1034xf16>
+    // CHECK: [[CONV_0:%.+]] = IE.Convolution([[SLICE_0]], [[CST_1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x19x1034x1034xf16>, tensor<19x19x11x11xf16> -> tensor<1x19x1024x1024xf16>
+    // CHECK: [[SLICE_1:%.+]] = IE.Slice [[CONCAT_1]] [0, 0, 0, 11] [1, 19, 1034, 1028] : tensor<1x19x1039x1039xf16> to tensor<1x19x1034x1028xf16>
+    // CHECK: [[CONV_1:%.+]] = IE.Convolution([[SLICE_1]], [[CST_2]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x19x1034x1028xf16>, tensor<19x19x11x5xf16> -> tensor<1x19x1024x1024xf16>
+    // CHECK: [[ADD_0:%.+]] = IE.Add([[CONV_0]], [[CONV_1]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x19x1024x1024xf16>, tensor<1x19x1024x1024xf16> -> tensor<1x19x1024x1024xf16>
+    // CHECK: [[SLICE_2:%.+]] = IE.Slice [[CONCAT_1]] [0, 0, 11, 0] [1, 19, 1028, 1034] : tensor<1x19x1039x1039xf16> to tensor<1x19x1028x1034xf16>
+    // CHECK: [[CONV_2:%.+]] = IE.Convolution([[SLICE_2]], [[CST_3]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x19x1028x1034xf16>, tensor<19x19x5x11xf16> -> tensor<1x19x1024x1024xf16>
+    // CHECK: [[ADD_1:%.+]] = IE.Add([[ADD_0]], [[CONV_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x19x1024x1024xf16>, tensor<1x19x1024x1024xf16> -> tensor<1x19x1024x1024xf16>
+    // CHECK: [[SLICE_3:%.+]] = IE.Slice [[CONCAT_1]] [0, 0, 11, 11] [1, 19, 1028, 1028] : tensor<1x19x1039x1039xf16> to tensor<1x19x1028x1028xf16>
+    // CHECK: [[CONV_3:%.+]] = IE.Convolution([[SLICE_3]], [[CST_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x19x1028x1028xf16>, tensor<19x19x5x5xf16> -> tensor<1x19x1024x1024xf16>
+    // CHECK: [[ADD_2:%.+]] = IE.Add([[ADD_1]], [[CONV_3]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x19x1024x1024xf16>, tensor<1x19x1024x1024xf16> -> tensor<1x19x1024x1024xf16>
+
+    // CHECK: return [[ADD_2]] : tensor<1x19x1024x1024xf16>
+  }

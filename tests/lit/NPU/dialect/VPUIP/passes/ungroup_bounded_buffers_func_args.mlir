@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,8 +7,8 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module {
-  IE.CNNNetwork entryPoint : @TensorsWithBounds inputsInfo : {
-// CHECK:     IE.CNNNetwork entryPoint : @TensorsWithBounds inputsInfo
+  net.NetworkInfo entryPoint : @TensorsWithBounds inputsInfo : {
+// CHECK:     net.NetworkInfo entryPoint : @TensorsWithBounds inputsInfo
     DataInfo "Parameter" : tensor<1x18x3x3xf32>
 // CHECK:     DataInfo "Parameter" : tensor<1x18x3x3xf32>
 // CHECK:     DataInfo "vpux_ie_shape_Parameter" : tensor<4xsi32>
@@ -43,8 +43,8 @@ module {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module {
-  IE.CNNNetwork entryPoint : @TensorsWithBoundsMultiple inputsInfo : {
-// CHECK:     IE.CNNNetwork entryPoint : @TensorsWithBoundsMultiple inputsInfo
+  net.NetworkInfo entryPoint : @TensorsWithBoundsMultiple inputsInfo : {
+// CHECK:     net.NetworkInfo entryPoint : @TensorsWithBoundsMultiple inputsInfo
     DataInfo "Parameter1" : tensor<1x10x3x3xf32>
     DataInfo "Parameter2" : tensor<1x20x3x3xf32>
     DataInfo "Parameter3" : tensor<1x30x3x3xf32>
@@ -171,7 +171,7 @@ module {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @DynamicScatterNDUpdateCheckInputsOrder {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_57" : tensor<1x3x3xsi32>
     DataInfo "Parameter_58" : tensor<1x2x3x3xsi32>
     DataInfo "Parameter_59" : tensor<1x2x3xsi32>

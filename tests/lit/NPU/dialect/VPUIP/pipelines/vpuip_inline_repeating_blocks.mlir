@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file -inline --move-declarations-to-top %s | FileCheck %s
+// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --dispatched-inliner --move-declarations-to-top %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // CHECK-LABEL: @CallChain
 module @CallChain {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<1x3x64x64xf16>
     } outputsInfo : {

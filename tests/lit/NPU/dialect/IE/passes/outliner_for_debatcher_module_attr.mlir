@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 module @SimpleModuleForOutlining attributes {VPU.debatch = 1 : i64} {
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<3x3x62x62xf16>
     } outputsInfo : {

@@ -27,8 +27,8 @@ module @dumpsubgraph attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compila
   }
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
-    //CHECK:       IE.CNNNetwork {inferenceTiming = {{[0-9]+}} : i64} entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    //CHECK:       net.NetworkInfo {inferenceTiming = {{[0-9]+}} : i64} entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
     DataInfo "Multiply_5095/fq_input_0" : tensor<1x64x56x56xf16>

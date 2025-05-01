@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -29,7 +29,7 @@
 // CHECK-LABEL: @TwoNCEClusterTasksSOH
 module @TwoNCEClusterTasksSOH {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x16x17x32xf16>
@@ -207,7 +207,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 // CHECK-LABEL: @ThreeNCEClusterTasksSOW
 module @ThreeNCEClusterTasksSOW {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x16x32x17xf16>
@@ -484,7 +484,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
 // CHECK-LABEL: @ThreeNCEClusterTasksSOK
 module @ThreeNCEClusterTasksSOK {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x16x10x10xf16>
@@ -789,7 +789,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 // CHECK-LABEL: @FourNCEClusterTasksSOHK
 module @FourNCEClusterTasksSOHK {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x16x16x16xf16>
@@ -1161,7 +1161,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 // CHECK-LABEL: @FourNCEClusterTasksSOHW
 module @FourNCEClusterTasksSOHW {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x16x20x16xf16>
@@ -1510,7 +1510,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 // CHECK-LABEL: @SOK_ODUPermute
 module @SOK_ODUPermute attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x16x10x10xf16>
@@ -1779,7 +1779,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 // CHECK-LABEL: @ThreeNCEClusterTasksSOKWithHStride
 module @ThreeNCEClusterTasksSOKWithHStride {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x16x10x10xf16>

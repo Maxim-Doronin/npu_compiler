@@ -103,9 +103,9 @@ func.func @SparseTensors(%input: !SparseTensor) -> !SparseTensorCmx {
 // CHECK-SAME: ) -> !VPUIP.BoundedBuffer<
 // CHECK-SAME:          data=memref<1x18x3x3xf32, #NHWC, @CMX_NN>,
 // CHECK-SAME:          dynamic_shape=memref<4xsi32, @CMX_NN>
-func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}>) -> tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC, mem_space = @CMX_NN}> {
-    %0 = VPU.Copy(%arg0) {out_mem_space = @CMX_NN} : tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}> -> tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC, mem_space = @CMX_NN}>
-    return %0 : tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC, mem_space = @CMX_NN}>
+func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}>) -> tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC, mem_space = @CMX_NN}> {
+    %0 = VPU.Copy(%arg0) {out_mem_space = @CMX_NN} : tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}> -> tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC, mem_space = @CMX_NN}>
+    return %0 : tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC, mem_space = @CMX_NN}>
     // CHECK: return
     // CHECK-SAME: !VPUIP.BoundedBuffer<
     // CHECK-SAME:  data=memref<1x18x3x3xf32, #NHWC, @CMX_NN>,
@@ -123,9 +123,9 @@ func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3]
 // CHECK-SAME: ) -> !VPUIP.BoundedBuffer<
 // CHECK-SAME:          data=memref<1x18x3x3xf32, #NHWC>,
 // CHECK-SAME:          dynamic_shape=memref<4xsi32>
-func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}>) -> tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}> {
-    %0 = VPU.ReLU(%arg0) : tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}> -> tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}>
-    return %0 : tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3], order = #NHWC}>
+func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}>) -> tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}> {
+    %0 = VPU.ReLU(%arg0) : tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}> -> tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}>
+    return %0 : tensor<1x18x3x3xf32, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 0, 1]>: tensor<4xsi64>, order = #NHWC}>
     // CHECK: return
     // CHECK-SAME: !VPUIP.BoundedBuffer<
     // CHECK-SAME:  data=memref<1x18x3x3xf32, #NHWC>,
@@ -135,7 +135,7 @@ func.func @TensorsWithBounds(%arg0: tensor<1x18x3x3xf32, {bounds = [1, 18, 3, 3]
 // -----
 
 module @Convolution {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16>
     } outputsInfo : {
         DataInfo "output1" : tensor<1x4x60x60xf16>

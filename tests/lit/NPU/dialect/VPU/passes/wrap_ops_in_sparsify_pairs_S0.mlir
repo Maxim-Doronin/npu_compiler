@@ -13,15 +13,15 @@ func.func @WrapSingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: ten
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
     // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
     // CHECK-NOT:   VPU.Desparsify
     // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
-        // CHECK-NOT:       !VPU.SparseTensor
-    // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-NOT:       -> !VPU.SparseTensor
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
     // CHECK:       [[VAL3:%.+]] = VPU.Desparsify([[VAL2]]
     // CHECK:       return [[VAL3]]
@@ -48,7 +48,7 @@ func.func @WrapChainedMixedOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-    } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+    } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -62,8 +62,8 @@ func.func @WrapChainedMixedOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %
 
     // CHECK-NOT:   VPU.Desparsify
     // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
-    // CHECK-NOT:       !VPU.SparseTensor
-    // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-NOT:       -> !VPU.SparseTensor
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
     // CHECK:       [[VAL3:%.+]] = VPU.Desparsify([[VAL2]]
@@ -83,19 +83,19 @@ func.func @WrapMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     %2 = VPU.NCE.Convolution(%1, %weights, %wt) {
             ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     %3 = VPU.NCE.Convolution(%1, %weights, %wt) {
             ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %2, %3 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -103,8 +103,8 @@ func.func @WrapMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>,
     // CHECK-NOT:   VPU.Desparsify
 
     // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
-    // CHECK-NOT:       !VPU.SparseTensor
-    // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-NOT:       -> !VPU.SparseTensor
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
     // CHECK:       [[VAL3:%.+]] = VPU.Desparsify([[VAL2]]
@@ -113,8 +113,8 @@ func.func @WrapMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>,
     // CHECK-NOT:   VPU.Desparsify
 
     // CHECK:       [[VAL5:%.+]] = VPU.NCE.Convolution([[VAL4]], %arg2, %arg1)
-    // CHECK-NOT:       !VPU.SparseTensor
-    // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-NOT:       -> !VPU.SparseTensor
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     // CHECK:       [[VAL6:%.+]] = VPU.Sparsify([[VAL5]])
     // CHECK:       [[VAL7:%.+]] = VPU.Desparsify([[VAL6]]
@@ -123,8 +123,8 @@ func.func @WrapMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>,
     // CHECK-NOT:   VPU.Desparsify
 
     // CHECK:       [[VAL9:%.+]] = VPU.NCE.Convolution([[VAL8]], %arg2, %arg1)
-    // CHECK-NOT:       !VPU.SparseTensor
-    // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-NOT:       -> !VPU.SparseTensor
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     // CHECK:       [[VAL10:%.+]] = VPU.Sparsify([[VAL9]])
     // CHECK:       [[VAL11:%.+]] = VPU.Desparsify([[VAL10]]
@@ -144,7 +144,7 @@ func.func @WrapMultipleMixedConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NH
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [16, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     %2 = VPU.NCE.Eltwise(%1, %1) {
                 op_type = #VPU.eltwise_type<ADD>,
                 ppe = #VPU.PPEStub<>
@@ -164,8 +164,8 @@ func.func @WrapMultipleMixedConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NH
     // CHECK-NOT:   VPU.Desparsify
 
     // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
-    // CHECK-NOT:       !VPU.SparseTensor
-    // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-NOT:       -> !VPU.SparseTensor
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
     // CHECK:       [[VAL3:%.+]] = VPU.Desparsify([[VAL2]]

@@ -13,13 +13,13 @@ func.func @NotFuseAddIdentityAvgPoolAsUnsupportedPostOp(%arg0 : tensor<1x16x320x
     %add = IE.Add(%arg0, %arg0) { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
               tensor<1x16x320x320x!qElemType, {order = #NHWC}>, tensor<1x16x320x320x!qElemType, {order = #NHWC}> -> tensor<1x16x320x320xf16, {order = #NHWC}>
 
-    %ave_pool = IE.AvgPool(%add) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.0999755859375 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}  :
+    %ave_pool = IE.AvgPool(%add) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.0999755859375 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}  :
                   tensor<1x16x320x320xf16, {order = #NHWC}> -> tensor<1x16x320x320xf16, {order = #NHWC}>
 
     return %ave_pool : tensor<1x16x320x320xf16, {order = #NHWC}>
     // CHECK:       IE.Add([[ARG0]], [[ARG0]])
     // CHECK:       IE.AvgPool
-    //CHECK-SAME:       post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.0999755859375 : f64}>
+    //CHECK-SAME:       post_op = #IE.LeakyRelu<negative_slope = 0.0999755859375 : f64>
     //CHECK-SAME:       tensor<1x16x320x320xf16, {order = #NHWC}>
 
 }

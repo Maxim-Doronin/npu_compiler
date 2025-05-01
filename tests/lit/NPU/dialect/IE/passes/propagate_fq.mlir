@@ -20,8 +20,8 @@ func.func @DoNotPropagateFQThroughFQ(%arg0: tensor<1x1x28x70xf16>) -> tensor<1x1
             : tensor<1x1x28x70xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x1x28x70xf16>
 
     %2 = IE.MaxPool(%1) {exclude_pads, kernel_size = [1, 1],
-            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
+            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
 
     return %2 : tensor<1x1x28x70xf16>
 
@@ -48,8 +48,8 @@ func.func @PropagateFQUp(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x1x28x70xf16> 
 
     %0 = IE.Transpose(%arg0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %1 = IE.MaxPool(%0) {exclude_pads, kernel_size = [1, 1],
-                            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-                            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
+                            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+                            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
     %2 = IE.FakeQuantize(%1, %cst, %cst_0, %cst, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
             : tensor<1x1x28x70xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x1x28x70xf16>
 
@@ -168,8 +168,8 @@ func.func @DoNotPropagateMultipleFQUp(%arg0: tensor<1x70x1x28xf16>) -> (tensor<1
 
     %0 = IE.Transpose(%arg0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %1 = IE.MaxPool(%0) {exclude_pads, kernel_size = [1, 1],
-                            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-                            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
+                            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+                            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
     %2 = IE.FakeQuantize(%1, %cst, %cst_0, %cst, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
             : tensor<1x1x28x70xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x1x28x70xf16>
     %3 = IE.FakeQuantize(%1, %cst, %cst_0, %cst, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
@@ -242,8 +242,8 @@ func.func @PropagateFQDownTwoOps(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x1x28x
         : tensor<1x70x1x28xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x70x1x28xf16>
     %1 = IE.Transpose(%0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %2 = IE.MaxPool(%1) {exclude_pads, kernel_size = [1, 1],
-            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
+            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
 
     return %2 : tensor<1x1x28x70xf16>
 
@@ -268,8 +268,8 @@ func.func @PropagateFQDownThreeOps(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x28x
             : tensor<1x70x1x28xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x70x1x28xf16>
     %1 = IE.Transpose(%0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %2 = IE.MaxPool(%1) {exclude_pads, kernel_size = [1, 1],
-            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
+            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
     %3 = IE.Transpose(%2) {order_value = #NHWC} : tensor<1x1x28x70xf16> -> tensor<1x28x70x1xf16>
     return %3 : tensor<1x28x70x1xf16>
 
@@ -298,8 +298,8 @@ func.func @PropagateFQDownMultipleUsers(%arg0: tensor<1x70x1x28xf16>) -> (tensor
             : tensor<1x70x1x28xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x70x1x28xf16>
     %1 = IE.Transpose(%0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %2 = IE.MaxPool(%1) {exclude_pads, kernel_size = [1, 1],
-            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
+            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
 
     %3 = IE.Squeeze(%2) {axes_value = []} : tensor<1x1x28x70xf16> -> tensor<28x70xf16>
     %4 = IE.Reshape(%2) {shape_value = [28, 70, 1]} : tensor<1x1x28x70xf16> -> tensor<28x70x1xf16>
@@ -333,8 +333,8 @@ func.func @DoNotPropagateFQDownMultipleFQUsers(%arg0: tensor<1x70x1x28xf16>) -> 
             : tensor<1x70x1x28xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x70x1x28xf16>
     %1 = IE.Transpose(%0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %2 = IE.MaxPool(%0) {exclude_pads, kernel_size = [1, 1],
-            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x70x1x28xf16> -> tensor<1x70x1x28xf16>
+            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x70x1x28xf16> -> tensor<1x70x1x28xf16>
 
     %3 = IE.Squeeze(%1) {axes_value = []} : tensor<1x1x28x70xf16> -> tensor<28x70xf16>
     %4 = IE.Squeeze(%2) {axes_value = []} : tensor<1x70x1x28xf16> -> tensor<70x28xf16>
@@ -365,8 +365,8 @@ func.func @DoNotPropagateFQDownThroughNotAgnostic(%arg0: tensor<1x70x1x28xf16>) 
             : tensor<1x70x1x28xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x70x1x28xf16>
     %1 = IE.SoftMax(%0) {axisInd = 3 : i64} : tensor<1x70x1x28xf16> -> tensor<1x70x1x28xf16>
     %2 = IE.MaxPool(%1) {exclude_pads, kernel_size = [1, 1],
-            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x70x1x28xf16> -> tensor<1x70x1x28xf16>
+            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x70x1x28xf16> -> tensor<1x70x1x28xf16>
 
     return %2 : tensor<1x70x1x28xf16>
 
@@ -392,8 +392,8 @@ func.func @PropagateFQUpAndDown(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x28x70x
             : tensor<1x1x28x70xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x1x28x70xf16>
 
     %2 = IE.MaxPool(%1) {exclude_pads, kernel_size = [1, 1],
-            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-            attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
+            pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>,
+            rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1x28x70xf16> -> tensor<1x1x28x70xf16>
     %3 = IE.Transpose(%2) {order_value = #NHWC} : tensor<1x1x28x70xf16> -> tensor<1x28x70x1xf16>
     return %3 : tensor<1x28x70x1xf16>
 

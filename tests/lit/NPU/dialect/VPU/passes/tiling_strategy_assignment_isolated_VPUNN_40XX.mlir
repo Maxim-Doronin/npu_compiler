@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ func.func @SplitNCEConvOverC(%arg0: tensor<1x32x64x48xf16, {order = #NHWC}>) -> 
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [256, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x256x64x48xf16, {order = #NHWC}>
+    } : tensor<1x32x64x48xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x64x48xf16, {order = #NHWC}>
 
     return %0 : tensor<1x256x64x48xf16, {order = #NHWC}>
 
@@ -57,7 +57,7 @@ func.func @SplitQuantNCEConvOverW(%arg0: tensor<1x32x64x64x!qElemType, {order = 
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [512, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x64x64x!qElemType, {order = #NHWC}>, tensor<512x32x3x3x!qElemType2, {order = #NHWC}>, tensor<512x1x1x4xsi32, {order = #NCHW}> -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
@@ -171,7 +171,7 @@ func.func @SplitSparseQuantNCEConvOverH(%arg0: tensor<1x32x80x80x!qElemType, {or
         ppe = #VPU.PPEStub<>,
         rawFilterShape = [320, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x80x80x!qElemType, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<320x32x3x3x!qElemType2, {order = #NHWC}>, sparsity_map=tensor<320x1x1x384xi1>, is_weights, #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<1> : tensor<320xi64>, alignment = 16 : i64>>, tensor<320x1x1x4xsi32, {order = #NCHW}> -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
@@ -209,7 +209,7 @@ func.func @SplitNCEConvAtOneDim(%arg0: tensor<1x256x512x512xf16, {order = #NHWC}
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
             pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             ppe = #VPU.PPEStub<>, rawFilterShape = [256, 256, 3, 3], strides = [1, 1]
-        } -> tensor<1x256x512x512xf16, {order = #NHWC}>
+        } : tensor<1x256x512x512xf16, {order = #NHWC}>, tensor<256x256x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x512x512xf16, {order = #NHWC}>
 
     return %0 : tensor<1x256x512x512xf16, {order = #NHWC}>
 
@@ -219,7 +219,8 @@ func.func @SplitNCEConvAtOneDim(%arg0: tensor<1x256x512x512xf16, {order = #NHWC}
     // CHECK-SAME:          multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME:          pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
     // CHECK-SAME:          rawFilterShape = [256, 256, 3, 3], strides = [1, 1], tilingStrategy = [1, 1, 1, 512]
-    // CHECK-SAME:      } -> tensor<1x256x512x512xf16, {order = #NHWC}>
+    // CHECK-SAME:      }
+    // CHECK-SAME:      -> tensor<1x256x512x512xf16, {order = #NHWC}>
 
     // CHECK:       return [[CONV]]
 }

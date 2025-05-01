@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,7 +11,7 @@
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @nndma_4d_to_4d_with_single_shape inputsInfo : {
+  net.NetworkInfo entryPoint : @nndma_4d_to_4d_with_single_shape inputsInfo : {
     DataInfo "input" : tensor<2x2x2x2xf16>
   } outputsInfo : {
     DataInfo "output" : tensor<2x2x2x2xf16>
@@ -23,7 +23,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   } profilingBuffDeclarations : {
   }
   func.func private @nndma_4d_to_4d_with_single_shape() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
     %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<2x2x2x2xf16, {order = #NCHW, strides = [256, 64, 16, 1]}, @DDR>
     %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<2x2x2x2xf16, {order = #NCHW, strides = [256, 64, 16, 1]}, @DDR>
     %3 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%0 : !VPURegMapped.Index<0:0:0>)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -309,6 +309,24 @@ func.func @ConvertNceOpsTo4DConvolution5DAggregateDH(%arg0: tensor<1x16x16x16x16
     // CHECK:       return %[[RESULT]]
 }
 
+
+// -----
+
+// Check that we would not try to flatten the tensor if the strides are not 1
+// CHECK-LABEL: @ConvertNceOpsTo4DConvolution5DNonOneStrides
+func.func @ConvertNceOpsTo4DConvolution5DNonOneStrides(%arg0: tensor<1x256x16x28x28xf16>) -> tensor<1x512x16x14x14xf16> {
+    %FILTERS = const.Declare tensor<512x256x1x1x1xf16> = dense<1.000000e+00> : tensor<512x256x1x1x1xf16>
+    %RESULT = IE.Convolution(%arg0, %FILTERS) {dilations = [1,1,1], pads_begin = [0,0,0], pads_end = [0,0,0], strides = [1,2,2]} : tensor<1x256x16x28x28xf16>, tensor<512x256x1x1x1xf16> -> tensor<1x512x16x14x14xf16>
+    return %RESULT : tensor<1x512x16x14x14xf16>
+
+    // CHECK: %[[VAL0:.*]] = IE.Convolution
+    // CHECK-NOT:       tensor<1x256x16x784xf16>
+    // CHECK-SAME:      dilations = [1, 1]
+    // CHECK-SAME:      pads_begin = [0, 0]
+    // CHECK-SAME:      pads_end = [0, 0]
+    // CHECK-NOT:       strides = [1, 2]
+}
+
 // -----
 
 // CHECK-LABEL: @ConvertNceOpsTo4DGroupConvolution5DAggregateHW
@@ -571,7 +589,7 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3D(%arg0: tensor<1x32x2x4x4xf16
     %RESULT = IE.TransposedConvolution(%arg0, %FILTERS) {
         dilations = [1, 1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [0, 0, 0],
+        spatial_output_padding = [0, 0, 0],
         pads_begin = [0, 0, 0],
         pads_end = [0, 0, 0],
         strides = [1, 1, 1]} : tensor<1x32x2x4x4xf16>, tensor<32x32x2x2x2xf16> -> tensor<1x32x3x5x5xf16>
@@ -583,17 +601,17 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3D(%arg0: tensor<1x32x2x4x4xf16
 
     // CHECK:       [[SLICE_0:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_0:%.+]] = IE.Reshape([[SLICE_0]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_1:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[SLICE_1]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[SLICE_2:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[SLICE_2]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_3:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_3:%.+]] = IE.Reshape([[SLICE_3]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[ADD_12:%.+]] = IE.Add([[TCONV_1]], [[TCONV_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x32x5x5xf16>, tensor<1x32x5x5xf16> -> tensor<1x32x5x5xf16>
 
@@ -622,7 +640,7 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithFQ(%arg0: tensor<1x32x2x4
     %RESULT = IE.TransposedConvolution(%5, %6) {
         dilations = [1, 1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [0, 0, 0],
+        spatial_output_padding = [0, 0, 0],
         pads_begin = [0, 0, 0],
         pads_end = [0, 0, 0],
         strides = [1, 1, 1]} : tensor<1x32x2x4x4xf16>, tensor<32x32x2x2x2xf16> -> tensor<1x32x3x5x5xf16>
@@ -641,23 +659,23 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithFQ(%arg0: tensor<1x32x2x4
     // CHECK:       [[RESHAPE_0:%.+]] = IE.Reshape([[SLICE_0]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
     // CHECK:       [[FQ_0:%.*]] = IE.FakeQuantize([[RESHAPE_0]]
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x4x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[FQ_0]], [[FQ_CST_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[FQ_0]], [[FQ_CST_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_1:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[SLICE_1]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
     // CHECK:       [[FQ_1:%.*]] = IE.FakeQuantize([[RESHAPE_1]]
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x4x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[FQ_1]], [[FQ_CST_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[FQ_1]], [[FQ_CST_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[SLICE_2:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[SLICE_2]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
     // CHECK:       [[FQ_2:%.*]] = IE.FakeQuantize([[RESHAPE_2]]
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x4x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[FQ_2]], [[FQ_CST_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[FQ_2]], [[FQ_CST_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_3:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_3:%.+]] = IE.Reshape([[SLICE_3]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
     // CHECK:       [[FQ_3:%.*]] = IE.FakeQuantize([[RESHAPE_3]]
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x4x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[FQ_3]], [[FQ_CST_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[FQ_3]], [[FQ_CST_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[ADD_12:%.+]] = IE.Add([[TCONV_1]], [[TCONV_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x32x5x5xf16>, tensor<1x32x5x5xf16> -> tensor<1x32x5x5xf16>
 
@@ -677,7 +695,7 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithPad(%arg0: tensor<1x32x2x
     %RESULT = IE.TransposedConvolution(%arg0, %FILTERS) {
         dilations = [1, 1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [0, 0, 0],
+        spatial_output_padding = [0, 0, 0],
         pads_begin = [1, 0, 0],
         pads_end = [1, 0, 0],
         strides = [1, 1, 1]} : tensor<1x32x2x4x4xf16>, tensor<32x32x2x2x2xf16> -> tensor<1x32x1x5x5xf16>
@@ -689,17 +707,17 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithPad(%arg0: tensor<1x32x2x
 
     // CHECK:       [[SLICE_0:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_0:%.+]] = IE.Reshape([[SLICE_0]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_1:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[SLICE_1]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[SLICE_2:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[SLICE_2]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_3:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_3:%.+]] = IE.Reshape([[SLICE_3]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[ADD_12:%.+]] = IE.Add([[TCONV_1]], [[TCONV_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x32x5x5xf16>, tensor<1x32x5x5xf16> -> tensor<1x32x5x5xf16>
 
@@ -717,7 +735,7 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithStrides(%arg0: tensor<1x3
     %RESULT = IE.TransposedConvolution(%arg0, %FILTERS) {
         dilations = [1, 1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [0, 0, 0],
+        spatial_output_padding = [0, 0, 0],
         pads_begin = [0, 0, 0],
         pads_end = [0, 0, 0],
         strides = [2, 2, 2]} : tensor<1x32x2x4x4xf16>, tensor<32x32x2x2x2xf16> -> tensor<1x32x4x8x8xf16>
@@ -729,17 +747,17 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithStrides(%arg0: tensor<1x3
 
     // CHECK:       [[SLICE_0:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_0:%.+]] = IE.Reshape([[SLICE_0]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
+    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
     // CHECK:       [[SLICE_1:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[SLICE_1]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
+    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
 
     // CHECK:       [[SLICE_2:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[SLICE_2]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
+    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
     // CHECK:       [[SLICE_3:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_3:%.+]] = IE.Reshape([[SLICE_3]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
+    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x8x8xf16>
 
     // CHECK:       [[RESHAPE_4:%.+]] = IE.Reshape([[TCONV_0]]) {shape_value = [1, 32, 1, 64]} : tensor<1x32x8x8xf16> -> tensor<1x32x1x64xf16>
     // CHECK:       [[RESHAPE_5:%.+]] = IE.Reshape([[TCONV_1]]) {shape_value = [1, 32, 1, 64]} : tensor<1x32x8x8xf16> -> tensor<1x32x1x64xf16>
@@ -758,7 +776,7 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithOutputPadInvalid(%arg0: t
     %RESULT = IE.TransposedConvolution(%arg0, %FILTERS) {
         dilations = [1, 1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [1, 0, 0],
+        spatial_output_padding = [1, 0, 0],
         pads_begin = [0, 0, 0],
         pads_end = [0, 0, 0],
         strides = [1, 1, 1]} : tensor<1x32x2x4x4xf16>, tensor<32x32x2x2x2xf16> -> tensor<1x32x4x5x5xf16>
@@ -771,17 +789,17 @@ func.func @ConvertNceOpsTo4DTransposedConvolution3DWithOutputPadInvalid(%arg0: t
 
     // CHECK:       [[SLICE_0:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_0:%.+]] = IE.Reshape([[SLICE_0]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_0:%.+]] = IE.TransposedConvolution([[RESHAPE_0]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_1:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[SLICE_1]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_1:%.+]] = IE.TransposedConvolution([[RESHAPE_1]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[SLICE_2:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[SLICE_2]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_2:%.+]] = IE.TransposedConvolution([[RESHAPE_2]], [[CST_WEIGHTS_0]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
     // CHECK:       [[SLICE_3:%.+]] = IE.Slice {{[^:]+}} [0, 0, 1, 0, 0] [1, 32, 1, 4, 4] : tensor<1x32x2x4x4xf16> to tensor<1x32x1x4x4xf16>
     // CHECK:       [[RESHAPE_3:%.+]] = IE.Reshape([[SLICE_3]]) {shape_value = [1, 32, 4, 4]} : tensor<1x32x1x4x4xf16> -> tensor<1x32x4x4xf16>
-    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
+    // CHECK:       [[TCONV_3:%.+]] = IE.TransposedConvolution([[RESHAPE_3]], [[CST_WEIGHTS_1]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<32x32x2x2xf16> -> tensor<1x32x5x5xf16>
 
     // CHECK:       [[ADD_12:%.+]] = IE.Add([[TCONV_1]], [[TCONV_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x32x5x5xf16>, tensor<1x32x5x5xf16> -> tensor<1x32x5x5xf16>
 

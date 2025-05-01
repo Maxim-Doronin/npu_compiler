@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 
 func.func @main() {
 ELF.Main @ELFMain {
-    ELF.CreateLogicalSection @buffer.CMX_NN.0 aligned(1) secType(VPU_SHT_CMX_WORKSPACE) secFlags("SHF_NONE") {
+    ELF.CreateLogicalSection @buffer.CMX_NN.0 aligned(1) secType(VPU_SHT_CMX_WORKSPACE) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
       VPUASM.DeclareBuffer @DeclareBuffer6 !VPUASM.Buffer< "CMX_NN"[0] <1473536> : memref<16xui32, [@CMX_NN, 0]> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer7 !VPUASM.Buffer< "CMX_NN"[0] <0> : memref<1x64x1x1xf16, [@CMX_NN, 0]> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer8 !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x64x1x1xf16, [@CMX_NN, 0]> :  swizzling(0)>
@@ -18,10 +18,10 @@ ELF.Main @ELFMain {
       VPUASM.DeclareBuffer @DeclareBuffer12 !VPUASM.Buffer< "CMX_NN"[0] <64> : memref<1x32x1x1xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [64, 1, 1, 1]}, [@CMX_NN, 0]> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer13 !VPUASM.Buffer< "CMX_NN"[0] <192> : memref<1x32x1x1xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [64, 1, 1, 1]}, [@CMX_NN, 0]> :  swizzling(0)>
     }
-    ELF.CreateSection @shave.runtime aligned(1024) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") {
+    ELF.CreateSection @shave.runtime aligned(1024) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") secLocation(<DDR>) {
       "NPUReg40XX.ActShaveRt"() <{kernel_path = "nnActEntry", sym_name = "ActShaveRt"}> {elfMemOffsetAttrKey = 0 : ui64} : () -> ()
     }
-    ELF.CreateLogicalSection @shave.stack aligned(64) secType(SHT_NOBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") {
+    ELF.CreateLogicalSection @shave.stack aligned(64) secType(SHT_NOBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") secLocation(<DDR>) {
     VPUASM.ActShaveRtStack @ActShaveRtStack_0_0 {elfMemOffsetAttrKey = 0 : ui64} : 16384
     VPUASM.ActShaveRtStack @ActShaveRtStack_0_1 {elfMemOffsetAttrKey = 16384 : ui64} : 16384
     VPUASM.ActShaveRtStack @ActShaveRtStack_0_2 {elfMemOffsetAttrKey = 32768 : ui64} : 16384
@@ -35,7 +35,7 @@ ELF.Main @ELFMain {
     VPUASM.ActShaveRtStack @ActShaveRtStack_0_10 {elfMemOffsetAttrKey = 163840 : ui64} : 16384
     VPUASM.ActShaveRtStack @ActShaveRtStack_0_11 {elfMemOffsetAttrKey = 180224 : ui64} : 16384
     }
-    ELF.CreateSection @program.nnrt_config aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") {
+    ELF.CreateSection @program.nnrt_config aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
     "NPUReg40XX.NNrtConfig"() <{actShaveRt = @shave.runtime::@ActShaveRt, actShaveStacks = [@shave.stack::@ActShaveRtStack_0_0, @shave.stack::@ActShaveRtStack_0_1, @shave.stack::@ActShaveRtStack_0_2, @shave.stack::@ActShaveRtStack_0_3, @shave.stack::@ActShaveRtStack_0_4, @shave.stack::@ActShaveRtStack_0_5, @shave.stack::@ActShaveRtStack_0_6, @shave.stack::@ActShaveRtStack_0_7, @shave.stack::@ActShaveRtStack_0_8, @shave.stack::@ActShaveRtStack_0_9, @shave.stack::@ActShaveRtStack_0_10, @shave.stack::@ActShaveRtStack_0_11], dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer6, isActKernelInvocations, sym_name = "MappedInference_nnrtConfigManaged"}> {elfMemOffsetAttrKey = 0 : ui64} : () -> ()
     }
     ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {

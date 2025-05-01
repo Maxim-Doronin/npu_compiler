@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-IE.CNNNetwork entryPoint : @twoDma inputsInfo : {
+net.NetworkInfo entryPoint : @twoDma inputsInfo : {
   DataInfo "input_0" : tensor<1x16x16x16xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x16x16x16xf16>
@@ -16,12 +16,12 @@ IE.CNNNetwork entryPoint : @twoDma inputsInfo : {
 }
 
 func.func @twoDma() {
-  %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
-  %1 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
-  %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:2>
-  %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-  %4 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
-  %5 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
+  %0 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
+  %1 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
+  %2 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:2>
+  %3 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+  %4 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+  %5 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
 
   %6 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, #NHWC, @DDR>
   %7 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, #NHWC, @DDR>
@@ -102,17 +102,17 @@ func.func @twoDma() {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-IE.CNNNetwork entryPoint : @multiple_clusters_dpu_soh_f16_f16_f16 inputsInfo : {
+net.NetworkInfo entryPoint : @multiple_clusters_dpu_soh_f16_f16_f16 inputsInfo : {
   DataInfo "input_0" : tensor<1x32x32x32xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x64x16x32xf16>
   DataInfo "output_1" : tensor<1x64x16x32xf16>
 }
 func.func @multiple_clusters_dpu_soh_f16_f16_f16() {
-  %0 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
-  %1 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:1>
-  %2 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
-  %3 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
+  %0 = VPUMI37XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
+  %1 = VPUMI37XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:1>
+  %2 = VPUMI37XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
+  %3 = VPUMI37XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
 
   %4 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
   %5 = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 1]>
@@ -178,7 +178,7 @@ func.func @multiple_clusters_dpu_soh_f16_f16_f16() {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-IE.CNNNetwork entryPoint : @multiple_clusters_dpu_sok_f16_f16_f16 inputsInfo : {
+net.NetworkInfo entryPoint : @multiple_clusters_dpu_sok_f16_f16_f16 inputsInfo : {
   DataInfo "input_0" : tensor<1x32x16x16xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x64x16x16xf16>
@@ -186,11 +186,11 @@ IE.CNNNetwork entryPoint : @multiple_clusters_dpu_sok_f16_f16_f16 inputsInfo : {
 }
 
 func.func @multiple_clusters_dpu_sok_f16_f16_f16() {
-  %0 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
-  %1 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:1>
-  %2 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
-  %3 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
-  %4 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+  %0 = VPUMI37XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
+  %1 = VPUMI37XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:1>
+  %2 = VPUMI37XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
+  %3 = VPUMI37XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
+  %4 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
 
   %5 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x32x16x16xf16, #NHWC, @DDR>
   %6 = VPURT.DeclareBuffer <NetworkOutput> [1] <0> {swizzlingKey = 0 : i64} -> memref<1x64x16x16xf16, #NHWC, @DDR>

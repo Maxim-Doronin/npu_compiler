@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -177,7 +177,7 @@ func.func @EltwiseWorkloadsTiledOverZClustering(%arg0: tensor<1x128x16x16xf16, {
     // CHECK-SAME:          -> tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
 
     // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[SLICE1_ELTWISE_COPY]], [[SLICE2_ELTWISE_COPY]])
-    // CHECK{LITERAL}    {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
+    // CHECK{LITERAL}:   {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
     // CHECK-SAME:    : tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>,
     // CHECK-SAME:      tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
     // CHECK-SAME:    -> tensor<1x128x16x16xf16, {mem_space = @DDR, order = #NHWC}>
@@ -256,7 +256,7 @@ func.func @EltwiseWorkloadsTiledOverZSOH(%arg0: tensor<1x128x16x16xf16, {mem_spa
     // CHECK-SAME:          -> tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
 
     // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[SLICE1_ELTWISE_COPY]], [[SLICE2_ELTWISE_COPY]])
-    // CHECK{LITERAL}    {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
+    // CHECK{LITERAL}:   {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
     // CHECK-SAME:    : tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>,
     // CHECK-SAME:    tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
     // CHECK-SAME:    -> tensor<1x128x16x16xf16, {mem_space = @DDR, order = #NHWC}>
@@ -334,7 +334,7 @@ func.func @EltwiseWorkloadsTiledOverZHKSwitch(%arg0: tensor<1x128x16x16xf16, {me
     // CHECK-SAME:                   -> tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
 
     // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[SLICE1_ELTWISE_COPY]], [[SLICE2_ELTWISE_COPY]])
-    // CHECK{LITERAL}    {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
+    // CHECK{LITERAL}:   {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
     // CHECK-SAME:    : tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>,
     // CHECK-SAME:    tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
     // CHECK-SAME:    -> tensor<1x128x16x16xf16, {mem_space = @DDR, order = #NHWC}>
@@ -418,7 +418,7 @@ func.func @EltwiseWorkloadsTiledOverZSOHWithNCEConsumer(%arg0: tensor<1x128x16x1
     // CHECK-SAME:                  -> tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
 
     // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[SLICE1_ELTWISE_COPY]], [[SLICE2_ELTWISE_COPY]])
-    // CHECK{LITERAL}    {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
+    // CHECK{LITERAL}:   {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
     // CHECK-SAME:    : tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>,
     // CHECK-SAME:      tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
     // CHECK-SAME:      -> tensor<1x128x16x16xf16, {mem_space = @DDR, order = #NHWC}>

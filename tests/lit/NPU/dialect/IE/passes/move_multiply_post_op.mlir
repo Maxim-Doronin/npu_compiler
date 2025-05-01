@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -58,7 +58,7 @@ func.func @SwapTwoMultiplyWithMatmul(%arg0: tensor<1x32x80x1024xf32>, %arg1: ten
 // CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x32x1x80xf32>
 func.func @NotSwapWithPostOp(%arg0: tensor<1x32x1024x80xf32>, %arg1: tensor<1x32x1x80xf32>) -> tensor<1x32x1x1024xf32> {
     %cst = const.Declare tensor<1x1x1x1xf32> = dense<0.1> : tensor<1x1x1x1xf32>
-    %0 = IE.Multiply(%cst, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>} : tensor<1x1x1x1xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1024x80xf32>
+    %0 = IE.Multiply(%cst, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.Relu<>} : tensor<1x1x1x1xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1024x80xf32>
     %1 = IE.MatMul(%arg1, %0) {transpose_b} : tensor<1x32x1x80xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1x1024xf32>
 
     return %1 : tensor<1x32x1x1024xf32>
@@ -116,7 +116,7 @@ func.func @NoSwapForMultiUser(%arg0: tensor<1x32x1024x80xf32>, %arg1: tensor<1x3
 // CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x32x1025x80xf32>
 func.func @NotBeneficialForSwap(%arg0: tensor<1x32x1024x80xf32>, %arg1: tensor<1x32x1025x80xf32>) -> tensor<1x32x1025x1024xf32> {
     %cst = const.Declare tensor<1x1x1x1xf32> = dense<0.1> : tensor<1x1x1x1xf32>
-    %0 = IE.Multiply(%cst, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>} : tensor<1x1x1x1xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1024x80xf32>
+    %0 = IE.Multiply(%cst, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.Relu<>} : tensor<1x1x1x1xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1024x80xf32>
     %1 = IE.MatMul(%arg1, %0) {transpose_b} : tensor<1x32x1025x80xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1025x1024xf32>
 
     return %1 : tensor<1x32x1025x1024xf32>
@@ -202,4 +202,44 @@ func.func @NotMovePostConcatForShapeMismatch(%arg0: tensor<2x3584xf16>, %arg1: t
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MULTIPLY_1]], [[MULTIPLY_2]])
 
     // CHECK:       return  [[CONCAT]] : tensor<3x3584xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @SwapMultiplyWithFullyConnected
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<2048x12288xf32>,
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x12288xf32>
+func.func @SwapMultiplyWithFullyConnected(%arg0: tensor<2048x12288xf32>, %arg1: tensor<1x12288xf32>) -> tensor<1x2048xf32> {
+    %cst = const.Declare tensor<1x1xf32> = dense<0.1> : tensor<1x1xf32>
+    %0 = IE.Multiply(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2048x12288xf32>, tensor<1x1xf32> -> tensor<2048x12288xf32>
+    %1 = IE.FullyConnected(%arg1, %0) : tensor<1x12288xf32>, tensor<2048x12288xf32> -> tensor<1x2048xf32>
+
+    return %1 : tensor<1x2048xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1x1xf32> = dense<1.000000e-01> : tensor<1x1xf32>
+    // CHECK:       [[FC:%.+]] = IE.FullyConnected([[INPUT2]], [[INPUT1]]) : tensor<1x12288xf32>, tensor<2048x12288xf32> -> tensor<1x2048xf32>
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[FC]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2048xf32>, tensor<1x1xf32> -> tensor<1x2048xf32>
+
+    // CHECK:       return  [[MULTIPLY]] : tensor<1x2048xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @NotSwapMultiplyWithFullyConnectedWithBias
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<2048x12288xf32>,
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x12288xf32>
+func.func @NotSwapMultiplyWithFullyConnectedWithBias(%arg0: tensor<2048x12288xf32>, %arg1: tensor<1x12288xf32>) -> tensor<1x2048xf32> {
+    %cst = const.Declare tensor<1x1xf32> = dense<0.1> : tensor<1x1xf32>
+    %bias = const.Declare tensor<1x2048xf32> = dense<0.1> : tensor<1x2048xf32>
+    %0 = IE.Multiply(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2048x12288xf32>, tensor<1x1xf32> -> tensor<2048x12288xf32>
+    %1 = IE.FullyConnected(%arg1, %0, %bias) : tensor<1x12288xf32>, tensor<2048x12288xf32>, tensor<1x2048xf32> -> tensor<1x2048xf32>
+
+    return %1 : tensor<1x2048xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1x1xf32> = dense<1.000000e-01> : tensor<1x1xf32>
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x2048xf32> = dense<1.000000e-01> : tensor<1x2048xf32>
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[INPUT1]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2048x12288xf32>, tensor<1x1xf32> -> tensor<2048x12288xf32>
+    // CHECK:       [[FC:%.+]] = IE.FullyConnected([[INPUT2]], [[MULTIPLY]], [[BIAS]]) : tensor<1x12288xf32>, tensor<2048x12288xf32>, tensor<1x2048xf32> -> tensor<1x2048xf32>
+
+    // CHECK:       return  [[FC]] : tensor<1x2048xf32>
 }

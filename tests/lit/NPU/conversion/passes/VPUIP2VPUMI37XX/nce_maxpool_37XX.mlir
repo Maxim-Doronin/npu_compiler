@@ -8,22 +8,31 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
-IE.CNNNetwork entryPoint : @maxpool_f16_f16 inputsInfo : {
+net.NetworkInfo entryPoint : @maxpool_f16_f16 inputsInfo : {
 DataInfo "input_0" : tensor<1x64x16x16xf16>
 } outputsInfo : {
 DataInfo "output_0" : tensor<1x64x8x8xf16>
 }
 
 func.func private @maxpool_f16_f16(%arg0: memref<1x64x16x16xf16, #NHWC, @DDR>, %arg1: memref<1x64x8x8xf16, #NHWC, @DDR>) -> memref<1x64x8x8xf16, #NHWC, @DDR> {
-  %2 = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>
-  %3 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>
-  %4 = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>
-  %5 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>
-  %6 = VPURT.DeclareBuffer <CMX_NN> [0] <40960> -> memref<1x1x1x16xui8, #NHWC, [@CMX_NN, 0]>
-  %7 = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
+  %input = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>
+  %output = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>
+  %parent_input = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>
+  %parent_output = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>
+  %weight_table = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
 
   VPURT.Task {
-      %8 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [2, 2], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<MAXPOOL>} input(%2 : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%7 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>) parent_input(%4 : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%5 : memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>) outputs(%3 : memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]> variants : {
+      %8 = VPUIP.NCEClusterTask {
+            kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+            kernel_size = [2, 2],
+            kernel_strides = [2, 2],
+            task_type = #VPUIP.nce_task_type<MAXPOOL>}
+          input(%input : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+          weight_table(%weight_table : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>)
+          parent_input(%parent_input : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+          parent_output(%parent_output : memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>)
+          outputs(%output : memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>)
+        -> memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]> variants : {
       DPUTask {outEnd = [7, 7, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, outStart = [0, 0, 0]}
       } PPE : { PPETask {ppe = #VPU.PPEStub<>} }
   }
@@ -34,24 +43,21 @@ func.func private @maxpool_f16_f16(%arg0: memref<1x64x16x16xf16, #NHWC, @DDR>, %
 
 //CHECK-LABEL: @maxpool_f16_f16
 
-//CHECK: %[[VAL2:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE2:.*]]
-//CHECK: %[[VAL3:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE3:.*]]
-//CHECK: %[[VAL4:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE4:.*]]
-//CHECK: %[[VAL5:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE5:.*]]
-//CHECK: %[[VAL6:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <40960> -> [[TYPE6:.*]]
-//CHECK: %[[VAL7:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> [[TYPE7:.*]]
+//CHECK: [[INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE_INPUT:.*]]
+//CHECK: [[OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE_OUTPUT:.*]]
+//CHECK: [[PARENT_INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE_PARENT_INPUT:.*]]
+//CHECK: [[PARENT_OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE_PARENT_OUTPUT:.*]]
+//CHECK: [[WEIGHT_TABLE:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> [[TYPE_WEIGHT_TABLE:.*]]
 
 
 //CHECK-NOT: VPURT.Task
 //CHECK: DPUInvariant
-    //CHECK-SAME task_type = #VPUIP.nce_task_type<MAXPOOL>
-    //CHECK-SAME input(%[[VAL2]] : [[TYPE2]])
-    //CHECK-SAME weight_table(%[[VAL7]] : [[TYPE7]])
-    //CHECK-SAME parent_input(%[[VAL4]] : [[TYPE4]])
-    //CHECK-SAME parent_output(%[[VAL5]] : [[TYPE5]])
-    //CHECK-SAME outputs(%[[VAL3]] : [[TYPE3]])
-    //CHECK-SAME waits(%[[VAL0]]
-    //CHECK-SAME updates(%[[VAL1]])
+//CHECK-SAME: task_type = #VPUIP.nce_task_type<MAXPOOL>
+//CHECK-SAME: input([[INPUT]] : [[TYPE_INPUT]])
+//CHECK-SAME: weight_table([[WEIGHT_TABLE]] : [[TYPE_WEIGHT_TABLE]])
+//CHECK-SAME: parent_input([[PARENT_INPUT]] : [[TYPE_PARENT_INPUT]])
+//CHECK-SAME: parent_output([[PARENT_OUTPUT]] : [[TYPE_PARENT_OUTPUT]])
+//CHECK-SAME: outputs([[OUTPUT]] : [[TYPE_OUTPUT]])
 //CHECK-NOT: DPUTask
 //CHECK-NEXT: VPUMI37XX.PPETask
 

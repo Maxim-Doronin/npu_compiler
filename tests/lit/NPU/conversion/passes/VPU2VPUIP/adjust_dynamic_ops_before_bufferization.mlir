@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,10 +10,10 @@
 module @Unsqueeze {
 
 // CHECK-LABEL:  func.func @UnsqueezeToDynamicReshape
-// CHECK-SAME:       ([[ARG:%.+]]: tensor<1x1x?xf16
- func.func @UnsqueezeToDynamicReshape(%arg0: tensor<1x1x?xf16, {bounds = [1, 1, 10], order = #CHW}>) -> tensor<1x1x?x1xf16, {bounds = [1, 1, 10, 1], order = #NCHW}> {
-    %0 = VPU.Unsqueeze(%arg0) {axes_value = [3]} : tensor<1x1x?xf16, {bounds = [1, 1, 10], order = #CHW}> -> tensor<1x1x?x1xf16, {bounds = [1, 1, 10, 1], order = #NCHW}>
-    return %0 : tensor<1x1x?x1xf16, {bounds = [1, 1, 10, 1], order = #NCHW}>
+// CHECK-SAME:       ([[ARG:%.+]]: tensor<1x1x10xf16
+func.func @UnsqueezeToDynamicReshape(%arg0: tensor<1x1x10xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1]>: tensor<3xsi64>, order = #CHW}>) -> tensor<1x1x10x1xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 0]>: tensor<4xsi64>, order = #NCHW}> {
+    %0 = VPU.Unsqueeze(%arg0) {axes_value = [3]} : tensor<1x1x10xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1]>: tensor<3xsi64>, order = #CHW}> -> tensor<1x1x10x1xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 0]>: tensor<4xsi64>, order = #NCHW}>
+    return %0 : tensor<1x1x10x1xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 0]>: tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<4xsi32> = dense<[1, 1, 0, 1]> : tensor<4xsi32>
     // CHECK:       VPU.DynamicReshape([[ARG]], [[CST]])

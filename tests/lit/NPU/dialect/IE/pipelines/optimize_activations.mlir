@@ -34,7 +34,7 @@ func.func @OptimizeActivationsConvMaxPoolRelu(%arg0: tensor<1x16x5x5xf16>) -> te
 
     // CHECK:       [[CST:%.*]] = const.Declare
     // CHECK:       [[CONV:%.*]] = IE.Convolution(%arg0, [[CST]])
-    // CHECK-SAME:  post_op = #IE.PostOp<name = "IE.ReLU"
+    // CHECK-SAME:  post_op = #IE.Relu<>
     // CHECK:       [[MAX_POOL:%.*]] = IE.MaxPool([[CONV]])
     // CHECK:       return [[MAX_POOL]]
 }
@@ -101,7 +101,7 @@ func.func @OptimizeActivationsAddWithMultipleUsers(%arg0: tensor<1x32x4x4xf16>, 
     // CHECK-SAME: kernel_size = [1, 1],
     // CHECK-SAME: pads_begin = [0, 0],
     // CHECK-SAME: pads_end = [0, 0],
-    // CHECK-SAME: post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>
+    // CHECK-SAME: post_op = #IE.Relu<>
     // CHECK-SAME: rounding_type = #IE.rounding_type<FLOOR>,
     // CHECK-SAME: strides = [1, 1]
     // CHECK-SAME: } : tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
@@ -140,7 +140,7 @@ func.func @OptimizeActivationsGroupConv(%arg0: tensor<2x512x32x48xf16>,
     // CHECK-SAME:      groups = 512 : i64,
     // CHECK-SAME:      pads_begin = [1, 1],
     // CHECK-SAME:      pads_end = [1, 1],
-    // CHECK-SAME:      post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>,
+    // CHECK-SAME:      post_op = #IE.Relu<>,
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:  } : tensor<2x512x32x48xf16>, tensor<512x1x3x3xf16> -> tensor<2x512x32x48xf16>
 
@@ -150,7 +150,7 @@ func.func @OptimizeActivationsGroupConv(%arg0: tensor<2x512x32x48xf16>,
     // CHECK-SAME:      kernel_size = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
-    // CHECK-SAME:      post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>,
+    // CHECK-SAME:      post_op = #IE.Relu<>,
     // CHECK-SAME:      rounding_type = #IE.rounding_type<FLOOR>,
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:  } : tensor<2x512x32x48xf16> -> tensor<2x512x32x48xf16>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ func.func @SplitNCEConvOverICOnly(%arg0: tensor<1x9728x4x1xf16, {order = #NHWC}>
     ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     rawFilterShape = [9728, 9728, 1, 1],
     strides = [1, 1]
-  } -> tensor<1x9728x4x1xf16, {order = #NHWC}>
+  } : tensor<1x9728x4x1xf16, {order = #NHWC}>, tensor<9728x9728x1x1xf16, {order = #NHWC}>, tensor<9728x1x1x4xsi32> -> tensor<1x9728x4x1xf16, {order = #NHWC}>
 
   return %0 : tensor<1x9728x4x1xf16, {order = #NHWC}>
 
@@ -33,14 +33,16 @@ func.func @SplitNCEConvOverICOnly(%arg0: tensor<1x9728x4x1xf16, {order = #NHWC}>
   // CHECK:      [[CONV_OUT0:%.+]] = VPU.NCE.Convolution([[INPUT_SLICE0]], [[FILTER1]], [[WEIGHTS_TABLE1]]) {
   // CHECK-SAME:   pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
   // CHECK-SAME:   ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
-  // CHECK-SAME:   rawFilterShape = [9728, 4864, 1, 1], strides = [1, 1]} -> tensor<1x9728x4x1xf16, {order = #NHWC}>
+  // CHECK-SAME:   rawFilterShape = [9728, 4864, 1, 1], strides = [1, 1]}
+  // CHECK-SAME:   -> tensor<1x9728x4x1xf16, {order = #NHWC}>
 
   // CHECK:      [[INPUT_SLICE1:%.+]] = VPU.Slice [[INPUT]] [0, 4864, 0, 0] [1, 4864, 4, 1] : tensor<1x9728x4x1xf16, {order = #NHWC}> to tensor<1x4864x4x1xf16, {order = #NHWC}>
   // CHECK:      [[CONV_OUT1:%.+]] = VPU.NCE.Convolution([[INPUT_SLICE1]], [[FILTER0]], [[WEIGHTS_TABLE0]]) {
   // CHECK-SAME:   pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
   // CHECK-SAME:   ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
   // CHECK-SAME:   rawFilterShape = [9728, 4864, 1, 1], strides = [1, 1]
-  // CHECK-SAME: } -> tensor<1x9728x4x1xf16, {order = #NHWC}>
+  // CHECK-SAME: }
+  // CHECK-SAME: -> tensor<1x9728x4x1xf16, {order = #NHWC}>
 
   // CHECK:      [[ADD_OUT1:%.+]] = VPU.NCE.Eltwise([[CONV_OUT0]], [[CONV_OUT1]]) {
   // CHECK-SAME:    op_type = #VPU.eltwise_type<ADD>,

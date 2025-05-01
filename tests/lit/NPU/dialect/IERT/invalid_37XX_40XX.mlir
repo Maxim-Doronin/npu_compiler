@@ -8,7 +8,7 @@
 
 module @ConstantLayer {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
     }

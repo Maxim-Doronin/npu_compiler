@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 
 module @hoistIO {
 
-IE.CNNNetwork entryPoint : @main inputsInfo : {
+net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1xui8>
 } outputsInfo : {
     DataInfo "prob" : tensor<2xf16>

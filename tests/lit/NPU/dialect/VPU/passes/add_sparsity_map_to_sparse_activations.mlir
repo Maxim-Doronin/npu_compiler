@@ -99,7 +99,7 @@ func.func @propagateTypeConcatMixedConsumers(%arg0: tensor<1x8x16x16xf16, {order
       ppe = #VPU.PPEStub<>,
       rawFilterShape = [16, 16, 1, 1],
       strides = [1, 1]
-    } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+    } : !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     %4 = VPU.MaxPool(%2) {
       kernel_size = [3, 3],
       pads_begin = [1, 1],

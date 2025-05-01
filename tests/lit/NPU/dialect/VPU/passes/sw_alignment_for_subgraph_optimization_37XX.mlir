@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ func.func @MVNInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {order 
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-                -> tensor<1x32x64x64xf16, {order = #NHWC}>
+                : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x64x64xf16, {order = #NHWC}>
     %permute_cast = VPU.PermuteCast(%conv) {
             dst_order = #NWHC,
             mem_perm = #NCHW}
@@ -104,7 +104,7 @@ func.func @SOKMVNInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {ord
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-                -> tensor<1x32x64x64xf16, {order = #NHWC}>
+                : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x64x64xf16, {order = #NHWC}>
     %permute_cast = VPU.PermuteCast(%conv) {
             dst_order = #NWHC,
             mem_perm = #NCHW}
@@ -190,7 +190,7 @@ func.func @TanhInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {order
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-                -> tensor<1x32x64x64xf16, {order = #NHWC}>
+                : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x64x64xf16, {order = #NHWC}>
     %tanh = VPU.Tanh(%conv) {multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
     return %tanh : tensor<1x32x64x64xf16, {order = #NHWC}>
@@ -264,7 +264,7 @@ func.func @SOKTanhInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {or
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-                -> tensor<1x32x64x64xf16, {order = #NHWC}>
+                : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x64x64xf16, {order = #NHWC}>
     %tanh = VPU.Tanh(%conv) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
     return %tanh : tensor<1x32x64x64xf16, {order = #NHWC}>
@@ -417,7 +417,7 @@ func.func @DoNotAlignForSOHInput(%input: tensor<1x32x64x64xf16, {order = #NHWC}>
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-                -> tensor<1x32x64x64xf16, {order = #NHWC}>
+                : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x64x64xf16, {order = #NHWC}>
     %permute_cast = VPU.PermuteCast(%conv) {
             dst_order = #NWHC,
             mem_perm = #NCHW}
@@ -504,7 +504,7 @@ func.func @DoNotAlignForUnalignedChannel(%input: tensor<1x32x64x64xf16, {order =
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [32, 32, 1, 1], strides = [1, 1]}
-                -> tensor<1x32x64x64xf16, {order = #NHWC}>
+                : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x64x64xf16, {order = #NHWC}>
     %slice = VPU.Slice %conv [0, 0, 0, 0] [1, 3, 64, 64] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x3x64x64xf16, {order = #NHWC}>
     %tanh = VPU.Tanh(%slice) {multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x3x64x64xf16, {order = #NHWC}> -> tensor<1x3x64x64xf16, {order = #NHWC}>
 
@@ -583,7 +583,7 @@ func.func @SWOpHasAlignedInputChannelReq(%input: tensor<1x384x1x1xf16, {order = 
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [32, 384, 1, 1], strides = [1, 1]}
-                -> tensor<1x32x1x1xf16, {order = #NHWC}>
+                : tensor<1x384x1x1xf16, {order = #NHWC}>, tensor<32x384x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x1x1xf16, {order = #NHWC}>
     %swish = VPU.Swish(%conv) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x1x1xf16, {order = #NHWC}> -> tensor<1x32x1x1xf16, {order = #NHWC}>
 
     return %swish : tensor<1x32x1x1xf16, {order = #NHWC}>

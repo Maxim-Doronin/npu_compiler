@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 func.func @ConvertGroupTransposedConvToGroupConv(%arg0: tensor<1x64x64x64xf16>) -> tensor<1x64x130x130xf16> {
     %FILTERS = const.Declare tensor<64x1x1x4x4xf16> = dense<1.000000e+00> : tensor<64x1x1x4x4xf16>
 
-    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x130x130xf16>
+    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x130x130xf16>
     return %RESULT : tensor<1x64x130x130xf16>
 
     // CHECK:       [[UPS:%.*]] = IE.Upsampling(%arg0) {pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [3, 3], pads_width = [3, 3]>, upsampling_factor = [2, 2, 1]} : tensor<1x64x64x64xf16> -> tensor<1x64x133x133xf16>
@@ -24,7 +24,7 @@ func.func @ConvertGroupTransposedConvToGroupConv(%arg0: tensor<1x64x64x64xf16>) 
 func.func @ConvertGroupTransposedConvToGroupConvWithPadding(%arg0: tensor<1x64x64x64xf16>) -> tensor<1x64x128x128xf16> {
     %FILTERS = const.Declare tensor<64x1x1x4x4xf16> = dense<1.000000e+00> : tensor<64x1x1x4x4xf16>
 
-    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x128x128xf16>
+    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x128x128xf16>
     return %RESULT : tensor<1x64x128x128xf16>
 
     // CHECK:       [[UPS:%.*]] = IE.Upsampling(%arg0) {pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [2, 2], pads_width = [2, 2]>, upsampling_factor = [2, 2, 1]} : tensor<1x64x64x64xf16> -> tensor<1x64x131x131xf16>
@@ -39,7 +39,7 @@ func.func @ConvertGroupTransposedConvToGroupConvWithPadding(%arg0: tensor<1x64x6
 func.func @ConvertGroupTransposedConvToGroupConvWithOutputPadding(%arg0: tensor<1x64x64x64xf16>) -> tensor<1x64x131x131xf16> {
     %FILTERS = const.Declare tensor<64x1x1x4x4xf16> = dense<1.000000e+00> : tensor<64x1x1x4x4xf16>
 
-    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], output_padding = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x131x131xf16>
+    %RESULT = IE.GroupTransposedConvolution(%arg0, %FILTERS) {dilations = [1, 1], spatial_output_padding = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x131x131xf16>
     return %RESULT : tensor<1x64x131x131xf16>
 
     // CHECK:       [[UPS:%.*]] = IE.Upsampling(%arg0) {pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [3, 4], pads_width = [3, 4]>, upsampling_factor = [2, 2, 1]} : tensor<1x64x64x64xf16> -> tensor<1x64x134x134xf16>
@@ -56,7 +56,7 @@ func.func @ConvertGroupTransposedConvToGroupConvWithMultiplyAsFilter(%INPUT: ten
     %FACTOR = const.Declare tensor<64x1x1x4x4xf16> = dense<2.000000e+00> : tensor<64x1x1x4x4xf16>
     %FILTERS = IE.Multiply(%FILTERS_INITIAL, %FACTOR) { auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<64x1x1x4x4xf16>, tensor<64x1x1x4x4xf16> -> tensor<64x1x1x4x4xf16>
 
-    %RESULT = IE.GroupTransposedConvolution(%INPUT, %FILTERS) {dilations = [1, 1], output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x130x130xf16>
+    %RESULT = IE.GroupTransposedConvolution(%INPUT, %FILTERS) {dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x64x64x64xf16>, tensor<64x1x1x4x4xf16> -> tensor<1x64x130x130xf16>
     return %RESULT : tensor<1x64x130x130xf16>
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<64x1x1x4x4xf16> = dense<1.000000e+00> : tensor<64x1x1x4x4xf16>

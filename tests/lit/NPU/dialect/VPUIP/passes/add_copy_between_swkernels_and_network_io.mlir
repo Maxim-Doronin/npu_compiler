@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,7 +24,7 @@ func.func private @runtime()
 }
 
 // CHECK-LABEL: @AddCopyForInOut
-IE.CNNNetwork entryPoint : @AddCopyForInOut inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForInOut inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x1000xf16>
@@ -79,7 +79,7 @@ func.func private @runtime()
 }
 
 // CHECK-LABEL: @AddCopyForInOutTwoKernels
-IE.CNNNetwork entryPoint : @AddCopyForInOutTwoKernels inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForInOutTwoKernels inputsInfo : {
     DataInfo "input_0" : tensor<1x1x1x1000xf16>
     DataInfo "input_1" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
@@ -145,7 +145,7 @@ func.func private @runtime()
 }
 
 // CHECK-LABEL: @AddCopyForPrivateFuncIn
-IE.CNNNetwork entryPoint : @AddCopyForPrivateFuncIn inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForPrivateFuncIn inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x1000xf16>
@@ -212,7 +212,7 @@ func.func private @runtime()
 }
 
 // CHECK-LABEL: @AddCopyForPrivateFuncInOut
-IE.CNNNetwork entryPoint : @AddCopyForPrivateFuncInOut inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForPrivateFuncInOut inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x1000xf16>
@@ -275,7 +275,7 @@ func.func private @runtime()
 }
 
 // CHECK-LABEL: @AddCopyForPrivateFuncOut
-IE.CNNNetwork entryPoint : @AddCopyForPrivateFuncOut inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForPrivateFuncOut inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x1000xf16>
@@ -340,7 +340,7 @@ func.func private @runtime()
     }
 }
 
-IE.CNNNetwork entryPoint : @AddCopyForPrivateFuncInOutTwoKernels inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForPrivateFuncInOutTwoKernels inputsInfo : {
     DataInfo "input_0" : tensor<1x1x1x1000xf16>
     DataInfo "input_1" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
@@ -398,7 +398,7 @@ func.func @AddCopyForPrivateFuncInOutTwoKernels(%arg0: memref<1x1x1x1000xf16, @D
 
 // -----
 
-IE.CNNNetwork entryPoint : @AddCopyForPrivateFuncInOutWithViewOpInside inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForPrivateFuncInOutWithViewOpInside inputsInfo : {
     DataInfo "input" : tensor<1x1x2x64xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x2x64xf16>
@@ -457,7 +457,7 @@ func.func @AddCopyForPrivateFuncInOutWithViewOpInside(%arg0: memref<1x1x2x64xf16
 // -----
 
 // CHECK-LABEL: @AddCopyForInOutWithViewOp
-IE.CNNNetwork entryPoint : @AddCopyForInOutWithViewOp inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForInOutWithViewOp inputsInfo : {
     DataInfo "input" : tensor<1x1x2x64xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x2x64xf16>
@@ -518,7 +518,7 @@ func.func private @runtime()
     }
 }
 // CHECK-LABEL: @AddCopyForInOutWithoutTilePattern
-IE.CNNNetwork entryPoint : @AddCopyForInOutWithoutTilePattern inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForInOutWithoutTilePattern inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x500xf16>
@@ -544,7 +544,7 @@ func.func @AddCopyForInOutWithoutTilePattern(%arg0: memref<1x1x1x1000xf16, @DDR>
     // CHECK:    [[INPUT_SUBVIEW:%.+]] = VPUIP.SubView  [[INPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
     // CHECK:    [[OUTPUT_SUBVIEW:%.+]] = VPUIP.SubView [[OUTPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
     // CHECK:    [[INPUT_COPY:%.+]] = VPUIP.Copy inputs([[INPUT_SUBVIEW]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-    // CHEKC                                     outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
+    // CHECK:                                     outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
     // CHECK:    [[SW_KERNEL:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
     // CHECK-SAME:   inputs([[INPUT_COPY]] as [[SW_KERNEL_INPUT:%.+]]: memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) outputs([[NEW_OUTPUT_DDR_BUFF]] as [[SW_KERNEL_OUTPUT:%.+]]: memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
     // CHECK:   [[OUTPUT_COPY:%.+]] = VPUIP.Copy
@@ -571,7 +571,7 @@ func.func private @runtime()
     }
 }
 // CHECK-LABEL: @AddCopyForPrivateFuncInWithViewOpInMain
-IE.CNNNetwork entryPoint : @AddCopyForPrivateFuncInWithViewOpInMain inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForPrivateFuncInWithViewOpInMain inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x1000xf16>
@@ -653,7 +653,7 @@ func.func private @runtime()
     }
 }
 // CHECK-LABEL: @AddCopyForInOutWithViewOpInMainNoTilePattern
-IE.CNNNetwork entryPoint : @AddCopyForInOutWithViewOpInMainNoTilePattern inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForInOutWithViewOpInMainNoTilePattern inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x500xf16>
@@ -692,7 +692,7 @@ func.func @AddCopyForInOutWithViewOpInMainNoTilePattern(%arg0: memref<1x1x1x1000
     // CHECK:    [[INPUT_SUBVIEW:%.+]] = VPUIP.SubView  [[INPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
     // CHECK:    [[OUTPUT_SUBVIEW:%.+]] = VPUIP.SubView [[OUTPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
     // CHECK:    [[INPUT_COPY:%.+]] = VPUIP.Copy inputs([[INPUT_SUBVIEW]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-    // CHEKC                                     outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
+    // CHECK:                                    outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
     // CHECK:    [[CALL_OP:%.+]] = call @SwKernelPrivateFuncSwKernelIn([[INPUT_COPY]], [[NEW_OUTPUT_DDR_BUFF]])
     // CHECK-SAME:    (memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) -> memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
     // CHECK:   [[OUTPUT_COPY:%.+]] = VPUIP.Copy
@@ -722,7 +722,7 @@ func.func private @runtime()
 }
 
 // CHECK-LABEL: @AddCopyForInOutThreeKernelsArgUsedTwice
-IE.CNNNetwork entryPoint : @AddCopyForInOutThreeKernelsArgUsedTwice inputsInfo : {
+net.NetworkInfo entryPoint : @AddCopyForInOutThreeKernelsArgUsedTwice inputsInfo : {
     DataInfo "input_0" : tensor<1x1x1x1000xf16>
     DataInfo "input_1" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
@@ -780,7 +780,7 @@ module {
     func.func private @builtin_dummy(memref<*xf16>, memref<*xf16>, i64, i64) attributes {VPU.kernel_code = "dummy.cpp", VPU.kernel_entry = "dummy"}
   }
     // CHECK-LABEL: @SWKernelDynamicInputs
-  IE.CNNNetwork entryPoint : @SWKernelDynamicInputs inputsInfo : {
+  net.NetworkInfo entryPoint : @SWKernelDynamicInputs inputsInfo : {
     DataInfo "input_0" : tensor<1x8x384x384xf16>
     DataInfo "vpux_ie_shape_input_0" : tensor<4xsi32>
   } outputsInfo : {
@@ -834,7 +834,7 @@ module {
     func.func private @builtin_dummy(memref<*xf16>, memref<*xf16>, i64, i64) attributes {VPU.kernel_code = "dummy.cpp", VPU.kernel_entry = "dummy"}
   }
     // CHECK-LABEL: @SWKernelDynamicInputs_1
-  IE.CNNNetwork entryPoint : @SWKernelDynamicInputs_1 inputsInfo : {
+  net.NetworkInfo entryPoint : @SWKernelDynamicInputs_1 inputsInfo : {
     DataInfo "input_0" : tensor<1x8x384x384xf16>
     DataInfo "vpux_ie_shape_input_0" : tensor<4xsi32>
     DataInfo "input_1" : tensor<1x16x384x384xf16>

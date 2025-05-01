@@ -15,7 +15,7 @@
 // CHECK-LABEL: @ConvInputWorkloadsHeight
 module @ConvInputWorkloadsHeight  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x16x62x62xf16>
     DataInfo "weights" : tensor<48x16x3x3xf16>
     DataInfo "weightsTable" : tensor<48x1x1x4xsi32>
@@ -30,7 +30,7 @@ module @ConvInputWorkloadsHeight  {
             pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             rawFilterShape = [48, 16, 3, 3],
             strides = [2, 2]
-        } -> !Output_CMX {
+        } : !Input_CMX, !Weights_CMX, !WeightsTable_CMX -> !Output_CMX {
             VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 48, 16, 31] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16>
             VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 48, 15, 31] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_4x16>
         }
@@ -69,7 +69,7 @@ module @ConvInputWorkloadsHeight  {
 // CHECK-LABEL: @ConvInputWorkloadsOC
 module @ConvInputWorkloadsOC  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x16x62x62xf16>
     DataInfo "weights" : tensor<48x16x3x3xf16>
     DataInfo "weightsTable" : tensor<48x1x1x4xsi32>
@@ -84,7 +84,7 @@ module @ConvInputWorkloadsOC  {
             pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             rawFilterShape = [48, 16, 3, 3],
             strides = [2, 2]
-        } -> !Output_CMX {
+        } : !Input_CMX, !Weights_CMX, !WeightsTable_CMX -> !Output_CMX {
             VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 24, 31, 31] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_4x16>
             VPU.DPU.Workload outOffsets [0, 24, 0, 0] outSizes [1, 24, 31, 31] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_4x16>
     }
@@ -122,7 +122,7 @@ module @ConvInputWorkloadsOC  {
 // CHECK-LABEL: @DWConvInputWorkloadsHeight
 module @DWConvInputWorkloadsHeight  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x32x62x62xf16>
     DataInfo "weights" : tensor<32x16x1x1xf16>
     DataInfo "weightsTable" : tensor<32x1x1x4xsi32>
@@ -176,7 +176,7 @@ module @DWConvInputWorkloadsHeight  {
 // CHECK-LABEL: @DWConvInputWorkloadsOC
 module @DWConvInputWorkloadsOC  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x48x62x62xf16>
     DataInfo "weights" : tensor<48x16x1x1xf16>
     DataInfo "weightsTable" : tensor<48x1x1x4xsi32>
@@ -254,7 +254,7 @@ module @DWConvInputWorkloadsOC  {
 // CHECK-LABEL: @ConvInputWorkloadsSOHExtraLines
 module @ConvInputWorkloadsSOHExtraLines  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x16x62x62xf16>
     DataInfo "weights" : tensor<48x16x3x3xf16>
     DataInfo "weightsTable" : tensor<48x1x1x4xsi32>
@@ -271,7 +271,7 @@ module @ConvInputWorkloadsSOHExtraLines  {
               pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
               rawFilterShape = [48, 16, 3, 3],
               strides = [1, 1]
-          } -> !Output_CMX {
+          } : !Input_CMX, !Weights_CMX, !WeightsTable_CMX -> !Output_CMX {
               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 48, 11,  62] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 0, 11, 0] outSizes [1, 48, 10, 62] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 0, 21, 0] outSizes [1, 48, 11, 62] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 1 : i64}
@@ -409,7 +409,7 @@ module @SparseConvInputWorkloadsSOHExtraLines  {
               pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
               rawFilterShape = [48, 16, 3, 3],
               strides = [1, 1]
-          } -> !Output_CMX {
+          } : !Input_CMX, !Weights_CMX, !WeightsTable_CMX -> !Output_CMX {
               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 48, 11,  62] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 0, 11, 0] outSizes [1, 48, 10, 62] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 0, 21, 0] outSizes [1, 48, 11, 62] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 1 : i64}
@@ -503,7 +503,7 @@ module @SparseConvInputWorkloadsSOHExtraLines  {
 // CHECK-LABEL: @ConvInputWorkloadsSOK
 module @ConvInputWorkloadsSOK  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x16x62x62xf16>
     DataInfo "weights" : tensor<64x16x3x3xf16>
     DataInfo "weightsTable" : tensor<64x1x1x4xsi32>
@@ -520,7 +520,7 @@ module @ConvInputWorkloadsSOK  {
               pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
               rawFilterShape = [64, 16, 3, 3],
               strides = [1, 1]
-          } -> !Output_CMX {
+          } : !Input_CMX, !Weights_CMX, !WeightsTable_CMX -> !Output_CMX {
               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 62, 62] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 16, 0, 0] outSizes [1, 16, 62, 62] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 16, 62, 62] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 1 : i64}
@@ -602,7 +602,7 @@ module @ConvInputWorkloadsSOK  {
 // CHECK-LABEL: @ConvInputWorkloadsSOHNoExtraLines
 module @ConvInputWorkloadsSOHNoExtraLines  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x16x62x62xf16>
     DataInfo "weights" : tensor<48x16x3x3xf16>
     DataInfo "weightsTable" : tensor<48x1x1x4xsi32>
@@ -619,7 +619,7 @@ module @ConvInputWorkloadsSOHNoExtraLines  {
               pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
               rawFilterShape = [48, 16, 3, 3],
               strides = [1, 1]
-          } -> !Output_CMX {
+          } : !Input_CMX, !Weights_CMX, !WeightsTable_CMX -> !Output_CMX {
               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 48, 16, 62] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 48, 15, 62] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 0 : i64}
               VPU.DPU.Workload outOffsets [0, 0, 31, 0] outSizes [1, 48, 16, 62] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16> attributes {cluster_id = 1 : i64}
@@ -697,7 +697,7 @@ module @ConvInputWorkloadsSOHNoExtraLines  {
 // CHECK-LABEL: @DWInputWorkloadsSOKSEGSEG
 module @DWInputWorkloadsSOKSEGSEG  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x80x62x62xf16>
     DataInfo "weights" : tensor<80x16x1x1xf16>
     DataInfo "weightsTable" : tensor<80x1x1x4xsi32>
@@ -792,7 +792,7 @@ module @DWInputWorkloadsSOKSEGSEG  {
 // CHECK-LABEL: @DWInputWorkloadsSOKSEGDUP
 module @DWInputWorkloadsSOKSEGDUP  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x80x62x62xf16>
     DataInfo "weights" : tensor<80x16x1x1xf16>
     DataInfo "weightsTable" : tensor<80x1x1x4xsi32>
@@ -887,7 +887,7 @@ module @DWInputWorkloadsSOKSEGDUP  {
 // CHECK-LABEL: @DWInputWorkloadsSOKDUPSEG
 module @DWInputWorkloadsSOKDUPSEG  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x80x62x62xf16>
     DataInfo "weights" : tensor<80x16x1x1xf16>
     DataInfo "weightsTable" : tensor<80x1x1x4xsi32>
@@ -962,7 +962,7 @@ module @DWInputWorkloadsSOKDUPSEG  {
 // CHECK-LABEL: @ConvInputWorkloadsHeight
 module @ConvInputWorkloadsHeight  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x4x209x416xf16>
     DataInfo "weights" : tensor<32x1x1x32xf16>
     DataInfo "weightsTable" : tensor<32x1x1x4xsi32>

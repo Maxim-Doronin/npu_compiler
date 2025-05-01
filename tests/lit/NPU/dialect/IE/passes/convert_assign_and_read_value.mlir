@@ -6,7 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-assign-read-value --mlir-print-debuginfo %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // CHECK-LABEL: @ConvertAssignAndReadValue
-IE.CNNNetwork entryPoint : @ConvertAssignAndReadValue inputsInfo : {
+net.NetworkInfo entryPoint : @ConvertAssignAndReadValue inputsInfo : {
     DataInfo "input1" : tensor<1x768xf32> loc(fused<{name = "input", type = "Parameter"}>["input"])
 } outputsInfo : {
     DataInfo "Gemm_9" : tensor<1x768xf32> loc(fused<{name = "output", type = "Result"}>["output"])

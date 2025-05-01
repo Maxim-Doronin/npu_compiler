@@ -9,7 +9,7 @@
 module {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @twoDma inputsInfo : {
+  net.NetworkInfo entryPoint : @twoDma inputsInfo : {
     DataInfo "input_0" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x16x16x16xf16>
@@ -17,12 +17,12 @@ module {
   }
 
   func.func @twoDma() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %1 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
-    %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
-    %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:3>
-    %4 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
-    %5 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
+    %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %1 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+    %2 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
+    %3 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:3>
+    %4 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
+    %5 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
 
     %6 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, #NHWC, @DDR>
     %7 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, #NHWC, @DDR>
@@ -50,9 +50,9 @@ module {
   // CHECK: VPUMI40XX.Bootstrap inputs([[VAL0]] : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
   // CHECK: VPUMI40XX.Bootstrap inputs([[VAL1]] : <0:0:1>) -> !VPURegMapped.Index<0:0:1>
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME <0:0:0> -> <0:0:3>
+  // CHECK-SAME: <0:0:0> -> <0:0:3>
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME <0:1:0> -> <0:1:1>
+  // CHECK-SAME: <0:1:0> -> <0:1:1>
   // CHECK: workItemCount(2)
   // CHECK-SAME: bootstrapTasksCount(2)
   // CHECK-SAME: bootsrapWorkItemsCount(2)
@@ -66,7 +66,7 @@ module {
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @DmaAndVarint inputsInfo : {
+  net.NetworkInfo entryPoint : @DmaAndVarint inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x14x14xf16>
@@ -103,14 +103,14 @@ module {
   }
 
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME <0:0:0> -> <0:0:1>
-  // CHECK-SAME taskType = #VPURegMapped.task_type<DMA>
+  // CHECK-SAME: <0:0:0> -> <0:0:1>
+  // CHECK-SAME: taskType = #VPURegMapped.task_type<DMA>
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME <0:1:0> -> <0:1:0>
-  // CHECK-SAME taskType = #VPURegMapped.task_type<DMA>
+  // CHECK-SAME: <0:1:0> -> <0:1:0>
+  // CHECK-SAME: taskType = #VPURegMapped.task_type<DMA>
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME <0:0:0> -> <0:0:1>
-  // CHECK-SAME   taskType = #VPURegMapped.task_type<DPUVariant>
+  // CHECK-SAME: <0:0:0> -> <0:0:1>
+  // CHECK-SAME:   taskType = #VPURegMapped.task_type<DPUVariant>
 
   // CHECK: workItemCount(3)
   // CHECK-SAME: bootstrapTasksCount(4)
@@ -122,7 +122,7 @@ module {
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @single_hswish inputsInfo : {
+  net.NetworkInfo entryPoint : @single_hswish inputsInfo : {
     DataInfo "input" : tensor<1x1000xf16>
   } outputsInfo : {
     DataInfo "hswish" : tensor<1x1000xf16>
@@ -134,10 +134,10 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   }
 
   func.func @single_hswish() {
-    %0 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
-    %1 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
-    %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+    %0 = VPUMI40XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
+    %1 = VPUMI40XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
+    %2 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %3 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
 
     %4 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16>
     %5 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16>
@@ -164,11 +164,11 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   }
 
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME <0:0:0> -> <0:0:1>
-  // CHECK-SAME taskType = #VPURegMapped.task_type<DMA>
+  // CHECK-SAME: <0:0:0> -> <0:0:1>
+  // CHECK-SAME: taskType = #VPURegMapped.task_type<DMA>
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME <0:0:0> -> <0:0:0>
-  // CHECK-SAME taskType = #VPURegMapped.task_type<ActKernelInvocation>
+  // CHECK-SAME: <0:0:0> -> <0:0:0>
+  // CHECK-SAME: taskType = #VPURegMapped.task_type<ActKernelInvocation>
 
   // CHECK: workItemCount(2)
   // CHECK-SAME: bootstrapTasksCount(2)

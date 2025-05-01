@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU40XX
 module @OverrideToTilesPerBatchForNonBatchedCase {
     IE.TileResource 4 of @NCE at 1.700000e+03 MHz
-    IE.CNNNetwork entryPoint : @SingleInputSingleOutputNonBatched
+    net.NetworkInfo entryPoint : @SingleInputSingleOutputNonBatched
     inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf32>
     } outputsInfo : {
@@ -41,7 +41,7 @@ module @OverrideToTilesPerBatchForNonBatchedCase {
 
 module @OverrideToTilesPerBatchForBatchedCase {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz
-    IE.CNNNetwork entryPoint : @MultipleInputSingleOutputDeBatched
+    net.NetworkInfo entryPoint : @MultipleInputSingleOutputDeBatched
     inputsInfo : {
         DataInfo "input1" : tensor<3x3x62x62xf32>
         DataInfo "input2" : tensor<3x48x60x60xf32>

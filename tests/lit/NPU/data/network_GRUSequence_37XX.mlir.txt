@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -29,7 +29,7 @@ module @dumpsubgraph attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compila
   } loc(#loc)
   IE.ExecutorResource 2 of @DMA_NN loc(#loc)
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64} loc(#loc)
-  IE.CNNNetwork {inferenceTiming = 27805 : i64} entryPoint : @main inputsInfo : {
+  net.NetworkInfo {inferenceTiming = 27805 : i64} entryPoint : @main inputsInfo : {
     DataInfo "Parameter_214" : tensor<1x768xf32> loc(#loc)
   } outputsInfo : {
     DataInfo "inner_h2" : tensor<1x768xf32> loc(#loc)

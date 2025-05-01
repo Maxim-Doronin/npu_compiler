@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -16,7 +16,7 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VP
   }
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @SWKernelDynamicInputs inputsInfo : {
+  net.NetworkInfo entryPoint : @SWKernelDynamicInputs inputsInfo : {
     DataInfo "input_bound" : tensor<1x3x10x10xf16>
     DataInfo "input_shape" : tensor<4xsi32>
   } outputsInfo : {

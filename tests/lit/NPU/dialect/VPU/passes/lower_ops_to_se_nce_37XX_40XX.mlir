@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -80,7 +80,7 @@ func.func @InterpolateBilinearQuantized(%arg0: tensor<1x16x3x3x!qElemType, {orde
 func.func @TransposedConvolution(%input: tensor<1x32x23x30xf16, {order = #NHWC}>) -> tensor<1x16x46x60xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<16x32x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x2x2xf16, {order = #NHWC}>
     %output = VPU.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x32x23x30xf16, {order = #NHWC}>, tensor<16x32x2x2xf16, {order = #NHWC}> -> tensor<1x16x46x60xf16, {order = #NHWC}>
     return %output : tensor<1x16x46x60xf16, {order = #NHWC}>
 
@@ -111,7 +111,8 @@ func.func @TransposedConvolution(%input: tensor<1x32x23x30xf16, {order = #NHWC}>
     // CHECK-SAME:      ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
     // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:      rawFilterShape = [16, 32, 2, 2], strides = [1, 1]
-    // CHECK-SAME:  } -> tensor<1x16x46x60xf16, {order = #NHWC}>
+    // CHECK-SAME:  }
+    // CHECK-SAME:  -> tensor<1x16x46x60xf16, {order = #NHWC}>
     // CHECK:       return [[OUTPUT]]
 }
 
@@ -129,7 +130,7 @@ func.func @TransposedConvolution(%input: tensor<1x32x23x30xf16, {order = #NHWC}>
 func.func @TransposedConvolutionQuantized(%input: tensor<1x32x23x30x!qElemType, {order = #NHWC}>) -> tensor<1x16x46x60x!qElemType, {order = #NHWC}> {
     %weights = const.Declare tensor<16x32x2x2x!qElemType1, {order = #NHWC}> = dense<1> : tensor<16x32x2x2xui8, {order = #NHWC}>
     %output = VPU.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x32x23x30x!qElemType, {order = #NHWC}>, tensor<16x32x2x2x!qElemType1, {order = #NHWC}> -> tensor<1x16x46x60x!qElemType, {order = #NHWC}>
     return %output : tensor<1x16x46x60x!qElemType, {order = #NHWC}>
 
@@ -160,7 +161,8 @@ func.func @TransposedConvolutionQuantized(%input: tensor<1x32x23x30x!qElemType, 
     // CHECK-SAME:      ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64,
     // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:      rawFilterShape = [16, 32, 2, 2], strides = [1, 1]
-    // CHECK-SAME:  } -> tensor<1x16x46x60x!qElemType, {order = #NHWC}>
+    // CHECK-SAME:  }
+    // CHECK-SAME:  -> tensor<1x16x46x60x!qElemType, {order = #NHWC}>
     // CHECK:       return [[OUTPUT]]
 }
 
@@ -172,8 +174,8 @@ func.func @TransposedConvolutionQuantized(%input: tensor<1x32x23x30x!qElemType, 
 func.func @TransposedConvolutionWithPostOp(%input: tensor<1x32x64x1xf16, {order = #NHWC}>) -> tensor<1x16x128x2xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<16x32x3x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x3x2xf16, {order = #NHWC}>
     %output = VPU.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [1, 0], pads_begin = [1, 0], pads_end = [1, 0],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 2.500000e-01 : f64}>, strides = [2, 1]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [1, 0], pads_begin = [1, 0], pads_end = [1, 0],
+            post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>, strides = [2, 1]
         } : tensor<1x32x64x1xf16, {order = #NHWC}>, tensor<16x32x3x2xf16, {order = #NHWC}> -> tensor<1x16x128x2xf16, {order = #NHWC}>
     return %output : tensor<1x16x128x2xf16, {order = #NHWC}>
 
@@ -204,7 +206,8 @@ func.func @TransposedConvolutionWithPostOp(%input: tensor<1x32x64x1xf16, {order 
     // CHECK-SAME:      ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
     // CHECK-SAME:      lrelu_mult = 1024 : i64, lrelu_shift = 12 : i64, fp_prelu_alpha = 2.500000e-01 : f64>,
     // CHECK-SAME:      rawFilterShape = [16, 32, 3, 2], strides = [1, 1]
-    // CHECK-SAME:  } -> tensor<1x16x128x2xf16, {order = #NHWC}>
+    // CHECK-SAME:  }
+    // CHECK-SAME:  -> tensor<1x16x128x2xf16, {order = #NHWC}>
     // CHECK:       return [[OUTPUT]]
 }
 
@@ -218,7 +221,7 @@ func.func @TransposedConvolutionWithBias(%input: tensor<1x32x23x30xf16, {order =
     %weights = const.Declare tensor<16x32x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x2x2xf16, {order = #NHWC}>
     %bias = const.Declare tensor<1x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x16x1x1xf16, {order = #NHWC}>
     %output = VPU.TransposedConvolution(%input, %weights, %bias) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x32x23x30xf16, {order = #NHWC}>, tensor<16x32x2x2xf16, {order = #NHWC}>, tensor<1x16x1x1xf16, {order = #NHWC}> -> tensor<1x16x46x60xf16, {order = #NHWC}>
     return %output : tensor<1x16x46x60xf16, {order = #NHWC}>
 
@@ -250,7 +253,8 @@ func.func @TransposedConvolutionWithBias(%input: tensor<1x32x23x30xf16, {order =
     // CHECK-SAME:      ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
     // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:      rawFilterShape = [16, 32, 2, 2], strides = [1, 1]
-    // CHECK-SAME:  } -> tensor<1x16x46x60xf16, {order = #NHWC}>
+    // CHECK-SAME:  }
+    // CHECK-SAME:  -> tensor<1x16x46x60xf16, {order = #NHWC}>
     // CHECK:       return [[OUTPUT]]
 }
 

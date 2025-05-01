@@ -7,9 +7,9 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 func.func @elf_roundtrip() {
   ELF.Main @ELFMain {
-    ELF.CreateSection @data1 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) {
+    ELF.CreateSection @data1 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>) {
     }
-    ELF.CreateLogicalSection @buffer1 aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") {
+    ELF.CreateLogicalSection @buffer1 aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
     }
     ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
     ELF.Symbol @sym_data1 of(@data1) type(<STT_SECTION>) size(0) value(0)
@@ -28,8 +28,8 @@ func.func @elf_roundtrip() {
 }
 
 //CHECK: ELF.Main @ELFMain {
-//CHECK: ELF.CreateSection @data1 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR)
-//CHECK: ELF.CreateLogicalSection @buffer1 aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE")
+//CHECK: ELF.CreateSection @data1 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>)
+//CHECK: ELF.CreateLogicalSection @buffer1 aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>)
 //CHECK: ELF.CreateSymbolTableSection @symtab  secFlags("SHF_NONE")
 //CHECK: ELF.Symbol @sym_data1 of(@data1) type(<STT_SECTION>) size(0) value(0)
 //CHECK: ELF.Symbol @sym_buffer1 of(@buffer1) type(<STT_SECTION>) size(0) value(0)

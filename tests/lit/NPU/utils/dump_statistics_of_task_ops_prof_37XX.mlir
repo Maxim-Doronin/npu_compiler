@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -30,7 +30,7 @@ module @age_gender attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilati
   } loc(#loc0)
   IE.ExecutorResource 2 of @DMA_NN  loc(#loc0)
   IE.MemoryResource 524288000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64} loc(#loc0)
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x3x62x62xf32> loc(#loc0)
   } outputsInfo : {
     DataInfo "age_conv3" : tensor<1x48x30x30xf32> loc(#loc0)

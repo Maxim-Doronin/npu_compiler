@@ -9,7 +9,7 @@
 
 module @Test {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x1000xf16>
   } outputsInfo : {
     DataInfo "sigmoid" : tensor<1x1000xf16>

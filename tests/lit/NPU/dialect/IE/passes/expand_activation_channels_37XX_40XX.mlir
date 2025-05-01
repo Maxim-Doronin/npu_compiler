@@ -29,7 +29,7 @@ func.func @ExpandMaxPoolChannels(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) 
 
 // CHECK:       [[OUT:%.*]] = IE.Slice [[POOL]] [0, 0, 0, 0] [1, 3, 15, 13]
 
-// CHECK        return [[OUT]]
+// CHECK:       return [[OUT]]
 
 // -----
 
@@ -106,7 +106,7 @@ func.func @ExpandEltwiseAddChannels(%arg0: tensor<1x3x30x25xf16, {order = #NHWC}
 // CHECK:       [[EXPAND_RIGHT_INPUT:%.*]] = IE.Expand(%arg1) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
 // CHECK:       [[ELTWISE_ADD:%.*]] = IE.Add([[EXPAND_LEFT_INPUT]], [[EXPAND_RIGHT_INPUT]])
 // CHECK:       [[OUT:%.*]] = IE.Slice [[ELTWISE_ADD]] [0, 0, 0, 0] [1, 3, 30, 25]
-// CHECK        return [[OUT]]
+// CHECK:       return [[OUT]]
 
 // -----
 
@@ -203,7 +203,7 @@ func.func @ExpandGroupConvolutionChannels(%arg0: tensor<1x72x56x56xf16, {order =
 // CHECK:       [[EXTENDED_CONV:%.*]] = IE.GroupConvolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]], [[EXTENDED_GROUP]])
 // CHECK:       [[REDUNDRANT_SUBTENSOR:%.*]] = IE.Slice [[EXTENDED_CONV]]
 
-// CHECK        return [[REDUNDRANT_SUBTENSOR]]
+// CHECK:       return [[REDUNDRANT_SUBTENSOR]]
 
 // -----
 
@@ -232,7 +232,7 @@ func.func @ExpandGroupConvolutionWithChannelsAndDilation(%arg0: tensor<1x72x56x5
 // CHECK:       [[EXTENDED_CONV:%.*]] = IE.GroupConvolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]], [[EXTENDED_GROUP]])
 // CHECK:       [[REDUNDRANT_SUBTENSOR:%.*]] = IE.Slice [[EXTENDED_CONV]]
 
-// CHECK        return [[REDUNDRANT_SUBTENSOR]]
+// CHECK:       return [[REDUNDRANT_SUBTENSOR]]
 
 // -----
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -284,7 +284,7 @@ func.func @ExpandConvolutionChannels(%arg0: tensor<1x77x56x56xf16, {order = #NHW
 // CHECK:       [[EXTENDED_FILTER:%.*]] = IE.Expand([[CONCAT]]) {pads_begin = [0, 0, 0, 0], pads_end = [8, 0, 0, 0]} : tensor<40x80x1x1xf16, {order = #NHWC}> -> tensor<48x80x1x1xf16, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.*]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
 // CHECK:       [[REDUNDRANT_SUBTENSOR:%.*]] = IE.Slice [[EXTENDED_CONV]]
-// CHECK        return [[REDUNDRANT_SUBTENSOR]]
+// CHECK:       return [[REDUNDRANT_SUBTENSOR]]
 
 // -----
 
@@ -309,7 +309,8 @@ func.func @ExpandConvolutionChannelsWithQuant(%arg0: tensor<1x77x56x56x!qElemTyp
 // CHECK{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 77, 0, 0]]} : tensor<40x77x1x1x!qElemType, {order = #NHWC}>, tensor<40x3x1x1x!qElemType, {order = #NHWC}> -> tensor<40x80x1x1x!qElemType, {order = #NHWC}>
 // CHECK:       [[EXTENDED_FILTER_OC:%.*]] = IE.Expand([[EXTENDED_FILTER_IC]]) {pads_begin = [0, 0, 0, 0], pads_end = [8, 0, 0, 0]} : tensor<40x80x1x1x!qElemType, {order = #NHWC}> -> tensor<48x80x1x1x!qElemType, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.*]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER_OC]])
-// CHECK        return [[EXTENDED_CONV]]
+// CHECK:       [[SLICE:%.+]] = IE.Slice [[EXTENDED_CONV]] [0, 0, 0, 0] [1, 40, 56, 56]
+// CHECK:       return [[SLICE]]
 
 
 // -----
@@ -332,7 +333,7 @@ func.func @ExpandConvolutionChannelsOnlyIC(%arg0: tensor<1x77x56x56xf16, {order 
 // CHECK:       [[EXTENDED_FILTER:%.*]] = IE.Concat(%arg1, [[CST]])
 // CHECK{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 77, 0, 0]]} : tensor<48x77x1x1xf16, {order = #NHWC}>, tensor<48x3x1x1xf16, {order = #NHWC}> -> tensor<48x80x1x1xf16, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.*]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
-// CHECK        return [[EXTENDED_CONV]]
+// CHECK:       return [[EXTENDED_CONV]]
 
 // -----
 
@@ -356,7 +357,7 @@ func.func @ExpandConvolutionChannelsOnlyICWithQuant(%arg0: tensor<1x77x56x56x!qE
 // CHECK:       [[EXTENDED_FILTER:%.*]] = IE.Concat(%arg1, [[CST]])
 // CHECK{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 77, 0, 0]]} : tensor<48x77x1x1x!qElemType, {order = #NHWC}>, tensor<48x3x1x1x!qElemType, {order = #NHWC}> -> tensor<48x80x1x1x!qElemType, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.*]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
-// CHECK        return [[EXTENDED_CONV]]
+// CHECK:       return [[EXTENDED_CONV]]
 
 
 // -----
@@ -379,7 +380,7 @@ func.func @ExpandConvolutionChannelsConst(%arg0: tensor<1x77x56x56xf16, {order =
 // CHECK:       [[EXTENDED_INPUT:%.*]] = IE.Expand(%arg0)
 // CHECK:       [[EXTENDED_CONV:%.*]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
 // CHECK:       [[REDUNDRANT_SUBTENSOR:%.*]] = IE.Slice [[EXTENDED_CONV]]
-// CHECK        return [[REDUNDRANT_SUBTENSOR]]
+// CHECK:       return [[REDUNDRANT_SUBTENSOR]]
 
 
 // -----
@@ -627,7 +628,7 @@ func.func @DoNotExpandInterpolateNearestChannels(%arg0: tensor<1x3x30x30xf16>) -
 
 // CHECK-NOT:   IE.Slice
 
-// CHECK        return [[INTERP]]
+// CHECK:       return [[INTERP]]
 
 // -----
 
@@ -662,7 +663,7 @@ func.func @DoNotExpandInterpolateLinearChannels(%arg0: tensor<1x3x30x30xf16>) ->
 
 // CHECK-NOT:   IE.Slice
 
-// CHECK        return [[INTERP]]
+// CHECK:       return [[INTERP]]
 
 // -----
 
@@ -687,7 +688,7 @@ module @main {
                 pads_begin = [0, 0],
                 pads_end = [0, 0],
                 strides = [1, 1],
-                post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+                post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
             } : tensor<1x3x16x16xf16, {order = #NHWC}>, tensor<16x3x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16>
                 -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -701,8 +702,7 @@ module @main {
         // CHECK-SAME:      : tensor<1x3x16x16xf16, {order = #NHWC}> -> tensor<1x4x16x16xf16, {order = #NHWC}>
 
         // CHECK:       [[CONV:%.+]] = IE.Convolution([[EXPAND]], [[WEIGHTS]], [[WEIGHTS_TABLE]])
-        // CHECK-SAME:      {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu",
-        // CHECK-SAME:      attrs = {negative_slope = 1.000000e-01 : f64}>, strides = [1, 1]}
+        // CHECK-SAME:      {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>, strides = [1, 1]}
         // CHECK-SAME:      : tensor<1x4x16x16xf16, {order = #NHWC}>, tensor<16x4x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16>
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 

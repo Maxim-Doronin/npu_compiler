@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -114,8 +114,8 @@ func.func @ConvertFromPerAxisTypeU8ToI8(%arg0: tensor<1x3x16x16xf16>) -> tensor<
 
 // -----
 
-!qElemType = !quant.quantile<i4:u8:f16, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}:2.000000e+00:128>
-// CHECK: !qElemType = !quant.quantile<i4:i8:f16, {-1.280000e+02,-1.120000e+02,-9.600000e+01,-8.000000e+01,-6.400000e+01,-4.800000e+01,-3.200000e+01,-1.600000e+01,0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02}:2.000000e+00>
+!qElemType = !quant.quantile<u4:u8:f16, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}:2.000000e+00:128>
+// CHECK: !qElemType = !quant.quantile<u4:i8:f16, {-1.280000e+02,-1.120000e+02,-9.600000e+01,-8.000000e+01,-6.400000e+01,-4.800000e+01,-3.200000e+01,-1.600000e+01,0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02}:2.000000e+00>
 
 // CHECK-LABEL: @ConvertQuantileFromU8ToI8
 // CHECK-SAME:     ([[ARG0:%.+]]: tensor<1x16x1x1xf32>)
@@ -142,8 +142,8 @@ func.func @ConvertQuantileFromU8ToI8(%arg0: tensor<1x16x1x1xf32>) -> tensor<1x16
 
 // -----
 
-!qElemType = !quant.quantile<i4:u8:f16, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}:2.000000e+00:127>
-// CHECK: !qElemType = !quant.quantile<i4:u8:f16, {0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02,1.280000e+02,1.440000e+02,1.600000e+02,1.760000e+02,1.920000e+02,2.080000e+02,2.240000e+02,2.400000e+02}:2.000000e+00:127>
+!qElemType = !quant.quantile<u4:u8:f16, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}:2.000000e+00:127>
+// CHECK: !qElemType = !quant.quantile<u4:u8:f16, {0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02,1.280000e+02,1.440000e+02,1.600000e+02,1.760000e+02,1.920000e+02,2.080000e+02,2.240000e+02,2.400000e+02}:2.000000e+00:127>
 
 // Don't convert u8 to i8 because of the zero point value of U8 which must be 128.
 // Conversion converts from u8 ZP = 128 to i8 ZP = 0
@@ -171,14 +171,14 @@ func.func @DontConvertQuantileU8Weights(%arg0: tensor<1x3x16x16xf16>) -> tensor<
 
 // -----
 
-!qElemType = !quant.quantile<i4:i8:f16, {-1.280000e+02,-1.120000e+02,-9.600000e+01,-8.000000e+01,-6.400000e+01,-4.800000e+01,-3.200000e+01,-1.600000e+01,0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02}:2.000000e+00:0>
-// CHECK: !qElemType = !quant.quantile<i4:i8:f16, {-1.280000e+02,-1.120000e+02,-9.600000e+01,-8.000000e+01,-6.400000e+01,-4.800000e+01,-3.200000e+01,-1.600000e+01,0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02}:2.000000e+00>
+!qElemType = !quant.quantile<u4:i8:f16, {-1.280000e+02,-1.120000e+02,-9.600000e+01,-8.000000e+01,-6.400000e+01,-4.800000e+01,-3.200000e+01,-1.600000e+01,0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02}:2.000000e+00:0>
+// CHECK: !qElemType = !quant.quantile<u4:i8:f16, {-1.280000e+02,-1.120000e+02,-9.600000e+01,-8.000000e+01,-6.400000e+01,-4.800000e+01,-3.200000e+01,-1.600000e+01,0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02}:2.000000e+00>
 
 // CHECK-LABEL: @KeepQuantileI8Weights
 // CHECK-SAME:     ([[ARG0:%.+]]: tensor<1x3x16x16x!qElemType>)
 func.func @KeepQuantileI8Weights(%arg0: tensor<1x3x16x16x!qElemType>) -> tensor<1x3x14x14xf16> {
     %0 = const.Declare tensor<3x3x3x3x!qElemType> =
-        dense<-1.0> : tensor<3x3x3x3xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>]
+        dense<-1.0> : tensor<3x3x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
     %1 = IE.Convolution(%arg0, %0) {
         dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
     } : tensor<1x3x16x16x!qElemType>, tensor<3x3x3x3x!qElemType> -> tensor<1x3x14x14x!qElemType>
@@ -187,7 +187,7 @@ func.func @KeepQuantileI8Weights(%arg0: tensor<1x3x16x16x!qElemType>) -> tensor<
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<3x3x3x3x!qElemType> =
     // CHECK-SAME:      dense<-1.000000e+00> : tensor<3x3x3x3xf16>,
-    // CHECK-SAME:      #const.CastElemType<si8>,
+    // CHECK-SAME:      #const.CastElemType<ui8>,
     // CHECK-SAME:      #const.CastElemType<!qElemType>
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[ARG0]], [[CST]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]}

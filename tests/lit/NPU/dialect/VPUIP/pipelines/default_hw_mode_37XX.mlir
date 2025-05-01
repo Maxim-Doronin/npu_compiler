@@ -18,7 +18,7 @@ module @SoftMax attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationM
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x1000xf16>
     } outputsInfo : {
         DataInfo "softmax" : tensor<1x1000xf16>
@@ -96,7 +96,7 @@ module @TwoFunctions attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compila
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
       DataInfo "input" : tensor<1x16x6x6xf16>
     } outputsInfo : {
       DataInfo "output" : tensor<1x32x4x4xf16>
@@ -289,7 +289,7 @@ module @TwoFunctions attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compila
 
 // CHECK-LABEL: TestCopy
 module @TestCopy attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_213" : tensor<2x4x20x20xf16>
     DataInfo "vpu_shape_Parameter_213" : tensor<4xsi32>
   } outputsInfo : {

@@ -960,8 +960,8 @@ func.func @FuseSignedQuantizedWeightsMixedPrecision(%arg0: memref<1x16x16x16xf16
     return %out_ddr : memref<1x16x16x16xf16, #NHWC, @DDR>
 	// CHECK-DAG:   [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x512xui8>
     // CHECK-SAME:  [#const.FuseWeights<tensor<1x1x1x512xui8>, weightsTable =
-    // CHECK-SAME   weights =
-    // CHECK-SAME   [#const.CastElemType<si8>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]>>]
+    // CHECK-SAME:  weights =
+    // CHECK-SAME:  [#const.CastElemType<si8>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]>>]
     // CHECK-NOT:   [[WEIGHTS:%.+]] = const.Declare memref<16x16x1x1x!qElemType
     // CHECK-NOT:   [[WEIGHT_TABLE:%.+]] = const.Declare memref<16x1x1x4xsi32>
 

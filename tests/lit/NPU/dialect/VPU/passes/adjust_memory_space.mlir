@@ -16,7 +16,7 @@ func.func @ConvNCEtoCMX(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tenso
         ppe = #VPU.PPEStub<>,
         rawFilterShape = [16, 16, 1, 1],
         strides = [1, 1]
-    } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+    } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32, {order = #NHWC}> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %0 : tensor<1x16x16x16xf16, {order = #NHWC}>
 

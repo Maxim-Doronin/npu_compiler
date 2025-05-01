@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 // CHECK-LABEL: @NotConvertSoftMaxToFP16
 module @NotConvertSoftMaxToFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x1000xf32>
@@ -36,7 +36,7 @@ func.func @main(%arg0: tensor<1x1000xf32>) -> tensor<1x1000xf32> {
 // CHECK-LABEL: @NotConvertReLUToFP16
 module @NotConvertReLUToFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x8x128x128xf32>
@@ -67,7 +67,7 @@ func.func @main(%arg0: tensor<1x8x128x128xf32>) -> tensor<1x8x128x128xf32> {
 // CHECK-LABEL: @NotConvertTwoArgOpToFP16
 module @NotConvertTwoArgOpToFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x1000xf32>

@@ -8,7 +8,7 @@
 // CHECK-LABEL: @AdjustInterpolateNearestLayout
 module @AdjustInterpolateNearestLayout {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x30x30xf16>
@@ -45,7 +45,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x60x60xf16> {
 
     // CHECK:       [[OUTPUT:%.*]] = IE.Reorder([[INTERP]]) {dstOrder = #NCHW} : tensor<1x16x60x60xf16, {order = #NHWC}> -> tensor<1x16x60x60xf16>
 
-    // CHECK        return [[OUTPUT]]
+    // CHECK:       return [[OUTPUT]]
 }
 }
 
@@ -54,7 +54,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x60x60xf16> {
 // CHECK-LABEL: @AdjustInterpolateLinearLayout
 module @AdjustInterpolateLinearLayout {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x30x30xf16>
@@ -91,7 +91,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x60x60xf16> {
 
     // CHECK:       [[OUTPUT:%.*]] = IE.Reorder([[INTERP]]) {dstOrder = #NCHW} : tensor<1x16x60x60xf16, {order = #NHWC}> -> tensor<1x16x60x60xf16>
 
-    // CHECK        return [[OUTPUT]]
+    // CHECK:       return [[OUTPUT]]
 }
 }
 
@@ -100,7 +100,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x60x60xf16> {
 // CHECK-LABEL: @AdjustTransposedConvolutionLayout
 module @AdjustTransposedConvolutionLayout {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x23x30xf16>
@@ -113,7 +113,7 @@ IE.CNNNetwork
 func.func @main(%input: tensor<1x16x23x30xf16>) -> tensor<1x16x46x60xf16> {
     %weights = const.Declare tensor<16x16x2x2xf16> = dense<1.000000e+00> : tensor<16x16x2x2xf16>
     %output = IE.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x16x23x30xf16>, tensor<16x16x2x2xf16> -> tensor<1x16x46x60xf16>
     return %output : tensor<1x16x46x60xf16>
 
@@ -122,12 +122,12 @@ func.func @main(%input: tensor<1x16x23x30xf16>) -> tensor<1x16x46x60xf16> {
     // CHECK:       [[INPUT_REORDERED:%.+]] = IE.Reorder([[INPUT]]) {dstOrder = #NHWC} : tensor<1x16x23x30xf16> -> tensor<1x16x23x30xf16, {order = #NHWC}>
 
     // CHECK:       [[CONV:%.+]] = IE.TransposedConvolution([[INPUT_REORDERED]], [[WEIGHTS_REORDERED]]) {
-    // CHECK-SAME:          dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+    // CHECK-SAME:          dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
     // CHECK-SAME:      -> tensor<1x16x46x60xf16, {order = #NHWC}>
 
     // CHECK:       [[OUTPUT:%.*]] = IE.Reorder([[CONV]]) {dstOrder = #NCHW} : tensor<1x16x46x60xf16, {order = #NHWC}> -> tensor<1x16x46x60xf16>
 
-    // CHECK        return [[OUTPUT]]
+    // CHECK:       return [[OUTPUT]]
 
 }
 }

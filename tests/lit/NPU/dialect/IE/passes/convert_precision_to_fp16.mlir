@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,14 +9,14 @@
 // The 'convert-precision-to-fp16' pass:
 //
 //   * Updates both Function bodies and Function prototypes.
-//   * It shouldn't touch user types defined in `IE.CNNNetwork`.
+//   * It shouldn't touch user types defined in `net.NetworkInfo`.
 //   * It should update types for `Constant` operation.
 //
 
 // CHECK-LABEL: @FP32toFP16
 module @FP32toFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x1000xf32>
@@ -30,7 +30,7 @@ IE.CNNNetwork
 // CHECK: func.func @main([[ARG0:[^:]+]]: tensor<1x1000xf16>) -> tensor<1x1000xf16>
 func.func @main(%arg0: tensor<1x1000xf32>) -> tensor<1x1000xf32> {
     %prob = IE.SoftMax(%arg0) {axisInd = 1} : tensor<1x1000xf32> -> tensor<1x1000xf32>
-    // CHECK:       %[[OUT:.*]] = IE.SoftMax([[ARG0]])
+    // CHECK:       %[[OUT:.+]] = IE.SoftMax([[ARG0]])
     // CHECK-SAME:      tensor<1x1000xf16> -> tensor<1x1000xf16>
 
     return %prob : tensor<1x1000xf32>
@@ -44,7 +44,7 @@ func.func @main(%arg0: tensor<1x1000xf32>) -> tensor<1x1000xf32> {
 // CHECK-LABEL: @ConstantLayer
 module @ConstantLayer {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
     }
@@ -58,7 +58,7 @@ func.func @main() -> tensor<1x2x2x2xf32> {
     %0 = const.Declare tensor<1x2x2x2xf32> = dense<1.0> : tensor<1x2x2x2xf32>
     return %0 : tensor<1x2x2x2xf32>
 
-    // CHECK-DAG:       %[[OUT:.*]] = const.Declare tensor<1x2x2x2xf16> =
+    // CHECK-DAG:       %[[OUT:.+]] = const.Declare tensor<1x2x2x2xf16> =
     // CHECK-SAME:      dense<1.000000e+00> : tensor<1x2x2x2xf32>, [#const.CastElemType<f16>]
     // CHECK:       return %[[OUT]] : tensor<1x2x2x2xf16>
 }
@@ -70,7 +70,7 @@ func.func @main() -> tensor<1x2x2x2xf32> {
 // CHECK-LABEL: @I8ToFp16
 module @I8ToFp16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "in1" : tensor<1xf16>
@@ -102,7 +102,7 @@ func.func @main(%arg0: tensor<1xf16>, %arg1: tensor<1xf16>) -> tensor<1xf16> {
 // CHECK-LABEL: @OneHot
 module @OneHot {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "Parameter_2994" : tensor<4xsi32>
@@ -118,7 +118,8 @@ func.func @main(%arg0: tensor<4xsi32>) -> tensor<3x4xf32> {
     %0 = IE.OneHot(%arg0) {axis_attr = 0 : i64, depth_attr = 3 : i64, off_value_attr = 0.000000e+00 : f64, on_value_attr = 1.000000e+00 : f64, operandSegmentSizes = array<i32: 1, 0, 0, 0>, outputType = f32} : tensor<4xsi32> -> tensor<3x4xf32>
     return %0 : tensor<3x4xf32>
 
-    // CHECK:       %[[OUT:.*]] = IE.OneHot([[ARG0]])
+    // CHECK:       %[[OUT:.+]] = IE.OneHot([[ARG0]])
+    // CHECK-SAME:      outputType = f16
     // CHECK-SAME:      tensor<4xsi32> -> tensor<3x4xf16>
     // CHECK: return %[[OUT]] : tensor<3x4xf16>
 }
@@ -130,7 +131,7 @@ func.func @main(%arg0: tensor<4xsi32>) -> tensor<3x4xf32> {
 // CHECK-LABEL: @FP32Eye
 module @FP32Eye {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "Parameter_201" : tensor<1xsi32>
@@ -146,8 +147,9 @@ func.func @main(%arg0: tensor<1xsi32>) -> tensor<128x128xf32> {
     %0 = IE.Eye(%arg0) {num_rows_value = 128 : i64, num_columns_value = 128 : i64, batch_shape_value = [0], outputType = f32, operandSegmentSizes = array<i32: 0, 0, 1, 0>} : tensor<1xsi32>-> tensor<128x128xf32>
     return %0 : tensor<128x128xf32>
 
-    // CHECK: %[[OUT:.*]] = IE.Eye([[ARG0]])
-    // CHECK-SAME: tensor<1xsi32> -> tensor<128x128xf16>
+    // CHECK:       %[[OUT:.+]] = IE.Eye([[ARG0]])
+    // CHECK-SAME:      outputType = f16
+    // CHECK-SAME:      tensor<1xsi32> -> tensor<128x128xf16>
     // CHECK: return %[[OUT]] : tensor<128x128xf16>
 }
 
@@ -158,7 +160,7 @@ func.func @main(%arg0: tensor<1xsi32>) -> tensor<128x128xf32> {
 // CHECK-LABEL: @FP16Eye
 module @FP16Eye {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "Parameter_201" : tensor<1xsi32>
@@ -174,9 +176,92 @@ func.func @main(%arg0: tensor<1xsi32>) -> tensor<128x128xf16> {
     %0 = IE.Eye(%arg0) {num_rows_value = 128 : i64, num_columns_value = 128 : i64, batch_shape_value = [0], outputType = f16, operandSegmentSizes = array<i32: 0, 0, 1, 0>} : tensor<1xsi32>-> tensor<128x128xf16>
     return %0 : tensor<128x128xf16>
 
-    // CHECK: %[[OUT:.*]] = IE.Eye([[ARG0]])
-    // CHECK-SAME: tensor<1xsi32> -> tensor<128x128xf16>
+    // CHECK:       %[[OUT:.+]] = IE.Eye([[ARG0]])
+    // CHECK-SAME:      outputType = f16
+    // CHECK-SAME:      tensor<1xsi32> -> tensor<128x128xf16>
     // CHECK: return %[[OUT]] : tensor<128x128xf16>
+}
+
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f32, 2.4627450980392158>
+// CHECK: !qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+
+// CHECK-LABEL: @FP32QuantizeCastDequantize
+module @FP32QuantizeCastDequantize {
+
+net.NetworkInfo
+    entryPoint : @main
+    inputsInfo : {
+        // CHECK: DataInfo "Parameter_201" : tensor<256x2048xui8>
+        DataInfo "Parameter_201" : tensor<256x2048xui8>
+    }
+    outputsInfo : {
+        // CHECK: DataInfo "Result_202" : tensor<256x2048xf32>
+        DataInfo "Result_202" : tensor<256x2048xf32>
+    }
+
+// CHECK: func.func @main([[ARG0:[^:]+]]: tensor<256x2048xui8>) -> tensor<256x2048xf16>
+func.func @main(%arg0: tensor<256x2048xui8>) -> tensor<256x2048xf32> {
+    %0 = IE.QuantizeCast(%arg0) {dstElemType = !qElemType} : tensor<256x2048xui8> -> tensor<256x2048x!qElemType>
+    %1 = IE.Dequantize(%0) {dstElemType = f32} : tensor<256x2048x!qElemType> -> tensor<256x2048xf32>
+    return %1 : tensor<256x2048xf32>
+
+    // CHECK:       [[QUANT:%.+]] = IE.QuantizeCast([[ARG0]])
+    // CHECK-SAME:      dstElemType = !qElemType
+    // CHECK-SAME:      tensor<256x2048xui8> -> tensor<256x2048x!qElemType>
+    // CHECK:       [[DEQUANT:%.+]] = IE.Dequantize([[QUANT]])
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:      tensor<256x2048x!qElemType> -> tensor<256x2048xf16>
+    // CHECK: return [[DEQUANT]] : tensor<256x2048xf16>
+}
+
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f32, 2.4627450980392158>
+// CHECK: !qElemType = !quant.uniform<u8:f32, 2.4627450980392158>
+
+// CHECK-LABEL: @NotFP32QuantizeCastDynamicDequantize
+module @NotFP32QuantizeCastDynamicDequantize {
+
+net.NetworkInfo
+    entryPoint : @main
+    inputsInfo : {
+        // CHECK: DataInfo "Parameter_201" : tensor<256x2048xui8>
+        DataInfo "Parameter_201" : tensor<256x2048xui8>
+        // CHECK: DataInfo "Parameter_202" : tensor<1x2048xf32>
+        DataInfo "Parameter_202" : tensor<1x2048xf32>
+    }
+    outputsInfo : {
+        // CHECK: DataInfo "Result_202" : tensor<256x2048xf32>
+        DataInfo "Result_202" : tensor<256x2048xf32>
+    }
+
+// CHECK: func.func @main([[ARG0:[^:]+]]: tensor<256x2048xui8>, [[SCALE:[^:]+]]: tensor<1x2048xf16>) -> tensor<256x2048xf16>
+func.func @main(%arg0: tensor<256x2048xui8>, %scale: tensor<1x2048xf32>) -> tensor<256x2048xf32> {
+    %0 = IE.QuantizeCast(%arg0) {dstElemType = !qElemType} : tensor<256x2048xui8> -> tensor<256x2048x!qElemType>
+    %1 = IE.DynamicDequantize(%0, %scale) {dstElemType = f32} : tensor<256x2048x!qElemType>, tensor<1x2048xf32> -> tensor<256x2048xf32>
+    return %1 : tensor<256x2048xf32>
+
+    // CHECK:       [[SCALE_F16:%.+]] = IE.Convert([[SCALE]])
+    // CHECK-SAME:      dstElemType = f32
+    // CHECK-SAME:      tensor<1x2048xf16> -> tensor<1x2048xf32>
+
+    // CHECK:       [[QUANT:%.+]] = IE.QuantizeCast([[ARG0]])
+    // CHECK-SAME:      dstElemType = !qElemType
+    // CHECK-SAME:      tensor<256x2048xui8> -> tensor<256x2048x!qElemType>
+    // CHECK:       [[DEQUANT:%.+]] = IE.DynamicDequantize([[QUANT]], [[SCALE_F16]])
+    // CHECK-SAME:      dstElemType = f32
+    // CHECK-SAME:      tensor<256x2048x!qElemType>, tensor<1x2048xf32> -> tensor<256x2048xf32>
+
+    // CHECK:       [[OUT:%.+]] = IE.Convert([[DEQUANT]])
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:      tensor<256x2048xf32> -> tensor<256x2048xf16>
+    // CHECK: return [[OUT]] : tensor<256x2048xf16>
 }
 
 }
@@ -185,7 +270,7 @@ func.func @main(%arg0: tensor<1xsi32>) -> tensor<128x128xf16> {
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         // CHECK: DataInfo "input" : tensor<1x3x62x62xui8>
         DataInfo "input" : tensor<1x3x62x62xui8>
     } outputsInfo : {
@@ -223,7 +308,7 @@ module @TwoFunctions {
 // CHECK-LABEL: @NotConvertBitWiseOp
 module @NotConvertBitWiseOp {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x1024xf16>
@@ -261,7 +346,7 @@ func.func @main(%arg0: tensor<1x1024xf16>) -> tensor<1x1024xf16> {
 
 // CHECK-LABEL: @FP32Less
 module @FP32Less {
-    IE.CNNNetwork
+    net.NetworkInfo
         entryPoint : @main
         inputsInfo : {
             // CHECK: DataInfo "Input" : tensor<1x2xf16>
@@ -293,7 +378,7 @@ module @FP32Less {
 
 // CHECK-LABEL: @FP32GreaterEqual
 module @FP32GreaterEqual {
-    IE.CNNNetwork
+    net.NetworkInfo
         entryPoint : @main
         inputsInfo : {
             // CHECK: DataInfo "Input" : tensor<1x2xf16>
@@ -324,7 +409,7 @@ module @FP32GreaterEqual {
 // CHECK-LABEL: @SelectOpSi32ToFP16
 module @SelectOpSi32ToFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "flag" : tensor<1x1024xi8>
@@ -362,7 +447,7 @@ func.func @main(%arg0: tensor<1x1024xi8>, %arg1: tensor<1x1024xsi32>) -> tensor<
 // CHECK-LABEL: @SelectOpSi64ToFP16
 module @SelectOpSi64ToFP16 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "flag" : tensor<1x1024xi8>
@@ -399,7 +484,7 @@ func.func @main(%arg0: tensor<1x1024xi8>, %arg1: tensor<1x1024xsi64>) -> tensor<
 
 // CHECK-LABEL: @I64Clamp
 module @I64Clamp {
-    IE.CNNNetwork
+    net.NetworkInfo
         entryPoint : @main
         inputsInfo : {
             // CHECK: DataInfo "Input" : tensor<1x1x512x512xsi64>
@@ -418,5 +503,92 @@ module @I64Clamp {
         // CHECK: [[CONVERT_IN:%.+]] = IE.Convert([[INPUT]]) {dstElemType = f16} : tensor<1x1x512x512xsi64> -> tensor<1x1x512x512xf16>
         // CHECK: [[CLAMP:%.+]] = IE.Clamp([[CONVERT_IN]]) {max = 5.110000e+02 : f64, min = 0.000000e+00 : f64} : tensor<1x1x512x512xf16> -> tensor<1x1x512x512xf16>
         // CHECK: [[CONVERT_OUT:%.+]] = IE.Convert([[CLAMP]]) {dstElemType = si64} : tensor<1x1x512x512xf16> -> tensor<1x1x512x512xsi64>
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @FP32LessEqual
+module @FP32LessEqual {
+    net.NetworkInfo
+        entryPoint : @main
+        inputsInfo : {
+            // CHECK: DataInfo "Input" : tensor<1x2xf16>
+            // CHECK: DataInfo "Const" : tensor<1x1xf16>
+            DataInfo "Input" : tensor<1x2xf16>
+            DataInfo "Const" : tensor<1x1xf16>
+        }
+        outputsInfo : {
+            // CHECK: DataInfo "Out" : tensor<1x2xf16>
+            DataInfo "Out" : tensor<1x2xf16>
+        }
+
+    // CHECK: func.func @main([[INPUT:%.+]]: tensor<1x2xf16>, [[CST:%.+]]: tensor<1x1xf16>) -> tensor<1x2xf16>
+    func.func @main(%input: tensor<1x2xf16>, %cst: tensor<1x1xf16>) -> tensor<1x2xf16> {
+        %conver_input = IE.Convert(%input) {dstElemType = f32} : tensor<1x2xf16> -> tensor<1x2xf32>
+        %conver_cst = IE.Convert(%cst) {dstElemType = f32} : tensor<1x1xf16> -> tensor<1x1xf32>
+        %0 = IE.LessEqual(%conver_input, %conver_cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2xf32>, tensor<1x1xf32> -> tensor<1x2xi8>
+        %out = IE.Convert(%0) {dstElemType = f16} : tensor<1x2xi8> -> tensor<1x2xf16>
+        return %out : tensor<1x2xf16>
+
+        // CHECK: [[OUT:%.+]] = IE.LessEqual([[INPUT]], [[CST]])
+        // CHECK-SAME: tensor<1x2xf16>, tensor<1x1xf16> -> tensor<1x2xi8>
+
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @FP32Greater
+module @FP32Greater {
+    net.NetworkInfo
+        entryPoint : @main
+        inputsInfo : {
+            // CHECK: DataInfo "Input" : tensor<1x2xf16>
+            // CHECK: DataInfo "Const" : tensor<1x1xf16>
+            DataInfo "Input" : tensor<1x2xf16>
+            DataInfo "Const" : tensor<1x1xf16>
+        }
+        outputsInfo : {
+            // CHECK: DataInfo "Out" : tensor<1x2xf16>
+            DataInfo "Out" : tensor<1x2xf16>
+        }
+
+    // CHECK: func.func @main([[INPUT:%.+]]: tensor<1x2xf16>, [[CST:%.+]]: tensor<1x1xf16>) -> tensor<1x2xf16>
+    func.func @main(%input: tensor<1x2xf16>, %cst: tensor<1x1xf16>) -> tensor<1x2xf16> {
+        %conver_input = IE.Convert(%input) {dstElemType = f32} : tensor<1x2xf16> -> tensor<1x2xf32>
+        %conver_cst = IE.Convert(%cst) {dstElemType = f32} : tensor<1x1xf16> -> tensor<1x1xf32>
+        %0 = IE.Greater(%conver_input, %conver_cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2xf32>, tensor<1x1xf32> -> tensor<1x2xi8>
+        %out = IE.Convert(%0) {dstElemType = f16} : tensor<1x2xi8> -> tensor<1x2xf16>
+        return %out : tensor<1x2xf16>
+
+        // CHECK: [[OUT:%.+]] = IE.Greater([[INPUT]], [[CST]])
+        // CHECK-SAME: tensor<1x2xf16>, tensor<1x1xf16> -> tensor<1x2xi8>
+
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @fp32DynamicDataMask
+module @fp32DynamicDataMask {
+    net.NetworkInfo
+        entryPoint : @main
+        inputsInfo : {
+            // CHECK: DataInfo "Input" : tensor<4xsi32>
+            DataInfo "Input" : tensor<4xsi32>
+        }
+        outputsInfo : {
+            // CHECK: DataInfo "Out" : tensor<1x3x32x32xf32>
+            DataInfo "Out" : tensor<1x3x32x32xf32>
+        }
+
+    // CHECK: func.func @main([[INPUT:%.+]]: tensor<4xsi32>) -> tensor<1x3x32x32xf16> {
+    func.func @main(%arg0: tensor<4xsi32>) -> tensor<1x3x32x32xf32> {
+        %0 = IE.DynamicDataMask(%arg0) {outputTensorType = tensor<1x3x32x32xf32>} : tensor<4xsi32> -> tensor<1x3x32x32xf32>
+        return %0 : tensor<1x3x32x32xf32>
+
+        // CHECK: [[VAR0:%.+]] = IE.DynamicDataMask([[INPUT]]) {outputTensorType = tensor<1x3x32x32xf16>} : tensor<4xsi32> -> tensor<1x3x32x32xf16>
+        // CHECK: return [[VAR0]] : tensor<1x3x32x32xf16>
     }
 }

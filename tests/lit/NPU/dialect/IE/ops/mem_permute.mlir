@@ -269,6 +269,38 @@ func.func @FuseMemPermThroughConcat(%arg0: tensor<1x16x2x3xf32>, %arg1: tensor<1
 // -----
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+// CHECK-LABEL:   @NotFuseMemPermThroughConcat
+// CHECK-SAME:    ([[INPUT_0:%.+]]: tensor<1x16x2x3xf32>, [[INPUT_1:%.+]]: tensor<1x16x2x3xf32>)
+func.func @NotFuseMemPermThroughConcat(%arg0: tensor<1x16x2x3xf32>, %arg1: tensor<1x16x2x3xf32>) ->
+            (tensor<1x6x16x2xf32>, tensor<1x2x6x16xf32>) {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} :
+        tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
+    %1 = IE.MemPermute(%arg1) {dst_order = #NCHW, mem_perm = #NWCH} :
+        tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
+
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x3x16x2xf32>, tensor<1x3x16x2xf32> -> tensor<1x6x16x2xf32>
+
+    %3 = IE.MemPermute(%2) {dst_order = #NCHW, mem_perm = #NWCH} :
+        tensor<1x6x16x2xf32> -> tensor<1x2x6x16xf32>
+
+    return %2, %3 : tensor<1x6x16x2xf32>, tensor<1x2x6x16xf32>
+
+    // CHECK:     [[MEM_PERMUTE_0:%.+]] = IE.MemPermute([[INPUT_0]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
+    // CHECK:     [[MEM_PERMUTE_1:%.+]] = IE.MemPermute([[INPUT_1]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
+
+    // CHECK:     [[CONCAT:%.+]] = IE.Concat([[MEM_PERMUTE_0]], [[MEM_PERMUTE_1]])
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 3, 0, 0]]}
+    // CHECK-SAME:     tensor<1x3x16x2xf32>, tensor<1x3x16x2xf32> -> tensor<1x6x16x2xf32>
+
+    // CHECK:     [[MEM_PERMUTE_OUT:%.+]] = IE.MemPermute([[CONCAT]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x6x16x2xf32> -> tensor<1x2x6x16xf32>
+    // CHECK:     return [[CONCAT]], [[MEM_PERMUTE_OUT]] : tensor<1x6x16x2xf32>, tensor<1x2x6x16xf32>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 

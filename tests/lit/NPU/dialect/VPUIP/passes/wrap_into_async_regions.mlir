@@ -124,7 +124,7 @@ func.func @NCEClusterTiling(%arg0: memref<1x32x16x16xf16, #NHWC, @DDR>) -> memre
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16>
     } outputsInfo : {
         DataInfo "output1" : tensor<1x4x60x60xf16>

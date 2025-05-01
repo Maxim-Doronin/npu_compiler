@@ -8,7 +8,7 @@
 
 module @mainModule {
 
-  IE.CNNNetwork entryPoint : @singleEltwise inputsInfo : {
+  net.NetworkInfo entryPoint : @singleEltwise inputsInfo : {
     DataInfo "input_0" : tensor<1x32x56x56xui8>
     DataInfo "input_1" : tensor<1x32x56x56xui8>
   } outputsInfo : {

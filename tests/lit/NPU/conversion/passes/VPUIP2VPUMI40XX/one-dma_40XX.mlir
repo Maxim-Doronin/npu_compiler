@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU40XX
 
 module @OneDMAWithoutAttributes {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_0" : tensor<1x2x3x4xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -25,7 +25,7 @@ module @OneDMAWithoutAttributes {
 // -----
 
 module @OneDMAWithAttributes {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_0" : tensor<1x2x3x4xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -44,7 +44,7 @@ module @OneDMAWithAttributes {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @OneDMA {
-IE.CNNNetwork entryPoint : @UnrollDMAOutput inputsInfo : {
+net.NetworkInfo entryPoint : @UnrollDMAOutput inputsInfo : {
   DataInfo "input_0" : tensor<1x16x16x16xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<64x32x1x1xf16>
@@ -69,7 +69,7 @@ func.func @UnrollDMAOutput(%arg0: memref<1x16x16x16xf16, @DDR>, %arg1: memref<64
 
 // -----
 
-IE.CNNNetwork entryPoint : @singleDMADistributeBufferWithNotAdjacentClusters inputsInfo : {
+net.NetworkInfo entryPoint : @singleDMADistributeBufferWithNotAdjacentClusters inputsInfo : {
   DataInfo "dummy_input" : tensor<1x50x1x1xf16>
 } outputsInfo : {
   DataInfo "dummy_output" : tensor<1x50x1x1xf16>
@@ -100,7 +100,7 @@ func.func @singleDMADistributeBufferWithNotAdjacentClusters() {
 // -----
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-IE.CNNNetwork entryPoint : @singleDMA inputsInfo : {
+net.NetworkInfo entryPoint : @singleDMA inputsInfo : {
   DataInfo "dummy_input" : tensor<1x50x1x1xf16>
 } outputsInfo : {
   DataInfo "dummy_output" : tensor<1x50x1x1xf16>
@@ -135,7 +135,7 @@ func.func @singleDMA() {
     // CHECK-NOT: VPUIP.NNDMA
     // CHECK: VPUMI40XX.NNDMA
     // CHECK-SAME: port = 0
-    // CHECK-SAME inputs(%[[INPUT]] : memref<[[INPUT_TYPE]]>)
+    // CHECK-SAME: inputs(%[[INPUT]] : memref<[[INPUT_TYPE]]>)
     // CHECK-SAME: outputs(%[[OUTPUT]] : [[OUTPUT_TYPE]])
     // CHECK-SAME: waits(%[[BAR0]] : !VPURegMapped.Index<0:0:0>)
     // CHECK-SAME: updates(%[[BAR1]] : !VPURegMapped.Index<0:0:1>)
@@ -154,7 +154,7 @@ func.func @singleDMA() {
 // -----
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-IE.CNNNetwork entryPoint : @doubleDMA inputsInfo : {
+net.NetworkInfo entryPoint : @doubleDMA inputsInfo : {
   DataInfo "dummy_input" : tensor<1x50x1x1xf16>
 } outputsInfo : {
   DataInfo "dummy_output" : tensor<1x50x1x1xf16>
@@ -228,7 +228,7 @@ func.func @doubleDMA() {
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-IE.CNNNetwork entryPoint : @doubleDMAWithDistributedBuffer inputsInfo : {
+net.NetworkInfo entryPoint : @doubleDMAWithDistributedBuffer inputsInfo : {
   DataInfo "dummy_input" : tensor<1x50x1x1xf16>
 } outputsInfo : {
   DataInfo "dummy_output" : tensor<1x50x1x1xf16>

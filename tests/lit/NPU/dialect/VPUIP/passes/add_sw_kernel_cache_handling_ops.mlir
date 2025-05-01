@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -771,7 +771,7 @@ func.func @AddCacheFlushCacheFlushInvalidate(%arg0: memref<64x32x32x16xf16, @DDR
     func.func private @builtin_Minimum(memref<*xf16>, memref<*xf16>, memref<*xf16>) attributes {VPU.kernel_code = "eltwise_min.cpp", VPU.kernel_entry = "eltwise_min", VPU.task_type = @COMPUTE}
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
-    IE.CNNNetwork entryPoint : @AddCacheFlushInvalidate inputsInfo : {
+    net.NetworkInfo entryPoint : @AddCacheFlushInvalidate inputsInfo : {
     DataInfo "Parameter_224" : tensor<64x32x32x16xf16>
   } outputsInfo : {
     DataInfo "Minimum_228" : tensor<64x32x32x16xf16>

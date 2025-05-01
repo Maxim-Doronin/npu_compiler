@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@
 module @OptimizeConcatWithConv{
 
 IE.TileResource 2 of @NCE at 1.700000e+03 MHz
-IE.CNNNetwork entryPoint : @main
+net.NetworkInfo entryPoint : @main
 inputsInfo : {
     DataInfo "input0" : tensor<1x128x1x1xf16>
     DataInfo "input1" : tensor<1x128x1x1xf16>

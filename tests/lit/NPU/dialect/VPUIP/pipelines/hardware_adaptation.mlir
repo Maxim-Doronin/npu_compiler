@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --hardware-adaptation %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 module @TwoDMAs {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input" : tensor<10xf16>
     } outputsInfo : {
@@ -60,7 +60,7 @@ module @TwoDMAs {
 !SubViewOut1 = memref<1x131585x11x1xf16, {order = #NHWC, strides = [2894859, 1, 263169, 263169]}, @DDR>
 
 module @ConcatView {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
       DataInfo "input1" : tensor<1x131584x11x1xf16, {order = #NHWC}>
       DataInfo "input2" : tensor<1x131585x11x1xf16, {order = #NHWC}>
@@ -119,7 +119,7 @@ module @ThreeFunctions {
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16>
     } outputsInfo : {
         DataInfo "output1" : tensor<1x4x60x60xf16>
@@ -353,7 +353,7 @@ module @RepeatingBlocks {
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x4x5x5xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x4x5x5xf16>

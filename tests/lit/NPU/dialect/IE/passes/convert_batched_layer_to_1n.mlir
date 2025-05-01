@@ -481,3 +481,21 @@ func.func @ConvertSubtractWithQuant(%arg0: tensor<2x3x224x224xf16>) -> tensor<2x
     // CHECK: [[SHAPE_CAST_OUT:%.+]] = IE.ShapeCast {shape = [2, 3, 224, 224]} inputs([[SUB]] : tensor<1x6x224x224x!qElemType>) -> tensor<2x3x224x224x!qElemType>
     // CHECK: return [[SHAPE_CAST_OUT]] : tensor<2x3x224x224x!qElemType>
 }
+
+// -----
+
+// CHECK-LABEL: @BatchConvertTo1N
+// CHECK-SAME: [[INPUT:%.+]]: tensor<2x64x38x96xf16>
+func.func @BatchConvertTo1N(%arg0: tensor<2x64x38x96xf16>) -> tensor<2x64x38x96xf32> {
+    %0 = IE.Convert(%arg0) {dstElemType = f32} : tensor<2x64x38x96xf16> -> tensor<2x64x38x96xf32>
+
+    return %0 : tensor<2x64x38x96xf32>
+
+    // CHECK: [[IN_AFFINERESHAPE:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-LITERAL: {dim_mapping = [[0, 1], [1], [2], [3]], shape_value = [1, 128, 38, 96]} : tensor<2x64x38x96xf16> -> tensor<1x128x38x96xf16>
+    // CHECK: [[CONVERT:%.+]] = IE.Convert([[IN_AFFINERESHAPE]]) {dstElemType = f32} : tensor<1x128x38x96xf16> -> tensor<1x128x38x96xf32>
+    // CHECK: [[OUT_AFFINERESHAPE:%.+]] = IE.AffineReshape([[CONVERT]])
+    // CHECK-LITERAL: {dim_mapping = [[0], [0, 1], [2], [3]], shape_value = [2, 64, 38, 96]} : tensor<1x128x38x96xf32> -> tensor<2x64x38x96xf32>
+
+    // CHECK: return [[OUT_AFFINERESHAPE]] : tensor<2x64x38x96xf32>
+}

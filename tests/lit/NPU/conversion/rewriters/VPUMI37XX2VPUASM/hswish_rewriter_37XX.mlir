@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --convert-VPUMI37XX-to-VPUASM %s | FileCheck %s
 // REQUIRES: arch-NPU37XX
 
-IE.CNNNetwork entryPoint : @single_hswish inputsInfo : {
+net.NetworkInfo entryPoint : @single_hswish inputsInfo : {
   DataInfo "input" : tensor<1x1000xf16>
 } outputsInfo : {
   DataInfo "hswish" : tensor<1x1000xf16>
@@ -18,10 +18,10 @@ module @VPU.SW {
 }
 
 func.func @single_hswish() {
-  %0 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
-  %1 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
-  %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-  %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+  %0 = VPUMI37XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
+  %1 = VPUMI37XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
+  %2 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+  %3 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
 
   %4 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16>
   %5 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16>

@@ -221,11 +221,11 @@ func.func @MixedPrecisionSubgraphKeepI8ArgumentsWhenHasDiffQuantType(%arg0: tens
 
   // CHECK:               [[VAL0:%.*]] = IE.AffineReshape([[ARG1:%.*]])
   // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [3]], shape_value = [64, 1, 64, 1]}
-  // CHECK-SAME         : tensor<64x64x1x[[Q_ELEM_TYPE1]]> -> tensor<64x1x64x1x[[Q_ELEM_TYPE1]]>
+  // CHECK-SAME:        : tensor<64x64x1x[[Q_ELEM_TYPE1]]> -> tensor<64x1x64x1x[[Q_ELEM_TYPE1]]>
   // CHECK:               [[VAL1:%.*]] = IE.QuantizeCast([[VAL0]]) {dstElemType = [[Q_ELEM_TYPE0]]} : tensor<64x1x64x1x[[Q_ELEM_TYPE1]]> -> tensor<64x1x64x1x[[Q_ELEM_TYPE0]]>
   // CHECK:               [[VAL2:%.*]] = IE.AffineReshape([[VAL1]])
   // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [64, 64, 1, 1]}
-  // CHECK-SAME         : tensor<64x1x64x1x[[Q_ELEM_TYPE0]]> -> tensor<64x64x1x1x[[Q_ELEM_TYPE0]]>
+  // CHECK-SAME:        : tensor<64x1x64x1x[[Q_ELEM_TYPE0]]> -> tensor<64x64x1x1x[[Q_ELEM_TYPE0]]>
   // CHECK:               [[VAL3:%.*]] = IE.Convolution([[ARG0:%.*]], [[VAL2]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x64x64x100xf16, {order = #NHWC}>, tensor<64x64x1x1x[[Q_ELEM_TYPE0]]> -> tensor<1x64x64x100xf16, {order = #NHWC}>
   // CHECK:               return [[VAL3]]
 }

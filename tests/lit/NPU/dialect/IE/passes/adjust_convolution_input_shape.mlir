@@ -15,10 +15,10 @@ func.func @ReshapeInputFor1x1Conv(%arg0: tensor<1x1280x4096x1xf16>) -> tensor<1x
     // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<320x1280x1x1xf16> = dense<1.000000e+00> : tensor<320x1280x1x1xf16>
     // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x320x1x1xf16> = dense<1.000000e+00> : tensor<1x320x1x1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape(%arg0)
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 1280, 1024, 4]} : tensor<1x1280x4096x1xf16> -> tensor<1x1280x1024x4xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 1280, 1024, 4]} : tensor<1x1280x4096x1xf16> -> tensor<1x1280x1024x4xf16>
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1280x1024x4xf16>, tensor<320x1280x1x1xf16>, tensor<1x320x1x1xf16> -> tensor<1x320x1024x4xf16>
     // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 4096, 1]} : tensor<1x320x1024x4xf16> -> tensor<1x320x4096x1xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 4096, 1]} : tensor<1x320x1024x4xf16> -> tensor<1x320x4096x1xf16>
     // CHECK:       return [[RESHAPE1]] : tensor<1x320x4096x1xf16>
 }
 
@@ -34,10 +34,10 @@ func.func @ReshapeInputFor1x1ConvWithInputHeightNotDivisibleByFour(%arg0: tensor
     // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<320x1280x1x1xf16> = dense<1.000000e+00> : tensor<320x1280x1x1xf16>
     // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x320x1x1xf16> = dense<1.000000e+00> : tensor<1x320x1x1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape(%arg0)
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 1280, 11, 7]} : tensor<1x1280x77x1xf16> -> tensor<1x1280x11x7xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 1280, 11, 7]} : tensor<1x1280x77x1xf16> -> tensor<1x1280x11x7xf16>
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1280x11x7xf16>, tensor<320x1280x1x1xf16>, tensor<1x320x1x1xf16> -> tensor<1x320x11x7xf16>
     // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 77, 1]} : tensor<1x320x11x7xf16> -> tensor<1x320x77x1xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 77, 1]} : tensor<1x320x11x7xf16> -> tensor<1x320x77x1xf16>
     // CHECK:       return [[RESHAPE1]] : tensor<1x320x77x1xf16>
 }
 
@@ -98,10 +98,10 @@ func.func @ReshapeInputFor1x1GroupConv(%arg0: tensor<1x320x4096x1xf16>) -> tenso
     // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<320x1x1x1xf16> = dense<1.000000e+00> : tensor<320x1x1x1xf16>
     // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x320x1x1xf16> = dense<1.000000e+00> : tensor<1x320x1x1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape(%arg0)
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 320, 1024, 4]} : tensor<1x320x4096x1xf16> -> tensor<1x320x1024x4xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 320, 1024, 4]} : tensor<1x320x4096x1xf16> -> tensor<1x320x1024x4xf16>
     // CHECK:       [[CONV:%.+]] = IE.GroupConvolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], groups = 320 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x320x1024x4xf16>, tensor<320x1x1x1xf16>, tensor<1x320x1x1xf16> -> tensor<1x320x1024x4xf16>
     // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 4096, 1]} : tensor<1x320x1024x4xf16> -> tensor<1x320x4096x1xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 4096, 1]} : tensor<1x320x1024x4xf16> -> tensor<1x320x4096x1xf16>
     // CHECK:       return [[RESHAPE1]] : tensor<1x320x4096x1xf16>
 }
 
@@ -179,13 +179,13 @@ func.func @ReshapeSingleConstGroupConv(%arg0: tensor<1x1280x1x1xf16, {order = #N
 // CHECK-SAME: [[INPUT:%.+]]: tensor<1x256x1x1xf16, {order = #NHWC}>
 func.func @ReshapeSingleConstGroupConvPostOp(%arg0: tensor<1x256x1x1xf16, {order = #NHWC}>) -> tensor<1x256x1x1xf16, {order = #NHWC}> {
     %filter = const.Declare tensor<256x1x1x1xf16> = dense<1> : tensor<256x1x1x1xui8>, [#const.CastElemType<f16>]
-    %0 = IE.GroupConvolution(%arg0, %filter) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 1.000000e-01 : f64}>, strides = [1, 1]} : tensor<1x256x1x1xf16, {order = #NHWC}>, tensor<256x1x1x1xf16> -> tensor<1x256x1x1xf16, {order = #NHWC}>
+    %0 = IE.GroupConvolution(%arg0, %filter) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>, strides = [1, 1]} : tensor<1x256x1x1xf16, {order = #NHWC}>, tensor<256x1x1x1xf16> -> tensor<1x256x1x1xf16, {order = #NHWC}>
     return %0 : tensor<1x256x1x1xf16, {order = #NHWC}>
 
 
     // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<1> : tensor<256x1x1x1xui8>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>, #const.CastElemType<f16>]
     // CHECK:       [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 16, 4, 4]} inputs([[INPUT]] : tensor<1x256x1x1xf16, {order = #NHWC}>) -> tensor<1x16x4x4xf16, {order = #NHWC}>
-    // CHECK:       [[GROUPCONV:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[FILTER]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 1.000000e-01 : f64}>, strides = [1, 1]} : tensor<1x16x4x4xf16, {order = #NHWC}>, tensor<16x1x1x1xf16> -> tensor<1x16x4x4xf16, {order = #NHWC}>
+    // CHECK:       [[GROUPCONV:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[FILTER]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>, strides = [1, 1]} : tensor<1x16x4x4xf16, {order = #NHWC}>, tensor<16x1x1x1xf16> -> tensor<1x16x4x4xf16, {order = #NHWC}>
     // CHECK:       [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 256, 1, 1]} inputs([[GROUPCONV]] : tensor<1x16x4x4xf16, {order = #NHWC}>) -> tensor<1x256x1x1xf16, {order = #NHWC}>
     // CHECK:       return [[SHAPECAST_OUT]] : tensor<1x256x1x1xf16, {order = #NHWC}>
 }
@@ -198,7 +198,7 @@ func.func @ReshapeSingleConstGroupConvPostOp(%arg0: tensor<1x256x1x1xf16, {order
 // CHECK-SAME: [[INPUT:%.+]]: tensor<1x256x1x1xf16, {order = #NHWC}>
 func.func @NotReshapeSingleConstGroupConvInvalidPostOp(%arg0: tensor<1x256x1x1xf16, {order = #NHWC}>) -> tensor<1x256x1x1xf16, {order = #NHWC}> {
     %filter = const.Declare tensor<256x1x1x1xf16> = dense<1> : tensor<256x1x1x1xui8>, [#const.CastElemType<f16>]
-    %0 = IE.GroupConvolution(%arg0, %filter) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.PRelu", attrs = {}>, strides = [1, 1]} : tensor<1x256x1x1xf16, {order = #NHWC}>, tensor<256x1x1x1xf16> -> tensor<1x256x1x1xf16, {order = #NHWC}>
+    %0 = IE.GroupConvolution(%arg0, %filter) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PRelu<negative_slope=[1.000000e-01, 2.000000e-01]>, strides = [1, 1]} : tensor<1x256x1x1xf16, {order = #NHWC}>, tensor<256x1x1x1xf16> -> tensor<1x256x1x1xf16, {order = #NHWC}>
     return %0 : tensor<1x256x1x1xf16, {order = #NHWC}>
 
     // CHECK-NOT:   IE.ShapeCast
@@ -358,13 +358,13 @@ func.func @ReshapeInputFor1x1ConvHeight1(%arg0: tensor<1x1280x1x4096xf16>) -> te
     // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x320x1x1xf16> = dense<1.000000e+00> : tensor<1x320x1x1xf16>
 
     // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[ARG0]])
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 1280, 1024, 4]} : tensor<1x1280x1x4096xf16> -> tensor<1x1280x1024x4xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 1280, 1024, 4]} : tensor<1x1280x1x4096xf16> -> tensor<1x1280x1024x4xf16>
 
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x1280x1024x4xf16>, tensor<320x1280x1x1xf16>, tensor<1x320x1x1xf16> -> tensor<1x320x1024x4xf16>
 
     // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 1, 4096]} : tensor<1x320x1024x4xf16> -> tensor<1x320x1x4096xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 320, 1, 4096]} : tensor<1x320x1024x4xf16> -> tensor<1x320x1x4096xf16>
     // CHECK:       return [[RESHAPE1]] : tensor<1x320x1x4096xf16>
 }
 
@@ -381,14 +381,14 @@ func.func @ReshapeInputFor1x1GroupConvHeight1(%arg0: tensor<1x320x1x4096xf16>) -
     // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<320x1x1x1xf16> = dense<1.000000e+00> : tensor<320x1x1x1xf16>
     // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x320x1x1xf16> = dense<1.000000e+00> : tensor<1x320x1x1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[ARG0]])
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 4, 1024]} : tensor<1x320x1x4096xf16> -> tensor<1x320x4x1024xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 320, 4, 1024]} : tensor<1x320x1x4096xf16> -> tensor<1x320x4x1024xf16>
 
     // CHECK:       [[CONV:%.+]] = IE.GroupConvolution([[RESHAPE0]], [[FILTER]], [[BIAS]])
     // CHECK-SAME:        {dilations = [1, 1], groups = 320 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]}
     // CHECK-SAME:     : tensor<1x320x4x1024xf16>, tensor<320x1x1x1xf16>, tensor<1x320x1x1xf16> -> tensor<1x320x4x1024xf16>
 
     // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
-    // CHECK-SAME{{LITERAL}}:  {dim_mapping = [[0], [1], [2, 3], [2]], shape_value = [1, 320, 1, 4096]} : tensor<1x320x4x1024xf16> -> tensor<1x320x1x4096xf16>
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 320, 1, 4096]} : tensor<1x320x4x1024xf16> -> tensor<1x320x1x4096xf16>
     // CHECK:       return [[RESHAPE1]] : tensor<1x320x1x4096xf16>
 }
 
@@ -418,12 +418,12 @@ func.func @ReshapeInputForAddOp(%arg0: tensor<1x245760x1x1xf16, {order = #NHWC}>
 // CHECK-LABEL: @ReshapeInputForAddPostOp
 // CHECK-SAME: [[INPUT:%.+]]: tensor<1x245760x1x1xf16, {order = #NHWC}>
 func.func @ReshapeInputForAddPostOp(%arg0: tensor<1x245760x1x1xf16, {order = #NHWC}>) -> tensor<1x245760x1x1x!qElemType, {order = #NHWC}> {
-    %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 1.000000e-01 : f64}>} : tensor<1x245760x1x1xf16, {order = #NHWC}>, tensor<1x245760x1x1xf16, {order = #NHWC}> -> tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
+    %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>} : tensor<1x245760x1x1xf16, {order = #NHWC}>, tensor<1x245760x1x1xf16, {order = #NHWC}> -> tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
 
     return %0 : tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
 
     // CHECK:       [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 7680, 8, 4]} inputs([[INPUT]] : tensor<1x245760x1x1xf16, {order = #NHWC}>) -> tensor<1x7680x8x4xf16, {order = #NHWC}>
-    // CHECK:       [[ADD:%.+]] = IE.Add([[SHAPECAST_IN]], [[SHAPECAST_IN]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 1.000000e-01 : f64}>} : tensor<1x7680x8x4xf16, {order = #NHWC}>, tensor<1x7680x8x4xf16, {order = #NHWC}> -> tensor<1x7680x8x4x!qElemType, {order = #NHWC}>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[SHAPECAST_IN]], [[SHAPECAST_IN]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>} : tensor<1x7680x8x4xf16, {order = #NHWC}>, tensor<1x7680x8x4xf16, {order = #NHWC}> -> tensor<1x7680x8x4x!qElemType, {order = #NHWC}>
     // CHECK:       [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 245760, 1, 1]} inputs([[ADD]] : tensor<1x7680x8x4x!qElemType, {order = #NHWC}>) -> tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
     // CHECK:       return [[SHAPECAST_OUT]] : tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
 }
@@ -436,7 +436,7 @@ func.func @ReshapeInputForAddPostOp(%arg0: tensor<1x245760x1x1xf16, {order = #NH
 // CHECK-LABEL: @NotReshapeInputForAddInvalidPostOp
 // CHECK-SAME: [[INPUT:%.+]]: tensor<1x245760x1x1xf16, {order = #NHWC}>
 func.func @NotReshapeInputForAddInvalidPostOp(%arg0: tensor<1x245760x1x1xf16, {order = #NHWC}>) -> tensor<1x245760x1x1x!qElemType, {order = #NHWC}> {
-    %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.PostOp<name = "IE.PRelu", attrs = {}>} : tensor<1x245760x1x1xf16, {order = #NHWC}>, tensor<1x245760x1x1xf16, {order = #NHWC}> -> tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
+    %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.PRelu<negative_slope=[1.000000e-01, 2.000000e-01]>} : tensor<1x245760x1x1xf16, {order = #NHWC}>, tensor<1x245760x1x1xf16, {order = #NHWC}> -> tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
 
     return %0 : tensor<1x245760x1x1x!qElemType, {order = #NHWC}>
 
@@ -509,7 +509,7 @@ func.func @ShapeCastToAlignExpandedDWConvPostOp(%arg0: tensor<1x3x640x640xf16, {
     %expand = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x640x640xf16, {order  = #NHWC}> -> tensor<1x16x640x640xf16, {order = #NHWC}>
     %conv = IE.GroupConvolution(%expand, %filter, %bias) {
         dilations = [1, 1], groups = 16, pads_begin = [0, 0], pads_end = [0, 0],
-        post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 1.000000e-01 : f64}>, strides = [2, 1]
+        post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>, strides = [2, 1]
     } : tensor<1x16x640x640xf16, {order = #NHWC}>, tensor<16x1x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16, {order = #NHWC}> -> tensor<1x16x320x640xf16, {order = #NHWC}>
 
     return %conv : tensor<1x16x320x640xf16, {order = #NHWC}>
@@ -517,7 +517,7 @@ func.func @ShapeCastToAlignExpandedDWConvPostOp(%arg0: tensor<1x3x640x640xf16, {
     // CHECK-DAG:    [[FILTER:%.+]] = const.Declare tensor<48x1x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x1x1x1xf16>, [#const.Broadcast<0 : i64, 48 : i64>, #const.Reshape<[48, 1, 1, 1]>, #const.Reorder<#NHWC>]
     // CHECK-DAG:    [[BIAS:%.+]] = const.Declare tensor<1x16x1x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x1x1x1xf16>, [#const.Broadcast<1 : i64, 16 : i64>, #const.Reorder<#NHWC>]
     // CHECK:        [[IN_SHAPECAST:%.+]] = IE.ShapeCast {shape = [1, 48, 640, 40]} inputs([[INPUT]] : tensor<1x3x640x640xf16, {order = #NHWC}>) -> tensor<1x48x640x40xf16, {order = #NHWC}>
-    // CHECK:        [[GRP_CONV:%.+]] = IE.GroupConvolution([[IN_SHAPECAST]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], groups = 48 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 1.000000e-01 : f64}>, strides = [2, 1]} : tensor<1x48x640x40xf16, {order = #NHWC}>, tensor<48x1x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16, {order = #NHWC}> -> tensor<1x48x320x40xf16, {order = #NHWC}>
+    // CHECK:        [[GRP_CONV:%.+]] = IE.GroupConvolution([[IN_SHAPECAST]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], groups = 48 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>, strides = [2, 1]} : tensor<1x48x640x40xf16, {order = #NHWC}>, tensor<48x1x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16, {order = #NHWC}> -> tensor<1x48x320x40xf16, {order = #NHWC}>
     // CHECK:        [[OUT_SHAPECAST:%.+]] = IE.ShapeCast {shape = [1, 3, 320, 640]} inputs([[GRP_CONV]] : tensor<1x48x320x40xf16, {order = #NHWC}>) -> tensor<1x3x320x640xf16, {order = #NHWC}>
     // CHECK:        [[EXPAND:%.+]] = IE.Expand([[OUT_SHAPECAST]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x320x640xf16, {order = #NHWC}> -> tensor<1x16x320x640xf16, {order = #NHWC}>
     // CHECK:        return [[EXPAND]] : tensor<1x16x320x640xf16, {order = #NHWC}>
@@ -535,7 +535,7 @@ func.func @NotShapeCastToAlignExpandedDWConvInvalidPostOp(%arg0: tensor<1x3x640x
     %expand = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x640x640xf16, {order  = #NHWC}> -> tensor<1x16x640x640xf16, {order = #NHWC}>
     %conv = IE.GroupConvolution(%expand, %filter, %bias) {
         dilations = [1, 1], groups = 16, pads_begin = [0, 0], pads_end = [0, 0],
-        post_op = #IE.PostOp<name = "IE.PRelu", attrs = {}>, strides = [2, 1]
+        post_op = #IE.PRelu<negative_slope=[1.000000e-01, 2.000000e-01]>, strides = [2, 1]
     } : tensor<1x16x640x640xf16, {order = #NHWC}>, tensor<16x1x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16, {order = #NHWC}> -> tensor<1x16x320x640xf16, {order = #NHWC}>
 
     return %conv : tensor<1x16x320x640xf16, {order = #NHWC}>

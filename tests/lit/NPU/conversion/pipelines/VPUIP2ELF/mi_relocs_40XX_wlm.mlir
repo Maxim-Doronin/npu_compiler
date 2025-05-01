@@ -9,13 +9,13 @@
 
 module @Test {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x32xf16>
+        DataInfo "input" : tensor<1x32xf16>
     }
     outputsInfo : {
-        IE.DataInfo "hswish" : tensor<1x32xf16>
+        DataInfo "hswish" : tensor<1x32xf16>
     }
 
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {

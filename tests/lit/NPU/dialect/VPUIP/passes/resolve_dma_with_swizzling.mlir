@@ -27,8 +27,8 @@ func.func @DmaBufferSizeAlignedTo512(%input: !BufferDdr, %output: !BufferCmx) ->
   // CHECK:      [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<1x16x8x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
   // CHECK:      VPURT.Task
   // CHECK:      VPUIP.NNDMA
-  // CHECK-SAME    inputs([[BUF1]] : memref<1x16x8x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
-  // CHECK-SAME    outputs([[BUF1]] : memref<1x16x8x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+  // CHECK-SAME:   inputs([[BUF0]] : memref<1x16x8x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
+  // CHECK-SAME:   outputs([[BUF1]] : memref<1x16x8x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
 }
 
 // -----
@@ -56,8 +56,8 @@ func.func @DmaBufferSizeNotAlignedTo512(%input: !BufferDdr, %output: !BufferCmx)
   // CHECK:      [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<1x16x8x7xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
   // CHECK:      VPURT.Task
   // CHECK:      VPUIP.NNDMA
-  // CHECK-SAME    inputs([[BUF0]] : memref<1024x1x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
-  // CHECK-SAME    outputs([[BUF1]] : memref<1024x1x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+  // CHECK-SAME:   inputs([[BUF0]] : memref<1024x1x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
+  // CHECK-SAME:   outputs([[BUF1]] : memref<1024x1x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
   // CHECK:      return [[BUF2]]
 }
 
@@ -90,8 +90,8 @@ func.func @DmaInputConstSizeNotAlignedTo512(%input: !BufferDdr, %output: !Buffer
   // CHECK:      [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<176x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
   // CHECK:      VPURT.Task
   // CHECK:      VPUIP.NNDMA
-  // CHECK-SAME    inputs([[CST]] : memref<3072x1x1x1xui8, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
-  // CHECK-SAME    outputs([[BUF1]] : memref<3072x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+  // CHECK-SAME:   inputs([[CST]] : memref<3072x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}>)
+  // CHECK-SAME:   outputs([[BUF1]] : memref<3072x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
   // CHECK:      return [[BUF2]]
 }
 
@@ -124,8 +124,8 @@ func.func @DmaInputConstSizeNotAlignedTo512f16Type(%input: !BufferDdr, %output: 
   // CHECK:      [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<1x4x16x22xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
   // CHECK:      VPURT.Task
   // CHECK:      VPUIP.NNDMA
-  // CHECK-SAME    inputs([[CST]] : memref<1536x1x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
-  // CHECK-SAME    outputs([[BUF1]] : memref<1536x1x1x1xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+  // CHECK-SAME:   inputs([[CST]] : memref<1536x1x1x1xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}>)
+  // CHECK-SAME:   outputs([[BUF1]] : memref<1536x1x1x1xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
   // CHECK:      return [[BUF2]]
 }
 
@@ -156,8 +156,8 @@ func.func @DmaInputCostSizeNotAlignedTo512SubByteType(%input: !BufferDdr, %outpu
   // CHECK:      [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<50x1x1x384xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
   // CHECK:      VPURT.Task
   // CHECK:      VPUIP.NNDMA
-  // CHECK-SAME    inputs([[CST]] : memref<20480x1x1x1xi1, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
-  // CHECK-SAME    outputs([[BUF1]] : memref<20480x1x1x1xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+  // CHECK-SAME:   inputs([[CST]] : memref<20480x1x1x1xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}>)
+  // CHECK-SAME:   outputs([[BUF1]] : memref<20480x1x1x1xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
   // CHECK:      return [[BUF2]]
 }
 
@@ -202,9 +202,9 @@ func.func @DmaDuplicatedOutputWithExplicitDistributedAttr(%input: !BufferDdr, %o
 
   // CHECK:          VPURT.Task
   // CHECK:          VPUIP.NNDMA
-  // CHECK-SAME        inputs([[CST]] : memref<1024x1x1x1xui8,
+  // CHECK-SAME:       inputs([[CST]] : memref<1024x1x1x1xui8,
   // CHESK-SAME:        {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>)
-  // CHECK-SAME        outputs([[BUF1]] : !VPUIP.DistributedBuffer<1024x1x1x1xui8,
+  // CHECK-SAME:       outputs([[BUF1]] : !VPUIP.DistributedBuffer<1024x1x1x1xui8,
   // CHECK-SAME:        {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @CMX_NN,
   // CHECK-SAME:            {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments
   // CHECK-SAME{LITERAL}:    compute_shapes = [[1024, 1, 1, 1], [1024, 1, 1, 1]],
@@ -243,7 +243,7 @@ func.func @DmaInputConstSizeNotAlignedTo512f16Type5D(%input: !BufferDdr, %output
   // CHECK:      [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<3x1x4x16x22xf16, {order = #NCDHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
   // CHECK:      VPURT.Task
   // CHECK:      VPUIP.NNDMA
-  // CHECK-SAME    inputs([[CST]] : memref<4352x1x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
-  // CHECK-SAME    outputs([[BUF1]] : memref<4352x1x1x1xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+  // CHECK-SAME:   inputs([[CST]] : memref<4352x1x1x1x1xf16, {order = #NCDHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}>)
+  // CHECK-SAME:   outputs([[BUF1]] : memref<4352x1x1x1x1xf16, {order = #NCDHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
   // CHECK:      return [[BUF2]]
 }

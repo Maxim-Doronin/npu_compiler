@@ -1,20 +1,21 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --ShaveCodeGen %s | FileCheck %s
+// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --ShaveCodeGen %s | FileCheck %s
 // REQUIRES: arch-VPUX37XX
+// E#160425: restore or remove
 
 module @SingleLayer {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "cos" : tensor<1x1000xf16>
+        DataInfo "cos" : tensor<1x1000xf16>
     }
 
 func.func @main(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
@@ -31,7 +32,7 @@ func.func @main(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
 // CHECK: [[VAL37:%.+]] = llvm.intr.cos([[VAL36:%.+]]) : (f16) -> f16
 // CHECK: llvm.return
 
-// CHECK: IE.CNNNetwork entryPoint : @main inputsInfo : {
+// CHECK: net.NetworkInfo entryPoint : @main inputsInfo : {
 
 // CHECK: func.func @main([[ARGB0:%.+]]: memref<1x1000xf16, @DDR>, %arg1: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR> {
 // CHECK: [[RES:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@generated_GenericReshape0 inputs([[VAL6:%.+]] as [[ARG2:%.+]]: memref<1x1000xf16>) outputs([[VAL7:%.+]] as [[ARG3:%.+]]: memref<1x1x1x1000xf16>) on tile 0 -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>{
@@ -52,13 +53,13 @@ func.func @main(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
 
 module @SingleLayer {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "hswish" : tensor<1x1000xf16>
+        DataInfo "hswish" : tensor<1x1000xf16>
     }
 
 func.func @main(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
@@ -75,7 +76,7 @@ func.func @main(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
 // CHECK: [[VAL34:%.+]] = llvm.fdiv [[VAL33:%.+]], [[VAL0:%.+]]  : f16
 // CHECK: llvm.return
 
-// CHECK: IE.CNNNetwork entryPoint : @main inputsInfo : {
+// CHECK: net.NetworkInfo entryPoint : @main inputsInfo : {
 
 // CHECK: func.func @main([[ARGB0:%.+]]: memref<1x1000xf16, @DDR>, %arg1: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR> {
 // CHECK: [[RES:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@generated_GenericReshape0 inputs([[VAL6:%.+]] as [[ARG2:%.+]]: memref<1x1000xf16>) outputs([[VAL7:%.+]] as [[ARG3:%.+]]: memref<1x1x1x1000xf16>) on tile 0 -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>{

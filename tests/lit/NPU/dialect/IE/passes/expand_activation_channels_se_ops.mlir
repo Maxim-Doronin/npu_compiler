@@ -38,7 +38,7 @@ func.func @ExpandInterpolateNearestChannels(%arg0: tensor<1x20x30x30xf16>) -> te
 // CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
-// CHECK        return [[OUT]]
+// CHECK:       return [[OUT]]
 
 // -----
 
@@ -75,7 +75,7 @@ func.func @ExpandInterpolateLinearChannels(%arg0: tensor<1x20x30x30xf16>) -> ten
 // CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
-// CHECK        return [[OUT]]
+// CHECK:       return [[OUT]]
 
 // -----
 
@@ -112,7 +112,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesAttrInput(%arg0: tenso
 // CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
-// CHECK        return [[OUT]]
+// CHECK:       return [[OUT]]
 
 // -----
 
@@ -150,7 +150,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesTensorInput(%arg0: ten
 // CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
-// CHECK        return [[OUT]]
+// CHECK:       return [[OUT]]
 
 // -----
 
@@ -161,7 +161,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesTensorInput(%arg0: ten
 func.func @TransposedConvolution(%input: tensor<1x20x23x30xf16, {order = #NHWC}>) -> tensor<1x20x46x60xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<20x20x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<20x20x2x2xf16, {order = #NHWC}>
     %output = IE.TransposedConvolution(%input, %weights) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x20x23x30xf16, {order = #NHWC}>, tensor<20x20x2x2xf16, {order = #NHWC}> -> tensor<1x20x46x60xf16, {order = #NHWC}>
     return %output : tensor<1x20x46x60xf16, {order = #NHWC}>
 
@@ -171,7 +171,7 @@ func.func @TransposedConvolution(%input: tensor<1x20x23x30xf16, {order = #NHWC}>
     // CHECK:       [[EXPAND:%.+]] = IE.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
     // CHECK-SAME:      : tensor<1x20x23x30xf16, {order = #NHWC}> -> tensor<1x32x23x30xf16, {order = #NHWC}>
     // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[EXPAND]], [[WEIGHTS]]) {
-    // CHECK-SAME:          dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+    // CHECK-SAME:          dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
     // CHECK-SAME:      } : tensor<1x32x23x30xf16, {order = #NHWC}>, tensor<32x32x2x2xf16, {order = #NHWC}> -> tensor<1x32x46x60xf16, {order = #NHWC}>
     // CHECK:       [[OUTPUT_SLICE:%.+]] = IE.Slice [[OUTPUT]] [0, 0, 0, 0] [1, 20, 46, 60]
     // CHECK-SAME:      : tensor<1x32x46x60xf16, {order = #NHWC}> to tensor<1x20x46x60xf16, {order = #NHWC}>
@@ -188,7 +188,7 @@ func.func @TransposedConvolutionWithBias(%input: tensor<1x20x23x30xf16, {order =
     %weights = const.Declare tensor<20x20x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<20x20x2x2xf16, {order = #NHWC}>
     %bias = const.Declare tensor<1x20x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x20x1x1xf16, {order = #NHWC}>
     %output = IE.TransposedConvolution(%input, %weights, %bias) {
-            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
         } : tensor<1x20x23x30xf16, {order = #NHWC}>, tensor<20x20x2x2xf16, {order = #NHWC}>, tensor<1x20x1x1xf16, {order = #NHWC}> -> tensor<1x20x46x60xf16, {order = #NHWC}>
     return %output : tensor<1x20x46x60xf16, {order = #NHWC}>
 
@@ -198,7 +198,7 @@ func.func @TransposedConvolutionWithBias(%input: tensor<1x20x23x30xf16, {order =
     // CHECK:           [[EXPAND:%.+]] = IE.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
     // CHECK-SAME:          : tensor<1x20x23x30xf16, {order = #NHWC}> -> tensor<1x32x23x30xf16, {order = #NHWC}>
     // CHECK:           [[OUTPUT:%.+]] = IE.TransposedConvolution([[EXPAND]], [[WEIGHTS]], [[BIAS]]) {
-    // CHECK-SAME:              dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+    // CHECK-SAME:              dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 1>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
     // CHECK-SAME:          } : tensor<1x32x23x30xf16, {order = #NHWC}>, tensor<32x32x2x2xf16, {order = #NHWC}>, tensor<1x32x1x1xf16, {order = #NHWC}> -> tensor<1x32x46x60xf16, {order = #NHWC}>
     // CHECK:           [[OUTPUT_SLICE:%.+]] = IE.Slice [[OUTPUT]] [0, 0, 0, 0] [1, 20, 46, 60]
     // CHECK-SAME:          : tensor<1x32x46x60xf16, {order = #NHWC}> to tensor<1x20x46x60xf16, {order = #NHWC}>

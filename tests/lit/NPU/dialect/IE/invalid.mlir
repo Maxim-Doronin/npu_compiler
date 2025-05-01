@@ -9,7 +9,7 @@
 module @wrong_entry_point {
 
 // expected-error@+1 {{entryPoint '@foo' doesn't refer to existing Function}}
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint: @foo
     inputsInfo : {
         DataInfo "input" : tensor<1x3x16x16xf32>
@@ -30,7 +30,7 @@ func.func @main(%arg0: tensor<1x3x16x16xf32>) -> tensor<1x3x16x16xf32> {
 module @wrong_num_inputs {
 
 // expected-error@+1 {{entryPoint '@main' has invalid state. inputs count '2', results count '1', user inputs count '1', user outputs count '1'}}
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint: @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x16x16xf32>
@@ -51,7 +51,7 @@ func.func @main(%arg0: tensor<1x3x16x16xf32>, %arg1: tensor<1x3x16x16xf32>) -> t
 module @wrong_num_outputs {
 
 // expected-error@+1 {{entryPoint '@main' outputs count '0' doesn't match userOutputs count '1'}}
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint: @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x16x16xf32>
@@ -71,7 +71,7 @@ func.func @main(%arg0: tensor<1x3x16x16xf32>) {
 // CHECK-LABEL: @wrong_entry_point_sig
 module @wrong_entry_point_sig {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint: @main
     inputsInfo : {
 // expected-error@+1 {{User type is not a 'RankedTensorType', got 'f16'}}
@@ -92,7 +92,7 @@ func.func @main(%arg0: memref<1x3x16x16xf32>) -> memref<1x3x16x16xf32> {
 // CHECK-LABEL: @wrong_tensor_attr
 module @wrong_tensor_attr {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint: @main
     inputsInfo : {
         DataInfo "input" : tensor<16xf32>
@@ -115,7 +115,7 @@ func.func private @extra(%arg0: tensor<16xf32, {qqq = "foo"}>)
 // CHECK-LABEL: @wrong_tensor_attr_order1
 module @wrong_tensor_attr_order1 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint: @main
     inputsInfo : {
         DataInfo "input" : tensor<16xf32>
@@ -138,7 +138,7 @@ func.func private @extra(%arg0: tensor<16xf32, {order = affine_map<(d0, d1) -> (
 // CHECK-LABEL: @wrong_tensor_attr_order2
 module @wrong_tensor_attr_order2 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint: @main
     inputsInfo : {
         DataInfo "input" : tensor<16xf32>
@@ -201,11 +201,11 @@ func.func @PerAxisQuantSameAxis(%arg0: tensor<1x2x3x4x!qElemType>, %arg1: tensor
 #NC = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @ConvertLostBoundsForOutput
-func.func @ConvertLostBoundsForOutput(%arg0: tensor<3x?xsi64, {bounds = [3, 5], order = #NC}>)
+func.func @ConvertLostBoundsForOutput(%arg0: tensor<3x?xsi64, {bounds = #const.OpaqueI64Elements<[3, 5]>: tensor<2xsi64>, order = #NC}>)
           -> tensor<3x?xsi64, {order = #NC}> {
 
 // expected-error@+1 {{Missed bounds for output with dynamic dims}}
-    %out = IE.Convert(%arg0) {dstElemType = si32} : tensor<3x?xsi64, {bounds = [3, 5], order = #NC}>
+    %out = IE.Convert(%arg0) {dstElemType = si32} : tensor<3x?xsi64, {bounds = #const.OpaqueI64Elements<[3, 5]>: tensor<2xsi64>, order = #NC}>
          -> tensor<3x?xsi64, {order = #NC}>
 
     return %out : tensor<3x?xsi64, {order = #NC}>

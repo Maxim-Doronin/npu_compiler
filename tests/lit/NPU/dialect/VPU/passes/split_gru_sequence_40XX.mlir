@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -46,7 +46,7 @@ func.func @NotSplitGRUSequence(%arg0: tensor<1x157x384xf16>, %arg1: tensor<1x1x2
 
       // CHECK:     [[OUT_0:%.+]], [[OUT_1:%.+]] = VPU.GRUSequence([[INPUT_0]], [[INPUT_1]], [[CST_1]], [[CST_0]], [[CST]])
       // CHECK-SAME:{clip = 0.000000e+00 : f64, direction = #IE.rnn_seq_direction<FORWARD>, hidden_size = 256 : i64, seq_length = 157 : i64, should_linear_before_reset}
-      // CHECK-SAME tensor<1x157x384xf16>, tensor<1x1x256xf16>, tensor<1x768x384xf16>, tensor<1x768x256xf16>, tensor<1x1024xf16> -> tensor<1x1x157x256xf16>, tensor<1x1x256xf16>
+      // CHECK-SAME: tensor<1x157x384xf16>, tensor<1x1x256xf16>, tensor<1x768x384xf16>, tensor<1x768x256xf16>, tensor<1x1024xf16> -> tensor<1x1x157x256xf16>, tensor<1x1x256xf16>
 
       // CHECK:     return [[OUT_0]], [[OUT_1]] : tensor<1x1x157x256xf16>, tensor<1x1x256xf16>
 }

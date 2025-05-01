@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @DoNotSetIsZeroOffsetWTForNCEClusterTask
 func.func @DoNotSetIsZeroOffsetWTForNCEClusterTask(%input: !VPUIP.SparseBuffer<data=memref<1x32x16x16xf16, #NHWC, @CMX_NN>, sparsity_map=memref<1x32x16x16xi1, #NHWC, @CMX_NN>>,
                         %weights: !VPUIP.SparseBuffer<data=memref<64x32x3x3xf16, #NHWC, @CMX_NN>, sparsity_map=memref<64x1x1x384xi1, @CMX_NN>, is_weights>,
                         %weight_table: memref<64x1x1x4xsi32, @CMX_NN>)
@@ -60,6 +61,7 @@ func.func @DoNotSetIsZeroOffsetWTForNCEClusterTask(%input: !VPUIP.SparseBuffer<d
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @SetIsZeroOffsetWTForNCEClusterTask
 func.func @SetIsZeroOffsetWTForNCEClusterTask(%input: memref<1x32x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x64x14x14xf16, #NHWC, @CMX_NN> {
     %weights = const.Declare memref<64x32x3x3xf16, #NHWC, @CMX_NN> = dense<1.000000e+00> : tensor<64x32x3x3xf16, {mem_space = @CMX_NN}>, [#const.Reorder<#NHWC>]
     %weight_table = const.Declare memref<64x1x1x4xsi32, @CMX_NN> = dense<1> : tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}>
@@ -125,6 +127,8 @@ func.func @SetIsZeroOffsetWTForNCEClusterTask(%input: memref<1x32x16x16xf16, #NH
 }>
 
 !WeightsTableStub_CMX = memref<32x1x1x4xsi32, #NCHW, @CMX_NN>
+
+// CHECK-LABEL: @SetIsZeroOffsetWTForNCEClusterTask
 func.func @SetIsZeroOffsetWTForNCEClusterTask(%input: !InputDistributed, %weights: !WeightsDistributed) -> !OutputDistributed {
     %weights_table_cst = const.Declare memref<32x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>
     %output = VPURT.AllocDistributed -> !OutputDistributed
@@ -184,7 +188,8 @@ func.func @SetIsZeroOffsetWTForNCEClusterTask(%input: !InputDistributed, %weight
     memory_offsets = [[0, 0, 0, 0, 0], [2, 0, 0, 0, 0], [4, 0, 0, 0, 0], [6, 0, 0, 0, 0]]
 }>
 
-func.func @SkipZeroOffsetWTFor5DShape(%input: memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>, %weights: memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>, %weights_table: memref<8x64x1x1x4xsi32, @CMX_NN>) -> !OutputDistributed {
+// CHECK-LABEL: @SetZeroOffsetWTFor5DShape
+func.func @SetZeroOffsetWTFor5DShape(%input: memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>, %weights: memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>, %weights_table: memref<8x64x1x1x4xsi32, @CMX_NN>) -> !OutputDistributed {
     %alloc = VPURT.AllocDistributed -> !OutputDistributed
     %nce_cluster_tiling = VPUIP.NCEClusterTiling
                                 inputs(%input as %arg0: memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>, %weights as %arg1: memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>, %weights_table as %arg2: memref<8x64x1x1x4xsi32, @CMX_NN>)
@@ -210,7 +215,7 @@ func.func @SkipZeroOffsetWTFor5DShape(%input: memref<8x1x1024x3x1xf16, #GNHWC, @
 
     return %nce_cluster_tiling : !OutputDistributed
 
-    // CHECK:   VPUIP.NCEClusterTask {
+    // CHECK:   VPUIP.NCEClusterTask {is_zero_offset_weights_table,
     // CHECK-SAME:      kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:      kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
     // CHECK-SAME:      input({{[^:]+}} : memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>)

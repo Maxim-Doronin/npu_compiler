@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -37,65 +37,42 @@
 // CHECK:    func @InplaceEltwiseUnequalTensorSize(%arg0: memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>, %arg1: memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>, %arg2: memref<64x1x1x4xsi32, @CMX_NN>)
 func.func @InplaceEltwiseUnequalTensorSize(%activation: memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>, %weights: memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>,  %weights_table: memref<64x1x1x4xsi32, @CMX_NN>) -> !DistributedType2 {
     %conv_cmx_outbuf = VPURT.AllocDistributed -> !DistributedType
-    %0 = VPUIP.NCEClusterTiling inputs(%activation as %arg2: memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>,
-                                %weights as %arg3: memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>,
-                                %weights_table as %arg4: memref<64x1x1x4xsi32, @CMX_NN>)
-                                outputs(%conv_cmx_outbuf as %arg5: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>) -> !DistributedType {
-      %235 = VPUIP.NCEClusterTask {
-              kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
-              kernel_size = [3, 3],
-              kernel_strides = [1, 1],
-              minimumHardwareExecutionCost = 4294967300 : i64,
-              task_type = #VPUIP.nce_task_type<CONV>
-          }
-          input(%arg2 : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
-          weights(%arg3 : memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>)
-          weight_table(%arg4 : memref<64x1x1x4xsi32, @CMX_NN>)
-          parent_input(%arg2 : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
-          parent_output(%arg5 : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-          outputs(%arg5 : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>) -> memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN> variants : {
-              DPUTask {cluster_id = 0 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>}
-              DPUTask {cluster_id = 1 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>}
-          } PPE : {
-            PPETask {ppe = #VPU.PPEStub<>}
-          }
+    %0 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 4294967300 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+        input(%activation : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+        weights(%weights : memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>)
+        weight_table(%weights_table : memref<64x1x1x4xsi32, @CMX_NN>)
+        parent_input(%activation : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+        parent_output(%conv_cmx_outbuf : !DistributedType)
+        outputs(%conv_cmx_outbuf : !DistributedType)
+    ->  !DistributedType variants : {
+        DPUTask {cluster_id = 0 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 1 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>}
+    } PPE : {
+        PPETask {ppe = #VPU.PPEStub<>}
     }
 
     %ddr_buf = memref.alloc() : memref<1x64x128x128x!qElemType3, #NHWC>
-    %1 = VPUIP.NCEClusterTiling inputs(%0 as %arg2: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-                                outputs(%ddr_buf as %arg3: memref<1x64x128x128x!qElemType3, #NHWC>) -> memref<1x64x128x128x!qElemType3, #NHWC> {
-      %235 = VPUIP.Copy
-          inputs(%arg2 : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-          outputs(%arg3 : memref<1x64x128x128x!qElemType3, #NHWC>) -> memref<1x64x128x128x!qElemType3, #NHWC>
-    }
+    %1 = VPUIP.Copy
+        inputs(%0 : !DistributedType)
+        outputs(%ddr_buf : memref<1x64x128x128x!qElemType3, #NHWC>)  ->  memref<1x64x128x128x!qElemType3, #NHWC>
 
     %eltwise_cmx_inbuf = VPURT.AllocDistributed -> !DistributedType
-    %2 = VPUIP.NCEClusterTiling inputs(%1 as %arg2: memref<1x64x128x128x!qElemType3, #NHWC>)
-                                outputs(%eltwise_cmx_inbuf as %arg3: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>) -> !DistributedType {
-      %235 = VPUIP.Copy
-          inputs(%arg2 : memref<1x64x128x128x!qElemType3, #NHWC>)
-          outputs(%arg3 : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>) -> memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>
-    }
+    %2 = VPUIP.Copy
+        inputs(%1 : memref<1x64x128x128x!qElemType3, #NHWC>)
+        outputs(%eltwise_cmx_inbuf : !DistributedType)  ->  !DistributedType
 
     %eltwise_cmx_outbuf = VPURT.AllocDistributed -> !DistributedType2
-    %eltwise = VPUIP.NCEClusterTiling inputs(%2 as %arg2: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>,
-                                             %2 as %arg3: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-                                      outputs(%eltwise_cmx_outbuf as %arg4: memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN>) -> !DistributedType2 {
-      %235 = VPUIP.NCEClusterTask {
-              is_inplace = true,
-              minimumHardwareExecutionCost = 4294967300 : i64,
-              task_type = #VPUIP.nce_task_type<ELTWISE>
-          }
-          input(%arg2 : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-          weights(%arg3 : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-          parent_input(%arg2 : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-          parent_output(%arg4 : memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN>)
-          outputs(%arg4 : memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN>) -> memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN> variants : {
-              DPUTask {cluster_id = 0 : i64, inEnd = [127, 63, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
-              DPUTask {cluster_id = 1 : i64, inEnd = [127, 64, 63], inStart = [0, 1, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
-          } PPE : {
-            PPETask {ppe = #VPU.PPEStub<>}
-          }
+    %eltwise = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 4294967300 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+        input(%2 : !DistributedType)
+        weights(%2 : !DistributedType)
+        parent_input(%2 : !DistributedType)
+        parent_output(%eltwise_cmx_outbuf : !DistributedType2)
+        outputs(%eltwise_cmx_outbuf : !DistributedType2)
+    ->  !DistributedType2 variants : {
+        DPUTask {cluster_id = 0 : i64, inEnd = [127, 63, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 1 : i64, inEnd = [127, 64, 63], inStart = [0, 1, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+    } PPE : {
+        PPETask {ppe = #VPU.PPEStub<>}
     }
 
     return %eltwise : !DistributedType2
@@ -109,47 +86,24 @@ func.func @InplaceEltwiseUnequalTensorSize(%activation: memref<1x64x128x128x!qEl
     // CHECK-SAME:                         strides = [1, 1],
     // CHECK-SAME:                         num_clusters = 2 : i64,
     // CHECK-SAME:                         uniform_distributed_segments}>
-
-    // CHECK: [[CONV:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:                inputs(%arg0 as [[ARG3:%.+]]: memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                       %arg1 as [[ARG4:%.+]]: memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                       %arg2 as [[ARG5:%.+]]: memref<64x1x1x4xsi32, @CMX_NN>)
-    // CHECK-SAME:                outputs([[CONV_CMX_OUTBUF]] as [[ARG6:%.+]]: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                    -> !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN,
-    // CHECK-SAME:                        {mode = "OVERLAPPED",
-    // CHECK-SAME:                         num_tiles = [1, 1, 2, 1],
-    // CHECK-SAME:                         kernel = [3, 3],
-    // CHECK-SAME:                         pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
-    // CHECK-SAME:                         strides = [1, 1],
-    // CHECK-SAME:                         num_clusters = 2 : i64,
-    // CHECK-SAME:                         uniform_distributed_segments}> {
-    // CHECK: [[INNER_CONV:%.+]] = VPUIP.NCEClusterTask
-    // CHECK-SAME:                        {kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
-    // CHECK-SAME:                         kernel_size = [3, 3],
-    // CHECK-SAME:                         kernel_strides = [1, 1],
-    // CHECK-SAME:                         minimumHardwareExecutionCost = 4294967300 : i64,
-    // CHECK-SAME:                         task_type = #VPUIP.nce_task_type<CONV>}
-    // CHECK-SAME:                input([[ARG3]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                weights([[ARG4]] : memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                weight_table([[ARG5]] : memref<64x1x1x4xsi32, @CMX_NN>)
-    // CHECK-SAME:                parent_input([[ARG3]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                parent_output([[ARG6]] : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                outputs([[ARG6]] : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>) -> memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN> variants : {
-    // CHECK:                 DPUTask {cluster_id = 0 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>}
-    // CHECK:                 DPUTask {cluster_id = 1 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>}
-    // CHECK:               } PPE : {
-    // CHECK:                 PPETask {ppe = #VPU.PPEStub<>}
-    // CHECK:               }
-    // CHECK:             }
+    // CHECK:    [[CONV:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 4294967300 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK-SAME:     input(%arg0 : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:     weights(%arg1 : memref<64x64x3x3x!qElemType1, #NHWC, @CMX_NN>)
+    // CHECK-SAME:     weight_table(%arg2 : memref<64x1x1x4xsi32, @CMX_NN>)
+    // CHECK-SAME:     parent_input(%arg0 : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:     parent_output([[CONV_CMX_OUTBUF]] : !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [3, 3], pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>)
+    // CHECK-SAME:     outputs([[CONV_CMX_OUTBUF]] : !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [3, 3], pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>)
+    // CHECK:     ->  !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [3, 3], pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64, uniform_distributed_segments}> variants : {
+        // CHECK:     DPUTask {cluster_id = 0 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>}
+        // CHECK:     DPUTask {cluster_id = 1 : i64, inEnd = [127, 64, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>}
+    // CHECK:     } PPE : {
+        // CHECK:     PPETask {ppe = #VPU.PPEStub<>}
+    // CHECK:     }
 
     // CHECK: [[DDR_BUF:%.+]] = memref.alloc() : memref<1x64x128x128x!qElemType3, #NHWC>
-    // CHECK: [[CONV_COPY_OUT:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:                inputs([[CONV]] as [[ARG3:%.+]]: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                outputs([[DDR_BUF]] as [[ARG4:%.+]]: memref<1x64x128x128x!qElemType3, #NHWC>) -> memref<1x64x128x128x!qElemType3, #NHWC> {
-    // CHECK: [[INNER_COPY:%.+]] = VPUIP.Copy
-    // CHECK-SAME:                inputs([[ARG3]] : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                outputs([[ARG4]] : memref<1x64x128x128x!qElemType3, #NHWC>) -> memref<1x64x128x128x!qElemType3, #NHWC>
-    // CHECK:             }
+    // CHECK:    [[CONV_COPY_OUT:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[CONV]] : !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [3, 3], pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>)
+    // CHECK-SAME:     outputs([[DDR_BUF]] : memref<1x64x128x128x!qElemType3, #NHWC>)  ->  memref<1x64x128x128x!qElemType3, #NHWC>
 
     // CHECK: [[ELTWISE_CMX_INBUF:%.+]] = VPURT.AllocDistributed
     // CHECK-SAME:                    -> !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN,
@@ -176,47 +130,29 @@ func.func @InplaceEltwiseUnequalTensorSize(%activation: memref<1x64x128x128x!qEl
     // CHECK-SAME:                         strides = [1, 1],
     // CHECK-SAME:                         num_clusters = 2 : i64,
     // CHECK-SAME:                         uniform_distributed_segments}>
+    // CHECK:    [[ELTWISE_COPY_IN:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[CONV_COPY_OUT]] : memref<1x64x128x128x!qElemType3, #NHWC>)
+    // CHECK-SAME:     outputs([[ELTWISE_CMX_INBUF]] : !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [3, 3], pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>)  ->  !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [3, 3], pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
 
-    // CHECK: [[ELTWISE_COPY_IN:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:                inputs([[CONV_COPY_OUT]] as [[ARG3:%.+]]: memref<1x64x128x128x!qElemType3, #NHWC>)
-    // CHECK-SAME:                outputs([[ELTWISE_CMX_INBUF]] as [[ARG4:%.+]]: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                    -> !VPUIP.DistributedBuffer<1x64x128x128x!qElemType3, #NHWC, @CMX_NN,
-    // CHECK-SAME:                        {mode = "OVERLAPPED",
-    // CHECK-SAME:                         num_tiles = [1, 1, 2, 1],
-    // CHECK-SAME:                         kernel = [3, 3],
-    // CHECK-SAME:                         pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
-    // CHECK-SAME:                         strides = [1, 1],
-    // CHECK-SAME:                         num_clusters = 2 : i64,
-    // CHECK-SAME:                         uniform_distributed_segments}> {
-    // CHECK: [[INNER_COPY2:%.+]] = VPUIP.Copy
-    // CHECK-SAME:                inputs([[ARG3]] : memref<1x64x128x128x!qElemType3, #NHWC>)
-    // CHECK-SAME:                outputs([[ARG4]] : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>) -> memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>
-    // CHECK:             }
-
-    // CHECK: [[ELTWISE:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:                inputs([[ELTWISE_COPY_IN]] as [[ARG3:%.+]]: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                       [[ELTWISE_COPY_IN]] as [[ARG4:%.+]]: memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                outputs([[VIEW]] as [[ARG5:%.+]]: memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                    -> !VPUIP.DistributedBuffer<1x64x128x128x!qElemType2, #NHWC, @CMX_NN,
+    // CHECK: [[ELTWISE:%.+]] = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 4294967300 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK-SAME:                input([[ELTWISE_COPY_IN]]
+    // CHECK-SAME:                weights([[ELTWISE_COPY_IN]]
+    // CHECK-SAME:                parent_input([[ELTWISE_COPY_IN]]
+    // CHECK-SAME:                parent_output([[VIEW]]
+    // CHECK-SAME:                outputs([[VIEW]]
+    // CHECK-SAME:                -> !VPUIP.DistributedBuffer<1x64x128x128x!qElemType2, #NHWC, @CMX_NN,
     // CHECK-SAME:                        {mode = "OVERLAPPED",
     // CHECK-SAME:                         num_tiles = [1, 1, 2, 1],
     // CHECK-SAME:                         kernel = [1, 1],
     // CHECK-SAME:                         pads = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                         strides = [1, 1],
     // CHECK-SAME:                         num_clusters = 2 : i64,
-    // CHECK-SAME:                         uniform_distributed_segments}> {
-    // CHECK: [[INNER_OP:%.+]] = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 4294967300 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
-    // CHECK-SAME:                input([[ARG3]] : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                weights([[ARG4]] : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                parent_input([[ARG3]] : memref<1x64x128x128x!qElemType3, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                parent_output([[ARG5]] : memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                outputs([[ARG5]] : memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN>) -> memref<1x64x128x128x!qElemType2, #NHWC, @CMX_NN> variants : {
+    // CHECK-SAME:                         uniform_distributed_segments}> variants : {
     // CHECK:                 DPUTask {cluster_id = 0 : i64, inEnd = [127, 63, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
     // CHECK:                 DPUTask {cluster_id = 1 : i64, inEnd = [127, 64, 63], inStart = [0, 1, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 63, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
     // CHECK:                 } PPE : {
     // CHECK:                   PPETask {ppe = #VPU.PPEStub<>}
     // CHECK:                 }
-    // CHECK:             }
 
     // CHECK: return [[ELTWISE]] : !VPUIP.DistributedBuffer<1x64x128x128x!qElemType2, #NHWC, @CMX_NN,
     // CHECK-SAME:                        {mode = "OVERLAPPED",

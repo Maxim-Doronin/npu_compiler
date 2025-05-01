@@ -136,7 +136,7 @@ func.func @Conv2dWithReluAndClamp(%arg0: tensor<4x512x1x1xf16>) -> tensor<4x2048
     // CHECK-SAME:   dilations = [1, 1],
     // CHECK-SAME:   pads_begin = [0, 0],
     // CHECK-SAME:   pads_end = [0, 0],
-    // CHECK-SAME:   post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>,
+    // CHECK-SAME:   post_op = #IE.Relu<>,
     // CHECK-SAME:   strides = [1, 1]
     // CHECK-SAME:   } : tensor<4x512x1x1xf16>, tensor<2048x512x1x1xf16> -> tensor<4x2048x1x1xf16>
     // CHECK:        return [[CONV]] : tensor<4x2048x1x1xf16>

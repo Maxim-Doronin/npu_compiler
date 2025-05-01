@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 !MemRef = memref<1x3x62x62xf16>
 
 module @ChainCalls {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x3x62x62xf16>
@@ -60,7 +60,7 @@ module @ChainCalls {
 
 !MemRef = memref<1x1x2x64xf16>
 module @SwKernelsChainCalls {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x1x2x64xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x1x2x64xf16>
@@ -145,7 +145,7 @@ module @SwKernelsChainCalls {
 
 !MemRef = memref<1x1x2x64xf16>
 module @SwKernelsIndependentCalls {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x1x2x64xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x1x2x64xf16>
