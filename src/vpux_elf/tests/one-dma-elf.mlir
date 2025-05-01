@@ -5,7 +5,7 @@
 
 
 module @OneDMAWithoutAttributes {
-IE.CNNNetwork entryPoint : @main inputsInfo :  {
+net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "inputCNN" : tensor<1x1x1x1000xf16>
 } outputsInfo :  {
     DataInfo "outputCNN" : tensor<1x1x1x1000xf16>
