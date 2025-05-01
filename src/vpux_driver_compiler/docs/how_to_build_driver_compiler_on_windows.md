@@ -15,7 +15,6 @@ Before you start to build Driver Compiler targets, please ensure that you have i
     - Python 3.9 - 3.12
     - Git for Windows (requires installing `git lfs`)
     - Ninja for installation (optional)
-
 Before you start building, please refer to the notes to avoid potential build issue.
 
 ## Using Cmake Options
@@ -43,7 +42,7 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
     git submodule update --init --recursive
 
     cd C:\Users\Local_Admin\workspace (Just an example, you should use your own path.)
-    git clone https://github.com/openvinotoolkit/npu_compiler.git
+    git clone https://github.com/openvinotoolkit/npu_compiler
     cd npu_compiler
     git checkout -b master origin/master (Just an example, you could use your own branch/tag/commit.)
     git submodule update --init --recursive
@@ -115,6 +114,8 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
     cmake --build . --config Release --target npu_driver_compiler compilerTest profilingTest vpuxCompilerL0Test loaderTest -j8
     ```
     </details>
+
+    > Notice: If the commit is old than `d0719b79c5847` (Aug 28, 2024), build without the option `-D CMAKE_TOOLCHAIN_FILE=%OPENVINO_HOME%\cmake\toolchains\onecoreuap.toolchain.cmake` alse can pass. 
 
     2.2 Build instructions notes:
 
@@ -231,7 +232,8 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
     If you wish to build with system TBB, you need install TBB in your local system first and then use `-DENABLE_SYSTEM_TBB=ON` option to instead of `-DENABLE_SYSTEM_TBB=OFF` option.
 
     If you wish to build with a specific version of TBB, you can download it from [oneTBB Project] and unzip its release package. Then use the `-DENABLE_SYSTEM_TBB=OFF -DTBBROOT=C:\Users\Local_Admin\workspace\path\to\downloaded\tbb` option to build.
-
+    
+    The version of TBB download by [OpenVINO Project] is 2021.2.5 and you can find the version info in this [file](https://github.com/openvinotoolkit/openvino/blob/master/cmake/dependencies.cmake#L105) in [OpenVINO Project]. If you would like to build TBB on your own, please refer to [INSTALL.md](https://github.com/oneapi-src/oneTBB/blob/master/INSTALL.md#build-onetbb) in [oneTBB Project]
     </details>
 
     <details>
@@ -270,6 +272,5 @@ To use cmake presets to build, please see
 
 Driver compiler build is a static build, to get a static build of [NPU-Plugin Project] repo, please see
  * [how to build static](../../../guides/how-to-build-static.md).
-
 [OpenVINO Project]: https://github.com/openvinotoolkit/openvino
 [NPU-Plugin Project]: https://github.com/openvinotoolkit/npu_compiler

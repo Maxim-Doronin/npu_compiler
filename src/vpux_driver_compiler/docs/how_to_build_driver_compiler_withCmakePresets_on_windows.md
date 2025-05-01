@@ -46,7 +46,7 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX(
         git submodule update --init --recursive
 
         cd C:\workspace (Just an example, you could use your own branch/tag/commit.)
-        git clone https://github.com/openvinotoolkit/npu_compiler.git
+        git clone https://github.com/openvinotoolkit/npu_compiler
         cd npu_compiler
         git checkout -b master origin/master (Just an example, you could use your own branch/tag/commit.)
         git submodule update --init --recursive
@@ -130,7 +130,8 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX(
             "value": "C:\Users\Local_Admin\workspace\path\to\downloaded\tbb"
         }
     ```
-
+    
+    The version of TBB download by [OpenVINO Project] is 2021.2.5 and you can find the version info in this [file](https://github.com/openvinotoolkit/openvino/blob/master/cmake/dependencies.cmake#L105) in [OpenVINO Project]. If you would like to build TBB on your own, please refer to [INSTALL.md](https://github.com/oneapi-src/oneTBB/blob/master/INSTALL.md#build-onetbb) in [oneTBB Project]
     </details>
 
     <details>

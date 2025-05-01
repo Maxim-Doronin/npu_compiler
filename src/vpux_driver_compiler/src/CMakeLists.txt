@@ -1,11 +1,11 @@
 #
-# Copyright (C) 2023 Intel Corporation.
+# Copyright (C) 2023-2025 Intel Corporation.
 # SPDX-License-Identifier: Apache 2.0
 #
 
 if(ENABLE_NPU_MONO)
     if (NOT TARGET VPUXLoader)
-        message(FATAL_ERROR "elf/vpux_elf/VPUXLoader target must exist since ENABLE_NPU_MONO is ON")
+        message(FATAL_ERROR "graphFile-schema/vpux_elf/VPUXLoader target must exist since ENABLE_NPU_MONO is ON")
     endif()
 else()
     add_subdirectory(loader)

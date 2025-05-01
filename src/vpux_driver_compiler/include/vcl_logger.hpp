@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,7 +11,7 @@
 #pragma once
 
 #include "npu_driver_compiler.h"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mutex>
 
@@ -59,8 +59,6 @@ public:
             } else if (log != nullptr && *size == localLogSize + 1) {
                 /// Copy local log content if the pointer is valid
                 memcpy(log, localLog, localLogSize + 1);
-                /// Clear current error msg
-                _log = "";
             } else {
                 Logger::error("Invalid value of size to get log!");
                 return VCL_RESULT_ERROR_INVALID_ARGUMENT;
@@ -83,7 +81,7 @@ public:
             }
             _lock.lock();
             // Show new log in next line
-            _log.append(log + "\n");
+            _log.append(formatv("[{0}] {1}\n", name(), log));
             _lock.unlock();
         } else {
             /// Use terminal to process error message, output to terminal based on log level

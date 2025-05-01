@@ -40,7 +40,7 @@ Here provides a default pre-configured CMake presets for users named: "npuCidRel
         git submodule update --init --recursive
 
         cd /home/useraccount/workspace (Just an example, you could use your own branch/tag/commit.)
-        git clone https://github.com/openvinotoolkit/npu_compiler.git
+        git clone https://github.com/openvinotoolkit/npu_compiler
         cd npu_compiler
         git checkout -b master origin/master (Just an example, you could use your own branch/tag/commit.)
         git submodule update --init --recursive
@@ -124,7 +124,8 @@ Here provides a default pre-configured CMake presets for users named: "npuCidRel
             "value": "/home/username/path/to/downloaded/tbb"
         }
     ```
-
+    
+    The version of TBB downloaded by [OpenVINO Project] is 2021.13.0, and you can find the version information in the [corresponding file](https://github.com/openvinotoolkit/openvino/blob/master/cmake/dependencies.cmake#L120) within [OpenVINO Project]. If you would like to build TBB on your own, please refer to [INSTALL.md](https://github.com/oneapi-src/oneTBB/blob/master/INSTALL.md#build-onetbb) in [oneTBB Project]
     </details>
 
     <details>

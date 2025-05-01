@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -104,6 +104,32 @@ public:
      * @return vcl_result_t
      */
     vcl_result_t queryNetwork(const BuildInfo& buildInfo, VPUXQueryNetworkL0* pQueryNetwork);
+
+    /**
+     * @brief Return the size of the compiler supported options list (string) in the provided buffer
+     *
+     * @param stringSize where to store the size of the string
+     * @return vcl_result_t
+     */
+    vcl_result_t getSupportedOptionsSize(uint64_t* stringSize);
+
+    /**
+     * @brief Retreive a list of configurable options the compiler supports
+     *
+     * @param buffer The buffer to store serialized string in.
+     * @param size The size of buffer, need to be same with result of getSupportedOptionsSize().
+     * @return vcl_result_t
+     */
+    vcl_result_t getSupportedOptions(char* buffer, uint64_t size);
+
+    /**
+     * @brief Verify if a compiler configuration option (if value=nullptr) or option-value pair is supported
+     *
+     * @param option String containing the option's name
+     * @param vlaue String containing the option value to be checked. If null, we only check if the option is supported
+     * @return bool true/false
+     */
+    bool isOptionValueSupported(const char* option, const char* value);
 
 private:
     std::shared_ptr<intel_npu::OptionsDesc> _options;  ///< The default compilation configs

@@ -38,7 +38,7 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
 
 
     cd /home/useraccount/workspace (Just an example, you should use your own path.)
-    git clone https://github.com/openvinotoolkit/npu_compiler.git
+    git clone https://github.com/openvinotoolkit/npu_compiler
     cd npu_compiler
     git checkout -b master origin/master (Just an example, you could use your own branch/tag/commit.)
     git submodule update --init --recursive
@@ -225,7 +225,8 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
     If you wish to build with system TBB, you need install TBB in your local system first and then use `-DENABLE_SYSTEM_TBB=ON` option to instead of `-DENABLE_SYSTEM_TBB=OFF` option.
 
     If you wish to build with a specific version of TBB, you can download it from [oneTBB Project] and unzip its release package. Then use the `-DENABLE_SYSTEM_TBB=OFF -DTBBROOT=/home/username/path/to/downloaded/tbb` option to build.
-
+    
+    The version of TBB download by [OpenVINO Project] is 2021.13.0 and you can find the version info in this [file](https://github.com/openvinotoolkit/openvino/blob/master/cmake/dependencies.cmake#L120) in [OpenVINO Project]. If you would like to build TBB on your own, please refer to [INSTALL.md](https://github.com/oneapi-src/oneTBB/blob/master/INSTALL.md#build-onetbb) in [oneTBB Project]
     </details>
 
     <details>
@@ -265,7 +266,6 @@ To use cmake presets to build, please see
 
 Driver compiler build is a static build, to get a static build of [NPU-Plugin Project] repo, please see
  * [how to build static](../../../guides/how-to-build-static.md).
-
 [OpenVINO Project]: https://github.com/openvinotoolkit/openvino
 [NPU-Plugin Project]: https://github.com/openvinotoolkit/npu_compiler
 [oneTBB Project]: https://github.com/oneapi-src/oneTBB
