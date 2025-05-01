@@ -1,0 +1,121 @@
+[DEBUG] [vpux-compiler] Start Pass StaticAllocation on Operation loc(fused<{name = "main", type = "Func"}>["main"])
+[TRACE] [memory-usage-info]   Buffer size to allocate      4096 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 0 B
+[TRACE] [memory-usage-info]   New max allocated size for buffer '%alloc_1 = memref.alloc() : memref<1024x1xsi32, @DDR>'
+[TRACE] [memory-usage-info]   Max allocated size 4096 B
+[TRACE] [memory-usage-info]   DDR used memory    4096 100.00%
+[TRACE] [memory-usage-info]   DDR free memory    0 0.00%
+[TRACE] [memory-usage-info]   Buffer size to allocate      4096 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 0 B
+[TRACE] [memory-usage-info]   New max allocated size for buffer '%alloc_2 = memref.alloc() : memref<1024x1xsi32, @DDR>'
+[TRACE] [memory-usage-info]   Max allocated size 8192 B
+[TRACE] [memory-usage-info]   DDR used memory    8192 100.00%
+[TRACE] [memory-usage-info]   DDR free memory    0 0.00%
+[TRACE] [memory-usage-info]   Free buffer of size 4096 B
+[TRACE] [memory-usage-info]   Free buffer of size 4096 B
+[TRACE] [memory-usage-info]   Buffer size to allocate      3670016 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 8192 B
+[TRACE] [memory-usage-info]   New max allocated size for buffer '%alloc_3 = memref.alloc() : memref<1024x1792xf16, @DDR>'
+[TRACE] [memory-usage-info]   Max allocated size 3670016 B
+[TRACE] [memory-usage-info]   DDR used memory    3670016 100.00%
+[TRACE] [memory-usage-info]   DDR free memory    0 0.00%
+[TRACE] [memory-usage-info]   Buffer size to allocate      7340032 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 0 B
+[TRACE] [memory-usage-info]   New max allocated size for buffer '%alloc_4 = memref.alloc() : memref<1x1024x3584xf16, @DDR>'
+[TRACE] [memory-usage-info]   Max allocated size 11010048 B
+[TRACE] [memory-usage-info]   DDR used memory    11010048 100.00%
+[TRACE] [memory-usage-info]   DDR free memory    0 0.00%
+[TRACE] [memory-usage-info]   Buffer size to allocate      3670016 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 0 B
+[TRACE] [memory-usage-info]   New max allocated size for buffer '%alloc_5 = memref.alloc() : memref<1024x1792xf16, @DDR>'
+[TRACE] [memory-usage-info]   Increased allocation size due to fragmentation!
+[TRACE] [memory-usage-info]   Max allocated size 14680064 B
+[TRACE] [memory-usage-info]   DDR used memory    14680064 100.00%
+[TRACE] [memory-usage-info]   DDR free memory    0 0.00%
+[TRACE] [memory-usage-info]   Free buffer of size 3670016 B
+[TRACE] [memory-usage-info]   Free buffer of size 3670016 B
+[TRACE] [memory-usage-info]   Buffer size to allocate      7340032 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 7340032 B
+[TRACE] [memory-usage-info]   New max allocated size for buffer '%alloc_6 = memref.alloc() : memref<1x1x1024x3584xf16, @DDR>'
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    14680064 80.00%
+[TRACE] [memory-usage-info]   DDR free memory    3670016 20.00%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 3670016 B
+[TRACE] [memory-usage-info]   Allocated size 262144 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    14942208 81.43%
+[TRACE] [memory-usage-info]   DDR free memory    3407872 18.57%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 3407872 B
+[TRACE] [memory-usage-info]   Allocated size 524288 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    15204352 82.86%
+[TRACE] [memory-usage-info]   DDR free memory    3145728 17.14%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 3145728 B
+[TRACE] [memory-usage-info]   Allocated size 786432 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    15466496 84.29%
+[TRACE] [memory-usage-info]   DDR free memory    2883584 15.71%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 2883584 B
+[TRACE] [memory-usage-info]   Allocated size 1048576 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    15728640 85.71%
+[TRACE] [memory-usage-info]   DDR free memory    2621440 14.29%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 2621440 B
+[TRACE] [memory-usage-info]   Allocated size 1310720 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    15990784 87.14%
+[TRACE] [memory-usage-info]   DDR free memory    2359296 12.86%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 2359296 B
+[TRACE] [memory-usage-info]   Allocated size 1572864 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    16252928 88.57%
+[TRACE] [memory-usage-info]   DDR free memory    2097152 11.43%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 2097152 B
+[TRACE] [memory-usage-info]   Allocated size 1835008 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    16515072 90.00%
+[TRACE] [memory-usage-info]   DDR free memory    1835008 10.00%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 1835008 B
+[TRACE] [memory-usage-info]   Allocated size 2097152 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    16777216 91.43%
+[TRACE] [memory-usage-info]   DDR free memory    1572864 8.57%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 1572864 B
+[TRACE] [memory-usage-info]   Allocated size 2359296 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    17039360 92.86%
+[TRACE] [memory-usage-info]   DDR free memory    1310720 7.14%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 1310720 B
+[TRACE] [memory-usage-info]   Allocated size 2621440 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    17301504 94.29%
+[TRACE] [memory-usage-info]   DDR free memory    1048576 5.71%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 1048576 B
+[TRACE] [memory-usage-info]   Allocated size 2883584 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    17563648 95.71%
+[TRACE] [memory-usage-info]   DDR free memory    786432 4.29%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 786432 B
+[TRACE] [memory-usage-info]   Allocated size 3145728 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    17825792 97.14%
+[TRACE] [memory-usage-info]   DDR free memory    524288 2.86%
+[TRACE] [memory-usage-info]   Buffer size to allocate      262144 B
+[TRACE] [memory-usage-info]   DDR free memory before alloc 524288 B
+[TRACE] [memory-usage-info]   Allocated size 3407872 B
+[TRACE] [memory-usage-info]   Max allocated size 18350080 B
+[TRACE] [memory-usage-info]   DDR used memory    18087936 98.57%
+[TRACE] [memory-usage-info]   DDR free memory    262144 1.43%
+[DEBUG] [vpux-compiler] End Pass StaticAllocation on Operation loc(fused<{name = "main", type = "Func"}>["main"])

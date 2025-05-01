@@ -26,5 +26,5 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJECT_BINARY_DIR}/src/vpux_compiler/tblgen)
 target_link_libraries(${TARGET_NAME} PRIVATE
     ${llvm_libs}
-    npu_core_utils
+    npu_llvm_utils
     MLIRIR)

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022 Intel Corporation.
+# Copyright (C) 2022-2025 Intel Corporation.
 # SPDX-License-Identifier: Apache 2.0
 #
 
@@ -16,5 +16,4 @@ add_tool_target(
          openvino::npu_al
          npu_elf
          npu_mlir_compiler_static
-         npu_translate_utils_static
 )

@@ -16,7 +16,6 @@ endif()
 add_subdirectory(profiling_parser)
 
 add_subdirectory(vpux-binutils)
-
 if (ENABLE_MLIR_COMPILER)
     add_subdirectory(npureg-tblgen)
 endif()

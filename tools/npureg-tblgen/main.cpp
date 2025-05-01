@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string_view>
 
+#include <llvm/ADT/SmallSet.h>
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
@@ -24,6 +25,7 @@
 // clang-format on
 
 #include "vpux/utils/core/format.hpp"
+#include "vpux/utils/core/error.hpp"
 
 enum ActionType { Generate };
 
@@ -69,7 +71,58 @@ auto getAs(const llvm::Record* record, std::string_view name) {
     }
 }
 
-using Records = std::unordered_map<std::string, std::pair<const llvm::Record*, llvm::SmallVector<std::string>>>;
+// SmallInorderSet behaves like a set
+// but traverses elements in order of insertion
+struct SmallInorderSet {
+    llvm::SmallSet<llvm::StringRef, 8> values;
+    llvm::SmallVector<llvm::StringRef, 8> order;
+
+    auto contains(llvm::StringRef value) const {
+        return values.contains(value);
+    }
+
+    auto empty() const {
+        return values.empty();
+    }
+
+    auto size() const {
+        return values.size();
+    }
+
+    auto insert(llvm::StringRef value) {
+        const auto [position, inserted] = values.insert(value);
+        if (inserted) {
+            order.push_back(value);
+        }
+        return inserted;
+    }
+
+    auto begin() const {
+        return order.begin();
+    }
+
+    auto end() const {
+        return order.end();
+    }
+};
+
+struct Node {
+    Node() = default;
+    Node(const llvm::Record* record): record(record) {
+    }
+
+    const llvm::Record* record = nullptr;
+    // Use SmallInorderSet for parents and children
+    // to quickly detect duplicated entries
+    // and have traversal in order of insertion
+    // it's important as affects order of template parameters
+    // and eventually order in which descriptors are printed
+    // and parsed
+    SmallInorderSet parents;
+    SmallInorderSet children;
+};
+
+using Records = llvm::DenseMap<llvm::StringRef, Node>;
 
 // until C++20 string literals are unavailable as template arguments
 // generate a workaround to pass strings (names) as template arguments
@@ -138,16 +191,15 @@ llvm::raw_ostream& emitDescriptorsDefinitions(llvm::raw_ostream& stream, const R
     constexpr llvm::StringLiteral descriptorTemplate =
             "struct {0} : ::vpux::VPURegMapped::detail::DescriptorTemplate<{0}, "
             "::vpux::{1}::detail::Descriptors::{0}Name, {2}> {{};\n";
-    for (const auto& [name, descriptorEntry] : descriptors) {
-        const auto [descriptor, parentsNames] = descriptorEntry;
-        assert(parentsNames.empty());
 
-        const auto registersListInit = llvm::dyn_cast<llvm::ListInit>(descriptor->getValue("_registers")->getValue());
+    for (const auto& [name, descriptor] : descriptors) {
+        VPUX_THROW_WHEN(!descriptor.parents.empty(), "Descriptor {0} shouldn't have any parents", name);
+        VPUX_THROW_WHEN(descriptor.children.empty(), "Descriptor {0} is empty", name);
+
         std::stringstream registersList;
-        for (size_t i = 0; i < registersListInit->getValues().size(); ++i) {
-            const auto registerName = llvm::dyn_cast<llvm::StringInit>(registersListInit->getElement(i));
-            registersList << "::vpux::" << platformTypeName << "::Registers::" << registerName->getAsUnquotedString();
-            if (i < registersListInit->getValues().size() - 1) {
+        for (const auto [index, registerName] : llvm::enumerate(descriptor.children)) {
+            registersList << "::vpux::" << platformTypeName << "::Registers::" << registerName.str();
+            if (index < descriptor.children.size() - 1) {
                 registersList << ", ";
             }
         }
@@ -162,37 +214,24 @@ llvm::raw_ostream& emitRegistersDefinitions(llvm::raw_ostream& stream, const Rec
     stream << "namespace vpux::" << platformTypeName << "::Registers {\n";
     constexpr llvm::StringLiteral registerTemplate =
             "struct {0} : "
-            "::vpux::VPURegMapped::detail::RegisterTemplate<::vpux::{1}::detail::Registers::{0}Name, "
-            "{2}, {3}, {4}, {5}> {{};\n";
+            "::vpux::VPURegMapped::detail::RegisterTemplate<{0}, ::vpux::{1}::detail::Registers::{0}Name, "
+            "{2}, {3}, {4}> {{};\n";
 
-    for (const auto& [name, registerEntry] : registers) {
-        const auto [reg, descriptorsNames] = registerEntry;
-        assert(!descriptorsNames.empty());
+    for (const auto& [name, reg] : registers) {
+        VPUX_THROW_WHEN(reg.parents.empty(), "Register {0} does not belong to any descriptor", name);
+        VPUX_THROW_WHEN(reg.children.empty(), "Register {0} is empty", name);
 
-        std::stringstream descriptorsList;
-        descriptorsList << "std::tuple<";
-        for (size_t i = 0; i < descriptorsNames.size(); ++i) {
-            descriptorsList << "::vpux::" << platformTypeName << "::Descriptors::" << descriptorsNames[i];
-            if (i < descriptorsNames.size() - 1) {
-                descriptorsList << ", ";
-            }
-        }
-        descriptorsList << '>';
-
-        const auto fieldsListInit = llvm::dyn_cast<llvm::ListInit>(reg->getValue("_fields")->getValue());
         std::stringstream fieldsList;
-        for (size_t i = 0; i < fieldsListInit->getValues().size(); ++i) {
-            const auto fieldName = llvm::dyn_cast<llvm::StringInit>(fieldsListInit->getElement(i));
-            fieldsList << "::vpux::" << platformTypeName << "::Fields::" << fieldName->getAsUnquotedString();
-            if (i < fieldsListInit->getValues().size() - 1) {
+        for (const auto [index, fieldName] : llvm::enumerate(reg.children)) {
+            fieldsList << "::vpux::" << platformTypeName << "::Fields::" << fieldName.str();
+            if (index < reg.children.size() - 1) {
                 fieldsList << ", ";
             }
         }
 
-        const auto offsetVal = getAs<llvm::IntInit>(reg, "_offset")->getValue();
-        const auto sizeVal = getAs<llvm::IntInit>(reg, "_size")->getValue();
-        vpux::printTo(stream, registerTemplate, name, platformTypeName, descriptorsList.str(), offsetVal, sizeVal,
-                      fieldsList.str());
+        const auto offsetVal = getAs<llvm::IntInit>(reg.record, "_offset")->getValue();
+        const auto sizeVal = getAs<llvm::IntInit>(reg.record, "_size")->getValue();
+        vpux::printTo(stream, registerTemplate, name, platformTypeName, offsetVal, sizeVal, fieldsList.str());
     }
     stream << "}  // namespace vpux::" << platformTypeName << "::Registers\n";
     return stream;
@@ -202,27 +241,27 @@ llvm::raw_ostream& emitFieldsDefinitions(llvm::raw_ostream& stream, const Record
                                          const std::string& platformTypeName) {
     stream << "namespace vpux::" << platformTypeName << "::Fields {\n";
     constexpr llvm::StringLiteral fieldTemplate =
-            "struct {0} : ::vpux::VPURegMapped::detail::FieldTemplate<::vpux::{1}::detail::Fields::{0}Name, "
+            "struct {0} : ::vpux::VPURegMapped::detail::FieldTemplate<{0}, ::vpux::{1}::detail::Fields::{0}Name, "
             "{2}, {3}, {4}, ::vpux::VPURegMapped::RegFieldDataType::{5}, {6}, {7}, {8}> "
             "{{};\n";
 
-    for (const auto& [name, fieldEntry] : fields) {
-        const auto [field, registersNames] = fieldEntry;
-        assert(!registersNames.empty());
+    for (const auto& [name, field] : fields) {
+        VPUX_THROW_WHEN(field.parents.empty(), "Field {0} does not belong to any register", name);
+        VPUX_THROW_WHEN(!field.children.empty(), "Field {0} shouldn't have any children", name);
 
-        const auto offsetVal = getAs<llvm::IntInit>(field, "_offset")->getValue();
-        const auto sizeVal = getAs<llvm::IntInit>(field, "_size")->getValue();
-        const auto typeVal = getAs<llvm::StringInit>(field, "_type")->getValue();
-        const auto versionVal = getAs<llvm::DefInit>(field, "_version")->getDef();
+        const auto offsetVal = getAs<llvm::IntInit>(field.record, "_offset")->getValue();
+        const auto sizeVal = getAs<llvm::IntInit>(field.record, "_size")->getValue();
+        const auto typeVal = getAs<llvm::StringInit>(field.record, "_type")->getValue();
+        const auto versionVal = getAs<llvm::DefInit>(field.record, "_version")->getDef();
         const auto major = getAs<llvm::IntInit>(versionVal, "major")->getValue();
         const auto minor = getAs<llvm::IntInit>(versionVal, "minor")->getValue();
         const auto patch = getAs<llvm::IntInit>(versionVal, "patch")->getValue();
 
         std::stringstream parentRegistersArgument;
         parentRegistersArgument << "std::tuple<";
-        for (size_t i = 0; i < registersNames.size(); ++i) {
-            parentRegistersArgument << "::vpux::" << platformTypeName << "::Registers::" << registersNames[i];
-            if (i < registersNames.size() - 1) {
+        for (const auto [index, parentName] : llvm::enumerate(field.parents)) {
+            parentRegistersArgument << "::vpux::" << platformTypeName << "::Registers::" << parentName.str();
+            if (index < field.parents.size() - 1) {
                 parentRegistersArgument << ", ";
             }
         }
@@ -244,34 +283,57 @@ llvm::Error generate(llvm::raw_ostream& stream, llvm::RecordKeeper& records, con
 
     Records fields;
     for (auto field : records.getAllDerivedDefinitionsIfDefined(platformTypeName + "_RegFieldWrapper")) {
-        fields[getAs<llvm::StringInit>(field, "_name")->getAsUnquotedString()] =
-                std::make_pair(field, llvm::SmallVector<std::string>{});
+        const auto fieldName = getAs<llvm::StringInit>(field, "_name")->getValue();
+        VPUX_THROW_WHEN(!fields.try_emplace(fieldName, field).second, "Field with name {0} is defined more than once",
+                        fieldName);
     }
 
     Records registers;
     for (auto reg : records.getAllDerivedDefinitionsIfDefined(platformTypeName + "_RegisterWrapper")) {
-        const auto registerName = getAs<llvm::StringInit>(reg, "_name")->getAsUnquotedString();
-        registers[registerName] = std::make_pair(reg, llvm::SmallVector<std::string>{});
+        auto registerName = getAs<llvm::StringInit>(reg, "_name")->getValue();
+        VPUX_THROW_WHEN(registers.contains(registerName), "Register with name {0} is defined more than once",
+                        registerName);
+        auto registerNode = Node{reg};
 
         const auto fieldsListInit = llvm::dyn_cast<llvm::ListInit>(reg->getValue("_fields")->getValue());
         for (auto field : fieldsListInit->getValues()) {
-            const auto fieldName = llvm::dyn_cast<llvm::StringInit>(field)->getAsUnquotedString();
-            assert(fields.count(fieldName) == 1);
-            fields[fieldName].second.push_back(registerName);
+            const auto fieldName = llvm::dyn_cast<llvm::StringInit>(field)->getValue();
+            VPUX_THROW_WHEN(!fields.contains(fieldName), "Register {0} contains unknown field {1}", registerName,
+                            fieldName);
+            VPUX_THROW_WHEN(registerNode.children.contains(fieldName), "Register {0} contains field {1} more than once",
+                            registerName, fieldName);
+            VPUX_THROW_WHEN(fields.at(fieldName).parents.contains(registerName),
+                            "Register {0} contains field {1} more than once", registerName, fieldName);
+
+            registerNode.children.insert(fieldName);
+            fields[fieldName].parents.insert(registerName);
         }
+
+        registers.try_emplace(std::move(registerName), std::move(registerNode));
     }
 
     Records descriptors;
     for (auto descriptor : records.getAllDerivedDefinitionsIfDefined(platformTypeName + "_RegMappedWrapper")) {
-        const auto descriptorName = getAs<llvm::StringInit>(descriptor, "_name")->getAsUnquotedString();
-        descriptors[descriptorName] = std::make_pair(descriptor, llvm::SmallVector<std::string>{});
+        auto descriptorName = getAs<llvm::StringInit>(descriptor, "_name")->getValue();
+        VPUX_THROW_WHEN(registers.contains(descriptorName), "Descriptor with name {0} is defined more than once",
+                        descriptorName);
+        auto descriptorNode = Node{descriptor};
 
         const auto registersListInit = llvm::dyn_cast<llvm::ListInit>(descriptor->getValue("_registers")->getValue());
         for (auto reg : registersListInit->getValues()) {
-            const auto registerName = llvm::dyn_cast<llvm::StringInit>(reg)->getAsUnquotedString();
-            assert(registers.count(registerName) == 1);
-            registers[registerName].second.push_back(descriptorName);
+            const auto registerName = llvm::dyn_cast<llvm::StringInit>(reg)->getValue();
+            VPUX_THROW_WHEN(!registers.contains(registerName), "Descriptor {0} contains unknown register {1}",
+                            descriptorName, registerName);
+            VPUX_THROW_WHEN(descriptorNode.children.contains(registerName),
+                            "Descriptor {0} contains register {1} more than once", descriptorName, registerName);
+            VPUX_THROW_WHEN(registers.at(registerName).parents.contains(descriptorName),
+                            "Descriptor {0} contains register {1} more than once", registerName, registerName);
+
+            descriptorNode.children.insert(registerName);
+            registers[registerName].parents.insert(descriptorName);
         }
+
+        descriptors.try_emplace(std::move(descriptorName), std::move(descriptorNode));
     }
 
     emitNameAsTemplateArgumentWorkAround(stream, fields, registers, descriptors, platformTypeName);

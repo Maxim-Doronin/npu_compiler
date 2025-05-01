@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
         // TODO: need to rework this unconditional replacement for dummy ops
         // there is an option for vpux-translate we can do it in the same way
         // Ticket: E#50937
-        auto registry = vpux::createDialectRegistry(vpux::DummyOpMode::ENABLED, /*enableExtraShapeBoundOps=*/true);
+        auto registry = vpux::createDialectRegistry(vpux::DummyOpMode::ENABLED);
 
         const auto hwSpecificRegistration = [&](vpux::StringRef helpHeader) {
             const auto archKind = vpux::parseArchKind(argc, argv, helpHeader);
