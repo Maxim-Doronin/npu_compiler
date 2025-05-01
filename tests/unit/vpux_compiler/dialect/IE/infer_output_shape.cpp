@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/init.hpp"
 
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Parser/Parser.h>
@@ -473,8 +475,8 @@ TEST_P(ReifyDimTests, ReifyDimTest) {
 
     auto order = DimsOrder::fromNumDims(rank);
     const auto desc = vpux::getTensorAttr(
-            order.toAffineMap(&context), vpux::IndexedSymbolAttr::get(&context, stringifyEnum(VPU::MemoryKind::CMX_NN)),
-            getIntArrayAttr(&context, params.bounds));
+            &context, order.toAffineMap(&context),
+            vpux::IndexedSymbolAttr::get(&context, stringifyEnum(VPU::MemoryKind::CMX_NN)), Bounds(params.bounds));
     auto inType = mlir::RankedTensorType::get(params.shape, builder.getF16Type(), desc);
 
     auto funcType = builder.getFunctionType({inType}, {});
@@ -495,8 +497,8 @@ TEST_P(ReifyDimTests, ReifyDimTest) {
             EXPECT_EQ(dimOp.getConstantIndex().value(), i);
         } else {
             EXPECT_TRUE(result.is<mlir::Attribute>());
-            EXPECT_TRUE(result.get<mlir::Attribute>().isa<mlir::IntegerAttr>());
-            EXPECT_EQ(result.get<mlir::Attribute>().cast<mlir::IntegerAttr>().getInt(), params.shape[i]);
+            EXPECT_TRUE(mlir::isa<mlir::IntegerAttr>(result.get<mlir::Attribute>()));
+            EXPECT_EQ(mlir::cast<mlir::IntegerAttr>(result.get<mlir::Attribute>()).getInt(), params.shape[i]);
         }
     }
     builder.create<mlir::func::ReturnOp>(loc);

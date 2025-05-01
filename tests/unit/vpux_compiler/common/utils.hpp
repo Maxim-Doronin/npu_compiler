@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -130,11 +130,11 @@ protected:
 
     template <class Field, class Register = std::tuple_element_t<0, typename Field::Registers>>
     auto testNegativeValue() {
-        if constexpr (Field::_type == vpux::VPURegMapped::RegFieldDataType::UINT) {
+        if constexpr (Field::TYPE == vpux::VPURegMapped::RegFieldDataType::UINT) {
             return 0ull;
         }
         const auto value = generateUnsignedTestValue<Field>();
-        if constexpr (Field::_type == vpux::VPURegMapped::RegFieldDataType::SINT) {
+        if constexpr (Field::TYPE == vpux::VPURegMapped::RegFieldDataType::SINT) {
             const auto signedValue = -1 * static_cast<int64_t>(value);
 
             actual.template write<Register, Field>(signedValue);
@@ -151,13 +151,13 @@ protected:
             // *** actualSignedValue - value read by the descriptor:
             //              0000000000000000000000000000000000000000000000000000000110000000 (= 0x180 = 384)
             // *** => replace the 0s from pos 9 -> pos 63 with 1s in order to obtain -128
-            actualSignedValue |= ~getBitsSet<Field::_size.count()>();
+            actualSignedValue |= ~getBitsSet<Field::SIZE.count()>();
             EXPECT_EQ(actualSignedValue, llvm::bit_cast<uint64_t>(signedValue));
 
             return llvm::bit_cast<uint64_t>(signedValue);
         } else {
             // set the sign bit
-            const auto negativeValue = value | (1ull << (Field::_size.count() - 1));
+            const auto negativeValue = value | (1ull << (Field::SIZE.count() - 1));
             writeValueToDescriptor<Field, Register>(negativeValue);
 
             const auto actualNegativeValue = actual.template read<Register, Field>();
@@ -188,10 +188,10 @@ private:
     // generates non-negative value that fits into range of the field
     template <class Field>
     static uint64_t generateUnsignedTestValue() {
-        if constexpr (Field::_type == vpux::VPURegMapped::RegFieldDataType::UINT) {
-            return generateRandom<Field::_size.count()>();
+        if constexpr (Field::TYPE == vpux::VPURegMapped::RegFieldDataType::UINT) {
+            return generateRandom<Field::SIZE.count()>();
         } else {
-            return generateRandom<Field::_size.count() - 1>();
+            return generateRandom<Field::SIZE.count() - 1>();
         }
     }
 
@@ -207,19 +207,19 @@ private:
 
     template <class Field, class Register = std::tuple_element_t<0, typename Field::Registers>>
     void writeValueToDescriptor(const uint64_t value) {
-        if constexpr (Field::_type == vpux::VPURegMapped::RegFieldDataType::UINT) {
+        if constexpr (Field::TYPE == vpux::VPURegMapped::RegFieldDataType::UINT) {
             actual.template write<Register, Field>(value);
-        } else if constexpr (Field::_type == vpux::VPURegMapped::RegFieldDataType::SINT) {
+        } else if constexpr (Field::TYPE == vpux::VPURegMapped::RegFieldDataType::SINT) {
             actual.template write<Register, Field>(static_cast<int64_t>(value));
-        } else if constexpr (Field::_type == vpux::VPURegMapped::RegFieldDataType::FP) {
-            if constexpr (Field::_size.count() == 64) {
+        } else if constexpr (Field::TYPE == vpux::VPURegMapped::RegFieldDataType::FP) {
+            if constexpr (Field::SIZE.count() == 64) {
                 actual.template write<Register, Field>(llvm::bit_cast<double>(value));
-            } else if constexpr (Field::_size.count() == 32) {
+            } else if constexpr (Field::SIZE.count() == 32) {
                 actual.template write<Register, Field>(llvm::bit_cast<float>(static_cast<uint32_t>(value)));
-            } else if constexpr (Field::_size.count() == 16) {
+            } else if constexpr (Field::SIZE.count() == 16) {
                 actual.template write<Register, Field>(vpux::type::float16::from_bits(static_cast<uint16_t>(value)));
             }
-        } else if constexpr (Field::_type == vpux::VPURegMapped::RegFieldDataType::BF) {
+        } else if constexpr (Field::TYPE == vpux::VPURegMapped::RegFieldDataType::BF) {
             actual.template write<Register, Field>(vpux::type::bfloat16::from_bits(static_cast<uint16_t>(value)));
         }
     }
@@ -233,7 +233,7 @@ private:
         reference.DescriptorMember = value << LeftShiftBitsCount;                                                  \
         ASSERT_TRUE(isContentEqual());                                                                             \
                                                                                                                    \
-        if constexpr (FieldType::_type != vpux::VPURegMapped::RegFieldDataType::UINT) {                            \
+        if constexpr (FieldType::TYPE != vpux::VPURegMapped::RegFieldDataType::UINT) {                             \
             const auto value = testNegativeValue<FieldType>();                                                     \
             reference.DescriptorMember = value;                                                                    \
             ASSERT_TRUE(isContentEqual());                                                                         \
@@ -249,7 +249,7 @@ private:
         reference.DescriptorMember = value << LeftShiftBitsCount;                                                  \
         ASSERT_TRUE(isContentEqual());                                                                             \
                                                                                                                    \
-        if constexpr (FieldType::_type != vpux::VPURegMapped::RegFieldDataType::UINT) {                            \
+        if constexpr (FieldType::TYPE != vpux::VPURegMapped::RegFieldDataType::UINT) {                             \
             const auto value = testNegativeValue<FieldType, ParentRegType>();                                      \
             reference.DescriptorMember = value;                                                                    \
             ASSERT_TRUE(isContentEqual());                                                                         \

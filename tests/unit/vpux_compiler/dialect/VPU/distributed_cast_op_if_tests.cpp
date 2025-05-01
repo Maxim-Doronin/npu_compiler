@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -93,7 +93,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, QuantizeCast) {
 
     // Distribution does not change between input and output for QuantizeCast
     auto getInputTypeAndTest = [&](VPU::DistributionInfo& distribution) {
-        const auto inputType = vpux::getTensorType(shape, inQuantType, dimsOrder, memSpace, nullptr);
+        const auto inputType = vpux::getTensorType(shape, inQuantType, dimsOrder, memSpace);
         const auto outputType = mlir::cast<NDTypeInterface>(inputType).changeElemType(outQuantType);
 
         testDistributedAttr(inputIR, inputType, distribution, outputType, distribution, &ctx);
@@ -146,14 +146,14 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, AffineReshape) {
 
     // Only DUPLICATED distribution is legal for AffineReshape
     auto getInputTypeAndTest = [&](VPU::DistributionInfo& inDistribution, VPU::DistributionInfo& outDistribution) {
-        const auto inputType = vpux::getTensorType(shape, fp16Type, inDimsOrder, memSpace, nullptr);
+        const auto inputType = vpux::getTensorType(shape, fp16Type, inDimsOrder, memSpace);
 
         if (outDistribution.getDistributionMode() == VPU::DistributionMode::NONE) {
             testDistributedAttr(inputIR, inputType, inDistribution, nullptr, outDistribution, &ctx);
             return;
         }
 
-        const auto outputType = vpux::getTensorType(newShape, fp16Type, outDimsOrder, memSpace, nullptr);
+        const auto outputType = vpux::getTensorType(newShape, fp16Type, outDimsOrder, memSpace);
         testDistributedAttr(inputIR, inputType, inDistribution, outputType, outDistribution, &ctx);
     };
 
@@ -230,14 +230,14 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, PermuteCast) {
     auto fp16Type = mlir::Float16Type::get(&ctx);
 
     auto getTypesAndTest = [&](VPU::DistributionInfo& inDistribution, VPU::DistributionInfo& outDistribution) {
-        const auto inputType = vpux::getTensorType(shape, fp16Type, inDimsOrder, memSpace, nullptr);
+        const auto inputType = vpux::getTensorType(shape, fp16Type, inDimsOrder, memSpace);
 
         if (outDistribution.getDistributionMode() == VPU::DistributionMode::NONE) {
             testDistributedAttr(inputIR, inputType, inDistribution, nullptr, outDistribution, &ctx);
             return;
         }
 
-        const auto outputType = vpux::getTensorType(newShape, fp16Type, outDimsOrder, memSpace, nullptr);
+        const auto outputType = vpux::getTensorType(newShape, fp16Type, outDimsOrder, memSpace);
 
         testDistributedAttr(inputIR, inputType, inDistribution, outputType, outDistribution, &ctx);
     };

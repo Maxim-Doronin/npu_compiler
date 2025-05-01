@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -58,7 +58,7 @@ VPUNN::CyclesInterfaceType getHWVPUNNCost(VPUNN::DPULayer& vpunnLayer, mlir::Mod
 
 VPUNN::CyclesInterfaceType getSimpleCost(mlir::Operation* op, mlir::ModuleOp module,
                                          VPU::MultiClusterStrategy strategy) {
-    auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     auto tileOp = IE::getTileExecutor(module);
 
     return outputType.getTotalAllocSize().count() /
@@ -70,7 +70,7 @@ VPUNN::CyclesInterfaceType getWeightsDMACost(VPU::NCEOpInterface nceOp, mlir::Mo
     if (weightsVal == nullptr) {
         return 0;
     }
-    const auto weightsType = weightsVal.getType().cast<NDTypeInterface>();
+    const auto weightsType = mlir::cast<vpux::NDTypeInterface>(weightsVal.getType());
     const auto archKind = VPU::getArch(module);
     const auto vpunnCostModel = VPU::createCostModel(archKind);
     const auto vpunnDevice = VPU::getVPUDeviceType(archKind);
@@ -90,7 +90,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DPU_LayerCost) {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
 
         return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
     }
@@ -177,8 +177,8 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, SWKernel_LayerCost) {
     auto vpuDevice = VPU::getVPUDeviceType(archKind);
 
     func->walk([&](VPU::SoftMaxOp kernelOp) {
-        const auto inputType = kernelOp.getInput().getType().cast<vpux::NDTypeInterface>();
-        const auto outputType = kernelOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(kernelOp.getInput().getType());
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(kernelOp.getOutput().getType());
 
         const auto inputTensor = VPU::getVPUTensor(inputType.getShape(), inputType.getElementType());
         ;
@@ -241,7 +241,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
         %2 = VPU.MaxPool(%1) {
             kernel_size = [3, 3],
             ppe = #VPU.PPEStub<>,
@@ -280,7 +280,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
         auto spillWriteCostPerTile = layerCost.getSpillingWriteCostsForAllTiles(convOp.getOperation(),
                                                                                 VPU::MultiClusterStrategy::Clustering);
         auto spillWriteCosts = std::accumulate(spillWriteCostPerTile.begin(), spillWriteCostPerTile.end(), 0);
-        auto spillRefCost = getDMACost(convOp.getResult().getType().cast<vpux::NDTypeInterface>(), vpuDevice,
+        auto spillRefCost = getDMACost(mlir::cast<vpux::NDTypeInterface>(convOp.getResult().getType()), vpuDevice,
                                        vpunnCostFunction, dmaPorts);
 
         EXPECT_EQ(spillWriteCosts, spillRefCost);
@@ -289,8 +289,8 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
     });
 
     func->walk([&](VPU::NCEMaxPoolOp poolOp) {
-        const auto spillRefCost = getDMACost(poolOp.getOperand(0).getType().cast<vpux::NDTypeInterface>(), vpuDevice,
-                                             vpunnCostFunction, dmaPorts);
+        const auto spillRefCost = getDMACost(mlir::cast<vpux::NDTypeInterface>(poolOp.getOperand(0).getType()),
+                                             vpuDevice, vpunnCostFunction, dmaPorts);
         const auto findOperand = [](mlir::Value operand) {
             return operand.getDefiningOp() != nullptr;
         };

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -66,7 +66,7 @@ TEST_P(DMAReductionTest, GetParams) {
     const auto memSpace = IndexedSymbolAttr::get(&ctx, DDR_NAME);
     const auto memrefType = mlir::MemRefType::get(shape.raw(), dTypeResolution(elementType), layout, memSpace);
 
-    const auto ndType = memrefType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
 
     const auto reducedDimsStrides = reduceDimsForDma(ndType);
     EXPECT_EQ(reducedDimsStrides.dims, expectedReducedDims);
@@ -285,7 +285,7 @@ TEST_P(DMAReductionTestExpectFail, GetParams) {
     const auto memSpace = IndexedSymbolAttr::get(&ctx, DDR_NAME);
     const auto memrefType = mlir::MemRefType::get(shape.raw(), dTypeResolution(elementType), layout, memSpace);
 
-    const auto ndType = memrefType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
 
     EXPECT_ANY_THROW(reduceDimsForDma(ndType));
 }

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_in_background.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
@@ -12,7 +12,6 @@
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
-#include "vpux/compiler/utils/loop.hpp"
 #include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/range.hpp"
 
@@ -34,8 +33,6 @@
 
 #include <cassert>
 #include <memory>
-#include <numeric>
-#include <sstream>
 
 using namespace vpux;
 
@@ -162,6 +159,14 @@ TEST_F(MLIR_ConstContentAttrTest, FromDenseElementsAttr) {
     for (size_t i = 0; i < contentVals.size(); ++i) {
         EXPECT_EQ(contentVals[i], vals[i]);
     }
+
+    std::vector<float> readVals;
+    content.read([&](auto values) {
+        for (auto x : values) {
+            readVals.push_back(static_cast<float>(x));
+        }
+    });
+    EXPECT_EQ(readVals, vals);
 }
 
 TEST_F(MLIR_ConstContentAttrTest, FromIRParsing) {
@@ -212,6 +217,9 @@ TEST_F(MLIR_ConstContentAttrTest, FromEmptyDenseElementsAttr) {
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
     ASSERT_TRUE(content.getValues<float>().empty());
+    content.read([](auto values) {
+        ASSERT_TRUE(values.empty());
+    });
 }
 
 TEST_F(MLIR_ConstContentAttrTest, FromSplatDenseElementsAttr) {
@@ -237,6 +245,15 @@ TEST_F(MLIR_ConstContentAttrTest, FromSplatDenseElementsAttr) {
     for (size_t i = 0; i < contentVals.size(); ++i) {
         EXPECT_EQ(contentVals[i], splatVal);
     }
+
+    std::vector<float> readVals;
+    content.read([&](auto values) {
+        for (auto x : values) {
+            readVals.push_back(static_cast<float>(x));
+        }
+    });
+    EXPECT_EQ(readVals.size(), 1);
+    EXPECT_EQ(readVals[0], splatVal);
 }
 
 namespace {
@@ -400,6 +417,42 @@ TEST_F(MLIR_ConstContentAttrTest, ExpositionOnlyDenseResourceDuplicate) {
 
     const auto attrCopy = attr;
     ASSERT_EQ(attrCopy.getRawHandle().getKey(), attr.getRawHandle().getKey());
+}
+
+TEST_F(MLIR_ConstContentAttrTest, ReadAndConvertInCpp) {
+    const auto baseType = mlir::RankedTensorType::get({1, 2, 3, 4}, getSInt64Type(&ctx));
+
+    const auto vals = generateValues<int64_t>(baseType.getNumElements());
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
+    ASSERT_NE(static_cast<const void*>(baseAttr.getRawData().data()), static_cast<const void*>(vals.data()))
+            << "Local data has to be copied inside DenseElementsAttr";
+
+    const auto contentAttr = Const::ContentAttr::get(baseAttr);
+    ASSERT_NE(contentAttr, nullptr);
+    EXPECT_EQ(contentAttr.getType(), baseType);
+
+    const auto content = contentAttr.fold();
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_FALSE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    std::vector<int16_t> convertedVals;
+    content.read(getSInt16Type(&ctx), [&](auto values, auto dummy) {
+        if constexpr (!std::is_same_v<ArrayRef<int64_t>, decltype(values)>) {
+            GTEST_FAIL() << "Wrong type dispatch on internal type";
+        }
+
+        using cast_type = decltype(dummy);
+        if constexpr (!std::is_same_v<int16_t, cast_type>) {
+            GTEST_FAIL() << "Wrong type dispatch on other type";
+        }
+
+        std::transform(values.begin(), values.end(), std::back_inserter(convertedVals), [](int64_t value) -> cast_type {
+            return static_cast<cast_type>(value);
+        });
+    });
+    const auto expected = generateValues<int16_t>(baseType.getNumElements());
+    EXPECT_EQ(expected, convertedVals);
 }
 
 TEST_F(MLIR_ConstContentAttrTest, ConvertStorageElemType) {
@@ -1161,6 +1214,112 @@ TEST_F(MLIR_ConstContentAttrTest, PadPerAxisQuant) {
     }
 }
 
+TEST_F(MLIR_ConstContentAttrTest, PadUniformQuantileI4) {
+    ctx.loadDialect<mlir::quant::QuantizationDialect>();
+
+    const int64_t OC = 1;
+    const int64_t IC = 1;
+    const int64_t IH = 2;
+    const int64_t IW = 8;
+    const auto baseType = mlir::RankedTensorType::get({OC, IC, IH, IW}, getSInt8Type(&ctx));
+    const auto vals = std::vector<int8_t>{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
+
+    Const::ContentSetup baseContentAttrSetup(baseType);
+
+    const double scale = 1.0;
+    const int8_t zeroPoint = 0;
+    const int64_t storageTypeMin = -8;
+    const int64_t storageTypeMax = 7;
+
+    std::vector<double> quantileLUT = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+                                       8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
+    const auto quantileType = mlir::quant::QuantileQuantizedType::get(
+            mlir::quant::QuantizationFlags::Signed, getSInt8Type(&ctx), getUInt4Type(&ctx),
+            mlir::Float32Type::get(&ctx), quantileLUT, scale, zeroPoint, storageTypeMin, storageTypeMax);
+    auto quantContentAttrSetup = baseContentAttrSetup.castElemType(quantileType);
+
+    const int64_t PC = 0;
+    const int64_t PH = 2;
+    const int64_t PW = 0;
+
+    auto contentAttrSetup = quantContentAttrSetup.padWithZero({0, PC, PH, PW}, {0, PC, PH, PW});
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
+    const auto content = contentAttr.fold();
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_FALSE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    const auto contentVals = content.getValues<int32_t>();
+    EXPECT_GT(contentVals.size(), vals.size());
+
+    for (int64_t oc = 0; oc < OC; ++oc) {
+        checkPaddedBuffer<int8_t>(content, vals, {IC, IH, IW}, {PC, PH, PW}, zeroPoint,
+                                  oc * (IC + 2 * PC) * (IW + 2 * PW) * (IH + 2 * PH), oc * IC * IW * IH);
+    }
+}
+
+TEST_F(MLIR_ConstContentAttrTest, PadPerAxisQuantileI4) {
+    ctx.loadDialect<mlir::quant::QuantizationDialect>();
+
+    const int64_t OC = 1;
+    const int64_t IC = 1;
+    const int64_t IH = 2;
+    const int64_t IW = 8;
+    const auto baseType = mlir::RankedTensorType::get({OC, IC, IH, IW}, getSInt8Type(&ctx));
+    const auto vals = std::vector<int8_t>{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
+
+    Const::ContentSetup baseContentAttrSetup(baseType);
+
+    const auto zp = 0;
+    std::vector<double> scales(1, 1);
+    std::vector<int64_t> zeroPoints{zp};
+
+    const int64_t storageTypeMin = -8;
+    const int64_t storageTypeMax = 7;
+
+    std::vector<double> quantileLUT = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+                                       8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
+
+    const auto quantType = mlir::quant::QuantileQuantizedPerAxisType::get(
+            mlir::quant::QuantizationFlags::Signed, getSInt8Type(&ctx), getUInt4Type(&ctx),
+            mlir::Float32Type::get(&ctx), quantileLUT, scales, zeroPoints, 0, storageTypeMin, storageTypeMax);
+
+    auto quantContentAttrSetup = baseContentAttrSetup.castElemType(quantType);
+
+    const int64_t POC = 0;
+    const int64_t PIC = 0;
+    const int64_t PH = 2;
+    const int64_t PW = 0;
+
+    auto contentAttrSetup = quantContentAttrSetup.padWithZero({POC, PIC, PH, PW}, {POC, PIC, PH, PW});
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
+    const auto content = contentAttr.fold();
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_FALSE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    const auto contentVals = content.getValues<int32_t>();
+    EXPECT_GT(contentVals.size(), vals.size());
+
+    std::vector<int64_t> expZP(POC, zp);
+    expZP.insert(expZP.end(), zeroPoints.begin(), zeroPoints.end());
+    expZP.insert(expZP.end(), POC, zp);
+
+    const auto channelSize = IC * IW * IH;
+    std::vector<float> expVals(channelSize * POC, zp);
+    expVals.insert(expVals.end(), vals.begin(), vals.end());
+    expVals.insert(expVals.end(), channelSize * POC, zp);
+
+    for (int64_t oc = 0; oc < OC + 2 * POC; ++oc) {
+        checkPaddedBuffer<float>(content, expVals, {IC, IH, IW}, {PIC, PH, PW}, expZP[oc],
+                                 oc * (IC + 2 * PIC) * (IW + 2 * PW) * (IH + 2 * PH), oc * channelSize);
+    }
+}
+
 TEST_F(MLIR_ConstContentAttrTest, SubView) {
     const int64_t IC = 1;
     const int64_t IH = 2;
@@ -1299,7 +1458,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackI1) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeElemType(
             mlir::IntegerType::get(ndBaseType.getContext(), bitWidth, mlir::IntegerType::SignednessSemantics::Signed));
     EXPECT_EQ(content.getType(), expectedType);
@@ -1329,7 +1488,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackI2) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeElemType(
             mlir::IntegerType::get(ndBaseType.getContext(), bitWidth, mlir::IntegerType::SignednessSemantics::Signed));
     EXPECT_EQ(content.getType(), expectedType);
@@ -1360,7 +1519,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackI3) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeElemType(
             mlir::IntegerType::get(ndBaseType.getContext(), bitWidth, mlir::IntegerType::SignednessSemantics::Signed));
     EXPECT_EQ(content.getType(), expectedType);
@@ -1390,7 +1549,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackI4) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeElemType(
             mlir::IntegerType::get(ndBaseType.getContext(), bitWidth, mlir::IntegerType::SignednessSemantics::Signed));
     EXPECT_EQ(content.getType(), expectedType);
@@ -1422,7 +1581,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackI5) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeElemType(
             mlir::IntegerType::get(ndBaseType.getContext(), bitWidth, mlir::IntegerType::SignednessSemantics::Signed));
     EXPECT_EQ(content.getType(), expectedType);
@@ -1454,7 +1613,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackI6) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeElemType(
             mlir::IntegerType::get(ndBaseType.getContext(), bitWidth, mlir::IntegerType::SignednessSemantics::Signed));
     EXPECT_EQ(content.getType(), expectedType);
@@ -1499,7 +1658,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackQuantI1) {
     const auto expectedQuantType = mlir::quant::UniformQuantizedType::get(
             mlir::quant::QuantizationFlags::Signed, mlir::IntegerType::get(&ctx, bitWidth, mlir::IntegerType::Signed),
             mlir::Float32Type::get(&ctx), scale, zeroPoint, storageTypeMin, storageTypeMax);
-    const auto expectedType = baseType.cast<vpux::NDTypeInterface>().changeElemType(expectedQuantType);
+    const auto expectedType = mlir::cast<vpux::NDTypeInterface>(baseType).changeElemType(expectedQuantType);
     EXPECT_EQ(content.getType(), expectedType);
     EXPECT_EQ(content.getType(), contentAttr.getType());
 
@@ -1540,7 +1699,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackQuantI2) {
     const auto expectedQuantType = mlir::quant::UniformQuantizedType::get(
             mlir::quant::QuantizationFlags::Signed, mlir::IntegerType::get(&ctx, bitWidth, mlir::IntegerType::Signed),
             mlir::Float32Type::get(&ctx), scale, zeroPoint, storageTypeMin, storageTypeMax);
-    const auto expectedType = baseType.cast<vpux::NDTypeInterface>().changeElemType(expectedQuantType);
+    const auto expectedType = mlir::cast<vpux::NDTypeInterface>(baseType).changeElemType(expectedQuantType);
     EXPECT_EQ(content.getType(), expectedType);
     EXPECT_EQ(content.getType(), contentAttr.getType());
 
@@ -1582,7 +1741,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackQuantI3) {
     const auto expectedQuantType = mlir::quant::UniformQuantizedType::get(
             mlir::quant::QuantizationFlags::Signed, mlir::IntegerType::get(&ctx, bitWidth, mlir::IntegerType::Signed),
             mlir::Float32Type::get(&ctx), scale, zeroPoint, storageTypeMin, storageTypeMax);
-    const auto expectedType = baseType.cast<vpux::NDTypeInterface>().changeElemType(expectedQuantType);
+    const auto expectedType = mlir::cast<vpux::NDTypeInterface>(baseType).changeElemType(expectedQuantType);
     EXPECT_EQ(content.getType(), expectedType);
     EXPECT_EQ(content.getType(), contentAttr.getType());
 
@@ -1623,7 +1782,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackQuantI4) {
     const auto expectedQuantType = mlir::quant::UniformQuantizedType::get(
             mlir::quant::QuantizationFlags::Signed, mlir::IntegerType::get(&ctx, bitWidth, mlir::IntegerType::Signed),
             mlir::Float32Type::get(&ctx), scale, zeroPoint, storageTypeMin, storageTypeMax);
-    const auto expectedType = baseType.cast<vpux::NDTypeInterface>().changeElemType(expectedQuantType);
+    const auto expectedType = mlir::cast<vpux::NDTypeInterface>(baseType).changeElemType(expectedQuantType);
     EXPECT_EQ(content.getType(), expectedType);
     EXPECT_EQ(content.getType(), contentAttr.getType());
 
@@ -1666,7 +1825,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackQuantI5) {
     const auto expectedQuantType = mlir::quant::UniformQuantizedType::get(
             mlir::quant::QuantizationFlags::Signed, mlir::IntegerType::get(&ctx, bitWidth, mlir::IntegerType::Signed),
             mlir::Float32Type::get(&ctx), scale, zeroPoint, storageTypeMin, storageTypeMax);
-    const auto expectedType = baseType.cast<vpux::NDTypeInterface>().changeElemType(expectedQuantType);
+    const auto expectedType = mlir::cast<vpux::NDTypeInterface>(baseType).changeElemType(expectedQuantType);
     EXPECT_EQ(content.getType(), expectedType);
     EXPECT_EQ(content.getType(), contentAttr.getType());
 
@@ -1709,7 +1868,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackQuantI6) {
     const auto expectedQuantType = mlir::quant::UniformQuantizedType::get(
             mlir::quant::QuantizationFlags::Signed, mlir::IntegerType::get(&ctx, bitWidth, mlir::IntegerType::Signed),
             mlir::Float32Type::get(&ctx), scale, zeroPoint, storageTypeMin, storageTypeMax);
-    const auto expectedType = baseType.cast<vpux::NDTypeInterface>().changeElemType(expectedQuantType);
+    const auto expectedType = mlir::cast<vpux::NDTypeInterface>(baseType).changeElemType(expectedQuantType);
     EXPECT_EQ(content.getType(), expectedType);
     EXPECT_EQ(content.getType(), contentAttr.getType());
 
@@ -1754,7 +1913,7 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackQuantileI4) {
             mlir::quant::QuantizationFlags::Signed, mlir::IntegerType::get(&ctx, bitWidth, mlir::IntegerType::Signed),
             getUInt4Type(&ctx), mlir::Float32Type::get(&ctx), quantileLUT, scale, zeroPoint, storageTypeMin,
             storageTypeMax);
-    const auto expectedType = baseType.cast<vpux::NDTypeInterface>().changeElemType(expectedQuantileType);
+    const auto expectedType = mlir::cast<vpux::NDTypeInterface>(baseType).changeElemType(expectedQuantileType);
     EXPECT_EQ(content.getType(), expectedType);
     EXPECT_EQ(content.getType(), contentAttr.getType());
 
@@ -1852,15 +2011,15 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackIsLast) {
     auto addBitPackAttrSetup = contentAttrSetup.clone().add(17.f);
     const auto addBitPackTransformations = addBitPackAttrSetup.getTransformations();
     ASSERT_EQ(addBitPackTransformations.size(), 2);
-    EXPECT_NE(addBitPackTransformations[0].dyn_cast<Const::AddAttr>(), nullptr);
-    EXPECT_NE(addBitPackTransformations[1].dyn_cast<Const::BitPackAttr>(), nullptr);
+    EXPECT_NE(mlir::dyn_cast<vpux::Const::AddAttr>(addBitPackTransformations[0]), nullptr);
+    EXPECT_NE(mlir::dyn_cast<vpux::Const::BitPackAttr>(addBitPackTransformations[1]), nullptr);
 
     const auto addBroadcastBitPackAttr = Const::ContentAttr::get(baseAttr, addBitPackAttrSetup.broadcast(Dim(1), 42));
     const auto addBroadcastBitPackTransformations = addBroadcastBitPackAttr.getTransformations();
     ASSERT_EQ(addBroadcastBitPackTransformations.size(), 3);
-    EXPECT_NE(addBroadcastBitPackTransformations[0].dyn_cast<Const::AddAttr>(), nullptr);
-    EXPECT_NE(addBroadcastBitPackTransformations[1].dyn_cast<Const::BroadcastAttr>(), nullptr);
-    EXPECT_NE(addBroadcastBitPackTransformations[2].dyn_cast<Const::BitPackAttr>(), nullptr);
+    EXPECT_NE(mlir::dyn_cast<vpux::Const::AddAttr>(addBroadcastBitPackTransformations[0]), nullptr);
+    EXPECT_NE(mlir::dyn_cast<vpux::Const::BroadcastAttr>(addBroadcastBitPackTransformations[1]), nullptr);
+    EXPECT_NE(mlir::dyn_cast<vpux::Const::BitPackAttr>(addBroadcastBitPackTransformations[2]), nullptr);
 
     // Expects input type to be quantized, while the input type will be SI8
     EXPECT_ANY_THROW(std::ignore = Const::ContentAttr::get(baseAttr, contentAttrSetup.clone().dequantize()));
@@ -2003,7 +2162,7 @@ TEST_F(MLIR_ConstContentAttrTest, GetSparsityMap) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeShapeElemType(
             Shape({OC, 1, 1, 128}), mlir::IntegerType::get(ndBaseType.getContext(), 1, mlir::IntegerType::Signless));
     EXPECT_EQ(content.getType(), expectedType);
@@ -2052,7 +2211,7 @@ TEST_F(MLIR_ConstContentAttrTest, GetSparsityMapQuantized) {
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
-    const auto ndBaseType = baseType.cast<vpux::NDTypeInterface>();
+    const auto ndBaseType = mlir::cast<vpux::NDTypeInterface>(baseType);
     const auto expectedType = ndBaseType.changeShapeElemType(
             Shape({OC, 1, 1, 128}), mlir::IntegerType::get(ndBaseType.getContext(), 1, mlir::IntegerType::Signless));
     EXPECT_EQ(content.getType(), expectedType);
@@ -2837,10 +2996,10 @@ class MLIR_ConstContentAttrTypedTest :
         public ::testing::WithParamInterface<CreateElementsAttr> {
     static const char* dataAddressImpl(mlir::ElementsAttr attr) {
         // support most probable candidates
-        if (const auto content = attr.dyn_cast<mlir::DenseElementsAttr>()) {
+        if (const auto content = mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
             return content.getRawData().data();
         }
-        if (const auto content = attr.dyn_cast<mlir::DenseResourceElementsAttr>()) {
+        if (const auto content = mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
             return content.getRawHandle().getBlob()->getData().data();
         }
         assert(false && "Extend this function with extra types");

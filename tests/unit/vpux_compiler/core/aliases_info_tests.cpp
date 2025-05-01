@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,8 +7,8 @@
 #include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
 
 #include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/string_ref.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
@@ -178,7 +178,7 @@ TEST(MLIR_AliasesInfo, TestMultiViewOp) {
                         mlir::isa<AlisesInfoTest::TestMultiViewOp>(producerOp));
 
             if (mlir::isa<AlisesInfoTest::TestMultiViewOp>(producerOp)) {
-                EXPECT_EQ(alias.cast<mlir::OpResult>().getResultNumber(), 1);
+                EXPECT_EQ(mlir::cast<mlir::OpResult>(alias).getResultNumber(), 1);
             }
         } else {
             EXPECT_TRUE(alias == funcArg);
@@ -206,7 +206,7 @@ TEST(MLIR_AliasesInfo, TestMultiViewOp) {
                         << "producerOp = " << producerOp->getName().getStringRef().data();
 
                 if (mlir::isa<AlisesInfoTest::TestMultiViewOp>(producerOp)) {
-                    EXPECT_EQ(alias.cast<mlir::OpResult>().getResultNumber(), 0);
+                    EXPECT_EQ(mlir::cast<mlir::OpResult>(alias).getResultNumber(), 0);
                 } else {
                     EXPECT_TRUE(producerOp == allocOp);
                 }
@@ -218,7 +218,7 @@ TEST(MLIR_AliasesInfo, TestMultiViewOp) {
             EXPECT_TRUE(viewSource == viewOp.getViewSource());
 
             const auto viewRoot = info.getRoot(viewRes);
-            EXPECT_TRUE((viewRoot).isa<mlir::BlockArgument>());
+            EXPECT_TRUE(mlir::isa<mlir::BlockArgument>(viewRoot));
         } else if (auto viewOp = mlir::dyn_cast<AlisesInfoTest::TestMultiViewOp>(op)) {
             const auto viewRes0 = viewOp->getResult(0);
 
@@ -234,7 +234,7 @@ TEST(MLIR_AliasesInfo, TestMultiViewOp) {
             EXPECT_TRUE(viewSource1 == viewOp.getViewSource(1));
 
             const auto viewRoot1 = info.getRoot(viewRes1);
-            EXPECT_TRUE((viewRoot1).isa<mlir::BlockArgument>());
+            EXPECT_TRUE(mlir::isa<mlir::BlockArgument>(viewRoot1));
         }
     });
 }
@@ -317,7 +317,8 @@ TEST(MLIR_AliasesInfo, TestGroupedViewOp) {
             const auto viewRoots = info.getRoots(viewRes);
             EXPECT_EQ(viewRoots.size(), 2) << "test.groupedview roots: %arg, %0";
             for (const auto& root : viewRoots) {
-                EXPECT_TRUE(root.isa<mlir::BlockArgument>() || mlir::isa<mlir::memref::AllocOp>(root.getDefiningOp()));
+                EXPECT_TRUE(mlir::isa<mlir::BlockArgument>(root) ||
+                            mlir::isa<mlir::memref::AllocOp>(root.getDefiningOp()));
             }
         }
     });
@@ -505,7 +506,8 @@ TEST(MLIR_AliasesInfo, RemoveAllAlias) {
             const auto viewRoots = info.getRoots(viewRes);
             EXPECT_EQ(viewRoots.size(), 2) << "test.groupedview roots: %arg, %0";
             for (const auto& root : viewRoots) {
-                EXPECT_TRUE(root.isa<mlir::BlockArgument>() || mlir::isa<mlir::memref::AllocOp>(root.getDefiningOp()));
+                EXPECT_TRUE(mlir::isa<mlir::BlockArgument>(root) ||
+                            mlir::isa<mlir::memref::AllocOp>(root.getDefiningOp()));
             }
 
             info.remove(viewRes);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,14 +26,15 @@ using namespace vpux;
 void testDType(mlir::MLIRContext* ctx, VPU::ClusteredOpInterface clusteredOp,
                VPU::DistributionInfoAttr expectedDistributedAttr, mlir::IntegerAttr numClusters, bool isAct,
                NDTypeInterface tiledInput = nullptr, NDTypeInterface tiledOutput = nullptr) {
-    auto inputType = tiledInput != nullptr ? tiledInput : clusteredOp->getOperand(0).getType().cast<NDTypeInterface>();
-    auto outputType =
-            tiledOutput != nullptr ? tiledOutput : clusteredOp->getResult(0).getType().cast<NDTypeInterface>();
+    auto inputType = tiledInput != nullptr ? tiledInput
+                                           : mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
+    auto outputType = tiledOutput != nullptr ? tiledOutput
+                                             : mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
 
     auto distributedIf =
             isAct ? VPU::getDistributedActivationTypeFromOp(clusteredOp, inputType, numClusters.getInt(), outputType)
                   : VPU::getDistributedOutputTypeFromOp(clusteredOp, outputType, numClusters.getInt(), {inputType});
-    auto distributedType = distributedIf.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+    auto distributedType = mlir::cast<vpux::VPU::DistributedTensorType>(distributedIf.getDistributedTypes().front());
 
     const auto memSpace = IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN));
     auto order = isAct ? mlir::AffineMapAttr::get(inputType.getDimsOrder().toAffineMap(ctx))
@@ -66,7 +67,7 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentDuringTili
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [144, 144, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x144x16x16xf16, {order = #NHWC}>
+                        : tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<144x144x1x1xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x16x16xf16, {order = #NHWC}>
                 %1 = VPU.MVN(%0) {
                     across_channels = false, eps = 9.9999997473787516E-6 : f64,
                     multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
@@ -113,8 +114,8 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentDuringTili
         testDType(&ctx, clusteredOp, expectedDistribution, numClusters, true);   // test activation distributed type
         testDType(&ctx, clusteredOp, expectedDistribution, numClusters, false);  // test output distributed type
 
-        auto inputType = clusteredOp->getOperand(0).getType().cast<NDTypeInterface>();
-        auto outputType = clusteredOp->getResult(0).getType().cast<NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
 
         const auto inputTileType = inputType.extractDenseTile(offsets, size);
         const auto outputTileType = outputType.extractDenseTile(offsets, size);
@@ -187,7 +188,7 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [128, 128, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x128x16x16xf16, {order = #NHWC}>
+                        : tensor<1x128x16x16xf16, {order = #NHWC}>, tensor<128x128x1x1xf16, {order = #NHWC}>, tensor<128x1x1x4xsi32> -> tensor<1x128x16x16xf16, {order = #NHWC}>
                 %1 = VPU.Slice %0 [0, 0, 0, 0] [1, 64, 16, 16]
                     : tensor<1x128x16x16xf16, {order = #NHWC}> to tensor<1x64x16x16xf16, {order = #NHWC}>
                 %2 = VPU.MVN(%1) {
@@ -258,7 +259,7 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [160, 160, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x160x16x16xf16, {order = #NHWC}>
+                        : tensor<1x160x16x16xf16, {order = #NHWC}>, tensor<160x160x1x1xf16, {order = #NHWC}>, tensor<160x1x1x4xsi32> -> tensor<1x160x16x16xf16, {order = #NHWC}>
                 %1 = VPU.Slice %0 [0, 0, 0, 0] [1, 144, 16, 16]
                     : tensor<1x160x16x16xf16, {order = #NHWC}> to tensor<1x144x16x16xf16, {order = #NHWC}>
                 %2 = VPU.MVN(%1) {
@@ -403,7 +404,7 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [144, 144, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x144x16x16xf16, {order = #NHWC}>
+                        : tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<144x144x1x1xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x16x16xf16, {order = #NHWC}>
                 VPU.Yield %0
             }
             %1 = VPU.VerticalFusion (%0 as %arg4: tensor<1x144x16x16xf16, {order = #NHWC}>)
@@ -438,7 +439,7 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [144, 144, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x144x16x16xf16, {order = #NHWC}>
+                        : tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<144x144x1x1xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x16x16xf16, {order = #NHWC}>
                 VPU.Yield %0
             }
             %1 = VPU.MVN(%0) {
@@ -594,8 +595,8 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, OverlappedSingleInputSWOpDuringTilin
 
         testDType(&ctx, clusteredOp, expectedDistribution, numClusters, true);  // test activation distributed type
 
-        auto inputType = clusteredOp->getOperand(0).getType().cast<NDTypeInterface>();
-        auto outputType = clusteredOp->getResult(0).getType().cast<NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
 
         auto tileOp = mlir::cast<VPU::TilingBuilderOpInterface>(op.getOperation());
         const auto outputTileType = outputType.extractDenseTile(outTile.offsets, outTile.shape);
@@ -690,8 +691,8 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, DISABLED_OverlappedMultiInputSWOpDur
 
         testDType(&ctx, clusteredOp, expectedDistribution, numClusters, true);  // test activation distributed type
 
-        auto inputType = clusteredOp->getOperand(0).getType().cast<NDTypeInterface>();
-        auto outputType = clusteredOp->getResult(0).getType().cast<NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
 
         auto tileOp = mlir::cast<VPU::TilingBuilderOpInterface>(op.getOperation());
         const auto outputTileType = outputType.extractDenseTile(outTile.offsets, outTile.shape);
@@ -729,7 +730,7 @@ TEST_F(MLIR_GetDistributedTypeFromDepthwiseOpTest, MaxPoolOpWithODUPermuteToNCXX
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [128, 128, 1, 1],
                     strides = [1, 1]
-                } -> tensor<1x128x784x4xf16, {order = #NHWC}>
+                } : tensor<1x128x784x4xf16, {order = #NHWC}>, tensor<128x128x1x1xf16, {order = #NHWC}>, tensor<128x1x1x4xsi32> -> tensor<1x128x784x4xf16, {order = #NHWC}>
                 return %3 : tensor<1x128x784x4xf16, {order = #NHWC}>
             }
         }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -36,7 +36,7 @@ TEST_F(MLIR_ArgAllocationInfo, MultipleCallOps) {
             IE.ExecutorResource 2 of @DMA_NN
             IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
-            IE.CNNNetwork entryPoint : @main
+            net.NetworkInfo entryPoint : @main
             inputsInfo : {
                 DataInfo "input" : tensor<1x8x60x60xf16>
             } outputsInfo : {
@@ -128,7 +128,7 @@ TEST_F(MLIR_ArgAllocationInfo, MultipleCallOpsWithMultipleUses) {
             IE.ExecutorResource 2 of @DMA_NN
             IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
-            IE.CNNNetwork entryPoint : @main
+            net.NetworkInfo entryPoint : @main
             inputsInfo : {
                 DataInfo "input" : tensor<1x8x60x60xf16>
             } outputsInfo : {

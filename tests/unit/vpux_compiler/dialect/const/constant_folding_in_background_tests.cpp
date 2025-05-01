@@ -1,9 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #ifdef BACKGROUND_FOLDING_ENABLED
+
+#include "vpux/compiler/dialect/const/dialect.hpp"
 
 #include "vpux/compiler/dialect/const/utils/constant_folding_cache.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_in_background.hpp"

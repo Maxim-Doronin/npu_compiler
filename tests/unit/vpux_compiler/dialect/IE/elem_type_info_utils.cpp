@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
+
+#include <mlir/Dialect/Quant/QuantOps.h>
 
 #include <gtest/gtest.h>
 

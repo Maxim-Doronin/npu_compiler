@@ -1,7 +1,12 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
+//
+
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
 module {
-  IE.CNNNetwork entryPoint : @main
+  net.NetworkInfo entryPoint : @main
   inputsInfo : {
     DataInfo "input" : tensor<1x30x30x30xf16>
   } outputsInfo : {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
  * It receives an IE dialect IR that is passed through the InitCompiler pass, followed by the DefaultHWMode pipeline.
  */
 
-#include "vpux/compiler/NPU37XX/pipelines.hpp"
+#include "vpux/compiler/NPU37XX/dialect_pipeline_strategy.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/init.hpp"

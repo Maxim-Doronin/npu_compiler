@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -105,13 +105,13 @@ TEST_F(MLIR_IndexedSymbolAttr, CheckMemoryResourceAttr) {
 
     for (auto& op : func.getOps()) {
         if (auto allocOp = mlir::dyn_cast<mlir::memref::AllocOp>(op)) {
-            const auto type = allocOp.getMemref().getType().cast<vpux::NDTypeInterface>();
+            const auto type = mlir::cast<vpux::NDTypeInterface>(allocOp.getMemref().getType());
             auto memSpace = type.getMemSpace();
 
             checkCMXSpace(memSpace, 0);
         } else if (auto copyOp = mlir::dyn_cast<vpux::VPUIP::CopyOp>(op)) {
-            auto inMemSpace = copyOp.getInput().getType().cast<vpux::NDTypeInterface>().getMemSpace();
-            auto outMemSpace = copyOp.getOutput().getType().cast<vpux::NDTypeInterface>().getMemSpace();
+            auto inMemSpace = mlir::cast<vpux::NDTypeInterface>(copyOp.getInput().getType()).getMemSpace();
+            auto outMemSpace = mlir::cast<vpux::NDTypeInterface>(copyOp.getOutput().getType()).getMemSpace();
 
             ASSERT_NE(inMemSpace, outMemSpace);
             ASSERT_TRUE(inMemSpace.getLeafName() == DDR_NAME || inMemSpace.getLeafName() == CMX_NAME);

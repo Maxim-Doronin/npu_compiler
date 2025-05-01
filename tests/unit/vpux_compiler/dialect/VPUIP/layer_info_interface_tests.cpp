@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,7 +24,7 @@ void checkExecutorKind(mlir::Operation* op, vpux::VPU::ExecutorKind expectedKind
 
     auto kindAttr = iface.getExecutor();
     ASSERT_TRUE(kindAttr != nullptr);
-    ASSERT_TRUE(kindAttr.isa<mlir::SymbolRefAttr>());
+    ASSERT_TRUE(mlir::isa<mlir::SymbolRefAttr>(kindAttr));
 
     auto kind = vpux::VPU::symbolizeEnum<vpux::VPU::ExecutorKind>(kindAttr.getLeafName());
     EXPECT_EQ(kind.value(), expectedKind);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,7 +11,7 @@
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/factories/split_cost_getter.hpp"
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/FileSystem.h>

@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <sstream>
 #include <stack>
 
@@ -154,4 +155,47 @@ TEST(AbstractTreeTest, ConstantFolding) {
 
     const std::vector<int> expected = {(42 + 5) * 2, ((42 + 5) - 8) + 5, (42 * 2) * 2, (42 * 2) - 8};
     ASSERT_EQ(folder.results, expected);
+}
+
+using MoveOnlyTree = utils::AbstractTree<std::unique_ptr<int>>;
+TEST(AbstractTreeTest, MoveOnlyType) {
+    std::vector<MoveOnlyTree::Node> roots;
+    roots.emplace_back(std::make_unique<int>(5));
+    roots.emplace_back(std::make_unique<int>(10));
+
+    bool flag = false;
+    MoveOnlyTree tree(std::move(roots), [&](const MoveOnlyTree::Node&) -> std::vector<std::unique_ptr<int>> {
+        std::vector<std::unique_ptr<int>> result;
+        if (std::exchange(flag, true)) {
+            return result;
+        }
+        result.emplace_back(std::make_unique<int>(42));
+        return result;
+    });
+
+    const auto addToVector = [&](std::vector<std::string>& vector, const MoveOnlyTree::Node& node) {
+        const int x = *node.data();
+        vector.push_back(std::to_string(x));
+    };
+
+    // pre-order printing:
+    std::vector<std::string> preOrderLines;
+    utils::CallbackVisitor<std::unique_ptr<int>> preOrderVisitor(
+            [&](const MoveOnlyTree::Node& node) {
+                addToVector(preOrderLines, node);
+                return true;
+            },
+            nullptr);
+    tree.apply(preOrderVisitor);
+    const std::vector<std::string> preOrderExpected = {"5", "42", "10"};
+    ASSERT_EQ(preOrderExpected, preOrderLines);
+
+    // post-order printing:
+    std::vector<std::string> postOrderLines;
+    utils::CallbackVisitor<std::unique_ptr<int>> postOrderVisitor(nullptr, [&](const MoveOnlyTree::Node& node) {
+        addToVector(postOrderLines, node);
+    });
+    tree.apply(postOrderVisitor);
+    const std::vector<std::string> postOrderExpected = {"42", "5", "10"};
+    ASSERT_EQ(postOrderExpected, postOrderLines);
 }

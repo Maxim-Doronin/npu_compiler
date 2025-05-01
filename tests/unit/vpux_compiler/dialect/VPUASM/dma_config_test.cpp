@@ -1,23 +1,22 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/composers/dma_composer.hpp"
-#include "vpux/compiler/utils/dma_transaction_utils.hpp"
+#include "vpux/compiler/dialect/VPUASM/dma_transaction.hpp"
 
 #include <gtest/gtest.h>
 
 namespace {
 
-struct DMAComposerTestParams {
+struct DMAConfigTestParams {
     DMATransaction inTransaction = {};
-    NPUReg40XX::DMADescriptorComposer::DMATransactionConfig expectedConfig = {};
+    VPUASM::DMATransactionConfig expectedConfig = {};
 };
 
-class DMAComposerTest : public testing::TestWithParam<DMAComposerTestParams> {};
+class DMAConfigTest : public testing::TestWithParam<DMAConfigTestParams> {};
 
-std::vector<DMAComposerTestParams> dmaComposerTestValues = {
+std::vector<DMAConfigTestParams> DMAConfigTestValues = {
         /**/
         {/* 1D */
          /* Input transaction */
@@ -96,12 +95,12 @@ std::vector<DMAComposerTestParams> dmaComposerTestValues = {
 
         /**/};
 
-TEST_P(DMAComposerTest, GetParams) {
+TEST_P(DMAConfigTest, GetParams) {
     const auto params = GetParam();
     auto inTransaction = params.inTransaction;
     auto expectedConfig = params.expectedConfig;
 
-    auto generatedConfig = NPUReg40XX::DMADescriptorComposer::configurePatternFromTransactionAttr(inTransaction);
+    auto generatedConfig = VPUASM::getDMATransactionConfigFromTransaction(inTransaction);
 
     EXPECT_EQ(generatedConfig.srcDimSizes, expectedConfig.srcDimSizes);
     EXPECT_EQ(generatedConfig.srcStrides, expectedConfig.srcStrides);
@@ -110,11 +109,11 @@ TEST_P(DMAComposerTest, GetParams) {
     EXPECT_EQ(generatedConfig.numDims, expectedConfig.numDims);
 }
 
-INSTANTIATE_TEST_SUITE_P(NPUReg40XX, DMAComposerTest, testing::ValuesIn(dmaComposerTestValues));
+INSTANTIATE_TEST_SUITE_P(NPUReg40XX, DMAConfigTest, testing::ValuesIn(DMAConfigTestValues));
 
-class DMAComposerExpectThrowTest : public testing::TestWithParam<DMAComposerTestParams> {};
+class DMAConfigExpectThrowTest : public testing::TestWithParam<DMAConfigTestParams> {};
 
-std::vector<DMAComposerTestParams> dmaComposerExpectThrowTestValues = {
+std::vector<DMAConfigTestParams> DMAConfigExpectThrowTestValues = {
         /**/
         {/* 7 dims */
          /* Input transaction */
@@ -202,13 +201,13 @@ std::vector<DMAComposerTestParams> dmaComposerExpectThrowTestValues = {
 
         /**/};
 
-TEST_P(DMAComposerExpectThrowTest, GetParams) {
+TEST_P(DMAConfigExpectThrowTest, GetParams) {
     const auto params = GetParam();
     auto inTransaction = params.inTransaction;
 
-    EXPECT_ANY_THROW(NPUReg40XX::DMADescriptorComposer::configurePatternFromTransactionAttr(inTransaction));
+    EXPECT_ANY_THROW(VPUASM::getDMATransactionConfigFromTransaction(inTransaction));
 }
 
-INSTANTIATE_TEST_SUITE_P(NPUReg40XX, DMAComposerExpectThrowTest, testing::ValuesIn(dmaComposerExpectThrowTestValues));
+INSTANTIATE_TEST_SUITE_P(NPUReg40XX, DMAConfigExpectThrowTest, testing::ValuesIn(DMAConfigExpectThrowTestValues));
 
 }  // namespace

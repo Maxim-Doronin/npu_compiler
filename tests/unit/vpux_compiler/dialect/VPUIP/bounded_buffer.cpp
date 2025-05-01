@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -47,12 +47,12 @@ TEST_F(MLIR_NDTypeInterface, BoundedBufferType) {
     );
     auto boundedBuffer = VPUIP::BoundedBufferType::get(dataBuffer, dynamicShapeBuffer);
 
-    const auto ndTypeBoundedBuffer = boundedBuffer.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndTypeBoundedBuffer = mlir::dyn_cast<vpux::NDTypeInterface>(boundedBuffer);
     ASSERT_TRUE(ndTypeBoundedBuffer != nullptr) << "BoundedBuffer is not of vpux::NDTypeInterface type";
 
-    const auto ndTypeData = boundedBuffer.getData().dyn_cast<vpux::NDTypeInterface>();
+    const auto ndTypeData = mlir::dyn_cast<vpux::NDTypeInterface>(boundedBuffer.getData());
     ASSERT_TRUE(ndTypeData != nullptr) << "BoundedBuffer.getData() is not of vpux::NDTypeInterface type";
-    const auto ndTypeDynamicShape = boundedBuffer.getDynamicShape().dyn_cast<vpux::NDTypeInterface>();
+    const auto ndTypeDynamicShape = mlir::dyn_cast<vpux::NDTypeInterface>(boundedBuffer.getDynamicShape());
     ASSERT_TRUE(ndTypeDynamicShape != nullptr)
             << "BoundedBuffer.getDynamicShape() is not of vpux::NDTypeInterface type";
 
@@ -79,28 +79,31 @@ TEST_F(MLIR_NDTypeInterface, BoundedBufferType) {
     const SmallVector<int64_t> newShape({1, 32, 13});
     const auto changedShape = ndTypeBoundedBuffer.changeShape(vpux::ShapeRef(newShape));
     EXPECT_EQ(changedShape.getShape(), vpux::ShapeRef(newShape));
-    EXPECT_EQ(changedShape.cast<VPUIP::BoundedBufferType>().getData().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(mlir::cast<vpux::VPUIP::BoundedBufferType>(changedShape).getData())
+                      .getShape(),
               vpux::ShapeRef(newShape));
-    EXPECT_EQ(changedShape.cast<VPUIP::BoundedBufferType>().getDynamicShape().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(
+                      mlir::cast<vpux::VPUIP::BoundedBufferType>(changedShape).getDynamicShape())
+                      .getShape(),
               vpux::ShapeRef({3}));
 
     const auto changedElementType = ndTypeBoundedBuffer.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElementType.getElementType().isa<mlir::Float32Type>());
-    EXPECT_TRUE(changedElementType.cast<VPUIP::BoundedBufferType>()
-                        .getDynamicShape()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(
+                    mlir::cast<vpux::VPUIP::BoundedBufferType>(changedElementType).getDynamicShape())
+                    .getElementType()));
 
     const auto changedShapeAndElementType =
             ndTypeBoundedBuffer.changeShapeElemType(vpux::ShapeRef(newShape), mlir::Float32Type::get(&ctx));
     EXPECT_EQ(changedShapeAndElementType.getShape(), vpux::ShapeRef(newShape));
-    EXPECT_TRUE(changedShapeAndElementType.getElementType().isa<mlir::Float32Type>());
-    EXPECT_EQ(changedShapeAndElementType.cast<VPUIP::BoundedBufferType>().getData().cast<NDTypeInterface>().getShape(),
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedShapeAndElementType.getElementType()));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(
+                      mlir::cast<vpux::VPUIP::BoundedBufferType>(changedShapeAndElementType).getData())
+                      .getShape(),
               vpux::ShapeRef(newShape));
-    EXPECT_EQ(changedShapeAndElementType.cast<VPUIP::BoundedBufferType>()
-                      .getDynamicShape()
-                      .cast<NDTypeInterface>()
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(
+                      mlir::cast<vpux::VPUIP::BoundedBufferType>(changedShapeAndElementType).getDynamicShape())
                       .getShape(),
               vpux::ShapeRef({3}));
 
@@ -109,11 +112,11 @@ TEST_F(MLIR_NDTypeInterface, BoundedBufferType) {
 
     const auto changedMemoryKind = ndTypeBoundedBuffer.changeMemSpace(vpux::IndexedSymbolAttr::get(&ctx, DDR_NAME));
     EXPECT_EQ(changedMemoryKind.getMemoryKind(), vpux::VPU::MemoryKind::DDR);
-    EXPECT_EQ(changedMemoryKind.cast<VPUIP::BoundedBufferType>().getData().cast<NDTypeInterface>().getMemoryKind(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(mlir::cast<vpux::VPUIP::BoundedBufferType>(changedMemoryKind).getData())
+                      .getMemoryKind(),
               vpux::VPU::MemoryKind::DDR);
-    EXPECT_EQ(changedMemoryKind.cast<VPUIP::BoundedBufferType>()
-                      .getDynamicShape()
-                      .cast<NDTypeInterface>()
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(
+                      mlir::cast<vpux::VPUIP::BoundedBufferType>(changedMemoryKind).getDynamicShape())
                       .getMemoryKind(),
               vpux::VPU::MemoryKind::DDR);
 

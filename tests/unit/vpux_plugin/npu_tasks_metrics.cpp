@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 #include "vpux/utils/profiling/reports/stats.hpp"
 #include "vpux/utils/profiling/reports/tasklist.hpp"
 

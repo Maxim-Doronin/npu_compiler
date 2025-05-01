@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "common/utils.hpp"
@@ -111,7 +111,7 @@ TEST_F(StateProviderInterfaceTests, StateProvider_tests) {
         %0 = VPU.NCE.Convolution(%arg0, %cst_0, %cst)
             { ppe = #VPU.PPEStub<>, pad =  #VPU.Padding<bottom = 1 : i64, left = 1 : i64, right = 1 : i64, top = 1 : i64>,
             rawFilterShape = [80, 64, 3, 3], strides = [1, 1]}
-            -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
+            : tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<80x64x3x3xf16, {order = #NHWC}>, tensor<80x1x1x4xsi32> -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
         %1 = VPU.Tanh(%0) : tensor<1x80x28x28xf16, {order = #NHWC}>
             -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Tanh_1", "t_Convolution"])
         %2 = VPU.NCE.MaxPool(%1, %cst)
@@ -213,7 +213,7 @@ TEST_F(StateProviderInterfaceTests, DefaultStateProvider_tests) {
         %0 = VPU.NCE.Convolution(%arg0, %cst_0, %cst)
             {pad =  #VPU.Padding<bottom = 1 : i64, left = 1 : i64, right = 1 : i64, top = 1 : i64>,
             ppe = #VPU.PPEStub<>, rawFilterShape = [80, 64, 3, 3], strides = [1, 1]}
-            -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
+            : tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<80x64x3x3xf16, {order = #NHWC}>, tensor<80x1x1x4xsi32> -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
         %1 = VPU.Tanh(%0) : tensor<1x80x28x28xf16, {order = #NHWC}>
             -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Tanh_1", "t_Convolution"])
         %2 = VPU.NCE.MaxPool(%1, %cst)
@@ -422,12 +422,12 @@ TEST_F(StateProviderInterfaceTests, StateProviderMultiUsers_tests) {
            {ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             rawFilterShape = [64, 48, 3, 3], strides = [1, 1]}
-            -> tensor<1x64x7x7x!qElemType0, {order = #NHWC}>
+            : tensor<1x48x7x7x!qElemType0, {order = #NHWC}>, tensor<64x48x3x3x!qElemType1, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x7x7x!qElemType0, {order = #NHWC}>
         %1 = VPU.NCE.Convolution(%0, %cst_1, %cst_2)
            {ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             rawFilterShape = [32, 64, 3, 3], strides = [1, 1]}
-            -> tensor<1x32x7x7x!qElemType0, {order = #NHWC}>
+            : tensor<1x64x7x7x!qElemType0, {order = #NHWC}>, tensor<32x64x3x3x!qElemType2, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x7x7x!qElemType0, {order = #NHWC}>
         %2 = VPU.Concat(%0, %1)
            {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]}
            : tensor<1x64x7x7x!qElemType0, {order = #NHWC}>, tensor<1x32x7x7x!qElemType0, {order = #NHWC}>
@@ -435,7 +435,7 @@ TEST_F(StateProviderInterfaceTests, StateProviderMultiUsers_tests) {
         %3 = VPU.NCE.Convolution(%2, %cst_3, %cst_2)
            {ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
-            rawFilterShape = [32, 96, 3, 3], strides = [1, 1]} -> tensor<1x32x7x7x!qElemType0, {order = #NHWC}>
+            rawFilterShape = [32, 96, 3, 3], strides = [1, 1]} : tensor<1x96x7x7x!qElemType0, {order = #NHWC}>, tensor<32x96x3x3x!qElemType2, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x7x7x!qElemType0, {order = #NHWC}>
         %4 = VPU.Concat(%0, %1, %3) {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]]}
            : tensor<1x64x7x7x!qElemType0, {order = #NHWC}>, tensor<1x32x7x7x!qElemType0, {order = #NHWC}>,
              tensor<1x32x7x7x!qElemType0, {order = #NHWC}> -> tensor<1x128x7x7x!qElemType0, {order = #NHWC}>
@@ -524,7 +524,7 @@ TEST_F(StateProviderInterfaceTests, StateProvider_InitTemp) {
         %0 = VPU.NCE.Convolution(%arg0, %cst_0, %cst)
             {ppe = #VPU.PPEStub<>, pad =  #VPU.Padding<bottom = 1 : i64, left = 1 : i64, right = 1 : i64, top = 1 : i64>,
             rawFilterShape = [80, 64, 3, 3], strides = [1, 1]}
-            -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
+            : tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<80x64x3x3xf16, {order = #NHWC}>, tensor<80x1x1x4xsi32> -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
         %1 = VPU.Tanh(%0) : tensor<1x80x28x28xf16, {order = #NHWC}>
             -> tensor<1x80x28x28xf16, {order = #NHWC}> loc(fused["Tanh_1", "t_Convolution"])
         %2 = VPU.NCE.MaxPool(%1, %cst)

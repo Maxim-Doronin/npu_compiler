@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -68,7 +68,8 @@ TEST_P(GetOverlapDistributionParamsTests, GetMemoryViewFromProducerConsumers) {
     });
 
     const auto resOverlapParams = VPU::getOverlappedDistributionParameters(
-            producer->getResult(0).getType().cast<NDTypeInterface>(), consumers, numClusters, numTiles, true);
+            mlir::cast<vpux::NDTypeInterface>(producer->getResult(0).getType()), consumers, numClusters, numTiles,
+            true);
 
     EXPECT_EQ(SmallVector<SmallVector<int64_t>>(resOverlapParams.getMemoryShapes()), expectedMemoryShapes);
     EXPECT_EQ(SmallVector<SmallVector<int64_t>>(resOverlapParams.getMemoryOffsets()), expectedMemoryOffsets);
@@ -100,14 +101,14 @@ llvm::StringLiteral poolwith2ConvConsumers = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [144, 144, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x3x3xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                     rawFilterShape = [144, 144, 5, 5],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x5x5xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             return %1, %2 : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<1x144x28x27xf16, {order = #NHWC}>
         }
@@ -139,21 +140,21 @@ llvm::StringLiteral poolwith3ConvConsumers = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [144, 144, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x3x3xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                     rawFilterShape = [144, 144, 5, 5],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x5x5xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %3 = VPU.NCE.Convolution(%0, %w2, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 4 : i64, right = 4 : i64, top = 3 : i64, bottom = 3 : i64>,
                     rawFilterShape = [144, 144, 7, 9],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x7x9xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             return %1, %2, %3 : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<1x144x28x27xf16, {order = #NHWC}>
         }
@@ -314,7 +315,7 @@ llvm::StringLiteral poolWithNCEInterpAndConvConsumers = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [96, 96, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x96x20x20xf16, {order = #NHWC}>
+                    : tensor<1x96x20x20xf16, {order = #NHWC}>, tensor<1x96x40x40xf16, {order = #NHWC}>, tensor<96x1x1x4xsi32> -> tensor<1x96x20x20xf16, {order = #NHWC}>
 
             return %1, %2 : tensor<1x96x40x40xf16, {order = #NHWC}>, tensor<1x96x20x20xf16, {order = #NHWC}>
         }
@@ -373,14 +374,14 @@ llvm::StringLiteral convConsumersSameKernelDiffStrides = R"(
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [32, 32, 1, 1],
                     strides = [2, 2]}
-                        -> tensor<1x32x14x14xf16, {order = #NHWC}>
+                        : tensor<1x32x28x27xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x14x14xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %weights, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [32, 32, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x32x28x27xf16, {order = #NHWC}>
+                        : tensor<1x32x28x27xf16, {order = #NHWC}>, tensor<32x32x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x28x27xf16, {order = #NHWC}>
 
             return %1, %2 : tensor<1x32x14x14xf16, {order = #NHWC}>, tensor<1x32x28x27xf16, {order = #NHWC}>
         }
@@ -412,21 +413,21 @@ llvm::StringLiteral consumersWithMismatchedMemoryView = R"(
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x16x112x111xf16, {order = #NHWC}>
+                        : tensor<1x16x112x111xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x112x111xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 1, 1],
                     strides = [2, 2]}
-                        -> tensor<1x16x56x56xf16, {order = #NHWC}>
+                        : tensor<1x16x112x111xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x56x56xf16, {order = #NHWC}>
 
             %3 = VPU.NCE.Convolution(%0, %w2, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 3, 3],
                     strides = [2, 2]}
-                        -> tensor<1x16x56x55xf16, {order = #NHWC}>
+                        : tensor<1x16x112x111xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x56x55xf16, {order = #NHWC}>
 
             return %1, %2, %3 : tensor<1x16x112x111xf16, {order = #NHWC}>, tensor<1x16x56x56xf16, {order = #NHWC}>, tensor<1x16x56x55xf16, {order = #NHWC}>
         }
@@ -488,21 +489,21 @@ llvm::StringLiteral consumerNotSOHOrWCompatible = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [16, 16, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                        : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 1, 1],
                     strides = [2, 2]}
-                        -> tensor<1x16x4x4xf16, {order = #NHWC}>
+                        : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x4x4xf16, {order = #NHWC}>
 
             %3 = VPU.NCE.Convolution(%0, %w2, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 7, 7],
                     strides = [1, 1]}
-                        -> tensor<1x16x2x2xf16, {order = #NHWC}>
+                        : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x7x7xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x2x2xf16, {order = #NHWC}>
 
             return %1, %2, %3 : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x4x4xf16, {order = #NHWC}>, tensor<1x16x2x2xf16, {order = #NHWC}>
         }
@@ -583,7 +584,7 @@ llvm::StringLiteral mixedConsumers = R"(
                     pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                     rawFilterShape = [16, 16, 5, 5],
                     strides = [1, 1]}
-                        -> tensor<1x16x96x160xf16, {order = #NHWC}>
+                        : tensor<1x16x96x160xf16, {order = #NHWC}>, tensor<16x16x5x5xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x96x160xf16, {order = #NHWC}>
 
             return %1, %2 : tensor<1x16x192x320xf16, {order = #NHWC}>, tensor<1x16x96x160xf16, {order = #NHWC}>
         }

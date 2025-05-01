@@ -1,15 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/init.hpp"
 
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -37,7 +34,7 @@ TEST_F(MLIR_NDTypeInterface, RankedTensorType) {
     const Shape shape{1, 16, 32, 32};
     const auto tensorType = mlir::RankedTensorType::get(shape.raw(), mlir::Float16Type::get(&ctx));
 
-    const auto ndType = tensorType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(tensorType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(shape));
@@ -47,7 +44,7 @@ TEST_F(MLIR_NDTypeInterface, RankedTensorType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 16 * 32 * 32);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), DimsOrder::NCHW);
 
@@ -68,12 +65,12 @@ TEST_F(MLIR_NDTypeInterface, RankedTensorType) {
 
     const auto newElemType = mlir::Float32Type::get(&ctx);
     const auto changedElemType = ndType.changeElemType(newElemType);
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     const SmallVector<int64_t> newShape2({1, 32, 32, 16});
     const auto changedShapeElemType = ndType.changeShapeElemType(ShapeRef(newShape2), mlir::IntegerType::get(&ctx, 8));
     EXPECT_EQ(changedShapeElemType.getShape(), ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeElemType.getElementType()));
 
     const auto newDimsOrder = DimsOrder::NHWC;
     const auto changedDimsOrder = ndType.changeDimsOrder(newDimsOrder);
@@ -94,7 +91,7 @@ TEST_F(MLIR_NDTypeInterface, RankedTensorType) {
                                            .setMemSpace(newMemSpace);
     const auto changedTypeComponents = ndType.changeTypeComponents(newTypeComponents);
     EXPECT_EQ(changedTypeComponents.getShape(), ShapeRef(newShape));
-    EXPECT_TRUE(changedTypeComponents.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedTypeComponents.getElementType()));
     EXPECT_EQ(changedTypeComponents.getDimsOrder(), newDimsOrder);
     EXPECT_EQ(changedTypeComponents.getMemSpace().getLeafName(), CMX_NAME);
 
@@ -124,7 +121,7 @@ TEST_F(MLIR_NDTypeInterface, UnrankedTensorType) {
     const Shape shape{};
     const auto tensorType = mlir::UnrankedTensorType::get(mlir::Float16Type::get(&ctx));
 
-    const auto ndType = tensorType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(tensorType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(shape));
@@ -134,7 +131,7 @@ TEST_F(MLIR_NDTypeInterface, UnrankedTensorType) {
     EXPECT_ANY_THROW(ndType.getRank());
     EXPECT_ANY_THROW(ndType.getNumElements());
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_ANY_THROW(ndType.getDimsOrder());
 
@@ -152,7 +149,7 @@ TEST_F(MLIR_NDTypeInterface, UnrankedTensorType) {
     EXPECT_ANY_THROW(ndType.changeShape(ShapeRef(newShape)));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     EXPECT_ANY_THROW(ndType.changeStrides(StridesRef({})));
 
@@ -186,7 +183,7 @@ TEST_F(MLIR_NDTypeInterface, MemRefType) {
     const IndexedSymbolAttr memSpace = IndexedSymbolAttr::get(&ctx, DDR_NAME);
     const auto memrefType = mlir::MemRefType::get(shape.raw(), mlir::Float16Type::get(&ctx), layout, memSpace);
 
-    const auto ndType = memrefType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(shape));
@@ -196,7 +193,7 @@ TEST_F(MLIR_NDTypeInterface, MemRefType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 16 * 32 * 32);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), order);
 
@@ -217,12 +214,12 @@ TEST_F(MLIR_NDTypeInterface, MemRefType) {
 
     const auto newElemType = mlir::Float32Type::get(&ctx);
     const auto changedElemType = ndType.changeElemType(newElemType);
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     const SmallVector<int64_t> newShape2({1, 32, 32, 16});
     const auto changedShapeElemType = ndType.changeShapeElemType(ShapeRef(newShape2), mlir::IntegerType::get(&ctx, 8));
     EXPECT_EQ(changedShapeElemType.getShape(), ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeElemType.getElementType()));
 
     const auto newDimsOrder = DimsOrder::NHWC;
     const auto changedDimsOrder = ndType.changeDimsOrder(newDimsOrder);
@@ -275,7 +272,7 @@ TEST_F(MLIR_NDTypeInterface, UnrankedMemRefType) {
     const IndexedSymbolAttr memSpace = IndexedSymbolAttr::get(&ctx, DDR_NAME);
     const auto memrefType = mlir::UnrankedMemRefType::get(mlir::Float16Type::get(&ctx), memSpace);
 
-    const auto ndType = memrefType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(shape));
@@ -285,7 +282,7 @@ TEST_F(MLIR_NDTypeInterface, UnrankedMemRefType) {
     EXPECT_ANY_THROW(ndType.getRank());
     EXPECT_ANY_THROW(ndType.getNumElements());
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_ANY_THROW(ndType.getDimsOrder());
 
@@ -303,7 +300,7 @@ TEST_F(MLIR_NDTypeInterface, UnrankedMemRefType) {
     EXPECT_ANY_THROW(ndType.changeShape(ShapeRef(newShape)));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     EXPECT_ANY_THROW(ndType.changeShapeElemType(ShapeRef(newShape), mlir::Float32Type::get(&ctx)));
     EXPECT_ANY_THROW(ndType.changeDimsOrder(DimsOrder::NHWC));
@@ -351,7 +348,7 @@ TEST_F(MLIR_NDTypeInterface, CompressedMemRefType) {
     const auto memrefType = getMemRefType(shape, mlir::Float16Type::get(&ctx), order, memSpace, StridesRef(), nullptr,
                                           sparsityCompression);
 
-    const auto ndType = memrefType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getNumElements(), std::accumulate(numElems.begin(), numElems.end(), static_cast<int64_t>(0)));
@@ -367,7 +364,7 @@ TEST_F(MLIR_NDTypeInterface, CompressedMemRefType) {
     const SmallVector<int64_t> tileShape({1, 8, 32, 32});
     const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
-    const auto memrefTiledType = tiledType.dyn_cast<mlir::MemRefType>();
+    const auto memrefTiledType = mlir::dyn_cast<mlir::MemRefType>(tiledType);
     ASSERT_TRUE(memrefTiledType != nullptr);
     auto layout = memrefTiledType.getLayout().dyn_cast_or_null<vpux::MemRefAttr>();
     ASSERT_TRUE(layout != nullptr);
@@ -391,10 +388,10 @@ TEST_F(MLIR_NDTypeInterface, ExplicitSizeMemRefType) {
     const auto newLayoutAttr = vpux::MemRefAttr::get(orderAttr, nullptr, allocSizeAttr, &ctx);
 
     mlir::MemRefType::Builder builder(shape.raw(), mlir::IntegerType::get(&ctx, 8));
-    builder.setLayout(newLayoutAttr.cast<mlir::MemRefLayoutAttrInterface>());
+    builder.setLayout(mlir::cast<mlir::MemRefLayoutAttrInterface>(newLayoutAttr));
 
     auto memrefType = static_cast<mlir::MemRefType>(builder);
-    const auto ndType = memrefType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), explicitSize);

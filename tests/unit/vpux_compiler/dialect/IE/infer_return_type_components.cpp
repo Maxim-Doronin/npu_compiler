@@ -1,10 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "common/utils.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
+
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 
 #include <gtest/gtest.h>
 
@@ -122,11 +126,8 @@ public:
 
         const auto elemType = mlir::Float16Type::get(ctx);
         const auto affineMap = mlir::AffineMapAttr::get(DimsOrder::fromNumDims(shape.size()).toAffineMap(ctx));
-        const auto inBoundsAttr = getIntArrayAttr(ctx, inBounds);
 
-        const auto tensorAttr = inBounds.empty()
-                                        ? vpux::TensorAttr::get(ctx, affineMap, /*memSpace=*/nullptr)
-                                        : vpux::TensorAttr::get(ctx, affineMap, /*memSpace=*/nullptr, inBoundsAttr);
+        const auto tensorAttr = vpux::TensorAttr::get(ctx, affineMap, /*memSpace=*/nullptr, Bounds(inBounds), {});
         const auto tensorType = mlir::RankedTensorType::get(shape, elemType, tensorAttr);
         return builder.create<mlir::tensor::EmptyOp>(loc, tensorType, mlir::ValueRange{});
     }
@@ -247,8 +248,8 @@ public:
                                              IE::AutoBroadcastTypeAttr::get(ctx, addParams->m_broadcastType),
                                              /*post_op=*/nullptr,
                                              /*clamp=*/nullptr,
-                                             /*output_channels=*/nullptr,
-                                             /*input_channels=*/nullptr);
+                                             /*outputPadding=*/nullptr,
+                                             /*inputPadding=*/nullptr);
         }
         return nullptr;
     }
@@ -363,12 +364,13 @@ TEST_P(InferReturnTypeComponents, PropagatesBounds) {
         EXPECT_EQ(outputShape, Shape{GetParam()->m_expectedShapesInfo[result.index()].shape});
 
         // check bounds
-        const auto outputType = mlir::dyn_cast_or_null<vpux::BoundedTypeInterface>(result.value().getType());
-        ASSERT_NE(outputType, nullptr);
-        const auto outputBoundsAttr = outputType.getBounds();
-        ASSERT_NE(outputBoundsAttr, nullptr);
-        const auto outputBounds = parseIntArrayAttr<int64_t>(outputBoundsAttr);
+        const auto tensorType = outputNDType.cast<mlir::RankedTensorType>();
+        ASSERT_NE(tensorType, nullptr);
 
+        const auto outputboundedType = mlir::dyn_cast<Core::BoundedTensorType>(tensorType);
+        EXPECT_TRUE(outputboundedType != nullptr);
+
+        const auto outputBounds = outputboundedType.getBounds().raw();
         EXPECT_EQ(outputBounds, GetParam()->m_expectedShapesInfo[result.index()].bounds);
     }
 }

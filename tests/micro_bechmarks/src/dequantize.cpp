@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <benchmark/benchmark.h>
+#include <mlir/Dialect/Quant/QuantOps.h>
 
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/utils/content.hpp"
 #include "vpux/compiler/init.hpp"
 

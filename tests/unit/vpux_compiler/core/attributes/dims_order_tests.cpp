@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,9 +7,8 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 
-#include "vpux/compiler/core/attributes/stride_reqs.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
@@ -375,7 +374,7 @@ TEST_F(MLIR_DimsOrderTest, fromMemRefTypeSimpleTest) {
     for (const auto& shape : testData) {
         const auto memRefType = mlir::MemRefType::get(shape, mlir::Float16Type::get(&ctx));
 
-        const auto actualOrder = memRefType.cast<vpux::NDTypeInterface>().getDimsOrder();
+        const auto actualOrder = mlir::cast<vpux::NDTypeInterface>(memRefType).getDimsOrder();
         EXPECT_EQ(DimsOrder::fromNumDims(shape.size()), actualOrder);
     }
 }
@@ -391,7 +390,7 @@ TEST_F(MLIR_DimsOrderTest, fromMemRefTypeWithLayoutTest) {
         const auto memRefType =
                 getMemRefType(ShapeRef(shape), mlir::Float16Type::get(&ctx), expOrder, /*memSpace=*/nullptr);
 
-        const auto actualOrder = memRefType.cast<vpux::NDTypeInterface>().getDimsOrder();
+        const auto actualOrder = mlir::cast<vpux::NDTypeInterface>(memRefType).getDimsOrder();
         EXPECT_EQ(expOrder, actualOrder);
     }
 }
@@ -402,7 +401,7 @@ TEST_F(MLIR_DimsOrderTest, fromTensorTypeTest) {
     for (const auto& shape : testData) {
         const auto tensorType = mlir::RankedTensorType::get(shape, mlir::Float16Type::get(&ctx));
 
-        const auto actualOrder = tensorType.cast<vpux::NDTypeInterface>().getDimsOrder();
+        const auto actualOrder = mlir::cast<vpux::NDTypeInterface>(tensorType).getDimsOrder();
         EXPECT_EQ(DimsOrder::fromNumDims(shape.size()), actualOrder);
     }
 }
@@ -418,7 +417,7 @@ TEST_F(MLIR_DimsOrderTest, fromTensorTypeTest_WithMaps) {
 
         const auto tensorType = getTensorType(ShapeRef(shape), mlir::Float16Type::get(&ctx), expOrder, nullptr);
 
-        const auto actualOrder = tensorType.cast<vpux::NDTypeInterface>().getDimsOrder();
+        const auto actualOrder = mlir::cast<vpux::NDTypeInterface>(tensorType).getDimsOrder();
         EXPECT_EQ(expOrder, actualOrder);
     }
 }
@@ -444,7 +443,7 @@ TEST_F(MLIR_DimsOrderTest, isCompatibleLayoutTest) {
                                                   /*allocSize=*/nullptr, &ctx);
 
         const auto memRefType = mlir::MemRefType::get(shape, mlir::Float16Type::get(&ctx),
-                                                      layout.cast<mlir::MemRefLayoutAttrInterface>());
+                                                      mlir::cast<mlir::MemRefLayoutAttrInterface>(layout));
 
         EXPECT_EQ(expOrder.isCompatibleLayout(memRefType), isCompatible) << printToString(
                 "expOrder = {0} memRefType = {1} isCompatible = {2}", expOrder, memRefType, isCompatible);

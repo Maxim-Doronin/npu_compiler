@@ -1,11 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/core/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/init.hpp"
+#include "vpux/compiler/utils/IE/function_outlining_splitter.hpp"
 
 #include "common/utils.hpp"
 
@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 using namespace vpux;
+using namespace vpux::IE;
 
 using MLIR_FunctionOutliningSplitterOptions = MLIR_UnitBase;
 

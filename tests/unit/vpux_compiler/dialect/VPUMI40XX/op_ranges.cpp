@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -133,7 +133,7 @@ TEST_F(MLIR_TaskRangeTest, Empty) {
         IE.ExecutorResource 1 of @M2I
         IE.ExecutorResource 2 of @DMA_NN
         IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-        IE.CNNNetwork entryPoint : @main inputsInfo : {
+        net.NetworkInfo entryPoint : @main inputsInfo : {
             DataInfo "input_0" : tensor<1x2x3x4xf16>
         } outputsInfo : {
             DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -172,7 +172,7 @@ TEST_F(MLIR_TaskRangeTest, DMA) {
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
             IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-            IE.CNNNetwork entryPoint : @main inputsInfo : {
+            net.NetworkInfo entryPoint : @main inputsInfo : {
                 DataInfo "input_0" : tensor<1x2x3x4xf16>
             } outputsInfo : {
                 DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -220,7 +220,7 @@ TEST_F(MLIR_TaskRangeTest, Shave) {
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
             IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-            IE.CNNNetwork entryPoint : @main inputsInfo : {
+            net.NetworkInfo entryPoint : @main inputsInfo : {
                 DataInfo "input_0" : tensor<1x2x3x4xf16>
             } outputsInfo : {
                 DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -297,7 +297,7 @@ TEST_F(MLIR_TaskRangeTest, DPU) {
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
             IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-            IE.CNNNetwork entryPoint : @main inputsInfo : {
+            net.NetworkInfo entryPoint : @main inputsInfo : {
                 DataInfo "input_0" : tensor<1x2x3x4xf16>
             } outputsInfo : {
                 DataInfo "output_0" : tensor<1x2x3x4xf16>

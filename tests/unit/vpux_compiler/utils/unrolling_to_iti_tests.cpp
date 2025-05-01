@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -28,7 +28,7 @@ int64_t getInwardHaloConsumerMatches(VPUIP::HaloRegionAttr inwardHalo, ArrayRef<
     SmallVector<VPUIP::HaloRegionAttr> consumerInwardHalos;
     int64_t count = 0;
     for (auto output : outputIti) {
-        auto targetIti = output.getType().dyn_cast<VPUIP::ITIBufferType>();
+        auto targetIti = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(output.getType());
         EXPECT_TRUE(targetIti != nullptr);
 
         count += llvm::count(targetIti.getInwardHaloRegions(), inwardHalo);
@@ -41,7 +41,7 @@ void checkOutwardHalosConsumersMatchOutputIti(ArrayRef<VPUIP::OutwardHaloRegionA
                                               ArrayRef<mlir::Value> outputIti) {
     for (const auto outwardHalo : outwardHaloRegions) {
         for (const auto inwardHaloAttr : outwardHalo.getInwardHaloRegions()) {
-            auto inwardHalo = inwardHaloAttr.cast<VPUIP::HaloRegionAttr>();
+            auto inwardHalo = mlir::cast<vpux::VPUIP::HaloRegionAttr>(inwardHaloAttr);
             int64_t count = getInwardHaloConsumerMatches(inwardHalo, outputIti);
             EXPECT_EQ(count, 1);
         }
@@ -166,7 +166,7 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_SOH) {
                                                                 nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
-    auto ndType = distributedBufferType.cast<NDTypeInterface>();
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(distributedBufferType);
 
     const auto expectedStrides = ndType.getStrides();
 
@@ -185,15 +185,15 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_SOH) {
     auto haloShapeAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>{1, 64, 1, 16});
 
     for (int64_t clusterId = 0; clusterId < numClusters; clusterId++) {
-        auto itiType = outPerCluster[clusterId].getType().dyn_cast<VPUIP::ITIBufferType>();
+        auto itiType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(outPerCluster[clusterId].getType());
         EXPECT_TRUE(itiType != nullptr);
 
-        const auto shape = itiType.cast<NDTypeInterface>().getShape();
+        const auto shape = mlir::cast<vpux::NDTypeInterface>(itiType).getShape();
         const auto expectedShape = (clusterId == 0 || clusterId == numClusters - 1) ? vpux::Shape({1, 64, 17, 16})
                                                                                     : vpux::Shape({1, 64, 18, 16});
         EXPECT_EQ(shape, expectedShape);
 
-        const auto strides = itiType.cast<NDTypeInterface>().getStrides();
+        const auto strides = mlir::cast<vpux::NDTypeInterface>(itiType).getStrides();
         EXPECT_EQ(strides, expectedStrides);
 
         // Check inward halos are of expected shape and are placed at the right offset
@@ -225,14 +225,16 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_SOH) {
             expectedOutwardHalos.push_back(getOutwardHalo(
                     &ctx, haloShapeAttr, clusterId, SmallVector<int64_t>{0, 0, 15, 0}, inwardOffsets, {clusterId + 1}));
         } else if (clusterId == numClusters - 1) {
-            const auto targetOffset =
-                    outPerCluster[clusterId - 1].getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::H] - 1;
+            const auto targetOffset = mlir::cast<vpux::NDTypeInterface>(outPerCluster[clusterId - 1].getType())
+                                              .getShape()[Dims4D::Act::H] -
+                                      1;
             const SmallVector<SmallVector<int64_t>> inwardOffsets = {{0, 0, targetOffset, 0}};
             expectedOutwardHalos.push_back(getOutwardHalo(
                     &ctx, haloShapeAttr, clusterId, SmallVector<int64_t>{0, 0, 1, 0}, inwardOffsets, {clusterId - 1}));
         } else {
-            const auto targetOffset =
-                    outPerCluster[clusterId - 1].getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::H] - 1;
+            const auto targetOffset = mlir::cast<vpux::NDTypeInterface>(outPerCluster[clusterId - 1].getType())
+                                              .getShape()[Dims4D::Act::H] -
+                                      1;
             const SmallVector<SmallVector<int64_t>> inwardOffsetsTop = {{0, 0, targetOffset, 0}};
             expectedOutwardHalos.push_back(getOutwardHalo(&ctx, haloShapeAttr, clusterId,
                                                           SmallVector<int64_t>{0, 0, 1, 0}, inwardOffsetsTop,
@@ -323,7 +325,7 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_SOK) {
                                                                 nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
-    auto ndType = distributedBufferType.cast<NDTypeInterface>();
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(distributedBufferType);
 
     const auto expectedStrides = ndType.getStrides();
 
@@ -344,13 +346,13 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_SOK) {
     auto haloShapeAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>{1, channelsPerCluster, 32, 16});
 
     for (int64_t clusterId = 0; clusterId < numClusters; clusterId++) {
-        auto itiType = outPerCluster[clusterId].getType().dyn_cast<VPUIP::ITIBufferType>();
+        auto itiType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(outPerCluster[clusterId].getType());
         EXPECT_TRUE(itiType != nullptr);
 
-        const auto shape = itiType.cast<NDTypeInterface>().getShape();
+        const auto shape = mlir::cast<vpux::NDTypeInterface>(itiType).getShape();
         EXPECT_EQ(shape, vpux::ShapeRef({1, 64, 32, 16}));
 
-        const auto strides = itiType.cast<NDTypeInterface>().getStrides();
+        const auto strides = mlir::cast<vpux::NDTypeInterface>(itiType).getStrides();
         EXPECT_EQ(strides, expectedStrides);
 
         // Check inward halos are of expected shape and are placed at the right offset
@@ -512,7 +514,7 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_HKSwitch) {
                                                                 nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
-    auto ndType = distributedBufferType.cast<NDTypeInterface>();
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(distributedBufferType);
 
     const auto expectedStrides = ndType.getStrides();
 
@@ -532,13 +534,13 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_HKSwitch) {
     const SmallVector<int64_t> linesPerCluster = {16, 16, 16, 13};
 
     for (int64_t clusterId = 0; clusterId < numClusters; clusterId++) {
-        auto itiType = outPerCluster[clusterId].getType().dyn_cast<VPUIP::ITIBufferType>();
+        auto itiType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(outPerCluster[clusterId].getType());
         EXPECT_TRUE(itiType != nullptr);
 
-        const auto shape = itiType.cast<NDTypeInterface>().getShape();
+        const auto shape = mlir::cast<vpux::NDTypeInterface>(itiType).getShape();
         EXPECT_EQ(shape, vpux::ShapeRef({1, 64, 61, 16}));
 
-        const auto strides = itiType.cast<NDTypeInterface>().getStrides();
+        const auto strides = mlir::cast<vpux::NDTypeInterface>(itiType).getStrides();
         EXPECT_EQ(strides, expectedStrides);
 
         // Check inward halos are of expected shape and are placed at the right offset

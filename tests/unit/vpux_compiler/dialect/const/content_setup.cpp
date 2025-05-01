@@ -1,17 +1,21 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "common/utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/constant_transformations_control.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/utils/core/scope_exit.hpp"
 
 #include <llvm/Support/raw_ostream.h>
+#include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/Parser/Parser.h>
 
@@ -2117,4 +2121,41 @@ TEST_F(MLIR_ContentSetupTest, DoNotFoldTypePreservingTranspose) {
     EXPECT_EQ(actualTransformations.size(), 1);
 
     checkTransposeAttr(actualTransformations[0], DimsOrder::CN);
+}
+
+// Note: this is mostly a copy-paste of FuseCastElemType that behaves
+// *differently* due to non-default lazy folding options.
+TEST_F(MLIR_ContentSetupTest, FuseCastElemType_DisabledDueToOptions) {
+    const int64_t IC = 4;
+    const int64_t IH = 8;
+    const int64_t IW = 3;
+
+    VPUX_SCOPE_EXIT {
+        // restore default options to avoid failures in other tests
+        Const::setLazyFoldingOptions(&ctx, Const::LazyFoldingOptions());
+    };
+
+    // set up special options to test that optimizations are disabled.
+    Const::LazyFoldingOptions specialOptions;
+    specialOptions.getFoldingSequenceOptimizations =
+            [](mlir::Type) -> SmallVector<Const::LazyFoldingOptions::OptimizeConstTransformationsFunc> {
+        return {};
+    };
+    Const::setLazyFoldingOptions(&ctx, specialOptions);
+
+    auto baseContentAttrSetup = getContentSetup(ArrayRef<int64_t>{IC, IH, IW}, getInt8Type(&ctx));
+
+    // first cast
+    auto contentAttrSetup = baseContentAttrSetup.castElemType(mlir::Float16Type::get(&ctx));
+
+    // second cast
+    const auto expectedType = getUInt8Type(&ctx);
+    contentAttrSetup = contentAttrSetup.castElemType(expectedType);
+
+    // check final cast
+    auto actualTransformations = contentAttrSetup.getTransformations();
+    EXPECT_EQ(actualTransformations.size(), 2);
+
+    checkCastElemTypeAttr(actualTransformations[0], mlir::Float16Type::get(&ctx));
+    checkCastElemTypeAttr(actualTransformations[1], expectedType);
 }

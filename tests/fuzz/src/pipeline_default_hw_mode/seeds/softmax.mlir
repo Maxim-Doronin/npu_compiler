@@ -1,5 +1,10 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
+//
+
 module {
-  IE.CNNNetwork entryPoint : @main
+  net.NetworkInfo entryPoint : @main
   inputsInfo : {
     DataInfo "input" : tensor<1x8x4x4xf32>
   } outputsInfo : {

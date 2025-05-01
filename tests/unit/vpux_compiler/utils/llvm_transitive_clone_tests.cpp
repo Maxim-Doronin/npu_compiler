@@ -21,6 +21,7 @@ using namespace vpux;
 struct CloneTestParams {
     llvm::StringLiteral inputIR;
     llvm::StringLiteral entry;
+    llvm::StringLiteral swModule;
     SmallVector<StringRef> inlinedOps;
 };
 
@@ -30,6 +31,7 @@ TEST_P(LLVMTransitiveCloneTests, CloneFunctions) {
     const auto params = GetParam();
     const llvm::StringLiteral inputIR = params.inputIR;
     const llvm::StringLiteral entry = params.entry;
+    const llvm::StringLiteral swModuleName = params.swModule;
     auto registry = vpux::createDialectRegistry();
     auto interfacesRegistry = vpux::createInterfacesRegistry(vpux::VPU::ArchKind::NPU40XX);
     interfacesRegistry->registerInterfaces(registry);
@@ -38,7 +40,9 @@ TEST_P(LLVMTransitiveCloneTests, CloneFunctions) {
     ctx.loadDialect<mlir::LLVM::LLVMDialect>();
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
-    auto symref = mlir::FlatSymbolRefAttr::get(&ctx, entry);
+    auto modSymRef = mlir::StringAttr::get(&ctx, swModuleName);
+    auto flatEntrySymRef = mlir::FlatSymbolRefAttr::get(&ctx, entry);
+    auto symref = mlir::SymbolRefAttr::get(&ctx, modSymRef, {flatEntrySymRef});
 
     auto moduleBuilder = mlir::OpBuilder::atBlockBegin(module->getBody());
     auto tmpModuleOp = moduleBuilder.create<mlir::ModuleOp>(module->getLoc(), llvm::StringRef("TempModule"));
@@ -58,6 +62,7 @@ TEST_P(LLVMTransitiveCloneTests, CloneFunctions) {
 }
 
 llvm::StringLiteral testOneFunc = R"(
+module @in {
   module @VPU.SW {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     llvm.func @foo(%arg0: !llvm.ptr) attributes {dso_local} {
@@ -66,24 +71,28 @@ llvm::StringLiteral testOneFunc = R"(
     llvm.func @notRequired() {
       llvm.return
     }
-  })";
+  }
+})";
 
 llvm::StringLiteral testOneCall = R"(
+module @in {
   module @VPU.SW {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     llvm.func @foo(%arg0: !llvm.ptr) attributes {dso_local} {
       llvm.call @bar() : () -> ()
       llvm.return
     }
-    llvm.func @bar() {
+    llvm.func internal @bar() {
       llvm.return
     }
     llvm.func @notRequired() {
       llvm.return
     }
-  })";
+  }
+})";
 
 llvm::StringLiteral testOneCallOneAddroffOneLeaf = R"(
+module @in {
   module @VPU.SW {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     llvm.func @foo(%arg0: !llvm.ptr) attributes {dso_local} {
@@ -100,9 +109,11 @@ llvm::StringLiteral testOneCallOneAddroffOneLeaf = R"(
     llvm.func @notRequired() {
       llvm.return
     }
-  })";
+  }
+})";
 
 llvm::StringLiteral testTwoCalls = R"(
+module @in {
   module @VPU.SW {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     llvm.func @foo(%arg0: !llvm.ptr) attributes {dso_local} {
@@ -120,9 +131,11 @@ llvm::StringLiteral testTwoCalls = R"(
     llvm.func @notRequired() {
       llvm.return
     }
-  })";
+  }
+})";
 
 llvm::StringLiteral testOneCallOneAddroffTwoLeafs = R"(
+module @in {
   module @VPU.SW {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     llvm.func @foo(%arg0: !llvm.ptr) attributes {dso_local} {
@@ -139,12 +152,14 @@ llvm::StringLiteral testOneCallOneAddroffTwoLeafs = R"(
     llvm.func @notRequired() {
       llvm.return
     }
-  })";
+  }
+})";
 
-std::vector<CloneTestParams> cloneParamValues = {{testOneFunc, "foo", {"foo"}},
-                                                 {testOneCall, "foo", {"foo", "bar"}},
-                                                 {testOneCallOneAddroffOneLeaf, "foo", {"foo", "bar", "baz"}},
-                                                 {testTwoCalls, "foo", {"foo", "bar", "baz"}},
-                                                 {testOneCallOneAddroffTwoLeafs, "foo", {"foo", "bar", "baz"}}};
+std::vector<CloneTestParams> cloneParamValues = {
+        {testOneFunc, "foo", "VPU.SW", {"foo"}},
+        {testOneCall, "foo", "VPU.SW", {"foo", "bar"}},
+        {testOneCallOneAddroffOneLeaf, "foo", "VPU.SW", {"foo", "bar", "baz"}},
+        {testTwoCalls, "foo", "VPU.SW", {"foo", "bar", "baz"}},
+        {testOneCallOneAddroffTwoLeafs, "foo", "VPU.SW", {"foo", "bar", "baz"}}};
 
 INSTANTIATE_TEST_SUITE_P(ShaveCodeGen, LLVMTransitiveCloneTests, testing::ValuesIn(cloneParamValues));
