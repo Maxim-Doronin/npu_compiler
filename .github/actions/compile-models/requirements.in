@@ -2,8 +2,8 @@
 
 # Core
 transformers>=4.51.1
-torch==2.6.0+cpu
-torchvision==0.21.0+cpu
+torch==2.7.0+cpu
+torchvision==0.22.0+cpu
 onnx>=1.17.0
 onnxruntime>=1.21.0
 onnxruntime-tools>=1.7.0
