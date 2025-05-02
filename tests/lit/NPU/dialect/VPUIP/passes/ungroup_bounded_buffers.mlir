@@ -3,12 +3,12 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --ungroup-bounded-buffers --canonicalize %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --ungroup-bounded-buffers %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 module @TestCopy attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
   // CHECK-LABEL: main
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_213" : tensor<2x4x20x20xf16>
     DataInfo "vpu_shape_Parameter_213" : tensor<4xsi32>
     // CHECK: DataInfo "Parameter_213" : tensor<2x4x20x20xf16>
@@ -33,24 +33,22 @@ module @TestCopy attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilation
     %IN_BOUNDED_BUFFER = VPUIP.GroupBoundedBuffer(%arg0, %arg1) :
         memref<2x4x20x20xf16>, memref<4xsi32>
         -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
-    // CHECKA: [[IN_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[IN_DATA]], [[IN_SHAPE]])
+    // CHECK-NOT: [[IN_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[IN_DATA]], [[IN_SHAPE]])
     %BOUNDED_BUFFER = VPUIP.GroupBoundedBuffer(%DATA, %SHAPE) :
         memref<2x4x20x20xf16>, memref<4xsi32>
         -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
-    // CHECKA: [[BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[DATA]], [[SHAPE]])
+    // CHECK-NOT: [[BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[DATA]], [[SHAPE]])
 
     %COPY = VPUIP.Copy inputs(%IN_BOUNDED_BUFFER: !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>)
                        outputs (%BOUNDED_BUFFER: !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>)
                        -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
-    // CHECKA: [[DATA1:%.*]], [[SHAPE1:%.*]] = VPUIP.UngroupBoundedBuffer([[IN_BOUNDED_BUFFER]])
-    // CHECKA: [[DATA2:%.*]], [[SHAPE2:%.*]] = VPUIP.UngroupBoundedBuffer([[BOUNDED_BUFFER]])
     // CHECK: [[DATA_COPY:%.*]] = VPUIP.Copy
     // CHECK-SAME: inputs([[IN_DATA]]
     // CHECK-SAME: outputs([[DATA]]
     // CHECK: [[SHAPE_COPY:%.*]] = VPUIP.Copy
     // CHECK-SAME: inputs([[IN_SHAPE]]
     // CHECK-SAME: outputs([[SHAPE]]
-    // CHECKA: [[COPY_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[DATA_COPY]], [[SHAPE_COPY]])
+    // CHECK-NOT: [[COPY_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[DATA_COPY]], [[SHAPE_COPY]])
 
     %OUT_DATA, %OUT_SHAPE = VPUIP.UngroupBoundedBuffer(%COPY) :
         !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
@@ -83,7 +81,7 @@ module @TestSwKernel attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compila
   }
 
   // CHECK-LABEL: main
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_213" : tensor<2x4x20x20xf16>
     DataInfo "vpu_shape_Parameter_213" : tensor<4xsi32>
     // CHECK: DataInfo "Parameter_213" : tensor<2x4x20x20xf16>
@@ -209,7 +207,7 @@ module @DynamicReshape attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compi
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
   // CHECK-LABEL: main
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_7" : tensor<32x1x548xf16>
     DataInfo "vpux_ie_shape_Parameter_7" : tensor<3xsi32>
     DataInfo "NewShape" : tensor<3xsi32>
@@ -232,7 +230,6 @@ module @DynamicReshape attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compi
     %20 = VPUIP.GroupBoundedBuffer(%alloc_15, %alloc_16) : memref<32x1x548xf16, [@CMX_NN, 0]>, memref<3xsi32, [@CMX_NN, 0]> -> !VPUIP.BoundedBuffer<data=memref<32x1x548xf16, [@CMX_NN, 0]>, dynamic_shape=memref<3xsi32, [@CMX_NN, 0]>>
     %21 = VPUIP.Copy inputs(%2 : !VPUIP.BoundedBuffer<data=memref<32x1x548xf16, @DDR>, dynamic_shape=memref<3xsi32, @DDR>>) outputs(%20 : !VPUIP.BoundedBuffer<data=memref<32x1x548xf16, [@CMX_NN, 0]>, dynamic_shape=memref<3xsi32, [@CMX_NN, 0]>>) -> !VPUIP.BoundedBuffer<data=memref<32x1x548xf16, [@CMX_NN, 0]>, dynamic_shape=memref<3xsi32, [@CMX_NN, 0]>>
     // CHECK:       [[IN_DATA_COPY:%.+]] = VPUIP.Copy inputs([[IN_DATA]]
-    // CHECK:       [[IN_SHAPE_COPY:%.+]] = VPUIP.Copy inputs([[IN_SHAPE]]
 
     %alloc_17 = memref.alloc() : memref<3xsi32, [@CMX_NN, 0]>
     %22 = VPUIP.Copy inputs(%arg2 : memref<3xsi32, @DDR>) outputs(%alloc_17 : memref<3xsi32, [@CMX_NN, 0]>) -> memref<3xsi32, [@CMX_NN, 0]>
@@ -381,4 +378,327 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VP
     // CHECK: [[COPY_3:%.+]] = VPUIP.Copy inputs([[CONCAT_VIEW_3]] : memref<1x1x1x128xf16>) outputs([[ALLOC_7]] : memref<1x1x1x128xf16>) -> memref<1x1x1x128xf16>
     // CHECK: return [[GROUP_BUFF]], [[COPY_2]], [[COPY_3]] : !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16>, dynamic_shape=memref<4xsi32>>, memref<1x1x1x128xf16>, memref<1x1x1x128xf16>
   }
+}
+
+// -----
+
+// CHECK-LABEL: @GroupBoundedBufferCanonicalize
+func.func @GroupBoundedBufferCanonicalize(%arg0: memref<1x8x384x384xf16>, %arg1: memref<4xsi32>) -> (memref<1x8x384x384xf16>, memref<4xsi32>) {
+    %0 = VPUIP.GroupBoundedBuffer(%arg0, %arg1) : memref<1x8x384x384xf16>, memref<4xsi32>
+    -> !VPUIP.BoundedBuffer<data=memref<1x8x384x384xf16>, dynamic_shape=memref<4xsi32>>
+    %1, %2 = VPUIP.UngroupBoundedBuffer(%0) : !VPUIP.BoundedBuffer<data=memref<1x8x384x384xf16>, dynamic_shape=memref<4xsi32>>
+        -> memref<1x8x384x384xf16>, memref<4xsi32>
+    return %1, %2 : memref<1x8x384x384xf16>, memref<4xsi32>
+    // CHECK-NOT: VPUIP.GroupBoundedBuffer
+    // CHECK-NOT: VPUIP.UngroupBoundedBuffer
+    // CHECK:     return {{[^:]+}}, {{[^:]+}} : memref<1x8x384x384xf16>, memref<4xsi32>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
+#C = affine_map<(d0) -> (d0)>
+  VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
+  module @VPU.SW {
+    func.func private @builtin_LSTMSequence(memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+  }
+
+!InputDistributed = !VPUIP.DistributedBuffer<1x2x35x512xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 1, 35, 512], [1, 1, 35, 512]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 35, 512], [1, 1, 35, 512]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+!ShapeDistributed = !VPUIP.DistributedBuffer<4xsi32, #C, @CMX_NN, {
+    mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments}>
+
+!OutputDistributed1 = !VPUIP.DistributedBuffer<1x2x35x128xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 1, 35, 128], [1, 1, 35, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 35, 128], [1, 1, 35, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+!OutputDistributed2 = !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+
+// CHECK-LABEL: @LSTMSequence
+// CHECK: [[INPUT:%.+]]: !VPUIP.DistributedBuffer<1x2x35x512xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments
+func.func @LSTMSequence(
+    %input : !InputDistributed, %input_shape: !ShapeDistributed,
+    %input1: memref<1x2x1x128xf16, @CMX_NN>, %input2: memref<1x2x1x128xf16, @CMX_NN>,
+    %input3: memref<2x4x128x128xf16, #NWHC, @CMX_NN>, %input4: memref<1x1x1x2xsi32, @CMX_NN>,
+    %output: !OutputDistributed1, %output_shape: !ShapeDistributed,
+    %output1: memref<1x2x1x128xf16, @CMX_NN>, %output2: memref<1x2x1x128xf16, @CMX_NN>,
+    %lstm_output_shape : memref<4xsi32, @DDR>)
+-> (!OutputDistributed1, !ShapeDistributed) {
+    %bounded_input = VPUIP.GroupBoundedBuffer(%input, %input_shape) : !InputDistributed, !ShapeDistributed
+                    -> !VPUIP.BoundedBuffer<data=!InputDistributed, dynamic_shape=!ShapeDistributed>
+    %bounded_output = VPUIP.GroupBoundedBuffer(%output, %output_shape) : !OutputDistributed1, !ShapeDistributed
+                    -> !VPUIP.BoundedBuffer<data=!OutputDistributed1, dynamic_shape=!ShapeDistributed>
+
+    %results_72_1, %results_72_2, %results_72_3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>} @VPU.SW::@builtin_LSTMSequence
+        inputs(
+            %bounded_input as %arg8: !VPUIP.BoundedBuffer<
+                data=!InputDistributed,
+                dynamic_shape=!ShapeDistributed>,
+            %input1 as %arg9: memref<1x2x1x128xf16, @CMX_NN>,
+            %input2 as %arg10: memref<1x2x1x128xf16, @CMX_NN>,
+            %input3 as %arg11: memref<2x4x128x128xf16, #NWHC, @CMX_NN>,
+            %input4 as %arg12: memref<1x1x1x2xsi32, @CMX_NN>)
+            outputs(
+            %bounded_output as %arg13: !VPUIP.BoundedBuffer<
+                data=!OutputDistributed1,
+                dynamic_shape=!ShapeDistributed>,
+            %output1 as %arg14: memref<1x2x1x128xf16, @CMX_NN>,
+            %output2 as %arg15: memref<1x2x1x128xf16, @CMX_NN>) on tile 0
+        -> (!VPUIP.BoundedBuffer<
+                data=!OutputDistributed1,
+                dynamic_shape=!ShapeDistributed>,
+            memref<1x2x1x128xf16, @CMX_NN>,
+            memref<1x2x1x128xf16, @CMX_NN>)
+            {
+                VPUIP.SW.Kernel.run {attrs = [2]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15) :
+                    !VPUIP.BoundedBuffer<
+                        data=!InputDistributed,
+                        dynamic_shape=!ShapeDistributed>,
+                        memref<1x2x1x128xf16, @CMX_NN>,
+                        memref<1x2x1x128xf16, @CMX_NN>,
+                        memref<2x4x128x128xf16, #NWHC, @CMX_NN>,
+                        memref<1x1x1x2xsi32, @CMX_NN>,
+                    !VPUIP.BoundedBuffer<
+                        data=!OutputDistributed1,
+                        dynamic_shape=!ShapeDistributed>,
+                    memref<1x2x1x128xf16, @CMX_NN>,
+                    memref<1x2x1x128xf16, @CMX_NN>
+           }
+   %result_data, %result_shape = VPUIP.UngroupBoundedBuffer(%results_72_1) :
+        !VPUIP.BoundedBuffer<data=!OutputDistributed1, dynamic_shape=!ShapeDistributed>
+        -> !OutputDistributed1, !ShapeDistributed
+    return %result_data, %result_shape : !OutputDistributed1, !ShapeDistributed
+
+
+    // CHECK: VPUIP.SW.Kernel
+    // CHECK-SAME: @VPU.SW::@builtin_LSTMSequence
+    // CHECK-SAME:   inputs([[INPUT]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
+#C = affine_map<(d0) -> (d0)>
+  VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
+  module @VPU.SW {
+    func.func private @builtin_LSTMSequence(memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
+    func.func private @builtin_DynamicReshape(memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, i64) attributes {VPU.kernel_code = "dynamic_reshape.cpp", VPU.kernel_entry = "dynamic_reshape", VPU.task_type = @COMPUTE}
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+  }
+
+
+!InputDistributed = !VPUIP.DistributedBuffer<1x2x35x512xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 1, 35, 512], [1, 1, 35, 512]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 35, 512], [1, 1, 35, 512]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+
+!ShapeDistributed = !VPUIP.DistributedBuffer<4xsi32, #C, @CMX_NN, {
+    mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments}>
+
+
+!OutputDistributed1 = !VPUIP.DistributedBuffer<1x2x35x128xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 1, 35, 128], [1, 1, 35, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 35, 128], [1, 1, 35, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+
+!OutputDistributed2 = !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+
+func.func @LSTMSequenceOutputShape(
+    %output1: memref<1x2x1x128xf16, @CMX_NN>, %output2: memref<1x2x1x128xf16, @CMX_NN>,
+    %lstm_output_shape : memref<4xsi32, @DDR>)
+-> (memref<1x2x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>) {
+    %input = VPURT.AllocDistributed -> !InputDistributed
+    %input_shape = VPURT.AllocDistributed -> !ShapeDistributed
+    // CHECK: [[INPUT:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x2x35x512xf16, #NCHW, @CMX_NN
+    // CHECK: [[INPUT_SHAPE:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<4xsi32, #C, @CMX_NN
+
+    %output = VPURT.AllocDistributed -> !OutputDistributed1
+    %output_shape = VPURT.AllocDistributed -> !ShapeDistributed
+    // CHECK: [[OUTPUT:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x2x35x128xf16, #NCHW, @CMX_NN
+    // CHECK: [[OUTPUT_SHAPE:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<4xsi32, #C, @CMX_NN
+
+    %bounded_input = VPUIP.GroupBoundedBuffer(%input, %input_shape) : !InputDistributed, !ShapeDistributed
+                    -> !VPUIP.BoundedBuffer<data=!InputDistributed, dynamic_shape=!ShapeDistributed>
+    %bounded_output = VPUIP.GroupBoundedBuffer(%output, %output_shape) : !OutputDistributed1, !ShapeDistributed
+                    -> !VPUIP.BoundedBuffer<data=!OutputDistributed1, dynamic_shape=!ShapeDistributed>
+
+    %cst1 = const.Declare memref<1x2x1x128xf16, @CMX_NN> = dense<1.000000e+00> : memref<1x2x1x128xf16, @CMX_NN>
+    %cst2 = const.Declare memref<1x2x1x128xf16, @CMX_NN> = dense<1.000000e+00> : memref<1x2x1x128xf16, @CMX_NN>
+    %cst3 = const.Declare memref<2x4x128x128xf16, #NWHC, @CMX_NN> = dense<1.000000e+00>
+          : memref<2x4x128x128xf16, #NWHC, @CMX_NN>
+    %cst4 = const.Declare memref<1x1x1x2xsi32, @CMX_NN> = dense<1> : memref<1x1x1x2xsi32, @CMX_NN>
+
+    %results_72:3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>} @VPU.SW::@builtin_LSTMSequence
+        inputs(
+            %bounded_input as %arg8: !VPUIP.BoundedBuffer<
+                data=!InputDistributed,
+                dynamic_shape=!ShapeDistributed>,
+            %cst1 as %arg9: memref<1x2x1x128xf16, @CMX_NN>,
+            %cst2 as %arg10: memref<1x2x1x128xf16, @CMX_NN>,
+            %cst3 as %arg11: memref<2x4x128x128xf16, #NWHC, @CMX_NN>,
+            %cst4 as %arg12: memref<1x1x1x2xsi32, @CMX_NN>)
+            outputs(
+            %bounded_output as %arg13: !VPUIP.BoundedBuffer<
+                data=!OutputDistributed1,
+                dynamic_shape=!ShapeDistributed>,
+            %output1 as %arg14: memref<1x2x1x128xf16, @CMX_NN>,
+            %output2 as %arg15: memref<1x2x1x128xf16, @CMX_NN>) on tile 0
+        -> (!VPUIP.BoundedBuffer<
+                data=!OutputDistributed1,
+                dynamic_shape=!ShapeDistributed>,
+            memref<1x2x1x128xf16, @CMX_NN>,
+            memref<1x2x1x128xf16, @CMX_NN>)
+            {
+                VPUIP.SW.Kernel.run {attrs = [2]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15) :
+                    !VPUIP.BoundedBuffer<
+                        data=!InputDistributed,
+                        dynamic_shape=!ShapeDistributed>,
+                        memref<1x2x1x128xf16, @CMX_NN>,
+                        memref<1x2x1x128xf16, @CMX_NN>,
+                        memref<2x4x128x128xf16, #NWHC, @CMX_NN>,
+                        memref<1x1x1x2xsi32, @CMX_NN>,
+                    !VPUIP.BoundedBuffer<
+                        data=!OutputDistributed1,
+                        dynamic_shape=!ShapeDistributed>,
+                    memref<1x2x1x128xf16, @CMX_NN>,
+                    memref<1x2x1x128xf16, @CMX_NN>
+           }
+
+  %alloc_74 = memref.alloc() : memref<1x2x35x128xf16, @DDR>
+  %alloc_75 = memref.alloc() : memref<4xsi32, @DDR>
+  %122 = VPUIP.GroupBoundedBuffer(%alloc_74, %alloc_75) : memref<1x2x35x128xf16, @DDR>, memref<4xsi32, @DDR>
+       -> !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>
+  %123 = VPUIP.Copy
+            inputs(%results_72#0 : !VPUIP.BoundedBuffer<
+                data=!OutputDistributed1,
+                dynamic_shape=!ShapeDistributed>)
+            outputs(%122 : !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>)
+       -> !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>
+  %alloc_80 = memref.alloc() : memref<1x2x35x128xf16, [@CMX_NN, 0]>
+  %alloc_81 = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
+  %141 = VPUIP.GroupBoundedBuffer(%alloc_80, %alloc_81) : memref<1x2x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
+       -> !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
+  %142 = VPUIP.Copy
+           inputs(%123 : !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>)
+           outputs(%141 : !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>)
+       -> !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
+  %alloc_82 = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
+  %143 = VPUIP.Copy inputs(%lstm_output_shape : memref<4xsi32, @DDR>) outputs(%alloc_82 : memref<4xsi32, [@CMX_NN, 0]>)
+       -> memref<4xsi32, [@CMX_NN, 0]>
+  %alloc_83 = memref.alloc() : memref<1x2x35x128xf16, [@CMX_NN, 0]>
+  %alloc_84 = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
+  %144 = VPUIP.GroupBoundedBuffer(%alloc_83, %alloc_84) : memref<1x2x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
+       -> !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
+  %results_85 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_DynamicReshape
+    inputs(
+        %142 as %arg8: !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>,
+        %143 as %arg9: memref<4xsi32, [@CMX_NN, 0]>)
+    outputs(%144 as %arg10:
+        !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>) on tile 0
+    -> !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>{
+    VPUIP.SW.Kernel.run {attrs = [1]}(%arg8, %arg9, %arg10) :
+        !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>,
+        memref<4xsi32, [@CMX_NN, 0]>,
+        !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
+  }
+    // CHECK:       {{%.+}}, {{%.+}} = VPUIP.SW.Kernel
+    // CHECK-SAME:     @VPU.SW::@builtin_LSTMSequence
+    // CHECK-SAME:     inputs([[INPUT]]
+    // CHECK-SAME:     dynamicInputShapes([[INPUT_SHAPE]]
+    // CHECK-SAME:     outputs([[OUTPUT]]
+    // CHECK-SAME:     dynamicOutputShapes([[OUTPUT_SHAPE]]
+
+    // CHECK-NOT: VPUIP.Copy inputs([[OUTPUT_SHAPE]]
+
+    // CHECK:       {{%.+}}, {{%.+}} = VPUIP.SW.Kernel
+    // CHECK-SAME:  {dynamicOutputShapesMap = array<i32: 0>,
+    // CHECK-SAME:   resultSegmentSizes = array<i32: 1, 1, 0>}
+    // CHECK-SAME:   @VPU.SW::@builtin_DynamicReshape
+  %result_data, %result_shape = VPUIP.UngroupBoundedBuffer(%results_85) :
+        !VPUIP.BoundedBuffer<data=memref<1x2x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
+        -> memref<1x2x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
+        return %result_data, %result_shape : memref<1x2x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#C = affine_map<(d0) -> (d0)>
+
+!InputDistributed = !VPUIP.DistributedBuffer<1x2x36x512xf16, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 1, 36, 512], [1, 1, 36, 512]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 36, 512], [1, 1, 36, 512]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+!InputDistributedStrided = !VPUIP.DistributedBuffer<1x2x36x512xf16,
+    {order = #NCHW, strides = [36864, 18432, 512, 1]}, @CMX_NN,
+        {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+        compute_shapes = [[1, 1, 36, 512], [1, 1, 36, 512]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+        memory_shapes = [[1, 1, 36, 512], [1, 1, 36, 512]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
+!ShapeDistributed = !VPUIP.DistributedBuffer<4xsi32, #C, @CMX_NN, {
+    mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments}>
+
+func.func @UngroupSubview(%input0: memref<1x2x36x512xf16, @DDR>, %shape0: memref<4xsi32, @DDR>,
+                          %input1: memref<1x2x36x512xf16, @DDR>, %shape1: memref<4xsi32, @DDR>)
+    -> (memref<1x2x36x512xf16, @DDR>, memref<4xsi32, @DDR>) {
+    %input_cmx = VPURT.AllocDistributed -> !InputDistributed
+    %shape_cmx = VPURT.AllocDistributed -> !ShapeDistributed
+    %copy_input = VPUIP.Copy inputs(%input0 : memref<1x2x36x512xf16, @DDR>) outputs(%input_cmx : !InputDistributed) -> !InputDistributed
+    %copy_shape = VPUIP.Copy inputs(%shape0 : memref<4xsi32, @DDR>) outputs(%shape_cmx : !ShapeDistributed) -> !ShapeDistributed
+
+    %bounded_input = VPUIP.GroupBoundedBuffer(%copy_input, %copy_shape) : !InputDistributed, !ShapeDistributed
+         -> !VPUIP.BoundedBuffer<data=!InputDistributed, dynamic_shape=!ShapeDistributed>
+
+    %subview = VPUIP.SubView %bounded_input [0, 0, 0, 0] [1, 2, 36, 512] {explicit_output_shapes = [[1, 1, 36, 512], [1, 1, 36, 512]]}
+         : !VPUIP.BoundedBuffer<data=!InputDistributed, dynamic_shape=!ShapeDistributed>
+         to !VPUIP.BoundedBuffer<data=!InputDistributedStrided, dynamic_shape=!ShapeDistributed>
+
+    %group_result = VPUIP.GroupBoundedBuffer(%input1, %shape1) : memref<1x2x36x512xf16, @DDR>, memref<4xsi32, @DDR>
+         -> !VPUIP.BoundedBuffer<data=memref<1x2x36x512xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>
+    %copy = VPUIP.Copy inputs(%subview : !VPUIP.BoundedBuffer<data=!InputDistributedStrided, dynamic_shape=!ShapeDistributed>)
+        outputs(%group_result : !VPUIP.BoundedBuffer<data=memref<1x2x36x512xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>)
+        -> !VPUIP.BoundedBuffer<data=memref<1x2x36x512xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>
+
+    %result_data, %result_shape = VPUIP.UngroupBoundedBuffer(%copy) :
+        !VPUIP.BoundedBuffer<data=memref<1x2x36x512xf16, @DDR>, dynamic_shape=memref<4xsi32, @DDR>>
+        -> memref<1x2x36x512xf16, @DDR>, memref<4xsi32, @DDR>
+
+    return %result_data, %result_shape : memref<1x2x36x512xf16, @DDR>, memref<4xsi32, @DDR>
+
+    // CHECK: @UngroupSubview([[INPUT0:%.+]]: memref<1x2x36x512xf16, @DDR>, [[SHAPE0:%.+]]: memref<4xsi32, @DDR>, [[INPUT1:%.+]]: memref<1x2x36x512xf16, @DDR>, [[SHAPE1:%.+]]: memref<4xsi32, @DDR>
+
+    // CHECK: [[INPUT_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x2x36x512xf16
+    // CHECK: [[SHAPE_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<4xsi32
+    // CHECK: [[COPY_INPUT:%.+]] = VPUIP.Copy inputs([[INPUT0]]
+    // CHECK-SAME:                            outputs([[INPUT_CMX]]
+    // CHECK: [[COPY_SHAPE:%.+]] = VPUIP.Copy inputs([[SHAPE0]]
+    // CHECK-SAME:                            outputs([[SHAPE_CMX]]
+
+    // CHECK: [[SUBVIEW:%.+]] = VPUIP.SubView [[COPY_INPUT]]
+
+    // CHECK: [[COPY_RESULT:%.+]] = VPUIP.Copy inputs([[SUBVIEW]]
+    // CHECK-SAME:                             outputs([[INPUT1]]
+    // CHECK: [[COPY_RESULT_SHAPE:%.+]] = VPUIP.Copy inputs([[COPY_SHAPE]]
+    // CHECK-SAME:                                   outputs([[SHAPE1]]
+
+    // CHECK-NOT: VPUIP.GroupBoundedBuffer
+    // CHECK-NOT: VPUIP.UngroupBoundedBuffer
 }

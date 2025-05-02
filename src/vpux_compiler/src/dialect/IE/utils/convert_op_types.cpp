@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -87,7 +87,11 @@ void vpux::IE::setupConvertPrecision(mlir::TypeConverter& typeConverter,
 mlir::LogicalResult vpux::IE::runConvertPrecision(mlir::ModuleOp module, mlir::TypeConverter& typeConverter,
                                                   mlir::ConversionTarget& target, Logger& log) {
     target.addLegalOp<IE::ConvertOp>();
+    return runConvertOpTypes(module, typeConverter, target, log);
+}
 
+mlir::LogicalResult vpux::IE::runConvertOpTypes(mlir::ModuleOp module, mlir::TypeConverter& typeConverter,
+                                                mlir::ConversionTarget& target, Logger& log) {
     mlir::RewritePatternSet patterns(module.getContext());
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(patterns, typeConverter);
     patterns.add<ConvertOpTypes>(typeConverter, module.getContext(), log);

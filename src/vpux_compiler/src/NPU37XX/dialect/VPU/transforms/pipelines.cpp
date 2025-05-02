@@ -16,18 +16,18 @@ void vpux::VPU::arch37xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
                                                    Logger log) {
     pm.addPass(VPU::arch37xx::createDecomposeMVNPass(log));
 
-    pm.addPass(VPU::createMultiClusterStrategyAssignmentPass(options.enablePrefetching, options.enableMCSideLoadDump,
-                                                             options.opTilingCacheThreshold,
-                                                             options.mcOptimizationScope, options.modelHash, log));
+    pm.addPass(VPU::createMultiClusterStrategyAssignmentPass(options.enablePrefetching, options.opTilingCacheThreshold,
+                                                             options.mcOptimizationScope, log));
 
     pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                  options.readStrategyFromJson, readStrategyFileLocation,
-                                                  options.enableMCSideLoadDump, options.modelHash, log));
+                                                  options.readStrategyFromJson, readStrategyFileLocation, log));
 
     pm.addPass(VPU::createSplitGRUSequencePass(log));
     pm.addPass(VPU::arch37xx::createApplyTilingMVN1SumPass(options.enablePrefetching, log));
 
     VPU::buildTilingPipeline(pm, VPU::TilingOptions(options), log);
+
+    pm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
     pm.addPass(VPU::createMakeOpsWithDistributedTensorPass(options.enableExplicitDistributionInfoAttr, log));
 
     pm.addPass(VPU::createComputeInterpolateCoordinatesPass(options.enableExplicitDistributionInfoAttr, log));
@@ -102,8 +102,10 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::arch37xx::createCorrectNCEWorkloadsPass(log));
     pm.addPass(VPU::createResolveEltwiseWithZTiledWorkloadsPass(log));
     pm.addPass(VPU::createOutlineEntireMainContentPass(log));
-    pm.addPass(VPU::createWrapDistributedOpsInNCEClusterTiling(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
+    if (options.wsExtractionMode.hasValue() && options.wsExtractionMode.getValue() == "gen-all") {
+        pm.addPass(VPU::createIntroduceInitFunctionPass(options, log));
+    }
 }
 
 void vpux::VPU::arch37xx::registerVPUPipelines() {

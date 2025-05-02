@@ -18,7 +18,7 @@ module @SingleCosLayer {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
   } outputsInfo : {
     DataInfo "cos" : tensor<1x1x1x1000xf16>

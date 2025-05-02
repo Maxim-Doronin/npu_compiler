@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -208,12 +208,17 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
         }
 
         uint8_t actshv_used = fillBits(activeShaves);
+
+        auto workloadManagementBarrierProgrammingMode = op.getWorkloadManagementBarrierProgrammingMode().value_or(
+                VPURegMapped::WorkloadManagementBarrierProgrammingMode::LEGACY);
+
         auto managedMPI = rewriter.create<VPUASM::ManagedMappedInferenceOp>(
                 op.getLoc(), managedMPISymName, managedDmasAttr, workItems, barrierTasksAttr, bootstrapItems,
                 nnRtConfigSymRef, barrierConfigurationDescs, barriersReprogrammings, op.getDmaCountAttr(),
                 workItemCount, op.getBarrierCount(), finalBarrierId, bootstrapTasksCount, bootstrapWorkItemTasksCount,
                 barrierConfigurationCount, barrierReprogrammingCount, barrierConfigurationStride, actshv_used, dpu_used,
-                media_used, dma_from_ddr_used, dma_from_cmx_used, mappedInferenceVersion);
+                media_used, dma_from_ddr_used, dma_from_cmx_used, mappedInferenceVersion,
+                workloadManagementBarrierProgrammingMode, _disableDmaSwFifo);
         moveOpToSection(managedMPI.getOperation(), *_sectionMap, rewriter);
 
         managedMPI.setNnrtConfigAttr(

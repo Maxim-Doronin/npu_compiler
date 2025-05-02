@@ -6,7 +6,7 @@
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
@@ -91,7 +91,7 @@ mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface o
     auto sectionIndex = declareOp.getSectionIndex();
     // TODO:#114687 -- section index is missed for CMX for some reason
     if (!sectionIndex.has_value()) {
-        const auto outType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
         auto memSpaceIndex = outType.getMemSpace().getIndex();
         if (memSpaceIndex.has_value()) {
             sectionIndex = getIntArrayAttr(rewriter, ArrayRef({memSpaceIndex.value()}));

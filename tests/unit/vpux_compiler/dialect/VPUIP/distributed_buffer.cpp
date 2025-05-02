@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -56,8 +56,8 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDistributedBufferType) {
 
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -67,7 +67,7 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDistributedBufferType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 16 * 13);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -90,12 +90,12 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDistributedBufferType) {
     EXPECT_EQ(chnagedShape2.getShape(), vpux::ShapeRef(newShape));
 
     const auto changedElementType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
 
     const auto changedShapeAndElementType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape), mlir::Float32Type::get(&ctx));
     EXPECT_EQ(changedShapeAndElementType.getShape(), vpux::ShapeRef(newShape));
-    EXPECT_TRUE(changedShapeAndElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedShapeAndElementType.getElementType()));
 
     const auto changedDimsOrder = ndType.changeDimsOrder(DimsOrder::NCHW);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), vpux::DimsOrder::NCHW);
@@ -158,8 +158,8 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedBufferType) {
 
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({64, 1, 64, 32, 1}));
@@ -169,7 +169,7 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedBufferType) {
     EXPECT_EQ(ndType.getRank(), 5);
     EXPECT_EQ(ndType.getNumElements(), 64 * 64 * 32 * 1);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::GNHWC);
 
@@ -192,12 +192,12 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedBufferType) {
     EXPECT_EQ(chnagedShape2.getShape(), vpux::ShapeRef(newShape));
 
     const auto changedElementType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
 
     const auto changedShapeAndElementType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape), mlir::Float32Type::get(&ctx));
     EXPECT_EQ(changedShapeAndElementType.getShape(), vpux::ShapeRef(newShape));
-    EXPECT_TRUE(changedShapeAndElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedShapeAndElementType.getElementType()));
 
     const auto changedDimsOrder = ndType.changeDimsOrder(DimsOrder::GNCHW);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), vpux::DimsOrder::GNCHW);
@@ -261,8 +261,8 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedBufferType) {
 
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -272,7 +272,7 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedBufferType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 16 * 13);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -295,12 +295,12 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedBufferType) {
     EXPECT_EQ(chnagedShape2.getShape(), vpux::ShapeRef(newShape));
 
     const auto changedElementType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
 
     const auto changedShapeAndElementType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape), mlir::Float32Type::get(&ctx));
     EXPECT_EQ(changedShapeAndElementType.getShape(), vpux::ShapeRef(newShape));
-    EXPECT_TRUE(changedShapeAndElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedShapeAndElementType.getElementType()));
 
     const auto changedDimsOrder = ndType.changeDimsOrder(DimsOrder::NCHW);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), vpux::DimsOrder::NCHW);
@@ -373,9 +373,8 @@ TEST_F(MLIR_NDTypeInterface, CompressedSegmentedDistributedBufferType) {
     const auto sparsityCompression = VPUIP::SparsityCompressionAttr::get(&ctx, getIntAttr(&ctx, compressionAxis),
                                                                          numElemsAttr, getIntAttr(&ctx, alignment));
 
-    const auto ndType = VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr,
-                                                          sparsityCompression)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(VPUIP::DistributedBufferType::get(
+            &ctx, shape, elemType, layout, dimsSpace, distributedAttr, sparsityCompression));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getNumElements(), std::accumulate(numElems.begin(), numElems.end(), static_cast<int64_t>(0)));
@@ -388,7 +387,7 @@ TEST_F(MLIR_NDTypeInterface, CompressedSegmentedDistributedBufferType) {
     const SmallVector<int64_t> tileShape({32, 16, 1, 1});
     const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
-    const auto distTiledType = tiledType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distTiledType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(tiledType);
     ASSERT_TRUE(distTiledType != nullptr);
     auto tiledNumElems = distTiledType.getSparsityCompression().getNumElems().getValues<int64_t>();
     EXPECT_EQ(tiledNumElems.size(), tileShape[compressionAxis]);
@@ -425,9 +424,8 @@ TEST_F(MLIR_NDTypeInterface, CompressedDuplicatedDistributedBufferType) {
     const auto sparsityCompression = VPUIP::SparsityCompressionAttr::get(&ctx, getIntAttr(&ctx, compressionAxis),
                                                                          numElemsAttr, getIntAttr(&ctx, alignment));
 
-    const auto ndType = VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr,
-                                                          sparsityCompression)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(VPUIP::DistributedBufferType::get(
+            &ctx, shape, elemType, layout, dimsSpace, distributedAttr, sparsityCompression));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getNumElements(), std::accumulate(numElems.begin(), numElems.end(), static_cast<int64_t>(0)));
@@ -444,7 +442,7 @@ TEST_F(MLIR_NDTypeInterface, CompressedDuplicatedDistributedBufferType) {
     const SmallVector<int64_t> tileShape({32, 80, 1, 1});
     const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
-    const auto distTiledType = tiledType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distTiledType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(tiledType);
     ASSERT_TRUE(distTiledType != nullptr);
     auto tiledNumElems = distTiledType.getSparsityCompression().getNumElems().getValues<int64_t>();
     EXPECT_EQ(tiledNumElems.size(), tileShape[compressionAxis]);
@@ -1690,7 +1688,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedMode) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 18 * 16);
@@ -1753,7 +1751,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferMultiAxisSegmentedMode) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 64 * 18 * 16);
@@ -1815,7 +1813,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisDuplicatedMode) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 63 * 16);
@@ -1879,7 +1877,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedDuplicat
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 63 * 16);
@@ -1942,7 +1940,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferMultiAxisSegmentedDuplicate
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 64 * 63 * 16);
@@ -2004,7 +2002,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedModeKTil
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 32 * 59 * 16);
@@ -2045,7 +2043,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedModeKTil
         EXPECT_ANY_THROW(distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_ANY_THROW(ndType.getTotalAllocSize().count());
@@ -2105,7 +2103,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedModeKTil
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 32 * 59 * 16);
@@ -2166,7 +2164,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedDuplicat
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 96 * 59 * 16);
@@ -2234,7 +2232,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisOverlappedModeHTi
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 64 * 5 * 15);
@@ -2302,7 +2300,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_WidthAlignedBufferSingleAxisOverlappedMo
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 5 * 16);
@@ -3168,8 +3166,8 @@ TEST_F(MLIR_NDTypeInterface, SubByteSegmentedDistributedBufferType) {
 
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -3179,7 +3177,7 @@ TEST_F(MLIR_NDTypeInterface, SubByteSegmentedDistributedBufferType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 16 * 13);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::quant::UniformQuantizedType>());
+    EXPECT_TRUE(mlir::isa<mlir::quant::UniformQuantizedType>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -3202,12 +3200,12 @@ TEST_F(MLIR_NDTypeInterface, SubByteSegmentedDistributedBufferType) {
     EXPECT_EQ(chnagedShape2.getShape(), vpux::ShapeRef(newShape));
 
     const auto changedElementType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
 
     const auto changedShapeAndElementType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape), mlir::IntegerType::get(&ctx, 4));
     EXPECT_EQ(changedShapeAndElementType.getShape(), vpux::ShapeRef(newShape));
-    EXPECT_TRUE(changedShapeAndElementType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeAndElementType.getElementType()));
 
     const auto changedDimsOrder = ndType.changeDimsOrder(DimsOrder::NCHW);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), vpux::DimsOrder::NCHW);

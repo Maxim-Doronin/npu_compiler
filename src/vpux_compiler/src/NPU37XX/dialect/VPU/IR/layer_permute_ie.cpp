@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -64,7 +64,7 @@ private:
         }
 
         // Check that reorder is not applied to sub-byte element types:
-        const auto elemType = permuteOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto elemType = mlir::cast<vpux::NDTypeInterface>(permuteOp->getResult(0).getType());
         const Bit elemSize = vpux::getElemTypeSize(elemType);
         if (elemSize.count() < CHAR_BIT) {
             return false;

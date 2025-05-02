@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,8 +15,10 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/compiler/utils/llvm_to_binary.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -51,7 +53,7 @@ auto extractKernelBuffer(VPUIP::SwKernelOp& swKernelOp, int32_t inDimsSize, int3
 
 auto computeTileMaskForBroadcast(mlir::Value outputBuff) {
     std::optional<uint32_t> tileMaskForBroadcast;
-    const auto distributedOutputBuff = outputBuff.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distributedOutputBuff = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputBuff.getType());
 
     if (distributedOutputBuff) {
         const auto distributedTensorAttr = distributedOutputBuff.getDistribution();
@@ -82,7 +84,7 @@ void appendValueToVector(SmallVector<uint8_t>& vec, const T& anyValue) {
 }
 
 sw_params::DataType getDataTypeFromMlirType(mlir::Type type) {
-    if (auto floatType = type.dyn_cast<mlir::FloatType>()) {
+    if (auto floatType = mlir::dyn_cast<mlir::FloatType>(type)) {
         auto typeWidth = floatType.getWidth();
         switch (typeWidth) {
         case 64:
@@ -97,7 +99,7 @@ sw_params::DataType getDataTypeFromMlirType(mlir::Type type) {
         case 8:
             return sw_params::DataType::NN_FP8;
         }
-    } else if (auto integerType = type.dyn_cast<mlir::IntegerType>()) {
+    } else if (auto integerType = mlir::dyn_cast<mlir::IntegerType>(type)) {
         if (integerType.isSigned()) {
             auto typeWidth = integerType.getWidth();
             switch (typeWidth) {
@@ -151,16 +153,29 @@ sw_params::DataType getDataTypeFromMlirType(mlir::Type type) {
                 return sw_params::DataType::NN_BIN;
             }
         }
-    } else if (auto qType = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    } else if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         const auto isSigned = qType.isSigned();
         auto bitWidth = qType.getStorageTypeIntegralWidth();
+        auto isQuantileType =
+                mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(qType);
+        auto isFloatStorage = mlir::isa<mlir::FloatType>(qType.getStorageType());
         switch (bitWidth) {
         case 8:
-            return isSigned ? sw_params::DataType::NN_I8 : sw_params::DataType::NN_U8;
+            if (!isQuantileType && !isFloatStorage) {
+                return isSigned ? sw_params::DataType::NN_I8 : sw_params::DataType::NN_U8;
+            }
+            break;
         case 4:
-            return isSigned ? sw_params::DataType::NN_I4 : sw_params::DataType::NN_U4;
+            if (!isQuantileType && !isFloatStorage) {
+                return isSigned ? sw_params::DataType::NN_I4 : sw_params::DataType::NN_U4;
+            }
+            if (isNF4SpecQuantized(qType)) {
+                return sw_params::DataType::NN_NF4;
+            }
+            break;
         }
     }
+    VPUX_THROW("Conversion to sw_params::DataType failed for {0}", type);
     return sw_params::DataType::NN_UNDEFINED;
 }
 
@@ -187,7 +202,7 @@ void addTensorArgToVector(SmallVector<uint8_t>& vec, std::optional<uint32_t> til
     memrefData.dimsOrder = inOrder.invertedCode();
 
     auto type = value.getType();
-    auto ndType = type.cast<vpux::NDTypeInterface>();
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
 
     auto ndTypeMemSpace = ndType.getMemSpace();
     auto tileIndex = static_cast<uint32_t>(ndTypeMemSpace == nullptr ? 0 : ndType.getMemSpace().getIndex().value_or(0));
@@ -308,10 +323,10 @@ SmallVector<uint8_t> createKernelParams(VPUIP::SwKernelOp swKernelOp, bool isJit
                                   kernelOpArgsCount);
 
                 auto blockArgType = blockArg.getType();
-                auto blockArgNdTypeIf = blockArgType.cast<vpux::NDTypeInterface>();
+                auto blockArgNdTypeIf = mlir::cast<vpux::NDTypeInterface>(blockArgType);
                 auto ioType = blockId < insSize ? swKernelOp.getInputs()[blockId].getType()
                                                 : swKernelOp.getOutputBuffs()[blockId - insSize].getType();
-                auto ioNdTypeIf = ioType.cast<vpux::NDTypeInterface>();
+                auto ioNdTypeIf = mlir::cast<vpux::NDTypeInterface>(ioType);
                 VPUX_THROW_UNLESS(blockArgNdTypeIf != nullptr || ioNdTypeIf != nullptr,
                                   "createKernelParams: sw kernel I/O does not implement NDTypeInterface");
                 if (!vpux::areTypesCompatible(blockArgType, ioType, vpux::IE::TypeComparisonMode::STRICT_EQUAL, true,
@@ -370,13 +385,15 @@ void createComputeOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder build
     auto swKernelTextOp = builder.create<VPUMI40XX::DeclareKernelTextOp>(swKernelOp.getLoc(), indexType, swKernelELF);
     auto swKernelArgsOp = builder.create<VPUMI40XX::DeclareKernelArgsOp>(swKernelOp.getLoc(), indexType, swKernelELF);
     auto swKernelEntryOp = builder.create<VPUMI40XX::DeclareKernelEntryOp>(swKernelOp.getLoc(), indexType, swKernelELF);
+    auto parentTaskOp = swKernelOp->getParentOfType<VPURT::TaskOp>();
 
     auto kernelRangeOp = builder.create<VPUMI40XX::ActKernelRangeOp>(
             swKernelOp.getLoc(), indexType,
             nullptr,  // taskLocation
             nullptr,  // previousTask
             swKernelTextOp, swKernelArgsOp, swKernelEntryOp,
-            mlir::SymbolRefAttr::get(ctx, VPU::stringifyActShaveTaskType(VPU::ActShaveTaskType::COMPUTE)));
+            mlir::SymbolRefAttr::get(ctx, VPU::stringifyActShaveTaskType(VPU::ActShaveTaskType::COMPUTE)),
+            parentTaskOp.getWlmPageAttr());
 
     const auto extractDynShapes = [](mlir::OperandRange dynShapes, ArrayRef<int32_t> dynShapesMap) {
         if (dynShapesMap.empty()) {
@@ -439,7 +456,8 @@ void createComputeOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder build
                                                      0,  // start_after
                                                      0,  // clean_after
                                                      swKernelOp.getProfilingMetadataAttr(),
-                                                     nullptr  // enqueueBarrier
+                                                     nullptr,                       // enqueueBarrier
+                                                     parentTaskOp.getWlmPageAttr()  // wlmPageAttr
     );
 }
 
@@ -481,13 +499,14 @@ void createCacheOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder builder
     }
 
     auto ctx = swKernelOp.getContext();
+    auto parentTaskOp = swKernelOp->getParentOfType<VPURT::TaskOp>();
 
-    auto kernelRangeOp =
-            builder.create<VPUMI40XX::ActKernelRangeOp>(swKernelOp.getLoc(), indexType,
-                                                        nullptr,  // taskLocation
-                                                        nullptr,  // previousTask
-                                                        swKernelTextOp, swKernelArgsOp, swKernelEntryOp,
-                                                        mlir::SymbolRefAttr::get(ctx, swKernelTaskTypeLeaf.strref()));
+    auto kernelRangeOp = builder.create<VPUMI40XX::ActKernelRangeOp>(
+            swKernelOp.getLoc(), indexType,
+            nullptr,  // taskLocation
+            nullptr,  // previousTask
+            swKernelTextOp, swKernelArgsOp, swKernelEntryOp,
+            mlir::SymbolRefAttr::get(ctx, swKernelTaskTypeLeaf.strref()), parentTaskOp.getWlmPageAttr());
 
     auto kernelParamsData = mlir::DenseIntElementsAttr::get(mlir::VectorType::get({int64_t{1}}, getUInt8Type(ctx)),
                                                             SmallVector<uint8_t>{0xFF});
@@ -508,10 +527,11 @@ void createCacheOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder builder
                                                      kernelRangeOp.getResult(), kernelParamsOp.getResult(),
                                                      nullptr,  // profiling_data
                                                      indexType.getTileIdx(),
-                                                     0,        // start_after
-                                                     0,        // clean_after
-                                                     nullptr,  // profilingMetadata
-                                                     nullptr   // enqueueBarrier
+                                                     0,                             // start_after
+                                                     0,                             // clean_after
+                                                     nullptr,                       // profilingMetadata
+                                                     nullptr,                       // enqueueBarrier
+                                                     parentTaskOp.getWlmPageAttr()  // wlmPageAttr
     );
 }
 

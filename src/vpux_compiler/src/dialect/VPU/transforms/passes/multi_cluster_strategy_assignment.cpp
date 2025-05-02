@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -28,14 +28,11 @@ namespace {
 class MultiClusterStrategyAssignmentPass final :
         public VPU::impl::MultiClusterStrategyAssignmentBase<MultiClusterStrategyAssignmentPass> {
 public:
-    explicit MultiClusterStrategyAssignmentPass(bool enablePrefetchTiling, bool enableMcSideLoadingDump,
-                                                const int clusteredOpThreshold, StringRef mcOptimizationScope,
-                                                StringRef modelHash, Logger log)
+    explicit MultiClusterStrategyAssignmentPass(bool enablePrefetchTiling, const int clusteredOpThreshold,
+                                                StringRef mcOptimizationScope, Logger log)
             : _enablePrefetchTiling(enablePrefetchTiling),
-              _enableMcSideLoadingDump(enableMcSideLoadingDump),
               _clusteredOpThreshold(clusteredOpThreshold),
-              _mcOptimizationScope(getMCOptimizationScope(mcOptimizationScope)),
-              _modelHash(modelHash) {
+              _mcOptimizationScope(getMCOptimizationScope(mcOptimizationScope)) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -46,10 +43,8 @@ private:
 
 private:
     bool _enablePrefetchTiling = true;
-    bool _enableMcSideLoadingDump;
     int _clusteredOpThreshold;
     VPU::MCOptimizationScope _mcOptimizationScope;
-    std::string _modelHash;
 };
 
 mlir::LogicalResult MultiClusterStrategyAssignmentPass::initializeOptions(StringRef options) {
@@ -94,16 +89,6 @@ void MultiClusterStrategyAssignmentPass::safeRunOnFunc() {
         return;
     }
 
-    bool mcSideLoadSucceeded = false;
-    if (!_enableMcSideLoadingDump && isStrategyPreConfigured(_modelHash)) {
-        _log.trace("Found pre-defined strategy for model hash '{0}'", _modelHash);
-        mcSideLoadSucceeded = loadPreConfiguredStrategy(_log, func, _modelHash);
-    }
-    _log.trace("Compiler strategy match: {0}", mcSideLoadSucceeded);
-    if (mcSideLoadSucceeded) {
-        return;
-    }
-
     auto clusteredOps = func.getOps<ClusteredOpInterface>();
     auto clusteredOpCount = std::distance(clusteredOps.begin(), clusteredOps.end());
     auto& cache = VPU::OpTilingCache::instance();
@@ -112,11 +97,11 @@ void MultiClusterStrategyAssignmentPass::safeRunOnFunc() {
     auto& siblingAnalysis = getAnalysis<SiblingOpsAnalysis>();
     StrategyManager strategyManager(func, tileOp.getCount(), _enablePrefetchTiling, _mcOptimizationScope, _log.nest(),
                                     siblingAnalysis);
-    _log.trace("Greedy Strategy Assignment");
+    _log.debug("Greedy Strategy Assignment");
     auto enableMultiClusterForSWLayer = IE::getAvailableExecutor(module, VPU::ExecutorKind::SHAVE_ACT) != nullptr;
     strategyManager.assignMultiClusterStrategy(enableMultiClusterForSWLayer);
 
-    _log.trace("Execute Subgraph Optimization");
+    _log.debug("Execute Subgraph Optimization");
     strategyManager.optimizeMulticlusterStrategy();
 
     _log.trace("Remove Temporary Strategy");
@@ -132,10 +117,8 @@ void MultiClusterStrategyAssignmentPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> VPU::createMultiClusterStrategyAssignmentPass(bool enablePrefetchTiling,
-                                                                          bool enableMcSideLoadingDump,
                                                                           const int clusteredOpThreshold,
-                                                                          StringRef mcOptimizationScope,
-                                                                          StringRef modelHash, Logger log) {
-    return std::make_unique<MultiClusterStrategyAssignmentPass>(
-            enablePrefetchTiling, enableMcSideLoadingDump, clusteredOpThreshold, mcOptimizationScope, modelHash, log);
+                                                                          StringRef mcOptimizationScope, Logger log) {
+    return std::make_unique<MultiClusterStrategyAssignmentPass>(enablePrefetchTiling, clusteredOpThreshold,
+                                                                mcOptimizationScope, log);
 }

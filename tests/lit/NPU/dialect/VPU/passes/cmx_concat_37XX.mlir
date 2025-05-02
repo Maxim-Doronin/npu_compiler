@@ -68,7 +68,7 @@ func.func @SparseConvolution(%input: !SparseInput,
                 {pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
                 ppe = #VPU.PPEInt<mode = <LRELU>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
                 rawFilterShape = [128, 256, 3, 3], strides = [2, 2]}
-                    -> !SparseConvOutputDist
+                    : !SparseInput, !WeightsType, !WeightsTableType -> !SparseConvOutputDist
 
     // Convolution 0 output copy
     %1 = VPU.Copy(%0) : !SparseConvOutputDist -> !SparseConvOutput
@@ -78,7 +78,7 @@ func.func @SparseConvolution(%input: !SparseInput,
                 {pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
                 ppe = #VPU.PPEInt<mode = <LRELU>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
                 rawFilterShape = [128, 256, 3, 3], strides = [2, 2]}
-                    -> !SparseConvOutputDist
+                    : !SparseInput, !WeightsType, !WeightsTableType -> !SparseConvOutputDist
 
     // Convolution 1 output copy
     %3 = VPU.Copy(%2) : !SparseConvOutputDist -> !SparseConvOutput
@@ -94,7 +94,7 @@ func.func @SparseConvolution(%input: !SparseInput,
                 {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
                 rawFilterShape = [128, 256, 3, 3], strides = [2, 2]}
-            -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x128x6x6xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>, sparsity_map=!VPU.DistributedTensor<1x128x6x6xi1, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>
+            : !SparseOutput, !WeightsType, !WeightsTableType -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x128x6x6xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>, sparsity_map=!VPU.DistributedTensor<1x128x6x6xi1, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>
 
 
     %7 = VPU.Copy(%6) : !VPU.SparseTensor<data=!VPU.DistributedTensor<1x128x6x6xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>, sparsity_map=!VPU.DistributedTensor<1x128x6x6xi1, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>
@@ -124,7 +124,7 @@ func.func @SparseConvolution(%input: !SparseInput,
     // CHECK-SAME:              sparsity_map=!VPU.DistributedTensor<1x128x14x14xi1, #NHWC, @CMX_NN,
     // CHECK-SAME:                    {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>)
     // CHECK-SAME:      -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x128x14x14xf16, #NHWC, @CMX_NN,
-    // CHECK-SAME                                  {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
+    // CHECK-SAME:                                 {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
     // CHECK-SAME:                           sparsity_map=!VPU.DistributedTensor<1x128x14x14xi1, #NHWC, @CMX_NN,
     // CHECK-SAME:                                 {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>
 
@@ -136,14 +136,14 @@ func.func @SparseConvolution(%input: !SparseInput,
     // CHECK-SAME:              sparsity_map=!VPU.DistributedTensor<1x128x14x14xi1, #NHWC, @CMX_NN,
     // CHECK-SAME:                    {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>)
     // CHECK-SAME:      -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x128x14x14xf16, #NHWC, @CMX_NN,
-    // CHECK-SAME                                  {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
+    // CHECK-SAME:                                 {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
     // CHECK-SAME:                           sparsity_map=!VPU.DistributedTensor<1x128x14x14xi1, #NHWC, @CMX_NN,
     // CHECK-SAME:                                 {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>
 
     // Concat
     // CHECK:       [[CONCAT_CMX:%.+]] = VPU.Concat([[DISTR_CAST0]], [[DISTR_CAST1]])
     // CHECK-SAME:      -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x256x14x14xf16, #NHWC, @CMX_NN,
-    // CHECK-SAME                                  {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
+    // CHECK-SAME:                                 {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
     // CHECK-SAME:                           sparsity_map=!VPU.DistributedTensor<1x256x14x14xi1, #NHWC, @CMX_NN,
     // CHECK-SAME:                                 {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>
 
@@ -500,7 +500,7 @@ func.func @InsertAvgPoolingWhenNCEOpHasExtraUser(%arg0: tensor<1x32x104x104x!qEl
                 lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.0999755859375 : f64>,
                 rawFilterShape = [32, 32, 3, 3],
                 strides = [1, 1]
-            } -> !Distributed3
+            } : !Distributed, !Distributed1, !Distributed2 -> !Distributed3
     %4 = VPU.Copy(%3) : !Distributed3 -> tensor<1x32x104x104x!qElemType2, {order = #NHWC}>
 
     // Input 2 of Concat
@@ -512,7 +512,7 @@ func.func @InsertAvgPoolingWhenNCEOpHasExtraUser(%arg0: tensor<1x32x104x104x!qEl
                 lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.0999755859375 : f64>,
                 rawFilterShape = [32, 32, 3, 3],
                 strides = [1, 1]
-            } -> !Distributed3
+            } : !Distributed3, !Distributed4, !Distributed2 -> !Distributed3
     %8 = VPU.Copy(%7) : !Distributed3 -> tensor<1x32x104x104x!qElemType2, {order = #NHWC}>
 
     %9 = VPU.Concat(%4, %8) {static_offsets = [[0, 0, 0, 0], [0, 32, 0, 0]]} : tensor<1x32x104x104x!qElemType2, {order = #NHWC}>, tensor<1x32x104x104x!qElemType2, {order = #NHWC}> -> tensor<1x64x104x104x!qElemType2, {order = #NHWC}>
@@ -681,7 +681,7 @@ func.func @InsertAvgPoolingInCaseCopyOpHasExtraUser(%arg0: !Distributed, %arg1: 
                 ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = 0 : i64, clamp_high = 255 : i64,
                 lrelu_mult = 1638 : i64, lrelu_shift = 13 : i64, fp_prelu_alpha = 0.20000000298023224 : f64>,
                 rawFilterShape = [16, 32, 3, 3], strides = [1, 1]
-            } -> !Distributed3
+            } : !Distributed2, !VPU.DistributedTensor<16x32x3x3x!qElemType3, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPU.DistributedTensor<16x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}> -> !Distributed3
     %5 = VPU.Copy(%4) : !Distributed3 -> tensor<1x16x128x128x!qElemType2, {order = #NHWC}>
 
     // DDR Concat_0
@@ -698,7 +698,7 @@ func.func @InsertAvgPoolingInCaseCopyOpHasExtraUser(%arg0: !Distributed, %arg1: 
                 ppe = #VPU.PPEInt<mode = <LPRELU>, clamp_low = 0 : i64, clamp_high = 255 : i64,
                 lrelu_mult = 1638 : i64, lrelu_shift = 13 : i64, fp_prelu_alpha = 0.20000000298023224 : f64>,
                 rawFilterShape = [16, 48, 3, 3], strides = [1, 1]
-            } -> !Distributed3
+            } : !Distributed4, !VPU.DistributedTensor<16x48x3x3x!qElemType4, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPU.DistributedTensor<16x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}> -> !Distributed3
     %11 = VPU.Copy(%10) : !Distributed3 -> tensor<1x16x128x128x!qElemType2, {order = #NHWC}>
 
     // DDR Concat_1

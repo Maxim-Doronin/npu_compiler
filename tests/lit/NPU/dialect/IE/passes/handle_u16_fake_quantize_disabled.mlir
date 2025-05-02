@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=512 --init-compiler="vpu-arch=%arch%" --handle-u16-fake-quantize="enable-u16-fake-quantize-to-scale-shift-conversion=false" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=512 --init-compiler="vpu-arch=%arch%" --handle-u16-fake-quantize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // CHECK-LABEL: @RemoveFQU16
 // CHECK-SAME:     ([[ARG0:%.+]]: tensor<1x3x640x640xf16>)

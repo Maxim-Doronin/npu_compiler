@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SWAPTRANSPOSEWITHFQ
@@ -92,7 +94,7 @@ void SwapTransposeWithFQ::safeRunOnFunc() {
             // Quantize will eventually become an NCE task, which requires NHWC layout.
             // If Quantize and Transpose is swapped, transpose and NHWC repack can be fused together.
             // Also, sometimes such fusion results in PermuteCast, which does nothing in runtime.
-            return !maybeQuantOp.getInput().isa<mlir::BlockArgument>();
+            return !mlir::isa<mlir::BlockArgument>(maybeQuantOp.getInput());
         } else if (auto maybeFqOp = transposeIn.getDefiningOp<IE::FakeQuantizeOp>()) {
             // Check that FQ has per-tensor quantization.
             if (!IE::isPerTensorFQ({maybeFqOp})) {
@@ -104,12 +106,12 @@ void SwapTransposeWithFQ::safeRunOnFunc() {
             // dequantize layer, this dequant layer will introduce 2 mem permutes because of the layout.
             // This Transpose will be done as PermuteCast lately.
             if (mlir::isa_and_nonnull<IE::ConvertOp>(maybeFqOp.getInput().getDefiningOp()) &&
-                maybeFqOp.getInput().getDefiningOp()->getOperand(0).isa<mlir::BlockArgument>() &&
+                mlir::isa<mlir::BlockArgument>(maybeFqOp.getInput().getDefiningOp()->getOperand(0)) &&
                 mlir::isa_and_nonnull<IE::FakeQuantizeOp>(*op.getResult().getUsers().begin())) {
                 return false;
             }
 
-            return !maybeFqOp.getInput().isa<mlir::BlockArgument>();
+            return !mlir::isa<mlir::BlockArgument>(maybeFqOp.getInput());
         }
 
         return true;

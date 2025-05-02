@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_cluster_tiling.hpp"
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes/unroll_cluster_tiling.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
@@ -66,8 +67,8 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
     auto input = *swTask.getInputs().begin();
     auto output = *swTask.getOutputs().begin();
 
-    auto inputType = input.getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto outputType = output.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto inputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(input.getType());
+    auto outputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
 
     if (inputType == nullptr && outputType == nullptr) {
         _log.trace("Input and output types are not distributed, nothing to unroll");
@@ -130,8 +131,9 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
 
     // For overlapped input, the Swkernel's attr need to be updated according to its input/output tiles
     const auto kernelEntryName = getSwKernelEntryName(swTask);
-    auto needUpdateAttrs =
-            inDistributionMode == VPU::DistributionMode::OVERLAPPED || kernelEntryName == "lstm_sequence";
+    auto needUpdateAttrs = inDistributionMode == VPU::DistributionMode::OVERLAPPED ||
+                           kernelEntryName == "lstm_sequence" ||
+                           (inDistributionMode == VPU::DistributionMode::SEGMENTED && kernelEntryName == "gatherND");
 
     if (needUpdateAttrs) {
         auto outTileIndex = VPUIP::getTilingDimIndex(outputType);
@@ -139,7 +141,7 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
         for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
             SmallVector<TileInfo> tiles;
             for (const auto& operand : parentInputBuffs) {
-                auto distributedType = operand.getType().dyn_cast<VPUIP::DistributedBufferType>();
+                auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operand.getType());
                 auto tileIndex = VPUIP::getTilingDimIndex(distributedType);
                 auto tileInfo =
                         getPerClusterTileInfo(distributedType.getPerClusterMemoryShapes()[clusterId],
@@ -167,7 +169,8 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
         // For the sub-tile with 5 channels, num_clusters is 5 in input distributed type, while profiling data's
         // distributed type is created with num_clusters = 6.
         // Unrolling profiling data to 5 clusters would cause error with getPerClusterMemoryShapes.
-        if (auto profilingDataType = swTask.getProfilingData().getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto profilingDataType =
+                    mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(swTask.getProfilingData().getType())) {
             numClustersOfProfilingData = profilingDataType.getDistribution().getNumClusters().getInt();
         }
     }
@@ -176,6 +179,38 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
 
     auto taskArgs = kernelArgsRange(swTask);
 
+    auto isDynamic = VPUIP::hasUngroupedBoundedBuffers(swTask);
+    mlir::DenseMap<int64_t, SmallVector<mlir::Value>> swKernelInputDynamicShapes, swKernelOutputDynamicShapes;
+    SmallVector<int32_t> swKernelInputDynamicShapesMap, swKernelOutputDynamicShapesMap;
+    if (isDynamic) {
+        {
+            auto fullInputShapes = swTask.getDynamicInputShapes();
+            VPUX_THROW_UNLESS(fullInputShapes.size() == 1, "Only one dynamic input shape is supported");
+            auto currBuffs = VPUIP::getPerClusterSWMemoryBuffers(_ctx, loc, "dynamicInputShapes", swTask,
+                                                                 fullInputShapes[0], numClusters, builder, _log,
+                                                                 /*allowDiscontinuousBuffers*/ false);
+            for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
+                swKernelInputDynamicShapes[clusterId].push_back(currBuffs[clusterId]);
+            }
+        }
+
+        {
+            auto fullOutputShapes = swTask.getDynamicOutputShapeBuffs();
+            VPUX_THROW_UNLESS(fullOutputShapes.size() == 1, "Only one dynamic output shape is supported");
+            auto currBuffs = VPUIP::getPerClusterSWMemoryBuffers(_ctx, loc, "dynamicOutputShapesBuffs", swTask,
+                                                                 fullOutputShapes[0], numClusters, builder, _log,
+                                                                 /*allowDiscontinuousBuffers*/ false);
+            for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
+                swKernelOutputDynamicShapes[clusterId].push_back(currBuffs[clusterId]);
+            }
+        }
+
+        auto fullInputShapesMap = swTask.getDynamicInputShapesMap().value_or(ArrayRef<int32_t>());
+        auto fullOutputShapesMap = swTask.getDynamicOutputShapesMap().value_or(ArrayRef<int32_t>());
+
+        swKernelInputDynamicShapesMap = to_small_vector(fullInputShapesMap);
+        swKernelOutputDynamicShapesMap = to_small_vector(fullOutputShapesMap);
+    }
     for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
         const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
         mlir::Value profilingData = nullptr;
@@ -224,9 +259,20 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
         auto builtInFunction = VPUIP::createBuiltInFunction(_module, newOperands, inputTypes, kernelEntryPoint,
                                                             kernelCode, kernelName, _log);
 
-        auto newTask = VPURT::wrapIntoTaskOp<VPUIP::SwKernelOp>(
-                builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffs[clusterId],
-                outputBuffs[clusterId], profilingData, builtInFunction, getIntAttr(builder, clusterId));
+        VPUIP::SwKernelOp newTask = [&] {
+            if (isDynamic) {
+                return VPURT::wrapIntoTaskOp<VPUIP::SwKernelOp>(
+                        builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc,
+                        inputBuffs[clusterId], outputBuffs[clusterId], swKernelInputDynamicShapes[clusterId],
+                        swKernelInputDynamicShapesMap, swKernelOutputDynamicShapes[clusterId],
+                        swKernelOutputDynamicShapesMap, profilingData, builtInFunction, getIntAttr(builder, clusterId),
+                        swTask.getStridesAttr());
+            }
+            return VPURT::wrapIntoTaskOp<VPUIP::SwKernelOp>(
+                    builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffs[clusterId],
+                    outputBuffs[clusterId], profilingData, builtInFunction, getIntAttr(builder, clusterId),
+                    swTask.getStridesAttr());
+        }();
         updateSwProfilingMetadata(newTask, swTask.getProfilingMetadataAttr(), clusterId);
 
         initSwKernel(newTask, inputBuffs[clusterId], outputBuffs[clusterId], newArgs, _log.nest());
@@ -248,7 +294,7 @@ void VPUIP::arch37xx::ClusterNCERewriter::getInputBuffers(
         VPUIP::NCEClusterTaskOp nceTask, const int64_t numClusters, mlir::OpBuilder& builder) const {
     inputBuffs = VPUIP::getPerClusterMemoryBuffers(_ctx, loc, "input", nceTask.getInput(), numClusters, builder);
     auto parentInput = *nceTask.getInputs().begin();
-    auto parentInputType = parentInput.getType().cast<VPUIP::DistributedBufferType>();
+    auto parentInputType = mlir::cast<vpux::VPUIP::DistributedBufferType>(parentInput.getType());
 
     mlir::UnitAttr isSegmented = isSegmentedNCETask(parentInputType);
 
@@ -268,9 +314,9 @@ void VPUIP::arch37xx::ClusterNCERewriter::getInputBuffers(
         // If the storage element table is present, its segment size has to fit this restriction
         if (isSegmented && clusterId != (numClusters - 1) &&
             (nceTask.getTaskType() == VPUIP::NCETaskType::CONV || isDWOpAndNeedsAlign)) {
-            auto inShape = inputBuffs[clusterId].getType().cast<NDTypeInterface>().getShape();
+            auto inShape = mlir::cast<vpux::NDTypeInterface>(inputBuffs[clusterId].getType()).getShape();
             if (nceTask.getInputStorageElementTable() != nullptr) {
-                inShape = inputSETableBuffs[clusterId].getType().cast<NDTypeInterface>().getShape();
+                inShape = mlir::cast<vpux::NDTypeInterface>(inputSETableBuffs[clusterId].getType()).getShape();
             }
             const auto isInputSparse =
                     nceTask.getInputSparsityMap() != nullptr || nceTask.getInputStorageElementTable() != nullptr;
@@ -292,8 +338,8 @@ void VPUIP::arch37xx::ClusterNCERewriter::getOutputBuffers(SmallVector<mlir::Val
                                                            SmallVector<SmallVector<mlir::Value>>& /*outputItiBuffs*/,
                                                            mlir::Location loc, VPUIP::NCEClusterTaskOp nceTask,
                                                            const int64_t numClusters, mlir::OpBuilder& builder) const {
-    auto parentInputType = (*nceTask.getInputs().begin()).getType().cast<VPUIP::DistributedBufferType>();
-    auto parentOutputType = (*nceTask.getOutputs().begin()).getType().cast<VPUIP::DistributedBufferType>();
+    auto parentInputType = mlir::cast<vpux::VPUIP::DistributedBufferType>((*nceTask.getInputs().begin()).getType());
+    auto parentOutputType = mlir::cast<vpux::VPUIP::DistributedBufferType>((*nceTask.getOutputs().begin()).getType());
 
     auto inDistribution = parentInputType.getDistribution();
     auto outDistribution = parentOutputType.getDistribution();

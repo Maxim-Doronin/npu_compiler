@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -34,8 +34,11 @@ mlir::FailureOr<OutputTiling> OpTilingCache::getHWLayerTilingStrategyWithTileDim
             // If isolated tiling failed, return failure
             return mlir::failure();
         }
-        return vpux::getHWLayerTilingStrategyWithTileDimOrderForPipelining(op, outputShape,
-                                                                           isolatedTiles.value().value(), log);
+
+        auto pipelineTiles = vpux::getHWLayerTilingStrategyWithTileDimOrderForPipelining(
+                op, outputShape, isolatedTiles.value().value(), log);
+
+        return mlir::failed(pipelineTiles) ? isolatedTiles.value() : pipelineTiles;
     };
 
     const auto useCache = isCacheSupported();

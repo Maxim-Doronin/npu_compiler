@@ -1,12 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/utils/core/numeric.hpp"
+#include "vpux/utils/core/range.hpp"
 
 using namespace vpux;
 
@@ -24,19 +28,27 @@ mlir::LogicalResult vpux::IE::MultiplyOp::inferReturnTypeComponents(
     const auto in1Type = mlir::cast<mlir::RankedTensorType>(multiply.getInput1().getType());
     const auto in2Type = mlir::cast<mlir::RankedTensorType>(multiply.getInput2().getType());
 
-    const auto outShapeRes =
-            IE::broadcastEltwiseShape(in1Type.getShape(), in2Type.getShape(), multiply.getAutoBroadcast(), loc);
+    auto in1Shape = SmallVector<int64_t>(in1Type.getShape());
+    auto in2Shape = SmallVector<int64_t>(in2Type.getShape());
+    if (mlir::failed(IE::unpadInputShape(in1Shape, multiply.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
+    if (mlir::failed(IE::unpadInputShape(in2Shape, multiply.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
+
+    const auto outShapeRes = IE::broadcastEltwiseShape(in1Shape, in2Shape, multiply.getAutoBroadcast(), loc);
 
     if (mlir::succeeded(outShapeRes)) {
-        auto outShapeResVec = outShapeRes.value();
-        if (multiply.getOutputChannels().has_value()) {
-            outShapeResVec[Dims4D::Act::C.ind()] = multiply.getOutputChannels().value();
+        auto outShape = outShapeRes.value();
+        if (mlir::failed(IE::padOutputShape(outShape, multiply.getOutputPaddingAttr(), loc))) {
+            return mlir::failure();
         }
-
         const auto outOrder =
                 in1Type.getRank() >= in2Type.getRank() ? vpux::getOrder(in1Type) : vpux::getOrder(in2Type);
-        const auto outDesc = getTensorAttr(outOrder, getMemorySpace(in1Type), getBounds(in1Type));
-        inferredReturnShapes.emplace_back(outShapeResVec, in1Type.getElementType(), outDesc);
+
+        const auto tensorAttr = getTensorAttr(ctx, outOrder, getMemorySpace(in1Type), getBounds(in1Type));
+        inferredReturnShapes.emplace_back(outShape, in1Type.getElementType(), tensorAttr);
     }
 
     return mlir::success();
@@ -58,4 +70,18 @@ mlir::OpFoldResult vpux::IE::MultiplyOp::fold(FoldAdaptor adaptor) {
 
     const auto content = static_cast<Const::ContentAttr>(attr).fold();
     return isDoubleEqual(content.getSplatValue<double>(), 1.0f) ? getInput1() : nullptr;
+}
+
+mlir::LogicalResult vpux::IE::MultiplyOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                            mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    auto outShape = IE::reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
+
+    if (mlir::failed(outShape)) {
+        return outShape;
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }

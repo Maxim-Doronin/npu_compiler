@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Bufferization/IR/Bufferization.h>
@@ -98,7 +98,8 @@ std::unique_ptr<mlir::Pass> createConvertVPUMI37XX2ELFPass(Logger log = Logger::
 std::unique_ptr<mlir::Pass> createConvertVPUIP2VPUMI40XXPass(
         Logger log = Logger::global(), bool enableMemorySideCache = false,
         AllocateShaveStackFrames allocateShaveStackFrames = AllocateShaveStackFrames::DISABLED);
-std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(Logger log = Logger::global(), bool enablePWLM = false);
+std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(Logger log = Logger::global(), bool enablePWLM = false,
+                                                              bool disableDmaSwFifo = false);
 
 std::unique_ptr<mlir::Pass> createConvertVPUIPDPU2NPUReg40XXPass(
         Logger log = Logger::global(), VPU::DPUDryRunMode dpuDryRunMode = VPU::DPUDryRunMode::NONE);

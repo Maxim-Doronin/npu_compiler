@@ -6,6 +6,7 @@
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/NPU37XX/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
@@ -24,7 +25,6 @@ using namespace vpux;
 void vpux::VPUIP::arch37xx::buildOptimizeCopiesPipeline(mlir::OpPassManager& pm,
                                                         const VPUIP::arch37xx::OptimizeCopiesOptions& options,
                                                         Logger log) {
-    pm.addPass(VPUIP::createUnwrapClusterTilingPass(log));
     if (options.enableOptimizeCopies) {
         pm.addPass(VPUIP::createOptimizeCopiesPass(log));
         pm.addPass(VPUIP::createUniquifyWeightsTableCopiesPass(log));
@@ -62,6 +62,7 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     if (options.enableShaveKernelTiling) {
         pm.addPass(VPUIP::createTileActShaveKernelTaskPass(log));
     }
+    pm.addPass(VPUIP::createUnwrapClusterTilingPass(log));
     if (options.enableOptimizeCopies || options.enableOpsAsDMA) {
         // This pass is a part of "copy optimization pipeline", but need to be done before because
         // WrapWithPermuteAsNNDMA depends on it.
@@ -92,10 +93,10 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     pm.addPass(VPUIP::createUngroupBoundedBuffersPass(log));
-    pm.addPass(mlir::createCanonicalizerPass(grc));
 
     VPUIP::arch37xx::buildOptimizeCopiesPipeline(pm, VPUIP::arch37xx::OptimizeCopiesOptions(options), log);
 
+    pm.addPass(VPUIP::createConvertDynamicReshapeToInPlacePass(log));
     pm.addPass(VPUIP::createInsertCopyForEltwiseInPlaceInputPass(log));
 
     if (options.enableOpsAsDMA) {
@@ -182,12 +183,12 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     VPUIP::arch37xx::buildDMAUnrollingPipeline(pm, log);
 
     // TODO: E#140041 enable profiling with outlining
-    bool isOutliningEnabled =
-            (options.functionOutlining.hasValue() || options.enableVerticalFusionOutlining) && !options.enableProfiling;
+    bool isOutliningEnabled = (options.functionOutlining.hasValue() || options.enableVerticalFusionOutlining) &&
+                              (!options.enableProfiling || options.enableProfilingWithOutlining);
 
     // TODO: E#118869 For now put the pass before barrier scheduling
     if (isOutliningEnabled) {
-        pm.addPass(mlir::createInlinerPass());
+        pm.addPass(VPUIP::createDispatchedInlinerPass(log));
     }
 
     if (options.enableControlGraphSplit) {
@@ -203,12 +204,12 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
                                                      options.reduceParallelControlFlows, log));
     }
 
-    pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(std::nullopt, std::nullopt, log));
+    pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(std::nullopt, log));
+
+    pm.addPass(VPURT::arch37xx::createAddFinalBarrierPass(log));
 
     VPURT::buildBarrierLegalizationPipeline(pm, std::nullopt, std::nullopt,
                                             /* unevenVariantSplitFlag */ false, log);
-
-    pm.addPass(VPURT::arch37xx::createAddFinalBarrierPass(log));
 
     pm.addPass(Const::createApplySwizzlingPass());
 
@@ -227,7 +228,7 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     pm.addPass(VPURT::createAssignPhysicalBarriersPass(options.enableColorBinPhysicalBarrierAssignment, std::nullopt,
-                                                       log));
+                                                       std::nullopt, log));
     pm.addPass(VPURT::createBarrierSimulationPass(log));
     pm.addPass(VPUIP::createUpdateSwKernelParamsPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));

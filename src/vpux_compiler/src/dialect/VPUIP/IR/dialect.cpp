@@ -1,17 +1,26 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IERT/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/unified_func_inliner_interface.hpp"
+#include "vpux/compiler/dialect/net/IR/dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/Transforms/BufferizationUtils.h>
 #include <mlir/Transforms/InliningUtils.h>
 
@@ -63,6 +72,9 @@ void vpux::VPUIP::VPUIPDialect::initialize() {
     registerTypes();
 
     addInterfaces<VPUIPInlinerInterface, VPUIPBufferizerInterface>();
+
+    Core::registerDispatchedInlinerInterface<VPUIP::VPUIPInlinerDispatchAttr, VPUIP::FuncInlinerInterface>(
+            getContext());
 }
 
 //
@@ -94,7 +106,7 @@ void vpux::VPUIP::VPUIPDialect::setExecutorInstanceMask(mlir::async::ExecuteOp e
             return;
         }
 
-        auto portIdxAttr = executorInstanceMask[0].cast<mlir::IntegerAttr>();
+        auto portIdxAttr = mlir::cast<mlir::IntegerAttr>(executorInstanceMask[0]);
 
         auto* bodyBlock = execOp.getBody();
         for (auto& op : bodyBlock->getOperations()) {
@@ -118,7 +130,7 @@ IndexedSymbolAttr vpux::VPUIP::VPUIPDialect::getExecutor(mlir::async::ExecuteOp 
     const auto executor = execOp->getAttr(executorAttrName);
     VPUX_THROW_UNLESS(executor != nullptr, "Can't find Executor attributes for Operation at '{0}'", execOp->getLoc());
 
-    const auto executorSymbol = executor.dyn_cast<IndexedSymbolAttr>();
+    const auto executorSymbol = mlir::dyn_cast<vpux::IndexedSymbolAttr>(executor);
     VPUX_THROW_UNLESS(executorSymbol != nullptr, "Unsupported Executor attribute '{0}'", executorSymbol);
 
     return executorSymbol;
@@ -148,7 +160,7 @@ mlir::ArrayAttr vpux::VPUIP::VPUIPDialect::getExecutorInstanceMask(mlir::async::
     VPUX_THROW_UNLESS(executorInstanceMask != nullptr, "Can't find Executor Instance attributes for Operation at '{0}'",
                       execOp->getLoc());
 
-    const auto executorInstanceMaskSymbol = executorInstanceMask.dyn_cast<mlir::ArrayAttr>();
+    const auto executorInstanceMaskSymbol = mlir::dyn_cast<mlir::ArrayAttr>(executorInstanceMask);
     VPUX_THROW_UNLESS(executorInstanceMaskSymbol != nullptr, "Unsupported Executor Instance attribute '{0}'",
                       executorInstanceMaskSymbol);
 
@@ -166,7 +178,7 @@ mlir::Operation* vpux::VPUIP::VPUIPDialect::materializeConstant(mlir::OpBuilder&
         return nullptr;
     }
 
-    if (!type.isa<mlir::MemRefType>()) {
+    if (!mlir::isa<mlir::MemRefType>(type)) {
         (void)errorAt(loc, "Can't materialize VPUIP Constant for Type '{0}'", type);
         return nullptr;
     }

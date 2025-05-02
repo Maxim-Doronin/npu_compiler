@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -79,9 +79,8 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Output) {
 
     const auto outwardHalos = SmallVector<VPUIP::OutwardHaloRegionAttr>({outwardHalo0, outwardHalo1});
 
-    const auto ndType =
-            VPUIP::ITIBufferType::get(&ctx, shape, elemType, layout, dimsSpace, nullptr, inwardHalos, outwardHalos)
-                    .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPUIP::ITIBufferType::get(&ctx, shape, elemType, layout, dimsSpace, nullptr, inwardHalos, outwardHalos));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -91,7 +90,7 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Output) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 16 * 13);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -111,7 +110,7 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Output) {
     EXPECT_ANY_THROW(ndType.changeShape(vpux::ShapeRef(newShape)));
 
     const auto changedElementType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
 
     EXPECT_ANY_THROW(ndType.changeShapeElemType(vpux::ShapeRef(newShape), mlir::Float32Type::get(&ctx)));
 
@@ -138,7 +137,7 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Output) {
 
     // Test out sub byte logic
     const auto subByteElemType = ndType.changeElemType(mlir::IntegerType::get(&ctx, 4));
-    EXPECT_TRUE(subByteElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(subByteElemType.getElementType()));
     EXPECT_EQ(subByteElemType.getElemTypeSize().count(), 4);
     EXPECT_EQ(subByteElemType.getTotalAllocSize().count(), 64 * 13 * 16 / 2);
     EXPECT_EQ(subByteElemType.getCompactAllocSize().count(), 64 * 13 * 16 / 2);
@@ -183,9 +182,8 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Input) {
     const auto outwardHalos = SmallVector<VPUIP::OutwardHaloRegionAttr>({outwardHalo0});
 
     const auto isIduSegmentation = mlir::UnitAttr::get(&ctx);
-    const auto ndType = VPUIP::ITIBufferType::get(&ctx, shape, elemType, layout, dimsSpace, isIduSegmentation,
-                                                  inwardHalos0, outwardHalos)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(VPUIP::ITIBufferType::get(
+            &ctx, shape, elemType, layout, dimsSpace, isIduSegmentation, inwardHalos0, outwardHalos));
     ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -195,7 +193,7 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Input) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 16 * 12);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -215,7 +213,7 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Input) {
     EXPECT_ANY_THROW(ndType.changeShape(vpux::ShapeRef(newShape)));
 
     const auto changedElementType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElementType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
 
     EXPECT_ANY_THROW(ndType.changeShapeElemType(vpux::ShapeRef(newShape), mlir::Float32Type::get(&ctx)));
 
@@ -247,10 +245,8 @@ TEST_F(MLIR_NDTypeInterface, ITIBufferType_Input) {
     const auto explicitStrideslayout = vpux::MemRefAttr::get(orderAttr, explicitStridesAttr,
                                                              /*allocSize=*/nullptr, &ctx);
 
-    const auto explicitStridesNdType =
-            VPUIP::ITIBufferType::get(&ctx, shape, elemType, explicitStrideslayout, dimsSpace, isIduSegmentation,
-                                      inwardHalos0, outwardHalos)
-                    .dyn_cast<vpux::NDTypeInterface>();
+    const auto explicitStridesNdType = mlir::dyn_cast<vpux::NDTypeInterface>(VPUIP::ITIBufferType::get(
+            &ctx, shape, elemType, explicitStrideslayout, dimsSpace, isIduSegmentation, inwardHalos0, outwardHalos));
 
     const SmallVector<vpux::Bit> explicitStrides({266240_Bit, 16_Bit, 20480_Bit, 1024_Bit});
     const SmallVector<vpux::Bit> explicitMemStrides({266240_Bit, 20480_Bit, 1024_Bit, 16_Bit});

@@ -1,30 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <shared_test_classes/base/ov_subgraph.hpp>
-
-#include <openvino/op/constant.hpp>
-#include <openvino/op/parameter.hpp>
-#include <openvino/op/result.hpp>
-#include <openvino/op/tensor_iterator.hpp>
-
-#include "vpu_ov2_layer_test.hpp"
-
-#include <shared_test_classes/base/ov_subgraph.hpp>
-
-#include <common/functions.h>
 #include <common/print_test_case_name.hpp>
 #include <pretty_test_arguments.hpp>
+#include "vpu_ov2_layer_test.hpp"
 
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include <openvino/core/type/element_type.hpp>
-#include <openvino/op/broadcast.hpp>
-#include <openvino/opsets/opset1.hpp>
-#include <openvino/opsets/opset3.hpp>
-#include <openvino/opsets/opset4.hpp>
-#include <openvino/opsets/opset5.hpp>
 #include <openvino/pass/manager.hpp>
 
 #include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>
@@ -132,9 +116,10 @@ protected:
 
     void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
         inputs.clear();
-        size_t num_directions = seq_direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL ? 2 : 1;
-        ov::Shape default_shape{batch_size, num_directions, hidden_size};
+        size_t numDirections = seq_direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL ? 2 : 1;
+        ov::Shape defaultShape{batch_size, numDirections, hidden_size};
         auto itTargetShape = targetInputStaticShapes.begin();
+        int seed = 1;
         for (const auto& param : function->get_parameters()) {
             std::shared_ptr<ov::Node> inputNode = param;
             for (size_t i = 0; i < param->get_output_size(); i++) {
@@ -144,14 +129,14 @@ protected:
                         if (itTargetShape != targetInputStaticShapes.end()) {
                             if (nodePtr->get_input_node_ptr(port)->shared_from_this() ==
                                 inputNode->shared_from_this()) {
-                                ov::Tensor tensor = ov::test::utils::create_and_fill_tensor(param->get_element_type(),
-                                                                                            *itTargetShape, 100, 0);
+                                ov::Tensor tensor = ov::test::utils::create_and_fill_tensor_real_distribution(
+                                        param->get_element_type(), *itTargetShape, -1.0f, 1.0f, seed++);
                                 inputs.insert({param, tensor});
                                 break;
                             }
                         } else {
-                            ov::Tensor tensor = ov::test::utils::create_and_fill_tensor(param->get_element_type(),
-                                                                                        default_shape, 100, 0);
+                            ov::Tensor tensor = ov::test::utils::create_and_fill_tensor_real_distribution(
+                                    param->get_element_type(), defaultShape, -1.0f, 1.0f, seed++);
                             inputs.insert({param, tensor});
                         }
                     }
@@ -165,16 +150,16 @@ protected:
 };
 
 TEST_P(DynamicTensorIteratorNPUTest, NPU4000_HW_TestKindSubgraph) {
+    abs_threshold = 0.0001f;
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
 
-std::vector<InputShape> input_shapes = {
-        InputShape(ov::PartialShape({1, ov::Dimension(1, 35), 512}), {{1, 30, 512}, {1, 10, 512}, {1, 5, 512}})};
+std::vector<InputShape> input_shapes = {generateShapes(1, 1, 512), generateShapes(1, 36_Dyn, 512)};
 
 std::vector<int32_t> hidden_sizes = {128};
 
-std::vector<ov::element::Type> model_types = {ov::element::f32};
+std::vector<ov::element::Type> model_types = {ov::element::f16};
 
 std::vector<ov::op::RecurrentSequenceDirection> reccurent_sequence_direction = {
         ov::op::RecurrentSequenceDirection::FORWARD, ov::op::RecurrentSequenceDirection::REVERSE,

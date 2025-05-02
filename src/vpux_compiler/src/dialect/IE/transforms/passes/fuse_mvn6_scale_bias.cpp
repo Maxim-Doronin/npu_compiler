@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
@@ -38,9 +39,9 @@ private:
     Logger _log;
 
     bool fitsIntoCmx(IE::MVN6Op origOp, mlir::Value mulInput, mlir::Value addInput) const {
-        const auto mvnType = origOp.getInput().getType().cast<NDTypeInterface>();
+        const auto mvnType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
         const auto actInput = mulInput ? mulInput : addInput;
-        const auto actType = actInput.getType().cast<NDTypeInterface>();
+        const auto actType = mlir::cast<vpux::NDTypeInterface>(actInput.getType());
         const auto axesVec = parseIntArrayAttr<int64_t>(origOp.getAxesValueAttr());
 
         int64_t normSize = 1;
@@ -119,8 +120,8 @@ mlir::LogicalResult FuseMvn6ScaleBias::matchAndRewrite(IE::MVN6Op origOp, mlir::
     mlir::Operation* lastOp = nullptr;
 
     if (nextMul && nextAdd) {  // [MVN->Mul->Add]
-        const auto mulShape = nextMul->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape();
-        const auto addShape = nextAdd->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto mulShape = mlir::cast<vpux::NDTypeInterface>(nextMul->getResult(0).getType()).getShape();
+        const auto addShape = mlir::cast<vpux::NDTypeInterface>(nextAdd->getResult(0).getType()).getShape();
         if (mulShape != addShape) {
             _log.trace("Mul/Add have different shapes.");
             return mlir::failure();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 using namespace vpux;
 
@@ -30,11 +31,10 @@ mlir::LogicalResult vpux::VPU::PopulateWeightTableOp::inferReturnTypes(
                                        .setShape(Shape(wtShape))
                                        .setElementType(getSInt32Type(ctx));
 
-    const auto bounds =
-            mlir::isa<BoundedTypeInterface>(inType) ? mlir::cast<BoundedTypeInterface>(inType).getBounds() : nullptr;
     vpux::DimsOrder outOrder = newOutputType.dimsOrder.value();
-    auto outTensorAttr = vpux::getTensorAttr(outOrder.toAffineMap(ctx), inType.getMemSpace(), bounds);
-    auto outputType = mlir::RankedTensorType::get(wtShape, getSInt32Type(ctx), outTensorAttr);
+    const auto tensorAttr =
+            vpux::getTensorAttr(ctx, outOrder.toAffineMap(ctx), inType.getMemSpace(), getBounds(inType));
+    auto outputType = mlir::RankedTensorType::get(wtShape, getSInt32Type(ctx), tensorAttr);
 
     inferredReturnTypes.push_back(outputType);
 

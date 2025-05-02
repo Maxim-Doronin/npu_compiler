@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::IE::CTCGreedyDecoderOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = ctc.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(ctc.getInput().getType());
     const auto inShape = inType.getShape();
 
     if (inShape.size() != 3) {

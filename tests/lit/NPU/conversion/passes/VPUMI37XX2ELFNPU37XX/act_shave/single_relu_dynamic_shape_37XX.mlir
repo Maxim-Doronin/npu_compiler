@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@ module @SimpleActivation attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.com
     func.func private @builtin_ReLU(memref<2x4x20x20xf16, [@CMX_NN, 0]>, memref<2x4x20x20xf16, [@CMX_NN, 0]>) attributes {VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu"}
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Param_1" : tensor<?x?x?x?xf16>
     DataInfo "vpux_ie_shape_Param_1" : tensor<4xi32>
   } outputsInfo : {

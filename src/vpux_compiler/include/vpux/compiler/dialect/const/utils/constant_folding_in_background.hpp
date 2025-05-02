@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,8 +9,8 @@
 
 #include "vpux/compiler/dialect/const/utils/constant_folding_cache.hpp"
 #include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <llvm/Support/ThreadPool.h>
 #include <mlir/IR/MLIRContext.h>

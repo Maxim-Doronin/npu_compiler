@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 
 #include "vpux/compiler/NPU37XX/core/pipelines_options.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Pass/PassManager.h>
 
@@ -70,7 +70,8 @@ void buildInitialLowPrecisionTransformationsPipeline(mlir::OpPassManager& pm,
                                                      const IE::LowPrecisionTransformOptions& options,
                                                      Logger log = Logger::global());
 
-void buildDynamicShapeTransformationsPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
+void buildDynamicShapeTransformationsPipeline(mlir::OpPassManager& pm, const IE::DynamicShapeTransformOptions& options,
+                                              Logger log = Logger::global());
 
 //
 // DefaultHWOptions
@@ -79,6 +80,8 @@ void buildDynamicShapeTransformationsPipeline(mlir::OpPassManager& pm, Logger lo
 struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::arch37xx::DefaultHWOptionsDeviceBase {
     BoolOption enableConvertFFTToConv{*this, "convert-fft-to-conv", llvm::cl::desc("Enable convert-fft-to-conv pass"),
                                       llvm::cl::init(true)};
+    BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
+                                          llvm::cl::desc("Enable decompose-gru-sequence pass"), llvm::cl::init(true)};
 
     BoolOption enableFusePermuteQuantize{*this, "fuse-permute-quantize",
                                          llvm::cl::desc("Enable fuse-permute-quantize pass"), llvm::cl::init(true)};
@@ -86,6 +89,8 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption enableFusePermuteQuantizeExpand{*this, "fuse-permute-quantize-expand",
                                                llvm::cl::desc("Enable fuse-permute-quantize-expand pass"),
                                                llvm::cl::init(true)};
+    BoolOption enableSwapConvertWithSWOp{*this, "swap-convert-with-sw-op",
+                                         llvm::cl::desc("Enable swap-convert-with-sw-op pass"), llvm::cl::init(false)};
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
                                    llvm::cl::init(false)};
 
@@ -114,7 +119,7 @@ void buildAdjustLayoutPipeline(mlir::OpPassManager& pm, const AdjustLayoutOption
 std::unique_ptr<mlir::Pass> createPropagateReorderToNCEPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSwapMaxPoolWithActivation(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseReordersPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createFuseStaticScalePass(Logger log = Logger::global(), bool moveScaleBeforeConcat = true);
+std::unique_ptr<mlir::Pass> createFuseStaticScalePass(Logger log = Logger::global());
 
 //
 // Registration

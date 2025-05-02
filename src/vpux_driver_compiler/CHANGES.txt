@@ -1,6 +1,16 @@
 Change Log:
 -----------
-VPUXCompilerL0 7.1.0
+VPUXCompilerL0 7.3.0:
+  - Add new API for querying options supported by compiler: vclGetCompilerSupportedOptions
+  - Add new API for checking if specified option is supported by compiler: vclGetCompilerIsOptionSupported
+
+VPUXCompilerL0 7.2.0:
+  - Not clear log after get log from VCLLogger.
+
+VPUXCompilerL0 7.1.1:
+  - Update error log format
+
+VPUXCompilerL0 7.1.0:
   - Add NPU_COMPILER_DYNAMIC_QUANTIZATION property
 
 VPUXCompilerL0 7.0.0:

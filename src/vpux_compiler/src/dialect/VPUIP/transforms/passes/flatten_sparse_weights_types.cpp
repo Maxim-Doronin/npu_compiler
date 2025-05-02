@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 
@@ -53,7 +55,7 @@ void compressConstWeightsType(mlir::func::FuncOp func) {
         const auto transformations = contentAttr.getTransformations();
         const auto sparsifyTransformationIt =
                 std::find_if(transformations.rbegin(), transformations.rend(), [](Const::TransformAttrInterface tr) {
-                    return tr.isa<Const::SparsifyAttr>();
+                    return mlir::isa<vpux::Const::SparsifyAttr>(tr);
                 });
         if (sparsifyTransformationIt == transformations.rend()) {
             return;
@@ -67,7 +69,7 @@ void compressConstWeightsType(mlir::func::FuncOp func) {
 
         SmallVector<Const::TransformAttrInterface> newTransformations;
         for (auto tr : transformations) {
-            if (tr.isa<Const::SparsifyAttr>()) {
+            if (mlir::isa<vpux::Const::SparsifyAttr>(tr)) {
                 newTransformations.push_back(newSparsifyTransformation);
                 continue;
             }
@@ -81,9 +83,9 @@ void compressConstWeightsType(mlir::func::FuncOp func) {
 // Flatten the operand and result types of all operations, when the types contain a compression scheme
 void flattenShapes(mlir::func::FuncOp func) {
     const auto eraseSparsityCompression = [](vpux::NDTypeInterface type) -> mlir::Type {
-        if (auto memrefType = type.dyn_cast<mlir::MemRefType>()) {
+        if (auto memrefType = mlir::dyn_cast<mlir::MemRefType>(type)) {
             auto layout = memrefType.getLayout();
-            if (auto memrefAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+            if (auto memrefAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
                 auto ctx = memrefAttr.getContext();
                 auto hwFieldsWithoutCompression = memrefAttr.hwSpecificFields();
                 llvm::erase_if(hwFieldsWithoutCompression, [](const vpux::HwSpecificMemRefField& field) {
@@ -94,7 +96,7 @@ void flattenShapes(mlir::func::FuncOp func) {
             }
             return mlir::MemRefType::get(memrefType.getShape(), memrefType.getElementType(), layout,
                                          memrefType.getMemorySpace());
-        } else if (auto distType = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+        } else if (auto distType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
             return VPUIP::DistributedBufferType::get(
                     distType.getContext(), distType.getShape().raw(), distType.getElementType(), distType.getLayout(),
                     distType.getMemSpace(), distType.getDistribution(), /*sparsityCompression=*/nullptr);
@@ -107,7 +109,7 @@ void flattenShapes(mlir::func::FuncOp func) {
         if (sparsityCompression == nullptr) {
             return;
         }
-        const auto ndType = value.getType().cast<vpux::NDTypeInterface>();
+        const auto ndType = mlir::cast<vpux::NDTypeInterface>(value.getType());
         const auto totalByteSize = sparsityCompression.getAllocSize(ndType.getElementType()).count();
         const Shape newShape({totalByteSize, 1, 1, 1});
         const auto u8Type = getUInt8Type(value.getContext());

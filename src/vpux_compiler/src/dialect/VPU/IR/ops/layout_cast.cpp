@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::VPU::LayoutCastOp::inferReturnTypes(mlir::MLIRContext*
     }
 
     const auto outAffineMap = overrideLayout.getDstOrder();
-    const auto inType = overrideLayout.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(overrideLayout.getInput().getType());
     const auto outType = inType.changeDimsOrder(DimsOrder::fromAffineMap(outAffineMap));
     inferredReturnTypes.push_back(outType);
 
@@ -36,7 +36,7 @@ mlir::LogicalResult vpux::VPU::LayoutCastOp::inferReturnTypes(mlir::MLIRContext*
 
 mlir::LogicalResult vpux::VPU::LayoutCastOp::verify() {
     const auto outAffineMap = getDstOrder();
-    const auto inType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     if (inType.getRank() != outAffineMap.getNumDims()) {
         return errorAt(*this, "Cannot apply {0} map to {1}.", outAffineMap, inType.getShape());
     }
@@ -55,8 +55,8 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::LayoutC
         return mlir::failure();
     }
     const auto ctx = getContext();
-    const auto srcType = getInput().getType().cast<NDTypeInterface>();
-    const auto dstType = getOutput().getType().cast<NDTypeInterface>();
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto srcOrder = srcType.getDimsOrder();
     const auto dstOrder = dstType.getDimsOrder();
     const auto memPerm = getPermutationFromOrders(srcOrder, dstOrder, ctx);

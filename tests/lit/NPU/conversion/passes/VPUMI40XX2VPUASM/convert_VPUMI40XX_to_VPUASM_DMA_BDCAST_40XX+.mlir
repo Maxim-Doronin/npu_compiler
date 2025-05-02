@@ -9,7 +9,7 @@
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @dma_broadcast inputsInfo : {
+  net.NetworkInfo entryPoint : @dma_broadcast inputsInfo : {
     DataInfo "input_0" : tensor<16x32x1x1xf16, {order = #NHWC}>
   } outputsInfo : {
     DataInfo "output_0" : tensor<16x32x1x1xf16, {order = #NHWC}>
@@ -25,10 +25,10 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   } profilingBuffDeclarations : {
   }
   func.func private @dma_broadcast() {
-    %320 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %352 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
-    %353 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
-    %354 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:2>
+    %320 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %352 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:0>
+    %353 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:1>
+    %354 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:1:2>
 
     %2304 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<16x32x1x1xf16, #NHWC, @DDR>
     %2305 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<16x32x1x1xf16, #NHWC, @DDR>

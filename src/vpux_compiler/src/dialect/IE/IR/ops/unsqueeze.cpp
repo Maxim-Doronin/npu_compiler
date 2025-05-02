@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/core/IR/attributes.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/unsqueeze.hpp"
@@ -33,7 +34,7 @@ mlir::LogicalResult vpux::IE::UnsqueezeOp::inferReturnTypeComponents(
     }
 
     const auto input = unsqueeze.getInput();
-    const auto inType = input.getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(input.getType());
     const auto inShape = inType.getShape();
     const auto inOrder = DimsOrder::fromValue(input);
 
@@ -42,14 +43,14 @@ mlir::LogicalResult vpux::IE::UnsqueezeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto outBounds = IE::propagateBoundsAttr(ctx, loc, input, axes.value());
+    const auto outBounds = IE::propagateDynamicAttr(loc, input, axes.value());
     if (mlir::failed(outBounds)) {
         return mlir::failure();
     }
 
     const auto outDesc = vpux::getTensorAttr(
             ctx, vpux::VPU::inferUnsqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inShape),
-            vpux::getMemorySpace(inType), outBounds.value());
+            vpux::getMemorySpace(inType), Bounds(outBounds.value()));
 
     inferredReturnShapes.emplace_back(ArrayRef(outShape.value()), inType.getElementType(), outDesc);
 

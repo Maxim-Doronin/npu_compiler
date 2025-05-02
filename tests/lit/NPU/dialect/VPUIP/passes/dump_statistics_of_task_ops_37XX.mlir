@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -189,13 +189,13 @@ module @DumpOpsStatisticsTest {
 
 module @Test  {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x4x512x1xf16>
+        DataInfo "input" : tensor<1x4x512x1xf16>
     }
     outputsInfo : {
-        IE.DataInfo "mvn" : tensor<1x4x512xf16>
+        DataInfo "mvn" : tensor<1x4x512xf16>
     }
 
 VPURT.SW.Runtime

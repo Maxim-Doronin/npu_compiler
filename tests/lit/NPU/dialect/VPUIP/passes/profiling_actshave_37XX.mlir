@@ -8,7 +8,7 @@
 
 // CHECK-LABEL: @ActShaveProfiling
 module @ActShaveProfiling {
-    IE.CNNNetwork entryPoint : @main inputsInfo :  {
+    net.NetworkInfo entryPoint : @main inputsInfo :  {
         DataInfo "input" : tensor<1x3x224x224xf32>
     } outputsInfo :  {
         DataInfo "output" : tensor<1x150528xf32>
@@ -78,7 +78,7 @@ module @ActShaveProfiling {
 
 // CHECK-LABEL: @ActShaveProfilingMultitile
 module @ActShaveProfilingMultitile {
-    IE.CNNNetwork entryPoint : @main inputsInfo :  {
+    net.NetworkInfo entryPoint : @main inputsInfo :  {
         DataInfo "input" : tensor<1x128x64x32xf16>
     } outputsInfo :  {
         DataInfo "output" : tensor<1x128x64x32xf16>
@@ -145,7 +145,7 @@ module @ActShaveProfilingMultitile {
 
 // CHECK-LABEL: @ActShaveProfilingMulticluster
 module @ActShaveProfilingMulticluster {
-    IE.CNNNetwork entryPoint : @main inputsInfo :  {
+    net.NetworkInfo entryPoint : @main inputsInfo :  {
         DataInfo "input" : tensor<1x4x512x1xf16>
     } outputsInfo :  {
         DataInfo "output" : tensor<1x4x512x1xf16>
@@ -220,7 +220,7 @@ module @ActShaveProfilingMulticluster {
 
 // CHECK-LABEL: @ActShaveProfilingMulticlusterMultitile
 module @ActShaveProfilingMulticlusterMultitile {
-    IE.CNNNetwork entryPoint : @main inputsInfo :  {
+    net.NetworkInfo entryPoint : @main inputsInfo :  {
         DataInfo "input" : tensor<1x128x64x32xf16>
     } outputsInfo :  {
         DataInfo "output" : tensor<1x128x64x32xf16>
@@ -279,7 +279,7 @@ module @ActShaveProfilingMulticlusterMultitile {
 
 // CHECK-LABEL: @ActShaveProfilingDynamicShapes
 module @ActShaveProfilingDynamicShapes {
-    IE.CNNNetwork entryPoint : @main inputsInfo :  {
+    net.NetworkInfo entryPoint : @main inputsInfo :  {
         DataInfo "input" : tensor<1x88xsi32>
     } outputsInfo :  {
         DataInfo "output" : tensor<2x88xsi32>

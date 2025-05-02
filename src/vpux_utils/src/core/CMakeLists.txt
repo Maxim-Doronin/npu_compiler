@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023 Intel Corporation.
+# Copyright (C) 2023-2025 Intel Corporation.
 # SPDX-License-Identifier: Apache 2.0
 #
 
@@ -17,8 +17,6 @@ set(TARGET_NAME npu_core_utils)
 
 list (APPEND SOURCES
             common_string_utils.cpp
-            common_logger.cpp
-            exceptions.cpp
             type/float8_e4m3.cpp
             type/float8_e5m2.cpp
             type/float16.cpp
@@ -27,7 +25,7 @@ list (APPEND SOURCES
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
 
-add_library(${TARGET_NAME} OBJECT ${SOURCES})
+add_library(${TARGET_NAME} STATIC ${SOURCES})
 set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "src")
 
 enable_warnings_as_errors(${TARGET_NAME} WIN_STRICT)

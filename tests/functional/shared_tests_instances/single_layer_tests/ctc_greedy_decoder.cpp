@@ -4,9 +4,7 @@
 //
 
 #include "single_op_tests/ctc_greedy_decoder.hpp"
-#include <common/functions.h>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -23,17 +21,6 @@ class CTCGreedyDecoderLayerTestCommon : public CTCGreedyDecoderLayerTest, virtua
         VpuOv2LayerTest::inputs.insert({funcInputs[0].get_node_shared_ptr(), tensorData});
     }
 };
-
-void skipInferCallbackImpl(std::stringstream& skip, std::vector<InputShape> inShape) {
-    const std::vector<InputShape> badInputShapesForMLIR = {{{}, {{50, 3, 3}}},
-                                                           {{}, {{50, 3, 128}}},
-                                                           {{}, {{10, 1, 16}}}};
-    for (auto iter = badInputShapesForMLIR.cbegin(); iter != badInputShapesForMLIR.cend(); iter++) {
-        if (inShape[0].second[0] == iter[0].second[0]) {
-            skip << "Comparison fails";
-        }
-    }
-}
 
 TEST_P(CTCGreedyDecoderLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();

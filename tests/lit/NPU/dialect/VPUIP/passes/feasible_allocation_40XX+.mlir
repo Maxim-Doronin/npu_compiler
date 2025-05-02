@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,7 +21,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : !act_type
@@ -182,7 +182,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : !act_type
@@ -304,36 +304,38 @@ func.func @main(%in: !act_type_DDR, %out: !act_type_DDR) -> !act_type_DDR {
     return %3 : !act_type_DDR
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
-    // CHECK-NEXT       VPUIP.NNDMA
-    // CHECK:       [[T1:%.+]], [[R1:%.+]]:2 = async.execute {{.*}} ([[R0]] as %arg2: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>)
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME        task_type = #VPUIP.nce_task_type<MAXPOOL>
-    // CHECK-SAME        inputs(%arg2 : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>) outputs([[BUF1:%.*]] :
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME        task_type = #VPUIP.nce_task_type<MAXPOOL>
-    // CHECK-SAME        inputs(%arg2 : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>) outputs([[BUF2:%.*]] :
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK:       [[T1:%.+]], [[R1:%.+]]:2 = async.execute {{.*}} ([[R0]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>)
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:       task_type = #VPUIP.nce_task_type<MAXPOOL>
+    // CHECK-SAME:       input([[INNER_ARG]] : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:       outputs([[BUF1:[^:]+]]
+    // CHECK:           VPUIP.NCEClusterTask
+    // CHECK-SAME:       task_type = #VPUIP.nce_task_type<MAXPOOL>
+    // CHECK-SAME:       input([[INNER_ARG]] : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:       outputs([[BUF2:[^:]+]]
     // CHECK:       [[T_SPILL_WRITE:%.+]], [[R_SPILL_WRITE:%.+]] = async.execute
-    // CHECK-NEXT       VPUIP.NNDMA
-    // CHECK-SAME        spillId
-    // CHECK-SAME        inputs([[BUF2]] : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK-SAME        -> memref<1x32x72x96xf16, #NHWC, @DDR>
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       spillId
+    // CHECK-SAME:       inputs([[BUF2]]: memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:       -> memref<1x32x72x96xf16, #NHWC, @DDR>
     // CHECK:       [[T2:%.+]], [[R2:%.+]] = async.execute
-    // CHECK-NEXT       VPUIP.NNDMA
-    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute {{.*}} ([[R1]]#0 as %arg2: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME         task_type = #VPUIP.nce_task_type<ELTWISE>
-    // CHECK-SAME         inputs(%arg2 : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:       [[T_SPILL_READ:%.+]], [[R_SPILL_READ:%.+]] = async.execute {{.*}} ([[R_SPILL_WRITE]] as %arg2: !async.value<memref<1x32x72x96xf16, #NHWC, @DDR>>)
-    // CHECK-NEXT       VPUIP.NNDMA
-    // CHECK-SAME        spillId
-    // CHECK-SAME        inputs(%arg2 : memref<1x32x72x96xf16, #NHWC, @DDR>)
-    // CHECK-SAME       -> memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute {{.*}} ([[R_SPILL_READ]] as %arg2: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK-NEXT       VPUIP.NCEClusterTask
-    // CHECK-SAME         task_type = #VPUIP.nce_task_type<ELTWISE>
-    // CHECK-SAME         inputs(%arg2 : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute {{.*}} ([[R6]] as %arg2: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK-NEXT       VPUIP.NNDMA
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute {{.*}} ([[R1]]#0 as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
+    // CHECK-SAME:        input([[INNER_ARG]] : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK:       [[T_SPILL_READ:%.+]], [[R_SPILL_READ:%.+]] = async.execute {{.*}} ([[R_SPILL_WRITE]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x72x96xf16, #NHWC, @DDR>>)
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       spillId
+    // CHECK-SAME:       inputs([[INNER_ARG]] : memref<1x32x72x96xf16, #NHWC, @DDR>)
+    // CHECK-SAME:      -> memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute {{.*}} ([[R_SPILL_READ]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
+    // CHECK-SAME:        input([[INNER_ARG]] : memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute {{.*}} ([[R6]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x72x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK-NEXT:      VPUIP.NNDMA
 }
 
 }
@@ -358,7 +360,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : !act_type
@@ -651,7 +653,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : !act_type
@@ -794,7 +796,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : !act_type
@@ -1019,7 +1021,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x16x16xf16>
@@ -1173,7 +1175,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : !BufMemref
@@ -1367,7 +1369,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x32x16x16xf16>
@@ -1508,7 +1510,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "in0" : tensor<1x32x48x48xf16>
@@ -1701,7 +1703,7 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x1x1x1000xf16>

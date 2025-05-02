@@ -1,10 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_INSERTREORDERBETWEENLAYERANDCONCAT
@@ -118,6 +122,12 @@ void InsertReorderBetweenLayerAndConcat::safeRunOnFunc() {
         });
 
         if (hasApprovedParent) {
+            return false;
+        }
+
+        auto concatAxis = IE::getConcatAxis(op);
+        if (concatAxis.has_value() && concatAxis.value().ind() == Dims4D::Act::W.ind()) {
+            // If concat op's layout is NCHW and concat axis is W, we should insert reorder op for better performance.
             return false;
         }
 

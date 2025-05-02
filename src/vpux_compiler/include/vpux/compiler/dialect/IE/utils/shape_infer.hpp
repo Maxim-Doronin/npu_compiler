@@ -5,11 +5,12 @@
 
 #pragma once
 
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 
 #include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/OpDefinition.h>
 

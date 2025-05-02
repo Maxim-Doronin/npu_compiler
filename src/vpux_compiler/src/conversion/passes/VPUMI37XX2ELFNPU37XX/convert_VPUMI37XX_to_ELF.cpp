@@ -7,12 +7,11 @@
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
 
 #include <npu_37xx_nnrt.hpp>
@@ -29,8 +28,6 @@
 #include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/ADT/Hashing.h>
 
-#include <limits>
-
 namespace vpux {
 #define GEN_PASS_DECL_CONVERTVPUMI37XX2ELF
 #define GEN_PASS_DEF_CONVERTVPUMI37XX2ELF
@@ -44,6 +41,8 @@ constexpr auto NNCMX_SLICE_SIZE = vpux::ELFNPU37XX::CMX_SLICE_SIZE;
 constexpr auto ACT_RT_CODE_BUFFER_SIZE = (1_MB).to<vpux::Byte>().count();
 
 namespace {
+
+constexpr auto VPUX_SHAVE_KERNEL_PREFETCH_PAD = static_cast<size_t>((128_Byte).count());
 
 //
 // ConvertVPUMI37XX2ELFPass
@@ -68,7 +67,7 @@ private:
     mlir::Value createCMXMappingSymtab(mlir::func::FuncOp func, mlir::MLIRContext* ctx);
     mlir::Value lookupELFSymbol(mlir::Value symtabValue, mlir::Value sym_input_value);
     mlir::Value createBuffersSecAndSymtab(mlir::func::FuncOp func, mlir::MLIRContext* ctx);
-    void createNetworkIOSymtab(mlir::func::FuncOp func, mlir::MLIRContext* ctx, vpux::IE::CNNNetworkOp cnnOp);
+    void createNetworkIOSymtab(mlir::func::FuncOp func, mlir::MLIRContext* ctx, net::NetworkInfoOp netInfo);
     void createDMARelocs(mlir::func::FuncOp& func, mlir::MLIRContext* ctx, mlir::SmallVector<int64_t>& dmaCount,
                          mlir::Operation::operand_range dmaTasks,
                          mlir::SmallVector<ELFNPU37XX::CreateSectionOp>& dmaSectionValues);
@@ -153,6 +152,9 @@ CreateSectionOpType ConvertVPUMI37XX2ELFPass::createSection(mlir::func::FuncOp f
         return elfCreateSectionOp;
     }
 
+    auto requiresEndPadding =
+            ELFNPU37XX::bitEnumContainsAll(secFlags, ELFNPU37XX::SectionFlagsAttr::VPU_SHF_PROC_SHAVE);
+
     for (DerivedOpType op : ops) {
         if (auto declareBufferOp = mlir::dyn_cast<vpux::VPURT::DeclareBufferOp>(&op)) {
             if (declareBufferOp->getSection() != vpux::VPURT::BufferSection::DDR) {
@@ -170,6 +172,11 @@ CreateSectionOpType ConvertVPUMI37XX2ELFPass::createSection(mlir::func::FuncOp f
 
         builder.template create<ELFNPU37XX::PutOpInSectionOp>(builder.getUnknownLoc(), op.getResult());
         offsetTracker += binaryOp.getBinarySize();
+    }
+
+    if (requiresEndPadding && secType != vpux::ELFNPU37XX::SectionTypeAttr::SHT_NOBITS) {
+        builder.template create<ELFNPU37XX::PadOp>(builder.getUnknownLoc(), VPUX_SHAVE_KERNEL_PREFETCH_PAD, nullptr);
+        offsetTracker += VPUX_SHAVE_KERNEL_PREFETCH_PAD;
     }
 
     return elfCreateSectionOp;
@@ -403,10 +410,10 @@ mlir::Value ConvertVPUMI37XX2ELFPass::createCMXMappingSymtab(mlir::func::FuncOp 
 }
 
 void ConvertVPUMI37XX2ELFPass::createNetworkIOSymtab(mlir::func::FuncOp func, mlir::MLIRContext* ctx,
-                                                     vpux::IE::CNNNetworkOp cnnOp) {
-    auto dataInfoOpInVec = cnnOp.getInputsDataInfo();
-    auto dataInfoOpOutVec = cnnOp.getOutputsDataInfo();
-    auto dataInfoOpProfilingOutVec = cnnOp.getProfilingOutputsDataInfo();
+                                                     net::NetworkInfoOp netInfo) {
+    auto dataInfoOpInVec = netInfo.getInputsDataInfo();
+    auto dataInfoOpOutVec = netInfo.getOutputsDataInfo();
+    auto dataInfoOpProfilingOutVec = netInfo.getProfilingOutputsDataInfo();
 
     auto builderFunc = mlir::OpBuilder::atBlockTerminator(&func.getBody().front());
 
@@ -422,7 +429,7 @@ void ConvertVPUMI37XX2ELFPass::createNetworkIOSymtab(mlir::func::FuncOp func, ml
         mlir::IntegerAttr valueSym;
         mlir::UnitAttr isBuiltin = nullptr;
 
-        auto argNDType = funcArg.getType().cast<vpux::NDTypeInterface>();
+        auto argNDType = mlir::cast<vpux::NDTypeInterface>(funcArg.getType());
         mlir::IntegerAttr sizeSym = mlir::IntegerAttr::get(uint64Type, argNDType.getTotalAllocSize().count());
 
         mlir::StringAttr nameSym;
@@ -1165,7 +1172,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
 
         addend = declarator.getByteOffset();
 
-        bufferMemSpace = input.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+        bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(input.getType()).getMemSpace();
         bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
         VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
 
@@ -1235,7 +1242,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
 
             addend = declarator.getByteOffset();
 
-            bufferMemSpace = inputSparsityMap.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+            bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(inputSparsityMap.getType()).getMemSpace();
             bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
             VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
 
@@ -1295,7 +1302,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
 
             addend = declarator.getByteOffset();
 
-            bufferMemSpace = inputSETable.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+            bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(inputSETable.getType()).getMemSpace();
             bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
             VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
 
@@ -1306,6 +1313,8 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
                 sourceSym = relocationManager.getSymbol(targetSection);
             }
 
+            auto secIdx = bufferMemSpace.getIndex().value_or(0);
+            addend += isSegmented ? 0 : secIdx * NNCMX_SLICE_SIZE;
             builder.create<ELFNPU37XX::RelocOp>(
                     invariant.getInputStorageElementTable().getLoc(), invariant,
                     regsOffset + offsetof(nn_public::VpuDPUInvariantRegisters, se_sp_addr),
@@ -1339,7 +1348,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
             // actual weighs are in the weights table
             addend = 0;
 
-            bufferMemSpace = weights.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+            bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getMemSpace();
             bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
             VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
 
@@ -1363,9 +1372,10 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
                 auto weightsOffs = mlir::cast<VPURT::DeclareBufferOp>(weights.getDefiningOp()).getByteOffset() +
                                    (secIdx * NNCMX_SLICE_SIZE);
 
-                auto actSecIdx =
-                        invariant.getInput().getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value_or(
-                                0);
+                auto actSecIdx = mlir::cast<vpux::NDTypeInterface>(invariant.getInput().getType())
+                                         .getMemSpace()
+                                         .getIndex()
+                                         .value_or(0);
                 auto actOffs =
                         mlir::cast<VPURT::DeclareBufferOp>(invariant.getInput().getDefiningOp()).getByteOffset() +
                         (actSecIdx * NNCMX_SLICE_SIZE);
@@ -1386,9 +1396,9 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
             auto minOutIt =
                     std::min_element(outputBuffs.begin(), outputBuffs.end(), [](mlir::Value lhs, mlir::Value rhs) {
                         auto lhsSliceIdx =
-                                lhs.getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value_or(0);
+                                mlir::cast<vpux::NDTypeInterface>(lhs.getType()).getMemSpace().getIndex().value_or(0);
                         auto rhsSliceIdx =
-                                rhs.getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value_or(0);
+                                mlir::cast<vpux::NDTypeInterface>(rhs.getType()).getMemSpace().getIndex().value_or(0);
                         return lhsSliceIdx < rhsSliceIdx;
                     });
             auto output = *minOutIt;
@@ -1406,7 +1416,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
 
             addend = declarator.getByteOffset();
 
-            bufferMemSpace = output.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+            bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(output.getType()).getMemSpace();
             bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
             VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
 
@@ -1449,7 +1459,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
 
                 addend = declarator.getByteOffset();
 
-                bufferMemSpace = output.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+                bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(output.getType()).getMemSpace();
                 bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
                 VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
 
@@ -1483,7 +1493,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
 
             addend = 0;
 
-            bufferMemSpace = weightTable.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+            bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(weightTable.getType()).getMemSpace();
             bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
             VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
 
@@ -1550,7 +1560,7 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
 
             // in case of invariant, the input drives the specific cluster dispatching. We control this based on the
             // variant's cluster_ field .
-            bufferMemSpace = invariant.getInput().getType().cast<vpux::NDTypeInterface>().getMemSpace();
+            bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(invariant.getInput().getType()).getMemSpace();
             int64_t clusterIdx = bufferMemSpace.getIndex().value_or(0);
 
             sourceSym = elfCMXMappingSyms[static_cast<int>(ELFNPU37XX::CMXMappingSymbol::VPU_NNRD_SYM_FIFO_BASE)];
@@ -1649,7 +1659,7 @@ void ConvertVPUMI37XX2ELFPass::createDMARelocs(mlir::func::FuncOp& funcOp, mlir:
         for (auto dmaIdx = 0; dmaIdx < listElemCount; ++dmaIdx) {
             auto dmaOp = mlir::dyn_cast_or_null<VPUMI37XX::NNDMAOp>(listHead.getDefiningOp());
             // input addr
-            if (auto dmaInputArg = dmaOp.getInput().dyn_cast<mlir::BlockArgument>()) {
+            if (auto dmaInputArg = mlir::dyn_cast<mlir::BlockArgument>(dmaOp.getInput())) {
                 auto offset = offsetof(nn_public::VpuDMATask, transaction_) + offsetof(vpu_dma_descriptor_t, src);
                 createBlockArgReloc(dmaOp, builderInputRelocSec, builderOutputRelocSec, offset,
                                     vpux::ELFNPU37XX::RelocationType::R_VPU_64, dmaInputArg);
@@ -1690,7 +1700,7 @@ void ConvertVPUMI37XX2ELFPass::createDMARelocs(mlir::func::FuncOp& funcOp, mlir:
                     }
                 } else {
                     auto dmaInput = dmaOp.getInput();
-                    auto inputMemSpace = dmaInput.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+                    auto inputMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaInput.getType()).getMemSpace();
                     std::optional<VPURT::BufferSection> bufferSection;
                     if (inputMemSpace) {
                         bufferSection = VPURT::symbolizeBufferSection(inputMemSpace.getLeafName());
@@ -1750,7 +1760,7 @@ void ConvertVPUMI37XX2ELFPass::createDMARelocs(mlir::func::FuncOp& funcOp, mlir:
             // output addr
             auto outputBuffs = dmaOp.getOutputBuffs();
 
-            if (auto dmaOutputArg = outputBuffs[0].dyn_cast<mlir::BlockArgument>()) {
+            if (auto dmaOutputArg = mlir::dyn_cast<mlir::BlockArgument>(outputBuffs[0])) {
                 VPUX_THROW_WHEN(outputBuffs.size() != 1, "have first arg as blockArgument with multiple outputs");
                 auto offset = offsetof(nn_public::VpuDMATask, transaction_) + offsetof(vpu_dma_descriptor_t, dst);
                 createBlockArgReloc(dmaOp, builderInputRelocSec, builderOutputRelocSec, offset,
@@ -1801,7 +1811,7 @@ void ConvertVPUMI37XX2ELFPass::createDMARelocs(mlir::func::FuncOp& funcOp, mlir:
                     }
                 } else {
                     auto dmaOutput = outputBuffs[0];
-                    auto outputMemSpace = dmaOutput.getType().cast<vpux::NDTypeInterface>().getMemSpace();
+                    auto outputMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaOutput.getType()).getMemSpace();
                     std::optional<VPURT::BufferSection> bufferSection;
                     if (outputMemSpace) {
                         bufferSection = VPURT::symbolizeBufferSection(outputMemSpace.getLeafName());
@@ -1894,8 +1904,8 @@ void ConvertVPUMI37XX2ELFPass::safeRunOnModule() {
 
     _log.trace("ConvertVPUMI37XX2ELFPass::safeRunOnFunc(): START\n {0}\n", moduleOp);
 
-    vpux::IE::CNNNetworkOp cnnOp;
-    vpux::IE::CNNNetworkOp::getFromModule(moduleOp, cnnOp, funcOp);
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
 
     relocationManager.init(funcOp);
 
@@ -1933,7 +1943,7 @@ void ConvertVPUMI37XX2ELFPass::safeRunOnModule() {
 
     auto kernelTextSectionOp = createSection<vpux::VPUMI37XX::DeclareKernelTextOp, ELFNPU37XX::CreateSectionOp>(
             funcOp, ctx, ".text.KernelText", vpux::ELFNPU37XX::SectionTypeAttr::SHT_PROGBITS,
-            vpux::ELFNPU37XX::SectionFlagsAttr::SHF_NONE);
+            vpux::ELFNPU37XX::SectionFlagsAttr::VPU_SHF_PROC_SHAVE);
 
     auto kernelDataSectionOp = createSection<vpux::VPUMI37XX::DeclareKernelArgsOp, ELFNPU37XX::CreateSectionOp>(
             funcOp, ctx, ".text.KernelData", vpux::ELFNPU37XX::SectionTypeAttr::SHT_PROGBITS,
@@ -2035,7 +2045,7 @@ void ConvertVPUMI37XX2ELFPass::safeRunOnModule() {
     auto builderPlatformInfoSec = mlir::OpBuilder::atBlockEnd(platformInfoSectionOp.getBlock());
     builderPlatformInfoSec.create<VPUMI37XX::PlatformInfoOp>(builderPlatformInfoSec.getUnknownLoc());
 
-    if (!cnnOp.getProfilingOutputsInfo().empty()) {
+    if (!netInfo.getProfilingOutputsInfo().empty()) {
         auto profilingSectionOp = builderFunc.create<ELFNPU37XX::CreateProfilingSectionOp>(
                 builderFunc.getUnknownLoc(),
                 vpux::ELFNPU37XX::SectionType::get(ctx),       // mlir::Type
@@ -2179,7 +2189,7 @@ void ConvertVPUMI37XX2ELFPass::safeRunOnModule() {
     // Creation of SymTabs
     //
 
-    createNetworkIOSymtab(funcOp, ctx, cnnOp);
+    createNetworkIOSymtab(funcOp, ctx, netInfo);
     bufferSymTabValue = createBuffersSecAndSymtab(funcOp, ctx);
     CMXMappingSymtabValue = createCMXMappingSymtab(funcOp, ctx);
 

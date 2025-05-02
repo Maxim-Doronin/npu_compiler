@@ -6,7 +6,7 @@
 #include "vpux/utils/profiling/reports/api.hpp"
 
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 #include "vpux/utils/profiling/reports/stats.hpp"
 #include "vpux/utils/profiling/reports/tasklist.hpp"
 #include "vpux/utils/profiling/reports/ted.hpp"

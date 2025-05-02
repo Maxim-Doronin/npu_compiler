@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,5 +25,8 @@ SmallVector<int64_t> getNCEInterpolateKernelSize(ArrayRef<double> scales, VPU::N
                                                  IE::InterpolateCoordModeAttr coordModeAttr);
 SmallVector<int64_t> getNCEInterpolateStrides(ArrayRef<double> scales, VPU::NCEInterpolateModeAttr modeAttr,
                                               IE::InterpolateCoordModeAttr coordModeAttr);
+
+SmallVector<float> getNCEInterpolateKernelContent(ArrayRef<int64_t> kernelSize, const VPU::NCEInterpolateMode& mode,
+                                                  const IE::InterpolateCoordMode& coordMode, ArrayRef<double> scales);
 
 }  // namespace vpux::VPU

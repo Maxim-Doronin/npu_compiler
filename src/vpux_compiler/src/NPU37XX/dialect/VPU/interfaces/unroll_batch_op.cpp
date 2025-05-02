@@ -70,5 +70,6 @@ void vpux::VPU::arch37xx::registerUnrollBatchOpInterfaces(mlir::DialectRegistry&
         IE::MemPermuteOp::attachInterface<UnrollBatchMemPermuteOpModel>(*ctx);
         IE::AddOp::attachInterface<UnrollBatchEltwiseOpModel<IE::AddOp>>(*ctx);
         IE::MultiplyOp::attachInterface<UnrollBatchEltwiseOpModel<IE::MultiplyOp>>(*ctx);
+        IE::TransposedConvolutionOp::attachInterface<UnrollBatchOpModel<IE::TransposedConvolutionOp>>(*ctx);
     });
 }

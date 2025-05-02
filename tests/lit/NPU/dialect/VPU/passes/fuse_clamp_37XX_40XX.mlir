@@ -100,7 +100,7 @@ func.func @SkipPerChannelQuant(%arg0: tensor<1x16x56x56x!qElemType, {order = #NH
         >,
         rawFilterShape = [16, 16, 1, 1],
         strides = [1, 1]
-    } -> tensor<1x16x56x56x!qElemType, {order = #NHWC}>
+    } : tensor<1x16x56x56x!qElemType, {order = #NHWC}>, tensor<16x16x1x1x!qElemType, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x56x56x!qElemType, {order = #NHWC}>
 
     %1 = VPU.Clamp(%0) {
         max = 1.280000e+02 : f64,
@@ -345,7 +345,7 @@ func.func @ConvWithMultipleConsumers(%arg0: tensor<1x32x16x16x!qElemType, {order
                mode = <NOOP> >,
                rawFilterShape = [9216, 32, 3, 3],
                strides = [1, 1]
-    } -> tensor<1x9216x16x16x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x16x16x!qElemType, {order = #NHWC}>, tensor<9216x32x3x3x!qElemType, {order = #NHWC}>, tensor<9216x1x1x4xsi32> -> tensor<1x9216x16x16x!qElemType1, {order = #NHWC}>
 
     %1 = VPU.Slice %0 [0, 0, 0, 0] [1, 4608, 16, 16] : tensor<1x9216x16x16x!qElemType1, {order = #NHWC}> to tensor<1x4608x16x16x!qElemType1, {order = #NHWC}>
     %2 = VPU.Clamp(%0) {
@@ -367,7 +367,8 @@ func.func @ConvWithMultipleConsumers(%arg0: tensor<1x32x16x16x!qElemType, {order
     // CHECK-SAME:         lrelu_shift = 0 : i64,
     // CHECK-SAME:         fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME: rawFilterShape = [9216, 32, 3, 3],
-    // CHECK-SAME: strides = [1, 1]} -> tensor<1x9216x16x16x!qElemType1, {order = #NHWC}>
+    // CHECK-SAME: strides = [1, 1]}
+    // CHECK-SAME: -> tensor<1x9216x16x16x!qElemType1, {order = #NHWC}>
     // CHECK:      [[SLICE:%.+]] = VPU.Slice [[CONV_0]] [0, 0, 0, 0] [1, 4608, 16, 16] : tensor<1x9216x16x16x!qElemType1, {order = #NHWC}> to tensor<1x4608x16x16x!qElemType1, {order = #NHWC}>
     // CHECK:      [[CONV_1:%.+]] = VPU.NCE.Convolution([[INPUT]], [[WEIGHTS]], [[WEIGHTS_TABLE]])
     // CHECK-SAME: {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
@@ -379,7 +380,8 @@ func.func @ConvWithMultipleConsumers(%arg0: tensor<1x32x16x16x!qElemType, {order
     // CHECK-SAME:      lrelu_shift = 0 : i64,
     // CHECK-SAME:      fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:  rawFilterShape = [9216, 32, 3, 3],
-    // CHECK-SAME:  strides = [1, 1]} -> tensor<1x9216x16x16x!qElemType1, {order = #NHWC}>
+    // CHECK-SAME:  strides = [1, 1]}
+    // CHECK-SAME:  -> tensor<1x9216x16x16x!qElemType1, {order = #NHWC}>
 
     // CHECK:      return [[SLICE]], [[CONV_1]] : tensor<1x4608x16x16x!qElemType1, {order = #NHWC}>, tensor<1x9216x16x16x!qElemType1, {order = #NHWC}>
 }

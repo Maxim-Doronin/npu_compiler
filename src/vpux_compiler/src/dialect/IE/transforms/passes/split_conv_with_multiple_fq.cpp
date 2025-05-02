@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <deque>
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -108,7 +109,7 @@ bool checkPost(mlir::Operation* postOp, Logger log) {
     const auto logCb = [&](const formatv_object_base& msg) {
         log.trace("{0}", msg.str());
     };
-    if (mainOp == nullptr || !mainOp.isSupportedPostOp(postOp, logCb) || mainOp.getPostOp().has_value()) {
+    if (mainOp == nullptr || !mainOp.isSupportedPostOp(postOp, logCb) || mainOp.getPostOp() != nullptr) {
         return false;
     }
     log.nest().trace("Got supported Post Operation at '{0}' ", postOp->getLoc());

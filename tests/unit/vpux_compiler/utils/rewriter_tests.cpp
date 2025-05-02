@@ -1,16 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "common/utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/core/IR/attributes.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/small_vector.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/MLIRContext.h>
@@ -104,7 +102,8 @@ INSTANTIATE_TEST_SUITE_P(AllTensorTypes, MLIR_BufferizeTest,
                                     vpux::IndexedSymbolAttr memSpace) -> mlir::Type {
                                      const auto elemType = mlir::Float32Type::get(ctx);
                                      return mlir::RankedTensorType::get(
-                                             {1, 2, 3, 4}, elemType, vpux::TensorAttr::get(ctx, orderAttr, memSpace));
+                                             {1, 2, 3, 4}, elemType,
+                                             vpux::TensorAttr::get(ctx, orderAttr, memSpace, {}, {}));
                                  },
                                  // UnrankedTensor
                                  [](mlir::MLIRContext* ctx, mlir::AffineMapAttr orderAttr,
@@ -131,7 +130,8 @@ INSTANTIATE_TEST_SUITE_P(AllTensorTypes, MLIR_BufferizeTest,
                                     vpux::IndexedSymbolAttr memSpace) -> mlir::Type {
                                      const auto elemType = mlir::Float32Type::get(ctx);
                                      const auto dataType = mlir::RankedTensorType::get(
-                                             {1, 2, 3, 4}, elemType, vpux::TensorAttr::get(ctx, orderAttr, memSpace));
+                                             {1, 2, 3, 4}, elemType,
+                                             vpux::TensorAttr::get(ctx, orderAttr, memSpace, {}, {}));
 
                                      return vpux::VPU::SparseTensorType::get(dataType);
                                  }));

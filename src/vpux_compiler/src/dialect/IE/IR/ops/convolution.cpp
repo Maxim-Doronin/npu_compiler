@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include "vpux/compiler/core/attributes/shape.hpp"
@@ -17,6 +18,8 @@
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/numeric.hpp"
+#include "vpux/utils/core/range.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 
 #include <mlir/Dialect/Arith/Utils/Utils.h>
 #include <mlir/IR/PatternMatch.h>
@@ -58,9 +61,9 @@ mlir::LogicalResult FuseConvAndSlice::matchAndRewrite(IE::ConvolutionOp convOp, 
     }
     auto sliceOffset = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
     auto sliceSize = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
-    auto outNDInterface = convOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto outNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(convOp.getOutput().getType());
     auto outDimOrder = outNDInterface.getDimsOrder();
-    auto inNDInterface = convOp.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto inNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(convOp.getInput().getType());
     auto inDimOrder = inNDInterface.getDimsOrder();
     if (inNDInterface.getElementType() != outNDInterface.getElementType() || !inNDInterface.getElementType().isF16()) {
         return matchFailed(rewriter, convOp, "Only handle FP16 case");
@@ -104,8 +107,8 @@ mlir::LogicalResult FuseConvAndSlice::matchAndRewrite(IE::ConvolutionOp convOp, 
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(
             convOp.getLoc(), outNDInterface, sliceInput, newFilterConst, convOp.getBias(), convOp.getStridesAttr(),
             convOp.getPadsBeginAttr(), convOp.getPadsEndAttr(), convOp.getDilationsAttr(), convOp.getPostOpAttr(),
-            convOp.getClampAttr(), convOp.getStaticScaleAttr(), convOp.getOutputChannelsAttr(),
-            convOp.getInputChannelsAttr());
+            convOp.getClampAttr(), convOp.getStaticScaleAttr(), convOp.getOutputPaddingAttr(),
+            convOp.getInputPaddingAttr());
 
     rewriter.replaceOp(convOp, newConvOp->getOpResults());
 
@@ -148,16 +151,13 @@ mlir::LogicalResult vpux::IE::ConvolutionOp::inferReturnTypeComponents(
     auto shapeInfo = inferConvoutionOutputShapeInfo(inShapeInfo, filterShapeInfo, windowStrides, dataPaddingBelow,
                                                     dataPaddingAbove, windowDilations);
 
-    if (conv.getOutputChannels().has_value()) {
-        shapeInfo.shape[Dims4D::Act::C.ind()] = conv.getOutputChannels().value();
-    }
-    mlir::ArrayAttr outBoundsAttr = nullptr;
+    auto outBounds = ArrayRef<int64_t>();
     if (!shapeInfo.bounds.empty()) {
-        outBoundsAttr = getIntArrayAttr(ctx, shapeInfo.bounds);
+        outBounds = shapeInfo.bounds;
     }
 
     const auto inElementType = inputType.getElementType();
-    const auto outDesc = vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, outBoundsAttr);
+    const auto outDesc = vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, Bounds(outBounds));
     inferredReturnShapes.emplace_back(shapeInfo.shape, inElementType, outDesc);
 
     return mlir::success();
@@ -184,9 +184,9 @@ mlir::LogicalResult vpux::IE::GroupConvolutionOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    auto inShape = to_small_vector(conv.getInput().getType().cast<mlir::ShapedType>().getShape());
-    const auto inType = conv.getInput().getType().cast<mlir::ShapedType>().getElementType();
-    auto filterShape = to_small_vector(conv.getFilter().getType().cast<mlir::ShapedType>().getShape());
+    auto inShape = to_small_vector(mlir::cast<mlir::ShapedType>(conv.getInput().getType()).getShape());
+    const auto inType = mlir::cast<mlir::ShapedType>(conv.getInput().getType()).getElementType();
+    auto filterShape = to_small_vector(mlir::cast<mlir::ShapedType>(conv.getFilter().getType()).getShape());
 
     const auto dataPaddingBelow = parseIntArrayAttr<int64_t>(conv.getPadsEnd());
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(conv.getPadsBegin());
@@ -217,7 +217,7 @@ mlir::LogicalResult vpux::IE::GroupConvolutionOp::inferReturnTypeComponents(
     // the number of groups is influenced by the output channels
     // so the division computes a wrong value because the
     // input is still expanded in case of ODU autopad
-    if (conv.getOutputChannels().has_value()) {
+    if (conv.getOutputPadding().has_value()) {
         inShape[1] = filterShape[1];
     } else {
         inShape[1] /= groups;
@@ -233,18 +233,17 @@ mlir::LogicalResult vpux::IE::GroupConvolutionOp::inferReturnTypeComponents(
             ov::Strides(windowDilations.begin(), windowDilations.end()));
 
     const auto& outputShape = op.get_output_partial_shape(0);
-    auto shapeI64 = to_small_vector(outputShape.get_shape() | transformed([](size_t val) {
-                                        return checked_cast<int64_t>(val);
-                                    }));
+    const auto outShape = to_small_vector(outputShape.get_shape() | transformed([](size_t val) {
+                                              return checked_cast<int64_t>(val);
+                                          }));
 
-    if (conv.getOutputChannels().has_value()) {
-        shapeI64[Dims4D::Act::C.ind()] = conv.getOutputChannels().value();
-    }
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(conv.getInput().getType());
 
-    const auto inputType = conv.getInput().getType().cast<vpux::NDTypeInterface>();
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inputType), "{0} doesn't support dynamic shapes",
+                      IE::GroupConvolutionOp::getOperationName());
     const auto outDesc = vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace());
 
-    inferredReturnShapes.emplace_back(shapeI64, inType, outDesc);
+    inferredReturnShapes.emplace_back(outShape, inType, outDesc);
 
     return mlir::success();
 }
@@ -266,7 +265,7 @@ mlir::LogicalResult GroupsToAttr::matchAndRewrite(IE::GroupConvolutionOp convOp,
     }
 
     auto filter = convOp.getFilter();
-    auto filterShape = to_small_vector(filter.getType().cast<mlir::ShapedType>().getShape());
+    auto filterShape = to_small_vector(mlir::cast<mlir::ShapedType>(filter.getType()).getShape());
     const auto groups = filterShape[0];
 
     auto getNewShapeValue = [&](mlir::Value input, StringRef locSuffix) -> mlir::Value {
@@ -299,8 +298,7 @@ mlir::LogicalResult GroupsToAttr::matchAndRewrite(IE::GroupConvolutionOp convOp,
     rewriter.replaceOpWithNewOp<IE::GroupConvolutionOp>(
             convOp, convOp.getInput(), newFilter, convOp.getBias(), convOp.getStridesAttr(), convOp.getPadsBeginAttr(),
             convOp.getPadsEndAttr(), convOp.getDilationsAttr(), getIntAttr(convOp.getContext(), groups),
-            convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getOutputChannelsAttr(),
-            convOp.getInputChannelsAttr());
+            convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -323,7 +321,7 @@ mlir::LogicalResult vpux::IE::ConvolutionOp::reifyResultShapes(mlir::OpBuilder& 
         return errorAt(getLoc(), "Dilation is not supported for reifyResultShapes");
     }
 
-    const auto kernelShape = getFilter().getType().cast<NDTypeInterface>().getShape();
+    const auto kernelShape = mlir::cast<vpux::NDTypeInterface>(getFilter().getType()).getShape();
     SmallVector<int64_t> kernelSize{kernelShape[Dims4D::Filter::KY], kernelShape[Dims4D::Filter::KX]};
 
     const auto strides = parseIntArrayAttr<int64_t>(getStridesAttr());

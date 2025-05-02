@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::VPU::DetectionOutputOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto boxLogitsType = detectionOutput.getInBoxLogits().getType().cast<vpux::NDTypeInterface>();
+    const auto boxLogitsType = mlir::cast<vpux::NDTypeInterface>(detectionOutput.getInBoxLogits().getType());
 
     auto origN{0}, origC{1};
     const auto numImages = boxLogitsType.getShape().raw()[origN];
@@ -37,7 +37,7 @@ mlir::LogicalResult vpux::VPU::DetectionOutputOp::inferReturnTypes(
     }
 
     const auto numPriorBoxes = boxLogitsType.getShape().raw()[origC] / (numLocClasses * 4);
-    const auto keepTopK = detectionOutput.getAttr().getKeepTopK()[0].cast<mlir::IntegerAttr>().getInt();
+    const auto keepTopK = mlir::cast<mlir::IntegerAttr>(detectionOutput.getAttr().getKeepTopK()[0]).getInt();
     const auto topK = detectionOutput.getAttr().getTopK().getInt();
     const auto numClasses = detectionOutput.getAttr().getNumClasses().getInt();
 

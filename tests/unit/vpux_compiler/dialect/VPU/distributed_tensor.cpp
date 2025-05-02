@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -47,8 +47,8 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDistributedTensorType) {
     const auto dimsOrder = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(&ctx));
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -58,7 +58,7 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDistributedTensorType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 13 * 16);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -81,13 +81,13 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDistributedTensorType) {
     EXPECT_EQ(changedShape2.getShape(), vpux::ShapeRef(newShape));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     const SmallVector<int64_t> newShape2({1, 32, 26, 16});
     const auto changedShapeElemType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape2), mlir::IntegerType::get(&ctx, 8));
     EXPECT_EQ(changedShapeElemType.getShape(), vpux::ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeElemType.getElementType()));
 
     const auto newDimsOrder = DimsOrder::NCHW;
     const auto changedDimsOrder = ndType.changeDimsOrder(newDimsOrder);
@@ -132,8 +132,8 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedTensorType) {
     const auto dimsOrder = mlir::AffineMapAttr::get(DimsOrder::GNHWC.toAffineMap(&ctx));
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({64, 1, 64, 32, 1}));
@@ -143,7 +143,7 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedTensorType) {
     EXPECT_EQ(ndType.getRank(), 5);
     EXPECT_EQ(ndType.getNumElements(), 64 * 64 * 32 * 1);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::GNHWC);
 
@@ -170,14 +170,14 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedTensorType) {
 
     // Change element type
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     // Change shape and element type
     const SmallVector<int64_t> newShape2({32, 1, 64, 32, 1});
     const auto changedShapeElemType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape2), mlir::IntegerType::get(&ctx, 8));
     EXPECT_EQ(changedShapeElemType.getShape(), vpux::ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeElemType.getElementType()));
 
     // Change dims order
     const auto newDimsOrder = DimsOrder::GNCHW;
@@ -228,8 +228,8 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedTensorTypeNonDivisible) {
     const auto dimsOrder = mlir::AffineMapAttr::get(DimsOrder::GNHWC.toAffineMap(&ctx));
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({64, 1, 64, 32, 1}));
@@ -239,7 +239,7 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedTensorTypeNonDivisible) {
     EXPECT_EQ(ndType.getRank(), 5);
     EXPECT_EQ(ndType.getNumElements(), 64 * 64 * 32 * 1);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::GNHWC);
 
@@ -266,14 +266,14 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedTensorTypeNonDivisible) {
 
     // Change element type
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     // Change shape and element type
     const SmallVector<int64_t> newShape2({32, 1, 64, 32, 1});
     const auto changedShapeElemType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape2), mlir::IntegerType::get(&ctx, 8));
     EXPECT_EQ(changedShapeElemType.getShape(), vpux::ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeElemType.getElementType()));
 
     // Change dims order
     const auto newDimsOrder = DimsOrder::GNCHW;
@@ -327,8 +327,8 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedTensorType) {
     const auto dimsOrder = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(&ctx));
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -338,7 +338,7 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedTensorType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 13 * 16);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -360,15 +360,15 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedTensorType) {
     const auto changedShape2 = ndType.changeTypeComponents(TypeComponents().setShape(ShapeRef(newShape)));
     EXPECT_EQ(changedShape2.getShape(), vpux::ShapeRef(newShape));
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     const SmallVector<int64_t> newShape2({1, 32, 32, 32});
     const auto changedShapeElemType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape2), mlir::IntegerType::get(&ctx, 8));
     EXPECT_EQ(changedShapeElemType.getShape(), vpux::ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeElemType.getElementType()));
 
     const auto newDimsOrder = DimsOrder::NCHW;
     const auto changedDimsOrder = ndType.changeDimsOrder(newDimsOrder);
@@ -1358,7 +1358,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisSegmentedMode) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 18 * 16);
@@ -1416,7 +1416,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedMultiAxisSegmentedMode) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 64 * 18 * 16);
@@ -1474,7 +1474,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisDuplicatedMode) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 63 * 16);
@@ -1533,7 +1533,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisSegmentedDuplicatedMode
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 63 * 16);
@@ -1592,7 +1592,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedMultiAxisSegmentedDuplicatedMode)
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 64 * 63 * 16);
@@ -1650,7 +1650,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisSegmentedModeKTiling) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 32 * 59 * 16);
@@ -1687,7 +1687,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisSegmentedModeKTilingInv
         EXPECT_ANY_THROW(distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_ANY_THROW(ndType.getTotalAllocSize().count());
@@ -1743,7 +1743,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisSegmentedModeKTilingVal
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 32 * 59 * 16);
@@ -1800,7 +1800,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisSegmentedDuplicatedMode
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 96 * 59 * 16);
@@ -1864,7 +1864,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedSingleAxisOverlappedModeHTiling) 
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 64 * 5 * 15);
@@ -1928,7 +1928,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedTensorDistribution) {
         EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedType.getCompactShape(clusterIdx));
     }
 
-    const auto ndType = distributedType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(distributedType);
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 60 * 5 * 16);
@@ -1990,8 +1990,8 @@ TEST_F(MLIR_NDTypeInterface, SubByteSegmentedDistributedTensorType) {
     const auto dimsOrder = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(&ctx));
     const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
 
-    const auto ndType = VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr)
-                                .dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
     ASSERT_TRUE(ndType != nullptr) << "Tensor is not of vpux::NDTypeInterface type";
 
     EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 64, 13, 16}));
@@ -2001,7 +2001,7 @@ TEST_F(MLIR_NDTypeInterface, SubByteSegmentedDistributedTensorType) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 13 * 16);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::quant::UniformQuantizedType>());
+    EXPECT_TRUE(mlir::isa<mlir::quant::UniformQuantizedType>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
 
@@ -2024,13 +2024,13 @@ TEST_F(MLIR_NDTypeInterface, SubByteSegmentedDistributedTensorType) {
     EXPECT_EQ(changedShape2.getShape(), vpux::ShapeRef(newShape));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
 
     const SmallVector<int64_t> newShape2({1, 32, 26, 16});
     const auto changedShapeElemType =
             ndType.changeShapeElemType(vpux::ShapeRef(newShape2), mlir::IntegerType::get(&ctx, 4));
     EXPECT_EQ(changedShapeElemType.getShape(), vpux::ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(changedShapeElemType.getElementType()));
 
     const auto newDimsOrder = DimsOrder::NCHW;
     const auto changedDimsOrder = ndType.changeDimsOrder(newDimsOrder);

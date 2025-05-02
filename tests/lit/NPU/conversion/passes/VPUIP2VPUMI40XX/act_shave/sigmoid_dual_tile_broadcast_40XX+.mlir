@@ -1,22 +1,23 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-VPUIP-to-VPUMI40XX %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+//
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @Test {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "sigmoid_0" : tensor<1x1000xf16>
-        IE.DataInfo "sigmoid_1" : tensor<1x1000xf16>
+        DataInfo "sigmoid_0" : tensor<1x1000xf16>
+        DataInfo "sigmoid_1" : tensor<1x1000xf16>
     }
 
 VPURT.SW.Runtime

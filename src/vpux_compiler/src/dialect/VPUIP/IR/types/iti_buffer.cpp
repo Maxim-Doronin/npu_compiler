@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -89,9 +89,9 @@ void VPUIP::ITIBufferType::print(mlir::AsmPrinter& printer) const {
     printer << getElementType();
 
     const auto layout = getLayout();
-    if (const auto mapAttr = layout.dyn_cast<mlir::AffineMapAttr>()) {
+    if (const auto mapAttr = mlir::dyn_cast<mlir::AffineMapAttr>(layout)) {
         printer << ", " << mapAttr;
-    } else if (const auto descAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+    } else if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
         printer << ", " << descAttr;
     } else {
         VPUX_THROW("Unsupported MemRefType layout '{0}'", layout);
@@ -310,7 +310,7 @@ mlir::LogicalResult VPUIP::ITIBufferType::verify(FuncRef<mlir::InFlightDiagnosti
         }
 
         for (const auto& inHalo : outHalo.getInwardHaloRegions().getValue()) {
-            const auto inHaloAttr = inHalo.cast<HaloRegionAttr>();
+            const auto inHaloAttr = mlir::cast<vpux::VPUIP::HaloRegionAttr>(inHalo);
             const auto inHaloShape = parseIntArrayAttr<int64_t>(inHaloAttr.getShape());
 
             for (size_t dim = 0; dim < shape.size(); ++dim) {
@@ -353,11 +353,11 @@ int64_t VPUIP::ITIBufferType::getNumElements() const {
 
 DimsOrder VPUIP::ITIBufferType::getDimsOrder() const {
     const auto layout = getLayout();
-    if (const auto mapAttr = layout.dyn_cast<mlir::AffineMapAttr>()) {
+    if (const auto mapAttr = mlir::dyn_cast<mlir::AffineMapAttr>(layout)) {
         return DimsOrder::fromAffineMap(mapAttr.getValue());
     }
 
-    if (const auto descAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+    if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
         return DimsOrder::fromAffineMap(descAttr.order().getValue());
     }
 
@@ -376,11 +376,11 @@ VPU::MemoryKind VPUIP::ITIBufferType::getMemoryKind() const {
 Strides VPUIP::ITIBufferType::getStrides() const {
     const auto layout = getLayout();
 
-    if (const auto mapAttr = layout.dyn_cast<mlir::AffineMapAttr>()) {
+    if (const auto mapAttr = mlir::dyn_cast<mlir::AffineMapAttr>(layout)) {
         VPUX_THROW_UNLESS(mapAttr.getValue().isPermutation(), "Got non permutation layout attribute '{0}'", layout);
     }
 
-    if (const auto descAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+    if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
         if (auto stridesAttr = descAttr.strides()) {
             const auto elemStrides = parseIntArrayAttr<int64_t>(stridesAttr);
             const Bit elemSize = getElemTypeSize();
@@ -423,7 +423,7 @@ Byte VPUIP::ITIBufferType::getTotalAllocSize() const {
 
     auto allocSizeByte = alignMemSize(memStrides.front() * memShape.front(), Byte(1)).to<Byte>();
 
-    if (const auto memRefAttr = getLayout().dyn_cast<vpux::MemRefAttr>()) {
+    if (const auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(getLayout())) {
         auto swizzlingScheme = memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>();
         if (swizzlingScheme && swizzlingScheme.getKey().getInt() != 0) {
             // If swizzling is enabled total buffer size needs to be aligned to 512 or 1024 as required by HW

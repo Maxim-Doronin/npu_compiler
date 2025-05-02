@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::CopyOp::inferReturnTypes(mlir::MLIRContext* ctx, 
         return mlir::failure();
     }
 
-    const auto ndInType = copyOp.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto ndInType = mlir::dyn_cast<vpux::NDTypeInterface>(copyOp.getInput().getType());
     if (ndInType == nullptr) {
         return errorAt(loc, "IE::CopyOp operand must have vpux::NDTypeInterface type");
     }
@@ -109,8 +109,9 @@ mlir::LogicalResult EliminateCopyPairs::matchAndRewrite(VPU::CopyOp origOp, mlir
     auto output = origOp.getOutput();
 
     if (producerInput.getType() != output.getType()) {
-        const auto inDistributedTypeInterface = producerInput.getType().dyn_cast<VPU::DistributedTypeInterface>();
-        const auto outDistributedTypeInterface = output.getType().dyn_cast<VPU::DistributedTypeInterface>();
+        const auto inDistributedTypeInterface =
+                mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(producerInput.getType());
+        const auto outDistributedTypeInterface = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(output.getType());
 
         if (inDistributedTypeInterface == nullptr || outDistributedTypeInterface == nullptr ||
             !inDistributedTypeInterface.containsDistributedTypes() ||
@@ -118,9 +119,10 @@ mlir::LogicalResult EliminateCopyPairs::matchAndRewrite(VPU::CopyOp origOp, mlir
             return mlir::failure();
         }
 
-        if (VPU::isDistributedCastCompatible(
-                    inDistributedTypeInterface.getDistributedTypes().front().cast<VPU::DistributedTensorType>(),
-                    outDistributedTypeInterface.getDistributedTypes().front().cast<VPU::DistributedTensorType>())
+        if (VPU::isDistributedCastCompatible(mlir::cast<vpux::VPU::DistributedTensorType>(
+                                                     inDistributedTypeInterface.getDistributedTypes().front()),
+                                             mlir::cast<vpux::VPU::DistributedTensorType>(
+                                                     outDistributedTypeInterface.getDistributedTypes().front()))
                     .failed()) {
             return mlir::failure();
         }

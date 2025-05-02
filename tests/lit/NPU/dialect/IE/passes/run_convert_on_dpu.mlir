@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -74,7 +74,7 @@ func.func @FoldConvertIntoAvgPool(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}>
 // CHECK-SAME: ([[INPUT:%.+]]: tensor<1x64x28x28xf16, {order = #NHWC}>)
 func.func @FoldConvertIntoEltwise(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}>) -> tensor<1x64x28x28xf32, {order = #NHWC}> {
   %0 = IE.Add(%arg0, %arg0) {
-    auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>
+    auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.Relu<>
   }
       : tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<1x64x28x28xf16, {order = #NHWC}>
       -> tensor<1x64x28x28xf16, {order = #NHWC}>

@@ -9,7 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
 
-  IE.CNNNetwork entryPoint : @maxpool_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @maxpool_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x64x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x64x9x8xf16>
@@ -77,7 +77,7 @@ module @mainModule {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
-  IE.CNNNetwork entryPoint : @maxpool_f16_f16_two_outputs inputsInfo : {
+  net.NetworkInfo entryPoint : @maxpool_f16_f16_two_outputs inputsInfo : {
     DataInfo "input_0" : tensor<1x64x38x112xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x64x18x56xf16>

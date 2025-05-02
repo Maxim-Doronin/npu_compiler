@@ -45,7 +45,7 @@ class PpeFactory final :
         AttrBuilder(AttrBuilder&&) noexcept = default;
         ~AttrBuilder() = default;
 
-        AttrBuilder& operator=(AttrBuilder&) = default;
+        AttrBuilder& operator=(const AttrBuilder&) = default;
         AttrBuilder& operator=(AttrBuilder&&) noexcept = default;
 
         [[nodiscard]] PPEIntAttr getAttr() const;
@@ -116,9 +116,9 @@ private:  // methods
     AttrBuilder retrieveNonEltwisePPEAttribute(mlir::Operation* operation) const;
 
     // callbacks for handling post-operations
-    AttrBuilder callbackReluOp(vpux::IE::LayerWithPostOpInterface operation) const;
-    AttrBuilder callbackClampOp(vpux::IE::LayerWithPostOpInterface operation) const;
-    AttrBuilder callbackLeakyReluOp(vpux::IE::LayerWithPostOpInterface operation) const;
+    AttrBuilder callbackDefault(mlir::Operation* operation) const;
+    template <typename PostOpAttr>
+    AttrBuilder callback(vpux::IE::LayerWithPostOpInterface, PostOpAttr) const = delete;
 };
 
 }  // namespace vpux::VPU::arch37xx

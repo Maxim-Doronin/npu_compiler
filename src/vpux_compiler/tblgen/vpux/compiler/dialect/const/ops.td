@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -89,11 +89,6 @@ def Const_DeclareOp :
     }];
 }
 
-class Const_HasChild<list<string> ops> : PredOpTrait<
-    "all operations in the body are of types '" # !interleave(ops, ",") # "'",
-    CPred<"::llvm::all_of(getBody().getOps(), [](::mlir::Operation& op) { return ::llvm::isa<" # !interleave(ops, ",")  # ">(op); })">
->;
-
 def Const_DataOp :
     Const_Op<
             "Data",
@@ -105,7 +100,7 @@ def Const_DataOp :
                 // must be directly under ModuleOp
                 HasParent<"mlir::ModuleOp">,
                 // disallow any other ops other than const.Rodata in body
-                Const_HasChild<["vpux::Const::RodataOp", "vpux::Const::RefOp"]>,
+                Core_HasChild<["vpux::Const::RodataOp", "vpux::Const::RefOp"]>,
                 // make this op identifiable by a symbol
                 DeclareOpInterfaceMethods<Symbol>,
                 // body region contains ops identified by symbols
@@ -196,7 +191,7 @@ def Const_BundleDataOp :
                 // must be directly under ModuleOp
                 HasParent<"mlir::ModuleOp">,
                 // disallow any other ops other than const.Rodata(Bundle) in body
-                Const_HasChild<["vpux::Const::RodataBundleOp"]>,
+                Core_HasChild<["vpux::Const::RodataBundleOp"]>,
                 // make this op identifiable by a symbol
                 DeclareOpInterfaceMethods<Symbol>,
                 // body region contains ops identified by symbols

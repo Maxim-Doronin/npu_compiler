@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -16,7 +16,8 @@ mlir::LogicalResult vpux::IE::DynamicFakeQuantizeOp::verify() {
         if (!lowFpType.has_value()) {
             return errorAt(*this, "Missing both levels and low precision floating type");
         }
-        if (!lowFpType->isa<mlir::Float8E4M3FNType>() && !lowFpType->isa<mlir::Float8E5M2Type>()) {
+        if (!mlir::isa<mlir::Float8E4M3FNType>(lowFpType.value()) &&
+            !mlir::isa<mlir::Float8E5M2Type>(lowFpType.value())) {
             return errorAt(*this, "Unsupported low floating point type {0}", *lowFpType);
         }
     } else {
@@ -26,8 +27,8 @@ mlir::LogicalResult vpux::IE::DynamicFakeQuantizeOp::verify() {
         }
     }
 
-    const auto inputShape = to_small_vector(getInput().getType().cast<mlir::ShapedType>().getShape());
-    const auto scaleShape = to_small_vector(getScale().getType().cast<mlir::ShapedType>().getShape());
+    const auto inputShape = to_small_vector(mlir::cast<mlir::ShapedType>(getInput().getType()).getShape());
+    const auto scaleShape = to_small_vector(mlir::cast<mlir::ShapedType>(getScale().getType()).getShape());
     if (inputShape.size() != scaleShape.size()) {
         return errorAt(*this, "Scale doesn't have same rank as input tensor.");
     }
@@ -36,7 +37,7 @@ mlir::LogicalResult vpux::IE::DynamicFakeQuantizeOp::verify() {
             return errorAt(*this, "Scale dim doesn't equal input shape.");
         }
     }
-    const auto zpShape = to_small_vector(getZp().getType().cast<mlir::ShapedType>().getShape());
+    const auto zpShape = to_small_vector(mlir::cast<mlir::ShapedType>(getZp().getType()).getShape());
     if (inputShape.size() != zpShape.size()) {
         return errorAt(*this, "ZeroPoint doesn't have same rank as input tensor.");
     }
@@ -60,7 +61,7 @@ mlir::LogicalResult vpux::IE::DynamicFakeQuantizeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inputType = quantize.getInput().getType().cast<mlir::ShapedType>();
+    const auto inputType = mlir::cast<mlir::ShapedType>(quantize.getInput().getType());
 
     inferredReturnShapes.emplace_back(inputType.getShape(), inputType.getElementType());
     return mlir::success();

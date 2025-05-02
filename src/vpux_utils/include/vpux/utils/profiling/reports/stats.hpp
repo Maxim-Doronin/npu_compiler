@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <cstdint>
 #include <map>

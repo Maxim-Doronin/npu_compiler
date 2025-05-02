@@ -20,7 +20,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 using namespace vpux;
 
@@ -37,25 +37,14 @@ mlir::OpResult createCopyResult(mlir::Type type, mlir::Value inputBuffer, mlir::
     }
 
     auto dataType = type;
-    if (auto sparseBuffer = dataType.dyn_cast<VPUIP::SparseBufferType>()) {
+    if (auto sparseBuffer = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(dataType)) {
         dataType = sparseBuffer.getData();
     }
 
-    if (dataType.isa<mlir::MemRefType>()) {
+    if (mlir::isa<mlir::MemRefType, VPUIP::DistributedBufferType>(dataType)) {
         auto copyOp = rewriter.create<VPUIP::CopyOp>(location, inputBuffer, outputBuffer);
 
         return copyOp.getOperation()->getResult(0);
-    } else if (dataType.isa<VPUIP::DistributedBufferType>()) {
-        // Create NCEClusterTiling with CopyOp inside
-        SmallVector<mlir::Value> inputsOutputOperands = {inputBuffer, outputBuffer};
-
-        const auto bodyBuilder = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange newOperands) {
-            builder.create<VPUIP::CopyOp>(loc, newOperands[0], newOperands[1]);
-        };
-
-        auto clusterTilingOp =
-                rewriter.create<VPUIP::NCEClusterTilingOp>(location, type, inputsOutputOperands, bodyBuilder);
-        return clusterTilingOp.getOperation()->getResult(0);
     }
     VPUX_THROW("Unexpected data type to copy: {0}", dataType);
 }
@@ -68,14 +57,14 @@ mlir::Value createSubviewOp(NDTypeInterface outType, mlir::Value inputBuff, mlir
                             mlir::RewriterBase& rewriter, mlir::ArrayAttr svOffsets, mlir::ArrayAttr svSizes,
                             mlir::ArrayAttr svStrides = nullptr) {
     auto subviewVal = rewriter.create<VPUIP::SubViewOp>(loc, inputBuff, svOffsets, svSizes, svStrides);
-    auto subviewType = subviewVal.getType().cast<NDTypeInterface>();
+    auto subviewType = mlir::cast<vpux::NDTypeInterface>(subviewVal.getType());
 
-    auto distributedIf = outType.dyn_cast<VPU::DistributedTypeInterface>();
+    auto distributedIf = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(outType);
     if (distributedIf == nullptr) {
         return subviewVal;
     }
 
-    auto subviewDistributedIf = subviewType.dyn_cast<VPU::DistributedTypeInterface>();
+    auto subviewDistributedIf = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(subviewType);
     VPUX_THROW_WHEN(subviewDistributedIf == nullptr,
                     "Subview output's type should also implement DistributedTypeInterface; it does not = {0}",
                     subviewType);
@@ -94,23 +83,26 @@ mlir::Value createSubviewOp(NDTypeInterface outType, mlir::Value inputBuff, mlir
                                                  subviewType.getMemSpace(), inputDistributedType.getDistribution());
     };
 
-    if (auto sparseBuffer = outType.dyn_cast<VPUIP::SparseBufferType>()) {
-        auto subviewSparseBuff = subviewType.dyn_cast<VPUIP::SparseBufferType>();
+    if (auto sparseBuffer = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(outType)) {
+        auto subviewSparseBuff = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(subviewType);
         VPUX_THROW_WHEN(subviewSparseBuff == nullptr, "Subview outputs's type should also be sparse; it is not = {0}",
                         subviewType);
 
-        auto newDataType = updateDistribution(subviewSparseBuff.getData().cast<VPUIP::DistributedBufferType>(),
-                                              sparseBuffer.getData().cast<VPUIP::DistributedBufferType>());
+        auto newDataType =
+                updateDistribution(mlir::cast<vpux::VPUIP::DistributedBufferType>(subviewSparseBuff.getData()),
+                                   mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseBuffer.getData()));
         auto newSparseMapType =
                 (subviewSparseBuff.getSparsityMap() != nullptr)
-                        ? updateDistribution(subviewSparseBuff.getSparsityMap().cast<VPUIP::DistributedBufferType>(),
-                                             sparseBuffer.getSparsityMap().cast<VPUIP::DistributedBufferType>())
+                        ? updateDistribution(
+                                  mlir::cast<vpux::VPUIP::DistributedBufferType>(subviewSparseBuff.getSparsityMap()),
+                                  mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseBuffer.getSparsityMap()))
                         : nullptr;
         auto newSETableType =
                 (subviewSparseBuff.getStorageElementTable() != nullptr)
                         ? updateDistribution(
-                                  subviewSparseBuff.getStorageElementTable().cast<VPUIP::DistributedBufferType>(),
-                                  sparseBuffer.getStorageElementTable().cast<VPUIP::DistributedBufferType>())
+                                  mlir::cast<vpux::VPUIP::DistributedBufferType>(
+                                          subviewSparseBuff.getStorageElementTable()),
+                                  mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseBuffer.getStorageElementTable()))
                         : nullptr;
 
         auto newSparseBuffType =
@@ -121,8 +113,10 @@ mlir::Value createSubviewOp(NDTypeInterface outType, mlir::Value inputBuff, mlir
         return subviewVal;
     }
 
-    auto distributedBuffer = distributedIf.getDistributedTypes().front().cast<VPUIP::DistributedBufferType>();
-    auto distributedSubview = subviewDistributedIf.getDistributedTypes().front().cast<VPUIP::DistributedBufferType>();
+    auto distributedBuffer =
+            mlir::cast<vpux::VPUIP::DistributedBufferType>(distributedIf.getDistributedTypes().front());
+    auto distributedSubview =
+            mlir::cast<vpux::VPUIP::DistributedBufferType>(subviewDistributedIf.getDistributedTypes().front());
     auto newDistributedType = updateDistribution(distributedSubview, distributedBuffer);
 
     subviewVal.getResult().setType(newDistributedType);
@@ -255,7 +249,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::SplitOp origO
         return matchFailed(rewriter, origOp, "Got non constant axis");
     }
 
-    const auto inputType = newArgs.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(newArgs.getInput().getType());
     const auto inputShape = inputType.getShape();
     const auto axis = Dim(origOp.getAxisValue().value());
     auto outputBuffers = allocateBuffers(log, origOp->getLoc(), rewriter, origOp->getOpResults(),
@@ -302,7 +296,7 @@ SmallVector<mlir::Value> rewriteWithAxis(const Logger& log, VPU::ConcatOp origOp
     const auto stride =
             origOp.getPerAxisAttr().getStride() ? origOp.getPerAxisAttr().getStride().getValue().getSExtValue() : 1;
 
-    const auto outputRank = origOp.getType().cast<vpux::NDTypeInterface>().getRank();
+    const auto outputRank = mlir::cast<vpux::NDTypeInterface>(origOp.getType()).getRank();
 
     SmallVector<int64_t> svOffsets(outputRank, 0);
 
@@ -314,7 +308,7 @@ SmallVector<mlir::Value> rewriteWithAxis(const Logger& log, VPU::ConcatOp origOp
 
     for (auto i : irange(origOp->getNumOperands())) {
         const auto newInput = newArgs.getInputs()[i];
-        const auto newInputType = newInput.getType().cast<vpux::NDTypeInterface>();
+        const auto newInputType = mlir::cast<vpux::NDTypeInterface>(newInput.getType());
         const auto svSizes = newInputType.getShape().raw();
 
         log.trace("Create SubView for input #'{0}'", i);
@@ -351,7 +345,7 @@ SmallVector<mlir::Value> rewriteWithOffsets(const Logger& log, VPU::ConcatOp ori
 
     const auto allOffsets = origOp.getStaticOffsetsAttr().getAsRange<mlir::ArrayAttr>();
 
-    const auto inRank = origOp.getInputs().front().getType().cast<vpux::NDTypeInterface>().getRank();
+    const auto inRank = mlir::cast<vpux::NDTypeInterface>(origOp.getInputs().front().getType()).getRank();
     const auto dummyStridesAttr = getIntArrayAttr(origOp->getContext(), SmallVector<int64_t>(inRank, 1));
     SmallVector<mlir::ArrayAttr> allStrides(newArgs.getInputs().size(), dummyStridesAttr);
 
@@ -362,15 +356,15 @@ SmallVector<mlir::Value> rewriteWithOffsets(const Logger& log, VPU::ConcatOp ori
     for (const auto p : zip(newArgs.getInputs(), allOffsets, allStrides)) {
         const auto newInput = std::get<0>(p);
 
-        const auto curShape = newInput.getType().cast<vpux::NDTypeInterface>().getShape().raw();
+        const auto curShape = mlir::cast<vpux::NDTypeInterface>(newInput.getType()).getShape().raw();
         const auto curOffsets = std::get<1>(p);
         const auto curStrides = origOp.getStrides().has_value() ? std::get<2>(p) : nullptr;
 
         log.trace("Create SubView");
 
-        auto subviewVal =
-                createSubviewOp(newInput.getType().cast<NDTypeInterface>(), allocatedBufs[0], origOp->getLoc(),
-                                rewriter, curOffsets, getIntArrayAttr(origOp->getContext(), curShape), curStrides);
+        auto subviewVal = createSubviewOp(mlir::cast<vpux::NDTypeInterface>(newInput.getType()), allocatedBufs[0],
+                                          origOp->getLoc(), rewriter, curOffsets,
+                                          getIntArrayAttr(origOp->getContext(), curShape), curStrides);
 
         log.trace("Copy new operand to SubView");
 
@@ -461,8 +455,8 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, VPU::M2ITaskOp origOp,
 
     const auto outputBuffer = allocateBuffers(log, origOp->getLoc(), rewriter, {origOp.getOutput()},
                                               /*individualBuffers =*/false);
-    const auto inputShapeRaw = newArgs.getInput().getType().cast<NDTypeInterface>().getShape().raw();
-    const auto outputShapeRaw = outputBuffer[0].getType().cast<NDTypeInterface>().getShape().raw();
+    const auto inputShapeRaw = mlir::cast<vpux::NDTypeInterface>(newArgs.getInput().getType()).getShape().raw();
+    const auto outputShapeRaw = mlir::cast<vpux::NDTypeInterface>(outputBuffer[0].getType()).getShape().raw();
 
     struct M2IDims {
         unsigned w;

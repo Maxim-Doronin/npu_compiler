@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -159,7 +159,7 @@ func.func @DepthConvToNCE(%arg0: tensor<1x16x40x80xf16, {order = #NHWC}>) -> ten
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x16x40x80xf16, {order = #NHWC}>, tensor<16x1x4x8xf16, {order = #NHWC}>
             -> tensor<1x16x37x73xf16, {order = #NHWC}>
 
@@ -189,7 +189,7 @@ func.func @DepthConvToNCE(%arg0: tensor<1x16x40x80xf16, {order = #NHWC}>) -> ten
 // CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x64x28x28xf16, {order = #NHWC}>)
 func.func @EltwiseAddWithReluRewriter(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}>, %arg1: tensor<1x64x28x28xf16, {order = #NHWC}>)
         -> tensor<1x64x28x28xf16, {order = #NHWC}> {
-    %0 = IE.Add(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}> } :
+    %0 = IE.Add(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.Relu<> } :
         tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<1x64x28x28xf16, {order = #NHWC}>
         -> tensor<1x64x28x28xf16, {order = #NHWC}>
 
@@ -221,7 +221,7 @@ func.func @MaxPoolToNCE(%arg0: tensor<1x16x1x4xf16, {order = #NHWC}>) -> tensor<
             pads_end = [0, 0],
             strides = [1, 1],
             rounding_type = #IE.rounding_type<FLOOR>,
-            post_op = #IE.PostOp<name = "IE.Clamp", attrs = {max = 6.0, min = 0.0}>
+            post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>
         } : tensor<1x16x1x4xf16, {order = #NHWC}> -> tensor<1x16x1x4xf16, {order = #NHWC}>
 
     return %0 : tensor<1x16x1x4xf16, {order = #NHWC}>
@@ -437,7 +437,7 @@ func.func @ConvToNCE4channels(%arg0: tensor<1x4x16x16xf16, {order = #NHWC}>) -> 
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x4x16x16xf16, {order = #NHWC}>, tensor<16x4x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16>
             -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -768,12 +768,7 @@ func.func @ClampLowInF16PReLU(%input: tensor<1x16x128x128xf16, {order = #NHWC}>)
         dilations = [1, 1],
         pads_begin = [1, 1],
         pads_end = [0, 0],
-        post_op = #IE.PostOp<
-            attrs = {
-                negative_slope = -2.312500e+00 : f64
-            },
-            name = "IE.LeakyRelu"
-        >,
+        post_op = #IE.LeakyRelu<negative_slope = -2.312500e+00 : f64>,
         strides = [2, 2]
     } : tensor<1x16x128x128xf16, {order = #NHWC}>, tensor<64x16x3x3xf16, {order = #NHWC}> -> tensor<1x64x64x64xf16, {order = #NHWC}>
 
@@ -788,7 +783,8 @@ func.func @ClampLowInF16PReLU(%input: tensor<1x16x128x128xf16, {order = #NHWC}>)
     // CHECK-SAME:            clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
     // CHECK-SAME:            lrelu_mult = -1184 : i64, lrelu_shift = 9 : i64, fp_prelu_alpha = -2.312500e+00 : f64>,
     // CHECK-SAME:        rawFilterShape = [64, 16, 3, 3], strides = [2, 2]
-    // CHECK-SAME    } -> tensor<1x64x64x64xf16, {order = #NHWC}>
+    // CHECK-SAME:    }
+    // CHECK-SAME:    -> tensor<1x64x64x64xf16, {order = #NHWC}>
 
     // CHECK: return [[CONV]] : tensor<1x64x64x64xf16, {order = #NHWC}>
 }
@@ -810,7 +806,7 @@ func.func @ConvToNCECompressConv(%arg0: tensor<1x4x16x16xf16, {order = #NHWC}>) 
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x4x16x16xf16, {order = #NHWC}>, tensor<16x4x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16>
             -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -852,7 +848,7 @@ func.func @ConvToNCECompressConvWithPadBefore(%arg0: tensor<1x4x16x16xf16, {orde
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x4x16x16xf16, {order = #NHWC}>, tensor<16x4x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16>
             -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -892,7 +888,7 @@ func.func @DepthConvToNCEWithWeightsAlign(%arg0: tensor<1x16x40x80xf16, {order =
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x16x40x80xf16, {order = #NHWC}>, tensor<16x1x2x3xf16, {order = #NHWC}>
             -> tensor<1x16x39x78xf16, {order = #NHWC}>
 
@@ -984,7 +980,7 @@ func.func @BiasFuncForI8Weights(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) 
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1x!qElemType, {order = #NHWC}>, tensor<1x16x1x1xf16>
             -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -1054,7 +1050,8 @@ func.func @I4WeightsConvToNCE(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) ->
     // CHECK-SAME:          clamp_low = -2147483648 : i64,
     // CHECK-SAME:          clamp_high = 2147483647 : i64,
     // CHECK-SAME:          lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.3385416269302368 : f64>,
-    // CHECK-SAME:      rawFilterShape = [16, 16, 1, 1], strides = [1, 1]} -> tensor<1x16x16x16xf16, {order = #NHWC}
+    // CHECK-SAME:      rawFilterShape = [16, 16, 1, 1], strides = [1, 1]}
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}
 
     // CHECK:       return [[VAL0]] : tensor<1x16x16x16xf16, {order = #NHWC}>
 }
@@ -1187,7 +1184,7 @@ func.func @ConvWithReluRewriter(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) 
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>
+            post_op = #IE.Relu<>
         } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<1x16x1x1xf16>
             -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -1277,7 +1274,7 @@ func.func @QuantConvWithNegativeScales(%arg0: tensor<1x16x16x16xf16, {order = #N
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1x!qElemType, {order = #NHWC}>, tensor<1x16x1x1xf16>
             -> tensor<1x16x16x16xf16, {order = #NHWC}>
 

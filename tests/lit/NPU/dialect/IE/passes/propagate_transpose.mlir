@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -121,7 +121,7 @@ func.func @NotSwapWithHeightSlice(%arg0 : tensor<1x320x4096x1xf16>) -> tensor<20
 func.func @SwapWithAvgPool(%arg0: tensor<1x512x768x1xf16>) -> tensor<512x768x1x1xf16> {
     %0 = IE.Add(%arg0, %arg0)  { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } : tensor<1x512x768x1xf16>, tensor<1x512x768x1xf16> -> tensor<1x512x768x1xf16>
     %1 = IE.Transpose(%0) {order_value = #map} : tensor<1x512x768x1xf16> -> tensor<512x768x1x1xf16>
-    %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
+    %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
     return %2: tensor<512x768x1x1xf16>
 
     // CHECK:        [[ADD:%.*]] = IE.Add
@@ -140,7 +140,7 @@ func.func @SwapWithAvgPool(%arg0: tensor<1x512x768x1xf16>) -> tensor<512x768x1x1
 func.func @NotSwapWithAvgPoolConvertInput(%arg0: tensor<1x512x768x1xf32>) -> tensor<512x768x1x1xf16> {
     %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x512x768x1xf32> -> tensor<1x512x768x1xf16>
     %1 = IE.Transpose(%0) {order_value = #map} : tensor<1x512x768x1xf16> -> tensor<512x768x1x1xf16>
-    %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
+    %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
     return %2: tensor<512x768x1x1xf16>
 
     // CHECK:        [[CONVERT:%.+]] = IE.Convert
@@ -157,7 +157,7 @@ func.func @NotSwapWithAvgPoolConvertInput(%arg0: tensor<1x512x768x1xf32>) -> ten
 func.func @NotSwapWithAvgPoolAsChannelAlign(%arg0: tensor<1x24x768x1xf32>) -> tensor<24x768x1x1xf16> {
     %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x24x768x1xf32> -> tensor<1x24x768x1xf16>
     %1 = IE.Transpose(%0) {order_value = #map} : tensor<1x24x768x1xf16> -> tensor<24x768x1x1xf16>
-    %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<24x768x1x1xf16> -> tensor<24x768x1x1xf16>
+    %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<24x768x1x1xf16> -> tensor<24x768x1x1xf16>
     return %2: tensor<24x768x1x1xf16>
 
     // CHECK:        [[CONVERT:%.+]] = IE.Convert
@@ -175,7 +175,7 @@ func.func @NotSwapWithAvgPoolAsChannelAlign(%arg0: tensor<1x24x768x1xf32>) -> te
 // CHECK-LABEL: @NotSwapWithAvgPoolAsModelInputToTranspose
 func.func @NotSwapWithAvgPoolAsModelInputToTranspose(%arg0: tensor<1x512x768x1xf16>) -> tensor<512x768x1x1xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #map} : tensor<1x512x768x1xf16> -> tensor<512x768x1x1xf16>
-    %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.10000000149011612 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
+    %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
     return %1: tensor<512x768x1x1xf16>
 
     // CHECK:        [[TRANSPOSE:%.*]] = IE.Transpose(%arg0)

@@ -15,12 +15,14 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <numeric>
+#include <utility>
 
 using namespace vpux;
 
@@ -142,7 +144,7 @@ Bit vpux::getElemTypeSize(mlir::Type type) {
         return Bit(quantileFloatType.getWidth());
     }
 
-    if (const auto ndType = type.dyn_cast<vpux::NDTypeInterface>()) {
+    if (const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(type)) {
         return getElemTypeSize(ndType.getElementType());
     }
 
@@ -150,7 +152,7 @@ Bit vpux::getElemTypeSize(mlir::Type type) {
         return Bit(type.getIntOrFloatBitWidth());
     }
 
-    if (const auto qType = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    if (const auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         return Bit(qType.getStorageTypeIntegralWidth());
     }
 
@@ -158,13 +160,13 @@ Bit vpux::getElemTypeSize(mlir::Type type) {
 }
 
 Byte vpux::getTotalSize(mlir::Value val) {
-    const auto type = val.getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto type = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType());
     VPUX_THROW_UNLESS(type != nullptr, "Value '{0}' has non vpux::NDTypeInterface '{1}'", val, val.getType());
     return type.getTotalAllocSize();
 }
 
 Byte vpux::getCompactSize(mlir::Value val) {
-    const auto type = val.getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto type = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType());
     VPUX_THROW_UNLESS(type != nullptr, "Value '{0}' has non vpux::NDTypeInterface '{1}'", val, val.getType());
     return type.getCompactAllocSize();
 }
@@ -262,7 +264,7 @@ mlir::MemRefType vpux::getMemRefType(ShapeRef shape, mlir::Type elemType, DimsOr
         const auto layoutAttr =
                 vpux::MemRefAttr::get(orderAttr, stridesAttr, allocSizeAttr,
                                       {swizzlingSchemeAttr, sparsityCompressionAttr, compressionState}, ctx);
-        builder.setLayout(layoutAttr.cast<mlir::MemRefLayoutAttrInterface>());
+        builder.setLayout(mlir::cast<mlir::MemRefLayoutAttrInterface>(layoutAttr));
     }
     return builder;
 }
@@ -286,10 +288,35 @@ mlir::SmallVector<float> vpux::getFloatStrides(StridesRef strides) {
 //
 
 mlir::RankedTensorType vpux::getTensorType(ShapeRef shape, mlir::Type elemType, DimsOrder order,
-                                           IndexedSymbolAttr memSpace, mlir::ArrayAttr bounds) {
+                                           IndexedSymbolAttr memSpace) {
     VPUX_THROW_UNLESS(order.numDims() == shape.size(), "DimsOrder '{0}' doesn't match to shape '{1}'", order, shape);
 
-    const auto tensorDesc = vpux::getTensorAttr(elemType.getContext(), order, memSpace, bounds);
+    const auto tensorDesc = vpux::getTensorAttr(elemType.getContext(), order, memSpace);
+    const auto newType = mlir::RankedTensorType::get(shape.raw(), elemType, tensorDesc);
+
+    const auto loc = mlir::UnknownLoc::get(elemType.getContext());
+    VPUX_THROW_UNLESS(validateQuantElemType(loc, newType).succeeded(), "Got invalid ShapedType '{0}'", newType);
+
+    return newType;
+}
+
+mlir::RankedTensorType vpux::getTensorType(ShapeRef shape, mlir::Type elemType, DimsOrder order,
+                                           IndexedSymbolAttr memSpace, Bounds bounds, DynamicDimsMask dynamicDimsMask) {
+    VPUX_THROW_UNLESS(order.numDims() == shape.size(), "DimsOrder '{0}' doesn't match to shape '{1}'", order, shape);
+
+    VPUX_THROW_WHEN(!bounds.empty() && !dynamicDimsMask.empty(),
+                    "Should ether Bounds '{0}' or DynamicDimsMask '{1}' set, got both", bounds, dynamicDimsMask);
+    if (!bounds.empty()) {
+        VPUX_THROW_UNLESS((bounds.size() == shape.size()), "Bounds '{0}' doesn't match shape '{1}'", bounds.raw(),
+                          shape);
+    }
+    if (!dynamicDimsMask.empty()) {
+        VPUX_THROW_UNLESS(dynamicDimsMask.size() == shape.size(), "DynamicDimsMask '{0}' doesn't match shape '{1}'",
+                          dynamicDimsMask.raw(), shape);
+    }
+
+    const auto tensorDesc =
+            vpux::getTensorAttr(elemType.getContext(), order, memSpace, std::move(bounds), std::move(dynamicDimsMask));
     const auto newType = mlir::RankedTensorType::get(shape.raw(), elemType, tensorDesc);
 
     const auto loc = mlir::UnknownLoc::get(elemType.getContext());
@@ -299,7 +326,7 @@ mlir::RankedTensorType vpux::getTensorType(ShapeRef shape, mlir::Type elemType, 
 }
 
 mlir::MemRefType vpux::convertToMemRef(mlir::RankedTensorType tensorType) {
-    const auto type = tensorType.cast<vpux::NDTypeInterface>();
+    const auto type = mlir::cast<vpux::NDTypeInterface>(tensorType);
     const auto shape = type.getShape();
     const auto elemType = type.getElementType();
     const auto order = type.getDimsOrder();

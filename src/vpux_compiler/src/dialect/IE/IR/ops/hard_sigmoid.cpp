@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::IE::HardSigmoidOp::verify() {
             return true;
         }
 
-        numElements = tensor.getType().cast<vpux::NDTypeInterface>().getNumElements();
+        numElements = mlir::cast<vpux::NDTypeInterface>(tensor.getType()).getNumElements();
         return numElements == 1;
     };
 
@@ -48,7 +48,7 @@ mlir::LogicalResult vpux::IE::HardSigmoidOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = hardSigmoid.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(hardSigmoid.getInput().getType());
 
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 

@@ -115,7 +115,7 @@ func.func @MatMul4dInputsTo2d(%arg0: tensor<1x2x1x512xf16>) -> tensor<1x2x1x40xf
   // CHECK:          [[CONCAT:%.+]] = IE.Concat([[OUT_1_4D]], [[OUT_2_4D]])
   // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x1x40xf16>, tensor<1x1x1x40xf16> -> tensor<1x2x1x40xf16>
 
-  // CHECK return [[OUT]] : tensor<1x2x1x40xf16>
+  // CHECK:          return [[CONCAT]] : tensor<1x2x1x40xf16>
 }
 
 // -----
@@ -419,7 +419,7 @@ func.func @ConvertGPTQMatMulWithDynamicDequantize(%arg0: tensor<1x1x1536xf16>, %
     // CHECK:       [[OUT_SLICE_11:%.+]] = IE.Slice [[CONV_1_RESHAPE]] [3, 7680] [1, 2560] : tensor<4x10240xf16> to tensor<1x2560xf16>
     // CHECK:       [[OUT_RESHAPE_11:%.+]] = IE.AffineReshape([[OUT_SLICE_11]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 1, 2560]} : tensor<1x2560xf16> -> tensor<1x1x1x2560xf16>
-    
+
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[OUT_RESHAPE_0]], [[OUT_RESHAPE_1]], [[OUT_RESHAPE_2]], [[OUT_RESHAPE_3]], [[OUT_RESHAPE_4]], [[OUT_RESHAPE_5]],
     // CHECK-SAME:                             [[OUT_RESHAPE_6]], [[OUT_RESHAPE_7]], [[OUT_RESHAPE_8]], [[OUT_RESHAPE_9]], [[OUT_RESHAPE_10]], [[OUT_RESHAPE_11]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0], [0, 4, 0, 0], [0, 5, 0, 0],

@@ -8,12 +8,14 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -66,7 +68,7 @@ vpux::NDTypeInterface changeShape(vpux::NDTypeInterface originType, ShapeRef sha
     const auto elemType = originType.getElementType();
     auto newShape = to_small_vector(shape);
     newShape[padAxis] = originType.getShape()[Dim(padAxis)];
-    if (auto qType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto newQType = tileScalesAndZP(qType, ShapeRef(newShape), offset);
         return originType.changeShapeElemType(ShapeRef(newShape), newQType);
     }
@@ -83,8 +85,8 @@ mlir::LogicalResult PerAxisTileDMARewriter::matchAndRewrite(VPUIP::PerAxisTileDM
     }
 
     const auto output = perAxisTileDMAOp.getOutput();
-    const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
-    const auto distributedType = outputType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
+    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
 
     // if PerAxisTileDMAOp has output of DistributedType -- unroll according to DistributedType first,
     // then unroll per axis/tile
@@ -117,14 +119,14 @@ mlir::LogicalResult PerAxisTileDMARewriter::unrollPerAxisTile(VPUIP::PerAxisTile
     VPUX_THROW_UNLESS(vpurtTask != nullptr, "Can't get VPURT task operation");
     rewriter.setInsertionPointAfter(vpurtTask);
 
-    auto inType = perAxisTileDMAOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = perAxisTileDMAOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(perAxisTileDMAOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(perAxisTileDMAOp.getOutput().getType());
     Byte elemTypeSize = inType.getElemTypeSize();
 
     auto srcDeclBuff = perAxisTileDMAOp.getInput().getDefiningOp<VPURT::DeclareBufferOp>();
     auto dstDeclBuff = perAxisTileDMAOp.getOutputBuff().getDefiningOp<VPURT::DeclareBufferOp>();
-    auto srcType = srcDeclBuff.getType().cast<vpux::NDTypeInterface>();
-    auto dstType = dstDeclBuff.getType().cast<vpux::NDTypeInterface>();
+    auto srcType = mlir::cast<vpux::NDTypeInterface>(srcDeclBuff.getType());
+    auto dstType = mlir::cast<vpux::NDTypeInterface>(dstDeclBuff.getType());
 
     auto createSubPerAxisTileDMAOp = [&](ShapeRef subInShape, ShapeRef subOutShape, int64_t srcOffset,
                                          int64_t dstOffset, VPUIP::DMADescriptorAttr dmaDescriptor, int64_t port) {
@@ -155,7 +157,7 @@ mlir::LogicalResult PerAxisTileDMARewriter::unrollPerAxisTile(VPUIP::PerAxisTile
                                                                             srcOffset);
 
         mlir::Type newDstType;
-        if (auto dstDistributedType = dstType.dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto dstDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(dstType)) {
             auto distributionAttr = dstDistributedType.getDistribution();
             VPUX_THROW_WHEN(
                     distributionAttr.getMode().getValue() != VPU::DistributionMode::DUPLICATED,
@@ -254,7 +256,7 @@ mlir::LogicalResult PerAxisTileDMARewriter::unrollSegmentedOrOverlapped(VPUIP::P
 
     const auto input = perAxisTileDMAOp.getInput();
     const auto output = perAxisTileDMAOp.getOutputBuff();
-    const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto outputType = distributedType.getCompactType();
     const auto numTiles = parseIntArrayAttr<int64_t>(distributionAttr.getNumTiles());
     const auto originInShape = inputType.getShape().raw();
@@ -391,8 +393,8 @@ mlir::LogicalResult PerAxisTileDMARewriter::unrollDuplicated(VPUIP::PerAxisTileD
     const auto input = perAxisTileDMAOp.getInput();
     const auto output = perAxisTileDMAOp.getOutputBuff();
 
-    const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
     const auto distributionAttr = distributedType.getDistribution();
     const auto numClusters = distributionAttr.getNumClusters().getInt();

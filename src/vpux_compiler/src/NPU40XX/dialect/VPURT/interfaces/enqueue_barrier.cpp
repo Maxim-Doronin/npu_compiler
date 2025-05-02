@@ -1,30 +1,33 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPURT/interfaces/enqueue_barrier.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
 
 using namespace vpux;
 
-vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(mlir::func::FuncOp func, BarrierInfo& barrierInfo, Logger log)
+vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(mlir::func::FuncOp func, BarrierInfo& barrierInfo,
+                                                          bool disableDmaSwFifo, Logger log)
         : _barrierInfo(barrierInfo),
           _barrierDepthCheck(BARRIER_FIFO_SIZE > 1 ? BARRIER_FIFO_SIZE - 1 : 1),
-          _dmaFifoDepth(DMA_OUTSTANDING_TRANSACTIONS),
+          _dmaFifoDepth(disableDmaSwFifo ? DMA_HW_FIFO_SIZE : DMA_SW_FIFO_SIZE),
           _optimizeAndMergeEnqFlag(true),
           _log(log) {
     _taskQueueTypeMap = VPURT::getTaskOpQueues(func, _barrierInfo);
     initPrevPhysBarrierData(func);
     _startBarrierIndex = getStartBarrierIndex(func);
     _barrierInfo.buildTaskQueueTypeMap();
+    findShvTasksWithDpu();
 }
 
 vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(
         BarrierInfoTest& barrierInfoTest, std::map<VPURT::TaskQueueType, SmallVector<uint32_t>>& taskQueueTypeMap,
         SmallVector<size_t>& barrierToPidVec, size_t barrierFifoDepth, size_t dmaFifoDepth,
-        bool optimizeAndMergeEnqFlag, Logger log)
+        bool optimizeAndMergeEnqFlag, const SmallVector<size_t>& shvTasksWithDpu, Logger log)
         : _barrierInfo(barrierInfoTest),
           _taskQueueTypeMap(taskQueueTypeMap),
           _barrierDepthCheck(barrierFifoDepth > 1 ? barrierFifoDepth - 1 : 1),
@@ -40,6 +43,16 @@ vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(
     // For test scenario use first barrier as start barrier
     _startBarrierIndex = 0;
     // Task queue type is provided as part of barrierInfoTest
+
+    // Initialize data for SHV tasks with DPU
+    for (auto shvTaskInd : shvTasksWithDpu) {
+        auto shvQueueIt = llvm::find_if(_taskQueueTypeMap, [&](const auto& item) {
+            return llvm::find(item.second, shvTaskInd) != item.second.end();
+        });
+        VPUX_THROW_WHEN(shvQueueIt == _taskQueueTypeMap.end(), "Can not find task {0} in task queue map", shvTaskInd);
+
+        _shvTasksWithDpuPerTile[shvQueueIt->first.id].push_back(shvTaskInd);
+    }
 }
 
 // For each barrier find index of previous barrier using same PID
@@ -57,6 +70,20 @@ void vpux::VPURT::EnqueueBarrierHandler::initPrevPhysBarrierData(SmallVector<siz
         auto pid = barrierToPidVec[vid];
         _barrierPidPrevUsageVec[vid] = lastBarUsingPid[pid];
         lastBarUsingPid[pid] = vid;
+    }
+}
+
+void vpux::VPURT::EnqueueBarrierHandler::findShvTasksWithDpu() {
+    for (auto& [queueType, taskVec] : _taskQueueTypeMap) {
+        if (queueType.type != VPU::ExecutorKind::SHAVE_ACT) {
+            continue;
+        }
+
+        for (auto taskInd : taskVec) {
+            if (isDpuShaveKernelType(_barrierInfo.getTaskOpAtIndex(taskInd))) {
+                _shvTasksWithDpuPerTile[queueType.id].push_back(taskInd);
+            }
+        }
     }
 }
 
@@ -183,6 +210,30 @@ bool vpux::VPURT::EnqueueBarrierHandler::isBarrierAConsumedBeforeBarrierB(size_t
     return true;
 }
 
+bool vpux::VPURT::EnqueueBarrierHandler::isDependencyFromTaskAToTaskB(size_t taskA, size_t taskB) {
+    auto taskABlock = _barrierInfo.getControlGraphBlockIndex(taskA);
+    auto taskBBlock = _barrierInfo.getControlGraphBlockIndex(taskB);
+
+    if (taskABlock < taskBBlock) {
+        // If taskA is on earlier block than taskB then for sure
+        // taskB depends on taskA
+        return true;
+    }
+
+    if (taskABlock > taskBBlock) {
+        return false;
+    }
+
+    auto& [taskControlMap, taskControlMapOffset] =
+            _taskControlMapCache.getTaskControlMapAndOffset(_barrierInfo, taskABlock);
+    if (_barrierInfo.controlPathExistsBetweenTasksInSameBlock(taskControlMap, taskA - taskControlMapOffset,
+                                                              taskB - taskControlMapOffset, false)) {
+        return true;
+    }
+
+    return false;
+}
+
 // Check if tasks in set A are all guaranteed to run before tasks in set B
 bool vpux::VPURT::EnqueueBarrierHandler::areTasksABeforeTasksB(const BarrierInfo::TaskSet& tasksA,
                                                                const BarrierInfo::TaskSet& tasksB) {
@@ -228,8 +279,8 @@ bool vpux::VPURT::EnqueueBarrierHandler::isBarrierConsumedBeforeTask(size_t bar,
 }
 
 // Check if barrier consumption depends on task, what means that barrier will not be
-// fully consumed until task runs before
-bool vpux::VPURT::EnqueueBarrierHandler::isBarrierConsumptionDependantOnTask(size_t bar, size_t taskInd) {
+// fully consumed until task starts before
+bool vpux::VPURT::EnqueueBarrierHandler::isBarrierConsumptionDependantOnTaskStart(size_t bar, size_t taskInd) {
     auto barConsumers = _barrierInfo.getBarrierConsumers(bar);
 
     auto taskBlock = _barrierInfo.getControlGraphBlockIndex(taskInd);
@@ -251,6 +302,33 @@ bool vpux::VPURT::EnqueueBarrierHandler::isBarrierConsumptionDependantOnTask(siz
         auto& [taskControlMap, taskControlMapOffset] =
                 _taskControlMapCache.getTaskControlMapAndOffset(_barrierInfo, taskBlock);
         if (_barrierInfo.controlPathExistsBetweenTasksInSameBlock(taskControlMap, taskInd - taskControlMapOffset,
+                                                                  barConsTask - taskControlMapOffset, false)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Check if barrier consumption happens after given task completes
+bool vpux::VPURT::EnqueueBarrierHandler::isBarrierConsumptionAfterTaskCompletion(size_t bar, size_t taskInd) {
+    auto barConsumers = _barrierInfo.getBarrierConsumers(bar);
+
+    auto taskBlock = _barrierInfo.getControlGraphBlockIndex(taskInd);
+    for (const auto barConsTask : barConsumers) {
+        auto barConsTaskBlock = _barrierInfo.getControlGraphBlockIndex(barConsTask);
+        if (taskBlock > barConsTaskBlock) {
+            return false;
+        }
+
+        if (taskBlock < barConsTaskBlock) {
+            return true;
+        }
+
+        auto& [taskControlMap, taskControlMapOffset] =
+                _taskControlMapCache.getTaskControlMapAndOffset(_barrierInfo, taskBlock);
+        if (barConsTask != taskInd &&
+            _barrierInfo.controlPathExistsBetweenTasksInSameBlock(taskControlMap, taskInd - taskControlMapOffset,
                                                                   barConsTask - taskControlMapOffset, false)) {
             return true;
         }
@@ -416,13 +494,33 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnF
         BarrierInfo::TaskSet taskIndexInFifoSet;
         taskIndexInFifoSet.insert(taskIndexInFifo.value());
         if (areTasksABeforeTasksB(enqBarConsumers, taskIndexInFifoSet)) {
-            VPUX_THROW_UNLESS(
-                    outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnqueuesTaskIndexVecEntryIndex].has_value(),
-                    "Task {0} used to delay enqueue has no wait barrier", taskIndexInFifo.value());
-            _log.nest().trace(
-                    "Delay enqueue due to FIFO limit, orig enqueue: {0}, new enqueue: {1}", enqBar,
-                    outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnqueuesTaskIndexVecEntryIndex].value());
-            enqBarOpt = outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnqueuesTaskIndexVecEntryIndex];
+            auto newEnqBarOpt = outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnqueuesTaskIndexVecEntryIndex];
+            if (!newEnqBarOpt.has_value()) {
+                // If task that is at the start of the DMA descriptor FIFO doesn't have any wait barrier that
+                // could be used as a signal that such DMA has been popped from the FIFO by HW, check update barriers
+                // of this task or wait/update barriers of any subsequent DMAs in this FIFO
+                _log.nest().trace("Find enqueue barrier by checking wait/update barriers of subsequent DMAs");
+                auto currTaskIndexOpt = taskIndexInFifo;
+                BarrierInfo::TaskSet barrierSet;
+                while (currTaskIndexOpt.has_value() && barrierSet.empty()) {
+                    barrierSet = _barrierInfo.getWaitBarriers(currTaskIndexOpt.value());
+                    auto updateBars = _barrierInfo.getUpdateBarriers(currTaskIndexOpt.value());
+                    barrierSet.insert(updateBars.begin(), updateBars.end());
+                    currTaskIndexOpt = _barrierInfo.getNextTaskOnFifo(currTaskIndexOpt.value());
+                }
+
+                VPUX_THROW_WHEN(barrierSet.empty(), "Did not find next task with any barrier");
+
+                newEnqBarOpt = *std::min_element(barrierSet.begin(), barrierSet.end());
+            }
+
+            VPUX_THROW_UNLESS(newEnqBarOpt.has_value(),
+                              "Was not able to find any barrier on task {0} or any subsequent tasks on this FIFO",
+                              taskIndexInFifo.value());
+            _log.nest().trace("Delay enqueue due to FIFO limit, orig enqueue: {0}, new enqueue: {1} to guarantee task "
+                              "{2} has popped from the FIFO",
+                              enqBar, newEnqBarOpt, taskIndexInFifo.value());
+            enqBarOpt = newEnqBarOpt;
             return mlir::success();
         }
     }
@@ -552,7 +650,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
 
         bool supportEnqAtBootstrap = false;
 
-        // Opimizing consecutive enqueues allows to reduce number of WorkItem tasks
+        // Optimizing consecutive enqueues allows to reduce number of WorkItem tasks
         // what has impact on performance as runtime has less overhead processing them
         bool optimizeAndMergeEnq = _optimizeAndMergeEnqFlag;
 
@@ -574,6 +672,14 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
             optimizeAndMergeEnq = false;
         }
 
+        bool dpuEnqCheckForShv = queueType.type == VPU::ExecutorKind::DPU && !_shvTasksWithDpuPerTile.empty() &&
+                                 !_shvTasksWithDpuPerTile[queueType.id].empty();
+
+        if (dpuEnqCheckForShv) {
+            _log.trace("There are {0} SHV tasks which submit DPU. DPU[{1}] enqueue needs to take that into account",
+                       _shvTasksWithDpuPerTile[queueType.id].size(), queueType.id);
+        }
+
         size_t outstandingEnquOpsCounter = 0;
 
         for (auto taskInd : taskVec) {
@@ -588,7 +694,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
             taskBarriers.insert(waitBarriers.begin(), waitBarriers.end());
 
             std::optional<size_t> enqBarOpt;
-            size_t waitBarVid;
+            std::optional<size_t> waitBarOpt;
 
             // Initial enqueue proposal is previous wait barrier usage
             // or null in case task doesn't have any barriers
@@ -596,8 +702,8 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
                 enqBarOpt = std::nullopt;
             } else {
                 if (!waitBarriers.empty()) {
-                    waitBarVid = *waitBarriers.begin();
-                    _log.trace("Task wait barrier: {0}", waitBarVid);
+                    waitBarOpt = *waitBarriers.begin();
+                    _log.trace("Task wait barrier: {0}", waitBarOpt.value());
                 }
                 if (mlir::failed(findInitialEnqWithLcaForGivenBarriers(enqBarOpt, waitBarriers, updateBarriers))) {
                     _log.trace("Failed to find enqueue barrier using LCA for task {0}", taskInd);
@@ -626,7 +732,34 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
                 enqBarOpt = previousEnqBarOpt;
             }
 
-            if (previousEnqBarOpt.has_value() && enqBarOpt.has_value()) {
+            // Check if enqueue needs to be delayed in case of DPU tasks that depend on SHV tasks which can submit a DPU
+            // In that case enqueue would need to be delayed
+            bool canOptimizeAndMergeEnqForThisTask = true;
+            if (dpuEnqCheckForShv) {
+                for (auto shvTaskInd : _shvTasksWithDpuPerTile[queueType.id]) {
+                    if (isDependencyFromTaskAToTaskB(shvTaskInd, taskInd)) {
+                        // DPU task depends on SHV. Check if DPU enq barrier is after SHV
+                        _log.trace("DPU task {0} with enqueue at {1} depends on SHV task {2} which submits DPU",
+                                   taskInd, enqBarOpt.value(), shvTaskInd);
+                        if (!isBarrierConsumptionAfterTaskCompletion(enqBarOpt.value(), shvTaskInd)) {
+                            // If enqueue is not after SHV task completion then delay it
+
+                            // TODO: Check on which barrier to delay. Currently it is guaranteed by previous
+                            // passes that SHV with DPU will have following sequence:
+                            //  .. -> SHV(DPU) -> BAR -> SyncDMA -> ...
+                            // In such case it is safe to delay on BAR barrier
+                            enqBarOpt = *_barrierInfo.getUpdateBarriers(shvTaskInd).begin();
+                            _log.trace("Delay enqueue of task {0} to {1} due to dependency on SHV task {2} which "
+                                       "submits DPU",
+                                       taskInd, enqBarOpt.value(), shvTaskInd);
+                            // Task enqueue cannot be optimized if its enqueue has been delayed
+                            canOptimizeAndMergeEnqForThisTask = false;
+                        }
+                    }
+                }
+            }
+
+            if (previousEnqBarOpt.has_value() && enqBarOpt.has_value() && canOptimizeAndMergeEnqForThisTask) {
                 // Check if enqueue needs to be delayed because of previous enqueue happening later
                 if (optimizeAndMergeEnq) {
                     delayEnqIfNeededBasedOnPrevEnq(enqBarOpt, previousEnqBarOpt);
@@ -657,14 +790,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
                         return mlir::failure();
                     }
 
-                    // If task has no wait barrier use previous task wait barrier as effectively this task
-                    // due to FIFO dep would wait also on that barrier. previousTaskWaitBarOpt will contain
-                    // last tasks wait barrier on this FIFO. It doesn't have to be last predecessor.
-                    if (waitBarriers.empty()) {
-                        outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnquOpsCounter] = previousTaskWaitBarOpt;
-                    } else {
-                        outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnquOpsCounter] = *waitBarriers.begin();
-                    }
+                    outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnquOpsCounter] = waitBarOpt;
                     outstandingEnqueuesTaskIndexVec[outstandingEnquOpsCounter] = taskInd;
                     outstandingEnquOpsCounter = (outstandingEnquOpsCounter + 1) % outstandingEnqueueLimit;
                 }
@@ -675,7 +801,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
                        (enqBarOpt.has_value() ? std::to_string(enqBarOpt.value()) : "BOOTSTRAP"));
 
             // Check if enqueue barrier depends on the task to be enqueued. If yes then this is a deadlock
-            if (enqBarOpt.has_value() && isBarrierConsumptionDependantOnTask(enqBarOpt.value(), taskInd)) {
+            if (enqBarOpt.has_value() && isBarrierConsumptionDependantOnTaskStart(enqBarOpt.value(), taskInd)) {
                 _log.warning("Enqueue barrier {0} depends on the task to be enqueued {1}", enqBarOpt.value(), taskInd);
                 return mlir::failure();
             }
@@ -684,7 +810,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
             previousTaskIndOpt = taskInd;
 
             if (!waitBarriers.empty()) {
-                previousTaskWaitBarOpt = waitBarVid;
+                previousTaskWaitBarOpt = waitBarOpt;
             }
 
             _log = _log.unnest();

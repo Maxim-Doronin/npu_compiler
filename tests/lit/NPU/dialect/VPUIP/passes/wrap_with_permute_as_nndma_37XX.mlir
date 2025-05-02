@@ -32,9 +32,9 @@ func.func @NotWrapDepthToSpaceAsMultiClusterDMA(%arg0: memref<1x9x3x3xf16, #NHWC
     %2 = memref.alloc() : memref<1x1x9x9xf16, #NHWC>
     %3 = VPUIP.Copy inputs(%1 : memref<1x1x9x9xf16, #NHWC, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x9x9xf16, #NHWC>) -> memref<1x1x9x9xf16, #NHWC>
     %4 = VPURT.AllocDistributed -> !OutputDistributedType
-    %5 = VPUIP.NCEClusterTiling inputs(%3 as %arg1: memref<1x1x9x9xf16, #NHWC>) outputs(%4 as %arg2: memref<1x1x9x9xf16, #NHWC, @CMX_NN>) -> !OutputDistributedType {
-       %6 = VPUIP.Copy inputs(%arg1 : memref<1x1x9x9xf16, #NHWC>) outputs(%arg2 : memref<1x1x9x9xf16, #NHWC, @CMX_NN>) -> memref<1x1x9x9xf16, #NHWC, @CMX_NN>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<1x1x9x9xf16, #NHWC>)
+        outputs(%4 : !OutputDistributedType)  ->  !OutputDistributedType
 
     return %5: !OutputDistributedType
 

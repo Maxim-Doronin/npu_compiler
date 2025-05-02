@@ -1,12 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include <numeric>
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+
+#include <numeric>
 
 namespace vpux {
 namespace IE {
@@ -50,7 +51,7 @@ mlir::Value createPadding(mlir::PatternRewriter& rewriter, IE::InterpolateOp ori
 template <typename InterpolateAdaptor>
 SmallVector<int64_t> calcOutputShapes(InterpolateAdaptor interpolate, mlir::Location loc, vpux::Logger log,
                                       mlir::MLIRContext* ctx) {
-    const auto inType = interpolate.getInput().getType().template cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(interpolate.getInput().getType());
     const auto inShape = inType.getShape();
 
     const auto axesVal = getInterpAxesVal(loc, interpolate.getAxes(), interpolate.getAxesAttr(), inType);
@@ -62,7 +63,7 @@ SmallVector<int64_t> calcOutputShapes(InterpolateAdaptor interpolate, mlir::Loca
     const auto scalesIn = interpolate.getScales();
     const auto scales = extractFPVector(loc, scalesIn, interpolate.getScalesAttr());
     const auto scalesElemType = scalesIn != nullptr
-                                        ? scalesIn.getType().template cast<NDTypeInterface>().getElementType()
+                                        ? mlir::cast<vpux::NDTypeInterface>(scalesIn.getType()).getElementType()
                                         : mlir::Float64Type::get(ctx);
 
     return inferInterpOutShape(loc, axesVal, inShape, beginPads, endPads, calcMode, sizes, scales, scalesElemType, log);

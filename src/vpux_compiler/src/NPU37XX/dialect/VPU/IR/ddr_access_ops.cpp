@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,7 +25,7 @@ public:
         VPUX_THROW_WHEN(gatherOp == nullptr, "Unexpected op {0} at '{1}'", op->getName(), op->getLoc());
 
         const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(gatherOp).to<Byte>().count();
-        const auto inputType = gatherOp.getInput().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getInput().getType());
         const auto inputShape = inputType.getShape().raw();
         const auto inputByteSize = inputType.getElemTypeSize().to<Byte>().count();
         int64_t axisValue = gatherOp.getAxisValueAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
@@ -46,7 +46,7 @@ public:
         });
 
         if (!isStrideSrcData) {
-            const auto outputType = gatherOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+            const auto outputType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getOutput().getType());
             const auto outputByteSize = outputType.getElemTypeSize().to<Byte>().count();
             const auto isBeneficialScenario = (inputType.getShape().totalSize() * inputByteSize) > cmxAvailableBytes &&
                                               (outputType.getShape().totalSize() * outputByteSize) < cmxAvailableBytes;
@@ -70,7 +70,7 @@ class DDRAccessGRUSequenceOpModel final : public VPU::DDRAccessOpInterface::Fall
 public:
     bool isDDRAccessNecessaryOrBeneficial(mlir::Operation* op, Logger log) const {
         auto gruSequenceOp = mlir::dyn_cast<VPU::GRUSequenceOp>(op);
-        auto outputShape = gruSequenceOp.getMiddleHiddenState().getType().cast<vpux::NDTypeInterface>().getShape();
+        auto outputShape = mlir::cast<vpux::NDTypeInterface>(gruSequenceOp.getMiddleHiddenState().getType()).getShape();
         Shape minShapeAfterTiling(outputShape.size(), 1);
         minShapeAfterTiling[Dim(3)] = outputShape[Dim(3)];
         auto iface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
@@ -92,7 +92,7 @@ public:
     bool isDDRAccessNecessaryOrBeneficial(mlir::Operation* op, Logger log) const {
         auto gruSequenceLastPartOp = mlir::dyn_cast<VPU::GRUSequenceLastPartOp>(op);
         auto outputShape =
-                gruSequenceLastPartOp.getMiddleHiddenState().getType().cast<vpux::NDTypeInterface>().getShape();
+                mlir::cast<vpux::NDTypeInterface>(gruSequenceLastPartOp.getMiddleHiddenState().getType()).getShape();
         Shape minShapeAfterTiling(outputShape.size(), 1);
         minShapeAfterTiling[Dim(3)] = outputShape[Dim(3)];
         auto iface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
@@ -128,6 +128,29 @@ public:
     }
 };
 
+//
+// DDRAccessRandomUniformOpModel
+//
+
+class DDRAccessRandomUniformOpModel final :
+        public VPU::DDRAccessOpInterface::FallbackModel<DDRAccessRandomUniformOpModel> {
+public:
+    bool isDDRAccessNecessaryOrBeneficial(mlir::Operation* op, Logger log) const {
+        auto randomUniformOp = mlir::dyn_cast<VPU::RandomUniformOp>(op);
+        VPUX_THROW_WHEN(randomUniformOp == nullptr, "Unexpected op {0} at '{1}'", op->getName(), op->getLoc());
+
+        // For RandomUniform op, it cannot be tiled if globalSeed != 0 or opSeed != 0.
+        // If both seed values equal to zero, RandomUniform generates non-deterministic sequence.
+        const auto globalSeed = randomUniformOp.getGlobalSeed();
+        const auto opSeed = randomUniformOp.getOpSeed();
+        if (globalSeed != 0 || opSeed != 0) {
+            log.nest(1).trace("RandomUniform op cannot be tiled with non-zero seeds.");
+            return true;
+        }
+        return false;
+    }
+};
+
 }  // namespace
 
 //
@@ -138,6 +161,7 @@ void vpux::VPU::arch37xx::registerDDRAccessOpModelInterface(mlir::DialectRegistr
     registry.addExtension(+[](mlir::MLIRContext* ctx, VPU::VPUDialect*) {
         VPU::GatherOp::attachInterface<DDRAccessGatherOpModel>(*ctx);
         VPU::GridSampleOp::attachInterface<DDRAccessGridSampleOpModel>(*ctx);
+        VPU::RandomUniformOp::attachInterface<DDRAccessRandomUniformOpModel>(*ctx);
         VPU::GRUSequenceOp::attachInterface<DDRAccessGRUSequenceOpModel>(*ctx);
         VPU::GRUSequenceLastPartOp::attachInterface<DDRAccessGRUSequenceLastPartOpModel>(*ctx);
     });

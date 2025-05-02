@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,7 +25,7 @@ func.func @SplitQuantNCEConvOverOC(%arg0: tensor<1x32x16x16x!qElemType, {order =
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         rawFilterShape = [55296, 32, 3, 3],
         strides = [1, 1]
-    } -> tensor<1x55296x16x16x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x16x16x!qElemType, {order = #NHWC}>, tensor<55296x32x3x3x!qElemType2, {order = #NHWC}>, tensor<55296x1x1x4xsi32, {order = #NCHW}> -> tensor<1x55296x16x16x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x55296x16x16x!qElemType1, {order = #NHWC}>
 
@@ -102,7 +102,7 @@ func.func @CheckTilingRetryLogic(%arg0: tensor<1x6193152x1x1xf16, {order = #NHWC
    //CHECK-NOT:      DEPTHCONV_1
    //CHECK-NOT:      DEPTHCONV_124
    //CHECK-SAME:     [[DEPTHCONV_LAST]])
-   //CHECK-SAME     -> tensor<1x6193152x1x1xf16, {order = #NHWC}>
+   //CHECK-SAME:     -> tensor<1x6193152x1x1xf16, {order = #NHWC}>
 
    //CHECK:    return  [[CONCAT:%.+]] tensor<1x6193152x1x1xf16, {order = #NHWC}>
 }

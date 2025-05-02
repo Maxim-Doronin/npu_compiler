@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -167,7 +167,7 @@ func.func @InsertAvgPoolToSplitAndLRelu(%arg0: tensor<1x128x2x32xf16>) -> (tenso
 func.func @InsertAvgPoolToLReluWhenProducerHasPost(%arg0: tensor<1x25x135x240xf16>) -> tensor<1x188x135x240xf16> {
     %cst = const.Declare tensor<188x25x3x3xf16> = dense<7.558590e-01> : tensor<188x25x3x3xf16>
     %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.199951171875 : f64}>, strides = [1, 1]} :
+            post_op = #IE.LeakyRelu<negative_slope = 0.199951171875 : f64>, strides = [1, 1]} :
             tensor<1x25x135x240xf16>, tensor<188x25x3x3xf16> -> tensor<1x188x135x240xf16>
     %1 = IE.LeakyRelu(%0) {negative_slope = 0.199951171875 : f64} : tensor<1x188x135x240xf16> -> tensor<1x188x135x240xf16>
 
@@ -175,7 +175,7 @@ func.func @InsertAvgPoolToLReluWhenProducerHasPost(%arg0: tensor<1x25x135x240xf1
 
     // CHECK:   [[CST:%.*]] = const.Declare tensor<188x25x3x3xf16> = dense<7.558590e-01> : tensor<188x25x3x3xf16>
     // CHECK:   [[CONV:%.*]] = IE.Convolution(%arg0, [[CST]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1],
-    // CHECK-SAME:          post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.199951171875 : f64}>, strides = [1, 1]} :
+    // CHECK-SAME:          post_op = #IE.LeakyRelu<negative_slope = 0.199951171875 : f64>, strides = [1, 1]} :
     // CHECK-SAME:          tensor<1x25x135x240xf16>, tensor<188x25x3x3xf16> -> tensor<1x188x135x240xf16>
     // CHECK:   [[AVG:%.*]] = IE.AvgPool([[CONV]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} :
     // CHECK-SAME:          tensor<1x188x135x240xf16> -> tensor<1x188x135x240xf16>

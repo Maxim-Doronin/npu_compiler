@@ -5,6 +5,7 @@
 
 #include <mlir/IR/ValueRange.h>
 #include <cstdint>
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
@@ -65,7 +66,7 @@ bool UnrollFullyConnected::checkConcat(IE::ConcatOp concat) const {
     const auto outputShape = getShape(concatOutput);
     const auto isConcatInputCompatible = [&](const mlir::Value in) -> bool {
         if (in.getDefiningOp<IE::FakeQuantizeOp>() == nullptr &&
-            in.getDefiningOp<IE::DynamicDequantizeOp>() == nullptr) {
+            in.getDefiningOp<IE::DynamicDequantizeOp>() == nullptr && in.getDefiningOp<IE::DequantizeOp>() == nullptr) {
             nestedLog.trace("Concat input does not have FakeQuantize producer: input = {1}.", in);
             return false;
         }
@@ -341,7 +342,8 @@ mlir::Value UnrollFullyConnected::reduceSumForAccumulateMatMuls(const mlir::Valu
 
     auto axesAttr = getIntArrayAttr(rewriter, SmallVector<int32_t>{vpux::Dims4D::Act::C.ind()});
     const auto reduceSumLoc = appendLoc(matMuls.front().getLoc(), "_reduceSum_for_accumulate");
-    auto newReduceSumOp = rewriter.create<IE::ReduceSumOp>(reduceSumLoc, concat.getOutput(), nullptr, axesAttr, false);
+    auto newReduceSumOp = rewriter.create<IE::ReduceSumOp>(reduceSumLoc, concat.getOutput(), nullptr, axesAttr, false,
+                                                           nullptr, nullptr);
 
     auto newMatMulShape = getShape(newReduceSumOp.getOutput());
     SmallVector<int64_t> newShapeOut{newMatMulShape[Dim(1)], newMatMulShape[Dim(2)]};
@@ -394,6 +396,15 @@ bool UnrollFullyConnected::isUnrollingBeneficial(IE::FullyConnectedOp origOp, ml
 
     if (auto dynamicDequant = concatInputs.front().getDefiningOp<IE::DynamicDequantizeOp>()) {
         auto inputType = mlir::dyn_cast<vpux::NDTypeInterface>(dynamicDequant.getInput().getType());
+        if (auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inputType.getElementType())) {
+            if (!uniformType.isSigned() || uniformType.getStorageTypeIntegralWidth() != 4) {
+                return false;
+            }
+        }
+    }
+
+    if (auto dequant = concatInputs.front().getDefiningOp<IE::DequantizeOp>()) {
+        auto inputType = mlir::dyn_cast<vpux::NDTypeInterface>(dequant.getInput().getType());
         if (auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inputType.getElementType())) {
             if (!uniformType.isSigned() || uniformType.getStorageTypeIntegralWidth() != 4) {
                 return false;

@@ -5,8 +5,6 @@
 //
 
 #include "single_op_tests/embedding_segments_sum.hpp"
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -49,11 +47,11 @@ const auto params = testing::Combine(::testing::ValuesIn(indices), ::testing::Va
                                      ::testing::ValuesIn(numSegments), ::testing::ValuesIn(defaultIndex),
                                      ::testing::ValuesIn(withWeights), ::testing::ValuesIn(withDefaultIndex));
 
-INSTANTIATE_TEST_CASE_P(smoke_EmbeddingSegmentsSumCheck1, EmbeddingSegmentsSumLayerTestCommon,
-                        ::testing::Combine(params,
-                                           ::testing::ValuesIn(static_shapes_to_test_representation(embTableShape)),
-                                           ::testing::ValuesIn(netPrecisions), ::testing::ValuesIn(indPrecisions),
-                                           ::testing::Values(DEVICE_NPU)),
-                        EmbeddingSegmentsSumLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_EmbeddingSegmentsSumCheck1, EmbeddingSegmentsSumLayerTestCommon,
+                         ::testing::Combine(params,
+                                            ::testing::ValuesIn(static_shapes_to_test_representation(embTableShape)),
+                                            ::testing::ValuesIn(netPrecisions), ::testing::ValuesIn(indPrecisions),
+                                            ::testing::Values(DEVICE_NPU)),
+                         EmbeddingSegmentsSumLayerTestCommon::getTestCaseName);
 
 }  // namespace

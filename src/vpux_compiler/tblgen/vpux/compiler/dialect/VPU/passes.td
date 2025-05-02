@@ -972,6 +972,32 @@ def LowerOpsToSENCE : PassBase<"lower-ops-to-se-nce", "vpux::FunctionPass"> {
     ];
 }
 
+
+//
+// ConvertNCEInterpolateToDW
+//
+
+def ConvertNCEInterpolateToDW : PassBase<"convert-nce-interpolate-to-dw", "vpux::FunctionPass"> {
+    let summary = "Converts SEP NCE.Interpolate into NCE.DepthConvolution with SEP input";
+
+    let description = [{
+        In certain configurations, running a DPU interpolate op on DW.Conv instead of Conv brings
+        performance benefits. This pass makes the decision to switch from VPU.NCE.Interpolate (Conv)
+        to VPU.NCE.DepthConvolution with SEP input when it is beneficial to do so.
+
+        The pass takes into consideration the multiclustering strategy when deciding how to run the
+        interpolate. As such it is placed after MC strategy is known, but before tiling, as some
+        tiling might be needed to make workload channels supported for SEP DW.Conv. Experiments show
+        that it could still be better performance-wise with the added tiling in some cases.
+    }];
+
+    let constructor = "vpux::VPU::createConvertNCEInterpolateToDWPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
 //
 // FuseNCEInterpolateConsumers
 //
@@ -1058,6 +1084,14 @@ def ApplyTiling : PassBase<"apply-tiling", "vpux::FunctionPass"> {
 
     let constructor = "vpux::VPU::createApplyTilingPass()";
 
+    let options = [
+        Option<
+            "enableSCFTiling", "enable-scf-tiling",
+            "bool", "false",
+            "Flag to enable tiling with scf dialect"
+        >
+    ];
+
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
     ];
@@ -1072,29 +1106,29 @@ def DetectionOutputDecomposition : PassBase<"detection-output-decomposition", "v
 
     let description = [{
         Replace DetectionOutput operation
-        ┌─────────┐   ┌────────────────┐  ┌──────────┐
+        ┌─────────�?   ┌────────────────�?  ┌──────────�?
         │BoxLogits│   │ClassPredictions│  │PriorBoxes│
         └────┬────┘   └───────┬────────┘  └─────┬────┘
              │                │                 │
-             │         ┌──────┴────────┐        │
+             │         ┌──────┴────────�?        │
              └─────────┤DetectionOutput├────────┘
                        └───────────────┘
 
         with a subgraph (Reshapes and MemPermutes are ommited)
-        ┌─────────┐  ┌──────────┐        ┌────────────────┐
+        ┌─────────�?  ┌──────────�?        ┌────────────────�?
         │BoxLogits│  │PriorBoxes│        │ClassPredictions│
         └───────┬─┘  └─┬────────┘        └───────┬────────┘
                 │      │                         │
-        ┌───────┴──────┴───────────┐  ┌──────────┴────────┐
+        ┌───────┴──────┴───────────�?  ┌──────────┴────────�?
         │DetectionOutputDecodeBoxes│  │DetectionOutputSort│
         └───────────────────────┬──┘  └──┬───┬───┬────────┘
                                 │        │   │   │
                                 │        │   │   │
-                             ┌──┴────────┴───┴───┴───┐
+                             ┌──┴────────┴───┴───┴───�?
                              │DetectionOutputNmsCaffe│
                              └─────────┬─┬─┬─────────┘
                                        │ │ │
-                          ┌────────────┴─┴─┴────────────┐
+                          ┌────────────┴─┴─┴────────────�?
                           │DetectionOutputCollectResults│
                           └─────────────────────────────┘
     }];
@@ -1210,6 +1244,36 @@ def RelocateWeightTableForReuse : PassBase<"relocate-weight-table-for-reuse", "v
     }];
 
     let constructor = "vpux::VPU::createRelocateWeightTableForReusePass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
+// CorrectStorageElementTableSeSizeForSEPDWConv
+//
+
+def CorrectStorageElementTableSeSizeForSEPDWConv : PassBase<"correct-storage-element-table-sesize-for-sep-dwconv", "vpux::FunctionPass"> {
+    let summary = "Correct sesize attribute for VPU.StorageElementTable which is used as input for NCE DWConv";
+
+    let description = [{
+        For SEP DWConv, input has sparse tensor type with default seSize 16. While there is HW limitation which requires the workload offset start_z equals to 0,
+        which means there should be only one workload per cluster.
+        Through TilingStrategyAssignmentPass, the op is guaranteed to have only one workload per cluster, but every cluster may have different worload size on Z
+        For exmaple,
+        With numClusters = 2, seSize=16, SOK multi cluster strategy
+        1. Original input Shape [1, 64, 8, 8], the updated seSize should be [32, 32]
+            CL0: Workload [1, 32, 8, 8], seSize = 32
+            CL1: Workload [1, 32, 8, 8], seSize = 32
+        2. Original input Shape [1, 96, 8, 8], the updated seSize should be [64, 32]
+            CL0: Workload [1, 64, 8, 8], seSize = 64
+            CL1: Workload [1, 32, 8, 8], seSize = 32
+
+    }];
+
+
+    let constructor = "vpux::VPU::createCorrectStorageElementTableSeSizeForSEPDWConvPass()";
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
@@ -1519,6 +1583,38 @@ def SetupEnableAdaptiveStripping : PassBase<"setup-enable-adaptive-stripping", "
     ];
 }
 
+
+//
+// SetupEnableExtraStaticShapeOps
+//
+
+def SetupEnableExtraStaticShapeOps : PassBase<"setup-enable-extra-static-shape-ops", "vpux::ModulePass"> {
+    let summary = "Enable extra shape bound ops";
+
+    let description = [{
+        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally
+    }];
+
+    let constructor = "vpux::VPU::createSetupEnableExtraStaticShapeOpsPass()";
+
+    let options = [
+        Option<
+            "enableExtraStaticShapeOps", "enable-extra-static-shape-ops",
+            "bool", "true",
+            "[Optional] Set ExtraStaticShapeOps to true/false"
+        >,
+        Option<
+            "allowCustomValues", "allow-custom-values",
+            "bool", "",
+            "[Optional] Allows keep predefined values in IR"
+        >
+    ];
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
 //
 // ConvertOpToDMAForPerformantExecution
 //
@@ -1528,10 +1624,10 @@ def ConvertOpToDMAForPerformantExecution : PassBase<"convert-op-to-dma-for-perfo
 
     let description = [{
         If op can be done with DMA efficiently this pass will, convert the op to DMA related op.
-        Only added to NPU40XX pipelines as only op converted via this pass is Gather and is only supported
-        on NPU40XX pipelines.
+        Only added to VPU40XX+ pipelines as only op converted via this pass is Gather and is only supported
+        on VPU40XX+ pipelines.
 
-        Currently GatherOp -> GatherDMAOp is supported ( on NPU40XX and newer architectures)
+        Currently GatherOp -> GatherDMAOp is supported ( on LNL and newer architectures)
         Gather -> Reshape + Convert + (Optional) Copy + GatherDMA + Reshape + Copy
     }];
 
@@ -1550,7 +1646,7 @@ def TileGather : PassBase<"tile-gather", "vpux::FunctionPass"> {
     let summary = "Tile Gather Op";
 
     let description = [{
-        GatherOp will convert to Gather DMA in NPU40XX pipelines.
+        GatherOp will convert to Gather DMA in VPUX40XX+ pipelines.
         But Gather DMA has some limitation, the input size after axis shold less than 4096.
         The pass will tile gather from the dimention after axis
     }];
@@ -1620,7 +1716,6 @@ def AddExplicitPaddingBeforeNCEPermute : PassBase<"add-explicit-padding-before-n
         "vpux::VPU::VPUDialect"
     ];
 }
-
 
 def LegalizeDynamicShapeConcatForSWLayers : PassBase<"legalize-dynamic-shape-concat-for-sw-layers", "vpux::FunctionPass"> {
     let summary = "Unroll a `VPU.Concat` with more than two dynamic operands.";
@@ -1881,15 +1976,88 @@ def IntroduceInitFunction : PassBase<"introduce-init-function", "vpux::ModulePas
             This mode allows the user to produce a blob that contains both the init()- and the main()-schedule.
             The entry-point function calls in sequence init() and then main(), following GenInit and GenMain
             conventions.
+
+        Additionally, the pass also acknowledges a special memory limit option (see pass options).
+        The memory limit is a threshold that controls how much memory an init schedule uses for input and output
+        arguments (note: any additional memory allocated during schedule execution is not accounted for). When the
+        threshold is exceeded, the init schedule is split into (several) "parts". Note that init generation procedure
+        guarantees that every given input constant (e.g. OV weight) is only processed by a single init schedule part,
+        regardless of the specified memory limit. This in turn guarantees that once a particular init schedule part is
+        run, all inputs of that part are no longer needed by any other init schedule part and thus could be safely
+        discarded (e.g. deallocated by the caller of the init schedule).
     }];
 
     let options = [
         Option<
-            "extractionMode", "extraction-mode",
-            "std::string", "\"\"",
+            "wsExtractionMode", "ws-extraction-mode",
+            "std::string", [{"gen-all"}],
             "Can be one of the following values: 'gen-init', 'gen-main' or 'gen-all'"
+        >,
+        Option<
+            "initPart", "init-part", "int64_t", "-1", "Specifies which part of"
+            "the init schedule to generate when it is split by the memory"
+            "limit. Note that this option only works in 'gen-init' mode."
+        >,
+        Option<
+            "memoryLimit", "memory-limit", "int64_t",
+            "std::numeric_limits<int64_t>::max()", "Specifies the memory limit"
+            "(in bytes) that init schedule must acknowledge when splitting"
+            "inits into parts in 'gen-init' mode."
         >
     ];
 
     let constructor = "vpux::VPU::createIntroduceInitFunctionPass()";
+}
+
+def QueryWSInfo : PassBase<"query-ws-info", "vpux::ModulePass"> {
+    let summary = "Analyze IR and store weights separation meta information";
+
+    let description = [{
+        This pass analyzes IR and produces weights separation meta information
+        that is stored into the attributes of the entry point function. One
+        could then access this information via the attributes. The following
+        information is stored:
+
+        * VPU.WsTotalInitPartCount - the amount of init parts for the specified
+          memory limit (see options for details)
+    }];
+
+    let options = [
+        Option<
+            "memoryLimit", "memory-limit", "int64_t",
+            "std::numeric_limits<int64_t>::max()", "Specifies the memory limit"
+            "(in bytes) that init schedule must acknowledge when splitting"
+            "inits into parts. This option's value MUST be aligned to the same"
+            "option's value in --introduce-init-function pass"
+        >
+    ];
+
+    let constructor = "vpux::VPU::createQueryWSInfoPass()";
+}
+
+//
+// BoundedTensorsToDynamicDimsMask
+//
+
+def BoundedTensorsToDynamicDimsMask : PassBase<"bounded-tensors-to-dynamic-dims-mask", "vpux::ModulePass"> {
+    let summary = "Convert dynamic tensors with upper bounds to a static tensor with upper-bounds as shape";
+
+    let description = [{
+        Change dynamic tensor with upper-bound attribute from
+            tensor<1x2x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 2, 64, 512]>: tensor<4xsi64>}>
+        to
+            tensor<1x2x35x512xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 0]: tensor<4xsi64>}>
+
+        Makes it possible to do cluster tiling on static upper-bounded shape by hiding dynamic nature of the tensor.
+    }];
+
+    let constructor = "vpux::VPU::createBoundedTensorsToDynamicDimsMaskPass()";
+
+    let dependentDialects = [
+        "mlir::arith::ArithDialect",
+        "mlir::math::MathDialect",
+        "mlir::linalg::LinalgDialect",
+
+        "vpux::VPU::VPUDialect"
+    ];
 }

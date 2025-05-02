@@ -75,7 +75,7 @@ func.func @HandleLargeStridesPrimeStride(%arg0: tensor<1x16x28x28xf16>) -> tenso
   // CHECK-SAME:      : tensor<1x32x1x3xf16>, tensor<1x32x1x3xf16>, tensor<1x32x1x3xf16> -> tensor<1x32x3x3xf16>
 
   return %1 : tensor<1x32x3x3xf16>
-  // CHECK        return %[[CONCAT]]
+  // CHECK:       return %[[CONCAT]]
 }
 
 // -----
@@ -94,7 +94,7 @@ func.func @HandleLargeStridesNonPrimeStride(%arg0: tensor<1x16x28x28xf16>) -> te
   // CHECK-SAME:  {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x32x4x4xf16> -> tensor<1x32x2x2xf16>
 
   return %1 : tensor<1x32x2x2xf16>
-  // CHECK        return %[[MAXPOOL]]
+  // CHECK:       return %[[MAXPOOL]]
 }
 
 // -----
@@ -174,7 +174,7 @@ func.func @HandleLargeStridesConvolution(%arg0: tensor<1x1x1x2176xf16>, %arg1: t
   // CHECK:       %[[AffineReshape3:.*]] = IE.AffineReshape(%[[MAXPOOL2]])
   // CHECK-SAME:  : tensor<1x258x1x16xf16> -> tensor<1x2x129x16xf16>
 
-  // CHECK        return %[[AffineReshape3]]
+  // CHECK:       return %[[AffineReshape3]]
 }
 
 // -----
@@ -240,7 +240,7 @@ func.func @HandleLargeStridesAvgPoolWithFQinput(%arg0: tensor<1x32x22x22xf16>) -
     // CHECK: [[CONCAT2:%.*]] = IE.Concat([[FQV:%.*]], [[FQW:%.*]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 1]]} : tensor<1x32x1x1xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x1x2xf16>
     // CHECK: [[CONCAT3:%.*]] = IE.Concat([[CONCAT1:%.*]], [[CONCAT2:%.*]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 1, 0]]} : tensor<1x32x1x2xf16>, tensor<1x32x1x2xf16> -> tensor<1x32x2x2xf16>
     // CHECK: [[FQ5:%.*]] = IE.FakeQuantize([[CONCAT3:%.*]], %cst_0, %cst, %cst_0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x2x2xf16>
-    // CHECK return %[[FQ5]]
+    // CHECK: return [[FQ5]]
   }
 
 // -----

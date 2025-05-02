@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -47,9 +47,9 @@ func.func @ReorderReshapePermuteOps(%input: tensor<1x4096x1x1xf16, {order = #NHW
     // CHECK-SAME:  tensor<4096x4096x1x1xf16, {order = #NHWC}>
 
     // CHECK:   [[CONV:%.+]] = IE.Convolution([[INPUT]], [[DYN_QUANT]])
-    // CHECK-SAME   {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} :
-    // CHECK-SAME   tensor<1x4096x1x1xf16, {order = #NHWC}>, tensor<4096x4096x1x1xf16, {order = #NHWC}>
-    // CHECK-SAME   -> tensor<1x4096x1x1xf16, {order = #NHWC}>
+    // CHECK-SAME:  {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} :
+    // CHECK-SAME:  tensor<1x4096x1x1xf16, {order = #NHWC}>, tensor<4096x4096x1x1xf16, {order = #NHWC}>
+    // CHECK-SAME:  -> tensor<1x4096x1x1xf16, {order = #NHWC}>
 
     // CHECK:   return [[CONV]] : tensor<1x4096x1x1xf16, {order = #NHWC}>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -78,7 +78,7 @@ func.func @AdjustConvWeightsNotConvertSliceOnH(%arg0: tensor<1x16x41x41xf16>, %a
     // CHECK:       [[CONV1:%.*]]  = IE.Convolution({{[^:]+}}, [[FILTER1]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x40x40xf16>, tensor<32x16x1x1xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x40x40xf16>
     // CHECK:       [[SLICE1:%.*]] = IE.Slice [[CONV1]] [0, 0, 0, 0] [1, 17, 40, 40] : tensor<1x32x40x40xf16> to tensor<1x17x40x40xf16>
     // CHECK:       [[CONCAT:%.*]]  = IE.Concat([[SLICE0]], [[SLICE1]])
-    //CHECK-SAME{LITERAL}           {static_offsets = [[0, 0, 0, 0], [0, 17, 0, 0]]} : tensor<1x17x40x40xf16>, tensor<1x17x40x40xf16> -> tensor<1x34x40x40xf16>
+    //CHECK-SAME{LITERAL}:           {static_offsets = [[0, 0, 0, 0], [0, 17, 0, 0]]} : tensor<1x17x40x40xf16>, tensor<1x17x40x40xf16> -> tensor<1x34x40x40xf16>
     // CHECK:       [[EXPAND:%.*]]  = IE.Expand([[CONCAT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 14, 0, 0]} : tensor<1x34x40x40xf16> -> tensor<1x48x40x40xf16>
     // CHECK:       [[CONV2:%.*]] = IE.Convolution([[EXPAND]], [[FILTER0]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x48x40x40xf16>, tensor<32x48x1x1xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x40x40xf16>
     // CHECK:       return [[CONV2]] : tensor<1x32x40x40xf16>

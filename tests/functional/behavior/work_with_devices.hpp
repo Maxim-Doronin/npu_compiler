@@ -6,12 +6,11 @@
 
 #include <base/ov_behavior_test_utils.hpp>
 #include <cstring>
-#include <intel_npu/config/compiler.hpp>
 #include <string>
 #include <vector>
 #include "common/functions.h"
 #include "common/npu_test_env_cfg.hpp"
-#include "intel_npu/config/common.hpp"
+#include "intel_npu/config/options.hpp"
 #include "intel_npu/npu_private_properties.hpp"
 
 using CompilerType = ov::intel_npu::CompilerType;

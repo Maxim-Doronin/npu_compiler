@@ -516,7 +516,7 @@ func.func @FuseTransposedConvAndBias(%arg0: tensor<1x3x64x64xf16>) -> tensor<1x1
         {
             dilations = [1, 1],
             operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-            output_padding = [1, 1],
+            spatial_output_padding = [1, 1],
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [2, 2]
@@ -535,9 +535,9 @@ func.func @FuseTransposedConvAndBias(%arg0: tensor<1x3x64x64xf16>) -> tensor<1x1
     // CHECK:       [[VAL0:%.*]] = IE.TransposedConvolution(%arg0, [[FILTERS]], [[BIAS]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 1>,
-    // CHECK-SAME:      output_padding = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      spatial_output_padding = [1, 1],
     // CHECK-SAME:      strides = [2, 2]} : tensor<1x3x64x64xf16>, tensor<16x3x2x2xf16>, tensor<1x16x1x1xf16>
     // CHECK-SAME:      -> tensor<1x16x129x129xf16>
 
@@ -595,11 +595,11 @@ func.func @GroupsToAttrWithFQInput(%arg0: tensor<1x96x96x96xf32>) -> tensor<1x96
     // CHECK:           [[INPUT_FQ:%.*]] = IE.FakeQuantize([[INPUT]], [[CST_4]], [[CST_5]], [[CST_6]], [[CST_7]]) {
     // CHECK-SAME:          auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
     // CHECK-SAME:          levels = 256 : i64}
-    // CHECK-SAME           tensor<1x96x96x96xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x96x96x96xf32>
+    // CHECK-SAME:          tensor<1x96x96x96xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x96x96x96xf32>
     // CHECK:           [[FILTER_FQ:%.*]] = IE.FakeQuantize([[CST]], [[CST_0]], [[CST_1]], [[CST_2]], [[CST_3]]) {
     // CHECK-SAME:          auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
     // CHECK-SAME:          levels = 255 : i64}
-    // CHECK-SAME           tensor<96x32x3x3xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<96x1x1x1xf32>, tensor<96x1x1x1xf32> -> tensor<96x32x3x3xf32>
+    // CHECK-SAME:          tensor<96x32x3x3xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<96x1x1x1xf32>, tensor<96x1x1x1xf32> -> tensor<96x32x3x3xf32>
 
     // CHECK:           [[GROUP_CONV:%.*]] = IE.GroupConvolution([[INPUT_FQ]], [[FILTER_FQ]]) {
     // CHECK-SAME:          dilations = [1, 1],

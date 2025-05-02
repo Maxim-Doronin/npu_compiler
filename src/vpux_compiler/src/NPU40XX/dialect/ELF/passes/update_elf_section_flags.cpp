@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 //
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 namespace vpux::ELF::arch40xx {
 #define GEN_PASS_DECL_UPDATEELFSECTIONFLAGS
@@ -71,9 +72,9 @@ private:
     void safeRunOnModule() final {
         mlir::ModuleOp moduleOp = getOperation();
 
-        IE::CNNNetworkOp cnnOp;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp funcOp;
-        IE::CNNNetworkOp::getFromModule(moduleOp, cnnOp, funcOp);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
 
         auto mainOps = to_small_vector(funcOp.getOps<ELF::MainOp>());
         VPUX_THROW_UNLESS(mainOps.size() == 1, "Expected exactly one ELF mainOp. Got {0}", mainOps.size());

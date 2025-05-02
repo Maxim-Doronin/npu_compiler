@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -37,7 +39,7 @@ private:
 };
 
 mlir::LogicalResult ConvertMVN6ToMVN1::matchAndRewrite(IE::MVN6Op origOp, mlir::PatternRewriter& rewriter) const {
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inputShape = inputType.getShape();
     auto inputShapeVal = inputShape.raw();
     const auto inputShapeSize = inputShape.size();
@@ -108,7 +110,7 @@ mlir::LogicalResult ConvertMVN6ToMVN1::matchAndRewrite(IE::MVN6Op origOp, mlir::
         origOp.setOperand(0, transposeIn);
         vpux::inferReturnTypes(origOp, vpux::InferShapedTypeMode::SHAPE);
 
-        inputShapeVal = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getShape().raw();
+        inputShapeVal = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getShape().raw();
         axesAttr.clear();
         axesAttr.push_back(inputShapeSize - 1);
     }

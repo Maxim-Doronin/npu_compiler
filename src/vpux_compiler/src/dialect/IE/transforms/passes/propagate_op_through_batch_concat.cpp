@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -50,7 +52,7 @@ bool isBatchConcat(IE::ConcatOp concatOp) {
         return false;
     }
 
-    const auto outputType = concatOp.getOutput().getType().dyn_cast<NDTypeInterface>();
+    const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(concatOp.getOutput().getType());
     const auto rank = outputType.getRank();
     const auto concatAxis = getPositiveAxisInd(concatAttrs.getAxis(), rank);
     const auto batchDim = getBatchDim(outputType.getShape());
@@ -87,7 +89,7 @@ private:
 mlir::LogicalResult PropagateSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
-    if (origOp.getInput().isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(origOp.getInput())) {
         return matchFailed(_log, rewriter, origOp, "Input of SoftmaxOp is block argument");
     }
 
@@ -124,7 +126,7 @@ mlir::LogicalResult PropagateSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir
     }
 
     // Concat axis must be different from softmax axis
-    const auto rank = origOp.getInput().getType().dyn_cast<NDTypeInterface>().getRank();
+    const auto rank = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getRank();
     const auto concatAttrs = concatOp.getPerAxisAttr();
     const auto concatAxis = getPositiveAxisInd(concatAttrs.getAxis(), rank);
     const auto softmaxAxis = getPositiveAxisInd(origOp.getAxisIndAttr(), rank);
@@ -156,7 +158,7 @@ mlir::LogicalResult PropagateSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir
             auto newAddOp = rewriter.create<IE::AddOp>(
                     takeOpLoc(maybeAddOp, llvm::StringLiteral("slice_{0}"), concatInput.index()), concatInput.value(),
                     maybeAddOp.getInput2(), maybeAddOp.getAutoBroadcastAttr(), maybeAddOp.getPostOpAttr(),
-                    maybeAddOp.getClampAttr(), maybeAddOp.getOutputChannelsAttr(), maybeAddOp.getInputChannelsAttr());
+                    maybeAddOp.getClampAttr(), maybeAddOp.getOutputPaddingAttr(), maybeAddOp.getInputPaddingAttr());
             sliceSoftmaxInput = newAddOp.getOutput();
         }
 
@@ -194,7 +196,7 @@ mlir::LogicalResult PropagateReshape<ReshapeT>::matchAndRewrite(ReshapeT origOp,
                                                                 mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
-    if (origOp.getInput().template isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(origOp.getInput())) {
         return matchFailed(_log, rewriter, origOp, "Input of ReshapeOp is block argument");
     }
 
@@ -264,7 +266,7 @@ mlir::LogicalResult PropagateFakeQuantize::matchAndRewrite(IE::FakeQuantizeOp or
                                                            mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
-    if (origOp.getInput().isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(origOp.getInput())) {
         return matchFailed(_log, rewriter, origOp, "Input of SoftmaxOp is block argument");
     }
 
@@ -285,7 +287,7 @@ mlir::LogicalResult PropagateFakeQuantize::matchAndRewrite(IE::FakeQuantizeOp or
         return matchFailed(_log, rewriter, origOp, "ConcatOp not found or invalid");
     }
 
-    const auto rank = origOp.getInput().getType().dyn_cast<NDTypeInterface>().getRank();
+    const auto rank = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getRank();
     const auto concatAxis = getPositiveAxisInd(concatOp.getPerAxisAttr().getAxis(), rank);
     if (!IE::isPerTensorFQ({origOp}) && concatAxis == Dims4D::Act::C.ind()) {
         return matchFailed(_log, rewriter, origOp, "Concat axis conflicts with per channel FakeQuantize axis");

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -58,7 +58,7 @@ namespace vpux::vpuip2vpumi40xx {
 mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp origOp, OpAdaptor adaptor,
                                                             mlir::ConversionPatternRewriter& rewriter) const {
     auto ctx = origOp.getContext();
-
+    auto origTaskOp = origOp->getParentOfType<VPURT::TaskOp>();
     auto dpuTasks = adaptor.getVariants().getOps<VPUIP::DPUTaskOp>();
     assert(!dpuTasks.empty());
 
@@ -116,11 +116,13 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
             adaptor.getIsInplaceAttr(), adaptor.getInputSeSizeAttr(), adaptor.getOutputSeSizeAttr(),
             adaptor.getIsPermuteQuantizeAttr(), adaptor.getIsSmallKernelOptimizedAttr(),
             adaptor.getProfilingMetadataAttr(),
-            mlir::ValueRange(),  // waitBarriers
-            mlir::ValueRange(),  // updateBarriers
-            zeroUI64Attr,        // startAfter
-            zeroUI64Attr,        // cleanAfter
-            nullptr              // enqueueBarrier
+            mlir::ValueRange(),          // waitBarriers
+            mlir::ValueRange(),          // updateBarriers
+            zeroUI64Attr,                // startAfter
+            zeroUI64Attr,                // cleanAfter
+            nullptr,                     // enqueueBarrier
+            origTaskOp.getWlmPageAttr()  // wlmPageAttr
+
     );
 
     auto createVPUMI40XXVariant = [&](auto dpuTask, mlir::UnitAttr sprLutRead = nullptr,
@@ -133,16 +135,15 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
                 weightTableBias, weightZeroPoints, taskTypeAttr, dpuTask.getInStartAttr(), dpuTask.getInEndAttr(),
                 dpuTask.getOutStartAttr(), dpuTask.getOutEndAttr(), dpuTask.getPadAttr(), mpeModeAttr,
                 mlir::IntegerAttr::get(getUInt64Type(ctx), tileIndex), dpuTask.getHaloRegionsAttr(),
-                dpuTask.getWorkloadIdAttr(), sprLutRead, palletLutRead, forceInvRead);
+                dpuTask.getWorkloadIdAttr(), sprLutRead, palletLutRead, forceInvRead, origTaskOp.getWlmPageAttr());
     };
 
     auto dpuTasksIt = dpuTasks.begin();
 
     if (sprLookupTable || palletLookupTable) {
         // Processing dummy DPU task (see more info in AddDummyDPUTaskForSprLUT pass)
-        if (sprLookupTable) {
-            createVPUMI40XXVariant(*(dpuTasksIt++));
-        }
+        createVPUMI40XXVariant(*(dpuTasksIt++));
+
         // For the first variant that goes after the dummy one, two additional registers are set:
         // - lut_read enables the read of sprLUT (it can only be done once per invariant as other variants will
         // just reuse the loaded one)

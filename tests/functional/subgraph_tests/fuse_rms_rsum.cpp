@@ -1,4 +1,4 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <cmath>
@@ -107,12 +107,16 @@ TEST_P(FuseRMSReduceSumTestUnstripped, NPU3720_HW) {
 
 TEST_P(FuseRMSReduceSumTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 TEST_P(FuseRMSReduceSumTestUnstripped, NPU4000_HW) {
     const float fqRange = 3, fqLevels = 256;
     abs_threshold = fqRange / fqLevels;
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 namespace {

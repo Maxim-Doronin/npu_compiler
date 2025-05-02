@@ -26,14 +26,15 @@ mlir::FailureOr<SymbolizationResult> DeclareBufferRewriter::symbolize(VPURT::Dec
     auto symName = symNameIt->getSecond().getRootReference();
 
     mlir::Operation* operation = nullptr;
-    if (result.getType().isa<mlir::MemRefType>()) {
+    if (mlir::isa<mlir::MemRefType>(result.getType())) {
         auto bufferSec = op.getSection();
         auto sectionIndex = op.getSectionIndex();
-        uint64_t bufferIdx = sectionIndex.has_value() ? sectionIndex.value()[0].cast<mlir::IntegerAttr>().getInt() : 0;
+        uint64_t bufferIdx =
+                sectionIndex.has_value() ? mlir::cast<mlir::IntegerAttr>(sectionIndex.value()[0]).getInt() : 0;
         auto bufferOffs = op.getByteOffset();
 
         auto memLocation = VPUASM::MemLocationType::get(ctx, bufferSec, bufferIdx, bufferOffs);
-        auto memref = result.getType().cast<mlir::MemRefType>();
+        auto memref = mlir::cast<mlir::MemRefType>(result.getType());
         auto traits = VPUASM::BufferTraitsType::get(ctx, op.getSwizzlingKey().value_or(0));
         auto buffType = VPUASM::BufferType::get(ctx, memLocation, memref, traits);
         auto newDeclareBufOp = rewriter.create<VPUASM::DeclareBufferOp>(op.getLoc(), symName, buffType);

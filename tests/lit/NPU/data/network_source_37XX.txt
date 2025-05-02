@@ -1,6 +1,6 @@
 #loc0 = loc(unknown)
 module @"mul-layer"  {
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x1x5x5xf16> loc(#loc0)
   } outputsInfo :  {
     DataInfo "input/LogicalAnd" : tensor<1x1x5x5xf16> loc(#loc0)

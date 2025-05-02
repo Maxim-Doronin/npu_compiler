@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/core/IR/attributes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
@@ -32,17 +34,20 @@ mlir::LogicalResult vpux::IE::MaxPoolOp::inferReturnTypeComponents(
     const auto roundingType = maxPool.getRoundingType();
 
     const auto inType = mlir::cast<NDTypeInterface>(maxPool.getInput().getType());
-    const auto inShapeInfo = ShapeInfo::fromNDType(inType);
+    auto inShapeInfo = ShapeInfo::fromNDType(inType);
+    if (mlir::failed(IE::unpadInputShape(inShapeInfo.shape, maxPool.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
 
     const auto outShapeInfo = inferMaxPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove,
                                                       windowShape, roundingType);
     auto outShape = outShapeInfo.shape;
-    if (maxPool.getOutputChannels().has_value()) {
-        outShape[Dims4D::Act::C.ind()] = maxPool.getOutputChannels().value();
+    if (mlir::failed(IE::padOutputShape(outShape, maxPool.getOutputPaddingAttr(), loc))) {
+        return mlir::failure();
     }
 
-    mlir::ArrayAttr outBoundsAttr = !outShapeInfo.bounds.empty() ? getIntArrayAttr(ctx, outShapeInfo.bounds) : nullptr;
-    const auto outDesc = vpux::getTensorAttr(ctx, inType.getDimsOrder(), /*memSpace=*/nullptr, outBoundsAttr);
+    auto outBounds = !outShapeInfo.bounds.empty() ? outShapeInfo.bounds : SmallVector<int64_t>{};
+    const auto outDesc = vpux::getTensorAttr(ctx, inType.getDimsOrder(), /*memSpace=*/nullptr, Bounds(outBounds));
 
     inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 
 // Plugin
 #include "intel_npu/common/npu.hpp"
-#include "intel_npu/config/common.hpp"
+#include "intel_npu/config/options.hpp"
 #include "intel_npu/npu_private_properties.hpp"
 #include "npu/utils/logger/logger.hpp"
 #include "vpux/utils/IE/private_properties.hpp"

@@ -15,7 +15,7 @@ module @DMAGraph {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>
@@ -108,7 +108,7 @@ module @DMAComplexGraph {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>

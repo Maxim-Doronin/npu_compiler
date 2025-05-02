@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
-#include <common/functions.h>
-#include <common_test_utils/ov_tensor_utils.hpp>
 #include "single_op_tests/gather_elements.hpp"
+#include <common_test_utils/ov_tensor_utils.hpp>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -25,11 +22,15 @@ class GatherElementsLayerTestCommon : public GatherElementsLayerTest, virtual pu
 
 TEST_P(GatherElementsLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU3720);
 }
 
 TEST_P(GatherElementsLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

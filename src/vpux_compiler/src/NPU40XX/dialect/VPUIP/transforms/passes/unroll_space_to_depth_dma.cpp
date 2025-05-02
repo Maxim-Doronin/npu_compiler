@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
@@ -72,8 +73,8 @@ private:
 
 void SpaceToDepthDMARewriter::unrollBlocksFirstNCHW2NCHW(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask,
                                                          mlir::PatternRewriter& rewriter) const {
-    auto inType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
@@ -108,8 +109,8 @@ void SpaceToDepthDMARewriter::unrollBlocksFirstNCHW2NCHW(VPUIP::SpaceToDepthDMAO
 
 void SpaceToDepthDMARewriter::unrollBlocksFirstNHWC2NHWC(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask,
                                                          mlir::PatternRewriter& rewriter) const {
-    auto inType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const auto inShape = inType.getShape();
     const auto blockSize = origOp.getBlockSize();
@@ -128,8 +129,8 @@ void SpaceToDepthDMARewriter::unrollBlocksFirstNHWC2NHWC(VPUIP::SpaceToDepthDMAO
 
 void SpaceToDepthDMARewriter::unrollBlocksFirstNCHW2NHWC(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask,
                                                          mlir::PatternRewriter& rewriter) const {
-    auto inType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
@@ -167,8 +168,8 @@ void SpaceToDepthDMARewriter::unrollBlocksFirstNCHW2NHWC(VPUIP::SpaceToDepthDMAO
 
 void SpaceToDepthDMARewriter::unrollDepthFirstNCHW2NCHW(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask,
                                                         mlir::PatternRewriter& rewriter) const {
-    auto inType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
@@ -206,8 +207,8 @@ void SpaceToDepthDMARewriter::unrollDepthFirstNCHW2NCHW(VPUIP::SpaceToDepthDMAOp
 
 void SpaceToDepthDMARewriter::unrollDepthFirstNHWC2NHWC(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask,
                                                         mlir::PatternRewriter& rewriter) const {
-    auto inType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
@@ -245,8 +246,8 @@ void SpaceToDepthDMARewriter::unrollDepthFirstNHWC2NHWC(VPUIP::SpaceToDepthDMAOp
 
 void SpaceToDepthDMARewriter::unrollDepthFirstNCHW2NHWC(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask,
                                                         mlir::PatternRewriter& rewriter) const {
-    auto inType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
@@ -281,10 +282,10 @@ void SpaceToDepthDMARewriter::createSpaceToDepthDMASubOp(VPUIP::SpaceToDepthDMAO
     auto srcDeclBuff = origOp.getInput().getDefiningOp<VPURT::DeclareBufferOp>();
     auto dstDeclBuff = origOp.getOutputBuff().getDefiningOp<VPURT::DeclareBufferOp>();
 
-    auto srcType = srcDeclBuff.getType().cast<vpux::NDTypeInterface>();
-    auto dstType = dstDeclBuff.getType().cast<vpux::NDTypeInterface>();
+    auto srcType = mlir::cast<vpux::NDTypeInterface>(srcDeclBuff.getType());
+    auto dstType = mlir::cast<vpux::NDTypeInterface>(dstDeclBuff.getType());
 
-    auto newSrcMemRef = srcType.changeShape(subShape).cast<mlir::MemRefType>();
+    auto newSrcMemRef = mlir::cast<mlir::MemRefType>(srcType.changeShape(subShape));
     auto newSrcBuff = VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, srcDeclBuff, vpurtTask.getLoc(), newSrcMemRef,
                                                               srcDeclBuff.getSection(), srcOffset);
     auto srcMemSpaceIndex = srcType.getMemSpace().getIndex();
@@ -294,7 +295,7 @@ void SpaceToDepthDMARewriter::createSpaceToDepthDMASubOp(VPUIP::SpaceToDepthDMAO
                                                         srcDeclBuff.getSection(), srcMemSpaceIndex.value(), srcOffset);
     }
 
-    auto newDstMemRef = dstType.changeShape(subShape).cast<mlir::MemRefType>();
+    auto newDstMemRef = mlir::cast<mlir::MemRefType>(dstType.changeShape(subShape));
     auto newDstBuff = VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, dstDeclBuff, vpurtTask.getLoc(), newDstMemRef,
                                                               dstDeclBuff.getSection(), dstOffset);
     auto dstMemSpaceIndex = dstType.getMemSpace().getIndex();
@@ -323,8 +324,8 @@ mlir::LogicalResult SpaceToDepthDMARewriter::unrollSegmentedOrOverlapped(VPUIP::
     const auto input = spaceToDepthOp.getInput();
     const auto output = spaceToDepthOp.getOutputBuff();
 
-    const auto inputType = spaceToDepthOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = distributedType.getCompactType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(spaceToDepthOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(distributedType.getCompactType());
 
     const auto distributionAttr = distributedType.getDistribution();
     const auto distMode = distributionAttr.getMode().getValue();
@@ -374,7 +375,7 @@ mlir::LogicalResult SpaceToDepthDMARewriter::unrollSegmentedOrOverlapped(VPUIP::
         Byte cmxOffset{declBuff.getByteOffset()};
         cmxOffset += offset;
 
-        auto declBuffType = declBuff.getType().cast<vpux::NDTypeInterface>();
+        auto declBuffType = mlir::cast<vpux::NDTypeInterface>(declBuff.getType());
         VPUX_THROW_UNLESS(declBuffType.getMemoryKind() == VPU::MemoryKind::CMX_NN,
                           "Currently only support input in CMX");
         auto sectionIndex = declBuffType.getMemSpace().getIndex();
@@ -443,14 +444,14 @@ mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewriteClusterDMA(VPUIP::Sp
     const auto input = spaceToDepthDMAOp.getInput();
     const auto output = spaceToDepthDMAOp.getOutputBuff();
 
-    const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     VPUX_THROW_UNLESS(inputType.getMemoryKind() == VPU::MemoryKind::CMX_NN &&
                               outputType.getMemoryKind() == VPU::MemoryKind::CMX_NN,
                       "Unexpected memory space: input {0}, output {1}", inputType.getMemoryKind(),
                       outputType.getMemoryKind());
 
-    const auto distributedType = outputType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
     VPUX_THROW_WHEN(distributedType == nullptr, "Expect distributed type for SpaceToDepthDMA op output, but got: {0}",
                     outputType);
 
@@ -469,7 +470,7 @@ mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewriteClusterDMA(VPUIP::Sp
 mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewrite(VPUIP::SpaceToDepthDMAOp spaceToDepthDMAOp,
                                                              mlir::PatternRewriter& rewriter) const {
     const auto outputType = spaceToDepthDMAOp.getOutputBuff().getType();
-    if (auto distributedType = outputType.dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType)) {
         return matchAndRewriteClusterDMA(spaceToDepthDMAOp, rewriter);
     }
 

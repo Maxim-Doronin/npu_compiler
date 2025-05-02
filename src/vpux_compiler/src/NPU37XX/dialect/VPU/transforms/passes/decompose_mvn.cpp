@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -92,7 +92,7 @@ mlir::LogicalResult DecomposeMVNPass::MVNConverter::matchAndRewrite(VPU::MVNOp o
 
     const auto& ctx = origOp.getContext();
     auto module = origOp.getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     auto inputDimOrder = inputType.getDimsOrder();
     auto numClusters = IE::getTileExecutor(module).getCount();
     const auto accrossChannels = origOp.getAcrossChannels();
@@ -126,7 +126,7 @@ mlir::LogicalResult DecomposeMVNPass::MVNConverter::matchAndRewrite(VPU::MVNOp o
             appendLoc(origOp.getLoc(), "mvn1Normalize"), lastOp, tileMVN1MeanVarOp.getResult(),
             origOp.getAcrossChannelsAttr(), origOp.getNormalizeVarianceAttr());
 
-    auto origOpOutType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto origOpOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto reshapeOutOp =
             rewriter.createOrFold<VPU::ShapeCastOp>(origOp.getLoc(), origOpOutType, tileMVN1NormalizeOp.getOutput(),
                                                     getIntArrayAttr(ctx, origOpOutType.getShape()));
@@ -145,8 +145,8 @@ void DecomposeMVNPass::safeRunOnFunc() {
     mlir::ConversionTarget target(ctx);
 
     target.addDynamicallyLegalOp<VPU::MVNOp>([&](VPU::MVNOp op) {
-        const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-        const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
         if (inputType.getRank() != 4) {
             _log.nest(1).trace("Support for decompose MVN is limited to 4D tensors only");
             return true;

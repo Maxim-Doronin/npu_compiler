@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,10 +7,10 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 #CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
-!BoundedType = tensor<?x1x548xf16, {bounds = [32, 1, 548], order = #CHW}>
+!BoundedType = tensor<?x1x548xf16, {bounds = #const.OpaqueI64Elements<[32, 1, 548]> : tensor<3xsi64>, order = #CHW}>
 
 // CHECK-LABEL: @DynamicSoftmax
-// CHECK-SAME: [[IN:%.+]]: tensor<?x1x548xf16, {bounds = [32, 1, 548], order = #CHW}>
+// CHECK-SAME: [[IN:%.+]]: tensor<?x1x548xf16, {bounds = #const.OpaqueI64Elements<[32, 1, 548]> : tensor<3xsi64>, order = #CHW}>
 func.func @DynamicSoftmax(%arg0: !BoundedType) -> !BoundedType {
     %0 = IE.SoftMax(%arg0) {axisInd = 2 : i64} : !BoundedType -> !BoundedType
     return %0 : !BoundedType
@@ -33,12 +33,12 @@ func.func @DynamicSoftmax(%arg0: !BoundedType) -> !BoundedType {
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #WNCH = affine_map<(d0, d1, d2, d3) -> (d3, d0, d1, d2)>
-!BoundedInType = tensor<1x512x4x?xf32, {bounds = [1, 512, 4, 320], order = #NCHW}>
-!BoundedOutType = tensor<1x16x4x?xf32, {bounds = [1, 16, 4, 320], order = #NCHW}>
-!BoundedTransposeType = tensor<?x1x16x4xf32, {bounds = [320, 1, 16, 4], order = #NCHW}>
+!BoundedInType = tensor<1x512x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}>
+!BoundedOutType = tensor<1x16x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 4, 320]> : tensor<4xsi64>, order = #NCHW}>
+!BoundedTransposeType = tensor<?x1x16x4xf32, {bounds = #const.OpaqueI64Elements<[320, 1, 16, 4]> : tensor<4xsi64>, order = #NCHW}>
 
 // CHECK-LABEL: @DynamicConvAddTranpose
-// CHECK-SAME: [[IN:%.+]]: tensor<1x512x4x?xf32, {bounds = [1, 512, 4, 320], order = #NCHW}>
+// CHECK-SAME: [[IN:%.+]]: tensor<1x512x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}>
 func.func @DynamicConvAddTranpose(%arg0: !BoundedInType) -> !BoundedTransposeType {
     %weights = const.Declare tensor<16x512x1x1xf32> = dense<1.000000e+00> : tensor<16x512x1x1xf32>
     %bias = const.Declare tensor<1x16x1x1xf32> = dense<1.000000e+00> : tensor<1x16x1x1xf32>
@@ -58,7 +58,7 @@ func.func @DynamicConvAddTranpose(%arg0: !BoundedInType) -> !BoundedTransposeTyp
     // CHECK-DAG:   [[DIM_4:%.+]] = const.Declare tensor<1xsi64> = dense<4> : tensor<1xsi64>
 
     // CHECK:       [[DYN_EXPAND:%.+]] = IE.DynamicExpand([[IN]])
-    // CHECK-SAME:       : tensor<1x512x4x?xf32, {bounds = [1, 512, 4, 320], order = #NCHW}> -> tensor<1x512x4x320xf32>
+    // CHECK-SAME:       : tensor<1x512x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x512x4x320xf32>
 
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[DYN_EXPAND]], {{%.+}})
     // CHECK-SAME:       : tensor<1x512x4x320xf32>, tensor<16x512x1x1xf32> -> tensor<1x16x4x320xf32>
@@ -75,7 +75,7 @@ func.func @DynamicConvAddTranpose(%arg0: !BoundedInType) -> !BoundedTransposeTyp
     // CHECK-SAME:      -> tensor<4xsi64>
     // CHECK:       [[DYN_RESHAPE:%.+]] = IE.DynamicReshape([[TR]], [[NEW_SHAPE]])
     // CHECK-SAME:    {output_bounds = [320, 1, 16, 4], output_shape = [-9223372036854775808, 1, 16, 4]}
-    // CHECK-SAME:       : tensor<320x1x16x4xf32>, tensor<4xsi64> -> tensor<?x1x16x4xf32, {bounds = [320, 1, 16, 4], order = #NCHW}>
+    // CHECK-SAME:       : tensor<320x1x16x4xf32>, tensor<4xsi64> -> tensor<?x1x16x4xf32, {bounds = #const.OpaqueI64Elements<[320, 1, 16, 4]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK:       return [[DYN_RESHAPE]]
 }

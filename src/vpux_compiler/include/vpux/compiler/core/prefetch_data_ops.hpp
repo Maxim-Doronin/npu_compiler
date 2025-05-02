@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,8 +9,8 @@
 #include "vpux/compiler/core/feasible_memory_scheduler.hpp"
 
 #include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>
 #include <mlir/IR/BuiltinOps.h>

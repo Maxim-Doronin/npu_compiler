@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -96,7 +96,7 @@ module @perAxisTileDMA {
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
  module @compressedDMA {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_143" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "Convolution_145" : tensor<8x1x1x1xui8>
@@ -159,7 +159,7 @@ module @depthToSpace {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @nceMaxPool {
-IE.CNNNetwork entryPoint : @maxpool_f16_f16 inputsInfo : {
+net.NetworkInfo entryPoint : @maxpool_f16_f16 inputsInfo : {
 DataInfo "input_0" : tensor<1x64x16x16xf16>
 } outputsInfo : {
 DataInfo "output_0" : tensor<1x64x8x8xf16>

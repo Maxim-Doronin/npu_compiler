@@ -6,10 +6,12 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -79,7 +81,7 @@ void shapeReorder(VPUIP::UpsamplingDMAOp upsamplingDMAOp, mlir::PatternRewriter&
     finalShape[Dims4D::Act::C] = 1;
 
     auto cst = upsamplingDMAOp.getInput().getDefiningOp<Const::DeclareOp>();
-    const auto origConstType = cst.getType().cast<vpux::NDTypeInterface>();
+    const auto origConstType = mlir::cast<vpux::NDTypeInterface>(cst.getType());
     const auto newConstType = origConstType.changeShape(finalShape);
     auto newConstAttr = cst.transformContentAttr().reshape(finalShape).get();
     auto newCst = rewriter.create<Const::DeclareOp>(upsamplingDMAOp.getLoc(), newConstType, std::move(newConstAttr));
@@ -106,7 +108,7 @@ mlir::LogicalResult UpsamplingDMARewriter::matchAndRewrite(VPUIP::UpsamplingDMAO
     VPUX_THROW_UNLESS(vpurtTask != nullptr, "Can't get VPURT task operation");
     rewriter.setInsertionPointAfter(vpurtTask);
 
-    auto inType = upsamplingDMAOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(upsamplingDMAOp.getInput().getType());
     Byte elemTypeSize = inType.getElemTypeSize();
 
     bool inputIsCst = false;
@@ -117,8 +119,8 @@ mlir::LogicalResult UpsamplingDMARewriter::matchAndRewrite(VPUIP::UpsamplingDMAO
     VPUX_THROW_UNLESS(dstDeclBuff != nullptr, "Can't get buffer for operand: {0}", upsamplingDMAOp.getOutputBuff());
 
     inputIsCst = mlir::isa<Const::DeclareOp>(parentOp);
-    auto srcType = upsamplingDMAOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto dstType = dstDeclBuff.getType().cast<vpux::NDTypeInterface>();
+    auto srcType = mlir::cast<vpux::NDTypeInterface>(upsamplingDMAOp.getInput().getType());
+    auto dstType = mlir::cast<vpux::NDTypeInterface>(dstDeclBuff.getType());
     const auto inOrder = DimsOrder::fromValue(upsamplingDMAOp.getInput());
     auto subShape = Shape(inType.getShape().raw());
     int64_t totalNumPlane = inType.getShape()[Dims4D::Act::N] * inType.getShape()[Dims4D::Act::H];

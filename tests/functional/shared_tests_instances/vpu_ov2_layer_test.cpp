@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -359,6 +359,10 @@ void VpuOv2LayerTest::setMLIRCompilerType() {
     configuration[ov::intel_npu::compiler_type.name()] = "MLIR";
 }
 
+void VpuOv2LayerTest::setBatchCompilerMode(const std::string& mode) {
+    configuration[ov::intel_npu::batch_compiler_mode_settings.name()] = "batch-compile-method=" + mode;
+}
+
 bool VpuOv2LayerTest::isReferenceSoftwareMode() const {
     const auto compilationMode = configuration.at(ov::intel_npu::compilation_mode.name()).as<std::string>();
     return compilationMode == "ReferenceSW";
@@ -380,6 +384,10 @@ void VpuOv2LayerTest::setPerformanceHintLatency() {
 
 void VpuOv2LayerTest::setShaveCodeGenMode() {
     configuration[ov::intel_npu::compilation_mode.name()] = "ShaveCodeGen";
+}
+
+void VpuOv2LayerTest::enableProfiling() {
+    configuration[ov::enable_profiling.name()] = "YES";
 }
 
 std::vector<std::vector<ov::Shape>> cartesianProduct(const std::vector<std::vector<ov::Shape>>& inputs) {

@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/power_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -35,10 +37,16 @@ private:
     void safeRunOnFunc() final;
 };
 
+// Match pattern
 // Input -> IE.Power -> IE.ReduceSum -> IE.Sqrt -> IE.Divide -> IE.Multiply (sqrt(inputDims[axis]))
 //   |                                                                ^
 //   |                                                                |
 //    -----------------------------------------------------------------
+// Or
+// Input -> IE.Power -> IE.ReduceSum -> IE.Add -> IE.Sqrt -> IE.Divide -> IE.Multiply
+//   |                                                                         ^
+//   |                                                                         |
+//    --------------------------------------------------------------------------
 
 bool compareWithTolerance(float num1, float num2, float tolerance = 0.1f) {
     return std::abs(num1 - num2) <= tolerance;
@@ -64,9 +72,12 @@ mlir::Operation* getSqrtAndDivideOps(mlir::Operation* op) {
     // Check the case of 1/Sqrt(x)
     const auto sqrtOp = mlir::dyn_cast_or_null<IE::SqrtOp>(op);
     if (sqrtOp != nullptr && sqrtOp->hasOneUse()) {
-        const auto divideOp = mlir::dyn_cast_or_null<IE::DivideOp>(*sqrtOp->getUsers().begin());
+        auto divideOp = mlir::dyn_cast_or_null<IE::DivideOp>(*sqrtOp->getUsers().begin());
         if (divideOp != nullptr && divideOp->hasOneUse()) {
-            return divideOp;
+            auto divideInput = mlir::dyn_cast_or_null<Const::DeclareOp>(divideOp.getInput1().getDefiningOp());
+            if (divideInput != nullptr && divideInput.getContent().getSplatValue<int64_t>() == 1) {
+                return divideOp;
+            }
         }
     }
 
@@ -82,6 +93,20 @@ mlir::Operation* getSqrtAndDivideOps(mlir::Operation* op) {
     return nullptr;
 }
 
+mlir::FailureOr<int64_t> getReducedSize(ArrayRef<int64_t> reduceAxes, vpux::ShapeRef reduceInputShape) {
+    // Calculate shape size of reduced axes
+    int64_t reduceSize = 1;
+    for (const auto& axis : reduceAxes | indexed) {
+        // Make sure the gamma related to reduce axes should be the same as the input width
+        if (axis.value() != (int64_t)(reduceInputShape.size() - reduceAxes.size() + axis.index())) {
+            return mlir::failure();
+        }
+        reduceSize *= reduceInputShape[Dim(axis.value())];
+    }
+
+    return reduceSize;
+}
+
 void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSumOp, mlir::MLIRContext& ctx,
                         vpux::Logger /*_log*/) {
     auto powerOp = getPowerOp(maybePowerOp);
@@ -91,11 +116,43 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
     if (reduceSumOp == nullptr || !reduceSumOp->hasOneUse()) {
         return;
     }
-    const auto sqrtOp = mlir::dyn_cast_or_null<IE::SqrtOp>(*reduceSumOp->getUsers().begin());
-    if (sqrtOp == nullptr || !sqrtOp->hasOneUse()) {
+
+    auto powerInputShape = getShape(powerOp->getOperand(0));
+    float epsilon = 0.000000001f;
+
+    auto sqrtOp = mlir::dyn_cast_or_null<IE::SqrtOp>(*reduceSumOp->getUsers().begin());
+    if (sqrtOp == nullptr) {
+        auto addOp = mlir::dyn_cast<IE::AddOp>(*reduceSumOp->getUsers().begin());
+        if (addOp == nullptr || !addOp->hasOneUse()) {
+            return;
+        }
+
+        // Update epsilon
+        auto epsilonConstOp = mlir::isa<Const::DeclareOp>(addOp.getInput1().getDefiningOp())
+                                      ? addOp.getInput1().getDefiningOp<Const::DeclareOp>()
+                                      : addOp.getInput2().getDefiningOp<Const::DeclareOp>();
+        if (epsilonConstOp != nullptr) {
+            auto epsilonContent = epsilonConstOp.getContent();
+            auto epsilonArray = to_small_vector(epsilonContent.getValues<float>());
+            if (epsilonArray.size() != 1) {
+                return;
+            }
+            epsilon = epsilonArray[0];
+        }
+
+        sqrtOp = mlir::dyn_cast_or_null<IE::SqrtOp>(*addOp->getUsers().begin());
+        if (sqrtOp == nullptr) {
+            return;
+        }
+    }
+
+    if (!sqrtOp->hasOneUse()) {
         return;
     }
-    const auto divideOp = mlir::dyn_cast_or_null<IE::DivideOp>(*sqrtOp->getUsers().begin());
+
+    const auto epsilonAttr = getFPAttr(&ctx, epsilon);
+
+    auto divideOp = mlir::dyn_cast_or_null<IE::DivideOp>(*sqrtOp->getUsers().begin());
     if (divideOp == nullptr || !divideOp->hasOneUse()) {
         return;
     }
@@ -108,12 +165,91 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
         }
         return *op->getUsers().begin();
     };
-    auto multiplyOp = mlir::dyn_cast_or_null<IE::MultiplyOp>(skipFqIfPresent(*divideOp->getUsers().begin()));
-    if (multiplyOp == nullptr || !multiplyOp->hasOneUse()) {
+    auto skipReshapeIfPresent = [](mlir::Operation* op) -> mlir::Operation* {
+        if (!mlir::isa_and_nonnull<IE::AffineReshapeOp>(op)) {
+            return op;
+        }
+        if (!op->hasOneUse()) {
+            return nullptr;
+        }
+        return *op->getUsers().begin();
+    };
+
+    // Get shape size of reduced axes
+    const auto reduceAxes = parseIntArrayAttr<int64_t>(reduceSumOp.getAxesValueAttr());
+    auto reduceSumInputShape = getShape(reduceSumOp->getOperand(0));
+    auto reduceSizeResult = getReducedSize(reduceAxes, reduceSumInputShape);
+    if (mlir::failed(reduceSizeResult)) {
+        return;
+    }
+    int64_t reduceSize = reduceSizeResult.value();
+    float gammaScale = sqrt(reduceSize);
+
+    mlir::Operation* opBeforeScale = divideOp;
+    // In case the first input of the DivideOp is 1
+    auto divideInput = mlir::dyn_cast_or_null<Const::DeclareOp>(divideOp.getInput1().getDefiningOp());
+    if (divideInput != nullptr && divideInput.getContent().getSplatValue<int64_t>() == 1) {
+        auto selfMultiplyOp =
+                mlir::dyn_cast_or_null<IE::MultiplyOp>(skipReshapeIfPresent(*divideOp->getUsers().begin()));
+        if (selfMultiplyOp == nullptr || !selfMultiplyOp->hasOneUse()) {
+            return;
+        }
+
+        opBeforeScale = selfMultiplyOp;
+    }
+
+    auto builder = mlir::OpBuilder(opBeforeScale);
+
+    // Create gamma
+    auto createGamma = [&](mlir::OpBuilder& builder, mlir::Operation* op, int64_t size,
+                           float gammaScale) -> mlir::Value {
+        const float weightData = 1.0f / gammaScale;
+        const auto dataStorageType = mlir::RankedTensorType::get({size}, mlir::Float32Type::get(op->getContext()));
+        const auto constLoc = appendLoc(op->getLoc(), "_const");
+        return Const::createConst(builder, constLoc, dataStorageType, ArrayRef(weightData));
+    };
+
+    auto scaleMultiplyOp = mlir::dyn_cast_or_null<IE::MultiplyOp>(skipFqIfPresent(*opBeforeScale->getUsers().begin()));
+
+    // Process the pattern of "DivideOp + AffineReshapOp"
+    if (mlir::isa_and_nonnull<IE::AffineReshapeOp>(*divideOp->getUsers().begin()) && scaleMultiplyOp == nullptr) {
+        mlir::Value gamma = createGamma(builder, opBeforeScale, reduceSize, gammaScale);
+
+        // Reshape Input
+        auto reduceSumOutputShape = getShape(reduceSumOp->getResult(0));
+        const SmallVector<int64_t> newInShape = {1, 1, reduceSumOutputShape[Dim(reduceSumOutputShape.size() - 1)],
+                                                 reduceSize};
+
+        auto inReshapeOp =
+                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "_in_reshape"), powerOp->getOperand(0),
+                                              nullptr, false, getIntArrayAttr(&ctx, newInShape));
+
+        // Create RMSOp
+        auto rmsOp = builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "_rms"), inReshapeOp, gamma, epsilonAttr);
+
+        // Reshape Output
+        auto outReshapeOp =
+                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "_out_reshape"), rmsOp->getResult(0),
+                                              nullptr, false, getIntArrayAttr(&ctx, powerInputShape));
+
+        opBeforeScale->replaceAllUsesWith(outReshapeOp);
+
         return;
     }
 
-    Const::DeclareOp constOp = multiplyOp.getOperand(1).getDefiningOp<Const::DeclareOp>();
+    if (scaleMultiplyOp == nullptr) {
+        mlir::Value gamma = createGamma(builder, opBeforeScale, reduceSize, gammaScale);
+
+        // Create RMSOp
+        auto rmsOp = builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "_rms"), powerOp->getOperand(0), gamma,
+                                               epsilonAttr);
+
+        opBeforeScale->replaceAllUsesWith(rmsOp);
+
+        return;
+    }
+
+    Const::DeclareOp constOp = scaleMultiplyOp.getOperand(1).getDefiningOp<Const::DeclareOp>();
     if (constOp == nullptr) {
         return;
     }
@@ -122,32 +258,18 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
         return;
     }
     auto constantValue = constantContent.getSplatValue<float>();
-    auto inputDims = getShape(powerOp->getOperand(0));
-    auto inputWidth = inputDims[Dim(inputDims.size() - 1)];
-    if (!compareWithTolerance(constantValue, sqrt(inputWidth))) {
+    if (!compareWithTolerance(constantValue, sqrt(reduceSize))) {
         return;
     }
 
     // Create default gamma
-    mlir::Value gamma;
-    auto builder = mlir::OpBuilder(multiplyOp);
-    const float weightData = 1.0f;
-    const auto dataStorageType =
-            mlir::RankedTensorType::get({inputWidth}, mlir::Float32Type::get(powerOp->getContext()));
-    const auto constLoc = appendLoc(powerOp->getLoc(), "_const");
-    gamma = Const::createConst(builder, constLoc, dataStorageType, ArrayRef(weightData));
+    builder = mlir::OpBuilder(scaleMultiplyOp);
+    gammaScale = 1.0f;
+    mlir::Value gamma = createGamma(builder, scaleMultiplyOp, reduceSize, gammaScale);
 
-    float epsilon = 0.000000001f;
-    const auto epsilonAttr = getFPAttr(&ctx, epsilon);
-    auto gammaRank = mlir::cast<vpux::NDTypeInterface>(gamma.getType()).getRank();
-    if (gammaRank != 1) {
-        auto ReshapeOp = builder.create<IE::ReshapeOp>(gamma.getLoc(), gamma, nullptr, false,
-                                                       getIntArrayAttr(&ctx, SmallVector<int64_t>({inputWidth})));
-        gamma = ReshapeOp;
-    }
     auto rmsOp =
             builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "_rms"), powerOp->getOperand(0), gamma, epsilonAttr);
-    multiplyOp->replaceAllUsesWith(rmsOp);
+    scaleMultiplyOp->replaceAllUsesWith(rmsOp);
 }
 
 //
@@ -192,7 +314,7 @@ void FuseRMSNormPass::safeRunOnFunc() {
             _log.nest().trace("PowerOp does not have one single non-one dim");
             return;
         }
-        const auto reduceMeanOp = mlir::dyn_cast_or_null<IE::ReduceMeanOp>(*powerOp->getUsers().begin());
+        auto reduceMeanOp = mlir::dyn_cast_or_null<IE::ReduceMeanOp>(*powerOp->getUsers().begin());
         if (reduceMeanOp == nullptr || !reduceMeanOp->hasOneUse()) {
             const auto reduceSumOp = mlir::dyn_cast_or_null<IE::ReduceSumOp>(*powerOp->getUsers().begin());
             isReduceSumPattern(powerOp, reduceSumOp, ctx, _log);
@@ -200,6 +322,18 @@ void FuseRMSNormPass::safeRunOnFunc() {
         }
         auto addOp = mlir::dyn_cast_or_null<IE::AddOp>(*reduceMeanOp->getUsers().begin());
         if (addOp == nullptr || !addOp->hasOneUse()) {
+            return;
+        }
+
+        // Get shape size of reduced axes
+        const auto reduceAxes = parseIntArrayAttr<int64_t>(reduceMeanOp.getAxesValueAttr());
+        auto reduceMeanInputShape = getShape(reduceMeanOp->getOperand(0));
+        auto reduceSizeResult = getReducedSize(reduceAxes, reduceMeanInputShape);
+        if (mlir::failed(reduceSizeResult)) {
+            return;
+        }
+        int64_t reduceSize = reduceSizeResult.value();
+        if (layerSize != reduceSize) {
             return;
         }
 

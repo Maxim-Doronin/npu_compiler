@@ -22,7 +22,7 @@ func.func @ParsePrintClusterTiling(%arg0: tensor<1x32x16x16xf16, {mem_space = @C
                 ppe = #VPU.PPEStub<>,
                 rawFilterShape = [64, 32, 3, 3],
                 strides = [1, 1]
-            } -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}>
+            } : tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}>
       VPU.Yield %1
     }
 
@@ -40,7 +40,8 @@ func.func @ParsePrintClusterTiling(%arg0: tensor<1x32x16x16xf16, {mem_space = @C
     //CHECK-SAME:                            pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     //CHECK-SAME:                            ppe = #VPU.PPEStub<>,
     //CHECK-SAME:                            strides = [1, 1]
-    //CHECK-SAME:                } -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}>
+    //CHECK-SAME:                }
+    //CHECK-SAME:                -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}>
     //CHECK:                VPU.Yield [[VAL1]]
     //CHECK:            }
 
@@ -120,7 +121,7 @@ func.func @ParsePrintDistributedTensor(%arg0: !Input_DDR) -> !Output_DDR {
                   ppe = #VPU.PPEStub<>,
                   rawFilterShape = [64, 32, 3, 3],
                   strides = [1, 1]
-              } -> !OutputStub_CMX
+              } : !InputStub_CMX, !WeightsStub_CMX, !WeightsTableStub_CMX -> !OutputStub_CMX
         VPU.Yield %0
     }
 
@@ -158,7 +159,8 @@ func.func @ParsePrintDistributedTensor(%arg0: !Input_DDR) -> !Output_DDR {
     //CHECK-SAME:                            pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
     //CHECK-SAME:                            ppe = #VPU.PPEStub<>,
     //CHECK-SAME:                            strides = [1, 1]
-    //CHECK-SAME:             } -> tensor<1x64x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
+    //CHECK-SAME:             }
+    //CHECK-SAME:             -> tensor<1x64x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
     //CHECK:            VPU.Yield [[RES4]]
     //CHECK:        }
 
@@ -503,7 +505,7 @@ func.func @CanonicalizeTwoConvs(%arg0: !Input_DDR) -> !Output_DDR {
                   ppe = #VPU.PPEStub<>,
                   rawFilterShape = [64, 32, 3, 3],
                   strides = [1, 1]
-              } -> !IntermediateStub_CMX
+              } : !InputStub_CMX, !WeightsFirstStub_CMX, !WeightsTableFirstStub_CMX -> !IntermediateStub_CMX
         VPU.Yield %0
     }
 
@@ -540,7 +542,7 @@ func.func @CanonicalizeTwoConvs(%arg0: !Input_DDR) -> !Output_DDR {
                   ppe = #VPU.PPEStub<>,
                   rawFilterShape = [16, 64, 1, 1],
                   strides = [1, 1]
-              } -> !OutputStub_CMX
+              } : !IntermediateStub_CMX, !WeightsSecondStub_CMX, !WeightsTableSecondStub_CMX -> !OutputStub_CMX
         VPU.Yield %0
     }
 

@@ -73,8 +73,7 @@ Driver Compiler provides npu_driver_compiler, compilerTest, profilingTest and lo
 
 ## How to release Driver Compiler package
 
-Unlike local build of Driver Compiler related targets, we need to apply some patches to [OpenVINO Project] and [NPU-Plugin Project] and also pack the elf, pdb and tbb files together to meet driver requirements.
-
+Unlike local build of Driver Compiler related targets, we need to apply some patches to [OpenVINO Project] and [NPU-Plugin Project] and also pack the elf, pdb and tbb files together to meet driver requirements. 
 ## How to test
 
 Please refer to [How to test](./docs/how_to_test.md).

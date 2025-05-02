@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,7 +21,7 @@ mlir::LogicalResult vpux::IE::AdaptiveAvgPoolOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inputType = adaptiveAvgPool.getInput().getType().cast<mlir::ShapedType>();
+    const auto inputType = mlir::cast<mlir::ShapedType>(adaptiveAvgPool.getInput().getType());
     const auto inputShape = inputType.getShape();
 
     if (inputShape.size() != 3 && inputShape.size() != 4 && inputShape.size() != 5) {

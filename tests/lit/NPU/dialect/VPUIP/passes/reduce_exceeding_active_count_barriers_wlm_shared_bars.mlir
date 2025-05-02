@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -104,60 +104,68 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR5:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR6:%.*]] = VPURT.DeclareVirtualBarrier {isFinalBarrier} -> !VPURT.Barrier
     // CHECK-NOT: VPURT.DeclareVirtual
 
+    //                     0(DMA-0)
+    //                     |
+    //                     b0
+    //                   /    \
     //              1(DMA-1)   2(SW)
     //                   \    /
     //                     b1
     //                     |
-    //          0(DMA-0)   3(DMA-0)
-    //                  \  |
-    //                    b0
-    //                     |
-    //                     4(DMA1)
+    //                     3(DMA-0)
     //                     |
     //                     b2
     //                     |
-    //                     5(SW)
+    //                     4(DMA1)
     //                     |
     //                     b3
     //                     |
-    //                     6(DMA1)
+    //                     5(SW)
     //                     |
     //                     b4
     //                     |
+    //                     6(DMA1)
+    //                     |
+    //                     b5
+    //                     |
     //                     7(DMA-0)
+    //                     |
+    //                     b6
     //
     // Task 0
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 0 : i64}
 
     // Task 1
-    // CHECK: VPURT.Task updates([[BAR1]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 1 : i64}
 
     // Task 2
-    // CHECK: VPURT.Task updates([[BAR1]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
     // CHECK:   VPUIP.SW.Kernel
 
     // Task 3
-    // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR0]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 0 : i64}
 
     // Task 4
-    // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 1 : i64}
 
     // Task 5
-    // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
     // CHECK:   VPUIP.SW.Kernel
 
     // Task 6
-    // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 1 : i64}
 
     // Task 7
-    // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 0 : i64}
 }
 
@@ -200,6 +208,8 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     //                        b3
     //                        |
     //                        7(DMA-0)
+    //                        |
+    //                        b4
     //
     // Linearization of tasks distributed across 3 queues with 2 barriers.
     // For WLM compilation this scenario requires linearization as
@@ -248,7 +258,7 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     }
 
     // task 7
-    VPURT.Task waits (%bar3:  !VPURT.Barrier)  {
+    VPURT.Task waits (%bar3:  !VPURT.Barrier) {
             VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
@@ -261,59 +271,67 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR5:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR6:%.*]] = VPURT.DeclareVirtualBarrier {isFinalBarrier} -> !VPURT.Barrier
     // CHECK-NOT: VPURT.DeclareVirtual
 
+    //                     0(DMA-0)
+    //                     |
+    //                     b0
+    //                   /    \
     //              1(DMA-1)   2(SW)
     //                   \    /
     //                     b1
     //                     |
-    //          0(DMA-0)   3(DMA-0)
-    //                  \  |
-    //                    b0
+    //                     3(DMA-0)
+    //                     |
+    //                    b2
     //                     |
     //                     4(DMA1)
     //                     |
-    //                     b2
+    //                     b3
     //                     |
     //                     5(SW)
     //                     |
-    //                     b3
+    //                     b4
     //                     |
     //                     6(DMA1)
     //                     |
-    //                     b4
+    //                     b5
     //                     |
     //                     7(DMA-0)
+    //                     |
+    //                     b6
     //
     // Task 0
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 0 : i64}
 
     // Task 1
-    // CHECK: VPURT.Task updates([[BAR1]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 1 : i64}
 
     // Task 2
-    // CHECK: VPURT.Task updates([[BAR1]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
     // CHECK:   VPUIP.SW.Kernel
 
     // Task 3
-    // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR0]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 0 : i64}
 
     // Task 4
-    // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 1 : i64}
 
     // Task 5
-    // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
     // CHECK:   VPUIP.SW.Kernel
 
     // Task 6
-    // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 1 : i64}
 
     // Task 7
-    // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 0 : i64}
 }

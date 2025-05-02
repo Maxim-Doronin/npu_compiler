@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 //
@@ -30,8 +30,8 @@ mlir::LogicalResult vpux::VPU::MatMulOp::inferReturnTypes(mlir::MLIRContext* ctx
         return mlir::failure();
     }
 
-    const auto inType1 = matMul.getInput1().getType().cast<vpux::NDTypeInterface>();
-    const auto inType2 = matMul.getInput2().getType().cast<vpux::NDTypeInterface>();
+    const auto inType1 = mlir::cast<vpux::NDTypeInterface>(matMul.getInput1().getType());
+    const auto inType2 = mlir::cast<vpux::NDTypeInterface>(matMul.getInput2().getType());
     const auto inShape1 = inType1.getShape();
     const auto inShape2 = inType2.getShape();
 
@@ -183,7 +183,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::MatMulOp::getTilingStrategy(TilingMode 
     auto op = this->getOperation();
     SmallVector<int64_t> maxNumTiles;
 
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto outputRank = outputType.getShape().size();
 
     SmallVector<int64_t> axes{checked_cast<int64_t>(outputRank - 2), checked_cast<int64_t>(outputRank - 1)};
@@ -197,8 +197,8 @@ mlir::FailureOr<OutputTiling> vpux::VPU::MatMulOp::getTilingStrategy(TilingMode 
 //
 
 bool vpux::VPU::MatMulOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t numTiles) {
-    const auto input1Shape = getInput1().getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto input2Shape = getInput2().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto input1Shape = mlir::cast<vpux::NDTypeInterface>(getInput1().getType()).getShape();
+    const auto input2Shape = mlir::cast<vpux::NDTypeInterface>(getInput2().getType()).getShape();
 
     return strategy == VPU::MultiClusterStrategy::SplitOverKernel &&
            input1Shape[Dims4D::Act::C] >= checked_cast<int64_t>(numTiles) &&

@@ -1,16 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/loop.hpp"
-#include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/compiler/utils/subspaces.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 #include "vpux/utils/core/format.hpp"
+#include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <mlir/IR/DialectImplementation.h>
@@ -303,19 +302,19 @@ mlir::LogicalResult vpux::Const::SubViewAttr::verify(FuncRef<mlir::InFlightDiagn
     }
 
     for (const auto dimAttr : offset.getValue()) {
-        if (!dimAttr.isa<mlir::IntegerAttr>()) {
+        if (!mlir::isa<mlir::IntegerAttr>(dimAttr)) {
             return printTo(emitError(), "Got non-integer value '{0}' in 'offset' for 'SubViewAttr'", dimAttr);
         }
-        if (dimAttr.cast<mlir::IntegerAttr>().getInt() < 0) {
+        if (mlir::cast<mlir::IntegerAttr>(dimAttr).getInt() < 0) {
             return printTo(emitError(), "Got unsupported dimension value '{0}' in 'offset' for 'SubViewAttr'", dimAttr);
         }
     }
 
     for (const auto dimAttr : shape.getValue()) {
-        if (!dimAttr.isa<mlir::IntegerAttr>()) {
+        if (!mlir::isa<mlir::IntegerAttr>(dimAttr)) {
             return printTo(emitError(), "Got non-integer value '{0}' in 'shape' for 'SubViewAttr'", dimAttr);
         }
-        if (dimAttr.cast<mlir::IntegerAttr>().getInt() <= 0) {
+        if (mlir::cast<mlir::IntegerAttr>(dimAttr).getInt() <= 0) {
             return printTo(emitError(), "Got unsupported dimension value '{0}' in 'shape' for 'SubViewAttr'", dimAttr);
         }
     }

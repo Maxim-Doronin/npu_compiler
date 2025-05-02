@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@
 func.func @DynamicOpsWithoutTilingSmallBounds(
     %input: tensor<1x16x64x128xf16, {order = #NHWC}>,
     %ends: tensor<4xsi32>
-) -> tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 128], order = #NCHW}> {
+) -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 128]> : tensor<4xsi64>, order = #NCHW}> {
 // CHECK:       [[STRIDED_SLICE:%.+]] = VPU.StridedSlice
 // CHECK-NOT:   tilingStrategy
     %stridedSlice = VPU.StridedSlice(%input, %ends) {
@@ -23,12 +23,12 @@ func.func @DynamicOpsWithoutTilingSmallBounds(
         new_axis_mask = [],
         operandSegmentSizes = array<i32: 1, 0, 1, 0>,
         shrink_axis_mask = [],
-        strides_attr = [1, 1, 1, 1]} : tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<4xsi32> -> tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 128], order = #NHWC}>
+        strides_attr = [1, 1, 1, 1]} : tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<4xsi32> -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 128]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:       [[PERMUTE:%.+]] = VPU.MemPermute([[STRIDED_SLICE]])
 // CHECK-NOT:   tilingStrategy
-    %permute = VPU.MemPermute(%stridedSlice) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 128], order = #NHWC}> -> tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 128], order = #NCHW}>
+    %permute = VPU.MemPermute(%stridedSlice) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 128]> : tensor<4xsi64>, order = #NHWC}> -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 128]> : tensor<4xsi64>, order = #NCHW}>
 // CHECK:       return [[PERMUTE]]
-    return %permute : tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 128], order = #NCHW}>
+    return %permute : tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 128]> : tensor<4xsi64>, order = #NCHW}>
 }
 
 // -----
@@ -40,7 +40,7 @@ func.func @DynamicOpsWithoutTilingSmallBounds(
 func.func @DynamicOpsWithoutTilingLargeBounds(
     %input: tensor<1x16x64x8000xf16, {order = #NHWC}>,
     %ends: tensor<4xsi32>
-) -> tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 8000], order = #NCHW}> {
+) -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 8000]> : tensor<4xsi64>, order = #NCHW}> {
 // CHECK:       [[STRIDED_SLICE:%.+]] = VPU.StridedSlice
 // CHECK-NOT:   tilingStrategy
     %stridedSlice = VPU.StridedSlice(%input, %ends) {
@@ -51,10 +51,10 @@ func.func @DynamicOpsWithoutTilingLargeBounds(
         new_axis_mask = [],
         operandSegmentSizes = array<i32: 1, 0, 1, 0>,
         shrink_axis_mask = [],
-        strides_attr = [1, 1, 1, 1]} : tensor<1x16x64x8000xf16, {order = #NHWC}>, tensor<4xsi32> -> tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 8000], order = #NHWC}>
+        strides_attr = [1, 1, 1, 1]} : tensor<1x16x64x8000xf16, {order = #NHWC}>, tensor<4xsi32> -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 8000]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:       [[PERMUTE:%.+]] = VPU.MemPermute([[STRIDED_SLICE]])
 // CHECK-NOT:   tilingStrategy
-    %permute = VPU.MemPermute(%stridedSlice) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 8000], order = #NHWC}> -> tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 8000], order = #NCHW}>
+    %permute = VPU.MemPermute(%stridedSlice) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 8000]> : tensor<4xsi64>, order = #NHWC}> -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 8000]> : tensor<4xsi64>, order = #NCHW}>
 // CHECK:       return [[PERMUTE]]
-    return %permute : tensor<?x?x?x?xf16, {bounds = [1, 16, 64, 8000], order = #NCHW}>
+    return %permute : tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 8000]> : tensor<4xsi64>, order = #NCHW}>
 }

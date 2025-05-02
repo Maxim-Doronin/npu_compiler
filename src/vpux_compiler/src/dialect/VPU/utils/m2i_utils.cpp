@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -107,8 +107,8 @@ mlir::ArrayAttr VPU::getM2INormCoeffsAttr(mlir::MLIRContext* ctx, VPU::M2INormOp
 }
 
 bool VPU::isM2IBatchNormSupported(mlir::Value input, mlir::Value output, LogCb logCb) {
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto outType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
     // Norm only defined for FP, and M2I only supports fp16
     auto iType = inType.getElementType();
@@ -143,8 +143,8 @@ template <typename InputOp>
 bool VPU::isM2IResizeSupported(InputOp op, LogCb logCb, bool checkFp16Interleaved) {
     mlir::Value input = op.getInput();
     mlir::Value output = op.getOutput();
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto outType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
     const auto iType = inType.getElementType();
     if (!(iType.isUnsignedInteger(8) || iType.isF16())) {

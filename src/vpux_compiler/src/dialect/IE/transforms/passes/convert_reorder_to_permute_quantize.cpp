@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
@@ -11,6 +12,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTREORDERTOPERMUTEQUANTIZE
@@ -45,7 +47,7 @@ mlir::LogicalResult FusePermuteRewrite::matchAndRewrite(IE::ReorderOp origOp, ml
     SmallVector<int64_t> noPadBeginEnd(inOrder.numDims(), 0);
     const auto& ctx = origOp.getContext();
     const auto permQuantOutType = origOp.getOutput().getType();
-    const auto permQuantElemType = permQuantOutType.cast<vpux::NDTypeInterface>().getElementType();
+    const auto permQuantElemType = mlir::cast<vpux::NDTypeInterface>(permQuantOutType).getElementType();
     const auto dstElemTypeAttr = mlir::TypeAttr::get(permQuantElemType);
     const auto permQuantLoc = appendLoc(origOp->getLoc(), "PermuteQuantize");
     auto permuteQuantizeOp = rewriter.create<IE::PermuteQuantizeOp>(
@@ -77,12 +79,12 @@ private:
 };
 
 bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, Logger log) const {
-    const auto inType = reorder.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::dyn_cast<vpux::NDTypeInterface>(reorder.getInput().getType());
     if (inType == nullptr) {
         log.trace("Input type does not implement NDTypeInterface");
         return false;
     }
-    const auto outType = reorder.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
     if (outType == nullptr) {
         log.trace("Output type does not implement NDTypeInterface");
         return false;

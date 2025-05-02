@@ -5,12 +5,14 @@
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -30,7 +32,7 @@ namespace {
 
 vpux::NDTypeInterface changeShape(vpux::NDTypeInterface originType, ShapeRef shape, ShapeRef offset) {
     const auto elemType = originType.getElementType();
-    if (auto qType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto newQType = tileScalesAndZP(qType, shape, offset);
         return originType.changeShapeElemType(shape, newQType);
     }
@@ -124,11 +126,11 @@ mlir::LogicalResult PermuteRewriter::matchAndRewrite(VPUIP::PermuteDMAOp permute
     const auto input = permuteOp.getInput();
     const auto output = permuteOp.getOutputBuff();
 
-    const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
-    auto inDistributedType = inputType.dyn_cast<VPUIP::DistributedBufferType>();
-    auto outDistributedType = outputType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto inDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType);
+    auto outDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
 
     // Unroll by distributed type of input/output
     if (inDistributedType != nullptr || outDistributedType != nullptr) {
@@ -186,12 +188,12 @@ mlir::LogicalResult PermuteRewriter::rewritePermuteDMA(VPUIP::PermuteDMAOp permu
 
     auto dstDeclBuff = permuteOp.getOutputBuff().getDefiningOp<VPURT::DeclareBufferOp>();
 
-    auto inType = permuteOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = permuteOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(permuteOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(permuteOp.getOutput().getType());
     Byte elemTypeSize = inType.getElemTypeSize();
 
-    auto srcType = srcDeclBuff.getType().cast<vpux::NDTypeInterface>();
-    auto dstType = dstDeclBuff.getType().cast<vpux::NDTypeInterface>();
+    auto srcType = mlir::cast<vpux::NDTypeInterface>(srcDeclBuff.getType());
+    auto dstType = mlir::cast<vpux::NDTypeInterface>(dstDeclBuff.getType());
     auto srcOffset = srcDeclBuff.getByteOffset();
     auto dstOffset = dstDeclBuff.getByteOffset();
 
@@ -263,7 +265,7 @@ mlir::LogicalResult PermuteRewriter::rewritePermuteDMA(VPUIP::PermuteDMAOp permu
                                                  Bit(subOutputShapes[idx][Dim(2)] * Bit(elemTypeSize).count()),
                                                  Bit(Bit(elemTypeSize).count())};
         mlir::Type newDstType;
-        if (auto dstDistributedType = dstType.dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto dstDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(dstType)) {
             auto ctx = permuteOp->getContext();
             auto distributionAttr = dstDistributedType.getDistribution();
             VPUX_THROW_WHEN(
@@ -361,8 +363,8 @@ mlir::LogicalResult PermuteRewriter::unrollSegmentedOrOverlappedOutput(VPUIP::Pe
     const auto input = permuteOp.getInput();
     const auto output = permuteOp.getOutputBuff();
 
-    const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto originalOutputType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto originalOutputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     const auto outputType = distributedType.getCompactType();
 
     const auto distributionAttr = distributedType.getDistribution();
@@ -526,8 +528,8 @@ mlir::LogicalResult PermuteRewriter::unrollDuplicatedOutput(VPUIP::PermuteDMAOp 
     const auto input = permuteOp.getInput();
     const auto output = permuteOp.getOutputBuff();
 
-    const auto inputType = permuteOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = permuteOp.getOutputBuff().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(permuteOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(permuteOp.getOutputBuff().getType());
 
     const auto distributionAttr = distributedType.getDistribution();
     const auto numClusters = distributionAttr.getNumClusters().getInt();
@@ -621,11 +623,11 @@ mlir::LogicalResult PermuteRewriter::unrollDuplicatedInputAndOutput(VPUIP::Permu
     const auto input = permuteOp.getInput();
     const auto output = permuteOp.getOutputBuff();
 
-    const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
-    const auto inDistributedType = input.getType().dyn_cast<VPUIP::DistributedBufferType>();
-    const auto outDistributedType = output.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    const auto inDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(input.getType());
+    const auto outDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
 
     const auto inMode = inDistributedType.getDistribution().getMode().getValue();
     const auto outMode = outDistributedType.getDistribution().getMode().getValue();
@@ -663,7 +665,7 @@ mlir::LogicalResult PermuteRewriter::unrollDuplicatedInputAndOutput(VPUIP::Permu
     VPUX_THROW_UNLESS(inDeclBuff != nullptr, "Can't get input buffer offset");
     const auto cmxNameAttr = mlir::FlatSymbolRefAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN));
     const auto symbolAttr = vpux::IndexedSymbolAttr::get(ctx, {cmxNameAttr, vpux::getIntAttr(ctx, 0)});
-    const auto inType = inDistributedType.getCompactType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(inDistributedType.getCompactType());
     const auto newInType = inType.changeMemSpace(symbolAttr);
     auto inputBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(
             rewriter, inDeclBuff, loc, newInType, VPURT::BufferSection::CMX_NN, getIntArrayAttr(ctx, ArrayRef({0})),
@@ -697,12 +699,12 @@ mlir::LogicalResult PermuteRewriter::unrollDuplicatedInput(VPUIP::PermuteDMAOp p
     const auto input = permuteOp.getInput();
     const auto output = permuteOp.getOutputBuff();
 
-    const auto inDistributedType = input.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    const auto inDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(input.getType());
     const auto inMode = inDistributedType.getDistribution().getMode().getValue();
     VPUX_THROW_UNLESS(VPU::bitEnumContainsAny(inMode, VPU::DistributionMode::DUPLICATED), "Unsupported mode");
 
-    const auto inputType = inDistributedType.getCompactType().dyn_cast<vpux::NDTypeInterface>();
-    const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::dyn_cast<vpux::NDTypeInterface>(inDistributedType.getCompactType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
     auto vpurtTask = permuteOp->getParentOfType<VPURT::TaskOp>();
     VPUX_THROW_WHEN(vpurtTask == nullptr, "Can not get VPURT.TaskOp for {0}", permuteOp);

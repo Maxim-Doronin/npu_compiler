@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,7 +14,7 @@ module @VerticalFusionOutlining {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x16x128x128xf16, {order = #NHWC}>
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x128x128xf16, {order = #NHWC}>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -28,11 +28,11 @@ void vpux::NPUReg40XX::NNrtConfigOp::serializeCached(elf::writer::BinaryDataSect
 
     std::optional<uint64_t> stackSize;
     if (getActShaveStacks().has_value()) {
-        auto stackRef = symRefMap.lookupSymbol(getActShaveStacks()->begin()->dyn_cast<mlir::SymbolRefAttr>());
+        auto stackRef = symRefMap.lookupSymbol(mlir::dyn_cast<mlir::SymbolRefAttr>(*getActShaveStacks()->begin()));
         auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stackRef);
         stackSize = stackOp.getStackSize();
     }
-    // NPU40XX does not have stack frames provided by compiler
+    // NPU4 does not have stack frames provided by compiler
     // they are resolved by shave driver when initialized.
 
     npu40xx::nn_public::VpuNNRTConfig nnrtConfig = {};
@@ -97,7 +97,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::NNrtConfigOp::getRelocationIn
         auto shvStacksTasksSubElemIf = actShaveStacks;
         shvStacksTasksSubElemIf.walkImmediateSubElements(
                 [&](mlir::Attribute attr) {
-                    if (auto symRef = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+                    if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                         auto stacks = symRefMap.lookupSymbol(symRef);
                         auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stacks);
                         auto stackSize = stackOp.getStackSize();

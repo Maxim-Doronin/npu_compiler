@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -73,8 +74,8 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
     const auto input = depthToSpaceDMAOp.getInput();
     const auto output = depthToSpaceDMAOp.getOutputBuff();
 
-    const auto distributedInputType = input.getType().dyn_cast<VPUIP::DistributedBufferType>();
-    const auto distributedOutputType = output.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distributedInputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(input.getType());
+    const auto distributedOutputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
 
     VPUX_THROW_WHEN(distributedInputType == nullptr && distributedOutputType == nullptr,
                     "At least one of operands must have DistributedBuffer type");
@@ -192,8 +193,8 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
 
 mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpaceDMAOp depthToSpaceDMAOp,
                                                              mlir::PatternRewriter& rewriter) const {
-    auto inputType = depthToSpaceDMAOp.getInput().getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto outputType = depthToSpaceDMAOp.getOutputBuff().getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto inputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(depthToSpaceDMAOp.getInput().getType());
+    auto outputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(depthToSpaceDMAOp.getOutputBuff().getType());
 
     if (inputType != nullptr || outputType != nullptr) {
         return matchAndRewriteClusterDMA(depthToSpaceDMAOp, rewriter);
@@ -208,8 +209,8 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpace
     VPUX_THROW_UNLESS(vpurtTask != nullptr, "Can't get VPURT task operation");
     rewriter.setInsertionPointAfter(vpurtTask);
 
-    auto inType = depthToSpaceDMAOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outType = depthToSpaceDMAOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(depthToSpaceDMAOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(depthToSpaceDMAOp.getOutput().getType());
     Byte elemTypeSize = inType.getElemTypeSize();
 
     if (depthToSpaceDMAOp.getDmaDescriptor().has_value()) {
@@ -234,8 +235,8 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpace
 
     auto srcDeclBuff = depthToSpaceDMAOp.getInput().getDefiningOp<VPURT::DeclareBufferOp>();
     auto dstDeclBuff = depthToSpaceDMAOp.getOutputBuff().getDefiningOp<VPURT::DeclareBufferOp>();
-    auto srcType = srcDeclBuff.getType().cast<vpux::NDTypeInterface>();
-    auto dstType = dstDeclBuff.getType().cast<vpux::NDTypeInterface>();
+    auto srcType = mlir::cast<vpux::NDTypeInterface>(srcDeclBuff.getType());
+    auto dstType = mlir::cast<vpux::NDTypeInterface>(dstDeclBuff.getType());
 
     auto createSubDepthToSpaceDMAOp = [&](ShapeRef subShape, DimsOrder order, int64_t srcOffset, int64_t dstOffset,
                                           VPUIP::DMADescriptorAttr dmaDescriptor, int64_t port) {

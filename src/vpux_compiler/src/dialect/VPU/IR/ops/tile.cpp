@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@ mlir::SmallVector<int64_t> calcTileOutputShape(mlir::Value input, llvm::SmallVec
     // "*data*" by prepending 1's to it, e.g. let's shape of *"data"* is equal to (4, 2, 3) and *"repeats"* is equal to
     // [2, 2], then *"repeats"* will be promoted to [1, 2, 2] and result shape will be (4, 4, 6)
 
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     auto outShape = to_small_vector(inType.getShape());
 
     while (repeatsVals.size() > outShape.size()) {
@@ -47,7 +47,7 @@ mlir::LogicalResult vpux::VPU::TileOp::inferReturnTypes(mlir::MLIRContext* ctx, 
         return mlir::failure();
     }
 
-    const auto inType = tile.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(tile.getInput().getType());
     auto outShape = calcTileOutputShape(tile.getInput(), parseIntArrayAttr<int64_t>(tile.getRepeatsValues()));
 
     const auto outType = inType.changeShape(Shape(outShape));
@@ -73,7 +73,7 @@ mlir::OpFoldResult vpux::VPU::TileOp::fold(FoldAdaptor) {
 //
 
 vpux::InputTiling vpux::VPU::TileOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger /*log*/) {
-    auto originalInputShape = getInput().getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    auto originalInputShape = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getShape().raw();
     auto tiledOutputShape = outputTile.shape.raw();
     auto tiledOutputOffsets = outputTile.offsets.raw();
     auto tiledOutputAxis = outputTile.axis.raw();
@@ -132,9 +132,9 @@ mlir::FailureOr<OutputTiling> vpux::VPU::TileOp::getTilingStrategy(TilingMode ti
     VPUX_THROW_WHEN(tilingBuilder == nullptr, "Operation '{0}' doesn't implement TilingBuilderOpInterface",
                     op->getName());
 
-    const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
     const auto inputShape = inputType.getShape();
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     const auto dimOrder = inputType.getDimsOrder();
 

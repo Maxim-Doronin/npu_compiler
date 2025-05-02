@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/utils/core/enums.hpp"
 
@@ -54,7 +55,7 @@ constexpr uint32_t HW_ACT_SHAVE_PROFILING_MAX_BUFFER_SIZE = 256;
 constexpr uint32_t HW_M2I_PROFILING_MAX_BUFFER_SIZE = 128;
 
 // SW Kernel reads a few bytes of data for better performance
-// 1024 bytes is safe for 40XX
+// 1024 bytes is safe for 40XX+
 // 256 bytes is safe for 37XX due to 4x smaller vector size
 constexpr int64_t MAX_SW_KERNEL_PREFETCH_DATA_SIZE_37XX = 256;
 constexpr int64_t MAX_SW_KERNEL_PREFETCH_DATA_SIZE_40XX = 1024;
@@ -230,7 +231,7 @@ VPU::DistributionInfoAttr getSOHDistAttrWithNewShape(mlir::MLIRContext* ctx, Dis
         return origDistAttr;
     }
 
-    auto isInputSparse = origDistType.template isa<VPUIP::SparseBufferType>();
+    auto isInputSparse = mlir::isa<vpux::VPUIP::SparseBufferType>(origDistType);
     const auto newHeightAlignment =
             VPUIP::getSOHMinimalHeightAlignment(newShape, origDistAttr.getNumClusters().getInt(), isInputSparse, arch);
     const auto newAlignment =
@@ -349,7 +350,7 @@ bool isDistributedCompatibleAfterShapeChangeForViewOps(DistType inDistType, Shap
         return false;
     }
 
-    const auto isInputSparse = inDistType.template isa<VPUIP::SparseBufferType>();
+    const auto isInputSparse = mlir::isa<vpux::VPUIP::SparseBufferType>(inDistType);
     auto minHeightAlignment =
             VPUIP::getSOHMinimalHeightAlignment(shape, inDistAttr.getNumClusters().getInt(), isInputSparse, arch);
     if (auto alignment = inDistType.getDistribution().getAlignment()) {
@@ -522,8 +523,8 @@ bool canTilingWeightsBeCompressed(VPUIP::NCEClusterTaskOp op);
 
 // Copy Utilities
 
-bool isChannelOffsetsAndTileDimCompatibleWithClusterCopy(SmallVector<int64_t> offsets, int32_t tileIndexVal,
-                                                         VPUIP::DistributedBufferType distributedType);
+bool isChannelOffsetsAndTileDimCompatibleWithDistributedCopy(SmallVector<int64_t> offsets, int32_t tileIndexVal,
+                                                             VPUIP::DistributedBufferType distributedType);
 bool isCopyWithStaticStrides(VPUIP::CopyOp copyOp);
 bool isCopyToDDR(VPUIP::CopyOp copyOp);
 bool isCopyFromDDR(VPUIP::CopyOp copyOp);
@@ -571,12 +572,15 @@ bool isEltwiseTheOnlyConsumer(VPUIP::NCEClusterTaskOp clusterTaskOp, mlir::Value
 bool isBoundedBufferType(mlir::Value value);
 bool hasBoundedBuffers(mlir::Operation* op);
 bool hasUngroupedBoundedBuffers(VPUIP::SwKernelOp swKernelOp);
-
+bool hasUngroupedInputBoundedBuffers(VPUIP::SwKernelOp swKernelOp);
 //
-// Dummy Buffer Utils
+// Dummy DMA and Buffer Utils
 //
-mlir::Value createDummyBuffer(mlir::OpBuilder& builder, mlir::Operation* insertionPoint = nullptr);
-
+mlir::Value createDummyBuffer(mlir::OpBuilder& builder, mlir::Operation* insertionPoint = nullptr,
+                              VPU::MemoryKind memKind = VPU::MemoryKind::DDR);
+VPURT::TaskOp createSyncDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                            mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                            llvm::StringLiteral opName = "sync_dma");
 //
 // Distributed Type utils
 //
@@ -733,11 +737,25 @@ bool hasOneOrSameUser(mlir::Operation* op);
 
 std::unordered_set<Dim> getConcatAxes(VPUIP::ConcatViewOp concatViewOp);
 
+template <typename T>
+size_t getUniqueMembersSize(llvm::iterator_range<T> range) {
+    using IterType = decltype(range.begin());
+    using ElementType = typename std::iterator_traits<IterType>::value_type;
+
+    std::set<ElementType> container;
+    for (const auto member : range) {
+        container.insert(member);
+    }
+    return container.size();
+}
+
 //
 // Move Declarations to the top
 //
 
 void moveDeclarationsToTop(mlir::func::FuncOp& netFunc);
+
+mlir::Type getCompactBufferType(mlir::Type originalType);
 
 }  // namespace VPUIP
 }  // namespace vpux

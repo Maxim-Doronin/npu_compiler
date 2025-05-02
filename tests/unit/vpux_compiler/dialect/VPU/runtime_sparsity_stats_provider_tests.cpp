@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,7 +33,7 @@ TEST_F(MLIR_VPU_RT_SPARSITY_STATS_PROVIDER, MissedStats) {
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 1, 1],
                     strides = [1, 1]
-                } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
+                } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
 
             return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
         }
@@ -72,7 +72,7 @@ TEST_F(MLIR_VPU_RT_SPARSITY_STATS_PROVIDER, WithStats) {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_100", "t_Convolution"])
         %2 = VPU.NCE.Eltwise(%1, %1) {
                     op_type = #VPU.eltwise_type<ADD>,
                     ppe = #VPU.PPEStub<>
@@ -88,11 +88,11 @@ TEST_F(MLIR_VPU_RT_SPARSITY_STATS_PROVIDER, WithStats) {
 
         return %2, %3 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
     }
-    IE.SparsityStatistics sparsityInfo : {
-        IE.SparsityInfo 0.8 at input 0 of "Conv_1" loc(#loc0)
-        IE.SparsityInfo 0.05 at input 0 of "Add_1" loc(#loc0)
-        IE.SparsityInfo 0.5 at input 1 of "Add_1" loc(#loc0)
-        IE.SparsityInfo 0.33 at input 0 of "Maxpool_1" loc(#loc0)
+    net.SparsityStatistics sparsityInfo : {
+        net.SparsityInfo 0.8 at input 0 of "Conv_1" loc(#loc0)
+        net.SparsityInfo 0.05 at input 0 of "Add_1" loc(#loc0)
+        net.SparsityInfo 0.5 at input 1 of "Add_1" loc(#loc0)
+        net.SparsityInfo 0.33 at input 0 of "Maxpool_1" loc(#loc0)
     }
 
     }

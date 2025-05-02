@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024 - 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,7 +11,7 @@
 // CHECK-LABEL: @Convolution
 module @Convolution {
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
@@ -48,7 +48,7 @@ module @Convolution {
 // CHECK-LABEL: @ReduceMax
 module @ReduceMax {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x8x24x24xf16>
@@ -78,7 +78,7 @@ IE.CNNNetwork
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xui8>
     } outputsInfo : {
@@ -137,7 +137,7 @@ module @TwoFunctions {
 // CHECK-DAG: [[Q_TYPE:!.*]] = !quant.uniform<i4:f16, 2.000000e+00>
 // CHECK-DAG: [[Q_TYPE1:!.*]] = !quant.uniform<u4:f16, 2.000000e+00:8>
 module @MatMulWithGroupQuant {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<16x3072xf32>
     } outputsInfo : {
@@ -275,7 +275,7 @@ module @MatMulWithGroupQuant {
 
 // CHECK-LABEL: @RMSProcessingWith2DRMS
 module @RMSProcessingWith2DRMS {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x768xf32>
     } outputsInfo : {

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include <mlir/IR/BuiltinAttributes.h>
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/NPU37XX/dialect/IE/utils/quantization.hpp"
@@ -24,9 +25,8 @@
 namespace vpux {
 namespace IE {
 
-using CheckPostOpFunctor =
-        llvm::function_ref<bool(IE::LayerWithPostOpInterface layerWithPostOp, bool isPerAxisQuantizedOutput,
-                                bool isFloatInput, mlir::Location loc)>;
+using CheckPostOpFunctor = llvm::function_ref<bool(IE::LayerWithPostOpInterface layerWithPostOp,
+                                                   bool isPerAxisQuantizedOutput, bool isFloatInput)>;
 
 //
 // FuseWithConvBase
@@ -95,8 +95,8 @@ mlir::LogicalResult FuseWithConvBase<ConcreteOp>::matchAndRewrite(IE::QuantizeOp
     }
 
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(convBaseOp.getOperation());
-    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp().has_value()) {
-        if (!_checkPostOp(layerWithPostOp, isPerAxisQuant(quantizeOp.getOutput()), false, convBaseOp->getLoc())) {
+    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+        if (!_checkPostOp(layerWithPostOp, isPerAxisQuant(quantizeOp.getOutput()), false)) {
             return mlir::failure();
         }
     }
@@ -391,7 +391,8 @@ mlir::LogicalResult FuseWithReduce<ConcreteOp>::matchAndRewrite(IE::QuantizeOp q
     auto axes = getIntArrayAttr(this->getContext(), IE::extractAxes(reduceOp->getLoc(), reduceOp));
     rewriter.replaceOpWithNewOp<ConcreteOp>(quantizeOp, quantizeOp.getType(), inputDequantizeOp.getInput(),
                                             /*axes*/ nullptr,
-                                            /*axes_value*/ axes, /*keep_dims*/ true)
+                                            /*axes_value*/ axes,
+                                            /*keep_dims*/ mlir::UnitAttr::get(quantizeOp.getContext()))
             ->setLoc(reduceOp->getLoc());
     return mlir::success();
 }
@@ -454,14 +455,14 @@ mlir::LogicalResult FuseWithEltwiseConverter<ConcreteOp>::matchAndRewrite(IE::Qu
     }
 
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(eltwiseOp.getOperation());
-    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp().has_value()) {
-        if (!_checkPostOp(layerWithPostOp, isOutputPerAxisQuant, true, eltwiseOp->getLoc())) {
+    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+        if (!_checkPostOp(layerWithPostOp, isOutputPerAxisQuant, /*isFloatInput=*/true)) {
             return mlir::failure();
         }
     }
 
-    if (eltwiseOp.getInput1().getType().template cast<vpux::NDTypeInterface>().getShape() !=
-        eltwiseOp.getInput2().getType().template cast<vpux::NDTypeInterface>().getShape()) {
+    if (mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getInput1().getType()).getShape() !=
+        mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getInput2().getType()).getShape()) {
         return mlir::failure();
     }
 
@@ -487,10 +488,8 @@ mlir::LogicalResult FuseWithEltwiseConverter<ConcreteOp>::matchAndRewrite(IE::Qu
         return mlir::failure();
     }
 
-    const auto input1Type =
-            input1DequantizeOp.getInput().getType().template cast<vpux::NDTypeInterface>().getElementType();
-    const auto input2Type =
-            input2DequantizeOp.getInput().getType().template cast<vpux::NDTypeInterface>().getElementType();
+    const auto input1Type = mlir::cast<vpux::NDTypeInterface>(input1DequantizeOp.getInput().getType()).getElementType();
+    const auto input2Type = mlir::cast<vpux::NDTypeInterface>(input2DequantizeOp.getInput().getType()).getElementType();
     if (mlir::failed(_checkInputTypes(input1Type, input2Type))) {
         return mlir::failure();
     }
@@ -498,7 +497,7 @@ mlir::LogicalResult FuseWithEltwiseConverter<ConcreteOp>::matchAndRewrite(IE::Qu
     rewriter.replaceOpWithNewOp<ConcreteOp>(quantizeOp, quantizeOp.getType(), input1DequantizeOp.getInput(),
                                             input2DequantizeOp.getInput(), eltwiseOp.getAutoBroadcastAttr(),
                                             eltwiseOp.getPostOpAttr(), eltwiseOp.getClampAttr(),
-                                            eltwiseOp.getOutputChannelsAttr(), eltwiseOp.getInputChannelsAttr())
+                                            eltwiseOp.getOutputPaddingAttr(), eltwiseOp.getInputPaddingAttr())
             ->setLoc(eltwiseOp->getLoc());
 
     return mlir::success();

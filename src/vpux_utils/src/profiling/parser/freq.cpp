@@ -9,7 +9,7 @@
 #include "vpux/utils/profiling/parser/parser.hpp"
 
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <utility>
 

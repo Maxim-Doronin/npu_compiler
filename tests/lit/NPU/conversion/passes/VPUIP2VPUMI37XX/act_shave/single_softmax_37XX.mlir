@@ -8,13 +8,13 @@
 
 module @Test {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "softmax" : tensor<1x1000xf16>
+        DataInfo "softmax" : tensor<1x1000xf16>
     }
 
 // Sub-module, which holds SW kernel declarations and optional implementations.

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -611,11 +611,11 @@ func.func @PropagatePermuteThroughAddWithDifferentType(%arg0:tensor<1x768x128x1x
 // CHECK-LABEL: @PropagatePermuteThroughAvgPool
 func.func @PropagatePermuteThroughAvgPool(%arg0: tensor<1x64x64x192xf16>) -> tensor<1x64x64x192xf16, {order = #NHWC}> {
   %0 = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16, {order = #NHWC}>
-  %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.01000213623046875 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
+  %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.01000213623046875 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
   return %1 : tensor<1x64x64x192xf16, {order = #NHWC}>
 
   // CHECK:       [[PERM_CAST:%.*]] = IE.PermuteCast(%arg0) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x64x64x192xf16> -> tensor<1x192x64x64xf16, {order = #NHWC}>
-  // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool([[PERM_CAST]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.01000213623046875 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x192x64x64xf16, {order = #NHWC}> -> tensor<1x192x64x64xf16, {order = #NHWC}>
+  // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool([[PERM_CAST]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.01000213623046875 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x192x64x64xf16, {order = #NHWC}> -> tensor<1x192x64x64xf16, {order = #NHWC}>
   // CHECK:       [[MEM_PERM:%.*]] = IE.MemPermute([[AVG_POOL]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x192x64x64xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
   // CHECK:       return [[MEM_PERM]] : tensor<1x64x64x192xf16, {order = #NHWC}>
 }
@@ -627,11 +627,11 @@ func.func @PropagatePermuteThroughAvgPool(%arg0: tensor<1x64x64x192xf16>) -> ten
 // CHECK-LABEL: @PropagatePermuteQuantizeThroughAvgPool
 func.func @PropagatePermuteQuantizeThroughAvgPool(%arg0: tensor<1x64x64x192xf16>) -> tensor<1x64x64x192xf16, {order = #NHWC}> {
   %0 = IE.PermuteQuantize(%arg0) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16, {order = #NHWC}>
-  %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.01000213623046875 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
+  %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.01000213623046875 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
   return %1 : tensor<1x64x64x192xf16, {order = #NHWC}>
 
   // CHECK:       [[PERM_CAST_IN:%.*]] = IE.PermuteCast(%arg0) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x64x64x192xf16> -> tensor<1x192x64x64xf16, {order = #NHWC}>
-  // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool([[PERM_CAST_IN]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.01000213623046875 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x192x64x64xf16, {order = #NHWC}> -> tensor<1x192x64x64xf16, {order = #NHWC}>
+  // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool([[PERM_CAST_IN]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.01000213623046875 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x192x64x64xf16, {order = #NHWC}> -> tensor<1x192x64x64xf16, {order = #NHWC}>
   // CHECK:       [[MEM_PERMUTE:%.*]] = IE.MemPermute([[AVG_POOL]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x192x64x64xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
   // CHECK:       return [[MEM_PERMUTE]] : tensor<1x64x64x192xf16, {order = #NHWC}>
 }
@@ -643,11 +643,11 @@ func.func @PropagatePermuteQuantizeThroughAvgPool(%arg0: tensor<1x64x64x192xf16>
 // CHECK-LABEL: @SkipAvgPoolNonEltwise
 func.func @SkipAvgPoolNonEltwise(%arg0: tensor<1x64x64x192xf16>) -> tensor<1x64x64x192xf16, {order = #NHWC}> {
   %0 = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16, {order = #NHWC}>
-  %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [3, 3], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.01000213623046875 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
+  %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [3, 3], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.LeakyRelu<negative_slope = 0.01000213623046875 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
   return %1 : tensor<1x64x64x192xf16, {order = #NHWC}>
 
   // CHECK:       [[MEM_PERM:%.*]] = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16, {order = #NHWC}>
-  // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool([[MEM_PERM]]) {exclude_pads, kernel_size = [3, 3], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.01000213623046875 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
+  // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool([[MEM_PERM]]) {exclude_pads, kernel_size = [3, 3], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.LeakyRelu<negative_slope = 0.01000213623046875 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
   // CHECK:       return [[AVG_POOL]] : tensor<1x64x64x192xf16, {order = #NHWC}>
 }
 
@@ -880,7 +880,7 @@ func.func @PropagatePermuteThroughAvgPoolWithGroupConvUser(%arg0: tensor<1x880x1
     } : tensor<1x880x1x960xf16> -> tensor<1x880x1x960xf16, {order = #NHWC}>
 
     %AVG_POOL = IE.AvgPool(%IN_MEM_PERM) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0],
-                                            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.01000213623046875 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}
+                                            post_op = #IE.LeakyRelu<negative_slope = 0.01000213623046875 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}
                                             : tensor<1x880x1x960xf16, {order = #NHWC}> -> tensor<1x880x1x960xf16, {order = #NHWC}>
 
     %SCALE_SHIFT = IE.GroupConvolution(%AVG_POOL, %IN_SHAPE_CAST) {
@@ -952,6 +952,30 @@ func.func @MovePermuteQuantizePostMultiply(%arg0: tensor<1x3x256x256xf16>, %arg1
     // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[PERMUTE_CAST_0]], [[PERMUTE_CAST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x256xf16, {order = #NHWC}>, tensor<1x256x3x256xf16, {order = #NHWC}> -> tensor<1x256x3x256xf16, {order = #NHWC}>
     // CHECK:       [[MEM_PERMUTE:%.+]] = IE.MemPermute([[MULTIPLY]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x256x3x256xf16, {order = #NHWC}> -> tensor<1x3x256x256xf16, {order = #NHWC}>
     // CHECK:       return [[MEM_PERMUTE]] : tensor<1x3x256x256xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @MovePermuteQuantizePostMultiplyDifferentShapeInputs
+// CHECK-SAME:        [[INPUT0:%arg[0-9]]]: tensor<1x20x20x64xf16>,
+// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x20x20x1xf16>
+func.func @MovePermuteQuantizePostMultiplyDifferentShapeInputs(%arg0: tensor<1x20x20x64xf16>, %arg1: tensor<1x20x20x1xf16>) -> tensor<1x20x20x64xf16, {order = #NHWC}> {
+    %0 = IE.PermuteQuantize(%arg0) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]}
+            : tensor<1x20x20x64xf16> -> tensor<1x20x20x64xf16, {order = #NHWC}>
+    %1 = IE.PermuteQuantize(%arg1) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]}
+            : tensor<1x20x20x1xf16> -> tensor<1x20x20x1xf16, {order = #NHWC}>
+    %2 = IE.Multiply(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x20x20x64xf16, {order = #NHWC}>, tensor<1x20x20x1xf16, {order = #NHWC}>
+            -> tensor<1x20x20x64xf16, {order = #NHWC}>
+    return %2 : tensor<1x20x20x64xf16, {order = #NHWC}>
+
+    // CHECK:       [[PERMUTE_CAST_0:%.+]] = IE.PermuteCast([[INPUT0]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x20x20x64xf16> -> tensor<1x64x20x20xf16, {order = #NHWC}>
+    // CHECK:       [[PERMUTE_CAST_1:%.+]] = IE.PermuteCast([[INPUT1]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x20x20x1xf16> -> tensor<1x1x20x20xf16, {order = #NHWC}>
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[PERMUTE_CAST_0]], [[PERMUTE_CAST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x20x20xf16, {order = #NHWC}>, tensor<1x1x20x20xf16, {order = #NHWC}> -> tensor<1x64x20x20xf16, {order = #NHWC}>
+    // CHECK:       [[MEM_PERMUTE:%.+]] = IE.MemPermute([[MULTIPLY]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x64x20x20xf16, {order = #NHWC}> -> tensor<1x20x20x64xf16, {order = #NHWC}>
+    // CHECK:       return [[MEM_PERMUTE]] : tensor<1x20x20x64xf16, {order = #NHWC}>
 }
 
 // -----
@@ -1038,4 +1062,32 @@ func.func @MovePermuteQuantizePostSubtract(%arg0: tensor<1x3x256x256xf16>, %arg1
     // CHECK:       [[SUBTRACT:%.+]] = IE.Subtract([[PERMUTE_CAST_0]], [[PERMUTE_CAST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x256xf16, {order = #NHWC}>, tensor<1x256x3x256xf16, {order = #NHWC}> -> tensor<1x256x3x256xf16, {order = #NHWC}>
     // CHECK:       [[MEM_PERMUTE:%.+]] = IE.MemPermute([[SUBTRACT]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x256x3x256xf16, {order = #NHWC}> -> tensor<1x3x256x256xf16, {order = #NHWC}>
     // CHECK:       return [[MEM_PERMUTE]] : tensor<1x3x256x256xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+// CHECK-LABEL: @MovePermuteQuantizePostGroupConvWithPermuteOutShapeInconsistent
+// CHECK-SAME:        [[INPUT0:%arg[0-9]]]: tensor<1x128x256x3xf16>
+func.func @MovePermuteQuantizePostGroupConvWithPermuteOutShapeInconsistent(%arg0: tensor<1x128x256x3xf16>) -> tensor<1x3x128x256xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<48x1x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<48x1x1x1xf16>, [#const.Reorder<#NHWC>]
+
+    %0 = IE.PermuteQuantize(%arg0) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x128x256x3xf16> -> tensor<1x128x256x3xf16, {order = #NHWC}>
+    %1 = IE.ShapeCast {shape = [1, 48, 128, 16]} inputs(%0 : tensor<1x128x256x3xf16, {order = #NHWC}>) -> tensor<1x48x128x16xf16, {order = #NHWC}>
+    %2 = IE.GroupConvolution(%1, %cst) {dilations = [1, 1], groups = 48 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x48x128x16xf16, {order = #NHWC}>, tensor<48x1x1x1xf16, {order = #NHWC}> -> tensor<1x48x128x16xf16, {order = #NHWC}>
+    %3 = IE.ShapeCast {shape = [1, 3, 128, 256]} inputs(%2 : tensor<1x48x128x16xf16, {order = #NHWC}>) -> tensor<1x3x128x256xf16, {order = #NHWC}>
+    %4 = IE.ShapeCast {shape = [1, 128, 256, 3]} inputs(%3 : tensor<1x3x128x256xf16, {order = #NHWC}>) -> tensor<1x128x256x3xf16, {order = #NHWC}>
+    %5 = IE.MemPermute(%4) {dst_order = #NHWC, mem_perm = #NWCH} : tensor<1x128x256x3xf16, {order = #NHWC}> -> tensor<1x3x128x256xf16, {order = #NHWC}>
+
+    return  %5 : tensor<1x3x128x256xf16, {order = #NHWC}>
+
+    // CHECK:       [[WEIGHTS:%.+]] = const.Declare tensor<48x1x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<48x1x1x1xf16>, [#const.Reorder<#NHWC>]
+    // CHECK:       [[PERMUTE_CAST:%.+]] = IE.PermuteCast([[INPUT0]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x128x256x3xf16> -> tensor<1x3x128x256xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPE_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 128, 16]} inputs([[PERMUTE_CAST]] : tensor<1x3x128x256xf16, {order = #NHWC}>) -> tensor<1x48x128x16xf16, {order = #NHWC}>
+    // CHECK:       [[GROUP_CONV:%.+]] = IE.GroupConvolution([[SHAPE_CAST]], [[WEIGHTS]]) {dilations = [1, 1], groups = 48 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x48x128x16xf16, {order = #NHWC}>, tensor<48x1x1x1xf16, {order = #NHWC}> -> tensor<1x48x128x16xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPE_CAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 3, 128, 256]} inputs([[GROUP_CONV]] : tensor<1x48x128x16xf16, {order = #NHWC}>) -> tensor<1x3x128x256xf16, {order = #NHWC}>
+
+    // CHECK:       return [[SHAPE_CAST_OUT]] : tensor<1x3x128x256xf16, {order = #NHWC}>
 }

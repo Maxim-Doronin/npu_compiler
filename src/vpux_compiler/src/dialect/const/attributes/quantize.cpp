@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,7 +21,7 @@ using namespace vpux;
 
 mlir::LogicalResult vpux::Const::QuantizeAttr::verify(FuncRef<mlir::InFlightDiagnostic()>,
                                                       mlir::quant::QuantizedType qType) {
-    VPUX_THROW_WHEN(!qType.getStorageType().isa<mlir::IntegerType>() || qType.getStorageTypeIntegralWidth() < 8,
+    VPUX_THROW_WHEN(!mlir::isa<mlir::IntegerType>(qType.getStorageType()) || qType.getStorageTypeIntegralWidth() < 8,
                     "Const.Quantize supports only integer byte+ storage type");
     return mlir::success(qType != nullptr);
 }
@@ -79,7 +79,7 @@ Const::Content allocateTempBuffer(mlir::quant::QuantizedType qElemType, vpux::ND
     // Splat value cannot be used to store weights for per-axis quantization.
     // Applying different scales to the same splat input value yields non-splat results.
     const auto storageType = qElemType.getStorageType();
-    if (qElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qElemType)) {
         return Const::Content::allocTempBuffer(outputType, storageType, false);
     }
 
@@ -112,7 +112,7 @@ Const::Content transformImpl(mlir::quant::QuantizedType qElemType, mlir::Type ou
     const auto realVals = input.getValues<float>();
     auto qVals = output.getTempBuf<StorageType>();
 
-    if (const auto uniformType = qElemType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(qElemType)) {
         const auto scale = uniformType.getScale();
         const auto zeroPoint = uniformType.getZeroPoint();
         const auto quantizer = createQuantizeFn(scale, zeroPoint, qElemType);
@@ -123,7 +123,7 @@ Const::Content transformImpl(mlir::quant::QuantizedType qElemType, mlir::Type ou
         for (size_t i = 0; i < qVals.size(); ++i) {
             qVals[i] = static_cast<StorageType>(quantizer(realVals[i]));
         }
-    } else if (const auto uniformType = qElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(qElemType)) {
         const auto scales = uniformType.getScales();
         const auto zeroPoints = uniformType.getZeroPoints();
         const auto axis = Dim(uniformType.getQuantizedDimension());
@@ -184,7 +184,7 @@ Const::Content transformImpl(mlir::quant::QuantizedType qElemType, mlir::Type ou
 //
 
 Const::Content vpux::Const::QuantizeAttr::transform(vpux::Const::Content& input) const {
-    const auto qElemType = getTargetType().dyn_cast<mlir::quant::QuantizedType>();
+    const auto qElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(getTargetType());
     VPUX_THROW_UNLESS(qElemType != nullptr, "Got non quantized type '{0}' in 'QuantizeAttr'");
     const auto storageType = qElemType.getStorageType();
     mlir::Type outType = inferOutputType(input.getType());

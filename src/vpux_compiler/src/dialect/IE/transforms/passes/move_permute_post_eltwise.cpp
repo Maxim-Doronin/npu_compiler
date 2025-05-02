@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -220,6 +222,11 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
         return mlir::failure();
     }
 
+    auto result = eltwiseOp->getResult(0);
+    if (mlir::cast<vpux::NDTypeInterface>(result.getType()).getElementType().isF32()) {
+        return mlir::failure();
+    }
+
     SmallVector<mlir::Operation*> inputPermutes;
     for (size_t inIdx = 0; inIdx < _numInputs; inIdx++) {
         inputPermutes.push_back(getEltwiseInputPermute(eltwiseOp->getOperand(inIdx)));
@@ -233,7 +240,7 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
     }
     SmallVector<vpux::NDTypeInterface> permuteInputTypes;
     const auto getInputType = [](mlir::Operation* permute) -> vpux::NDTypeInterface {
-        return permute->getOperand(0).getType().template cast<vpux::NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(permute->getOperand(0).getType());
     };
     std::transform(inputPermutes.begin(), inputPermutes.end(), std::back_inserter(permuteInputTypes), getInputType);
 
@@ -256,23 +263,23 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
     std::transform(inputPermutes.begin(), inputPermutes.end(), std::back_inserter(permuteMemPermLayouts),
                    getMemPermLayout);
 
-    auto eltwiseOutElemType = eltwiseOp.getOutput().getType().template cast<vpux::NDTypeInterface>().getElementType();
+    auto eltwiseOutElemType = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getOutput().getType()).getElementType();
     SmallVector<bool> isPermuteElemTypeEquals;
     const auto getElemTypeEqual = [eltwiseOutElemType](mlir::Operation* op) -> bool {
         if (mlir::isa<IE::MemPermuteOp>(op)) {
             return true;
         }
-        auto srcElemType = op->getOperand(0).getType().cast<NDTypeInterface>().getElementType();
-        auto dstElemType = op->getResult(0).getType().cast<NDTypeInterface>().getElementType();
+        auto srcElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+        auto dstElemType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
         return (srcElemType == dstElemType) && (eltwiseOutElemType.isF16() || eltwiseOutElemType.isF32());
     };
     std::transform(inputPermutes.begin(), inputPermutes.end(), std::back_inserter(isPermuteElemTypeEquals),
                    getElemTypeEqual);
 
-    auto eltwiseInput1Type = eltwiseOp->getOperand(0).getType().template cast<vpux::NDTypeInterface>();
+    auto eltwiseInput1Type = mlir::cast<vpux::NDTypeInterface>(eltwiseOp->getOperand(0).getType());
     auto eltwiseInputLayout = eltwiseInput1Type.getDimsOrder();
     auto eltwiseInputShape = eltwiseInput1Type.getShape();
-    auto eltwiseOutputLayout = eltwiseOp.getOutput().getType().template cast<vpux::NDTypeInterface>().getDimsOrder();
+    auto eltwiseOutputLayout = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getOutput().getType()).getDimsOrder();
 
     const auto patternCanBeConverted = [&]() -> bool {
         const auto firstInputLayout = permuteInputLayouts[0];
@@ -364,16 +371,20 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
 
     for (auto curPermute : permutesToMove) {
         _log.nest().trace("Processing permute {0} {1}", curPermute->getName(), curPermute->getLoc());
-        auto permuteOutputType = curPermute->getResult(0).getType().template cast<vpux::NDTypeInterface>();
+        auto permuteOutputType = mlir::cast<vpux::NDTypeInterface>(curPermute->getResult(0).getType());
         const auto dstOrder = mlir::AffineMapAttr::get(eltwiseInputLayout.toAffineMap(ctx));
         rewriter.setInsertionPoint(curPermute);
         mlir::Value outputVal;
         if (permuteInputLayouts[0] != eltwiseInputLayout) {
             auto permuteCast = rewriter.template create<IE::PermuteCastOp>(
                     curPermute->getLoc(), curPermute->getOperand(0), dstOrder, neutralMemPerm);
-            auto newPermuteCastOutputType = permuteCast.getOutput().getType().template cast<vpux::NDTypeInterface>();
-            mappedShape = newPermuteCastOutputType.getShape().toValues();
-            canAvoidShapeCast = canAvoidShapeCast && isChannelAligned(mappedShape);
+            auto newPermuteCastOutputType = mlir::cast<vpux::NDTypeInterface>(permuteCast.getOutput().getType());
+            auto newMappedShape = newPermuteCastOutputType.getShape().toValues();
+            canAvoidShapeCast = canAvoidShapeCast && isChannelAligned(newMappedShape);
+            // Update mappedShape for first input only required by MultiplyOp
+            if (curPermute == inputPermutes[0]) {
+                mappedShape = std::move(newMappedShape);
+            }
             outputVal = permuteCast.getResult();
             if (!canAvoidShapeCast) {
                 outputVal = rewriter.template create<IE::ShapeCastOp>(
@@ -419,7 +430,7 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
         return output;
     };
     auto outputValue = getInsertPoint();
-    auto eltwiseOutputType = outputValue.getType().template cast<vpux::NDTypeInterface>();
+    auto eltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(outputValue.getType());
     rewriter.setInsertionPointAfter(outputValue.getDefiningOp());
     auto newOutputShapeCastType = eltwiseOutputType.changeShape(mappedShape);
     // Get new output memPermuteOp or permuteQuantizeOp
@@ -462,7 +473,7 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
             // set the mapped shape to output of both EltwiseOp and QuantizeCastOp.
             auto currOutput = outputValue;
             while (true) {
-                const auto currOutputType = currOutput.getType().template cast<vpux::NDTypeInterface>();
+                const auto currOutputType = mlir::cast<vpux::NDTypeInterface>(currOutput.getType());
                 const auto newOutputType = currOutputType.changeShape(mappedShape);
                 currOutput.setType(newOutputType);
                 auto parentOp = currOutput.getDefiningOp();
@@ -484,9 +495,7 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
         }
         auto outputPermute = permuteOrFailure.value();
         auto eltwiseOutputShape = eltwiseOutputType.getShape();
-        auto outputPermuteOutputShape = newOutputShapeCastType.getShape();
-        if (eltwiseOutputShape != outputPermuteOutputShape) {
-            /*
+        /*
             For the specific case
 
                Permute    Permute
@@ -520,15 +529,11 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
                         |
                     ShapeCast
              There should be an extra ShapeCast.
-            */
-            auto outputPermuteShapeCast = rewriter.template create<IE::ShapeCastOp>(
-                    eltwiseOp->getLoc(), eltwiseOutputType, outputPermute->getResult(0),
-                    getIntArrayAttr(ctx, eltwiseOutputShape.raw()));
-            outputValue.replaceAllUsesExcept(outputPermuteShapeCast, outputShapeCast);
-        } else {
-            outputPermute->getResult(0).setType(eltwiseOutputType);
-            outputValue.replaceAllUsesExcept(outputPermute->getResult(0), outputShapeCast);
-        }
+        */
+        auto outputPermuteShapeCast = rewriter.template create<IE::ShapeCastOp>(
+                eltwiseOp->getLoc(), eltwiseOutputType, outputPermute->getResult(0),
+                getIntArrayAttr(ctx, eltwiseOutputShape.raw()));
+        outputValue.replaceAllUsesExcept(outputPermuteShapeCast, outputShapeCast);
     } else {
         auto outputShapeCast = rewriter.template create<IE::ShapeCastOp>(
                 eltwiseOp->getLoc(), newOutputShapeCastType.changeShape(permuteInputTypes[0].getShape()), outputValue,
@@ -538,8 +543,7 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
             return mlir::failure();
         }
         auto outputPermute = permuteOrFailure.value();
-        auto permuteOutShape =
-                inputPermutes[0]->getResult(0).getType().template cast<vpux::NDTypeInterface>().getShape();
+        auto permuteOutShape = mlir::cast<vpux::NDTypeInterface>(inputPermutes[0]->getResult(0).getType()).getShape();
         auto outPermuteType = eltwiseOutputType.changeShape(permuteOutShape);
         outputPermute->getResult(0).setType(outPermuteType);
         auto permuteOutShapeCast = rewriter.template create<IE::ShapeCastOp>(

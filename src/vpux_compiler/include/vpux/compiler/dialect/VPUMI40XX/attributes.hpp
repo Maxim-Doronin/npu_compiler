@@ -1,12 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include <mlir/IR/BuiltinTypes.h>
 #include <vpux/compiler/dialect/VPUMI40XX/attr_interfaces.hpp>
+
+#include <mlir/IR/BuiltinTypes.h>
 
 //
 // Generated

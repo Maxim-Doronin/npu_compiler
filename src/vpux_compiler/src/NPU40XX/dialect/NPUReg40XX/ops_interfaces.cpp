@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::NPUReg40XX::verifySingleOutputAsIndexOp(mlir::Operatio
     if (op->getNumResults() != 1) {
         return errorAt(op, "Operation '{0}' does not have a single index type result", op->getName());
     }
-    if (!op->getResult(0).getType().isa<VPURegMapped::IndexType>()) {
+    if (!mlir::isa<vpux::VPURegMapped::IndexType>(op->getResult(0).getType())) {
         return errorAt(op, "Operation '{0}' result type is not VPURegMapped::IndexType", op->getName());
     }
 

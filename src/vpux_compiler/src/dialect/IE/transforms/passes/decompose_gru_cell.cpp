@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -97,7 +97,42 @@ mlir::LogicalResult GRUCellRewriter::matchAndRewrite(IE::GRUCellOp gruCell, mlir
 
     // hr = H * (R^T) -> [batch_size, 3 * hidden_size]
     auto hr = rewriter.create<IE::MatMulOp>(appendLoc(loc, "_hr_matmul"), hiddenState, recurrenceWeights, false, true,
-                                            nullptr);
+                                            nullptr)
+                      .getResult();
+
+    auto numpyBroadcastTypeAttr = IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NUMPY);
+    if (hasBiases) {
+        // place bZr (and rbh) ahead to make it fused as bias of previous conv
+        SmallVector<mlir::Value> biasInputs;
+
+        auto bZrOffstes = getIntArrayAttr(ctx, SmallVector<int64_t>{0});
+        auto bZrSizes = getIntArrayAttr(ctx, SmallVector<int64_t>{2 * hiddenSize});
+        auto bZr = rewriter.create<IE::SliceOp>(appendLoc(loc, "_bZr_slice"), biases.value(), bZrOffstes, bZrSizes);
+        biasInputs.push_back(bZr.getResult());
+
+        if (shouldLinearBeforeReset) {
+            // Rbh = biases[3 * hiddenSize :] when shouldLinearBeforeReset is true
+            auto rbhOffsets = getIntArrayAttr(ctx, SmallVector<int64_t>{3 * hiddenSize});
+            auto rbhSizes = getIntArrayAttr(ctx, SmallVector<int64_t>{hiddenSize});
+            auto rbh = rewriter.create<IE::SliceOp>(appendLoc(loc, "_rbh_slice"), biases.value(), rbhOffsets, rbhSizes);
+            biasInputs.push_back(rbh.getResult());
+        } else {
+            const Shape biasShape = {hiddenSize};
+            std::vector<float> biasValue(hiddenSize, .0f);
+
+            const auto biasType = mlir::RankedTensorType::get(
+                    biasShape.raw(), mlir::cast<vpux::NDTypeInterface>(biases.value().getType()).getElementType(),
+                    getTensorAttr(rewriter.getContext(), DimsOrder::C, nullptr));
+
+            biasInputs.push_back(
+                    Const::buildWeightsConst(rewriter, appendLoc(loc, "_rbh_slice"), biasType, ArrayRef(biasValue)));
+        }
+
+        auto hrBias = rewriter.create<IE::ConcatOp>(appendLoc(loc, "_hr_bias"), biasInputs, Dim(0));
+        hr = rewriter.create<IE::AddOp>(appendLoc(loc, "_hr_add0"), hr, hrBias.getResult(), numpyBroadcastTypeAttr,
+                                        nullptr, nullptr, nullptr, nullptr)
+                     .getResult();
+    }
 
     auto xwZrOffsets = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
     auto xwZrSizes = getIntArrayAttr(ctx, SmallVector<int64_t>{batchSize, 2 * hiddenSize});
@@ -105,18 +140,10 @@ mlir::LogicalResult GRUCellRewriter::matchAndRewrite(IE::GRUCellOp gruCell, mlir
     auto hrZr = rewriter.create<IE::SliceOp>(appendLoc(loc, "_hrZr_slice"), hr, xwZrOffsets, xwZrSizes);
 
     auto noneOrExplicitBroadcastTypeAttr = IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT);
-    auto numpyBroadcastTypeAttr = IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NUMPY);
 
     // zrt = sigmoid(xwZr + hrZr + bZr) -> [batch_size, 2 * hidden_size]
     mlir::Value zrt = rewriter.create<IE::AddOp>(appendLoc(loc, "_zrt_add1"), xwZr, hrZr,
                                                  noneOrExplicitBroadcastTypeAttr, nullptr, nullptr, nullptr, nullptr);
-    if (hasBiases) {
-        auto bZrOffstes = getIntArrayAttr(ctx, SmallVector<int64_t>{0});
-        auto bZrSizes = getIntArrayAttr(ctx, SmallVector<int64_t>{2 * hiddenSize});
-        auto bZr = rewriter.create<IE::SliceOp>(appendLoc(loc, "_bZr_slice"), biases.value(), bZrOffstes, bZrSizes);
-        zrt = rewriter.create<IE::AddOp>(appendLoc(loc, "_zrt_add0"), zrt, bZr, numpyBroadcastTypeAttr, nullptr,
-                                         nullptr, nullptr, nullptr);
-    }
     zrt = rewriter.create<IE::SigmoidOp>(appendLoc(loc, "_zrt_sigmoid"), zrt);
     auto zrtSplitOp = rewriter.create<IE::SplitOp>(appendLoc(loc, "_zrt_split"), zrt, nullptr,
                                                    /*numSplits=*/getIntAttr(ctx, 2), /*axisValue=*/getIntAttr(ctx, 1));
@@ -154,14 +181,6 @@ mlir::LogicalResult GRUCellRewriter::matchAndRewrite(IE::GRUCellOp gruCell, mlir
 
         // ht = tanh(xwH + (rt (.) (hrH + Rbh)) + Wbh) -> [batch_size, hidden_size]
         ht = hrH;
-        if (hasBiases) {
-            // Rbh = biases[3 * hiddenSize :] when shouldLinearBeforeReset is true
-            auto rbhOffsets = getIntArrayAttr(ctx, SmallVector<int64_t>{3 * hiddenSize});
-            auto rbhSizes = getIntArrayAttr(ctx, SmallVector<int64_t>{hiddenSize});
-            auto rbh = rewriter.create<IE::SliceOp>(appendLoc(loc, "_rbh_slice"), biases.value(), rbhOffsets, rbhSizes);
-            ht = rewriter.create<IE::AddOp>(appendLoc(loc, "ht_add0"), ht, rbh, numpyBroadcastTypeAttr, nullptr,
-                                            nullptr, nullptr, nullptr);
-        }
         ht = rewriter.create<IE::MultiplyOp>(appendLoc(loc, "ht_mul"), rt, ht, noneOrExplicitBroadcastTypeAttr, nullptr,
                                              nullptr, nullptr, nullptr);
         if (hasBiases) {
@@ -178,7 +197,7 @@ mlir::LogicalResult GRUCellRewriter::matchAndRewrite(IE::GRUCellOp gruCell, mlir
     }
 
     // Ht = (1 - zt) (.) ht + zt (.) H -> [batch_size, hidden_size]
-    auto elemType = zt.getType().cast<NDTypeInterface>().getElementType();
+    auto elemType = mlir::cast<vpux::NDTypeInterface>(zt.getType()).getElementType();
     auto one = Const::createConst(rewriter, loc, mlir::RankedTensorType::get({1}, elemType), ArrayRef({1.0f}));
     auto sub = rewriter.create<IE::SubtractOp>(appendLoc(loc, "_sub"), one, zt, numpyBroadcastTypeAttr, nullptr,
                                                nullptr, nullptr, nullptr);
@@ -222,11 +241,14 @@ mlir::LogicalResult GRUSequenceToCellRewriter::matchAndRewrite(IE::GRUSequenceOp
         return rewriter.create<IE::ReshapeOp>(origOp.getLoc(), input, nullptr, false, newInputShapeAttr).getResult();
     };
 
-    auto newGRUCellOp = rewriter.create<IE::GRUCellOp>(
-            origOp.getLoc(), getNewReshapeOut(origOp.getInputData()), getNewReshapeOut(origOp.getInitialHiddenState()),
-            getNewReshapeOut(origOp.getWeights()), getNewReshapeOut(origOp.getRecurrenceWeights()),
-            getNewReshapeOut(origOp.getBiases()), origOp.getHiddenSizeAttr(), origOp.getShouldLinearBeforeResetAttr(),
-            origOp.getClipAttr());
+    const auto inputData = getNewReshapeOut(origOp.getInputData());
+    const auto initialHiddenState = getNewReshapeOut(origOp.getInitialHiddenState());
+    const auto weights = getNewReshapeOut(origOp.getWeights());
+    const auto recurrenceWeights = getNewReshapeOut(origOp.getRecurrenceWeights());
+    const auto biases = getNewReshapeOut(origOp.getBiases());
+    auto newGRUCellOp = rewriter.create<IE::GRUCellOp>(origOp.getLoc(), inputData, initialHiddenState, weights,
+                                                       recurrenceWeights, biases, origOp.getHiddenSizeAttr(),
+                                                       origOp.getShouldLinearBeforeResetAttr(), origOp.getClipAttr());
 
     auto newOutReshape1 =
             rewriter.create<IE::ReshapeOp>(origOp.getLoc(), newGRUCellOp.getResult(), nullptr, false,

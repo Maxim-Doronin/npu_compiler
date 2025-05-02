@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
@@ -16,6 +17,7 @@
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -147,9 +149,9 @@ void ExpandEltwisePattern::checkAndCorrectGroupConv(mlir::PatternRewriter& rewri
             groupConvOp->getLoc(), groupConvOp.getInput(), groupConvOp.getFilter(), groupConvOp.getBias(),
             groupConvOp.getStridesAttr(), groupConvOp.getPadsBeginAttr(), groupConvOp.getPadsEnd(),
             groupConvOp.getDilationsAttr(), newGroupAttr, groupConvOp.getPostOpAttr(), groupConvOp.getClampAttr(),
-            groupConvOp.getOutputChannelsAttr(), groupConvOp.getInputChannelsAttr());
+            /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
     groupConvOp->replaceAllUsesWith(newGroupConvOp);
-    auto origOutputType = groupConvOp.getType().cast<vpux::NDTypeInterface>();
+    auto origOutputType = mlir::cast<vpux::NDTypeInterface>(groupConvOp.getType());
     newGroupConvOp.getOutput().setType(
             mlir::cast<mlir::RankedTensorType>(origOutputType.changeShape(_newExpandedShape)));
     _eltwiseOp = newGroupConvOp.getOperation();
@@ -257,9 +259,10 @@ bool ExpandEltwisePattern::init() {
 
     // save the original shape and generate new shape
     auto expandInputOp = *_expandInputs.begin();
-    _unExpandedShape = expandInputOp.getInput().getType().cast<vpux::NDTypeInterface>().getShape().toValues();
+    _unExpandedShape = mlir::cast<vpux::NDTypeInterface>(expandInputOp.getInput().getType()).getShape().toValues();
     for (auto expandInput : llvm::drop_begin(_expandInputs)) {
-        auto otherExpandInput = expandInput.getInput().getType().cast<vpux::NDTypeInterface>().getShape().toValues();
+        auto otherExpandInput =
+                mlir::cast<vpux::NDTypeInterface>(expandInput.getInput().getType()).getShape().toValues();
         if (otherExpandInput != _unExpandedShape) {
             log.trace("The ExpandOp's input shapes are not equal, {0} and {1} separately, not supported",
                       otherExpandInput, _unExpandedShape);
@@ -376,12 +379,12 @@ bool ExpandEltwisePattern::opCostReduced() {
 
     // check 2: when any of the expands to reduce is u8, the newly added expand cannot be fp16
     auto quantInputExpandExist = llvm::any_of(_expandInputs, [&](IE::ExpandOp expand) {
-        auto outputType = expand.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(expand.getOutput().getType());
         return outputType.getElementType().isUnsignedInteger(8);
     });
     auto floatOutputExpandToAdd = llvm::any_of(_nonSliceOutputs, [&](mlir::Operation* op) {
-        auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-        return inputType.getElementType().isa<mlir::FloatType>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+        return mlir::isa<mlir::FloatType>(inputType.getElementType());
     });
     if (quantInputExpandExist && floatOutputExpandToAdd) {
         _log.trace("U8 Expand to reduce but float Expand to add. Expand cost will increase");
@@ -432,7 +435,7 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
     };
 
     // Insert slice for non Expand input
-    const auto expandInputType = (*_expandInputs.begin()).getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto expandInputType = mlir::cast<vpux::NDTypeInterface>((*_expandInputs.begin()).getInput().getType());
     const auto sliceOffset = parseIntArrayAttr<int64_t>((*_expandInputs.begin()).getPadsBeginAttr());
     for (auto nonExpand : _nonExpandInputs) {
         if (nonExpand == nullptr) {
@@ -453,7 +456,7 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
     // Replace input Expands with ShapeCasts
     for (auto expand : _expandInputs) {
         auto inputValue = expand.getInput();
-        auto inputType = inputValue.getType().cast<vpux::NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(inputValue.getType());
         rewriter.setInsertionPointAfter(expand);
         auto inputShapeCastOp =
                 rewriter.create<IE::ShapeCastOp>(_eltwiseOp->getLoc(), inputType.changeShape(_newExpandedShape),
@@ -467,7 +470,7 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
         auto innerOp = *inputShapeCastOp.getResult().getUsers().begin();
         while (innerOp != _eltwiseOp) {
             auto innerOpResult = innerOp->getResult(0);
-            auto innerOutputType = innerOpResult.getType().cast<vpux::NDTypeInterface>();
+            auto innerOutputType = mlir::cast<vpux::NDTypeInterface>(innerOpResult.getType());
 
             innerOp->getResult(0).setType(innerOutputType.changeShape(_newExpandedShape));
             if (innerOp->getResult(0).getUsers().empty()) {
@@ -487,7 +490,7 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
         const auto& contentAttr = constDeclare.getContentAttr();
         Const::ContentAttr newContentAttr;
 
-        auto newConstOutputType = constDeclare.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto newConstOutputType = mlir::cast<vpux::NDTypeInterface>(constDeclare.getOutput().getType());
         // For IE::MultiplyOp, IE::SubtractOp, IE::AddOp, we just undo expand by adding subview and then reshape
         if (mlir::isa<IE::MultiplyOp, IE::SubtractOp, IE::AddOp>(_eltwiseOp)) {
             const auto subOffset = Shape(_unExpandedShape.size(), int64_t(0));
@@ -514,10 +517,11 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
             Const::ContentSetup newContentAttrSetup(baseContent.getType());
             auto newConstantShape = Shape(newConstOutputType.getShape().size(), int64_t(1));
             for (auto attr : contentAttr.getTransformations()) {
-                if (!attr.isa<Const::PadWithZeroAttr, Const::BroadcastAttr, Const::ReshapeAttr>()) {
+                if (!mlir::isa<vpux::Const::PadWithZeroAttr, vpux::Const::BroadcastAttr, vpux::Const::ReshapeAttr>(
+                            attr)) {
                     newContentAttrSetup = newContentAttrSetup.addTransformation(attr);
                 }
-                if (attr.isa<Const::ReshapeAttr>()) {
+                if (mlir::isa<vpux::Const::ReshapeAttr>(attr)) {
                     newContentAttrSetup = newContentAttrSetup.reshape(newConstantShape);
                 }
             }
@@ -561,14 +565,16 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
     checkAndCorrectGroupConv(rewriter);
 
     // Insert ShapeCasts and Expands after eltwise ops
-    auto outputType = _eltwiseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(_eltwiseOp->getResult(0).getType());
 
-    if (VPU::canAutopadOutput(_eltwiseOp, outputType) && _eltwiseOp->hasAttr(VPU::outChanAttrName)) {
-        // Reset the shape infer logic by removing
-        // the attr because this op's shape will
-        // be adjusted after expand-act-channels pass
+    if (_eltwiseOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)) {
         rewriter.modifyOpInPlace(_eltwiseOp, [&] {
-            _eltwiseOp->removeAttr(VPU::outChanAttrName);
+            _eltwiseOp->removeAttr(VPU::INPUT_PADDING_ATTR_NAME);
+        });
+    }
+    if (_eltwiseOp->hasAttr(VPU::OUTPUT_PADDING_ATTR_NAME)) {
+        rewriter.modifyOpInPlace(_eltwiseOp, [&] {
+            _eltwiseOp->removeAttr(VPU::OUTPUT_PADDING_ATTR_NAME);
         });
     }
 
@@ -578,17 +584,12 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
             rewriter.create<IE::ShapeCastOp>(_eltwiseOp->getLoc(), outputType.changeShape(_unExpandedShape),
                                              _eltwiseOp->getResult(0), getIntArrayAttr(ctx, _unExpandedShape.raw()));
 
-    if (VPU::canAutopadOutput(_eltwiseOp, outputType)) {
-        // Current pass logic expects a slice
-        // which doesn't happen with autopad
-        _eltwiseOp->getResult(0).replaceAllUsesExcept(outputShapeCastOp.getResult(), outputShapeCastOp);
-    } else {
-        auto inputExpandOp = *_expandInputs.begin();
-        auto newOutputExpandOp =
-                rewriter.create<IE::ExpandOp>(_eltwiseOp->getLoc(), outputShapeCastOp.getResult(),
-                                              inputExpandOp.getPadsBeginAttr(), inputExpandOp.getPadsEndAttr());
-        _eltwiseOp->getResult(0).replaceAllUsesExcept(newOutputExpandOp.getOutput(), outputShapeCastOp);
-    }
+    auto inputExpandOp = *_expandInputs.begin();
+    auto newOutputExpandOp =
+            rewriter.create<IE::ExpandOp>(_eltwiseOp->getLoc(), outputShapeCastOp.getResult(),
+                                          inputExpandOp.getPadsBeginAttr(), inputExpandOp.getPadsEndAttr());
+    _eltwiseOp->getResult(0).replaceAllUsesExcept(newOutputExpandOp.getOutput(), outputShapeCastOp);
+
     return mlir::success();
 }
 
@@ -815,8 +816,8 @@ bool isSuitableSingleChannelPooling(PoolingOp layerOp) {
 
     auto input = layerOp.getInput();
     auto output = layerOp.getOutput();
-    auto inputLayout = input.getType().template cast<vpux::NDTypeInterface>().getDimsOrder();
-    auto outputLayout = output.getType().template cast<vpux::NDTypeInterface>().getDimsOrder();
+    auto inputLayout = mlir::cast<vpux::NDTypeInterface>(input.getType()).getDimsOrder();
+    auto outputLayout = mlir::cast<vpux::NDTypeInterface>(output.getType()).getDimsOrder();
     // input and output layouts need to be the same
     if (inputLayout != outputLayout) {
         return false;
@@ -966,10 +967,14 @@ mlir::LogicalResult ExpandSingleChannelPoolingPattern::rewrite(mlir::PatternRewr
                                                  getIntArrayAttr(ctx, sliceOffset), getIntArrayAttr(ctx, newOutShape));
     }
 
-    auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
-    if (VPU::canAutopadOutput(newPoolOp, outputType) && newPoolOp->hasAttr(VPU::outChanAttrName)) {
+    if (newPoolOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)) {
         rewriter.modifyOpInPlace(newPoolOp, [&] {
-            newPoolOp->removeAttr(VPU::outChanAttrName);
+            newPoolOp->removeAttr(VPU::INPUT_PADDING_ATTR_NAME);
+        });
+    }
+    if (newPoolOp->hasAttr(VPU::OUTPUT_PADDING_ATTR_NAME)) {
+        rewriter.modifyOpInPlace(newPoolOp, [&] {
+            newPoolOp->removeAttr(VPU::OUTPUT_PADDING_ATTR_NAME);
         });
     }
 
@@ -1076,9 +1081,9 @@ private:
 // Layout in memory NHWC: a11 b11 a12 b12 a13 b13 a14 b14 a21 b21 a22 b22 a23 b23 a24 b24
 //
 bool ExpandPermuteQuantizePattern::checkValidPermuteQuantizeOrders(IE::PermuteQuantizeOp op) {
-    auto inType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto inputLayout = inType.getDimsOrder();
-    auto outType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     auto outputLayout = outType.getDimsOrder();
 
     const auto supportedPerm = vpux::DimsOrder::NHWC.toAffineMap(op->getContext());
@@ -1099,7 +1104,7 @@ mlir::FailureOr<Shape> ExpandPermuteQuantizePattern::getWidthAlignedExpandedShap
         return mlir::failure();
     }
 
-    const auto inputType = operation->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType());
     const auto alignment = VPU::NCEInvariant::getAlignment(inputType.getElementType());
 
     auto IH = unExpandedShape[Dims4D::Act::H];
@@ -1169,7 +1174,7 @@ bool ExpandPermuteQuantizePattern::init() {
 
     // save the original shape and generate new shape
     auto expandInputOp = *getExpandInputs().begin();
-    auto unExpandedShape = expandInputOp.getInput().getType().cast<vpux::NDTypeInterface>().getShape().toValues();
+    auto unExpandedShape = mlir::cast<vpux::NDTypeInterface>(expandInputOp.getInput().getType()).getShape().toValues();
     setUnExpandedShape(unExpandedShape);
 
     mlir::FailureOr<Shape> newExpandedShapeResult = getWidthAlignedExpandedShape(op, unExpandedShape, log);
@@ -1246,7 +1251,7 @@ mlir::LogicalResult AdjustPermuteQuantizeRewriter::matchAndRewrite(IE::PermuteQu
         return mlir::failure();
     }
 
-    const auto inputType = layerOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(layerOp.getInput().getType());
     const auto inputShape = inputType.getShape();
     auto H = inputShape[Dims4D::Act::H];
     auto W = inputShape[Dims4D::Act::W];
@@ -1262,7 +1267,7 @@ mlir::LogicalResult AdjustPermuteQuantizeRewriter::matchAndRewrite(IE::PermuteQu
     W = adjustHW.value().front();
     H = adjustHW.value().back();
 
-    const auto outputType = layerOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
     const auto newShape = Shape({inputShape[Dims4D::Act::N], inputShape[Dims4D::Act::C], H, W});
     const auto newOutputType = outputType.changeShape(newShape);
     auto inputShapeCastOp =
@@ -1376,9 +1381,9 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
     auto isShapeOpAfterEltwise =
             mlir::isa<EltwiseOp>(opList[0]) && mlir::isa<IE::ShapeCastOp, AffineReshapeOp>(opList[1]);
     auto origShapeOp = opList[1];
-    const auto origShapeInType = origShapeOp->getOperand(0).getType().template cast<vpux::NDTypeInterface>();
-    const auto origShapeOutType = origShapeOp->getResult(0).getType().template cast<vpux::NDTypeInterface>();
-    const auto origEltwiseOutputType = layerOp->getResult(0).getType().template cast<vpux::NDTypeInterface>();
+    const auto origShapeInType = mlir::cast<vpux::NDTypeInterface>(origShapeOp->getOperand(0).getType());
+    const auto origShapeOutType = mlir::cast<vpux::NDTypeInterface>(origShapeOp->getResult(0).getType());
+    const auto origEltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(layerOp->getResult(0).getType());
     auto newEltwiseShape = isShapeOpAfterEltwise ? origShapeOutType.getShape() : origShapeInType.getShape();
     auto newEltwiseOutputType = origEltwiseOutputType.changeShape(newEltwiseShape);
     auto quantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(*layerOp->getUsers().begin());
@@ -1397,7 +1402,7 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
         auto newEltwise = rewriter.template create<EltwiseOp>(
                 layerOp->getLoc(), newEltwiseOutputType, newInputValues[0], newInputValues[1],
                 layerOp.getAutoBroadcast(), layerOp.getPostOpAttr(), layerOp.getClampAttr(),
-                layerOp.getOutputChannelsAttr(), layerOp.getInputChannelsAttr());
+                layerOp.getOutputPaddingAttr(), /*inputPadding=*/nullptr);
         mlir::Value newOutput = newEltwise->getResult(0);
         // Update QuantizeCastOp
         if (quantizeCastOp) {
@@ -1411,8 +1416,8 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
         // Update EltwiseOp
         auto newEltwise = rewriter.template create<EltwiseOp>(
                 layerOp->getLoc(), newEltwiseOutputType, origShapeOp->getOperand(0), origShapeOp->getOperand(0),
-                layerOp.getAutoBroadcast(), layerOp.getPostOpAttr(), layerOp.getClampAttr(), nullptr,
-                layerOp.getInputChannelsAttr());
+                layerOp.getAutoBroadcast(), layerOp.getPostOpAttr(), layerOp.getClampAttr(), /*outputPadding=*/nullptr,
+                layerOp.getInputPaddingAttr());
         mlir::Value origOutput = layerOp->getResult(0);
         mlir::Value newOutput = newEltwise->getResult(0);
         // Update QuantizeCastOp

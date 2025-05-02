@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -37,16 +38,13 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                     [strategy](ClusteredOpInterface clusterOp) {
                         clusterOp.setMultiClusterStrategy(strategy);
                     });
-
-            _log.trace("Assigning multi-cluster strategy '{0}' to layer '{1}' - '{2}'", strategy, op->getName(),
-                       op->getLoc());
+            _log.debug("Assign strategy {0} to {1} : {2}", strategy, op->getName(), op->getLoc());
         } else {
             VPUX_THROW("Attempting to assign an invalid strategy {0} to operation {1}", strategy, op->getName());
         }
     };
 
     const auto callback = [&](mlir::Operation* op) {
-        _log.trace("Getting strategy for op {0}", op->getName());
         // Currently the distributed tensor only supports the tiling scheme with numTile shape=4
         // TODO: #E81820
 
@@ -58,22 +56,23 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
         }
 
         for (const auto& input : op->getOperands()) {
-            const auto inputShape = input.getType().cast<vpux::NDTypeInterface>().getShape();
+            const auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
             if (inputShape.size() != RANK_REQUIRED_FOR_TILING && inputShape.size() != DimsGroups5D::Act::numDims) {
                 return;
             }
         }
         for (const auto& output : op->getResults()) {
-            const auto outputShape = output.getType().cast<vpux::NDTypeInterface>().getShape();
+            const auto outputShape = mlir::cast<vpux::NDTypeInterface>(output.getType()).getShape();
             if (outputShape.size() != RANK_REQUIRED_FOR_TILING && outputShape.size() != DimsGroups5D::Act::numDims) {
                 return;
             }
         }
 
-        if (IE::hasDynamicTensors(op)) {
+        if (IE::hasDynamicTensors(op) && !mlir::isa<VPU::LSTMSequenceOp>(op)) {
             return;
         }
 
+        _log.debug("Get strategy for op: {0} : {1}", op->getName(), op->getLoc());
         llvm::TypeSwitch<mlir::Operation*, void>(op)
                 .Case<NCEMaxPoolOp>([&](NCEMaxPoolOp origOp) {
                     const auto inputBatch = getShape(origOp.getInput())[Dims4D::Act::N];
@@ -169,10 +168,10 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                         return;
                     }
 
-                    auto inputShape =
-                            origOp.getOperation()->getOperand(0).getType().cast<vpux::NDTypeInterface>().getShape();
+                    auto inputShape = mlir::cast<vpux::NDTypeInterface>(origOp.getOperation()->getOperand(0).getType())
+                                              .getShape();
                     auto outputShape =
-                            origOp.getOperation()->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape();
+                            mlir::cast<vpux::NDTypeInterface>(origOp.getOperation()->getResult(0).getType()).getShape();
 
                     // Non 4D Tensor or Tensor with larger batch size cannot be tiled properly.
                     // [E90039]MC support for Non 4D Tensor.
@@ -196,13 +195,11 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                     }
                     if (bestStrategy.has_value()) {
                         setLayerStrategy(bestStrategy.value(), origOp.getOperation());
-                        _log.debug("SW Operation '{0}' {1} set to {2}", origOp->getName(), origOp->getLoc(),
-                                   bestStrategy);
                     }
                     return;
                 })
                 .Case<ConcatOp>([&](ConcatOp origOp) {
-                    const auto inputType = origOp.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+                    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputs().front().getType());
                     const auto inputShape = inputType.getShape();
                     // Currently the distributed tensor only supports the tiling scheme with numTile shape=4
                     // TODO: #E81820
@@ -213,7 +210,7 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                         return;
                     }
 
-                    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
                     const auto outputShape = outputType.getShape();
                     if (outputShape.size() != RANK_REQUIRED_FOR_TILING) {
                         _log.trace(
@@ -230,8 +227,8 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                     return;
                 })
                 .Case<NCEPermuteOp>([&](NCEPermuteOp origOp) {
-                    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-                    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+                    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
                     const auto inputShape = inputType.getShape();
                     const auto outputShape = outputType.getShape();
                     // Such configurations cannot be tiled properly.

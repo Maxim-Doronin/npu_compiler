@@ -1,0 +1,43 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
+//
+
+#include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg40XX/barrier_configure_rewriter.hpp"
+
+#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
+#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/types.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
+
+using namespace NPUReg40XX;
+using namespace NPUReg40XX::Descriptors;
+using namespace vpux::VPURegMapped;
+
+namespace vpux {
+namespace vpuasm2npureg40xx {
+
+mlir::LogicalResult BarrierRewriter::matchAndRewrite(VPUASM::ConfigureBarrierOp origOp,
+                                                     mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+    // origOp.getNextSameId() is int64 with invalid barrier represented by -1 and a max
+    // value of numeric_limits<uint32_t>::max() - 1
+    // At this point it is cast to uint32 as required by the NNRuntime with invalid barrier
+    // represented by numeric_limits<uint32_t>::max()
+    VpuBarrierCountConfig barrierConfigDescriptor;
+    barrierConfigDescriptor.write<Fields::next_same_id_>(
+            checked_cast_reg<NPUReg40XX::RegField_next_same_id_Type>(static_cast<uint32_t>(origOp.getNextSameId())));
+    barrierConfigDescriptor.write<Fields::producer_count_>(origOp.getProducerCount());
+    barrierConfigDescriptor.write<Fields::consumer_count_>(origOp.getConsumerCount());
+    barrierConfigDescriptor.write<Fields::real_id_>(origOp.getId());
+
+    auto barrierConfigDescriptorAttr =
+            VpuBarrierCountConfigAttr::get(rewriter.getContext(), std::move(barrierConfigDescriptor));
+    rewriter.create<NPUReg40XX::ConfigureBarrierOp>(origOp->getLoc(), origOp.getSymNameAttr(),
+                                                    barrierConfigDescriptorAttr);
+
+    rewriter.eraseOp(origOp);
+
+    return mlir::success();
+}
+}  // namespace vpuasm2npureg40xx
+}  // namespace vpux

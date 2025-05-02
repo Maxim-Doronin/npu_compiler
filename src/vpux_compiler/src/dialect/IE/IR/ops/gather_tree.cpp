@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,14 +15,14 @@ using namespace vpux;
 //
 
 mlir::LogicalResult vpux::IE::GatherTreeOp::verify() {
-    const auto stepIdsType = getStepIds().getType().cast<mlir::ShapedType>();
+    const auto stepIdsType = mlir::cast<mlir::ShapedType>(getStepIds().getType());
     const auto stepIdsShape = stepIdsType.getShape();
 
     if (stepIdsType.getRank() != 3) {
         return errorAt(*this, "Wrong GatherTree step_ids rank {0}, step_ids should have rank 3", stepIdsType.getRank());
     }
 
-    const auto parentIdsType = getParentIds().getType().cast<mlir::ShapedType>();
+    const auto parentIdsType = mlir::cast<mlir::ShapedType>(getParentIds().getType());
     const auto parentIdsShape = parentIdsType.getShape();
 
     if (parentIdsType.getRank() != 3) {
@@ -30,7 +30,7 @@ mlir::LogicalResult vpux::IE::GatherTreeOp::verify() {
                        parentIdsType.getRank());
     }
 
-    const auto maxSeqLenType = getMaxSeqLen().getType().cast<mlir::ShapedType>();
+    const auto maxSeqLenType = mlir::cast<mlir::ShapedType>(getMaxSeqLen().getType());
     const auto maxSeqLenShape = maxSeqLenType.getShape();
 
     if (maxSeqLenType.getRank() != 1) {
@@ -38,7 +38,7 @@ mlir::LogicalResult vpux::IE::GatherTreeOp::verify() {
                        maxSeqLenType.getRank());
     }
 
-    const auto endTokenType = getEndToken().getType().cast<mlir::ShapedType>();
+    const auto endTokenType = mlir::cast<mlir::ShapedType>(getEndToken().getType());
 
     if (stepIdsShape != parentIdsShape) {
         return errorAt(*this, "GatherTree step_ids and parent_id got shape mismatch: {0} {1}", stepIdsShape,
@@ -71,7 +71,7 @@ mlir::LogicalResult vpux::IE::GatherTreeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto stepIdsType = gatherTree.getStepIds().getType().cast<mlir::ShapedType>();
+    const auto stepIdsType = mlir::cast<mlir::ShapedType>(gatherTree.getStepIds().getType());
     const auto stepIdsShape = stepIdsType.getShape();
 
     inferredReturnShapes.emplace_back(stepIdsShape, stepIdsType.getElementType());

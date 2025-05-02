@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
@@ -37,12 +38,12 @@ mlir::LogicalResult vpux::IE::DepthToSpaceOp::inferReturnTypeComponents(
     }
 
     const auto inShape = getShape(depthToSpace.getInput());
-    const auto inType = depthToSpace.getInput().getType().cast<mlir::ShapedType>().getElementType();
+    const auto inType = mlir::cast<mlir::ShapedType>(depthToSpace.getInput().getType()).getElementType();
     const auto block_size = depthToSpace.getBlockSize();
     auto paddedChannels = depthToSpace.getPaddedChannels();
 
     if (!(inType.isF16() || inType.isF32() || inType.isUnsignedInteger(8) ||
-          inType.isa<mlir::quant::QuantizedType>())) {
+          mlir::isa<mlir::quant::QuantizedType>(inType))) {
         return errorAt(loc, "DepthToSpace only support FP16, FP32, U8, quant data type");
     }
 
@@ -87,7 +88,9 @@ mlir::LogicalResult vpux::IE::DepthToSpaceOp::inferReturnTypeComponents(
     SmallVector<int64_t> outShape{checked_cast<int64_t>(N_out), checked_cast<int64_t>(C_out),
                                   checked_cast<int64_t>(H_out), checked_cast<int64_t>(W_out)};
 
-    const auto inputType = depthToSpace.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(depthToSpace.getInput().getType());
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inputType), "{0} doesn't support dynamic shapes",
+                      IE::DepthToSpaceOp::getOperationName());
     const auto outDesc = vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace());
     inferredReturnShapes.emplace_back(outShape, inType, outDesc);
     return mlir::success();

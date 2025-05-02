@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,11 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/convert_op_types.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
+
+#include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTPRECISIONTOFP16
@@ -54,17 +59,28 @@ mlir::LogicalResult ConvertPrecisionToFP16Pass::initialize(mlir::MLIRContext* ct
 void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     auto& ctx = getContext();
 
-    mlir::TypeConverter typeConverter;
-    setupConvertPrecision(typeConverter, [](mlir::Type elemType) -> mlir::Type {
+    const auto convertElemType = [](mlir::Type elemType) -> mlir::Type {
         if (elemType.isF32() || elemType.isSignlessInteger(CHAR_BIT)) {
             return mlir::Float16Type::get(elemType.getContext());
+        } else if (const auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType);
+                   qType != nullptr && qType.getExpressedType().isF32()) {
+            return changeExpressedType(qType, mlir::Float16Type::get(qType.getContext()));
         } else {
             return elemType;
         }
-    });
+    };
+
+    mlir::TypeConverter typeConverter;
+    setupConvertPrecision(typeConverter, convertElemType);
 
     const auto isLegalOp = [&](mlir::Operation* op) {
         return typeConverter.isLegal(op);
+    };
+
+    const auto hasDynamicDequantizeUser = [](mlir::Operation* op) {
+        return llvm::any_of(op->getUsers(), [](const auto user) {
+            return mlir::isa<IE::DynamicDequantizeOp>(user);
+        });
     };
 
     mlir::ConversionTarget target(ctx);
@@ -76,6 +92,9 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     target.addLegalOp<mlir::ModuleOp>();
     target.addLegalOp<IE::DynamicQuantizeOp>();
     target.addLegalOp<IE::DynamicDequantizeOp>();
+    target.addDynamicallyLegalOp<IE::QuantizeCastOp>([&](mlir::Operation* op) {
+        return isLegalOp(op) || hasDynamicDequantizeUser(op);
+    });
     target.addLegalOp<IE::IfOp>();
     target.addLegalOp<IE::YieldOp>();
     target.addLegalOp<IE::LoopSelectOp>();
@@ -134,21 +153,24 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
 
     auto module = getOperation();
 
-    // For output element type is inferred based on an attribute
-    auto isTargetOp = [](mlir::Operation* op) {
-        return mlir::isa<IE::OneHotOp, IE::RandomUniformOp, IE::EyeOp>(op);
-    };
-
+    // Some ops infer their output type based on a member type attribute, which should also be converted.
     module.walk([&](mlir::Operation* op) {
-        if (isTargetOp(op) && target.isIllegal(op)) {
-            const auto outputTypeAttrStr = "outputType";
-            const auto outputTypeAttr = op->getAttr(outputTypeAttrStr);
-            VPUX_THROW_UNLESS(outputTypeAttr != nullptr, "Failed to get attribute '{0}'", outputTypeAttrStr);
-
-            if (outputTypeAttr.dyn_cast<mlir::TypeAttr>() == mlir::TypeAttr::get(mlir::Float32Type::get(&ctx))) {
-                op->setAttr(outputTypeAttrStr, mlir::TypeAttr::get(mlir::Float16Type::get(&ctx)));
-            }
+        if (!target.isIllegal(op)) {
+            return;
         }
+
+        mlir::TypeSwitch<mlir::Operation*, void>(op)
+                .Case<IE::DequantizeOp, IE::QuantizeCastOp>([&](auto op) {
+                    op.setDstElemType(convertElemType(op.getDstElemType()));
+                })
+                .Case<IE::OneHotOp, IE::RandomUniformOp, IE::EyeOp>([&](auto op) {
+                    op.setOutputType(convertElemType(op.getOutputType()));
+                })
+                .Case<IE::DynamicDataMaskOp>([&](auto op) {
+                    auto outTensorType = mlir::cast<NDTypeInterface>(op.getOutputTensorType());
+                    op.setOutputTensorType(
+                            outTensorType.changeElemType(convertElemType(outTensorType.getElementType())));
+                });
     });
 
     if (mlir::failed(runConvertPrecision(module, typeConverter, target, _log))) {
@@ -170,6 +192,8 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
 
     mlir::ConversionTarget additionalTarget(ctx);
     additionalTarget.addDynamicallyLegalOp<IE::LessOp>(isLegalAdditionalOp);
+    additionalTarget.addDynamicallyLegalOp<IE::LessEqualOp>(isLegalAdditionalOp);
+    additionalTarget.addDynamicallyLegalOp<IE::GreaterOp>(isLegalAdditionalOp);
     additionalTarget.addDynamicallyLegalOp<IE::ClampOp>(isLegalAdditionalOp);
     if (mlir::failed(runConvertPrecision(module, additionalTypeConverter, additionalTarget, _log))) {
         signalPassFailure();

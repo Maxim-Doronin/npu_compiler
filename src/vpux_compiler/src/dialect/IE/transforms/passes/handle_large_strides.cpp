@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -174,7 +175,7 @@ mlir::LogicalResult ConvGeneralRewriter::matchAndRewrite(IE::ConvolutionOp origO
                 return rewriter.create<IE::ConvolutionOp>(
                         loc, input, origOp.getFilter(), origOp.getBias(), part.strides, part.padBegin, part.padEnd,
                         origOp.getDilations(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                        origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                        origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -210,7 +211,7 @@ mlir::LogicalResult GroupConvGeneralRewriter::matchAndRewrite(IE::GroupConvoluti
                 return rewriter.create<IE::GroupConvolutionOp>(
                         loc, input, origOp.getFilter(), origOp.getBias(), part.strides, part.padBegin, part.padEnd,
                         origOp.getDilations(), origOp.getGroupsAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                        origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                        origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -244,8 +245,8 @@ mlir::LogicalResult MaxPoolGeneralRewriter::matchAndRewrite(IE::MaxPoolOp origOp
             [&](mlir::Location loc, mlir::Value input, OperationPart part) -> mlir::Operation* {
                 return rewriter.create<IE::MaxPoolOp>(loc, input, origOp.getKernelSize(), part.strides, part.padBegin,
                                                       part.padEnd, origOp.getRoundingType(), origOp.getPostOpAttr(),
-                                                      origOp.getClampAttr(), origOp.getOutputChannelsAttr(),
-                                                      origOp.getInputChannelsAttr());
+                                                      origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+                                                      origOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -288,7 +289,7 @@ mlir::LogicalResult AvgPoolGeneralRewriter::matchAndRewrite(IE::AvgPoolOp origOp
                 origOp, origOp.getType(), origOp.getInput(), origOp.getKernelSize(), newStridesAttr,
                 origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getRoundingTypeAttr(), origOp.getExcludePadsAttr(),
                 origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-                origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
         return mlir::success();
     }
 
@@ -300,7 +301,7 @@ mlir::LogicalResult AvgPoolGeneralRewriter::matchAndRewrite(IE::AvgPoolOp origOp
                                                       part.padEnd, origOp.getRoundingTypeAttr(),
                                                       origOp.getExcludePadsAttr(), origOp.getPostOpAttr(),
                                                       origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-                                                      origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                                      origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -403,7 +404,7 @@ mlir::LogicalResult ConvMPOptimizationRewriter::matchAndRewrite(IE::ConvolutionO
                 return rewriter.create<IE::ConvolutionOp>(
                         loc, input, origOp.getFilter(), origOp.getBias(), strides, origOp.getPadsBegin(),
                         origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                        origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                        origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -439,7 +440,7 @@ mlir::LogicalResult GroupConvMPOptimizationRewriter::matchAndRewrite(IE::GroupCo
                 return rewriter.create<IE::GroupConvolutionOp>(
                         loc, input, origOp.getFilter(), origOp.getBias(), strides, origOp.getPadsBegin(),
                         origOp.getPadsEnd(), origOp.getDilations(), origOp.getGroupsAttr(), origOp.getPostOpAttr(),
-                        origOp.getClampAttr(), origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                        origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -476,7 +477,7 @@ mlir::LogicalResult MaxPoolMPOptimizationRewriter::matchAndRewrite(IE::MaxPoolOp
                 return rewriter.create<IE::MaxPoolOp>(
                         loc, input, origOp.getKernelSize(), strides, origOp.getPadsBegin(), origOp.getPadsEnd(),
                         origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                        origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                        origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             },
             _log.nest());
 }
@@ -522,7 +523,7 @@ mlir::LogicalResult AvgPoolMPOptimizationRewriter::matchAndRewrite(IE::AvgPoolOp
                 origOp, origOp.getType(), origOp.getInput(), origOp.getKernelSize(), newStridesAttr,
                 origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getRoundingTypeAttr(), origOp.getExcludePadsAttr(),
                 origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-                origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
         return mlir::success();
     }
 
@@ -532,8 +533,8 @@ mlir::LogicalResult AvgPoolMPOptimizationRewriter::matchAndRewrite(IE::AvgPoolOp
                 return rewriter.create<IE::AvgPoolOp>(
                         loc, input, origOp.getKernelSize(), strides, origOp.getPadsBegin(), origOp.getPadsEnd(),
                         origOp.getRoundingTypeAttr(), origOp.getExcludePadsAttr(), origOp.getPostOpAttr(),
-                        origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(),
-                        origOp.getInputChannelsAttr());
+                        origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
+                        origOp.getInputPaddingAttr());
             },
             _log.nest());
 }

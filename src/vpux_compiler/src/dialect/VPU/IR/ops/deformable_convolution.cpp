@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,16 +25,16 @@ mlir::LogicalResult vpux::VPU::DeformableConvolutionOp::inferReturnTypes(
     }
 
     const auto group = defConv.getGroup();
-    if (group != 1) {
-        return errorAt(loc, "Group attribute should have the value 1");
+    if (group < 0) {
+        return errorAt(loc, "Attribute 'group' must have a positive value");
     }
 
     const auto deformableGroup = defConv.getDeformableGroup();
-    if (deformableGroup != 1) {
-        return errorAt(loc, "DeformableGroup attribute should have the value 1");
+    if (deformableGroup < 0) {
+        return errorAt(loc, "Attribute 'deformable group' must have a positive value");
     }
 
-    const auto inType = defConv.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(defConv.getInput().getType());
     const auto inShape = getShape(defConv.getInput()).raw();
     const auto kernelShape = getShape(defConv.getKernel()).raw();
     const auto offsetShape = getShape(defConv.getOffset()).raw();

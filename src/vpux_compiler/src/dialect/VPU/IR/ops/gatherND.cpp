@@ -5,6 +5,11 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -23,9 +28,13 @@ mlir::LogicalResult vpux::VPU::GatherNDOp::inferReturnTypes(mlir::MLIRContext* c
         return mlir::failure();
     }
 
-    const auto inType = gatherND.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto inputShape = inType.getShape().raw();
-    const auto indicesType = gatherND.getIndices().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(gatherND.getInput().getType());
+    auto originalShapeOptional = gatherND.getOriginalShape();
+    Shape inputShape = originalShapeOptional.has_value()
+                               ? Shape(parseIntArrayAttr<int64_t>(originalShapeOptional.value()))
+                               : Shape(inType.getShape());
+
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(gatherND.getIndices().getType());
     const auto indicesShape = indicesType.getShape().raw();
 
     const auto batchDims = gatherND.getBatchDims();
@@ -37,19 +46,17 @@ mlir::LogicalResult vpux::VPU::GatherNDOp::inferReturnTypes(mlir::MLIRContext* c
         outShape.append(inputShape.begin() + batchDims + lastIndices, inputShape.end());
     }
 
-    auto outType = inType.changeShape(Shape(outShape));
-    if (const auto indicesBoundsAttr = indicesType.cast<vpux::BoundedTypeInterface>().getBounds();
-        indicesBoundsAttr != nullptr) {
-        const auto bounds = parseIntArrayAttr<int64_t>(indicesBoundsAttr);
-        if (bounds.empty()) {
-            return errorAt(loc, "VPU::GatherNDOp::inferReturnTypes. Got empty bounds array");
-        }
-        SmallVector<int64_t> outBounds(bounds.begin(), bounds.end() - 1);
+    auto outType = mlir::cast<NDTypeInterface>(
+            mlir::RankedTensorType::get(outShape, inType.getElementType(), createTensorAttrFromType(inType)));
+    if (auto boundedIndices = mlir::dyn_cast<Core::BoundedTensorType>(indicesType)) {
+        auto indicesBounds = boundedIndices.getBounds();
+
+        SmallVector<int64_t> outBounds(indicesBounds.begin(), indicesBounds.end() - 1);
         if (batchDims + lastIndices != inputRank) {
             outBounds.append(inputShape.begin() + batchDims + lastIndices, inputShape.end());
         }
 
-        outType = outType.cast<vpux::BoundedTypeInterface>().changeBounds(getIntArrayAttr(ctx, outBounds));
+        outType = Core::BoundedTensorType::get(outType, outBounds);
     }
 
     inferredReturnTypes.emplace_back(outType);
@@ -63,10 +70,12 @@ mlir::LogicalResult vpux::VPU::GatherNDOp::inferReturnTypes(mlir::MLIRContext* c
 
 mlir::LogicalResult vpux::VPU::GatherNDOp::verify() {
     const auto op = getOperation();
-    const auto inType = getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto inputShape = inType.getShape().raw();
-    const auto indicesShape = getIndices().getType().cast<vpux::NDTypeInterface>().getShape().raw();
-
+    const auto inType = mlir::cast<mlir::ShapedType>(getInput().getType());
+    auto originalShapeOptional = getOriginalShape();
+    vpux::Shape inputShape = originalShapeOptional.has_value()
+                                     ? vpux::Shape(parseIntArrayAttr<int64_t>(originalShapeOptional.value()))
+                                     : vpux::Shape(inType.getShape());
+    const auto indicesShape = mlir::cast<vpux::NDTypeInterface>(getIndices().getType()).getShape().raw();
     const auto batchDims = getBatchDims();
     const auto lastIndices = indicesShape.back();
     const auto inputRank = static_cast<int64_t>(inputShape.size());
@@ -77,7 +86,7 @@ mlir::LogicalResult vpux::VPU::GatherNDOp::verify() {
     }
 
     if (batchDims >= indicesRank) {
-        return errorAt(op, "batch_dims {0} exceeds indices rank {1}", batchDims, inputRank);
+        return errorAt(op, "batch_dims {0} exceeds indices rank {1}", batchDims, indicesRank);
     }
 
     if (batchDims + lastIndices > inputRank) {
@@ -85,7 +94,7 @@ mlir::LogicalResult vpux::VPU::GatherNDOp::verify() {
     }
 
     for (size_t i = 0; i < static_cast<size_t>(batchDims); i++) {
-        if (inputShape[i] != indicesShape[i]) {
+        if (inputShape[Dim(i)] != indicesShape[i]) {
             return errorAt(op, "Batch dimensions of data and indices must be the same");
         }
     }
@@ -97,41 +106,37 @@ mlir::LogicalResult vpux::VPU::GatherNDOp::verify() {
 // TilingBuilderOpInterface
 //
 
-vpux::InputTiling vpux::VPU::GatherNDOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger) {
+vpux::InputTiling vpux::VPU::GatherNDOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger log) {
     const auto origInputShape = getShape(getInput());
     const auto origIndicesShape = getShape(getIndices());
-
-    TileInfo indicesTile(origIndicesShape);
-
-    const int64_t inputRank = origInputShape.size();
-    const int64_t indicesRank = origIndicesShape.size();
-    const int64_t outputRank = outputTile.shape.size();
-
-    const auto lastIndices = origIndicesShape.back();
     const auto batchDims = getBatchDims();
 
-    TileInfo inputTile(origInputShape);
+    auto originalShapeOptional = getOriginalShape();
+    Shape originalShapeAttrVal = originalShapeOptional.has_value()
+                                         ? Shape(parseIntArrayAttr<int64_t>(getOriginalShape().value()))
+                                         : Shape(origInputShape);
 
-    for (int64_t i = 0; i < batchDims; i++) {
-        inputTile.shape[Dim(i)] = outputTile.shape[Dim(i)];
-        inputTile.offsets[Dim(i)] = outputTile.offsets[Dim(i)];
-    }
-
-    const int64_t sliceSize = inputRank - (batchDims + lastIndices);
-    for (int64_t i = 0; i < sliceSize; i++) {
-        inputTile.shape[Dim(inputRank - 1 - i)] = outputTile.shape[Dim(outputRank - 1 - i)];
-        inputTile.offsets[Dim(inputRank - 1 - i)] = outputTile.offsets[Dim(outputRank - 1 - i)];
-    }
-
-    for (int64_t i = 0; i < indicesRank - 1; i++) {
-        indicesTile.shape[Dim(i)] = outputTile.shape[Dim(i)];
-        indicesTile.offsets[Dim(i)] = outputTile.offsets[Dim(i)];
-    }
-
-    return InputTiling{{inputTile, indicesTile}};
+    return vpux::backInferGatherNDTile(outputTile, origInputShape, origIndicesShape, batchDims, originalShapeAttrVal,
+                                       log);
 }
 
-void vpux::VPU::GatherNDOp::adjustAttrs(const TilingInfo& /*inputTiling*/, const TileInfo& /*outputTile*/) {
+void vpux::VPU::GatherNDOp::adjustAttrs(const TilingInfo& inputTiling, const TileInfo& /*outputTile*/) {
+    if (!getOriginalShape().has_value()) {
+        return;
+    }
+
+    const auto batchDims = getBatchDims();
+    const auto inTileShape = inputTiling.tiles[0].shape;
+
+    // Input data with coord part cannot be tiled
+    // Only other dimension needs update
+    auto newShape = parseIntArrayAttr<int64_t>(getOriginalShape().value());
+    for (auto idx = 0; idx < batchDims; idx++) {
+        newShape[idx] = inTileShape[Dim(idx)];
+    }
+    newShape.back() = inTileShape.back();
+
+    setOriginalShapeAttr(getIntArrayAttr(getContext(), newShape));
 }
 
 mlir::FailureOr<OutputTiling> vpux::VPU::GatherNDOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
@@ -143,7 +148,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherNDOp::getTilingStrategy(TilingMod
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(baseOp);
     VPUX_THROW_WHEN(tilingInfo == nullptr, "Operation '{0}' doesn't implement TilingInfoOpInterface",
                     baseOp->getName());
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     const auto outputRank = outputShape.size();
     Shape nTilesOnDimforGatherND(outputRank, 1);
@@ -170,10 +175,10 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherNDOp::getTilingStrategy(TilingMod
         }
     };
 
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inputSize = inputType.getTotalAllocSize();
 
-    const auto indicesType = getIndices().getType().cast<vpux::NDTypeInterface>();
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(getIndices().getType());
     const auto indicesSize = indicesType.getTotalAllocSize();
     const auto indicesRank = indicesType.getShape().size();
 
@@ -198,4 +203,68 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherNDOp::getTilingStrategy(TilingMod
 
     log.trace("Isolated tiling strategy: {0}", nTilesOnDimforGatherND);
     return fillDividedTiles(baseOp, nTilesOnDimforGatherND, outputShape);
+}
+
+//
+// build
+//
+
+void vpux::VPU::GatherNDOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state, ::mlir::Value input,
+                                  ::mlir::Value indices, ::mlir::IntegerAttr batch_dims) {
+    build(builder, state, input, indices, batch_dims, /*original_shape=*/{}, /*multiClusterStrategy=*/nullptr);
+}
+
+void vpux::VPU::GatherNDOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state, ::mlir::Value input,
+                                  ::mlir::Value indices, ::mlir::IntegerAttr batch_dims,
+                                  ::mlir::ArrayAttr original_shape) {
+    build(builder, state, input, indices, batch_dims, original_shape, /*multiClusterStrategy=*/nullptr);
+}
+
+//
+// ClusteredOpInterface
+//
+
+bool vpux::VPU::GatherNDOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
+    return strategy == VPU::MultiClusterStrategy::Clustering ||
+           strategy == VPU::MultiClusterStrategy::SplitOverKernel ||
+           strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
+           strategy == VPU::MultiClusterStrategy::SplitOverWidth;
+}
+
+vpux::VPU::DistributionInfo vpux::VPU::GatherNDOp::getExplicitDistributionInfoAttr(
+        vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
+        const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
+        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+    return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
+                                              numTiles, numClusters, alignment, uniformDistributedSegments,
+                                              overlapParams);
+}
+
+//
+// SWOpInterface
+//
+
+bool vpux::VPU::GatherNDOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem) {
+    VPUX_THROW_UNLESS(buffers.size() == 3, "GatherNDOp requires 2 input and 1 output, but the number of buffer is {0}",
+                      buffers.size());
+
+    SmallVector<Byte> buffersSize;
+    std::transform(buffers.begin(), buffers.end(), std::back_inserter(buffersSize), [](const auto buffer) {
+        return buffer.getTotalAllocSize();
+    });
+
+    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
+                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
+
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+                   reservedMem.count() <=
+           totalAvailableCMXSize;
+}
+
+bool vpux::VPU::GatherNDOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers) {
+    return fitIntoCMX(buffers, Byte(0));
+}
+
+bool vpux::VPU::GatherNDOp::supportCycleCostCalculation() {
+    return false;
 }

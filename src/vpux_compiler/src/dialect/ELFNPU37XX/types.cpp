@@ -1,10 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/ELFNPU37XX/types.hpp"
-
+#include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>

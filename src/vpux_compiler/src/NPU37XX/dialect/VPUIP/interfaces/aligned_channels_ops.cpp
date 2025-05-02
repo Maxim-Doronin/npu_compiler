@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/utils/compressed_convolution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 using namespace vpux;
 
@@ -38,7 +39,7 @@ public:
             return 1;
         }
 
-        const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
         if (mlir::isa<IE::ConvolutionOp>(op)) {
             const auto inOrder = inputType.getDimsOrder();
             if (inOrder == DimsOrder::NCHW) {
@@ -54,7 +55,7 @@ public:
                 return VPU::NCEInvariant::VPU_COMPRESSED_INPUT_CHANNEL_NUM;
             }
 
-            const auto weightsType = op->getOperand(1).getType().cast<vpux::NDTypeInterface>();
+            const auto weightsType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(1).getType());
             // E#106393 future work to enable compress conv for sub byte types
             const bool isSubByte = vpux::isSubByteType(inputType.getElementType()) ||
                                    vpux::isSubByteType(weightsType.getElementType());
@@ -78,7 +79,7 @@ public:
             // SW version of the operation has no specific requirements
             return 1;
         }
-        const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
         return VPU::NCEInvariant::getAlignment(outputType.getElementType());
     }
 

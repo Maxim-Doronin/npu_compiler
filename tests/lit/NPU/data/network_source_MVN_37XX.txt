@@ -1,6 +1,6 @@
 #loc0 = loc(unknown)
 module @MVN_case1 {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x4x512xf32> loc(#loc0)
   } outputsInfo : {
     DataInfo "Div_0" : tensor<1x4x512xf32> loc(#loc0)

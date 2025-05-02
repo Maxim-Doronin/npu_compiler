@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -163,8 +163,8 @@ TEST_P(GetActivationOverlapTests, GetParams) {
     auto siblingAnalysis = vpux::VPU::SiblingOpsAnalysis(func);
     for (auto op : expectedSiblings) {
         if (!inputTileShape.empty()) {
-            inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().extractDenseTile(
-                    Shape{0, 0, 0, 0}, Shape(inputTileShape));
+            inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType())
+                                .extractDenseTile(Shape{0, 0, 0, 0}, Shape(inputTileShape));
         }
 
         auto actualOverlappedParams = VPU::getActivationOverlappedParams(
@@ -217,8 +217,8 @@ TEST_P(GetOutputOverlapTests, GetParams) {
     auto siblingAnalysis = vpux::VPU::SiblingOpsAnalysis(func);
     for (auto op : producersConsumers.producers) {
         if (!outputTileShape.empty()) {
-            outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>().extractDenseTile(
-                    Shape{0, 0, 0, 0}, Shape(outputTileShape));
+            outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType())
+                                 .extractDenseTile(Shape{0, 0, 0, 0}, Shape(outputTileShape));
         }
 
         auto producerOverlappedParams =
@@ -275,14 +275,14 @@ llvm::StringLiteral twoConvConsumers = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [144, 144, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x3x3xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                     rawFilterShape = [144, 144, 5, 5],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x5x5xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             return %1, %2 : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<1x144x28x27xf16, {order = #NHWC}>
         }
@@ -330,7 +330,7 @@ llvm::StringLiteral nceInterpAndConvConsumers = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [144, 144, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x3x3xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %interpIn = VPU.GroupSparseTensor(%0, %sparseMap, %storageElement) {
                 seAttr = #VPU.SEInterpolate<
@@ -387,14 +387,14 @@ llvm::StringLiteral threeClusteredConsumers = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [144, 144, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x3x3xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                     rawFilterShape = [144, 144, 5, 5],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x5x5xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %3 = VPU.HSwish(%0)
                     : tensor<1x144x28x27xf16, {order = #NHWC}>
@@ -433,7 +433,7 @@ llvm::StringLiteral oneConsumerNotClustered = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [144, 144, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x144x28x27xf16, {order = #NHWC}>
+                        : tensor<1x144x28x27xf16, {order = #NHWC}>, tensor<144x144x3x3xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32> -> tensor<1x144x28x27xf16, {order = #NHWC}>
 
             %2 = VPU.Negative(%0)
                 : tensor<1x144x28x27xf16, {order = #NHWC}>
@@ -533,7 +533,7 @@ llvm::StringLiteral quantizeCastDirectConsumer = R"(
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [32, 32, 1, 1],
                     strides = [2, 2]}
-                        -> tensor<1x32x14x14x!qElemType2, {order = #NHWC}>
+                        : tensor<1x32x28x27x!qElemType2, {order = #NHWC}>, tensor<32x32x1x1x!qElemType1, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x14x14x!qElemType2, {order = #NHWC}>
 
             %3 = VPU.QuantizeCast(%0) {dstElemType = !qElemType3}
                 : tensor<1x32x28x27x!qElemType, {order = #NHWC}> -> tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
@@ -543,7 +543,7 @@ llvm::StringLiteral quantizeCastDirectConsumer = R"(
                     pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                     rawFilterShape = [32, 32, 5, 5],
                     strides = [1, 1]}
-                        -> tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
+                        : tensor<1x32x28x27x!qElemType3, {order = #NHWC}>, tensor<32x32x5x5x!qElemType1, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
 
             return %2, %4 : tensor<1x32x14x14x!qElemType2, {order = #NHWC}>, tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
         }
@@ -588,21 +588,21 @@ llvm::StringLiteral multipleConsumersOfQuantizeCast = R"(
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [32, 32, 1, 1],
                     strides = [2, 2]}
-                        -> tensor<1x32x14x14x!qElemType2, {order = #NHWC}>
+                        : tensor<1x32x28x27x!qElemType2, {order = #NHWC}>, tensor<32x32x1x1x!qElemType1, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x14x14x!qElemType2, {order = #NHWC}>
 
             %4 = VPU.NCE.Convolution(%1, %weights1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [32, 32, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
+                        : tensor<1x32x28x27x!qElemType2, {order = #NHWC}>, tensor<32x32x3x3x!qElemType1, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
 
             %5 = VPU.NCE.Convolution(%0, %weights0, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [32, 32, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
+                        : tensor<1x32x28x27x!qElemType, {order = #NHWC}>, tensor<32x32x1x1x!qElemType1, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
 
             return %2, %4, %5 : tensor<1x32x14x14x!qElemType2, {order = #NHWC}>, tensor<1x32x28x27x!qElemType3, {order = #NHWC}>, tensor<1x32x28x27x!qElemType3, {order = #NHWC}>
         }
@@ -689,14 +689,14 @@ llvm::StringLiteral eltwiseResidualBlock = R"(
                     pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     rawFilterShape = [16, 16, 3, 3],
                     strides = [1, 1]}
-                        -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                        : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                     ppe = #VPU.PPEStub<>,
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 1, 1],
                     strides = [2, 2]}
-                        -> tensor<1x16x4x4xf16, {order = #NHWC}>
+                        : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x4x4xf16, {order = #NHWC}>
 
             %3 = VPU.NCE.Eltwise(%0, %1) {
                     op_type = #VPU.eltwise_type<ADD>,
@@ -741,7 +741,7 @@ llvm::StringLiteral eltwiseWithParentsInDiffSubgraphs = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.AveragePool(%arg0) {
                 kernel_size = [2, 2],
@@ -755,7 +755,7 @@ llvm::StringLiteral eltwiseWithParentsInDiffSubgraphs = R"(
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     rawFilterShape = [16, 16, 1, 1],
                     strides = [1, 1]}
-                        -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                        : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>,  tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %4 = VPU.NCE.Eltwise(%0, %2) {
                     op_type = #VPU.eltwise_type<ADD>,
@@ -834,7 +834,7 @@ llvm::StringLiteral eltwiseInPlaceSubgraph = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                 multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -842,7 +842,7 @@ llvm::StringLiteral eltwiseInPlaceSubgraph = R"(
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [2, 2]}
-                    -> tensor<1x16x4x4xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x4x4xf16, {order = #NHWC}>
 
             %3 = VPU.NCE.Eltwise(%0, %1) {
                 is_inplace = true,
@@ -856,7 +856,7 @@ llvm::StringLiteral eltwiseInPlaceSubgraph = R"(
                 pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                 rawFilterShape = [16, 16, 5, 5],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x5x5xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             return %2, %4 : tensor<1x16x4x4xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
         }
@@ -900,7 +900,7 @@ llvm::StringLiteral eltwiseInPlaceWithParentsInDiffSubgraphs = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.AveragePool(%arg0) {
                 multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -916,7 +916,7 @@ llvm::StringLiteral eltwiseInPlaceWithParentsInDiffSubgraphs = R"(
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %4 = VPU.NCE.Eltwise(%0, %2) {
                 is_inplace = true,
@@ -930,7 +930,7 @@ llvm::StringLiteral eltwiseInPlaceWithParentsInDiffSubgraphs = R"(
                 pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                 rawFilterShape = [16, 16, 5, 5],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x5x5xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             return %1, %3, %5 : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
         }
@@ -1010,7 +1010,7 @@ llvm::StringLiteral concatSubgraph = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                 multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -1018,7 +1018,7 @@ llvm::StringLiteral concatSubgraph = R"(
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [2, 2]}
-                    -> tensor<1x16x4x4xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x4x4xf16, {order = #NHWC}>
 
             %3 = VPU.Concat(%0, %1) {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]}:
                     tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
@@ -1030,7 +1030,7 @@ llvm::StringLiteral concatSubgraph = R"(
                 pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                 rawFilterShape = [16, 32, 5, 5],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x32x8x8xf16, {order = #NHWC}>, tensor<16x32x5x5xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             return %2, %4 : tensor<1x16x4x4xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
         }
@@ -1078,7 +1078,7 @@ llvm::StringLiteral notSOHCompatibleConcatSubgraph = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %3 = VPU.NCE.Convolution(%0, %w1, %weightsTable) {
                 multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -1086,7 +1086,7 @@ llvm::StringLiteral notSOHCompatibleConcatSubgraph = R"(
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [2, 2]}
-                    -> tensor<1x16x4x4xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x4x4xf16, {order = #NHWC}>
 
             %4 = VPU.Concat(%1, %2) {static_offsets = [[0, 0, 0, 0], [0, 0, 8, 0]]}:
                     tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
@@ -1142,7 +1142,7 @@ llvm::StringLiteral concatWithParentsInDiffSubgraphs = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %2 = VPU.NCE.AveragePool(%arg0) {
                 multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -1158,7 +1158,7 @@ llvm::StringLiteral concatWithParentsInDiffSubgraphs = R"(
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %4 = VPU.Concat(%0, %2) {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]}:
                     tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
@@ -1170,7 +1170,7 @@ llvm::StringLiteral concatWithParentsInDiffSubgraphs = R"(
                 pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                 rawFilterShape = [16, 32, 5, 5],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x32x8x8xf16, {order = #NHWC}>, tensor<16x32x5x5xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             return %1, %3, %5 : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
         }
@@ -1269,7 +1269,7 @@ llvm::StringLiteral mixedSubgraph0 = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %3 = VPU.Concat(%0, %1) {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]}:
                     tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>
@@ -1289,7 +1289,7 @@ llvm::StringLiteral mixedSubgraph0 = R"(
                 pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                 rawFilterShape = [16, 32, 5, 5],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8xf16, {order = #NHWC}>
+                    : tensor<1x32x8x8xf16, {order = #NHWC}>, tensor<16x32x5x5xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8xf16, {order = #NHWC}>
 
             %6 = VPU.NCE.Eltwise(%3, %4) {
                 multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -1354,7 +1354,7 @@ llvm::StringLiteral mixedSubgraph1 = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8x!qElemType2, {order = #NHWC}>
+                    : tensor<1x16x8x8x!qElemType, {order = #NHWC}>, tensor<16x16x3x3x!qElemType1, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8x!qElemType2, {order = #NHWC}>
 
             %3 = VPU.QuantizeCast(%0) {dstElemType = !qElemType2}
                 : tensor<1x16x8x8x!qElemType, {order = #NHWC}> -> tensor<1x16x8x8x!qElemType2, {order = #NHWC}>
@@ -1365,7 +1365,7 @@ llvm::StringLiteral mixedSubgraph1 = R"(
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8x!qElemType3, {order = #NHWC}>
+                    : tensor<1x16x8x8x!qElemType2, {order = #NHWC}>, tensor<16x16x3x3x!qElemType1, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8x!qElemType3, {order = #NHWC}>
 
             %5 = VPU.NCE.Eltwise(%1, %3) {
                 multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -1383,7 +1383,7 @@ llvm::StringLiteral mixedSubgraph1 = R"(
                 pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>,
                 rawFilterShape = [16, 32, 5, 5],
                 strides = [1, 1]}
-                    -> tensor<1x16x8x8x!qElemType3, {order = #NHWC}>
+                    : tensor<1x32x8x8x!qElemType2, {order = #NHWC}>, tensor<16x32x5x5x!qElemType1, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x8x8x!qElemType3, {order = #NHWC}>
 
             return %4, %5, %7 : tensor<1x16x8x8x!qElemType3, {order = #NHWC}>, tensor<1x16x8x8x!qElemType2, {order = #NHWC}>, tensor<1x16x8x8x!qElemType3, {order = #NHWC}>
         }

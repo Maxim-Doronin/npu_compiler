@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -59,7 +59,7 @@ std::vector<DimType> generateStaticDims(const BoundedDim& dimInfo) {
     if (dimInfo.dim != -1) {
         return {dimInfo.dim};
     } else {
-        std::set<DimType> values{1, dimInfo.bound / 2, dimInfo.bound};
+        std::set<DimType> values{1, (dimInfo.bound + 1) / 2, dimInfo.bound};
         return std::vector<DimType>(values.begin(), values.end());
     }
 }

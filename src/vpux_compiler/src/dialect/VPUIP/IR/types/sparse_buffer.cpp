@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -144,13 +144,13 @@ mlir::LogicalResult VPUIP::SparseBufferType::verify(llvm::function_ref<::mlir::I
                                                     mlir::UnitAttr isWeights,
                                                     VPUIP::SparsityCompressionAttr sparsityCompression,
                                                     VPU::SEAttr seAttribute) {
-    if (!data.isa<mlir::MemRefType, VPUIP::DistributedBufferType>()) {
+    if (!mlir::isa<mlir::MemRefType, vpux::VPUIP::DistributedBufferType>(data)) {
         return printTo(emitError(), "Data type is not a memref or distributed buffer. Got {0}", data);
     }
-    if (sparsityMap != nullptr && !sparsityMap.isa<mlir::MemRefType, VPUIP::DistributedBufferType>()) {
+    if (sparsityMap != nullptr && !mlir::isa<mlir::MemRefType, vpux::VPUIP::DistributedBufferType>(sparsityMap)) {
         return printTo(emitError(), "Sparsity map type is not a memref or distributed buffer. Got {0}", sparsityMap);
     }
-    if (seTable != nullptr && !seTable.isa<mlir::MemRefType, VPUIP::DistributedBufferType>()) {
+    if (seTable != nullptr && !mlir::isa<mlir::MemRefType, vpux::VPUIP::DistributedBufferType>(seTable)) {
         return printTo(emitError(), "Storage element table type is not a memref or distributed buffer. Got {0}",
                        seTable);
     }
@@ -158,12 +158,12 @@ mlir::LogicalResult VPUIP::SparseBufferType::verify(llvm::function_ref<::mlir::I
         return printTo(emitError(),
                        "SEAttr and (isWeights or SparsityCompressionAttr) cannot be present at the same time.");
     }
-    if (data.isa<VPUIP::DistributedBufferType>()) {
-        if (sparsityMap != nullptr && !sparsityMap.isa<VPUIP::DistributedBufferType>()) {
+    if (mlir::isa<vpux::VPUIP::DistributedBufferType>(data)) {
+        if (sparsityMap != nullptr && !mlir::isa<vpux::VPUIP::DistributedBufferType>(sparsityMap)) {
             return printTo(emitError(), "Sparsity map of type {0} is not a distributed buffer while data is",
                            sparsityMap);
         }
-        if (seTable != nullptr && !seTable.isa<VPUIP::DistributedBufferType>()) {
+        if (seTable != nullptr && !mlir::isa<vpux::VPUIP::DistributedBufferType>(seTable)) {
             return printTo(emitError(), "Storage element table of type {0} is not a distributed buffer while data is",
                            seTable);
         }
@@ -187,12 +187,12 @@ MemShape VPUIP::SparseBufferType::getMemShape() const {
 }
 
 bool VPUIP::SparseBufferType::hasRank() const {
-    const auto data = getData().cast<NDTypeInterface>();
+    const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     return data.hasRank();
 }
 
 int64_t VPUIP::SparseBufferType::getRank() const {
-    const auto data = getData().cast<NDTypeInterface>();
+    const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     return data.getRank();
 }
 
@@ -210,22 +210,22 @@ mlir::Type VPUIP::SparseBufferType::getElementType() const {
 }
 
 DimsOrder VPUIP::SparseBufferType::getDimsOrder() const {
-    const auto data = getData().cast<NDTypeInterface>();
+    const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     return data.getDimsOrder();
 }
 
 IndexedSymbolAttr VPUIP::SparseBufferType::getMemSpace() const {
-    const auto data = getData().cast<NDTypeInterface>();
+    const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     return data.getMemSpace();
 }
 
 VPU::MemoryKind VPUIP::SparseBufferType::getMemoryKind() const {
-    const auto data = getData().cast<NDTypeInterface>();
+    const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     return data.getMemoryKind();
 }
 
 Strides VPUIP::SparseBufferType::getStrides() const {
-    auto data = getData().cast<NDTypeInterface>();
+    auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     if (getSeAttr() != nullptr) {
         // If SEAttr is set then return effective shape, srides are compact
         data = mlir::cast<NDTypeInterface>(VPU::getEffectiveSparseOutputType(*this));
@@ -234,7 +234,7 @@ Strides VPUIP::SparseBufferType::getStrides() const {
 }
 
 MemStrides VPUIP::SparseBufferType::getMemStrides() const {
-    auto data = getData().cast<NDTypeInterface>();
+    auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     if (getSeAttr() != nullptr) {
         // If SEAttr is set then return effective shape, srides are compact
         data = mlir::cast<NDTypeInterface>(VPU::getEffectiveSparseOutputType(*this));
@@ -243,7 +243,7 @@ MemStrides VPUIP::SparseBufferType::getMemStrides() const {
 }
 
 Bit VPUIP::SparseBufferType::getElemTypeSize() const {
-    const auto data = getData().cast<NDTypeInterface>();
+    const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
     return data.getElemTypeSize();
 }
 
@@ -252,15 +252,15 @@ Byte VPUIP::SparseBufferType::getTotalAllocSize() const {
     if (getSparsityCompression() != nullptr) {
         totalSize = getSparsityCompression().getAllocSize(getElementType());
     } else {
-        const auto data = getData().cast<NDTypeInterface>();
+        const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
         totalSize = data.getTotalAllocSize();
     }
     if (getSparsityMap() != nullptr) {
-        const auto sparsityMap = getSparsityMap().cast<NDTypeInterface>();
+        const auto sparsityMap = mlir::cast<vpux::NDTypeInterface>(getSparsityMap());
         totalSize += sparsityMap.getTotalAllocSize();
     }
     if (getStorageElementTable() != nullptr) {
-        const auto storageElementTable = getStorageElementTable().cast<NDTypeInterface>();
+        const auto storageElementTable = mlir::cast<vpux::NDTypeInterface>(getStorageElementTable());
         totalSize += storageElementTable.getTotalAllocSize();
     }
     return totalSize;
@@ -271,15 +271,15 @@ Byte VPUIP::SparseBufferType::getCompactAllocSize() const {
     if (getSparsityCompression() != nullptr) {
         compactSize = getSparsityCompression().getAllocSize(getElementType());
     } else {
-        const auto data = getData().cast<NDTypeInterface>();
+        const auto data = mlir::cast<vpux::NDTypeInterface>(getData());
         compactSize = data.getTotalAllocSize();
     }
     if (getSparsityMap() != nullptr) {
-        const auto sparsityMap = getSparsityMap().cast<NDTypeInterface>();
+        const auto sparsityMap = mlir::cast<vpux::NDTypeInterface>(getSparsityMap());
         compactSize += sparsityMap.getCompactAllocSize();
     }
     if (getStorageElementTable() != nullptr) {
-        const auto storageElementTable = getStorageElementTable().cast<NDTypeInterface>();
+        const auto storageElementTable = mlir::cast<vpux::NDTypeInterface>(getStorageElementTable());
         compactSize += storageElementTable.getCompactAllocSize();
     }
     return compactSize;
@@ -290,14 +290,14 @@ NDTypeInterface VPUIP::SparseBufferType::changeShape(ShapeRef shape) const {
 }
 
 NDTypeInterface VPUIP::SparseBufferType::changeElemType(mlir::Type elemType) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     const auto data = ndData.changeElemType(elemType);
     return VPUIP::SparseBufferType::get(data, getSparsityMap(), getStorageElementTable(), getIsWeights(),
                                         getSparsityCompression(), getSeAttr());
 }
 
 NDTypeInterface VPUIP::SparseBufferType::changeShapeElemType(ShapeRef shape, mlir::Type elemType) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     Shape inputDataShape(shape.toValues());
     if (auto seAttr = getSeAttr()) {
         inputDataShape = seAttr.backInferInputShape(shape);
@@ -306,7 +306,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeShapeElemType(ShapeRef shape, mli
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         if (getIsWeights() != nullptr) {
             auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(shape);
             sparsityMap = ndSparsityMap.changeShape(newSMShape);
@@ -317,7 +317,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeShapeElemType(ShapeRef shape, mli
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         auto seTableShape = Shape(ndStorageElementTable.getShape().raw());
         seTableShape[Dims4D::Act::H] = shape[Dims4D::Act::H];
         seTableShape[Dims4D::Act::W] = shape[Dims4D::Act::W];
@@ -329,12 +329,12 @@ NDTypeInterface VPUIP::SparseBufferType::changeShapeElemType(ShapeRef shape, mli
 }
 
 NDTypeInterface VPUIP::SparseBufferType::changeDimsOrder(DimsOrder order) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     const auto data = ndData.changeDimsOrder(order);
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         if (getIsWeights() == nullptr) {
             sparsityMap = ndSparsityMap.changeDimsOrder(order);
         }
@@ -348,18 +348,18 @@ NDTypeInterface VPUIP::SparseBufferType::changeDimsOrder(DimsOrder order) const 
 }
 
 NDTypeInterface VPUIP::SparseBufferType::changeMemSpace(IndexedSymbolAttr memSpace) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     const auto data = ndData.changeMemSpace(memSpace);
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         sparsityMap = ndSparsityMap.changeMemSpace(memSpace);
     }
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         storageElementTable = ndStorageElementTable.changeMemSpace(memSpace);
     }
 
@@ -368,7 +368,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeMemSpace(IndexedSymbolAttr memSpa
 }
 
 NDTypeInterface VPUIP::SparseBufferType::changeStrides(StridesRef strides) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     auto data = ndData;
     if (getSeAttr() != nullptr) {
         // If SEAttr is set then this method works with effective data and it does not support
@@ -389,7 +389,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeTypeComponents(const vpux::TypeCo
     const auto shape = typeComponents.shape.value_or(Shape(getShape().toValues()));
     const auto dimsOrder = typeComponents.dimsOrder.value_or(getDimsOrder());
     const auto memSpace = typeComponents.memSpace.value_or(getMemSpace());
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
 
     Shape newInputDataShape(shape);
     if (auto seAttr = getSeAttr()) {
@@ -400,7 +400,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeTypeComponents(const vpux::TypeCo
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         auto smTypeComponents = TypeComponents().setMemSpace(memSpace);
 
         if (getIsWeights() == nullptr) {
@@ -414,7 +414,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeTypeComponents(const vpux::TypeCo
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
 
         auto seTableShape = Shape(ndStorageElementTable.getShape().raw());
         seTableShape[Dims4D::Act::H] = shape[Dims4D::Act::H];
@@ -429,7 +429,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeTypeComponents(const vpux::TypeCo
 }
 
 NDTypeInterface VPUIP::SparseBufferType::extractDenseTile(ShapeRef tileOffsets, ShapeRef tileShape) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     Shape inputTileShape(tileShape.raw());
     Shape inputTileStart(tileOffsets.raw());
     auto seAttr = getSeAttr();
@@ -440,7 +440,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractDenseTile(ShapeRef tileOffsets, 
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         if (getIsWeights() != nullptr) {
             auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(tileShape);
             sparsityMap = ndSparsityMap.changeShape(newSMShape);
@@ -451,13 +451,20 @@ NDTypeInterface VPUIP::SparseBufferType::extractDenseTile(ShapeRef tileOffsets, 
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         auto seTableTileOffsets = Shape(tileOffsets.size(), 0);
         seTableTileOffsets[Dims4D::Act::H] = tileOffsets[Dims4D::Act::H];
         seTableTileOffsets[Dims4D::Act::W] = tileOffsets[Dims4D::Act::W];
         auto seTableTileShape = Shape(ndStorageElementTable.getShape().raw());
         seTableTileShape[Dims4D::Act::H] = tileShape[Dims4D::Act::H];
         seTableTileShape[Dims4D::Act::W] = tileShape[Dims4D::Act::W];
+
+        if (seTableTileShape[Dims4D::Act::C] != 1 && seTableTileShape[Dims4D::Act::C] != tileShape[Dims4D::Act::C]) {
+            const auto seSize = ndData.getShape()[Dims4D::Act::C] / seTableTileShape[Dims4D::Act::C];
+            seTableTileOffsets[Dims4D::Act::C] = tileOffsets[Dims4D::Act::C] / seSize;
+            seTableTileShape[Dims4D::Act::C] = tileShape[Dims4D::Act::C] / seSize;
+        }
+
         storageElementTable = ndStorageElementTable.extractDenseTile(seTableTileOffsets, seTableTileShape);
     }
 
@@ -469,7 +476,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractDenseTile(ShapeRef tileOffsets, 
 
 NDTypeInterface VPUIP::SparseBufferType::extractViewTile(ShapeRef tileOffsets, ShapeRef tileShape,
                                                          ShapeRef tileElemStrides) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     Shape inputTileShape(tileShape.raw());
     Shape inputTileStart(tileOffsets.raw());
     auto seAttr = getSeAttr();
@@ -486,7 +493,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractViewTile(ShapeRef tileOffsets, S
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         if (getIsWeights() != nullptr) {
             auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(tileShape);
             sparsityMap = ndSparsityMap.changeShape(newSMShape);
@@ -497,7 +504,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractViewTile(ShapeRef tileOffsets, S
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         auto seTableTileOffsets = Shape(tileOffsets.size(), 0);
         seTableTileOffsets[Dims4D::Act::H] = tileOffsets[Dims4D::Act::H];
         seTableTileOffsets[Dims4D::Act::W] = tileOffsets[Dims4D::Act::W];
@@ -514,18 +521,18 @@ NDTypeInterface VPUIP::SparseBufferType::extractViewTile(ShapeRef tileOffsets, S
 }
 
 NDTypeInterface VPUIP::SparseBufferType::eraseTiledInfo() const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     const auto data = ndData.eraseTiledInfo();
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         sparsityMap = ndSparsityMap.eraseTiledInfo();
     }
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         storageElementTable = ndStorageElementTable.eraseTiledInfo();
     }
 
@@ -534,7 +541,7 @@ NDTypeInterface VPUIP::SparseBufferType::eraseTiledInfo() const {
 }
 
 NDTypeInterface VPUIP::SparseBufferType::pad(ShapeRef padBefore, ShapeRef padAfter) const {
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
     auto data = ndData.pad(padBefore, padAfter);
 
     Shape paddedOutputShape(data.getShape().toValues());
@@ -545,7 +552,7 @@ NDTypeInterface VPUIP::SparseBufferType::pad(ShapeRef padBefore, ShapeRef padAft
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto ndSparsityMap = sparsityMap.cast<NDTypeInterface>();
+        const auto ndSparsityMap = mlir::cast<vpux::NDTypeInterface>(sparsityMap);
         if (getIsWeights() != nullptr) {
             auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(paddedOutputShape);
             sparsityMap = ndSparsityMap.changeShape(newSMShape);
@@ -556,7 +563,7 @@ NDTypeInterface VPUIP::SparseBufferType::pad(ShapeRef padBefore, ShapeRef padAft
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         auto seTableShape = Shape(ndStorageElementTable.getShape().raw());
         seTableShape[Dims4D::Act::H] = paddedOutputShape[Dims4D::Act::H];
         seTableShape[Dims4D::Act::W] = paddedOutputShape[Dims4D::Act::W];
@@ -573,18 +580,19 @@ NDTypeInterface VPUIP::SparseBufferType::pad(ShapeRef padBefore, ShapeRef padAft
 
 bool VPUIP::SparseBufferType::containsDistributedTypes() const {
     // If the data is a distributed type, the metadata will be as well
-    return getData().isa<VPUIP::DistributedBufferType>();
+    return mlir::isa<vpux::VPUIP::DistributedBufferType>(getData());
 }
 
 SmallVector<mlir::Type> VPUIP::SparseBufferType::getDistributedTypes() const {
     SmallVector<mlir::Type> distributedTypes;
-    if (getData().isa<VPUIP::DistributedBufferType>()) {
+    if (mlir::isa<vpux::VPUIP::DistributedBufferType>(getData())) {
         distributedTypes.push_back(getData());
     }
-    if (getSparsityMap() != nullptr && getSparsityMap().isa<VPUIP::DistributedBufferType>()) {
+    if (getSparsityMap() != nullptr && mlir::isa<vpux::VPUIP::DistributedBufferType>(getSparsityMap())) {
         distributedTypes.push_back(getSparsityMap());
     }
-    if (getStorageElementTable() != nullptr && getStorageElementTable().isa<VPUIP::DistributedBufferType>()) {
+    if (getStorageElementTable() != nullptr &&
+        mlir::isa<vpux::VPUIP::DistributedBufferType>(getStorageElementTable())) {
         distributedTypes.push_back(getStorageElementTable());
     }
     return distributedTypes;
@@ -603,7 +611,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeShapeForExplicitDistribution(
 // for its components, based on the one that was passed as an arg.
 NDTypeInterface VPUIP::SparseBufferType::changeShapeElemTypeForExplicitDistribution(
         ShapeRef shape, mlir::Type elemType, VPU::DistributionInfoAttr distributedAttr) const {
-    const auto distributedData = getData().dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distributedData = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(getData());
     VPUX_THROW_WHEN(distributedData == nullptr,
                     "Calling changeShapeElemTypeForExplicitDistribution on SparseBuffer that does not have "
                     "DistributedBuffer data, {0}",
@@ -621,7 +629,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeShapeElemTypeForExplicitDistribut
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto distributedSparsityMap = sparsityMap.dyn_cast<VPUIP::DistributedBufferType>();
+        const auto distributedSparsityMap = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(sparsityMap);
         VPUX_THROW_WHEN(distributedSparsityMap == nullptr,
                         "Calling changeShapeElemTypeForExplicitDistribution on SparseBuffer that does not have "
                         "DistributedBuffer sparsity map, {0}",
@@ -639,7 +647,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeShapeElemTypeForExplicitDistribut
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto distributedSETable = storageElementTable.dyn_cast<VPUIP::DistributedBufferType>();
+        const auto distributedSETable = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(storageElementTable);
         VPUX_THROW_WHEN(distributedSETable == nullptr,
                         "Calling changeShapeElemTypeForExplicitDistribution on SparseBuffer that does not have "
                         "DistributedBuffer Storage Element Table, {0}",
@@ -690,13 +698,13 @@ NDTypeInterface VPUIP::SparseBufferType::changeTypeComponentsForExplicitDistribu
             VPU::getExplicitDistrAttrForSparseData(distributedAttr, newInputDataShape, getSeAttr(), ctx);
 
     TypeComponents dataTypeComponents(typeComponents);
-    const auto clusteredData = getData().cast<ClusterTypeInterface>();
+    const auto clusteredData = mlir::cast<vpux::ClusterTypeInterface>(getData());
     const auto newData = clusteredData.changeTypeComponentsForExplicitDistribution(
             dataTypeComponents.setShape(newInputDataShape), dataDistributedAttr);
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto clusteredSparsityMap = sparsityMap.cast<ClusterTypeInterface>();
+        const auto clusteredSparsityMap = mlir::cast<vpux::ClusterTypeInterface>(sparsityMap);
         auto smTypeComponents = TypeComponents().setMemSpace(memSpace);
 
         if (getIsWeights() == nullptr) {
@@ -714,7 +722,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeTypeComponentsForExplicitDistribu
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         auto seTableShape = Shape(ndStorageElementTable.getShape().raw());
         seTableShape[Dims4D::Act::H] = shape[Dims4D::Act::H];
         seTableShape[Dims4D::Act::W] = shape[Dims4D::Act::W];
@@ -729,7 +737,7 @@ NDTypeInterface VPUIP::SparseBufferType::changeTypeComponentsForExplicitDistribu
 
         auto seTableDistributedAttr = VPU::getExplicitDistrAttrForSETable(distributedAttr, newSeSize, ctx);
 
-        const auto clusterSETable = storageElementTable.cast<ClusterTypeInterface>();
+        const auto clusterSETable = mlir::cast<vpux::ClusterTypeInterface>(storageElementTable);
         const auto SETComponents = TypeComponents().setShape(seTableShape).setMemSpace(memSpace);
         storageElementTable =
                 clusterSETable.changeTypeComponentsForExplicitDistribution(SETComponents, seTableDistributedAttr);
@@ -750,7 +758,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractDenseTileForExplicitDistribution
 
     auto ctx = getContext();
 
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
 
     Shape inputTileShape(tileShape.raw());
     Shape inputTileStart(tileOffsets.raw());
@@ -761,12 +769,12 @@ NDTypeInterface VPUIP::SparseBufferType::extractDenseTileForExplicitDistribution
 
     auto dataDistributedAttr = VPU::getExplicitDistrAttrForSparseData(distributedAttr, inputTileShape, seAttr, ctx);
 
-    const auto data = ndData.cast<ClusterTypeInterface>().extractDenseTileForExplicitDistribution(
+    const auto data = mlir::cast<vpux::ClusterTypeInterface>(ndData).extractDenseTileForExplicitDistribution(
             inputTileStart, inputTileShape, dataDistributedAttr);
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto clusteredSparsityMap = sparsityMap.cast<ClusterTypeInterface>();
+        const auto clusteredSparsityMap = mlir::cast<vpux::ClusterTypeInterface>(sparsityMap);
 
         if (getIsWeights() != nullptr) {
             auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(tileShape);
@@ -785,7 +793,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractDenseTileForExplicitDistribution
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
 
         auto seTableTileOffsets = Shape(tileOffsets.size(), 0);
         seTableTileOffsets[Dims4D::Act::H] = tileOffsets[Dims4D::Act::H];
@@ -804,9 +812,9 @@ NDTypeInterface VPUIP::SparseBufferType::extractDenseTileForExplicitDistribution
 
         auto seTableDistributedAttr = VPU::getExplicitDistrAttrForSETable(distributedAttr, newSeSize, ctx);
 
-        storageElementTable =
-                ndStorageElementTable.cast<ClusterTypeInterface>().extractDenseTileForExplicitDistribution(
-                        seTableTileOffsets, seTableTileShape, seTableDistributedAttr);
+        storageElementTable = mlir::cast<vpux::ClusterTypeInterface>(ndStorageElementTable)
+                                      .extractDenseTileForExplicitDistribution(seTableTileOffsets, seTableTileShape,
+                                                                               seTableDistributedAttr);
     }
 
     const auto sparsityCompression = VPUIP::tileSparsityCompression(getSparsityCompression(), tileOffsets, tileShape);
@@ -823,7 +831,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractViewTileForExplicitDistribution(
     }
 
     auto ctx = getContext();
-    const auto ndData = getData().cast<NDTypeInterface>();
+    const auto ndData = mlir::cast<vpux::NDTypeInterface>(getData());
 
     Shape inputTileShape(tileShape.raw());
     Shape inputTileStart(tileOffsets.raw());
@@ -840,12 +848,12 @@ NDTypeInterface VPUIP::SparseBufferType::extractViewTileForExplicitDistribution(
 
     auto dataDistributedAttr = VPU::getExplicitDistrAttrForSparseData(distributedAttr, inputTileShape, seAttr, ctx);
 
-    const auto data = ndData.cast<ClusterTypeInterface>().extractViewTileForExplicitDistribution(
+    const auto data = mlir::cast<vpux::ClusterTypeInterface>(ndData).extractViewTileForExplicitDistribution(
             inputTileStart, inputTileShape, tileElemStrides, dataDistributedAttr);
 
     auto sparsityMap = getSparsityMap();
     if (sparsityMap != nullptr) {
-        const auto clusteredSparsityMap = sparsityMap.cast<ClusterTypeInterface>();
+        const auto clusteredSparsityMap = mlir::cast<vpux::ClusterTypeInterface>(sparsityMap);
 
         if (getIsWeights() != nullptr) {
             auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(tileShape);
@@ -863,7 +871,7 @@ NDTypeInterface VPUIP::SparseBufferType::extractViewTileForExplicitDistribution(
 
     auto storageElementTable = getStorageElementTable();
     if (storageElementTable != nullptr) {
-        const auto ndStorageElementTable = storageElementTable.cast<NDTypeInterface>();
+        const auto ndStorageElementTable = mlir::cast<vpux::NDTypeInterface>(storageElementTable);
         auto seTableTileOffsets = Shape(tileOffsets.size(), 0);
         seTableTileOffsets[Dims4D::Act::H] = tileOffsets[Dims4D::Act::H];
         seTableTileOffsets[Dims4D::Act::W] = tileOffsets[Dims4D::Act::W];
@@ -881,9 +889,9 @@ NDTypeInterface VPUIP::SparseBufferType::extractViewTileForExplicitDistribution(
 
         auto seTableDistributedAttr = VPU::getExplicitDistrAttrForSETable(distributedAttr, newSeSize, ctx);
 
-        storageElementTable =
-                ndStorageElementTable.cast<ClusterTypeInterface>().extractDenseTileForExplicitDistribution(
-                        seTableTileOffsets, seTableTileShape, seTableDistributedAttr);
+        storageElementTable = mlir::cast<vpux::ClusterTypeInterface>(ndStorageElementTable)
+                                      .extractDenseTileForExplicitDistribution(seTableTileOffsets, seTableTileShape,
+                                                                               seTableDistributedAttr);
     }
 
     const auto sparsityCompression = VPUIP::tileSparsityCompression(getSparsityCompression(), tileOffsets, tileShape);

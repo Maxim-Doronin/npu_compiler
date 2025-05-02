@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -344,7 +344,7 @@ def SwapMaxPoolWithActivation : PassBase<"swap-maxpool-with-act", "vpux::Functio
     let summary = "Swaps the MaxPool and activation";
 
     let description = [{
-        This pass is needed for NPU37XX only since HW MaxPool does not support post-op operations.
+        This pass is needed for VPUX37XX only since HW MaxPool does not support post-op operations.
         Operations are swapped only if there is an operation before MaxPool that supports post-ops.
     }];
 

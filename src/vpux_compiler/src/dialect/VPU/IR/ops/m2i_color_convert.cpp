@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -35,8 +35,8 @@ bool vpux::VPU::M2IColorConvertOp::fitIntoCMX(mlir::Operation* op, vpux::NDTypeI
 
 bool vpux::VPU::M2IColorConvertOp::isSupported(IE::YuvToRgbOp op, LogCb logCb, bool /*checkLayout*/,
                                                bool /*checkChannelAlignment*/) {
-    const auto inType = op.getInput1().getType().cast<vpux::NDTypeInterface>();
-    const auto outType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     if (!fitIntoCMX(op, inType, outType)) {
         logCb(llvm::formatv("Op doesn't fit into CMX memory"));
@@ -79,7 +79,7 @@ mlir::LogicalResult vpux::VPU::M2IColorConvertOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     const auto inShape = inType.getShape().raw();
 
     // Y,UV (1 or 2 plane configs) are exected to have C = 1

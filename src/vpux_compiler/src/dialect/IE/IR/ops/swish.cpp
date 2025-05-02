@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,7 +21,7 @@ mlir::LogicalResult vpux::IE::SwishOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = swish.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(swish.getInput().getType());
 
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 

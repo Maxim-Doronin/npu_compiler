@@ -1,15 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-
 #include <mlir/IR/Operation.h>
 #include <mlir/Support/LogicalResult.h>
+#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 
 namespace vpux {
 namespace VPUIP {
@@ -95,6 +95,10 @@ public:
 
 public:
     static mlir::LogicalResult isSupported(mlir::Operation* origOp, Logger log = Logger::global());
+
+    static SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getNCEOpsRequiredOperandsForPipelining(
+            mlir::Operation* op, const OutputTiling& tiling);
+    static int64_t getNCEOpsRequiredChannelSizeForPipelining(mlir::Operation* op, const OutputTiling& tiling);
 };
 
 }  // namespace VPUIP

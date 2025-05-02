@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 //
@@ -24,7 +24,7 @@ constexpr llvm::StringLiteral inputValidIR = R"(
         #loc1 = loc("data")
         #loc9 = loc(fused<{name = "data", type = "Parameter"}>[#loc1])
         module @age_gender {
-        IE.CNNNetwork entryPoint : @main inputsInfo : {
+        net.NetworkInfo entryPoint : @main inputsInfo : {
             DataInfo "data" : tensor<1x3x62x62xf32> loc(#loc9)
         } outputsInfo : {
             DataInfo "prob" : tensor<1x48x60x60xf32> loc(#loc10)
@@ -61,7 +61,7 @@ constexpr llvm::StringLiteral inputMalformedIR = R"(
         #loc1 = loc("data")
         #loc9 = loc(fused<{name = "data", type = "Parameter"}>[#loc1])
         module @age_gender {
-            IE.CNNNetwork entryPoint : @main
+            net.NetworkInfo entryPoint : @main
             inputsInfo : {
                 DataInfo "data" : tensor<1x3x62x62xf32> loc(#loc9)
             } outputsInfo : {
@@ -102,7 +102,7 @@ constexpr llvm::StringLiteral inputMalformedTwoFunctionsIR = R"(
         #loc2 = loc(fused<{name = "data", type = "Parameter"}>[#loc1])
         #loc3 = loc(fused<{name = "prob", type = "Result"}>[#loc1])
         module @TwoFunctions attributes {IE.LocationsVerificationMode = "full"} {
-          IE.CNNNetwork entryPoint : @main inputsInfo : {
+          net.NetworkInfo entryPoint : @main inputsInfo : {
             DataInfo "input" : tensor<1x48x60x60xf32> loc(#loc2)
           } outputsInfo : {
             DataInfo "output" : tensor<1x48x60x60xf16> loc(#loc3)

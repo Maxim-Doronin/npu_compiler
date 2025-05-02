@@ -10,7 +10,7 @@
 module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @race_condition_dma_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @race_condition_dma_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x16x16x16xf16>
@@ -28,22 +28,22 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
       VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x16x16x16xf16, #NHWC, @DDR> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer1 !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x16x16x16xf16, #NHWC, @DDR> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer2 !VPUASM.Buffer< "NetworkOutput"[1] <0> : memref<1x16x16x16xf16, #NHWC, @DDR> :  swizzling(0)>
-      ELF.CreateLogicalSection @builtin.tasks.DMA0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) {
+      ELF.CreateLogicalSection @builtin.tasks.DMA0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0 idx(!VPURegMapped.Index<0:0:0>) <DMA>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_1 idx(!VPURegMapped.Index<0:0:1>) <DMA>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_2 idx(!VPURegMapped.Index<0:0:2>) <DMA>
       }
-      ELF.CreateLogicalSection @builtin.data.nncmx0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) {
+      ELF.CreateLogicalSection @builtin.data.nncmx0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
         VPUASM.DeclareBuffer @DeclareBuffer3 !VPUASM.Buffer< "CMX_NN"[0] <16> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
       }
-      ELF.CreateLogicalSection @builtin.data.nncmx1 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) {
+      ELF.CreateLogicalSection @builtin.data.nncmx1 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
         VPUASM.DeclareBuffer @DeclareBuffer4 !VPUASM.Buffer< "CMX_NN"[1] <32> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 1]> :  swizzling(0)>
       }
-      ELF.CreateSection @text.Barriers aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+      ELF.CreateSection @text.Barriers aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
         VPUASM.ConfigureBarrier @ConfigureBarrier0 idx(!VPURegMapped.Index<0:0:0>) (0) => (-1) counts(2 : 2)
         VPUASM.ConfigureBarrier @ConfigureBarrier1 idx(!VPURegMapped.Index<0:0:1>) (1) => (-1) counts(2 : 2)
       }
-      ELF.CreateSection @text.nndma0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {
+      ELF.CreateSection @text.nndma0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
         VPUASM.NNDMA @NNDMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>) taskLocation(@builtin.tasks.DMA0::@DeclareTaskBuffer_DMA_0) links(@builtin.tasks.DMA0::@DeclareTaskBuffer_DMA_1) input(@DeclareBuffer0) outputs([@builtin.data.nncmx0::@DeclareBuffer3]) waits([]) updates([0 : ui8]) start_after(0) clean_after(0)  dma_descriptor(#VPUIP.DMADescriptorAttr<numPlanes = 0 : i32, len = 8192 : i32, srcWidth = 8192 : i32, srcStride = 8192 : i32, srcPlaneStride = 0 : i32, dstWidth = 8192 : i32, dstStride = 8192 : i32, dstPlaneStride = 0 : i32>) acceleration_mode(<DISABLE>)
         // CHECK-NOT:   VPUASM.NNDMA
         // CHECK:       NPUReg40XX.NNDMA

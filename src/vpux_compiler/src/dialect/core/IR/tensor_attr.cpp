@@ -1,21 +1,27 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
+
+#include <utility>
 
 using namespace vpux;
 
 constexpr StringLiteral orderName = "order";
 constexpr StringLiteral memSpaceName = "mem_space";
 constexpr StringLiteral boundsName = "bounds";
+constexpr StringLiteral dynamicDimsMaskName = "dynamic_dims_mask";
 
 template <class T>
 bool checkAttr(mlir::DictionaryAttr derived, StringRef attrName, int& numAbsentAttrs) {
@@ -46,15 +52,28 @@ bool vpux::TensorAttr::classof(mlir::Attribute attr) {
     if (!checkAttr<vpux::IndexedSymbolAttr>(derived, memSpaceName, numAbsentAttrs)) {
         return false;
     }
-    if (!checkAttr<mlir::ArrayAttr>(derived, boundsName, numAbsentAttrs)) {
+    if (!checkAttr<Const::OpaqueI64ElementsAttr>(derived, boundsName, numAbsentAttrs)) {
+        return false;
+    }
+    if (!checkAttr<Const::OpaqueI64ElementsAttr>(derived, dynamicDimsMaskName, numAbsentAttrs)) {
         return false;
     }
 
-    return (derived.size() + numAbsentAttrs) == 3;
+    return (derived.size() + numAbsentAttrs) == 4;
+}
+
+Const::OpaqueI64ElementsAttr createOpaqueI64ElementsAttr(mlir::MLIRContext* context, ArrayRef<int64_t> bounds) {
+    const auto elemType = mlir::IntegerType::get(context, 64, mlir::IntegerType::Signed);
+    const auto dataStorageType = mlir::RankedTensorType::get({checked_cast<int64_t>(bounds.size())}, elemType);
+    return Const::OpaqueI64ElementsAttr::get(dataStorageType, bounds);
 }
 
 TensorAttr vpux::TensorAttr::get(mlir::MLIRContext* context, mlir::AffineMapAttr order,
-                                 vpux::IndexedSymbolAttr memSpace, mlir::ArrayAttr bounds) {
+                                 vpux::IndexedSymbolAttr memSpace, Bounds bounds, DynamicDimsMask dynamicDimsMask) {
+    VPUX_THROW_WHEN(!bounds.empty() && !dynamicDimsMask.empty(),
+                    "Ambiguous tensor representation. Both Bounds {0} and DynamicDimsMask {1} were provided.", bounds,
+                    dynamicDimsMask);
+
     SmallVector<mlir::NamedAttribute> fields;
 
     if (order != nullptr) {
@@ -67,9 +86,27 @@ TensorAttr vpux::TensorAttr::get(mlir::MLIRContext* context, mlir::AffineMapAttr
         fields.emplace_back(memSpaceId, memSpace);
     }
 
-    if (bounds != nullptr) {
+    if (!bounds.empty()) {
         auto boundsId = mlir::StringAttr::get(context, boundsName);
-        fields.emplace_back(boundsId, bounds);
+        const auto opaqueAttr = createOpaqueI64ElementsAttr(context, bounds.raw());
+        fields.emplace_back(boundsId, opaqueAttr);
+    }
+
+    if (!dynamicDimsMask.empty()) {
+        bool onlyZeroOrOne = llvm::all_of(dynamicDimsMask, [](auto value) {
+            return value == 0 || value == 1;
+        });
+        VPUX_THROW_UNLESS(onlyZeroOrOne, "Dynamic dims mask must have only 0 or 1, got {0}", dynamicDimsMask);
+
+        bool allZeroes = llvm::all_of(dynamicDimsMask, [](auto value) {
+            return value == 0;
+        });
+        VPUX_THROW_UNLESS(!allZeroes, "Dynamic dims mask must contain 1's that represent dynamic dimensions, got {0}",
+                          dynamicDimsMask);
+
+        auto dynamicDimsMaskId = mlir::StringAttr::get(context, dynamicDimsMaskName);
+        const auto opaqueAttr = createOpaqueI64ElementsAttr(context, dynamicDimsMask.raw());
+        fields.emplace_back(dynamicDimsMaskId, opaqueAttr);
     }
 
     auto dict = mlir::DictionaryAttr::get(context, fields);
@@ -96,42 +133,56 @@ vpux::IndexedSymbolAttr TensorAttr::getMemSpace() const {
     return getAttr<vpux::IndexedSymbolAttr>(derived, memSpaceName);
 }
 
-mlir::ArrayAttr TensorAttr::getBounds() const {
+Bounds TensorAttr::getBounds() const {
     auto derived = this->cast<mlir::DictionaryAttr>();
-    return getAttr<mlir::ArrayAttr>(derived, boundsName);
+    auto bounds = getAttr<Const::OpaqueI64ElementsAttr>(derived, boundsName);
+    if (bounds != nullptr) {
+        return Bounds(bounds.getValue());
+    }
+
+    return Bounds();
+}
+
+DynamicDimsMask TensorAttr::getDynamicDimsMask() const {
+    auto derived = this->cast<mlir::DictionaryAttr>();
+    auto dynamicDimsMask = getAttr<Const::OpaqueI64ElementsAttr>(derived, dynamicDimsMaskName);
+    if (dynamicDimsMask != nullptr) {
+        return DynamicDimsMask(dynamicDimsMask.getValue());
+    }
+
+    return DynamicDimsMask();
 }
 
 //
 // Helpers
 //
 
-TensorAttr vpux::getTensorAttr(mlir::AffineMapAttr order, IndexedSymbolAttr memSpace, mlir::ArrayAttr bounds) {
+//
+// Default getTensorAttr
+//
+
+TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, mlir::AffineMapAttr order, IndexedSymbolAttr memSpace,
+                               Bounds bounds, DynamicDimsMask dynamicDimsMask) {
     // Initially, tensors do not have an encoding attribute, which is equivalent to an empty TensorAttr.
     // But in fact, such tensors have a different type: `tensor<1x8x4x2xf16> != tensor<1x8x4x2xf16, {}>`.
     // So let's not use empty attributes to avoid ambiguous representation of the same type.
-    if ((order == nullptr || order.getValue().isIdentity()) && memSpace == nullptr && bounds == nullptr) {
+    if ((order == nullptr || order.getValue().isIdentity()) && memSpace == nullptr && bounds.raw().empty() &&
+        dynamicDimsMask.raw().empty()) {
         return nullptr;
     }
 
-    mlir::MLIRContext* ctx;
-    if (order != nullptr) {
-        ctx = order.getContext();
-    } else if (memSpace != nullptr) {
-        ctx = memSpace.getContext();
-    } else {
-        ctx = bounds.getContext();
-    }
-
-    return TensorAttr::get(ctx, order, memSpace, bounds);
+    return TensorAttr::get(ctx, order, memSpace, std::move(bounds), std::move(dynamicDimsMask));
 }
 
-TensorAttr vpux::getTensorAttr(mlir::AffineMap order, IndexedSymbolAttr memSpace, mlir::ArrayAttr bounds) {
-    return vpux::getTensorAttr(mlir::AffineMapAttr::get(order), memSpace, bounds);
+TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, mlir::AffineMap order, IndexedSymbolAttr memSpace, Bounds bounds,
+                               DynamicDimsMask dynamicDimsMask) {
+    return vpux::getTensorAttr(ctx, mlir::AffineMapAttr::get(order), memSpace, std::move(bounds),
+                               std::move(dynamicDimsMask));
 }
 
-TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, DimsOrder order, IndexedSymbolAttr memSpace,
-                               mlir::ArrayAttr bounds) {
-    return vpux::getTensorAttr(order.toAffineMap(ctx), memSpace, bounds);
+TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, DimsOrder order, IndexedSymbolAttr memSpace, Bounds bounds,
+                               DynamicDimsMask dynamicDimsMask) {
+    return vpux::getTensorAttr(ctx, order.toAffineMap(ctx), memSpace, std::move(bounds), std::move(dynamicDimsMask));
 }
 
 TensorAttr vpux::getTensorAttr(mlir::RankedTensorType type) {
@@ -142,6 +193,17 @@ TensorAttr vpux::getTensorAttr(mlir::RankedTensorType type) {
     }
 
     return nullptr;
+}
+
+TensorAttr vpux::getTensorAttr(mlir::RankedTensorType type, mlir::AffineMap order, IndexedSymbolAttr memSpace,
+                               mlir::ArrayRef<int64_t> dynamicAttr) {
+    if (mlir::isa<Core::BoundedTensorType>(type)) {
+        return vpux::getTensorAttr(type.getContext(), order, memSpace, Bounds(dynamicAttr));
+    }
+    if (mlir::isa<Core::DynamicDimsMaskTensorType>(type)) {
+        return vpux::getTensorAttr(type.getContext(), order, memSpace, Bounds(), DynamicDimsMask(dynamicAttr));
+    }
+    return vpux::getTensorAttr(type.getContext(), order, memSpace);
 }
 
 mlir::AffineMap vpux::getOrder(mlir::RankedTensorType type) {
@@ -163,23 +225,18 @@ IndexedSymbolAttr vpux::getMemorySpace(mlir::RankedTensorType type) {
     return nullptr;
 }
 
-mlir::ArrayAttr vpux::getBounds(mlir::Value value) {
-    if (value == nullptr) {
-        return nullptr;
-    }
-
-    const auto type = value.getType();
-    if (const auto boundedType = mlir::dyn_cast_or_null<BoundedTypeInterface>(type)) {
+Bounds vpux::getBounds(mlir::Type type) {
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
         return boundedType.getBounds();
     }
 
-    return nullptr;
-}
+    return {};
+};
 
-mlir::ArrayAttr vpux::getBounds(mlir::RankedTensorType type) {
-    if (const auto desc = vpux::getTensorAttr(type)) {
-        return desc.getBounds();
+DynamicDimsMask vpux::getDynamicDimsMask(mlir::Type type) {
+    if (auto dynamicDimsMaskType = mlir::dyn_cast<Core::DynamicDimsMaskTensorType>(type)) {
+        return dynamicDimsMaskType.getDynamicDimsMask();
     }
 
-    return nullptr;
+    return {};
 }

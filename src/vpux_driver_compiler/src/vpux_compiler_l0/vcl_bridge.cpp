@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,7 +14,7 @@
 #include "vcl_profiling.hpp"
 #include "vcl_query_network.hpp"
 
-#include "intel_npu/config/compiler.hpp"
+#include "intel_npu/config/options.hpp"
 
 using namespace vpux;
 
@@ -46,10 +46,10 @@ DLLEXPORT vcl_result_t vclCompilerCreate(vcl_compiler_desc_t* compilerDesc, vcl_
     VPUXDriverCompiler::VCLLogger* vclLogger = nullptr;
     if (logHandle != nullptr) {
         /// Create logger which saves latest error messages, output other messages to terminal
-        vclLogger = new VPUXDriverCompiler::VCLLogger("VCL", LogLevel::Error, true);
+        vclLogger = new VPUXDriverCompiler::VCLLogger("NPU_VCL", LogLevel::Error, true);
     } else {
         /// Create logger which output all message to terminal
-        vclLogger = new VPUXDriverCompiler::VCLLogger("VCL", LogLevel::Error, false);
+        vclLogger = new VPUXDriverCompiler::VCLLogger("NPU_VCL", LogLevel::Error, false);
     }
 
     if (compiler == nullptr) {
@@ -71,7 +71,7 @@ DLLEXPORT vcl_result_t vclCompilerCreate(vcl_compiler_desc_t* compilerDesc, vcl_
         pCompiler = new VPUXDriverCompiler::VPUXCompilerL0(compilerDesc, deviceDesc, vclLogger);
         *compiler = reinterpret_cast<vcl_compiler_handle_t>(pCompiler);
     } catch (const std::exception& error) {
-        vclLogger->outputError(error.what());
+        vclLogger->outputError(formatv("Failed to create compiler:\n{0}", error.what()));
         delete vclLogger;
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     } catch (...) {
@@ -136,6 +136,7 @@ DLLEXPORT vcl_result_t VCL_APICALL vclQueryNetworkCreate(vcl_compiler_handle_t c
     pQueryNetwork = new VPUXDriverCompiler::VPUXQueryNetworkL0(vclLogger);
     ret = pCompiler->queryNetwork(buildInfo, pQueryNetwork);
     if (ret != VCL_RESULT_SUCCESS) {
+        vclLogger->outputError("Failed to query network!");
         return ret;
     }
 
@@ -277,7 +278,7 @@ DLLEXPORT vcl_result_t vclAllocatedExecutableCreate(vcl_compiler_handle_t compil
         blobResult = result.compiledNetwork.ptr;
         sizeResult = result.compiledNetwork.size;
     } catch (const std::exception& error) {
-        vclLogger->outputError(error.what());
+        vclLogger->outputError(formatv("Compiler returned msg:\n{0}", error.what()));
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     } catch (...) {
         vclLogger->outputError("Internal exception! Can't compile model!");
@@ -343,10 +344,10 @@ DLLEXPORT vcl_result_t VCL_APICALL vclProfilingCreate(p_vcl_profiling_input_t pr
     VPUXDriverCompiler::VCLLogger* vclLogger = nullptr;
     if (logHandle != nullptr) {
         /// Create logger which saves latest error messages, output other messages to terminal
-        vclLogger = new VPUXDriverCompiler::VCLLogger("VCL", LogLevel::Error, true);
+        vclLogger = new VPUXDriverCompiler::VCLLogger("NPU_VCL", LogLevel::Error, true);
     } else {
         /// Create logger which output all message to terminal
-        vclLogger = new VPUXDriverCompiler::VCLLogger("VCL", LogLevel::Error, false);
+        vclLogger = new VPUXDriverCompiler::VCLLogger("NPU_VCL", LogLevel::Error, false);
     }
 
     VPUXDriverCompiler::VPUXProfilingL0* profHandle =
@@ -418,6 +419,42 @@ DLLEXPORT vcl_result_t vclLogHandleGetString(vcl_log_handle_t logHandle, size_t*
     VPUXDriverCompiler::VCLLogger* vclLogger = reinterpret_cast<VPUXDriverCompiler::VCLLogger*>(logHandle);
     return vclLogger->getString(logSize, log);
 }
+
+DLLEXPORT vcl_result_t VCL_APICALL vclGetCompilerSupportedOptions(vcl_compiler_handle_t compiler, char* result,
+                                                                  uint64_t* size) {
+    if (compiler == nullptr || size == nullptr) {
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    VPUXDriverCompiler::VPUXCompilerL0* pCompiler = reinterpret_cast<VPUXDriverCompiler::VPUXCompilerL0*>(compiler);
+    vcl_result_t ret = VCL_RESULT_ERROR_UNKNOWN;
+
+    if (result == nullptr) {
+        /// First time calling vclGetCompilerSupportedOptions, get size of queryResultString
+        ret = pCompiler->getSupportedOptionsSize(size);
+    } else {
+        /// Second time calling vclGetCompilerSupportedOptions, get data of queryResultString
+        ret = pCompiler->getSupportedOptions(result, *size);
+    }
+    return ret;
+}
+
+DLLEXPORT vcl_result_t VCL_APICALL vclGetCompilerIsOptionSupported(vcl_compiler_handle_t compiler, const char* option,
+                                                                   const char* value) {
+    if (compiler == nullptr || option == nullptr) {
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    VPUXDriverCompiler::VPUXCompilerL0* pCompiler = reinterpret_cast<VPUXDriverCompiler::VPUXCompilerL0*>(compiler);
+    vcl_result_t ret = VCL_RESULT_ERROR_UNKNOWN;
+
+    if (pCompiler->isOptionValueSupported(option, value)) {
+        return VCL_RESULT_SUCCESS;
+    } else {
+        return VCL_RESULT_ERROR_UNSUPPORTED_FEATURE;
+    }
+    return ret;
+};
 
 #ifdef __cplusplus
 }

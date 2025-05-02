@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
@@ -352,8 +352,8 @@ double vpux::VPURT::InferenceExecutionSimulator::getSHAVETotalEnergy() {
             shaveEnergy = _cycleCostInfo.getCostModel()->SHAVEEnergy(*vpunnSwOp);
         } else {
             _log.debug("[Energy] an unsupported SwKernel op in VPUNN found - {0}", swKernelOp->getLoc());
-            const auto kernelName = swKernelOp.getKernelFunction().getLeafReference().str();
-            unsupportedOps.insert(kernelName);
+            auto kernelName = swKernelOp.getKernelFunction().getLeafReference().str();
+            unsupportedOps.insert(std::move(kernelName));
         }
         shaveTotalEnergy += shaveEnergy;
         _log.trace("[Energy] SwKernelOp - {0}, energy - {1}", swKernelOp->getLoc(), shaveEnergy);

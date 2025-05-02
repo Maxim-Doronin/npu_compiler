@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::PerAxisTileOp::inferReturnTypes(mlir::MLIRContext
         return mlir::failure();
     }
 
-    const auto inType = perAxisTile.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(perAxisTile.getInput().getType());
 
     const auto axis = checked_cast<unsigned int>(perAxisTile.getAxis());
     const auto tiles = checked_cast<unsigned int>(perAxisTile.getTiles());

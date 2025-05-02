@@ -89,12 +89,12 @@ func.func @ConvToNCE(%arg0: tensor<1x32x16x16xf16, {order = #NHWC}>) -> tensor<1
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK: func.func @DynamicExpand([[ARG0:%.+]]: tensor<1x3x?x?xf16, {bounds = [1, 3, 20, 20], order = #NHWC}>) -> tensor<1x3x20x20xf16>
-func.func @DynamicExpand(%arg0: tensor<1x3x?x?xf16, {bounds = [1, 3, 20, 20], order = #NHWC}>) -> tensor<1x3x20x20xf16> {
-    %0 = IE.DynamicExpand(%arg0) : tensor<1x3x?x?xf16, {bounds = [1, 3, 20, 20], order = #NHWC}> -> tensor<1x3x20x20xf16>
+// CHECK: func.func @DynamicExpand([[ARG0:%.+]]: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x3x20x20xf16>
+func.func @DynamicExpand(%arg0: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x3x20x20xf16> {
+    %0 = IE.DynamicExpand(%arg0) : tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x3x20x20xf16>
     return %0 : tensor<1x3x20x20xf16>
     // CHECK-NOT:   IE.DynamicExpand
-    // CHECK:       [[DynamicExpand:%.+]] = VPU.DynamicExpand([[ARG0]]) : tensor<1x3x?x?xf16, {bounds = [1, 3, 20, 20], order = #NHWC}> -> tensor<1x3x20x20xf16>
+    // CHECK:       [[DynamicExpand:%.+]] = VPU.DynamicExpand([[ARG0]]) : tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x3x20x20xf16>
     // CHECK:       return [[DynamicExpand]] : tensor<1x3x20x20xf16>
 }
 
@@ -102,11 +102,11 @@ func.func @DynamicExpand(%arg0: tensor<1x3x?x?xf16, {bounds = [1, 3, 20, 20], or
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK: func.func @DynamicExpandU8([[ARG0:%.+]]: tensor<1x3x?x?xui8, {bounds = [1, 3, 20, 20], order = #NHWC}>) -> tensor<1x3x20x20xui8>
-func.func @DynamicExpandU8(%arg0: tensor<1x3x?x?xui8, {bounds = [1, 3, 20, 20], order = #NHWC}>) -> tensor<1x3x20x20xui8> {
-    %0 = IE.DynamicExpand(%arg0) : tensor<1x3x?x?xui8, {bounds = [1, 3, 20, 20], order = #NHWC}> -> tensor<1x3x20x20xui8>
+// CHECK: func.func @DynamicExpandU8([[ARG0:%.+]]: tensor<1x3x?x?xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x3x20x20xui8>
+func.func @DynamicExpandU8(%arg0: tensor<1x3x?x?xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x3x20x20xui8> {
+    %0 = IE.DynamicExpand(%arg0) : tensor<1x3x?x?xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x3x20x20xui8>
     return %0 : tensor<1x3x20x20xui8>
     // CHECK-NOT:   IE.DynamicExpand
-    // CHECK:       [[DynamicExpand:%.+]] = VPU.DynamicExpand([[ARG0]]) : tensor<1x3x?x?xui8, {bounds = [1, 3, 20, 20], order = #NHWC}> -> tensor<1x3x20x20xui8>
+    // CHECK:       [[DynamicExpand:%.+]] = VPU.DynamicExpand([[ARG0]]) : tensor<1x3x?x?xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x3x20x20xui8>
     // CHECK:       return [[DynamicExpand]] : tensor<1x3x20x20xui8>
 }

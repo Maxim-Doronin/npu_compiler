@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -228,9 +229,9 @@ bool RemoveDuplicatingPermute::isDuplicatedOperation(IE::MemPermuteOp firstOp, I
 
     // check if two MemPermute ops have the same merged permutation
     auto firstMergedPermAndShape = vpux::getMergedPermutationAndShape(
-            firstOp.getInput().getType().cast<NDTypeInterface>(), firstOp.getMemPerm());
+            mlir::cast<vpux::NDTypeInterface>(firstOp.getInput().getType()), firstOp.getMemPerm());
     auto secondMergedPermAndShape = vpux::getMergedPermutationAndShape(
-            secondOp.getInput().getType().cast<NDTypeInterface>(), secondOp.getMemPerm());
+            mlir::cast<vpux::NDTypeInterface>(secondOp.getInput().getType()), secondOp.getMemPerm());
 
     auto firstMergedPerm = firstMergedPermAndShape.first;
     auto secondMergedPerm = secondMergedPermAndShape.first;
@@ -252,7 +253,7 @@ void RemoveDuplicatingPermute::eliminateDuplicatedOperation(IE::MemPermuteOp fir
     rewriter.setInsertionPointAfter(firstOp);
 
     // Set destination order
-    auto outputType = secondOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(secondOp.getOutput().getType());
 
     const auto targetLayout = outputType.getDimsOrder();
     const auto targetOrderAttr = mlir::AffineMapAttr::get(targetLayout.toAffineMap(ctx));
@@ -346,6 +347,7 @@ void UniquifyOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
+    patterns.add<RemoveDuplicatingGeneric<IE::TransposeOp>>(&ctx, _log);
     patterns.add<RemoveDuplicatingGeneric<IE::ReorderOp>>(&ctx, _log);
     patterns.add<RemoveDuplicatingGeneric<IE::PermuteCastOp>>(&ctx, _log);
     patterns.add<RemoveDuplicatingGeneric<IE::ShapeCastOp>>(&ctx, _log);

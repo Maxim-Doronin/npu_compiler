@@ -97,7 +97,7 @@ func.func @ConvertNceOpsTo4DGroupConvolution(%arg0: tensor<1x16x30xf16>) -> tens
 func.func @ConvertNceOpsTo4DTransposedConvolution(%arg0: tensor<1x384x1344xf16>) -> tensor<1x192x5380xf16> {
     %FILTERS = const.Declare tensor<192x384x8xf16> = dense<1.000000e+00> : tensor<192x384x8xf16>
     %RESULT = IE.TransposedConvolution(%arg0, %FILTERS) {
-        dilations = [1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0], pads_begin = [0], pads_end = [0], strides = [4]} : tensor<1x384x1344xf16>, tensor<192x384x8xf16> -> tensor<1x192x5380xf16>
+        dilations = [1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0], pads_begin = [0], pads_end = [0], strides = [4]} : tensor<1x384x1344xf16>, tensor<192x384x8xf16> -> tensor<1x192x5380xf16>
 
     return %RESULT : tensor<1x192x5380xf16>
 
@@ -107,9 +107,9 @@ func.func @ConvertNceOpsTo4DTransposedConvolution(%arg0: tensor<1x384x1344xf16>)
     // CHECK:       [[TRANSPOSED_CONV:%.*]] = IE.TransposedConvolution([[RESHAPE_INPUT]], [[CST_0]])
     // CHECK-SAME:      dilations = [1, 1]
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>
-    // CHECK-SAME:      output_padding = [0, 0]
     // CHECK-SAME:      pads_begin = [0, 0]
     // CHECK-SAME:      pads_end = [0, 0]
+    // CHECK-SAME:      spatial_output_padding = [0, 0]
     // CHECK-SAME:      strides = [4, 1]
     // CHECK-SAME:      tensor<1x384x1344x1xf16>, tensor<192x384x8x1xf16> -> tensor<1x192x5380x1xf16>
 

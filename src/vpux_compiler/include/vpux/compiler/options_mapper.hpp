@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,9 +11,11 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/init.hpp"
 
+#include <memory>
+
 namespace vpux {
 
-VPU::InitCompilerOptions getInitCompilerOptions(const intel_npu::Config& config);
+std::unique_ptr<VPU::InitCompilerOptions> getInitCompilerOptions(const intel_npu::Config& config);
 
 VPU::ArchKind getArchKind(const intel_npu::Config& config);
 VPU::CompilationMode getCompilationMode(const intel_npu::Config& config);
@@ -35,7 +37,7 @@ std::optional<bool> getEnableVerifiers(const intel_npu::Config& config);
 std::optional<bool> getEnableMemoryUsageCollector(const intel_npu::Config& config);
 std::optional<bool> getEnableFunctionStatisticsInstrumentation(const intel_npu::Config& config);
 std::optional<DummyOpMode> getDummyOpReplacement(const intel_npu::Config& config);
-bool getEnableExtraShapeBoundOps(const intel_npu::Config& config);
+std::optional<bool> getEnableExtraStaticShapeOps(const intel_npu::Config& config);
 
 #ifdef BACKGROUND_FOLDING_ENABLED
 struct ConstantFoldingConfig {

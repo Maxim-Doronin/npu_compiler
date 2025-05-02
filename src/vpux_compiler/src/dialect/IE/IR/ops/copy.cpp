@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,7 +26,7 @@ mlir::LogicalResult vpux::IE::CopyOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto ndInType = copyOp.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto ndInType = mlir::dyn_cast<vpux::NDTypeInterface>(copyOp.getInput().getType());
     if (ndInType == nullptr) {
         return errorAt(loc, "IE::CopyOp operand must have vpux::NDTypeInterface type");
     }
@@ -35,7 +35,7 @@ mlir::LogicalResult vpux::IE::CopyOp::inferReturnTypeComponents(
     if (copyOp.getOutMemSpace().has_value()) {
         outMemSpace = copyOp.getOutMemSpace().value();
     }
-    const auto outType = ndInType.changeMemSpace(outMemSpace).cast<mlir::RankedTensorType>();
+    const auto outType = mlir::cast<mlir::RankedTensorType>(ndInType.changeMemSpace(outMemSpace));
 
     inferredReturnShapes.emplace_back(outType.getShape(), outType.getElementType(), outType.getEncoding());
     return mlir::success();

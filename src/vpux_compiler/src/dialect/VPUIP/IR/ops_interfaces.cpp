@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -34,15 +34,15 @@ namespace {
 ptrdiff_t getLastMemRefPosition(mlir::ValueRange vals) {
     return std::find_if(vals.begin(), vals.end(),
                         [](mlir::Value val) {
-                            return !val.getType().isa<mlir::BaseMemRefType, VPUIP::ITIBufferType>();
+                            return !mlir::isa<mlir::BaseMemRefType, vpux::VPUIP::ITIBufferType>(val.getType());
                         }) -
            vals.begin();
 }
 
 mlir::Type getElementType(mlir::Type type) {
-    VPUX_THROW_UNLESS(type.isa<vpux::NDTypeInterface>(), "Could not extract element type from '{0}'", type);
-    const auto elemType = type.cast<vpux::NDTypeInterface>().getElementType();
-    if (auto qType = elemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    VPUX_THROW_UNLESS(mlir::isa<vpux::NDTypeInterface>(type), "Could not extract element type from '{0}'", type);
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(type).getElementType();
+    if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
         return qType.getStorageType();
     }
     return elemType;
@@ -63,10 +63,10 @@ mlir::LogicalResult vpux::VPUIP::verifyLayer(mlir::Operation* op) {
         return errorAt(op, "RunTime Layer Operation has no results");
     }
     const auto verifyType = [&](mlir::Type type, StringRef name, unsigned ind) {
-        if (type.isa<mlir::RankedTensorType>()) {
+        if (mlir::isa<mlir::RankedTensorType>(type)) {
             return errorAt(op, "RunTime Layer Operation has Tensor {0} #{1}", name, ind);
         }
-        if (auto mainType = type.dyn_cast<mlir::ShapedType>()) {
+        if (auto mainType = mlir::dyn_cast<mlir::ShapedType>(type)) {
             if (validateQuantElemType(op->getLoc(), mainType).failed()) {
                 return mlir::failure();
             }
@@ -385,13 +385,13 @@ mlir::LogicalResult vpux::VPUIP::verifySameOperandsAndResultElementType(mlir::Op
 //
 
 std::optional<VPUIP::DmaChannelType> vpux::VPUIP::getChannelType(mlir::Operation* op) {
-    // Configure DMA channel only for NPU40XX for now
+    // Configure DMA channel only for VPU4 for now
     const auto arch = VPU::getArch(op);
     if (arch < VPU::ArchKind::NPU40XX) {
         return std::nullopt;
     }
 
-    auto srcMemKind = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+    auto srcMemKind = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getMemoryKind();
 
     switch (srcMemKind) {
     case VPU::MemoryKind::DDR:

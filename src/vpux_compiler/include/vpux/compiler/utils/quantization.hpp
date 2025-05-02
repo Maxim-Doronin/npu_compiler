@@ -45,6 +45,8 @@ mlir::Type tileScalesAndZP(mlir::Type perAxisQType, ShapeRef shape, ShapeRef off
 
 mlir::Type changeAxis(mlir::Type perAxisQType, int32_t axis);
 
+mlir::quant::QuantizedType changeExpressedType(mlir::quant::QuantizedType quantType, mlir::Type expressedType);
+
 mlir::quant::QuantizedType changeStorageType(mlir::quant::QuantizedType qType, mlir::Type storageType);
 
 bool canBeMerged(mlir::Type type1, mlir::Type type2);
@@ -175,6 +177,8 @@ std::tuple<double, double> getRepresentableRange(mlir::Type lowPrecisionType);
 bool isFloat8(mlir::Type type);
 // Returns true if the given type is a quantized type with 8-bit float storage.
 bool isFloat8Quantized(mlir::Type type);
+// Returns true if the given type is a quantized NF4 using Spec quantiles.
+bool isNF4SpecQuantized(mlir::Type type);
 
 /// Returns whether lowVals and highVals represet correct quantization range
 /// specified by quantization levels and sign.
@@ -219,15 +223,15 @@ inline float dequantize(int64_t qVal, double scale, int64_t zeroPoint) {
     return static_cast<float>((qVal - zeroPoint) * scale);
 }
 
-inline float dequantizeDouble(double qVal, double scale, int64_t zeroPoint) {
-    return static_cast<float>((qVal - zeroPoint) * scale);
+inline double dequantizeDouble(double qVal, double scale, int64_t zeroPoint) {
+    return (qVal - zeroPoint) * scale;
 }
 
 //
 // FakeQuantize support
 //
 
-float fakeQuantize(float inVal, float inLow, float inHigh, float qLow, float qHigh, float fLevels);
+double fakeQuantize(double inVal, double inLow, double inHigh, double qLow, double qHigh, int64_t levels);
 
 // Broadcasting
 
@@ -262,5 +266,25 @@ void broadcastRange(SmallVectorImpl<T>& lowVals, SmallVectorImpl<T>& highVals, I
 //
 
 mlir::Type rescaleUniformQuantizedType(const mlir::Type tensorType, const double factor);
+
+// Dequantize -> Operation -> Quantize fusing
+
+inline bool areQuantizationRangesSimilar(float fqOutputHighVal, float parentFqOutputHighVal) {
+    const auto quotient = fqOutputHighVal / parentFqOutputHighVal;
+    // If values are similar, and within range, return true to indicate no need to align scales
+    if (quotient >= 0.99 && quotient <= 1.01) {
+        return true;
+    }
+    return false;
+}
+
+inline bool areQuantizationScalesSimilar(double quantizeScale, double dequantizeScale) {
+    const auto quotient = quantizeScale / dequantizeScale;
+    // If values are not similar, return false to indicate failure
+    if (quotient < 0.99 || quotient > 1.01) {
+        return false;
+    }
+    return true;
+}
 
 }  // namespace vpux

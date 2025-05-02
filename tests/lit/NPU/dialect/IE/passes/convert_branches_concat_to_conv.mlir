@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -80,7 +80,7 @@ func.func @OptimizeGroupConvConcatWithReLu(%arg0: tensor<1x16x144x144xf16>) -> (
         dilations = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
-        post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>,
+        post_op = #IE.Relu<>,
         strides = [1, 1]
     } : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
     %1 = IE.GroupConvolution(%0, %cst_1) {
@@ -88,7 +88,7 @@ func.func @OptimizeGroupConvConcatWithReLu(%arg0: tensor<1x16x144x144xf16>) -> (
         groups = 16 : i64,
         pads_begin = [1, 1],
         pads_end = [1, 1],
-        post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>,
+        post_op = #IE.Relu<>,
         strides = [1, 1]
     } : tensor<1x16x144x144xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x144x144xf16>
     %2 = IE.Concat(%0, %1) {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]} : tensor<1x16x144x144xf16>, tensor<1x16x144x144xf16> -> tensor<1x32x144x144xf16>
@@ -98,8 +98,8 @@ func.func @OptimizeGroupConvConcatWithReLu(%arg0: tensor<1x16x144x144xf16>) -> (
     // CHECK-DAG:       [[NEW_WEIGHTS:%.+]] = const.Declare tensor<32x16x3x3xf16>
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16>
 
-    // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
-    // CHECK:           [[NEW_CONV:%.+]] = IE.Convolution([[CONV]], [[NEW_WEIGHTS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<32x16x3x3xf16> -> tensor<1x32x144x144xf16>
+    // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
+    // CHECK:           [[NEW_CONV:%.+]] = IE.Convolution([[CONV]], [[NEW_WEIGHTS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<32x16x3x3xf16> -> tensor<1x32x144x144xf16>
 
     // CHECK:           return [[NEW_CONV]] : tensor<1x32x144x144xf16>
 }
@@ -122,7 +122,7 @@ func.func @NotConvertIfRootTensorIsNotReLu(%arg0: tensor<1x16x144x144xf16>) -> (
         groups = 16 : i64,
         pads_begin = [1, 1],
         pads_end = [1, 1],
-        post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>,
+        post_op = #IE.Relu<>,
         strides = [1, 1]
     } : tensor<1x16x144x144xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x144x144xf16>
     %2 = IE.Concat(%0, %1) {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]} : tensor<1x16x144x144xf16>, tensor<1x16x144x144xf16> -> tensor<1x32x144x144xf16>
@@ -133,7 +133,7 @@ func.func @NotConvertIfRootTensorIsNotReLu(%arg0: tensor<1x16x144x144xf16>) -> (
     // CHECK-DAG:       [[WEIGHTS_1:%.+]] = const.Declare tensor<16x1x3x3xf16> = dense<1.000000e+00> : tensor<16x1x3x3xf16>
 
     // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS_0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
-    // CHECK:           [[GROUP_CONV:%.+]] = IE.GroupConvolution([[CONV]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x144x144xf16>
+    // CHECK:           [[GROUP_CONV:%.+]] = IE.GroupConvolution([[CONV]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x144x144xf16>
 
     // CHECK:           [[CONCAT:%.+]] = IE.Concat([[CONV]], [[GROUP_CONV]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 16, 0, 0]]} : tensor<1x16x144x144xf16>, tensor<1x16x144x144xf16> -> tensor<1x32x144x144xf16
 
@@ -151,7 +151,7 @@ func.func @NotConvertIfPostOpIsNotReLu(%arg0: tensor<1x16x144x144xf16>) -> (tens
         dilations = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
-        post_op = #IE.PostOp<name = "IE.Sigmoid", attrs = {}>,
+        post_op = #IE.Sigmoid<>,
         strides = [1, 1]
     } : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
     %1 = IE.GroupConvolution(%0, %cst_1) {
@@ -159,7 +159,7 @@ func.func @NotConvertIfPostOpIsNotReLu(%arg0: tensor<1x16x144x144xf16>) -> (tens
         groups = 16 : i64,
         pads_begin = [1, 1],
         pads_end = [1, 1],
-        post_op = #IE.PostOp<name = "IE.Sigmoid", attrs = {}>,
+        post_op = #IE.Sigmoid<>,
         strides = [1, 1]
     } : tensor<1x16x144x144xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x144x144xf16>
     %2 = IE.Concat(%0, %1) {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]} : tensor<1x16x144x144xf16>, tensor<1x16x144x144xf16> -> tensor<1x32x144x144xf16>
@@ -169,8 +169,8 @@ func.func @NotConvertIfPostOpIsNotReLu(%arg0: tensor<1x16x144x144xf16>) -> (tens
     // CHECK-DAG:       [[WEIGHTS_0:%.+]] = const.Declare tensor<16x16x1x1xf16> = dense<1.000000e+00> : tensor<16x16x1x1xf16>
     // CHECK-DAG:       [[WEIGHTS_1:%.+]] = const.Declare tensor<16x1x3x3xf16> = dense<1.000000e+00> : tensor<16x1x3x3xf16>
 
-    // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS_0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.Sigmoid", attrs = {}>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
-    // CHECK:           [[GROUP_CONV:%.+]] = IE.GroupConvolution([[CONV]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.PostOp<name = "IE.Sigmoid", attrs = {}>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x144x144xf16>
+    // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS_0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Sigmoid<>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
+    // CHECK:           [[GROUP_CONV:%.+]] = IE.GroupConvolution([[CONV]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Sigmoid<>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x144x144xf16>
 
     // CHECK:           [[CONCAT:%.+]] = IE.Concat([[CONV]], [[GROUP_CONV]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 16, 0, 0]]} : tensor<1x16x144x144xf16>, tensor<1x16x144x144xf16> -> tensor<1x32x144x144xf16
 
@@ -377,7 +377,7 @@ func.func @OptimizeConvConcatOneHasBias(%arg0: tensor<1x16x512x512xf16>) -> (ten
     return %2 : tensor<1x4x512x512xf16>
 
     // CHECK-DAG:           [[WEIGHTS:%.+]] = const.Declare tensor<4x16x1x1xf16> = dense<1.000000e+00> : tensor<4x16x1x1xf16>
-    // CHECK-DAG:           [[BIAS:%.+]] = const.Declare tensor<1x4x1x1xf16> = 
+    // CHECK-DAG:           [[BIAS:%.+]] = const.Declare tensor<1x4x1x1xf16> =
     // CHECK-SAME{LITERAL}:     dense<[[[[0.000000e+00]], [[0.000000e+00]], [[0.000000e+00]], [[1.000000e+00]]]]> : tensor<1x4x1x1xf16>
 
     // CHECK:               [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x512x512xf16>, tensor<4x16x1x1xf16>, tensor<1x4x1x1xf16> -> tensor<1x4x512x512xf16>
@@ -393,8 +393,8 @@ func.func @NotOptimizeConvConcat(%arg0: tensor<1x4x20x20xf16>) -> (tensor<1x10x1
     %cst_1 = const.Declare tensor<5x2x3x3xf16> = dense<2.0> : tensor<5x2x3x3xf16>
 
     %0:2 = IE.Split(%arg0) {axis_value = 1 : i64, num_splits = 2 : i64} : tensor<1x4x20x20xf16> -> tensor<1x2x20x20xf16>, tensor<1x2x20x20xf16>
-    %1 = IE.Convolution(%0#0, %cst_0) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
-    %2 = IE.Convolution(%0#1, %cst_1) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
+    %1 = IE.Convolution(%0#0, %cst_0) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
+    %2 = IE.Convolution(%0#1, %cst_1) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
     %3 = IE.Concat(%1, %2) {static_offsets = [[0, 0, 0, 0], [0, 5, 0, 0]]} : tensor<1x5x18x18xf16>, tensor<1x5x18x18xf16> -> tensor<1x10x18x18xf16>
 
     return %3 : tensor<1x10x18x18xf16>
@@ -403,8 +403,8 @@ func.func @NotOptimizeConvConcat(%arg0: tensor<1x4x20x20xf16>) -> (tensor<1x10x1
     // CHECK-DAG:           [[WEIGHTS_1:%.+]] = const.Declare tensor<5x2x3x3xf16> = dense<2.000000e+00> : tensor<5x2x3x3xf16>
 
     // CHECK:               [[SPLIT:%.+]]:2 = IE.Split([[INPUT]]) {axis_value = 1 : i64, num_splits = 2 : i64} : tensor<1x4x20x20xf16> -> tensor<1x2x20x20xf16>, tensor<1x2x20x20xf16>
-    // CHECK:               [[CONV_0:%.+]] = IE.Convolution([[SPLIT]]#0, [[WEIGHTS_0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
-    // CHECK:               [[CONV_1:%.+]] = IE.Convolution([[SPLIT]]#1, [[WEIGHTS_1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
+    // CHECK:               [[CONV_0:%.+]] = IE.Convolution([[SPLIT]]#0, [[WEIGHTS_0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
+    // CHECK:               [[CONV_1:%.+]] = IE.Convolution([[SPLIT]]#1, [[WEIGHTS_1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x20x20xf16>, tensor<5x2x3x3xf16> -> tensor<1x5x18x18xf16>
     // CHECK:               [[CONCAT:%.+]] = IE.Concat([[CONV_0]], [[CONV_1]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 5, 0, 0]]} : tensor<1x5x18x18xf16>, tensor<1x5x18x18xf16> -> tensor<1x10x18x18xf16>
 
@@ -471,7 +471,7 @@ func.func @NotOptimizeParallelSliceOps(%arg0: tensor<1x24x1x64xf16>) -> (tensor<
     // CHECK:           [[SLICE_0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 16] [1, 24, 1, 48] : tensor<1x24x1x64xf16> to tensor<1x24x1x48xf16>
     // CHECK:           [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 24, 1, 32] : tensor<1x24x1x64xf16> to tensor<1x24x1x32xf16>
     // CHECK:           [[CONCAT:%.+]] = IE.Concat([[SLICE_0]], [[SLICE_1]])
-    // CHECK-SAME{LITERAL}      {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 48]]} : tensor<1x24x1x48xf16>, tensor<1x24x1x32xf16> -> tensor<1x24x1x80xf16>
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 48]]} : tensor<1x24x1x48xf16>, tensor<1x24x1x32xf16> -> tensor<1x24x1x80xf16>
 
     // CHECK:           return [[CONCAT]] : tensor<1x24x1x80xf16>
 }
@@ -496,10 +496,12 @@ func.func @NotOptimizeSliceMultiplyConcatForNonSplatScale(%arg0: tensor<1x24x1x6
     // CHECK:           [[MULTIPLY:%.+]] = IE.Multiply([[SLICE_0]], [[SCALE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x24x1x32xf16>, tensor<1x1x1x32xf16> -> tensor<1x24x1x32xf16>
     // CHECK:           [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 24, 1, 32] : tensor<1x24x1x64xf16> to tensor<1x24x1x32xf16>
     // CHECK:           [[CONCAT:%.+]] = IE.Concat([[MULTIPLY]], [[SLICE_1]])
-    // CHECK-SAME{LITERAL}      {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 32]]} : tensor<1x24x1x32xf16>, tensor<1x24x1x32xf16> -> tensor<1x24x1x64xf16>
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 32]]} : tensor<1x24x1x32xf16>, tensor<1x24x1x32xf16> -> tensor<1x24x1x64xf16>
 
     // CHECK:           return [[CONCAT]] : tensor<1x24x1x64xf16>
 }
+
+// -----
 
 !qElemType = !quant.uniform<u8:f16, 3.1906749834032623E-5>
 !qElemType1 = !quant.uniform<u8:f16:0, {0.04918184093400544:128,0.072342521069096583:128,0.056963582132376879:128}>
@@ -528,4 +530,217 @@ func.func @PropagateOutputTypeOfInputTensorIntoOutputConvType(%arg0: tensor<1x51
   // CHECK-SAME: dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
   // CHECK-SAME: } : tensor<1x512x1x1x!qElemType>, tensor<6x512x1x1x!qElemType1>, tensor<1x6x1x1xf16> -> tensor<1x6x1x1xf16>
   // CHECK:    return [[CONVOLUTION]] : tensor<1x6x1x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @OptimizeSliceMultiplyAddConcat
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x2xf16>
+func.func @OptimizeSliceMultiplyAddConcat(%arg0: tensor<1620x9x9x2xf16>) -> (tensor<1620x9x9x2xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %6 = IE.Concat(%4, %5) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16> -> tensor<1620x9x9x2xf16>
+
+    return %6 : tensor<1620x9x9x2xf16>
+
+    // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<1x1x1x2xf16>
+    // CHECK-SAME{LITERAL}:    = dense<[[[[-1.000000e+00, 2.000000e+00]]]]> : tensor<1x1x1x2xf16>
+    // CHECK-DAG:           [[CST_0:%.+]] = const.Declare tensor<1x1x1x2xf16>
+    // CHECK-SAME{LITERAL}:    = dense<[[[[3.000000e+00, 4.000000e+00]]]]> : tensor<1x1x1x2xf16>
+    // CHECK:               [[MULTIPLY_0:%.+]] = IE.Multiply([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:               [[ADD_0:%.+]] = IE.Add([[MULTIPLY_0]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+
+    // CHECK:               return [[ADD_0]] : tensor<1620x9x9x2xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @OptimizeSliceMultiplyAddConcatIfOrderNotChanged
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x2xf16>
+func.func @OptimizeSliceMultiplyAddConcatIfOrderNotChanged(%arg0: tensor<1620x9x9x2xf16>) -> (tensor<1620x9x9x2xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %6 = IE.Concat(%5, %4) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16> -> tensor<1620x9x9x2xf16>
+
+    return %6 : tensor<1620x9x9x2xf16>
+
+    // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<1x1x1x2xf16>
+    // CHECK-SAME{LITERAL}:    = dense<[[[[2.000000e+00, -1.000000e+00]]]]> : tensor<1x1x1x2xf16>
+    // CHECK-DAG:           [[CST_0:%.+]] = const.Declare tensor<1x1x1x2xf16>
+    // CHECK-SAME{LITERAL}:    = dense<[[[[4.000000e+00, 3.000000e+00]]]]> : tensor<1x1x1x2xf16>
+
+    // CHECK:               [[MULTIPLY_0:%.+]] = IE.Multiply([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:               [[ADD_0:%.+]] = IE.Add([[MULTIPLY_0]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+
+    // CHECK:               return [[ADD_0]] : tensor<1620x9x9x2xf16
+}
+
+// -----
+
+// CHECK-LABEL: @OptimizeSliceMultiplyAddConcatWithDiffSize
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x3xf16>
+func.func @OptimizeSliceMultiplyAddConcatWithDiffSize(%arg0: tensor<1620x9x9x3xf16>) -> (tensor<1620x9x9x3xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 2] [1620, 9, 9, 1] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %6 = IE.Concat(%4, %5) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 2]]} : tensor<1620x9x9x2xf16>, tensor<1620x9x9x1xf16> -> tensor<1620x9x9x3xf16>
+
+    return %6 : tensor<1620x9x9x3xf16>
+
+    // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<1x1x1x3xf16>
+    // CHECK-SAME{LITERAL}:    = dense<[[[[-1.000000e+00, -1.000000e+00, 2.000000e+00]]]]> : tensor<1x1x1x3xf16>
+    // CHECK-DAG:           [[CST_0:%.+]] = const.Declare tensor<1x1x1x3xf16>
+    // CHECK-SAME{LITERAL}:    = dense<[[[[3.000000e+00, 3.000000e+00, 4.000000e+00]]]]> : tensor<1x1x1x3xf16>
+    // CHECK:               [[MULTIPLY_0:%.+]] = IE.Multiply([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x3xf16>, tensor<1x1x1x3xf16> -> tensor<1620x9x9x3xf16>
+    // CHECK:               [[ADD_0:%.+]] = IE.Add([[MULTIPLY_0]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x3xf16>, tensor<1x1x1x3xf16> -> tensor<1620x9x9x3xf16>
+
+    // CHECK:               return [[ADD_0]] : tensor<1620x9x9x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotOptimizeSliceMultiplyAddConcatWithOverlap
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x3xf16>
+func.func @NotOptimizeSliceMultiplyAddConcatWithOverlap(%arg0: tensor<1620x9x9x3xf16>) -> (tensor<1620x9x9x4xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %6 = IE.Concat(%4, %5) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 2]]} : tensor<1620x9x9x2xf16>, tensor<1620x9x9x2xf16> -> tensor<1620x9x9x4xf16>
+
+    return %6 : tensor<1620x9x9x4xf16>
+
+    // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    // CHECK:           [[SLICE_0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    // CHECK:           [[MULTIPLY_1:%.+]] = IE.Multiply([[SLICE_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:           [[SLICE_2:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 1] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    // CHECK:           [[MULTIPLY_3:%.+]] = IE.Multiply([[SLICE_2]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:           [[ADD_4:%.+]] = IE.Add([[MULTIPLY_1]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:           [[ADD_5:%.+]] = IE.Add([[MULTIPLY_3]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:           [[CONCAT:%.+]] = IE.Concat([[ADD_4]], [[ADD_5]])
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 2]]} : tensor<1620x9x9x2xf16>, tensor<1620x9x9x2xf16> -> tensor<1620x9x9x4xf16>
+
+    // CHECK:           return [[CONCAT]] : tensor<1620x9x9x4xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotOptimizeSliceMultiplyAddConcatReverseConcatOrder
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x3xf16>
+func.func @NotOptimizeSliceMultiplyAddConcatReverseConcatOrder(%arg0: tensor<1620x9x9x3xf16>) -> (tensor<1620x9x9x3xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x2xf16> = dense<-1.000000e+00> : tensor<1x1x1x2xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x2xf16> = dense<4.000000e+00> : tensor<1x1x1x2xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<6.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 2] [1620, 9, 9, 1] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %6 = IE.Concat(%5, %4) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} : tensor<1620x9x9x1xf16>, tensor<1620x9x9x2xf16> -> tensor<1620x9x9x3xf16>
+
+    return %6 : tensor<1620x9x9x3xf16>
+
+    // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<1x1x1x2xf16>
+    // CHECK-SAME{LITERAL}:    = dense<-1.000000e+00> : tensor<1x1x1x2xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_1:%.+]] = const.Declare tensor<1x1x1x2xf16>
+    // CHECK-SAME{LITERAL}:    = dense<4.000000e+00> : tensor<1x1x1x2xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<6.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    // CHECK:           [[SLICE_0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    // CHECK:           [[MULTIPLY_1:%.+]] = IE.Multiply([[SLICE_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:           [[SLICE_2:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 2] [1620, 9, 9, 1] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x1xf16>
+    // CHECK:           [[MULTIPLY_3:%.+]] = IE.Multiply([[SLICE_2]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    // CHECK:           [[ADD_4:%.+]] = IE.Add([[MULTIPLY_1]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x2xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:           [[ADD_5:%.+]] = IE.Add([[MULTIPLY_3]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    // CHECK:           [[CONCAT:%.+]] = IE.Concat([[ADD_5]], [[ADD_4]])
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} : tensor<1620x9x9x1xf16>, tensor<1620x9x9x2xf16> -> tensor<1620x9x9x3xf16>
+
+    // CHECK:           return [[CONCAT]] : tensor<1620x9x9x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @OptimizeSliceMultiplyAddConcatIfOrderSwitched
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x2xf16>
+func.func @OptimizeSliceMultiplyAddConcatIfOrderSwitched(%arg0: tensor<1620x9x9x2xf16>) -> (tensor<1620x9x9x2xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %6 = IE.Concat(%5, %4) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16> -> tensor<1620x9x9x2xf16>
+
+    return %6 : tensor<1620x9x9x2xf16>
+
+    // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK-DAG:           [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:    = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    // CHECK:           [[SLICE_0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    // CHECK:           [[MULTIPLY_1:%.+]] = IE.Multiply([[SLICE_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    // CHECK:           [[SLICE_2:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    // CHECK:           [[MULTIPLY_3:%.+]] = IE.Multiply([[SLICE_2]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    // CHECK:           [[ADD_4:%.+]] = IE.Add([[MULTIPLY_1]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    // CHECK:           [[ADD_5:%.+]] = IE.Add([[MULTIPLY_3]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    // CHECK:           [[CONCAT:%.+]] = IE.Concat([[ADD_5]], [[ADD_4]])
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:           return [[CONCAT]] : tensor<1620x9x9x2xf16>
 }

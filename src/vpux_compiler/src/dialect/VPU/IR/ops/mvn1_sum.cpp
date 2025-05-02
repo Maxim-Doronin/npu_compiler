@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 using namespace vpux;
 
@@ -21,7 +22,7 @@ mlir::LogicalResult vpux::VPU::MVN1SumOp::inferReturnTypes(mlir::MLIRContext* ct
         return mlir::failure();
     }
 
-    const auto iType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     const auto iShape = iType.getShape().raw();
     const auto outN = iShape[Dims4D::Act::N.ind()];
     auto outC = op.getAcrossChannels() ? 1 : iShape[Dims4D::Act::C.ind()];
@@ -31,11 +32,8 @@ mlir::LogicalResult vpux::VPU::MVN1SumOp::inferReturnTypes(mlir::MLIRContext* ct
     // output-precision = f32, irrespective of input-precision
     // output-layout = NHWC
     const auto outOrder = DimsOrder::NHWC;
-    const auto bounds =
-            mlir::isa<BoundedTypeInterface>(iType) ? mlir::cast<BoundedTypeInterface>(iType).getBounds() : nullptr;
-    // Create tensor attr manually to be able to set dims order
-    auto outTensorAttr = vpux::getTensorAttr(outOrder.toAffineMap(ctx), iType.getMemSpace(), bounds);
-    auto oType = mlir::RankedTensorType::get(oShape, mlir::Float32Type::get(ctx), outTensorAttr);
+    const auto tensorAttr = vpux::getTensorAttr(ctx, outOrder.toAffineMap(ctx), iType.getMemSpace(), getBounds(iType));
+    auto oType = mlir::RankedTensorType::get(oShape, mlir::Float32Type::get(ctx), tensorAttr);
 
     inferredReturnTypes.push_back(oType);
 
@@ -67,8 +65,8 @@ mlir::FailureOr<OutputTiling> vpux::VPU::MVN1SumOp::getTilingStrategy(TilingMode
 //
 
 bool vpux::VPU::MVN1SumOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t numTiles) {
-    const auto inputShape = getInput().getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto outputShape = getSum().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getShape();
+    const auto outputShape = mlir::cast<vpux::NDTypeInterface>(getSum().getType()).getShape();
     // only SOK works for MVN1_SUM, also across_channels must be false
     return (strategy == VPU::MultiClusterStrategy::Clustering) ||
            (strategy == VPU::MultiClusterStrategy::SplitOverHeight &&

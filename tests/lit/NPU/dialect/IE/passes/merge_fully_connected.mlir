@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -326,9 +326,9 @@ func.func @MergeMatMulForDQPatternWithDequantizeAndRegroup(%arg0: tensor<1x1x153
     // CHECK:       [[RESHAPE_11:%.+]] = IE.Reshape([[SLICE_11]]) {shape_value = [1, 1, 1, 2560]} : tensor<1x2560xf16> -> tensor<1x1x1x2560xf16>
 
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[RESHAPE_0]], [[RESHAPE_1]], [[RESHAPE_2]], [[RESHAPE_3]], [[RESHAPE_4]], [[RESHAPE_5]], [[RESHAPE_6]], [[RESHAPE_7]],
-    // CHECK-SAME                              [[RESHAPE_8]], [[RESHAPE_9]], [[RESHAPE_10]], [[RESHAPE_11]]) {per_axis = #IE.Concat<axis = 1 : i64>} :
-    // CHECK-SAME           tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>,
-    // CHECK-SAME           tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16> -> tensor<1x12x1x2560xf16>
+    // CHECK-SAME:                             [[RESHAPE_8]], [[RESHAPE_9]], [[RESHAPE_10]], [[RESHAPE_11]]) {per_axis = #IE.Concat<axis = 1 : i64>} :
+    // CHECK-SAME:          tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>,
+    // CHECK-SAME:          tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16> -> tensor<1x12x1x2560xf16>
 
     // CHECK:       return [[CONCAT]] : tensor<1x12x1x2560xf16>
 }

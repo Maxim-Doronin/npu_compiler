@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,9 +15,9 @@ using namespace vpux;
 //
 
 mlir::LogicalResult vpux::VPU::PReluOp::verify() {
-    const auto inType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inShape = inType.getShape().raw();
-    const auto slopeType = getNegativeSlope().getType().cast<vpux::NDTypeInterface>();
+    const auto slopeType = mlir::cast<vpux::NDTypeInterface>(getNegativeSlope().getType());
     const auto slopeShape = slopeType.getShape().raw();
 
     if (slopeShape.size() != 4 || inShape.size() != 4) {

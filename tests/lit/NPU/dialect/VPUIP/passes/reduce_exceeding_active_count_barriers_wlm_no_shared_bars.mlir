@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,6 +20,7 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     %bar1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %bar2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %bar3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar4 = VPURT.DeclareVirtualBarrier {isFinalBarrier} -> !VPURT.Barrier
     %buf0 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x64x64xf16, @DDR>
     %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
 
@@ -44,6 +45,8 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     //                        b3
     //                        |
     //                        7(DMA-0)
+    //                        |
+    //                        b4
     //
     // Linearization of tasks distributed across 3 queues with 2 barriers.
     // For WLM compilation this scenario requires linearization as
@@ -91,7 +94,7 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     }
 
     // task 7
-    VPURT.Task waits (%bar3:  !VPURT.Barrier)  {
+    VPURT.Task waits (%bar3:  !VPURT.Barrier) updates (%bar4:  !VPURT.Barrier)    {
             VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
@@ -103,6 +106,7 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR5:%.*]] = VPURT.DeclareVirtualBarrier {isFinalBarrier} -> !VPURT.Barrier
     // CHECK-NOT: VPURT.DeclareVirtual
 
     // 0(DMA-0)    1(DMA-1)   2(SW)
@@ -126,6 +130,8 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     //                     b4
     //                     |
     //                     7(DMA-0)
+    //                     |
+    //                     b5
     //
     // Task 0
     // CHECK: VPURT.Task
@@ -156,6 +162,6 @@ module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
     // CHECK:   VPUIP.NNDMA {port = 1 : i64}
 
     // Task 7
-    // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier)
+    // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
     // CHECK:   VPUIP.NNDMA {port = 0 : i64}
 }

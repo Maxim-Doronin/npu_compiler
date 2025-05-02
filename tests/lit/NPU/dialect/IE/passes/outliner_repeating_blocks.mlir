@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outliner="function-outlining=\"repeating-blocks='min-ops-in-block=2 max-num-iterations=10'\"" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 module @TwoInstances {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -60,7 +60,7 @@ module @TwoInstances {
 // -----
 
 module @TwoInstancesSameConstant {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -114,7 +114,7 @@ module @TwoInstancesSameConstant {
 // -----
 
 module @TwoInstancesDifferentNumberOfOutputs {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input1" : tensor<1x48x60x60xf32>
         DataInfo "input2" : tensor<1x48x60x60xf32>
@@ -154,7 +154,7 @@ module @TwoInstancesDifferentNumberOfOutputs {
 // -----
 
 module @FirstInstanceInputReuse {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -191,7 +191,7 @@ module @FirstInstanceInputReuse {
 // -----
 
 module @InputReuseMultipleOps {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -231,7 +231,7 @@ module @InputReuseMultipleOps {
 // -----
 
 module @TwoRepeatingBlockTypes {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x300x300xf32>
     } outputsInfo : {

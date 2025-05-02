@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/Dialect/Quant/QuantOps.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_REMOVEQUANTDEQUANTSEQ
@@ -62,13 +65,13 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
             if (!mlir::isa_and_nonnull<IE::ElemTypeInfoOpInterface, IE::QuantizeOp>(parentOp)) {
                 return;
             }
-            if (mlir::isa<IE::ConcatOp>(parentOp)) {
+            if (mlir::isa_and_nonnull<IE::ConcatOp>(parentOp)) {
                 return;
             }
 
-            while (mlir::isa<IE::ElemTypeInfoOpInterface>(parentOp)) {
+            while (mlir::isa_and_nonnull<IE::ElemTypeInfoOpInterface>(parentOp)) {
                 parentOp = parentOp->getOperand(0).getDefiningOp();
-                if (mlir::isa<IE::ConcatOp>(parentOp)) {
+                if (mlir::isa_and_nonnull<IE::ConcatOp>(parentOp)) {
                     return;
                 }
                 if (!mlir::isa_and_nonnull<IE::ElemTypeInfoOpInterface, IE::QuantizeOp>(parentOp)) {
@@ -91,13 +94,13 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
             if (!consumer->getResult(0).hasOneUse()) {
                 return;
             }
-            if (mlir::isa<IE::ConcatOp>(consumer)) {
+            if (mlir::isa_and_nonnull<IE::ConcatOp>(consumer)) {
                 return;
             }
             if (mlir::isa_and_nonnull<IE::ElemTypeInfoOpInterface>(consumer)) {
                 consumerOps.push_back(consumer);
             }
-            if (mlir::isa<IE::DequantizeOp>(consumer)) {
+            if (mlir::isa_and_nonnull<IE::DequantizeOp>(consumer)) {
                 dequantizeOp = mlir::dyn_cast<vpux::IE::DequantizeOp>(*consumer);
                 break;
             }
@@ -115,7 +118,7 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
             } else {
                 childOp->getOpOperand(0).set(quantOp->getOperand(0));
             }
-            while (!mlir::isa<IE::ConcatOp>(childOp)) {
+            while (!mlir::isa_and_nonnull<IE::ConcatOp>(childOp)) {
                 inferReturnTypes(childOp, InferShapedTypeMode::ELEM_TYPE);
                 childOp = *(childOp->getResult(0).getUsers().begin());
             }
@@ -152,15 +155,15 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
             while (operation && !operation->getUsers().empty()) {
                 auto user = *(operation->getUsers().begin());
 
-                if (mlir::isa<IE::ConcatOp>(user)) {
+                if (mlir::isa_and_nonnull<IE::ConcatOp>(user)) {
                     return;
                 }
 
-                if (!mlir::isa<IE::ElemTypeInfoOpInterface, IE::DequantizeOp>(user)) {
+                if (!mlir::isa_and_nonnull<IE::ElemTypeInfoOpInterface, IE::DequantizeOp>(user)) {
                     return;
                 }
 
-                if (mlir::isa<IE::ElemTypeInfoOpInterface>(user)) {
+                if (mlir::isa_and_nonnull<IE::ElemTypeInfoOpInterface>(user)) {
                     if (!user->hasOneUse()) {
                         return;
                     }
@@ -170,7 +173,7 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
                     continue;
                 }
 
-                if (mlir::isa<IE::DequantizeOp>(user)) {
+                if (mlir::isa_and_nonnull<IE::DequantizeOp>(user)) {
                     _log.trace("Found dequantize user {0} at {1}, stop pattern searching", user->getName(),
                                user->getLoc());
                     dequantizeOp = mlir::dyn_cast<vpux::IE::DequantizeOp>(*user);
@@ -195,6 +198,22 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
             dequantizeOp.replaceAllUsesWith(quantizeOp.getInput());
         }
     });
+
+    // Erase any fp16->fp16 Dequantize Ops created by previous alterations
+    func.walk([&](vpux::IE::DequantizeOp dequantizeOp) {
+        const auto inputElementType =
+                mlir::cast<vpux::NDTypeInterface>(dequantizeOp->getOperand(0).getType()).getElementType();
+        const auto outputElementType =
+                mlir::cast<vpux::NDTypeInterface>(dequantizeOp->getResult(0).getType()).getElementType();
+
+        if (!inputElementType.isF16() || !outputElementType.isF16()) {
+            return;
+        }
+
+        dequantizeOp->replaceAllUsesWith(dequantizeOp->getOperands());
+        dequantizeOp.erase();
+    });
+
 }  // namespace
 
 }  // namespace

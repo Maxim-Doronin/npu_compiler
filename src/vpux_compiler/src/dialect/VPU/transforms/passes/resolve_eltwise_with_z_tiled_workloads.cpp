@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -149,7 +149,7 @@ WorkloadSplits getWorkloadSplits(const WorkloadSplits& sortedClusterWorkloads) {
 void findOutputValuesByMemoryKind(mlir::Value outputValue, SmallVector<mlir::Value>& ddrValues,
                                   SmallVector<mlir::Value>& cmxValues) {
     auto addValue = [&](mlir::Value value) -> void {
-        auto memoryKind = value.getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+        auto memoryKind = mlir::cast<vpux::NDTypeInterface>(value.getType()).getMemoryKind();
         if (memoryKind == VPU::MemoryKind::DDR) {
             ddrValues.push_back(value);
         } else if (memoryKind == VPU::MemoryKind::CMX_NN) {
@@ -218,8 +218,8 @@ mlir::Value createEltwiseSlice(mlir::OpBuilder& builder, VPU::NCEEltwiseOp eltwi
 
     auto newEltwiseOp = mlir::cast<VPU::NCEEltwiseOp>(newOp);
 
-    auto outputType = eltwiseOp.getOutput().getType().cast<vpux::NDTypeInterface>();
-    auto newInputType = newOperands.front().getType().cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getOutput().getType());
+    auto newInputType = mlir::cast<vpux::NDTypeInterface>(newOperands.front().getType());
     auto newOutputType = outputType.changeShape(newInputType.getShape());
     newEltwiseOp.getOutput().setType(newOutputType);
 
@@ -256,16 +256,15 @@ void getOpValues(mlir::OpBuilder& builder, VPU::NCEEltwiseOp eltwiseOp, mlir::Va
     spilledInputs = false;
 
     const auto maybeCopyToDDR = [&](mlir::Value value) -> mlir::Value {
-        if (value.getType().isa<VPU::DistributedTensorType>()) {
-            auto valueType = value.getType().cast<vpux::NDTypeInterface>();
+        if (mlir::isa<vpux::VPU::DistributedTensorType>(value.getType())) {
+            auto valueType = mlir::cast<vpux::NDTypeInterface>(value.getType());
             if (valueType.getMemoryKind() == VPU::MemoryKind::CMX_NN) {
                 spilledInputs = true;
                 const auto ddrMemKindAttr =
                         vpux::IndexedSymbolAttr::get(builder.getContext(), stringifyEnum(VPU::MemoryKind::DDR));
                 auto tensorAttr = vpux::getTensorAttr(builder.getContext(), valueType.getDimsOrder(), ddrMemKindAttr);
-                auto outputType =
-                        mlir::RankedTensorType::get(valueType.getShape().raw(), valueType.getElementType(), tensorAttr)
-                                .cast<vpux::NDTypeInterface>();
+                auto outputType = mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(
+                        valueType.getShape().raw(), valueType.getElementType(), tensorAttr));
                 auto newCopyOp =
                         builder.create<VPU::CopyOp>(eltwiseOp->getLoc(), outputType, value, outputType.getMemSpace());
                 return newCopyOp.getOutput();
@@ -285,7 +284,7 @@ mlir::Value sliceEltwise(mlir::OpBuilder& builder, VPU::NCEEltwiseOp origEltwise
     for (auto operand : operands) {
         auto sliceOp = builder.create<VPU::SliceOp>(loc, operand, offsets, sizes);
         auto sliceOperand = sliceOp.getResult();
-        auto sliceType = sliceOperand.getType().cast<vpux::NDTypeInterface>();
+        auto sliceType = mlir::cast<vpux::NDTypeInterface>(sliceOperand.getType());
 
         if (sliceType.getMemoryKind() != VPU::MemoryKind::CMX_NN) {
             auto copyType = sliceType;
@@ -293,11 +292,11 @@ mlir::Value sliceEltwise(mlir::OpBuilder& builder, VPU::NCEEltwiseOp origEltwise
                 // In case the input was manually spilled to DDR in this pass, the original CMX type is distributed
                 // The new copy to CMX must also produce a distributed type with the same strategy as before
                 auto sliceShape = sliceType.getShape();
-                copyType = operand.getDefiningOp()->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+                copyType = mlir::cast<vpux::NDTypeInterface>(operand.getDefiningOp()->getOperand(0).getType());
                 copyType = copyType.changeShape(sliceShape);
             } else {
                 const auto memSpaceCMX =
-                        origEltwiseOp.getInput1().getType().cast<vpux::NDTypeInterface>().getMemSpace();
+                        mlir::cast<vpux::NDTypeInterface>(origEltwiseOp.getInput1().getType()).getMemSpace();
                 copyType = copyType.changeMemSpace(memSpaceCMX);
             }
             sliceOperand = builder.create<VPU::CopyOp>(loc, copyType, sliceOperand, copyType.getMemSpace()).getOutput();
@@ -312,8 +311,8 @@ mlir::Value sliceEltwise(mlir::OpBuilder& builder, VPU::NCEEltwiseOp origEltwise
 
     // Copy the outputs to DDR. This is done to avoid wrong results when the concat is done in CMX
     // Accuracy issue to be investigated in E76283
-    auto sliceOutputType = sliceOutput.getType().cast<vpux::NDTypeInterface>();
-    auto origEltwiseOutputType = origEltwiseOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto sliceOutputType = mlir::cast<vpux::NDTypeInterface>(sliceOutput.getType());
+    auto origEltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(origEltwiseOp.getOutput().getType());
     if (mlir::isa<VPU::DistributedTensorType>(origEltwiseOutputType)) {
         origEltwiseOutputType = mlir::cast<VPU::DistributedTensorType>(origEltwiseOutputType).getCompactType();
     }
@@ -326,30 +325,31 @@ mlir::Value sliceEltwise(mlir::OpBuilder& builder, VPU::NCEEltwiseOp origEltwise
 }
 
 mlir::Type getConcatType(mlir::Value origOutputValue) {
-    auto origOutputType = origOutputValue.getType().cast<vpux::NDTypeInterface>();
+    auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOutputValue.getType());
     auto concatType = origOutputType.changeMemSpace(VPU::MemoryKind::DDR);
 
-    if (auto distType = origOutputType.dyn_cast<VPU::DistributedTypeInterface>()) {
+    if (auto distType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(origOutputType)) {
         if (distType.containsDistributedTypes()) {
             auto distributedTypes = distType.getDistributedTypes();
-            if (origOutputType.isa<VPU::SparseTensorType>()) {
+            if (mlir::isa<vpux::VPU::SparseTensorType>(origOutputType)) {
                 VPUX_THROW_UNLESS(distributedTypes.size() == 2,
                                   "Expected two distributed tensors for sparse output, got {0}",
                                   distributedTypes.size());
-                auto compactDataType = distributedTypes[0].cast<VPU::DistributedTensorType>().getCompactType();
-                auto compactSMType = distributedTypes[1].cast<VPU::DistributedTensorType>().getCompactType();
+                auto compactDataType =
+                        mlir::cast<vpux::VPU::DistributedTensorType>(distributedTypes[0]).getCompactType();
+                auto compactSMType = mlir::cast<vpux::VPU::DistributedTensorType>(distributedTypes[1]).getCompactType();
 
-                auto dataType = compactDataType.cast<vpux::NDTypeInterface>().changeMemSpace(VPU::MemoryKind::DDR);
-                auto smType = compactSMType.cast<vpux::NDTypeInterface>().changeMemSpace(VPU::MemoryKind::DDR);
+                auto dataType = mlir::cast<vpux::NDTypeInterface>(compactDataType).changeMemSpace(VPU::MemoryKind::DDR);
+                auto smType = mlir::cast<vpux::NDTypeInterface>(compactSMType).changeMemSpace(VPU::MemoryKind::DDR);
 
                 concatType = VPU::SparseTensorType::get(dataType, smType);
             } else {
                 VPUX_THROW_UNLESS(distributedTypes.size() == 1, "Expected one distributed tensor for output, got {0}",
                                   distributedTypes.size());
-                auto compactDataType = distributedTypes[0].cast<VPU::DistributedTensorType>().getCompactType();
-                auto dataType =
-                        compactDataType.cast<vpux::NDTypeInterface>().cast<vpux::NDTypeInterface>().changeMemSpace(
-                                VPU::MemoryKind::DDR);
+                auto compactDataType =
+                        mlir::cast<vpux::VPU::DistributedTensorType>(distributedTypes[0]).getCompactType();
+                auto dataType = mlir::cast<vpux::NDTypeInterface>(mlir::cast<vpux::NDTypeInterface>(compactDataType))
+                                        .changeMemSpace(VPU::MemoryKind::DDR);
                 concatType = dataType;
             }
         }
@@ -365,8 +365,8 @@ void replaceOrigUses(mlir::OpBuilder& builder, mlir::Value origOutputValue, VPU:
     findOutputValuesByMemoryKind(origOutputValue, ddrValues, cmxValues);
 
     if (!cmxValues.empty()) {
-        const auto memSpaceCMX = cmxValues.front().getType().cast<vpux::NDTypeInterface>().getMemSpace();
-        auto valueType = concatOp.getOutput().getType().cast<vpux::NDTypeInterface>().changeMemSpace(memSpaceCMX);
+        const auto memSpaceCMX = mlir::cast<vpux::NDTypeInterface>(cmxValues.front().getType()).getMemSpace();
+        auto valueType = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType()).changeMemSpace(memSpaceCMX);
         auto outputCopy =
                 builder.create<VPU::CopyOp>(loc, valueType, concatOp.getOutput(), valueType.getMemSpace()).getOutput();
 

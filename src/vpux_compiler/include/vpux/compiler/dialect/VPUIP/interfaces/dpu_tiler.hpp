@@ -20,6 +20,11 @@
 namespace vpux {
 namespace VPUIP {
 
+struct SEPInfo {
+    Shape sepTableShape;
+    Shape sepActShape;
+};
+
 struct WorkloadCostParams {
     VPUIP::NCETaskType nceTaskType;
     mlir::Type inDataType;
@@ -40,11 +45,11 @@ struct WorkloadCostParams {
     // The two items will pass to VPUNN for memory calculation
     bool isWeightsSparsityEnabled = false;
     float weightsSparsityRatio = 0.0;
+    // SEP info when enabled
+    std::optional<SEPInfo> sepInfo = std::nullopt;
     VPU::MultiClusterStrategy layerStrategy = VPU::MultiClusterStrategy::Clustering;
     VPU::PPEAttr ppeAttr = nullptr;
-    // Output layout default: ZMAJOR , odu permute is PERMUTE_ZXY
-    // For NCE.PermuteQuantize op, odu permute is PERMUTE_YZX
-    VPUIPDPU::ODUPermuteDataMode oduPermutation = VPUIPDPU::ODUPermuteDataMode::PERMUTE_ZXY;
+    bool isNcePermute = false;
 };
 
 enum class SplitDimension { SPLIT_OVER_H = 0, SPLIT_OVER_W = 1, SPLIT_OVER_HW = 2 };

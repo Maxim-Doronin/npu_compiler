@@ -1,4 +1,4 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,14 +11,11 @@ namespace ov::test {
 class DpuWithF16ToF32ConvertTestBase :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<std::tuple<ov::Shape, ov::Layout, ov::Layout, size_t>> {
-    void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-dpu-f16-to-f32-convert=true";
-    }
-
     void generate_inputs(const std::vector<ov::Shape>& inputShapes) override {
-        VPUX_THROW_UNLESS(inputShapes.size() == 1, "Only 1 input shape is supported");
+        VPUX_THROW_UNLESS(inputShapes.size() <= 2, "Can have at most 2 inputs supported");
         const auto& funcInputs = function->inputs();
-        VPUX_THROW_UNLESS(funcInputs.size() == 1, "Only 1 input is supported");
+        VPUX_THROW_UNLESS(funcInputs.size() <= 2, "Can have at most 2 inputs supported");
+
         const auto& inputStaticShape = inputShapes[0];
         const auto totalSize =
                 std::accumulate(inputStaticShape.begin(), inputStaticShape.end(), 1, std::multiplies<size_t>());
@@ -28,25 +25,32 @@ class DpuWithF16ToF32ConvertTestBase :
             inputData[i] = std::sin(i);
         }
         inputs = {{funcInputs[0].get_node_shared_ptr(), inputTensor}};
+
+        if (funcInputs.size() > 1) {
+            inputs.emplace(funcInputs[1].get_node_shared_ptr(), inputTensor);
+        }
     }
 
     void SetUp() override {
         const auto& [lhsInputShape, inLayout, outLayout, outputChannels] = GetParam();
 
-        init_input_shapes(static_shapes_to_test_representation({lhsInputShape}));
+        const ov::ParameterVector params = getParams(lhsInputShape);
 
-        const ov::ParameterVector params = {
-                std::make_shared<ov::op::v0::Parameter>(ov::element::f16, inputDynamicShapes.front())};
-
-        const auto conv = buildDpuOp(params.at(0), outputChannels);
+        const auto conv = buildDpuOp(params, outputChannels);
         const auto convert = buildConvert(conv->output(0), lhsInputShape);
 
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(convert)};
 
         function = std::make_shared<ov::Model>(results, params, "DpuWithF16ToF32ConvertTest");
         auto preProc = ov::preprocess::PrePostProcessor(function);
-        preProc.input().tensor().set_layout(inLayout);
-        preProc.input().model().set_layout(inLayout);
+        preProc.input(0).tensor().set_layout(inLayout);
+        preProc.input(0).model().set_layout(inLayout);
+
+        if (params.size() == 2) {
+            preProc.input(1).tensor().set_layout(inLayout);
+            preProc.input(1).model().set_layout(inLayout);
+        }
+
         preProc.output().tensor().set_layout(outLayout);
         preProc.output().model().set_layout(outLayout);
         function = preProc.build();
@@ -64,7 +68,13 @@ class DpuWithF16ToF32ConvertTestBase :
     }
 
 protected:
-    virtual std::shared_ptr<ov::Node> buildDpuOp(const ov::Output<ov::Node>&, const size_t) = 0;
+    virtual std::shared_ptr<ov::Node> buildDpuOp(const ov::ParameterVector&, const size_t) = 0;
+    virtual ov::ParameterVector getParams(const ov::Shape& lhsInputShape) {
+        init_input_shapes(static_shapes_to_test_representation({lhsInputShape}));
+
+        return ov::ParameterVector{
+                std::make_shared<ov::op::v0::Parameter>(ov::element::f16, inputDynamicShapes.front())};
+    }
 
 public:
     static std::string getTestCaseName(
@@ -78,14 +88,14 @@ public:
 };
 
 class ConvWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
-    std::shared_ptr<ov::Node> buildDpuOp(const ov::Output<ov::Node>& param, const size_t outCh) override {
-        const ov::Shape& inputShape = param.get_shape();
+    std::shared_ptr<ov::Node> buildDpuOp(const ov::ParameterVector& params, const size_t outCh) override {
+        const ov::Shape& inputShape = params.at(0)->output(0).get_shape();
         const auto weightsSize = inputShape.at(1) * outCh * 1 * 1;
         std::vector<float> values(weightsSize, 1.f);
         const auto weightsShape = ov::Shape{outCh, inputShape.at(1), 1, 1};
         const auto weights = ov::op::v0::Constant::create(ov::element::f16, weightsShape, values);
         auto conv2d = std::make_shared<ov::op::v1::Convolution>(
-                param, weights->output(0), ov::Strides(std::vector<size_t>{1, 1}),
+                params.at(0), weights->output(0), ov::Strides(std::vector<size_t>{1, 1}),
                 ov::CoordinateDiff(std::vector<ptrdiff_t>{0, 0}), ov::CoordinateDiff(std::vector<ptrdiff_t>{0, 0}),
                 ov::Strides(std::vector<size_t>{1, 1}));
 
@@ -94,15 +104,15 @@ class ConvWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
 };
 
 class GroupConvWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
-    std::shared_ptr<ov::Node> buildDpuOp(const ov::Output<ov::Node>& param, const size_t /*outCh*/) override {
-        const ov::Shape& inputShape = param.get_shape();
+    std::shared_ptr<ov::Node> buildDpuOp(const ov::ParameterVector& params, const size_t /*outCh*/) override {
+        const ov::Shape& inputShape = params.at(0)->output(0).get_shape();
         const auto weightsSize = inputShape.at(1) * 1 * 1;
         std::vector<float> values(weightsSize, 1.f);
         const auto weightsShape = ov::Shape{inputShape.at(1), 1, 1, 1, 1};
         const auto weights = ov::op::v0::Constant::create(ov::element::f16, weightsShape, values);
 
         const auto groupConv = std::make_shared<ov::op::v1::GroupConvolution>(
-                param, weights, ov::Strides(std::vector<size_t>{1, 1}),
+                params.at(0), weights, ov::Strides(std::vector<size_t>{1, 1}),
                 ov::CoordinateDiff(std::vector<ptrdiff_t>{0, 0}), ov::CoordinateDiff(std::vector<ptrdiff_t>{0, 0}),
                 ov::Strides(std::vector<size_t>{1, 1}));
 
@@ -111,9 +121,9 @@ class GroupConvWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
 };
 
 class AvgPoolWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
-    std::shared_ptr<ov::Node> buildDpuOp(const ov::Output<ov::Node>& param, const size_t /*outCh*/) override {
+    std::shared_ptr<ov::Node> buildDpuOp(const ov::ParameterVector& params, const size_t /*outCh*/) override {
         const auto avgpooling = std::make_shared<ov::op::v1::AvgPool>(
-                param, ov::Strides(std::vector<size_t>{1, 1}), ov::Shape({0, 0}), ov::Shape({0, 0}),
+                params.at(0), ov::Strides(std::vector<size_t>{1, 1}), ov::Shape({0, 0}), ov::Shape({0, 0}),
                 ov::Strides(std::vector<size_t>{3, 3}), false, ov::op::RoundingType::FLOOR, ov::op::PadType::AUTO);
 
         return avgpooling;
@@ -121,9 +131,9 @@ class AvgPoolWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
 };
 
 class MaxPoolWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
-    std::shared_ptr<ov::Node> buildDpuOp(const ov::Output<ov::Node>& param, const size_t /*outCh*/) override {
+    std::shared_ptr<ov::Node> buildDpuOp(const ov::ParameterVector& params, const size_t /*outCh*/) override {
         auto maxpool = std::make_shared<ov::op::v1::MaxPool>(
-                param, ov::Strides(std::vector<size_t>{1, 1}), ov::Shape({0, 0}), ov::Shape({0, 0}),
+                params.at(0), ov::Strides(std::vector<size_t>{1, 1}), ov::Shape({0, 0}), ov::Shape({0, 0}),
                 ov::Strides(std::vector<size_t>{3, 3}), ov::op::RoundingType::FLOOR, ov::op::PadType::AUTO);
 
         return maxpool;
@@ -131,9 +141,17 @@ class MaxPoolWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
 };
 
 class EltwiseWithF16ToF32ConvertTest : public DpuWithF16ToF32ConvertTestBase {
-    std::shared_ptr<ov::Node> buildDpuOp(const ov::Output<ov::Node>& param, const size_t /*outCh*/) override {
-        auto add = std::make_shared<ov::op::v1::Add>(param, param);
+    std::shared_ptr<ov::Node> buildDpuOp(const ov::ParameterVector& params, const size_t /*outCh*/) override {
+        auto add = std::make_shared<ov::op::v1::Add>(params.at(0), params.at(1));
         return add;
+    }
+
+    ov::ParameterVector getParams(const ov::Shape& lhsInputShape) override {
+        init_input_shapes(static_shapes_to_test_representation({lhsInputShape}));
+
+        return ov::ParameterVector{
+                std::make_shared<ov::op::v0::Parameter>(ov::element::f16, inputDynamicShapes.front()),
+                std::make_shared<ov::op::v0::Parameter>(ov::element::f16, inputDynamicShapes.front())};
     }
 };
 

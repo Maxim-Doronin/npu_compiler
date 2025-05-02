@@ -8,7 +8,10 @@
 
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
+#include "vpux/compiler/dialect/VPU/utils/static_shape_op_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -16,6 +19,8 @@
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/type_traits.hpp"
 
+#include <mlir/Dialect/Arith/Utils/Utils.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
@@ -113,11 +118,11 @@ mlir::LogicalResult vpux::IE::TransposeOp::inferReturnTypeComponents(
     const auto inOrder = DimsOrder::fromValue(transpose.getInput());
     // Transpose must not change the order of its output. It only changes shapes.
     const auto outOrder = inOrder;
-    const auto outBoundsAttr =
-            permuteBounds(ctx, mlir::cast<vpux::BoundedTypeInterface>(inDataType), inOrder, outOrder, permutationMap);
-    const auto outDesc = vpux::getTensorAttr(vpux::getOrder(inDataType), /*memSpace=*/nullptr, outBoundsAttr);
+    const auto outDynAttr = permuteDynamicAttribute(inDataType, inOrder, outOrder, permutationMap);
 
+    auto outDesc = getTensorAttr(inDataType, vpux::getOrder(inDataType), /*memSpace=*/nullptr, outDynAttr);
     inferredReturnShapes.emplace_back(ArrayRef(outShapeVec), outputElemType, outDesc);
+
     return mlir::success();
 }
 
@@ -384,4 +389,8 @@ mlir::LogicalResult vpux::IE::TransposeOp::reifyResultShapes(mlir::OpBuilder& bu
     }
     reifiedReturnShapes.emplace_back(std::move(shapes));
     return mlir::success();
+}
+
+bool vpux::IE::TransposeOp::requiresStaticShape() {
+    return vpux::VPU::hasEnableExtraStaticShapeOps(getModuleOp(this->getOperation()));
 }

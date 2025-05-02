@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -2256,4 +2256,83 @@ TEST_F(BarrierInfoTests, fixOutOfBlockUpdateDependencies) {
     checkBarrierMaps(expectedResult, testResult);
 
     EXPECT_TRUE(barrierInfoTest.verifyControlGraphSplit());
+}
+
+/**
+ * Test dependencies in model which was not reordered after changes in barrier deps
+ * and now there are dependencies from task index i to task i+N - deps to tasks with lower index
+ * HW FIFO A(DMA):  t0 t3 t4
+ * HW FIFO B(DPU0): t2
+ * HW FIFO C(DPU1): t1
+ *
+ *   t0(A)
+ *    |
+ *    b0
+ *    |
+ *   t3(A)
+ *    |
+ *    b1
+ *    |
+ *   t2(B)
+ *    |
+ *    b2
+ *    |
+ *   t1(C)
+ *    |
+ *    b3
+ *    |
+ *   t4(A)
+ */
+
+BarrierInfoMaps graphToCheckControlDepsTowardsTasksWithLowerIndex() {
+    BarrierInfoMaps barrierMapsConfig;
+
+    barrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {3},  // task 1
+            {2},  // task 2
+            {1},  // task 3
+            {}    // task 4
+    };
+
+    barrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {2},  // task 1
+            {1},  // task 2
+            {0},  // task 3
+            {3}   // task 4
+    };
+
+    fillProducersAndConsumers(barrierMapsConfig);
+
+    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dpu1Type{VPU::ExecutorKind::DPU, 0};
+    barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 3, 4};
+    barrierMapsConfig.taskQueueTypeMap[dpu0Type] = {2};
+    barrierMapsConfig.taskQueueTypeMap[dpu1Type] = {1};
+
+    return barrierMapsConfig;
+}
+
+TEST_F(BarrierInfoTests, CheckControlDepsTowardsTasksWithLowerIndex) {
+    auto barrierAndFifoConfig = graphToCheckControlDepsTowardsTasksWithLowerIndex();
+
+    BarrierInfoTest barrierInfoTest(barrierAndFifoConfig);
+
+    const auto& [taskControlMap, _] = barrierInfoTest.buildTaskControlMap(0, /* considerTaskFifoDependency */ false);
+
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 3, 2, false));
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 3, 1, false));
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 3, 4, false));
+    EXPECT_FALSE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 3, 0, false));
+
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 2, 1, false));
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 2, 4, false));
+    EXPECT_FALSE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 2, 3, false));
+
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 0, 3, false));
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 0, 2, false));
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 0, 1, false));
+    EXPECT_TRUE(barrierInfoTest.controlPathExistsBetweenTasksInSameBlock(taskControlMap, 0, 4, false));
 }

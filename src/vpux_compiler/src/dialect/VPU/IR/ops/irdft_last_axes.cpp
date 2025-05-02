@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::IRDFTLastAxisOp::inferReturnTypes(
     auto axes = parseIntArrayAttr<int64_t>(op.getAxesAttr());
     auto signalSize = parseIntArrayAttr<int64_t>(op.getSignalSizeAttr());
 
-    const auto inType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto outShape = to_small_vector(inType.getShape());
     // delete last size, 2 in this case
     outShape.pop_back();

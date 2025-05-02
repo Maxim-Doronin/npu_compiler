@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -48,15 +49,15 @@ private:
 void UngroupBoundedBuffersAsFuncArgs::safeRunOnModule() {
     auto module = getOperation();
 
-    IE::CNNNetworkOp netInfo;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp func;
-    IE::CNNNetworkOp::getFromModule(module, netInfo, func);
+    net::NetworkInfoOp::getFromModule(module, netInfo, func);
 
     // TODO: multiple functions support TBD
     // Track: E#118218
 
     const auto isDynamicOperand = [&](auto type) {
-        return type.template isa<VPUIP::BoundedBufferType>();
+        return mlir::isa<vpux::VPUIP::BoundedBufferType>(type);
     };
     const auto hasDynamicInputs = llvm::any_of(func.getFunctionType().getInputs(), isDynamicOperand);
     const auto hasDynamicOutputs = llvm::any_of(func.getFunctionType().getResults(), isDynamicOperand);
@@ -80,7 +81,7 @@ void UngroupBoundedBuffersAsFuncArgs::safeRunOnModule() {
     auto unpackBoundedBuffer = [](VPUIP::BoundedBufferType type) -> BoundedBuffer {
         // TODO: support for other buffer types will be added separately
         // Track E#118173
-        return {type.getData().cast<mlir::MemRefType>(), type.getDynamicShape().cast<mlir::MemRefType>()};
+        return {mlir::cast<mlir::MemRefType>(type.getData()), mlir::cast<mlir::MemRefType>(type.getDynamicShape())};
     };
 
     const auto addDataInfo = [&](auto boundedType, auto& infoBlock, auto dataInfo, int index, int dataBufferCount) {
@@ -94,12 +95,12 @@ void UngroupBoundedBuffersAsFuncArgs::safeRunOnModule() {
 
         auto insertionPointAfter = std::next(infoBlock.begin(), dataBufferCount);
         auto infoBuilder = mlir::OpBuilder(&infoBlock, insertionPointAfter, builder.getListener());
-        infoBuilder.create<IE::DataInfoOp>(takeOpLoc(func, StringLiteral("{0}"), func.getName()), nameAttr, typeAttr,
-                                           /*OptionalAttr originalShape*/ nullptr,
-                                           /*OptionalAttr friendlyName*/ nullptr,
-                                           /*OptionalAttr inputName*/ nullptr,
-                                           /*OptionalAttr tensorNames*/ nullptr,
-                                           /*profilingSectionsCount=*/0);
+        infoBuilder.create<net::DataInfoOp>(takeOpLoc(func, StringLiteral("{0}"), func.getName()), nameAttr, typeAttr,
+                                            /*OptionalAttr originalShape*/ nullptr,
+                                            /*OptionalAttr friendlyName*/ nullptr,
+                                            /*OptionalAttr inputName*/ nullptr,
+                                            /*OptionalAttr tensorNames*/ nullptr,
+                                            /*profilingSectionsCount=*/0);
         _log.trace("Added new DataInfo '{0}' with type {1}", nameAttr, typeAttr);
     };
     const auto originalInputSize = func.getFunctionType().getInputs().size();
@@ -115,9 +116,10 @@ void UngroupBoundedBuffersAsFuncArgs::safeRunOnModule() {
             auto arg0 = entryBlock.insertArgument(index + 1, boundedMemRef, func.getLoc());
             auto arg1 = entryBlock.insertArgument(entryBlock.getNumArguments(), dynamicShapeMemRef, func.getLoc());
 
-            auto alloc0 = builder.create<mlir::memref::AllocOp>(func.getLoc(), boundedMemRef.cast<mlir::MemRefType>());
-            auto alloc1 =
-                    builder.create<mlir::memref::AllocOp>(func.getLoc(), dynamicShapeMemRef.cast<mlir::MemRefType>());
+            auto alloc0 =
+                    builder.create<mlir::memref::AllocOp>(func.getLoc(), mlir::cast<mlir::MemRefType>(boundedMemRef));
+            auto alloc1 = builder.create<mlir::memref::AllocOp>(func.getLoc(),
+                                                                mlir::cast<mlir::MemRefType>(dynamicShapeMemRef));
 
             auto copy0 = builder.create<VPUIP::CopyOp>(func.getLoc(), arg0, alloc0);
             auto copy1 = builder.create<VPUIP::CopyOp>(func.getLoc(), arg1, alloc1);

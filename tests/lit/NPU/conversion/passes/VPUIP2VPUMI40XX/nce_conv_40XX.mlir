@@ -10,7 +10,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
 
-  IE.CNNNetwork entryPoint : @multiple_clusters_dpu_soh_f16_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @multiple_clusters_dpu_soh_f16_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x32x32x32xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x64x16x32xf16>
@@ -120,7 +120,7 @@ func.func private @multiple_clusters_dpu_soh_f16_f16_f16(%arg0: memref<1x32x32x3
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
-  IE.CNNNetwork entryPoint : @multiple_clusters_dpu_sok_f16_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @multiple_clusters_dpu_sok_f16_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x32x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x64x16x16xf16>
@@ -278,7 +278,7 @@ module @mainModule {
     }
     return %arg1 : memref<1x32x32x32xf16, #NHWC, @DDR>
   }
-  IE.CNNNetwork entryPoint : @sparse_conv inputsInfo : {
+  net.NetworkInfo entryPoint : @sparse_conv inputsInfo : {
     DataInfo "input_0" : tensor<1x128x32x32xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x32x32x32xf16>
@@ -297,7 +297,7 @@ module @mainModule {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
 
-  IE.CNNNetwork entryPoint : @se_table_dpu_f16_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @se_table_dpu_f16_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x32x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x32x16x16xf16>
@@ -334,7 +334,7 @@ module @mainModule {
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-IE.CNNNetwork entryPoint : @singleDPUITIBuffer inputsInfo : {
+net.NetworkInfo entryPoint : @singleDPUITIBuffer inputsInfo : {
   DataInfo "dummy_input" : tensor<1x50x1x1xf16>
 } outputsInfo : {
   DataInfo "dummy_output" : tensor<1x50x1x1xf16>
@@ -456,7 +456,7 @@ func.func @singleDPUITIBuffer() {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
 
-  IE.CNNNetwork entryPoint : @conv_wt_reuse inputsInfo : {
+  net.NetworkInfo entryPoint : @conv_wt_reuse inputsInfo : {
     DataInfo "input_0" : tensor<1x32x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x32x16x16xf16>

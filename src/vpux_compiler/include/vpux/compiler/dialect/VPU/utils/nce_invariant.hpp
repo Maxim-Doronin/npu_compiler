@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,8 +9,8 @@
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/mem_size.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <llvm/Support/FormatVariadic.h>
 
@@ -92,8 +92,14 @@ mlir::LogicalResult isSupported(mlir::Operation* op, Logger log = Logger::global
 //
 // Check if small kernel optimization is supported
 //
+bool doesWorkloadSupportSmallKernelOpt([[maybe_unused]] VPU::ArchKind arch, int64_t KX, int64_t SX,
+                                       ArrayRef<int64_t> workloadOutSz, bool isFp16Input, [[maybe_unused]] int64_t KY,
+                                       [[maybe_unused]] int64_t padLeft);
 bool isSmallKernelOptimizationSupported(const VPU::ArchKind arch, mlir::Operation* op);
 
+//
+// Verify kernel utils
+//
 mlir::LogicalResult verifyKernel(mlir::Operation* op, int64_t KY, int64_t KX, int64_t SY, int64_t SX, int64_t padTop,
                                  int64_t padBottom, int64_t padLeft, int64_t padRight, Logger log = Logger::global());
 

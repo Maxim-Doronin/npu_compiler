@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,9 +9,8 @@ namespace vpux {
 
 mlir::LogicalResult bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir::ModuleOp module, mlir::Operation* op,
                                        ArrayRef<mlir::Value> newOperands, Logger log);
-mlir::LogicalResult bufferizeSWLayerOpInNceClusterTiling(mlir::RewriterBase& rewriter, mlir::ModuleOp module,
-                                                         mlir::Operation* op, ArrayRef<mlir::Value> newOperands,
-                                                         Logger log);
+mlir::LogicalResult bufferizeDistributedSWLayerOp(mlir::RewriterBase& rewriter, mlir::ModuleOp module,
+                                                  mlir::Operation* op, ArrayRef<mlir::Value> newOperands, Logger log);
 
 //
 // SoftwareLayerOpBufferizeModel
@@ -41,11 +40,22 @@ public:
         auto valueRangeBegin = valueRange.begin().getBase().template get<const mlir::Value*>();
         auto bufferizedOperands = mlir::ArrayRef<mlir::Value>(valueRangeBegin, valueRange.size());
 
-        auto clusterTilingOp = origOp->template getParentOfType<VPU::NCEClusterTilingOp>();
-        if (clusterTilingOp == nullptr) {
+        SmallVector<mlir::Type> mergedOperands;
+        mergedOperands.reserve(origOp->getOperands().size() + origOp->getResults().size());
+        mergedOperands.insert(mergedOperands.end(), origOp->getOperands().getTypes().begin(),
+                              origOp->getOperands().getTypes().end());
+        mergedOperands.insert(mergedOperands.end(), origOp->getResults().getTypes().begin(),
+                              origOp->getResults().getTypes().end());
+        auto hasDistributedOperand = llvm::any_of(mergedOperands, [](mlir::Type t) {
+            if (auto checkDistributed = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(t)) {
+                return checkDistributed.containsDistributedTypes();
+            }
+            return false;
+        });
+        if (!hasDistributedOperand) {
             return bufferizeSWLayerOp(rewriter, module, origOp, bufferizedOperands, log);
         } else {
-            return bufferizeSWLayerOpInNceClusterTiling(rewriter, module, origOp, bufferizedOperands, log);
+            return bufferizeDistributedSWLayerOp(rewriter, module, origOp, bufferizedOperands, log);
         }
     }
 };

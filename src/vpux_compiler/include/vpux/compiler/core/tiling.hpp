@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,7 +11,7 @@
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 
 #include "vpux/utils/core/format.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 
@@ -28,6 +28,12 @@ static constexpr double FRAGMENTATION_AVOID_RATIO = 0.9;
 // Experimental number to avoid memory fragmentation when pipelining
 static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING = 0.85;
 
+// Experimental number to avoid memory fragmentation caused by large weights when pipelining
+static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS = 0.45;
+
+// Experimental number to avoid memory fragmentation caused by large activations (input & output) when pipelining
+static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION = 0.26;
+
 // Experimental number to define large constant size
 // The constant filter is considered as large constant value
 // when its size is bigger than CMXSize*LARGE_CONST_THRESHOLD_RATIO
@@ -36,6 +42,10 @@ static constexpr double LARGE_CONST_THRESHOLD_RATIO = 0.25;
 // An experimental number from activation prefetch pass.
 // The purpose is to avoid excessive tiling.
 static constexpr int MAX_PREFETCH_TILING_TIME = 3;
+
+// An experimental number from large data (weights & input & output) pipelining.
+// The purpose is to avoid excessive tiling.
+static constexpr int MAX_PIPELINE_TILING_TIME_FOR_LARGE_DATA = 2;
 
 // Experimental number to avoid excessive tiling in output pipeline tiling
 static constexpr int MAX_OUTPUT_PIPELINE_TILING_TIME = 10;
@@ -73,10 +83,6 @@ static constexpr double ACTSPARSE_DPU_COST_RATIO = 2;
 // Experimental number for reducemin to get better DPU performance than SHAVE
 // Track [E#126141]
 static constexpr double REDUCEMIN_DPU_THRESHOLD = 96 * 1024;
-
-// Experimental number to get accurate NCEPermute VPUNN cost
-// Track [E#10732]
-static constexpr double NCEPERMUTE_DPU_COST_RATIO = 1.9;
 
 // An experimental number for tiling strategy searching algorithms choice
 // Linear search for the first several times
@@ -185,10 +191,14 @@ struct PadInfo final {
     }
 
     PadInfo(mlir::ArrayAttr pads_begin, mlir::ArrayAttr pads_end) {
-        top = pads_begin[Dims4D::PadsBegin::Top.ind()].cast<mlir::IntegerAttr>().getValue().getSExtValue();
-        bottom = pads_end[Dims4D::PadsEnd::Bottom.ind()].cast<mlir::IntegerAttr>().getValue().getSExtValue();
-        left = pads_begin[Dims4D::PadsBegin::Left.ind()].cast<mlir::IntegerAttr>().getValue().getSExtValue();
-        right = pads_end[Dims4D::PadsEnd::Right.ind()].cast<mlir::IntegerAttr>().getValue().getSExtValue();
+        top = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims4D::PadsBegin::Top.ind()]).getValue().getSExtValue();
+        bottom = mlir::cast<mlir::IntegerAttr>(pads_end[Dims4D::PadsEnd::Bottom.ind()]).getValue().getSExtValue();
+        left = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims4D::PadsBegin::Left.ind()]).getValue().getSExtValue();
+        right = mlir::cast<mlir::IntegerAttr>(pads_end[Dims4D::PadsEnd::Right.ind()]).getValue().getSExtValue();
+    }
+
+    mlir::DenseMap<int64_t, std::pair<int64_t, int64_t>> toPadByDims() const {
+        return {{Dims4D::Act::H.ind(), {top, bottom}}, {Dims4D::Act::W.ind(), {left, right}}};
     }
 
     bool enabled() const {
@@ -282,6 +292,16 @@ InputTiling backInferGatherTile(const vpux::TileInfo& outputTile, const ShapeRef
                                 bool hasAxisTensor, const int64_t indicesRank, vpux::Logger log);
 
 //
+// GatherND tiling
+//
+
+mlir::ArrayAttr packOriginalShapeAttrForGatherNDSwOp(mlir::ArrayAttr originalShapeAttr, mlir::MLIRContext* ctx);
+std::optional<Shape> extractOriginalShapeAttrFromGatherNDSwOp(mlir::ArrayAttr originalShapeAttr);
+
+InputTiling backInferGatherNDTile(const vpux::TileInfo& outputTile, ShapeRef origInputShape, ShapeRef origIndicesShape,
+                                  const int64_t batchDims, ShapeRef originalShapeAttrVal, vpux::Logger log);
+
+//
 // GatherDMA tiling
 //
 
@@ -294,6 +314,13 @@ InputTiling backInferGatherDMATile(const vpux::TileInfo& outputTile, ShapeRef or
 InputTiling backInferGatherElementsTile(const vpux::TileInfo& outputTile, const ShapeRef& origInputShape,
                                         const ShapeRef& origIndicesShape, int64_t axisValue, const int64_t indicesRank,
                                         vpux::Logger log);
+
+//
+// GridSample tiling
+//
+InputTiling backInferGridSampleTile(const vpux::TileInfo& outputTile, ShapeRef origInputShape, ShapeRef origGridShape,
+                                    vpux::Logger);
+
 //
 // Pad tiling
 //
@@ -408,8 +435,10 @@ struct HWTilingStrategies {
 mlir::FailureOr<OutputTiling> getHWLayerTilingStrategyWithTileDimOrderForIsolatedOrPrefetch(
         mlir::Operation* op, TilingMode tilingMode, DimArrRef tileDimOrder, ShapeRef outputShape, Logger log);
 
-OutputTiling getHWLayerTilingStrategyWithTileDimOrderForPipelining(mlir::Operation* op, ShapeRef outputShape,
-                                                                   const OutputTiling& isolatedTiles, Logger log);
+mlir::FailureOr<OutputTiling> getHWLayerTilingStrategyWithTileDimOrderForPipelining(mlir::Operation* op,
+                                                                                    ShapeRef outputShape,
+                                                                                    const OutputTiling& isolatedTiles,
+                                                                                    Logger log);
 
 mlir::FailureOr<HWTilingStrategies> getHWLayerTilingStrategiesWithTileDimOrder(mlir::Operation* op,
                                                                                TilingMode tilingMode,
@@ -482,4 +511,6 @@ Get all feasible tiling strategies for all dim orders for an op
 */
 SmallVector<OutputTiling> getAllHWLayerTilingStrategies(mlir::Operation* op, TilingMode tilingMode,
                                                         DimArrRef tileDimOrder, Logger log);
+
+SmallVector<int64_t> divideChannelForSEPDWConv(mlir::Operation* op, int64_t channelSize, int64_t channelDivisor);
 }  // namespace vpux

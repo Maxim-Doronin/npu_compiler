@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 using namespace vpux;
 
@@ -40,8 +40,8 @@ mlir::LogicalResult vpux::VPU::NCEMatMulOp::inferReturnTypes(mlir::MLIRContext* 
         return mlir::failure();
     }
 
-    auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto weightsType = op.getWeights().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    auto weightsType = mlir::cast<vpux::NDTypeInterface>(op.getWeights().getType());
 
     const auto inputShape = inputType.getShape();
     const auto weightsShape = weightsType.getShape();
@@ -144,9 +144,9 @@ bool isNCEMatMulSupported(vpux::NDTypeInterface inputType, [[maybe_unused]] vpux
 bool VPU::NCEMatMulOp::isSupported(IE::MatMulOp op, vpux::LogCb logCb, bool checkLayout, bool checkChannelAlignment) {
     auto mod = getModuleOp(op);
 
-    const auto inputType = op.getInput1().getType().cast<vpux::NDTypeInterface>();
-    const auto filterType = op.getInput2().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getInput2().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     const auto inputShape = inputType.getShape();
     const auto filterShape = filterType.getShape();
@@ -169,9 +169,9 @@ bool VPU::NCEMatMulOp::isSupported(VPU::NCEMatMulOp op, vpux::LogCb logCb, bool 
                                    bool checkChannelAlignment) {
     auto mod = getModuleOp(op);
 
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto filterType = op.getWeights().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getWeights().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     return isNCEMatMulSupported(inputType, filterType, outputType, mod, logCb, checkLayout, checkChannelAlignment);
 }
@@ -272,12 +272,12 @@ bool VPU::NCEMatMulOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, S
                                            Byte reservedMem) {
     auto nceOp = mlir::cast<VPU::NCEMatMulOp>(getOperation());
     auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(getOperation());
-    const auto outputType = nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     auto numClusters = VPU::getOptimalNumClusters(nceOp, outputType.getShape(), strategy);
     auto mod = getModuleOp(getOperation());
     auto arch = VPU::getArch(mod);
 
-    auto filterType = getWeights().getType().cast<vpux::NDTypeInterface>();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(getWeights().getType());
     auto largestGroupsNumPerCluster = filterType.getShape()[DimsGroups5D::Act::G];
     if (auto distType = mlir::dyn_cast<VPU::DistributedTensorType>(filterType)) {
         largestGroupsNumPerCluster = distType.getLargestCompactShape()[DimsGroups5D::Act::G];
@@ -312,7 +312,7 @@ bool VPU::NCEMatMulOp::doesLayerChangeOutputAlignmentFitIntoCMX(
     auto nceOp = mlir::cast<VPU::NCEMatMulOp>(getOperation());
     auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
-            nceOp, nceOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape(), strategy);
+            nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
     auto distributedInputType =
             getDistributedActivationTypeFromOp(nceOp, nceOp.getInput().getType(), numClusters, strategy);
     auto distributedFilterType =
@@ -326,7 +326,7 @@ vpux::NDTypeInterface vpux::VPU::NCEMatMulOp::getDistributedTypeForOpOperand(mli
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
     auto origOp = mlir::cast<NCEMatMulOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
     auto* ctx = clusteredOp->getContext();
 
@@ -344,7 +344,7 @@ vpux::NDTypeInterface vpux::VPU::NCEMatMulOp::getDistributedTypeForOpOperand(mli
                                            activationTensorNumTiles, activationAlignmentAttr, strategy,
                                            hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getWeights()) {
-        auto filterType = origOp.getWeights().getType().cast<vpux::NDTypeInterface>();
+        auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getWeights().getType());
         const auto weightsTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
         const auto weightsTensorNumTiles =
                 getIntArrayAttr(ctx, getWeightsTensorNumTiles(clusteredOp, filterType, numClusters, strategy));
@@ -359,7 +359,7 @@ vpux::NDTypeInterface vpux::VPU::NCEMatMulOp::getDistributedTypeForOpOperand(mli
                                            weightsTensorNumTiles, weightAlignmentAttr, strategy,
                                            hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getWeightsTable()) {
-        auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
         const auto weightsTableTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
         const auto weightsTableTensorNumTiles =
                 getIntArrayAttr(ctx, getWeightsTableTensorNumTiles(clusteredOp, outputType, numClusters, strategy));

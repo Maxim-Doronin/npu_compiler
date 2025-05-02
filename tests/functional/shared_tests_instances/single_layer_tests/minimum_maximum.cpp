@@ -4,8 +4,6 @@
 //
 
 #include "single_op_tests/minimum_maximum.hpp"
-#include <common/functions.h>
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -14,6 +12,7 @@ namespace ov {
 namespace test {
 
 class MaxMinLayerTestCommon : public MaxMinLayerTest, virtual public VpuOv2LayerTest {};
+class ShaveCodeGenMaxMinLayerTestCommon : public MaxMinLayerTest, virtual public VpuOv2LayerTest {};
 
 TEST_P(MaxMinLayerTestCommon, NPU3720_SW) {
     setReferenceSoftwareMode();
@@ -24,6 +23,13 @@ TEST_P(MaxMinLayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(ShaveCodeGenMaxMinLayerTestCommon, NPU4000_SW) {
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -66,5 +72,10 @@ INSTANTIATE_TEST_SUITE_P(smoke_Min_Max_test0, MaxMinLayerTestCommon, params0, Ma
 INSTANTIATE_TEST_SUITE_P(smoke_Min_Max_test1, MaxMinLayerTestCommon, params1, MaxMinLayerTestCommon::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Min_Max_test2, MaxMinLayerTestCommon, params2, MaxMinLayerTestCommon::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Min_Max_test3, MaxMinLayerTestCommon, params3, MaxMinLayerTestCommon::getTestCaseName);
+
+// Avoid shapes that would require tiling for ShaveCodeGen for now.
+// Needs E-157681 for f16 min/max support
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_Min_Max_test4, ShaveCodeGenMaxMinLayerTestCommon, params2,
+                         ShaveCodeGenMaxMinLayerTestCommon::getTestCaseName);
 
 }  // namespace

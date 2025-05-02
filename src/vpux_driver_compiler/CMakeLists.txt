@@ -1,11 +1,14 @@
 #
-# Copyright (C) 2023 Intel Corporation.
+# Copyright (C) 2023-2025 Intel Corporation.
 # SPDX-License-Identifier: Apache 2.0
 #
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     string(REPLACE "/sdl" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
     string(REPLACE "/sdl" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+    if(ENABLE_PRODUCTION_BUILD)
+        add_link_options("/INTEGRITYCHECK")
+    endif()
 endif()
 
 set(CID_COMPONENT "CiD")

@@ -6,11 +6,14 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -57,27 +60,21 @@ mlir::LogicalResult ConvertBroadcastToTile<ConcreteOp>::matchAndRewrite(Concrete
     VPUX_THROW_UNLESS(inputShape.size() <= outputShape.size(), "Broadcast input rank {0} exceeds output rank {1}",
                       inputShape.size(), outputShape.size());
 
-    const auto inTy = origOp.getInput().getType().template cast<vpux::NDTypeInterface>();
-    const auto outTy = origOp.getOutput().getType().template cast<vpux::NDTypeInterface>();
+    const auto inTy = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outTy = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     auto inputShapeBounded = inputShape;
     auto outputShapeBounded = outputShape;
 
-    auto updateBoundedShapeIfDynamic = [](const auto& type, auto& boundedShape, const auto& errorMsg) {
-        if (type.getShape().isDynamic()) {
-            const auto boundedType = type.template cast<vpux::BoundedTypeInterface>();
+    auto updateBoundedShapeIfDynamic = [](const auto& type, auto& boundedShape) {
+        if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
             const auto bounds = boundedType.getBounds();
-
-            VPUX_THROW_WHEN(bounds == nullptr, errorMsg);
-
-            boundedShape = parseIntArrayAttr<int64_t>(bounds);
+            boundedShape = to_small_vector(bounds);
         }
     };
 
-    updateBoundedShapeIfDynamic(inTy, inputShapeBounded,
-                                "ConvertBroadcastToTile: Missed bounds for input with dynamic dims");
-    updateBoundedShapeIfDynamic(outTy, outputShapeBounded,
-                                "ConvertBroadcastToTile: Missed bounds for output with dynamic dims");
+    updateBoundedShapeIfDynamic(inTy, inputShapeBounded);
+    updateBoundedShapeIfDynamic(outTy, outputShapeBounded);
 
     // Finds the axes over which the broadcasting rules apply. For example:
     // NUMPY and BIDIRECTIONAL: input 16x1x1, output 1x16x50x50 will return the axes [0, 2, 3]

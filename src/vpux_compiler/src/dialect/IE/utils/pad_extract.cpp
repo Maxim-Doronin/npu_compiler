@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 namespace vpux {
@@ -29,7 +30,7 @@ mlir::FailureOr<SmallVector<int64_t>> extractPads(mlir::Location loc, const mlir
             return errorAt(loc, "Only constant input is supported for pad");
         }
 
-        auto padValueShape = padValue.getType().cast<vpux::NDTypeInterface>().getShape().raw();
+        auto padValueShape = mlir::cast<vpux::NDTypeInterface>(padValue.getType()).getShape().raw();
         if (padValueShape.size() != 1 || padValueShape[0] != checked_cast<int64_t>(inputShape.size())) {
             return errorAt(loc, "pad_begin shape is not compatible with input tensor."
                                 "The length of the list must be equal to the number of dimensions in the input tensor");

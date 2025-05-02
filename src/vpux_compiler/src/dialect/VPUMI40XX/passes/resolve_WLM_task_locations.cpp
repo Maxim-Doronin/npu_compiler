@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -60,8 +60,8 @@ void ResolveWLMTaskLocationPass::safeRunOnFunc() {
         for (size_t i = 0; i < count; ++i) {
             auto index = VPURegMapped::IndexType::get(builder.getContext(), static_cast<uint32_t>(tileIdx), 0,
                                                       static_cast<uint32_t>(i));
-            auto taskBuffer = builder.create<VPURegMapped::DeclareTaskBufferOp>(netFunc.getLoc(), index, taskType,
-                                                                                /* offset */ nullptr);
+            auto taskBuffer = builder.create<VPUMI40XX::DeclareTaskBufferOp>(netFunc.getLoc(), index, taskType,
+                                                                             /* offset */ nullptr);
             taskBuffers.push_back(taskBuffer.getResult());
         }
         return taskBuffers;

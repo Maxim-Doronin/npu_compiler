@@ -1,15 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 
 #include "common/utils.hpp"
 
 #include <gtest/gtest.h>
-
-#include <algorithm>
 
 using namespace vpux;
 

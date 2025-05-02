@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 using namespace vpux;
@@ -20,18 +22,25 @@ mlir::LogicalResult vpux::IE::SubtractOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto in1Type = subtract.getInput1().getType().cast<mlir::ShapedType>();
-    const auto in2Type = subtract.getInput2().getType().cast<mlir::ShapedType>();
+    const auto in1Type = mlir::cast<mlir::ShapedType>(subtract.getInput1().getType());
+    const auto in2Type = mlir::cast<mlir::ShapedType>(subtract.getInput2().getType());
 
-    const auto outShapeRes =
-            IE::broadcastEltwiseShape(in1Type.getShape(), in2Type.getShape(), subtract.getAutoBroadcast(), loc);
+    auto in1Shape = SmallVector<int64_t>(in1Type.getShape());
+    auto in2Shape = SmallVector<int64_t>(in2Type.getShape());
+    if (mlir::failed(IE::unpadInputShape(in1Shape, subtract.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
+    if (mlir::failed(IE::unpadInputShape(in2Shape, subtract.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
+
+    const auto outShapeRes = IE::broadcastEltwiseShape(in1Shape, in2Shape, subtract.getAutoBroadcast(), loc);
     if (mlir::succeeded(outShapeRes)) {
-        auto outShapeResVec = outShapeRes.value();
-        if (subtract.getOutputChannels().has_value()) {
-            outShapeResVec[Dims4D::Act::C.ind()] = subtract.getOutputChannels().value();
+        auto outShape = outShapeRes.value();
+        if (mlir::failed(IE::padOutputShape(outShape, subtract.getOutputPaddingAttr(), loc))) {
+            return mlir::failure();
         }
-
-        inferredReturnShapes.emplace_back(outShapeResVec, in1Type.getElementType());
+        inferredReturnShapes.emplace_back(outShape, in1Type.getElementType());
     }
 
     return outShapeRes;

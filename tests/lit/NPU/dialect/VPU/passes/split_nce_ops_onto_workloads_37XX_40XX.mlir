@@ -254,7 +254,7 @@ func.func @ConvolutionWithDistributedTensor(%arg0: !Input_DDR) -> !Output_DDR {
                 ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>,
                 rawFilterShape = [64, 32, 3, 3],
                 strides = [1, 1]
-            } -> !OutputDistributed
+            } : !InputDistributed, !WeightsDistributed, !WeightsTableDistributed -> !OutputDistributed
 
     %output = VPU.Copy(%output_cmx) { out_mem_space = @DDR } : !OutputDistributed -> !Output_DDR
 
@@ -525,7 +525,7 @@ func.func @ConvolutionWithSparseDistributedTensor(%arg0: !Input_DDR) -> !Output_
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>,
             rawFilterShape = [32, 16, 7, 7],
             strides = [2, 2]
-            } -> !OutputDistributed
+            } : !InputDistributed, !WeightsDistributed, !WeightsTableDistributed -> !OutputDistributed
 
     %output = VPU.Copy(%output_cmx) { out_mem_space = @DDR } : !OutputDistributed -> !Output_DDR
 

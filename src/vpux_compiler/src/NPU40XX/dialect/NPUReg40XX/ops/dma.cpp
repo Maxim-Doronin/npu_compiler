@@ -44,7 +44,7 @@ size_t getSymRefOffsetForReloc(NPUReg40XX::NNDMAOp op, mlir::SymbolRefAttr ref) 
         return offsetof(nn_public::VpuDMATask, transaction_) + offsetof(DmaDescriptor, link_addr_offsetof);
     } else if (ref == op.getInputAttr()) {
         return offsetof(nn_public::VpuDMATask, transaction_) + offsetof(DmaDescriptor, src_offsetof);
-    } else if (ref == op.getOutputBuffsAttr()[0].cast<mlir::SymbolRefAttr>()) {
+    } else if (ref == mlir::cast<mlir::SymbolRefAttr>(op.getOutputBuffsAttr()[0])) {
         return offsetof(nn_public::VpuDMATask, transaction_) + offsetof(DmaDescriptor, dst_offsetof);
     } else if (op.getActCompressionSizeEntryAttr() == ref) {
         const auto& descriptor = op.getDescriptor().getRegMapped();
@@ -81,14 +81,18 @@ std::vector<ELF::RelocationInfo> NPUReg40XX::NNDMAOp::getRelocationInfo(ELF::Sym
                         ELF::getOffsetOfSymRef(symRefMap, getInput()), "Input in NNDMA reloc");
 
     // Output reloc
-    auto firstOutputBuff = getOutputBuffs()[0].cast<mlir::SymbolRefAttr>();
+    auto firstOutputBuff = mlir::cast<mlir::SymbolRefAttr>(getOutputBuffs()[0]);
     auto outputRelocType = VPUASM::getBufferLocation(symRefMap, firstOutputBuff) == VPURT::BufferSection::CMX_NN
                                    ? ELF::RelocationType::R_VPU_64_BIT_OR_B21_B26_UNSET
                                    : ELF::RelocationType::R_VPU_64;
 
-    relocs.emplace_back(firstOutputBuff, targetSection, getSymRefOffsetForReloc(thisDma, firstOutputBuff),
-                        outputRelocType, ELF::getOffsetOfSymRef(symRefMap, firstOutputBuff),
-                        "Output (firstOutputBuff) in NNDMA reloc");
+    // E#141779 Once this is resolved we can remove the selective relocation application
+    // Don't add relocations for Register type buffers as we use absolute HW address
+    if (VPUASM::getBufferLocation(symRefMap, firstOutputBuff) != VPURT::BufferSection::Register) {
+        relocs.emplace_back(firstOutputBuff, targetSection, getSymRefOffsetForReloc(thisDma, firstOutputBuff),
+                            outputRelocType, ELF::getOffsetOfSymRef(symRefMap, firstOutputBuff),
+                            "Output (firstOutputBuff) in NNDMA reloc");
+    }
 
     // Link Address reloc
     if (auto nextLink = getNextLink().value_or(nullptr)) {

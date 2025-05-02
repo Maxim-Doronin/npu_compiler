@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,8 @@
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -28,7 +30,7 @@ mlir::LogicalResult vpux::IE::NormalizeL2Op::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = normalizeL2.getData().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(normalizeL2.getData().getType());
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 
     return mlir::success();
@@ -39,7 +41,7 @@ mlir::LogicalResult vpux::IE::NormalizeL2Op::inferReturnTypeComponents(
 //
 
 mlir::LogicalResult vpux::IE::NormalizeL2Op::verify() {
-    const auto inRank = getData().getType().cast<mlir::ShapedType>().getRank();
+    const auto inRank = mlir::cast<mlir::ShapedType>(getData().getType()).getRank();
     const auto axes_tensor = getAxes();
     const auto axes_attribute = getAxesValueAttr();
     if (!(axes_tensor || axes_attribute)) {

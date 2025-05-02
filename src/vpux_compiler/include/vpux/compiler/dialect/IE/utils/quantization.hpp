@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes_properties_conversion.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/algo.hpp"
@@ -58,9 +59,9 @@ mlir::LogicalResult checkRescaledBiasRange(ConcreteOp op) {
 
     if (auto biasAttr = op.getBias()) {
         const auto inElemType =
-                inputDequantizeOp.getInput().getType().template cast<vpux::NDTypeInterface>().getElementType();
+                mlir::cast<vpux::NDTypeInterface>(inputDequantizeOp.getInput().getType()).getElementType();
         const auto filterElemType =
-                filterDequantizeOp.getInput().getType().template cast<vpux::NDTypeInterface>().getElementType();
+                mlir::cast<vpux::NDTypeInterface>(filterDequantizeOp.getInput().getType()).getElementType();
 
         Const::ContentAttr bias;
         if (auto biasConstOp = biasAttr.template getDefiningOp<Const::DeclareOp>()) {
@@ -83,6 +84,9 @@ mlir::LogicalResult checkRescaledBiasRange(ConcreteOp op) {
     }
     return mlir::success();
 }
+
+// Parses the IR upwards looking for a possibly quantized splat constant and returns its folded dequantized value.
+mlir::FailureOr<double> getQuantizedSplatConstant(mlir::Value input);
 
 }  // namespace IE
 }  // namespace vpux

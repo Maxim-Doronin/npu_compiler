@@ -1,16 +1,20 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/adaptive_stripping_utils.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -33,41 +37,13 @@ public:
     explicit HandleU16FakeQuantizePass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-    explicit HandleU16FakeQuantizePass(const IE::TransformOptions& options, Logger log) {
-        Base::initLogger(log, Base::getArgumentName());
-        Base::copyOptionValuesFrom(options);
-        initializeFromOptions();
-    }
 
 public:
     class RemoveU16FakeQuantizeRewriter;
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
-    // Initialize fields from pass options
-    void initializeFromOptions();
-
     void safeRunOnFunc() final;
-
-private:
-    bool _enableU16FQToScaleShiftConversion = false;
 };
-
-mlir::LogicalResult HandleU16FakeQuantizePass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
-        return mlir::failure();
-    }
-
-    initializeFromOptions();
-
-    return mlir::success();
-}
-
-void HandleU16FakeQuantizePass::initializeFromOptions() {
-    if (enableU16FQToScaleShiftConversion.hasValue()) {
-        _enableU16FQToScaleShiftConversion = enableU16FQToScaleShiftConversion.getValue();
-    }
-}
 
 std::pair<SmallVector<float>, SmallVector<float>> getWeightsAndBiases(mlir::Value inputLow, mlir::Value inputHigh,
                                                                       mlir::Value outputLow, mlir::Value outputHigh) {
@@ -157,10 +133,8 @@ mlir::Value applyU16FakequantizeOnConstant(mlir::PatternRewriter& rewriter, IE::
 class HandleU16FakeQuantizePass::RemoveU16FakeQuantizeRewriter final :
         public mlir::OpRewritePattern<IE::FakeQuantizeOp> {
 public:
-    RemoveU16FakeQuantizeRewriter(mlir::MLIRContext* ctx, Logger log, bool enableU16FQToScaleShiftConversion)
-            : mlir::OpRewritePattern<IE::FakeQuantizeOp>(ctx),
-              _log(log),
-              _enableU16FQToScaleShiftConversion(enableU16FQToScaleShiftConversion) {
+    RemoveU16FakeQuantizeRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::FakeQuantizeOp>(ctx), _log(log) {
         setDebugName("RemoveU16FakeQuantizeRewriter");
     }
 
@@ -170,7 +144,6 @@ public:
 
 private:
     Logger _log;
-    bool _enableU16FQToScaleShiftConversion = false;
 };
 
 mlir::LogicalResult HandleU16FakeQuantizePass::RemoveU16FakeQuantizeRewriter::convertFQToScaleShift(
@@ -202,20 +175,22 @@ mlir::LogicalResult HandleU16FakeQuantizePass::RemoveU16FakeQuantizeRewriter::co
                                                       weightsConst, IE::AutoBroadcastType::NUMPY,
                                                       /*post_op=*/nullptr,
                                                       /*clamp=*/nullptr,
-                                                      /*output_channels=*/nullptr,
-                                                      /*input_channels=*/nullptr);
+                                                      /*outputPadding=*/nullptr,
+                                                      /*inputPadding=*/nullptr);
     auto addOp = rewriter.replaceOpWithNewOp<IE::AddOp>(origOp, multiplyOp.getType(), multiplyOp.getOutput(),
                                                         biasesConst, IE::AutoBroadcastType::NUMPY,
                                                         /*post_op=*/nullptr,
                                                         /*clamp=*/nullptr,
-                                                        /*output_channels=*/nullptr,
-                                                        /*input_channels=*/nullptr);
+                                                        /*outputPadding=*/nullptr,
+                                                        /*inputPadding=*/nullptr);
     extendOpLoc(addOp, "as_add");
     return mlir::success();
 }
 
 mlir::LogicalResult HandleU16FakeQuantizePass::RemoveU16FakeQuantizeRewriter::matchAndRewrite(
         IE::FakeQuantizeOp origOp, mlir::PatternRewriter& rewriter) const {
+    auto moduleOp = getModuleOp(origOp);
+    auto setAdaptiveStrippingEnabled = VPU::hasEnableAdaptiveStripping(moduleOp);
     auto levels = origOp.getLevels();
 
     // Maximum number of levels that don't exceeds I8/U8 storage type
@@ -245,7 +220,33 @@ mlir::LogicalResult HandleU16FakeQuantizePass::RemoveU16FakeQuantizeRewriter::ma
         return mlir::success();
     }
 
-    if (_enableU16FQToScaleShiftConversion) {
+    if (setAdaptiveStrippingEnabled) {
+        auto childOp = *origOp.getOutput().getUsers().begin();
+        auto childFqOp = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(childOp);
+        if (childFqOp != nullptr && *childFqOp.getLevels() > MAX_LEVELS) {
+            const auto inLowValue = IE::getConst(origOp.getInputLow().getDefiningOp<Const::DeclareOp>())[0];
+            const auto outLowValue = IE::getConst(origOp.getOutputLow().getDefiningOp<Const::DeclareOp>())[0];
+            const auto inHighValue = IE::getConst(origOp.getInputHigh().getDefiningOp<Const::DeclareOp>())[0];
+            const auto outHighValue = IE::getConst(origOp.getOutputHigh().getDefiningOp<Const::DeclareOp>())[0];
+            const auto childInLowValue = IE::getConst(childFqOp.getInputLow().getDefiningOp<Const::DeclareOp>())[0];
+            const auto childOutLowValue = IE::getConst(childFqOp.getOutputLow().getDefiningOp<Const::DeclareOp>())[0];
+            const auto childInHighValue = IE::getConst(childFqOp.getInputHigh().getDefiningOp<Const::DeclareOp>())[0];
+            const auto childOutHighValue = IE::getConst(childFqOp.getOutputHigh().getDefiningOp<Const::DeclareOp>())[0];
+
+            // ParentOp -> FQ1 U16 (il=ol=0) -> FQ2 U16 -> Op => ParentOp -> ReLU -> Op
+            // ParentOp -> FQ1 U16 -> FQ2 U16 (il=ol=0) -> Op => ParentOp -> ReLU -> Op
+            if (IE::isPerTensorFQ({origOp}) && isFloatEqual(inLowValue, outLowValue) &&
+                isFloatEqual(inHighValue, outHighValue) && isFloatEqual(inLowValue, 0.0f) && origOp->hasOneUse()) {
+                rewriter.replaceOpWithNewOp<IE::ReLUOp>(origOp, fqInput);
+                return mlir::success();
+            } else {
+                if (IE::isPerTensorFQ({childFqOp}) && isFloatEqual(childInLowValue, childOutLowValue) &&
+                    isFloatEqual(childInHighValue, childOutHighValue) && isFloatEqual(childInLowValue, 0.0f)) {
+                    rewriter.replaceOpWithNewOp<IE::ReLUOp>(childFqOp, fqInput);
+                    return mlir::success();
+                }
+            }
+        }
         // In case the FakeQuantize has values in_low != out_low or in_high != out_high it can be replaced with a
         // ScaleShift op
         if (!areFQValsEqual(origOp.getInputLow(), origOp.getInputHigh(), origOp.getOutputLow(),
@@ -276,7 +277,7 @@ void HandleU16FakeQuantizePass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<RemoveU16FakeQuantizeRewriter>(&ctx, _log, _enableU16FQToScaleShiftConversion);
+    patterns.add<RemoveU16FakeQuantizeRewriter>(&ctx, _log);
 
     auto func = getOperation();
     if (mlir::failed(applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
@@ -292,8 +293,4 @@ void HandleU16FakeQuantizePass::safeRunOnFunc() {
 
 std::unique_ptr<mlir::Pass> vpux::IE::createHandleU16FakeQuantizePass(Logger log) {
     return std::make_unique<HandleU16FakeQuantizePass>(log);
-}
-
-std::unique_ptr<mlir::Pass> vpux::IE::createHandleU16FakeQuantizePass(const IE::TransformOptions& options, Logger log) {
-    return std::make_unique<HandleU16FakeQuantizePass>(options, log);
 }

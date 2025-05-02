@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 
 module @Test {
 
-IE.CNNNetwork entryPoint : @AssignFullKernelPath inputsInfo :  {
+net.NetworkInfo entryPoint : @AssignFullKernelPath inputsInfo :  {
     DataInfo "inputCNN" : tensor<1x64x32x514xf16>
 } outputsInfo :  {
     DataInfo "outputCNN" : tensor<1x64x32x514xf16>

@@ -183,7 +183,7 @@ func.func @AvoidMixedPrecisionAvgPoolPerAxisWithPostOp(%arg0: tensor<1x16x3x3xf1
         pads_begin = [0, 0],
         pads_end = [0, 0],
         rounding_type = #IE.rounding_type<FLOOR>,
-        post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 2.500000e-01 : f64}>,
+        post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>,
         strides = [1, 1]
     } : tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
 
@@ -193,7 +193,7 @@ func.func @AvoidMixedPrecisionAvgPoolPerAxisWithPostOp(%arg0: tensor<1x16x3x3xf1
 
     return %quantize : tensor<1x16x3x3x!qElemType>
 
-    // CHECK: [[AVGPOOL:%.+]] = IE.AvgPool([[ARG0]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 2.500000e-01 : f64}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
+    // CHECK: [[AVGPOOL:%.+]] = IE.AvgPool([[ARG0]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
     // CHECK: [[QUANTIZE:%.+]] = IE.Quantize([[AVGPOOL]]) {dstElemType = !qElemType} : tensor<1x16x3x3xf16> -> tensor<1x16x3x3x!qElemType>
     // CHECK: return [[QUANTIZE]] : tensor<1x16x3x3x!qElemType>
 
@@ -232,12 +232,12 @@ func.func @AvoidMixedPrecisionMaxPool(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x1
 // CHECK-LABEL: @AvoidMixedPrecisionAddPerAxisWithPostOp
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x16x1x1xf16>, [[ARG1:%.+]]: tensor<1x16x1x1xf16>)
 func.func @AvoidMixedPrecisionAddPerAxisWithPostOp(%arg0: tensor<1x16x1x1xf16>, %arg1: tensor<1x16x1x1xf16>) -> tensor<1x16x1x1x!qElemType> {
-    %add = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 2.500000e-01 : f64}>} : tensor<1x16x1x1xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x1x1xf16>
+    %add = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>} : tensor<1x16x1x1xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x1x1xf16>
     %quantize = IE.Quantize(%add) {dstElemType = !qElemType} : tensor<1x16x1x1xf16> -> tensor<1x16x1x1x!qElemType>
 
     return %quantize : tensor<1x16x1x1x!qElemType>
 
-    // CHECK: [[ADD:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 2.500000e-01 : f64}>} : tensor<1x16x1x1xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x1x1xf16>
+    // CHECK: [[ADD:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>} : tensor<1x16x1x1xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x1x1xf16>
     // CHECK: [[QUANTIZE:%.+]] = IE.Quantize([[ADD]]) {dstElemType = !qElemType} : tensor<1x16x1x1xf16> -> tensor<1x16x1x1x!qElemType>
     // CHECK: return [[QUANTIZE]] : tensor<1x16x1x1x!qElemType>
 
@@ -255,7 +255,7 @@ func.func @AvoidMixedPrecisionConvPerAxisWithPostOp(%arg0: tensor<1x16x3x3xf16>)
         dilations = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
-        post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 2.500000e-01 : f64}>,
+        post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>,
         strides = [1, 1]
     } : tensor<1x16x3x3xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x3x3xf16>
     %quantize = IE.Quantize(%convolution) {
@@ -265,7 +265,7 @@ func.func @AvoidMixedPrecisionConvPerAxisWithPostOp(%arg0: tensor<1x16x3x3xf16>)
     return %quantize : tensor<1x16x3x3x!qElemType>
 
     // CHECK: [[CONST:%.+]] = const.Declare tensor<16x16x1x1xf16> = dense<2.000000e+00> : tensor<16x16x1x1xf16>
-    // CHECK: [[CONVOLUTION:%.+]] = IE.Convolution([[ARG0]], [[CONST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 2.500000e-01 : f64}>, strides = [1, 1]} : tensor<1x16x3x3xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x3x3xf16>
+    // CHECK: [[CONVOLUTION:%.+]] = IE.Convolution([[ARG0]], [[CONST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>, strides = [1, 1]} : tensor<1x16x3x3xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x3x3xf16>
     // CHECK: [[QUANTIZE:%.+]] = IE.Quantize([[CONVOLUTION]]) {dstElemType = !qElemType} : tensor<1x16x3x3xf16> -> tensor<1x16x3x3x!qElemType>
     // CHECK: return [[QUANTIZE]] : tensor<1x16x3x3x!qElemType>
 
@@ -344,7 +344,7 @@ func.func @MixedPrecisionTransposedConvForOutputShape(%arg0: tensor<1x20x23x30xf
     %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x20x23x30x!qElemType> -> tensor<1x20x23x30xf16>
     %weights = const.Declare tensor<20x20x2x2x!qElemType> = dense<1.0> : tensor<20x20x2x2xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
     %3 = IE.Dequantize(%weights) {dstElemType = f16} : tensor<20x20x2x2x!qElemType> -> tensor<20x20x2x2xf16>
-    %4 = IE.TransposedConvolution(%2, %3) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x20x23x30xf16>, tensor<20x20x2x2xf16> -> tensor<1x20x46x60xf16>
+    %4 = IE.TransposedConvolution(%2, %3) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x20x23x30xf16>, tensor<20x20x2x2xf16> -> tensor<1x20x46x60xf16>
     return %4 : tensor<1x20x46x60xf16>
 
     //CHECK: [[CST:%.+]] = const.Declare tensor<20x20x2x2x!qElemType>
@@ -352,7 +352,7 @@ func.func @MixedPrecisionTransposedConvForOutputShape(%arg0: tensor<1x20x23x30xf
     //CHECK-SAME:   [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
 
     //CHECK: [[VAL0:%.+]] = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x20x23x30xf16> -> tensor<1x20x23x30x!qElemType>
-    //CHECK: [[VAL1:%.+]] = IE.TransposedConvolution([[VAL0]], [[CST]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]} : tensor<1x20x23x30x!qElemType>, tensor<20x20x2x2x!qElemType> -> tensor<1x20x46x60xf16>
+    //CHECK: [[VAL1:%.+]] = IE.TransposedConvolution([[VAL0]], [[CST]]) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x20x23x30x!qElemType>, tensor<20x20x2x2x!qElemType> -> tensor<1x20x46x60xf16>
 
     //CHECK: return [[VAL1]]
 }
@@ -494,12 +494,7 @@ func.func @DoNotConvertConvWithPReLU(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x16
         pads_begin = [0, 0],
         pads_end = [0, 0],
         strides = [1, 1],
-        post_op = #IE.PostOp<
-            name = "IE.LeakyRelu",
-            attrs = {
-                negative_slope = 2.500000e-01 : f64
-            }
-        >
+        post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>
     } : tensor<1x16x3x3xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x3x3xf16>
 
     return %4 : tensor<1x16x3x3xf16>
@@ -526,12 +521,7 @@ func.func @DoNotConvertConvWithPReLU(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x16
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
-    // CHECK-SAME:      post_op = #IE.PostOp<
-    // CHECK-SAME:          name = "IE.LeakyRelu",
-    // CHECK-SAME:          attrs = {
-    // CHECK-SAME:              negative_slope = 2.500000e-01 : f64
-    // CHECK-SAME:          }
-    // CHECK-SAME:      >,
+    // CHECK-SAME:      post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>,
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:  } : tensor<1x16x3x3xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x3x3xf16>
 
@@ -821,12 +811,7 @@ func.func @DoNotConv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tens
         dilations = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
-        post_op = #IE.PostOp<
-            name = "IE.LeakyRelu",
-            attrs = {
-                negative_slope = 2.500000e-01 : f64
-            }
-        >,
+        post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>,
         strides = [1, 1]
     } : tensor<1x16x3x3xf16>, tensor<3x16x1x1xf16> -> tensor<1x3x3x3xf16>
 
@@ -843,12 +828,7 @@ func.func @DoNotConv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tens
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
-    // CHECK-SAME:      post_op = #IE.PostOp<
-    // CHECK-SAME:          name = "IE.LeakyRelu",
-    // CHECK-SAME:          attrs = {
-    // CHECK-SAME:              negative_slope = 2.500000e-01 : f64
-    // CHECK-SAME:          }
-    // CHECK-SAME:      >,
+    // CHECK-SAME:      post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>,
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME: } : tensor<1x16x3x3xf16>, tensor<3x16x1x1xf16> -> tensor<1x3x3x3xf16>
 
@@ -867,7 +847,7 @@ func.func @AvoidMixedPrecisionForInvalidApproximation(%arg0: tensor<1x1x256x256x
         groups = 1 : i64,
         pads_begin = [0, 0],
         pads_end = [0, 0],
-        post_op = #IE.PostOp<name = "IE.Clamp", attrs = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}>,
+        post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>,
         strides = [1, 1]
     } : tensor<1x1x256x256xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x256x256xf16>
     %1 = IE.Quantize(%0) {dstElemType = !qElemType} : tensor<1x1x256x256xf16> -> tensor<1x1x256x256x!qElemType>
@@ -882,8 +862,7 @@ func.func @AvoidMixedPrecisionForInvalidApproximation(%arg0: tensor<1x1x256x256x
     //CHECK-SAME:               groups = 1 : i64,
     //CHECK-SAME:               pads_begin = [0, 0],
     //CHECK-SAME:               pads_end = [0, 0],
-    //CHECK-SAME:               post_op = #IE.PostOp<name = "IE.Clamp",
-    //CHECK-SAME:               attrs = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}>,
+    //CHECK-SAME:               post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>,
     //CHECK-SAME:               strides = [1, 1]
     //CHECK-SAME:           } : tensor<1x1x256x256xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x256x256xf16>
 

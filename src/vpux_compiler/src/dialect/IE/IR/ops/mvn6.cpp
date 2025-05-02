@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 mlir::LogicalResult vpux::IE::MVN6Op::inferReturnTypeComponents(
@@ -18,8 +21,8 @@ mlir::LogicalResult vpux::IE::MVN6Op::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = mvn.getInput().getType().cast<mlir::ShapedType>();
-    const auto rankedInType = mvn.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(mvn.getInput().getType());
+    const auto rankedInType = mlir::cast<mlir::RankedTensorType>(mvn.getInput().getType());
     const auto outDesc = vpux::getTensorAttr(rankedInType);
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), outDesc);
 
@@ -52,7 +55,7 @@ mlir::FailureOr<SmallVector<int64_t>> getAxes(IE::MVN6OpAdaptor mvn, mlir::Locat
     const auto axesContent = axesConst.getContent();
     auto axes = to_small_vector(axesContent.getValues<int64_t>());
 
-    const auto inType = mvn.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(mvn.getInput().getType());
     const auto inRank = inType.getRank();
 
     for (auto& axis : axes) {

@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
@@ -89,24 +88,6 @@ llvm::unique_function<ScaleElemType(size_t)> getBiasFunc(mlir::Type inElemType, 
                inElemType, outElemType);
 }
 
-// this function is used for formatting both data pointers and sparsity pointers
-// for getting a formatted sparsity pointer, provide only the pointer (as there is no zeropoint in this case)
-int32_t getDataOrSparsityPointer(int32_t pointer, uint8_t zeroPoint = 0) {
-    constexpr int32_t ZP_OFFSET = 24;
-    uint8_t ZP_VALUE = zeroPoint;
-
-    int32_t PTR_VALUE = pointer;
-    constexpr int32_t PTR_VALIDATION_MASK = 0xFF00000F;
-
-    if (PTR_VALUE & PTR_VALIDATION_MASK) {
-        VPUX_THROW("The value that's stored for the pointer ({0}) has to fit on 24 bits, having the last 4 bits equal "
-                   "to 0",
-                   PTR_VALUE);
-    }
-
-    return (ZP_VALUE << ZP_OFFSET) | PTR_VALUE;
-}
-
 }  // namespace
 
 int32_t vpux::VPU::NCESparsity::toFixedPoint(const double realVal) {
@@ -129,7 +110,7 @@ int32_t vpux::VPU::NCESparsity::getWeightPtrStep(mlir::Value weights) {
     const auto KY = filterShape[Dims4D::Filter::KY];
     const auto KX = filterShape[Dims4D::Filter::KX];
 
-    const auto origFilterType = weights.getType().cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
     const auto convAlignment = VPU::NCEInvariant::getAlignment(origFilterType.getElementType());
     const auto weightsElementCount = IC * KY * KX;
     VPUX_THROW_UNLESS(weightsElementCount % convAlignment == 0,
@@ -217,138 +198,6 @@ std::vector<int32_t> vpux::VPU::NCESparsity::getWeightsTable(
     return weightsTableVals;
 }
 
-std::vector<int32_t> vpux::VPU::NCESparsity::getDataPointerTable(mlir::Type inElemType, mlir::Type outElemType,
-                                                                 ArrayRef<int32_t> workloadsSizes,
-                                                                 std::optional<int32_t> weightsPtrOffset,
-                                                                 int32_t weightsPtrStep, int64_t OC,
-                                                                 ArrayRef<uint8_t> zeroPoints) {
-    auto weightsPtrOffsetValue = weightsPtrOffset.has_value() ? weightsPtrOffset.value() : 0;
-
-    SmallVector<int32_t> weightsPtrs(OC, 0);
-    for (auto oc : irange(OC)) {
-        weightsPtrs[oc] = weightsPtrOffsetValue;
-        weightsPtrOffsetValue += weightsPtrStep;
-    }
-
-    return getDataPointerTable(inElemType, outElemType, workloadsSizes, weightsPtrs, OC, zeroPoints);
-}
-
-std::vector<int32_t> vpux::VPU::NCESparsity::getDataPointerTable(mlir::Type inElemType, mlir::Type outElemType,
-                                                                 ArrayRef<int32_t> workloadsSizes,
-                                                                 ArrayRef<int32_t> weightsPtrs, int64_t OC,
-                                                                 ArrayRef<uint8_t> zeroPoints) {
-    VPUX_THROW_WHEN(inElemType == nullptr || outElemType == nullptr,
-                    "Can't create data pointer table without operation input/output types");
-    VPUX_THROW_WHEN(static_cast<int64_t>(weightsPtrs.size()) != OC,
-                    "Data pointers size {0} different than output channels {1}", weightsPtrs.size(), OC);
-    VPUX_THROW_WHEN(
-            static_cast<int64_t>(zeroPoints.size()) != OC && static_cast<int64_t>(zeroPoints.size()) != 0,
-            "Zero-points size {0} different than output channels {1} (and different than 0 - the default value)",
-            zeroPoints.size(), OC);
-
-    std::vector<uint8_t> zeroPointsVector(zeroPoints.begin(), zeroPoints.end());
-    if (zeroPointsVector.empty()) {
-        zeroPointsVector.assign(OC, 0);
-    }
-
-    std::vector<std::int32_t> dataPointerTableVals(OC, 0);
-
-    loop_1d(LoopExecPolicy::Parallel, inElemType.getContext(), checked_cast<size_t>(OC), [&](const size_t oc) {
-        VPUX_THROW_UNLESS(weightsPtrs[oc] % ALIGNMENT_REQUIREMENT_IN_ELEMENTS == 0,
-                          "weightsPtrs[{0}] must be multiple of {1}, got {2}", oc, ALIGNMENT_REQUIREMENT_IN_ELEMENTS,
-                          weightsPtrs[oc]);
-
-        dataPointerTableVals[oc] = getDataOrSparsityPointer(weightsPtrs[oc], zeroPointsVector[oc]);
-    });
-
-    return NewWeightsTableFormatMapper::constructNewPointerTable(workloadsSizes, dataPointerTableVals);
-}
-
-std::pair<std::vector<int32_t>, std::vector<int32_t>> vpux::VPU::NCESparsity::getSparseDataPointerTablePair(
-        mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int32_t> workloadsSizes,
-        std::optional<int32_t> weightsPtrOffset, ShapeRef weightsShape, int32_t sparsityPtrOffset,
-        ArrayRef<uint8_t> sparsityMap, int64_t OC, mlir::Type weightsElemType, ArrayRef<uint8_t> zeroPoints) {
-    VPUX_THROW_WHEN(weightsElemType == nullptr,
-                    "Can't create sparse data pointer tables without operation weights type");
-
-    const int32_t weightSetsCounter =
-            weightsShape[Dims4D::Filter::IC] * weightsShape[Dims4D::Filter::KY] * weightsShape[Dims4D::Filter::KX];
-
-    VPUX_THROW_WHEN(static_cast<size_t>(weightSetsCounter * weightsShape[Dims4D::Filter::OC]) != sparsityMap.size(),
-                    "There has to be one sparse value for each weight");
-
-    auto weightsPtrOffsetValue = weightsPtrOffset.has_value() ? weightsPtrOffset.value() : 0;
-    auto sparsityPtrStep = vpux::alignValUp(weightSetsCounter / 8, ALIGNMENT_REQUIREMENT_IN_ELEMENTS);
-
-    SmallVector<int32_t> weightsPtrs(OC, 0);
-    SmallVector<int32_t> sparsityPtrs(OC, 0);
-    int32_t sparsityTableOffset = 0;
-
-    for (auto oc : irange(OC)) {
-        weightsPtrs[oc] = weightsPtrOffsetValue;
-
-        int32_t nonZeroWeightsCounter = std::accumulate(sparsityMap.begin() + sparsityTableOffset,
-                                                        sparsityMap.begin() + sparsityTableOffset + weightSetsCounter,
-                                                        0, [](int32_t acc, uint8_t curr) {
-                                                            return curr ? acc + 1 : acc;
-                                                        });
-        const Bit eltSize = getElemTypeSize(weightsElemType);
-
-        auto weightsPtrStep = checked_cast<int32_t>(Byte(eltSize * nonZeroWeightsCounter).count());
-        weightsPtrOffsetValue += vpux::alignValUp(weightsPtrStep, ALIGNMENT_REQUIREMENT_IN_ELEMENTS);
-
-        sparsityPtrs[oc] = sparsityPtrOffset;
-        sparsityPtrOffset += sparsityPtrStep;
-        sparsityTableOffset += weightSetsCounter;
-    }
-
-    return getSparseDataPointerTablePair(inElemType, outElemType, workloadsSizes, weightsPtrs, sparsityPtrs, OC,
-                                         zeroPoints);
-}
-
-std::pair<std::vector<int32_t>, std::vector<int32_t>> vpux::VPU::NCESparsity::getSparseDataPointerTablePair(
-        mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int32_t> workloadsSizes, ArrayRef<int32_t> weightsPtrs,
-        ArrayRef<int32_t> sparsityPtrs, int64_t OC, ArrayRef<uint8_t> zeroPoints) {
-    VPUX_THROW_WHEN(inElemType == nullptr || outElemType == nullptr,
-                    "Can't create sparse data pointer tables without operation input/output/weights types");
-    VPUX_THROW_WHEN(static_cast<int64_t>(weightsPtrs.size()) != OC,
-                    "Data pointers size {0} different than output channels {1}", weightsPtrs.size(), OC);
-    VPUX_THROW_WHEN(static_cast<int64_t>(sparsityPtrs.size()) != OC,
-                    "Sparsity pointers size {0} different than output channels {1}", sparsityPtrs.size(), OC);
-    VPUX_THROW_WHEN(
-            static_cast<int64_t>(zeroPoints.size()) != OC && static_cast<int64_t>(zeroPoints.size()) != 0,
-            "Zero-points size {0} different than output channels {1} (and different than 0 - the default value)",
-            zeroPoints.size(), OC);
-
-    std::vector<uint8_t> zeroPointsVector(zeroPoints.begin(), zeroPoints.end());
-    if (zeroPointsVector.empty()) {
-        zeroPointsVector.assign(OC, 0);
-    }
-
-    std::vector<std::int32_t> dataPointerTableVals(OC, 0);
-    std::vector<std::int32_t> sparsityPointerTableVals(OC, 0);
-
-    loop_1d(LoopExecPolicy::Parallel, inElemType.getContext(), checked_cast<size_t>(OC), [&](const size_t oc) {
-        VPUX_THROW_UNLESS(weightsPtrs[oc] % ALIGNMENT_REQUIREMENT_IN_ELEMENTS == 0,
-                          "weightsPtrs[{0}] must be multiple of {1}, got {2}", oc, ALIGNMENT_REQUIREMENT_IN_ELEMENTS,
-                          weightsPtrs[oc]);
-        VPUX_THROW_UNLESS(sparsityPtrs[oc] == SPARSITY_PTR_WHEN_NO_SPARSITY ||
-                                  sparsityPtrs[oc] % ALIGNMENT_REQUIREMENT_IN_ELEMENTS == 0,
-                          "sparsityPtrs[{0}] must be aligned to {1}, got {2}", oc, ALIGNMENT_REQUIREMENT_IN_ELEMENTS,
-                          sparsityPtrs[oc]);
-
-        dataPointerTableVals[oc] = getDataOrSparsityPointer(weightsPtrs[oc], zeroPointsVector[oc]);
-        sparsityPointerTableVals[oc] = getDataOrSparsityPointer(sparsityPtrs[oc]);
-    });
-
-    const auto dataPointerTableFormatted =
-            NewWeightsTableFormatMapper::constructNewPointerTable(workloadsSizes, dataPointerTableVals);
-    const auto sparsityPointerTableFormatted =
-            NewWeightsTableFormatMapper::constructNewPointerTable(workloadsSizes, sparsityPointerTableVals);
-
-    return {dataPointerTableFormatted, sparsityPointerTableFormatted};
-}
-
 std::vector<float> vpux::VPU::NCESparsity::getBiasTable(mlir::Type inElemType, mlir::Type outElemType,
                                                         VPU::NCESparsity::BiasConverterCb biasConverter, int64_t OC,
                                                         mlir::Type weightsElemType, const Const::ContentAttr& bias) {
@@ -424,9 +273,9 @@ Shape vpux::VPU::NCESparsity::inferWeightsSparsityMapShape(ShapeRef dataShape) {
 mlir::FailureOr<SmallVector<double>> vpux::VPU::NCESparsity::getRescaledBias(const Const::ContentAttr& biasAttr,
                                                                              mlir::Type inElemType,
                                                                              mlir::Type filterElemType, int64_t OC) {
-    auto inQuantScale = inElemType.isa<mlir::quant::QuantizedType>() ? extractScalesAndZeroPoints(inElemType).first
-                                                                     : SmallVector<double>{1.0};
-    auto filterQuantScales = filterElemType.isa<mlir::quant::QuantizedType>()
+    auto inQuantScale = mlir::isa<mlir::quant::QuantizedType>(inElemType) ? extractScalesAndZeroPoints(inElemType).first
+                                                                          : SmallVector<double>{1.0};
+    auto filterQuantScales = mlir::isa<mlir::quant::QuantizedType>(filterElemType)
                                      ? extractScalesAndZeroPoints(filterElemType).first
                                      : SmallVector<double>{1.0};
     broadcast(inQuantScale, OC);
@@ -484,7 +333,7 @@ double vpux::VPU::NCESparsity::getSparsityRatio(vpux::NDTypeInterface weightsTyp
 bool vpux::VPU::NCESparsity::isSparsifiableWeightsOperand(mlir::Value operand) {
     const auto operandType = operand.getType();
     // already sparse
-    if (operandType.isa<VPU::SparseTensorType>()) {
+    if (mlir::isa<vpux::VPU::SparseTensorType>(operandType)) {
         return false;
     }
     auto sourceOp = operand.getDefiningOp<Const::DeclareOp>();
@@ -492,7 +341,7 @@ bool vpux::VPU::NCESparsity::isSparsifiableWeightsOperand(mlir::Value operand) {
         return false;
     }
     for (const auto transformation : sourceOp.getContentAttr().getTransformations()) {
-        if (transformation.isa<Const::SparsifyAttr, Const::GetSparsityMapAttr>()) {
+        if (mlir::isa<vpux::Const::SparsifyAttr, vpux::Const::GetSparsityMapAttr>(transformation)) {
             VPUX_THROW("Trying to sparsify already sparsity related content at '{0}'", sourceOp->getLoc());
         }
     }
@@ -513,7 +362,7 @@ vpux::VPU::NCESparsity::RuntimeSparsityStatsProvider::RuntimeSparsityStatsProvid
                                                                                    vpux::Logger log)
         : _logger(log), _lookup({}) {
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto statOps = to_small_vector(module.getOps<IE::SparsityStatisticsOp>());
+    auto statOps = to_small_vector(module.getOps<net::SparsityStatisticsOp>());
     VPUX_THROW_UNLESS(statOps.size() <= 1, "Module must contains 0 or 1 sparsity statistics, but got {0}",
                       statOps.size());
     if (statOps.empty()) {
@@ -523,7 +372,7 @@ vpux::VPU::NCESparsity::RuntimeSparsityStatsProvider::RuntimeSparsityStatsProvid
     auto stats = statOps.front();
     auto& infos = stats.getSparsityInfo().front().getOperations();
     for (auto& info : infos) {
-        auto asOp = mlir::cast<IE::SparsityInfoOp>(info);
+        auto asOp = mlir::cast<net::SparsityInfoOp>(info);
         const auto key = asOp.getName().str();
         _lookup.emplace(key, asOp);
     }
@@ -535,7 +384,7 @@ bool vpux::VPU::NCESparsity::RuntimeSparsityStatsProvider::containsStatistics() 
 
 bool vpux::VPU::NCESparsity::RuntimeSparsityStatsProvider::likelySparsityConsumer(mlir::Operation* op,
                                                                                   int64_t requestedInputId) const {
-    auto loc = op->getLoc().dyn_cast<mlir::FusedLoc>();
+    auto loc = mlir::dyn_cast<mlir::FusedLoc>(op->getLoc());
     if (loc == nullptr) {
         return false;
     }
@@ -543,7 +392,7 @@ bool vpux::VPU::NCESparsity::RuntimeSparsityStatsProvider::likelySparsityConsume
     if (locParts.empty()) {
         return false;
     }
-    auto keyNameLoc = locParts.front().dyn_cast<mlir::NameLoc>();
+    auto keyNameLoc = mlir::dyn_cast<mlir::NameLoc>(locParts.front());
     if (keyNameLoc == nullptr) {
         return false;
     }
@@ -566,28 +415,29 @@ bool vpux::VPU::NCESparsity::RuntimeSparsityStatsProvider::likelySparsityConsume
 // NewWeightsTableFormatMapper
 //
 
-int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::normalizeKAndReturnCurrentGroupOf128Sets(int32_t index,
-                                                                                                      int32_t& k) {
+int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::normalizeKAndReturnCurrentGroupOf128ZeroPoints(
+        int32_t index, int32_t& k) {
     // the pattern is repeating after 128 elements
-    int32_t currentGroupOf128Sets = index / 128;
-    int32_t countGroupsOf128Sets = k / 128;
+    int32_t currentGroupOf128ZeroPoints = index / 128;
+    int32_t countGroupsOf128ZeroPoints = k / 128;
 
-    // check if the current set is in the last group of 128 sets;
+    // check if the current zero-point is in the last group of 128 zero-points;
     // you may see the following corner case: if k is a multiple of 128, then
-    // countGroupsOf128Sets == currentGroupOf128Sets will be always false
+    // countGroupsOf128ZeroPoints == currentGroupOf128ZeroPoints will be always false
     // that's intended because otherwise the first branch will be executed and k will become 0 (it has to be 128)
-    if (currentGroupOf128Sets == countGroupsOf128Sets)
+    if (currentGroupOf128ZeroPoints == countGroupsOf128ZeroPoints) {
         k %= 128;
-    else
+    } else {
         k = 128;
+    }
 
-    return currentGroupOf128Sets;
+    return currentGroupOf128ZeroPoints;
 }
 
 int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::mathematicallyEncodePositionInNewZeroPointOnlyTableLayout(
         int32_t zeroPointIndex, int32_t k) {
     // the pattern is repeating after 128 elements
-    int32_t currentGroupOf128Sets = normalizeKAndReturnCurrentGroupOf128Sets(zeroPointIndex, k);
+    int32_t currentGroupOf128ZeroPoints = normalizeKAndReturnCurrentGroupOf128ZeroPoints(zeroPointIndex, k);
     zeroPointIndex %= 128;
 
     int32_t elementsInASequence = k / 8;
@@ -595,13 +445,13 @@ int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::mathematicallyEncod
     int32_t positionInSequence = (zeroPointIndex / 16) * 2 + (zeroPointIndex % 4) / 2;
 
     int32_t elementPositionInTable = (elementsInASequence * sequenceNumber) + positionInSequence;
-    return elementPositionInTable + currentGroupOf128Sets * 128;
+    return elementPositionInTable + currentGroupOf128ZeroPoints * 128;
 }
 
 int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::mathematicallyDecodePositionInNewZeroPointOnlyTableLayout(
         int32_t position, int32_t k) {
     // the pattern is repeating after 128 elements
-    int32_t currentGroupOf128Sets = normalizeKAndReturnCurrentGroupOf128Sets(position, k);
+    int32_t currentGroupOf128ZeroPoints = normalizeKAndReturnCurrentGroupOf128ZeroPoints(position, k);
     position %= 128;
 
     int32_t elementsInASequence = k / 8;
@@ -610,7 +460,7 @@ int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::mathematicallyDecod
 
     int32_t elementPositionInTable =
             sequenceNumber / 2 * 4 + positionInSequence / 2 * 16 + (positionInSequence % 2) * 2 + sequenceNumber % 2;
-    return elementPositionInTable + currentGroupOf128Sets * 128;
+    return elementPositionInTable + currentGroupOf128ZeroPoints * 128;
 }
 
 std::vector<int32_t> vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::computeInversePermutation(
@@ -756,7 +606,7 @@ std::vector<int32_t> vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::getPoi
 int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::encodePositionInNewZeroPointOnlyTableLayout(
         int32_t zeroPointIndex, int32_t k) {
     // the pattern is repeating after 128 elements
-    normalizeKAndReturnCurrentGroupOf128Sets(zeroPointIndex, k);
+    normalizeKAndReturnCurrentGroupOf128ZeroPoints(zeroPointIndex, k);
 
     auto map = getZeroPointInversePermutationTableByK(k);
     auto oldPosOffset = zeroPointIndex - zeroPointIndex % 128;
@@ -767,7 +617,7 @@ int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::encodePositionInNew
 int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::decodePositionInNewZeroPointOnlyTableLayout(
         int32_t position, int32_t k) {
     // the pattern is repeating after 128 elements
-    normalizeKAndReturnCurrentGroupOf128Sets(position, k);
+    normalizeKAndReturnCurrentGroupOf128ZeroPoints(position, k);
 
     auto map = getZeroPointTableByK(k);
     auto oldPosOffset = position - position % 128;
@@ -775,44 +625,24 @@ int32_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::decodePositionInNew
     return newPos;
 }
 
-void vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::mapElementsToNewFormat(std::vector<int32_t>& table,
-                                                                                 int32_t start, int32_t end,
-                                                                                 std::vector<int32_t>& result) {
-    int32_t range = end - start;
-
-    VPUX_THROW_WHEN(start % 128 != 0, "The starting index of the range ({0}) is not a multiple of 128", start);
-    VPUX_THROW_WHEN(range % 16 != 0, "Range length ({0}) is not a multiple of 16", range);
-    VPUX_THROW_WHEN(range < 16 || range > 128, "Range ({0}) should be between 16 and 128", range);
-    VPUX_THROW_WHEN(
-            start / 128 != (end - 1) / 128,
-            "All weight sets have to be from the same group of (at most) 128 weight sets: {0} / 128 != {1} / 128",
-            start, end - 1);
-
-    auto map = getZeroPointTableByK(range);
-    for (auto index = start; index < end; index++) {
-        auto newPos = start + map[index % 128];
-        result[index] = table[newPos];
+int8_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::extractOneZPFromZPPalletizedByte(int8_t zeroPoint,
+                                                                                             bool lowerZP) {
+    const uint8_t shiftToBeginningOfByte = lowerZP ? 0 : 4;
+    constexpr uint8_t mask = 0x0F;
+    constexpr uint8_t signBitMask = 0x08;
+    constexpr uint8_t negativeSignPreserver = 0xF0;
+    int8_t result = (zeroPoint >> shiftToBeginningOfByte) & mask;
+    if (result & signBitMask) {
+        result = result | negativeSignPreserver;
     }
+    return result;
 }
 
-std::vector<int32_t> vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::constructNewZeroPointOnlyTable(
-        std::vector<int32_t> table) {
-    int32_t k = table.size();
-    std::vector<int32_t> mappedTable(k, -1);
-
-    int32_t countGroupsOf128Sets = k / 128;
-    int32_t remainingSetsInLastGroup = k % 128;
-
-    for (int index = 0; index < countGroupsOf128Sets; index++) {
-        mapElementsToNewFormat(table, index * 128, index * 128 + 128, mappedTable);
-    }
-
-    if (remainingSetsInLastGroup) {
-        mapElementsToNewFormat(table, countGroupsOf128Sets * 128, countGroupsOf128Sets * 128 + remainingSetsInLastGroup,
-                               mappedTable);
-    }
-
-    return mappedTable;
+uint8_t vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::extractOneZPFromZPPalletizedByte(uint8_t zeroPoint,
+                                                                                              bool lowerZP) {
+    const uint8_t shiftToBeginningOfByte = lowerZP ? 0 : 4;
+    constexpr uint8_t mask = 0x0F;
+    return (zeroPoint >> shiftToBeginningOfByte) & mask;
 }
 
 void vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::mapElementsToNewPointerTableFormat(
@@ -895,8 +725,8 @@ std::vector<int32_t> vpux::VPU::NCESparsity::NewWeightsTableFormatMapper::constr
     std::vector<VPUIP::DPUTaskOp> tasksVector(tasks.begin(), tasks.end());
 
     for (unsigned long index = 0; index < tasksVector.size(); index++) {
-        int32_t cStart = tasksVector[index].getOutStart()[2].dyn_cast<mlir::IntegerAttr>().getInt();
-        int32_t cEnd = tasksVector[index].getOutEnd()[2].dyn_cast<mlir::IntegerAttr>().getInt();
+        int32_t cStart = mlir::dyn_cast<mlir::IntegerAttr>(tasksVector[index].getOutStart()[2]).getInt();
+        int32_t cEnd = mlir::dyn_cast<mlir::IntegerAttr>(tasksVector[index].getOutEnd()[2]).getInt();
 
         workloadsSizes[index] = cEnd - cStart + 1;
     }
@@ -919,7 +749,7 @@ int32_t vpux::VPU::NCESparsity::get5DWeightPtrStep(mlir::Value weights) {
     const auto KY = filterShape[DimsGroups5D::Filter::KY];
     const auto KX = filterShape[DimsGroups5D::Filter::KX];
 
-    const auto origFilterType = weights.getType().cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
     const auto convAlignment = VPU::NCEInvariant::getAlignment(origFilterType.getElementType());
     const auto weightsElementCount = IC * KY * KX;
 
@@ -940,8 +770,9 @@ std::vector<int32_t> vpux::VPU::NCESparsity::create5DWeightsTableData(
     const auto weightPtrStep = VPU::NCESparsity::get5DWeightPtrStep(weights);
     const auto sparsityPtrStep = 0;
 
-    const auto inElemType = opInput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto weightsElemType = weights ? weights.getType().cast<vpux::NDTypeInterface>().getElementType() : nullptr;
+    const auto inElemType = mlir::cast<vpux::NDTypeInterface>(opInput.getType()).getElementType();
+    const auto weightsElemType =
+            weights ? mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType() : nullptr;
 
     const auto wtVec = VPU::NCESparsity::getWeightsTable(inElemType, opOutputElemType, weightPtrOffset, weightPtrStep,
                                                          sparsityPtrOffset, sparsityPtrStep, ppeConverter,
@@ -958,7 +789,7 @@ std::vector<int32_t> vpux::VPU::NCESparsity::create5DWeightsTableData(
         mlir::Value opInput, mlir::Value opOutput, mlir::Value weights, const Const::ContentAttr& bias,
         int64_t outputChannels, VPU::NCESparsity::PPEConverterCb ppeConverter,
         VPU::NCESparsity::BiasConverterCb biasConverter, bool hasAutopad) {
-    const auto outElemType = opOutput.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
     return create5DWeightsTableData(opInput, outElemType, weights, bias, outputChannels, ppeConverter, biasConverter,
                                     hasAutopad);
 }

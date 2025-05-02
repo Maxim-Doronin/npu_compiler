@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,8 +7,10 @@
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
@@ -140,8 +142,7 @@ private:
 
 bool OptimizeGroupConvConcat::hasReLUPostOp(mlir::Operation* op) const {
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(op)) {
-        const auto postOpName = layerWithPostOp.getPostOp();
-        return postOpName.has_value() && postOpName.value().getStringRef() == IE::ReLUOp::getOperationName();
+        return mlir::isa_and_nonnull<IE::ReluAttr>(layerWithPostOp.getPostOp());
     }
     return false;
 }
@@ -206,7 +207,7 @@ mlir::FailureOr<SmallVector<OptimizeGroupConvConcat::InputPattern>> OptimizeGrou
     SmallVector<InputPattern> concatInputs;
     concatInputs.reserve(inputNum);
 
-    const auto concatOutType = concatOp.getOutput().getType().cast<NDTypeInterface>();
+    const auto concatOutType = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType());
     const auto concatOutShape = concatOutType.getShape();
 
     // Inputs of Concat should have the same root
@@ -339,9 +340,8 @@ mlir::Value OptimizeGroupConvConcat::convertGroupConvWeights(IE::GroupConvolutio
     }
 
     const DimsOrder weightsOrder = DimsOrder::OIYX;
-    const auto weightsType =
-            mlir::RankedTensorType::get(newFilterShape.raw(), origContentType.getElementType(),
-                                        getTensorAttr(rewriter.getContext(), weightsOrder, nullptr, nullptr));
+    const auto weightsType = mlir::RankedTensorType::get(newFilterShape.raw(), origContentType.getElementType(),
+                                                         getTensorAttr(rewriter.getContext(), weightsOrder, nullptr));
 
     return Const::buildWeightsConst(rewriter, origFilter.getLoc(), weightsType, ArrayRef(weights));
 }
@@ -369,7 +369,7 @@ mlir::Value OptimizeGroupConvConcat::createWeights(mlir::Value activation, const
     const DimsOrder weightsOrder = DimsOrder::OIYX;
     const auto weightsType = mlir::RankedTensorType::get(
             weightsShape.raw(), mlir::cast<NDTypeInterface>(activation.getType()).getElementType(),
-            getTensorAttr(rewriter.getContext(), weightsOrder, nullptr, nullptr));
+            getTensorAttr(rewriter.getContext(), weightsOrder, nullptr));
     return Const::buildWeightsConst(rewriter, activation.getLoc(), weightsType, ArrayRef(weights));
 }
 
@@ -377,7 +377,7 @@ mlir::LogicalResult OptimizeGroupConvConcat::matchAndRewrite(IE::ConcatOp origOp
                                                              mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got concat layer at '{1}'", origOp->getName(), origOp->getLoc());
 
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShape = outputType.getShape();
     if (outputShape.size() != SUPPORTED_RANK) {
         return mlir::failure();
@@ -452,8 +452,8 @@ mlir::LogicalResult OptimizeGroupConvConcat::matchAndRewrite(IE::ConcatOp origOp
     auto newConv = rewriter.create<IE::ConvolutionOp>(
             origOp.getLoc(), root, concatWeights, newBiasValue, origGroupConv.getStrides(),
             origGroupConv.getPadsBegin(), origGroupConv.getPadsEnd(), origGroupConv.getDilations(),
-            origGroupConv.getPostOpAttr(), origGroupConv.getClampAttr(), nullptr, origGroupConv.getOutputChannelsAttr(),
-            origGroupConv.getInputChannelsAttr());
+            origGroupConv.getPostOpAttr(), origGroupConv.getClampAttr(), nullptr, origGroupConv.getOutputPaddingAttr(),
+            origGroupConv.getInputPaddingAttr());
 
     rewriter.replaceOp(origOp, newConv.getOutput());
     return mlir::success();
@@ -529,8 +529,8 @@ mlir::FailureOr<SmallVector<mlir::Value>> OptimizeConvConcat::getValidConcatInpu
                 firstConvOp.getPostOpAttr() != convOp.getPostOpAttr() ||
                 firstConvOp.getClampAttr() != convOp.getClampAttr() ||
                 firstConvOp.getStaticScaleAttr() != convOp.getStaticScaleAttr() ||
-                firstConvOp.getOutputChannelsAttr() != convOp.getOutputChannelsAttr() ||
-                firstConvOp.getInputChannelsAttr() != convOp.getInputChannelsAttr()) {
+                firstConvOp.getOutputPaddingAttr() != convOp.getOutputPaddingAttr() ||
+                firstConvOp.getInputPaddingAttr() != convOp.getInputPaddingAttr()) {
                 return mlir::failure();
             }
         }
@@ -549,7 +549,7 @@ mlir::FailureOr<SmallVector<mlir::Value>> OptimizeConvConcat::getValidConcatInpu
 mlir::LogicalResult OptimizeConvConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got concat layer at '{1}'", origOp->getName(), origOp->getLoc());
 
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShape = outputType.getShape();
     if (outputShape.size() != SUPPORTED_RANK) {
         return mlir::failure();
@@ -600,8 +600,8 @@ mlir::LogicalResult OptimizeConvConcat::matchAndRewrite(IE::ConcatOp origOp, mli
 
                 const DimsOrder biasOrder = DimsOrder::NCHW;
                 const auto biasType = mlir::RankedTensorType::get(
-                        biasShape.raw(), input.getType().cast<NDTypeInterface>().getElementType(),
-                        getTensorAttr(rewriter.getContext(), biasOrder, nullptr, nullptr));
+                        biasShape.raw(), mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType(),
+                        getTensorAttr(rewriter.getContext(), biasOrder, nullptr));
 
                 newBias.push_back(Const::buildWeightsConst(rewriter, convOp.getLoc(), biasType, ArrayRef(biasValue)));
             }
@@ -612,7 +612,7 @@ mlir::LogicalResult OptimizeConvConcat::matchAndRewrite(IE::ConcatOp origOp, mli
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(
             origOp.getLoc(), outputType, root, concatWeights, concatBias, convOp.getStrides(), convOp.getPadsBegin(),
             convOp.getPadsEnd(), convOp.getDilations(), convOp.getPostOpAttr(), convOp.getClampAttr(),
-            convOp.getStaticScaleAttr(), convOp.getOutputChannelsAttr(), convOp.getInputChannelsAttr());
+            convOp.getStaticScaleAttr(), convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr());
 
     rewriter.replaceOp(origOp, newConvOp.getOutput());
     return mlir::success();
@@ -676,7 +676,7 @@ OptimizeSliceMultiplyConcat::getValidConcatInputs(IE::ConcatOp concatOp) const {
     SmallVector<InputPattern> concatInputs;
     concatInputs.reserve(inputNum);
 
-    const auto concatOutType = concatOp.getOutput().getType().cast<NDTypeInterface>();
+    const auto concatOutType = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType());
     const auto SUPPORTED_LAYOUT = DimsOrder::NCHW;
     const auto SUPPORTED_SLICE_CONCAT_DIM = Dims4D::Act::W;
     if (concatOutType.getDimsOrder() != SUPPORTED_LAYOUT) {
@@ -791,8 +791,8 @@ mlir::Value OptimizeSliceMultiplyConcat::createWeightsForScale(mlir::Location lo
         weights[currOffsetPerOC + innerOffset] = scale;
     }
     const DimsOrder weightsOrder = DimsOrder::OIYX;
-    const auto weightsType = mlir::RankedTensorType::get(
-            weightsShape.raw(), elemType, getTensorAttr(rewriter.getContext(), weightsOrder, nullptr, nullptr));
+    const auto weightsType = mlir::RankedTensorType::get(weightsShape.raw(), elemType,
+                                                         getTensorAttr(rewriter.getContext(), weightsOrder, nullptr));
 
     return Const::buildWeightsConst(rewriter, loc, weightsType, ArrayRef(weights));
 }
@@ -801,7 +801,7 @@ mlir::LogicalResult OptimizeSliceMultiplyConcat::matchAndRewrite(IE::ConcatOp or
                                                                  mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got concat layer at '{1}'", origOp->getName(), origOp->getLoc());
 
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto elemType = outputType.getElementType();
 
     auto getInputs = getValidConcatInputs(origOp);
@@ -876,6 +876,259 @@ mlir::LogicalResult OptimizeSliceMultiplyConcat::matchAndRewrite(IE::ConcatOp or
     return mlir::success();
 }
 
+SmallVector<mlir::Value> getConstInputs(mlir::Operation* eltwiseOp) {
+    SmallVector<mlir::Value> constInputs;
+    llvm::copy_if(eltwiseOp->getOperands(), std::back_inserter(constInputs), [](mlir::Value operand) {
+        return mlir::succeeded(IE::getConstParentOp(operand));
+    });
+    return constInputs;
+}
+
+SmallVector<mlir::Value> getActInputs(mlir::Operation* eltwiseOp) {
+    SmallVector<mlir::Value> actInputs;
+    llvm::copy_if(eltwiseOp->getOperands(), std::back_inserter(actInputs), [](mlir::Value operand) {
+        return mlir::failed(IE::getConstParentOp(operand));
+    });
+    return actInputs;
+}
+
+/*
+                        Root(1620x9x9x2)
+                           /          \
+Const1(1x1x1x1)  Slice(1620x9x9x1) Slice(1620x9x9x1)   Const2(1x1x1x1)
+        \             /                  \               /
+      Multiply(1620x9x9x1)               Multiply(1620x9x9x1)
+Const3(1x1x1x1)  |                               |       Const4(1x1x1x1)
+           \     |                               |    /
+        Add(1620x9x9x1)                     Add(1620x9x9x1)
+                          \         /
+                        Concat(1620x9x9x2)
+
+to:
+
+            Root(1620x9x9x2)           Const1(1x1x1x1) Const2(1x1x1x1)
+                    |                       \               /
+                    |                        Concat(1x1x1x2)
+                    \                           /
+                        Multiply(1620x9x9x2)   Const3(1x1x1x1) Const4(1x1x1x1)
+                            |                       \               /
+                            |                        Concat(1x1x1x2)
+                            \                           /
+                                    Add(1620x9x9x2)
+*/
+
+class OptimizeSliceMultiplyAddConcat final : public mlir::OpRewritePattern<IE::ConcatOp> {
+    struct InputPattern {
+        IE::SliceOp slice = nullptr;
+        IE::MultiplyOp multiply = nullptr;
+        IE::AddOp add = nullptr;
+
+        InputPattern(IE::SliceOp sliceOp, IE::MultiplyOp multiplyOp, IE::AddOp addOp)
+                : slice(sliceOp), multiply(multiplyOp), add(addOp) {
+        }
+    };
+
+public:
+    OptimizeSliceMultiplyAddConcat(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ConcatOp>(ctx), _log(std::move(log)) {
+        setDebugName("OptimizeSliceMultiplyAddConcat");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const final;
+    mlir::FailureOr<SmallVector<InputPattern>> getValidConcatInputs(IE::ConcatOp concatOp) const;
+
+private:
+    Logger _log;
+};
+
+mlir::FailureOr<SmallVector<OptimizeSliceMultiplyAddConcat::InputPattern>>
+OptimizeSliceMultiplyAddConcat::getValidConcatInputs(IE::ConcatOp concatOp) const {
+    auto inputNum = concatOp.getInputs().size();
+    SmallVector<InputPattern> concatInputs;
+    concatInputs.reserve(inputNum);
+
+    const auto concatOutType = mlir::cast<NDTypeInterface>(concatOp.getOutput().getType());
+    const auto SUPPORTED_LAYOUT = DimsOrder::NCHW;
+    const auto SUPPORTED_SLICE_CONCAT_DIM = Dims4D::Act::W;
+    if (concatOutType.getDimsOrder() != SUPPORTED_LAYOUT) {
+        _log.nest().trace("Unsupported layout");
+        return mlir::failure();
+    }
+    const auto concatOutShape = concatOutType.getShape();
+
+    // Inputs of Concat should have the same root
+    mlir::Value maybeRoot = nullptr;
+    auto hasTheSameParent = [&maybeRoot](mlir::Value parent) {
+        if (maybeRoot == nullptr) {
+            maybeRoot = parent;
+            return true;
+        }
+        return maybeRoot == parent;
+    };
+
+    auto isEltwiseSatisfied = [&](mlir::Operation* eltwiseOp) {
+        auto constInputs = getConstInputs(eltwiseOp);
+        auto actInpts = getActInputs(eltwiseOp);
+        if (constInputs.size() != 1 || actInpts.size() != 1) {
+            return false;
+        }
+        auto scaleShape = getShape(constInputs[0]);
+        return scaleShape.totalSize() == 1;
+    };
+
+    auto checkOpAndHasOneUse = [&](auto op, const char* opName) {
+        if (op == nullptr) {
+            _log.nest().trace("Missing {0} operation", opName);
+            return false;
+        }
+        if (!op->hasOneUse()) {
+            _log.nest().trace("{0} operation has multiple uses", opName);
+            return false;
+        }
+        return true;
+    };
+
+    auto checkConcatDims = [&](mlir::Value input) {
+        auto concatDims = getDimsWithDifferentDimSize(getShape(input), concatOutShape);
+        return concatDims.size() == 1 && concatDims.front() == SUPPORTED_SLICE_CONCAT_DIM;
+    };
+
+    auto checkSliceDims = [&](IE::SliceOp sliceOp) {
+        auto sliceDims = getDimsWithDifferentDimSize(getShape(sliceOp.getSource()), getShape(sliceOp.getResult()));
+        return sliceDims.size() == 1 && sliceDims.front() == SUPPORTED_SLICE_CONCAT_DIM;
+    };
+
+    for (const auto& it : concatOp.getInputs() | indexed) {
+        const auto input = it.value();
+        if (!checkConcatDims(input)) {
+            _log.nest().trace("Unsupported concat dimension");
+            return mlir::failure();
+        }
+
+        IE::AddOp addOp = input.getDefiningOp<IE::AddOp>();
+        if (!checkOpAndHasOneUse(addOp, "Add")) {
+            return mlir::failure();
+        }
+
+        IE::MultiplyOp multiplyOp = getActInputs(addOp).front().getDefiningOp<IE::MultiplyOp>();
+        if (!checkOpAndHasOneUse(multiplyOp, "Multiply")) {
+            return mlir::failure();
+        }
+
+        auto sliceOp = getActInputs(multiplyOp).front().getDefiningOp<IE::SliceOp>();
+        if (!checkOpAndHasOneUse(sliceOp, "Slice")) {
+            return mlir::failure();
+        }
+
+        if (!checkSliceDims(sliceOp)) {
+            _log.nest().trace("Unsupported slice dimension");
+            return mlir::failure();
+        }
+
+        auto parent = sliceOp.getSource();
+        if (!hasTheSameParent(parent)) {
+            _log.nest().trace("Inputs of Concat should have the same parent");
+            return mlir::failure();
+        }
+
+        if (!isEltwiseSatisfied(multiplyOp) || !isEltwiseSatisfied(addOp)) {
+            _log.nest().trace("Eltwise operation should have single scale value");
+            return mlir::failure();
+        }
+
+        if (mlir::cast<NDTypeInterface>(sliceOp.getSource().getType()).getShape() != concatOutShape) {
+            _log.nest().trace("Slice with overlapped");
+            return mlir::failure();
+        }
+
+        const SmallVector<int64_t> sliceOffset = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
+        const SmallVector<int64_t> concatOffset =
+                parseIntArrayOfArrayAttr<int64_t>(concatOp.getStaticOffsets().value())[it.index()];
+
+        auto areSmallVectorsEqual = [](ArrayRef<int64_t> vec1, ArrayRef<int64_t> vec2) {
+            if (vec1.size() != vec2.size()) {
+                return false;
+            }
+            for (size_t i = 0; i < vec1.size(); ++i) {
+                if (vec1[i] != vec2[i]) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+        if (!areSmallVectorsEqual(sliceOffset, concatOffset)) {
+            _log.nest().trace("Slice sequence is not equal to concat sequence");
+            return mlir::failure();
+        }
+
+        concatInputs.push_back(InputPattern(sliceOp, multiplyOp, addOp));
+    }
+
+    return concatInputs;
+}
+
+mlir::LogicalResult OptimizeSliceMultiplyAddConcat::matchAndRewrite(IE::ConcatOp origOp,
+                                                                    mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got concat layer at '{1}'", origOp->getName(), origOp->getLoc());
+    auto ctx = rewriter.getContext();
+    auto getInputs = getValidConcatInputs(origOp);
+    if (mlir::failed(getInputs)) {
+        _log.trace("[{0}] Failed to get valid input pattern at '{1}'", origOp->getName(), origOp->getLoc());
+        return mlir::failure();
+    }
+
+    auto inputs = getInputs.value();
+    mlir::Value root = inputs.front().slice.getSource();
+
+    // Create new Multiply and Add constants
+    SmallVector<mlir::Value> multiplyScales;
+    SmallVector<mlir::Value> addValues;
+    for (auto& input : inputs) {
+        // Broadcast constant if needed
+        auto multiplyConstOp = getConstInputs(input.multiply).front().getDefiningOp<Const::DeclareOp>();
+        Const::ContentAttr newMulDataAttr =
+                multiplyConstOp.transformContentAttr()
+                        .broadcast(Dims4D::Act::W, getShape(input.multiply.getOutput())[Dims4D::Act::W])
+                        .get();
+        auto newMultiplyConstOp = rewriter.create<Const::DeclareOp>(
+                takeOpLoc(origOp, "new_mul_const"), newMulDataAttr.getType(), std::move(newMulDataAttr));
+        multiplyScales.push_back(newMultiplyConstOp.getOutput());
+
+        auto addConstOp = getConstInputs(input.add).front().getDefiningOp<Const::DeclareOp>();
+        Const::ContentAttr newAddDataAttr =
+                addConstOp.transformContentAttr()
+                        .broadcast(Dims4D::Act::W, getShape(input.add.getOutput())[Dims4D::Act::W])
+                        .get();
+        auto newAddConstOp = rewriter.create<Const::DeclareOp>(takeOpLoc(origOp, "new_add_const"),
+                                                               newAddDataAttr.getType(), std::move(newAddDataAttr));
+        addValues.push_back(newAddConstOp.getOutput());
+    }
+
+    // Create new Multiply constant
+    auto newMultiplyConstInput =
+            rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "mul_concat"), multiplyScales, Dims4D::Act::W.ind());
+
+    // Create new Add constant
+    auto newAddConstInput =
+            rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "add_concat"), addValues, Dims4D::Act::W.ind());
+
+    // Create new Multiply and Add operations
+    auto newMultiply =
+            rewriter.create<IE::MultiplyOp>(takeOpLoc(origOp, "merged_mul"), root, newMultiplyConstInput.getOutput(),
+                                            IE::AutoBroadcastType::NUMPY, nullptr, nullptr, nullptr, nullptr);
+
+    auto numpyBroadcastTypeAttr = IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NUMPY);
+    auto newAdd = rewriter.create<IE::AddOp>(takeOpLoc(origOp, "merged_add"), newMultiply.getOutput(),
+                                             newAddConstInput.getOutput(), numpyBroadcastTypeAttr, nullptr, nullptr,
+                                             nullptr, nullptr);
+
+    rewriter.replaceOp(origOp, newAdd.getOutput());
+
+    return mlir::success();
+}
+
 //
 // ConvertBranchesConcatToConvPass
 //
@@ -902,6 +1155,7 @@ void ConvertBranchesConcatToConvPass::safeRunOnFunc() {
     patterns.add<OptimizeGroupConvConcat>(&ctx, _log);
     patterns.add<OptimizeConvConcat>(&ctx, _log);
     patterns.add<OptimizeSliceMultiplyConcat>(&ctx, _log);
+    patterns.add<OptimizeSliceMultiplyAddConcat>(&ctx, _log);
     IE::ConcatOp::getCanonicalizationPatterns(patterns, &ctx);
 
     auto func = getOperation();

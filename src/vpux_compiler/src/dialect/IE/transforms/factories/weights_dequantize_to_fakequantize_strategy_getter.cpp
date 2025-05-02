@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,18 +8,17 @@
 #include "vpux/compiler/NPU37XX/dialect/IE/impl/weights_dequantize_to_fakequantize_strategy.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 using namespace vpux;
 
-std::unique_ptr<IGreedilyPassStrategy> IE::createWeightsDequantizeToFakeQuantizeStrategy(
-        mlir::func::FuncOp funcOp, bool enableWDBlockArgumentInput) {
+std::unique_ptr<IGreedilyPassStrategy> IE::createWeightsDequantizeToFakeQuantizeStrategy(mlir::func::FuncOp funcOp) {
     const auto arch = VPU::getArch(funcOp);
 
     switch (arch) {
     case VPU::ArchKind::NPU37XX:
     case VPU::ArchKind::NPU40XX: {
-        return std::make_unique<arch37xx::WeightsDequantizeToFakeQuantizeStrategy>(enableWDBlockArgumentInput);
+        return std::make_unique<arch37xx::WeightsDequantizeToFakeQuantizeStrategy>();
     }
     default: {
     }

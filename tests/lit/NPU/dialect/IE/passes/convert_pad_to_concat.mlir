@@ -131,3 +131,133 @@ func.func @convertPadToConcatWith5DShape(%arg0: tensor<1x16x32x64x128xf16>) -> t
     // CHECK-SAME:       tensor<1x1x32x64x129xf16>, tensor<1x16x32x64x129xf16> -> tensor<1x17x32x64x129xf16>
     // CHECK:       return [[CONCAT1]] : tensor<1x17x32x64x129xf16>
 }
+
+// -----
+
+!qElemTypeIn = !quant.uniform<i8:f16:1, {0.00906,0.00819}>
+!qElemTypeOut = !quant.uniform<i8:f16:1, {0.00906,0.00906,0.00819,0.00819}>
+// CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03,8.190000e-03}>
+// CHECK-DAG: [[QTYPE1:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03,9.060000e-03,8.190000e-03,8.190000e-03}>
+// CHECK-DAG: [[QTYPE2:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03}>
+// CHECK-DAG: [[QTYPE3:!.+]] = !quant.uniform<i8:f16:1, {8.190000e-03}>
+
+// Note: CHECK-LABEL must NOT be used: it resets quantization checks above such
+//       that [[QTYPE*]] captured variables become undefined.
+// CHECK: @convertQuantPadToConcat
+// CHECK-SAME: [[ARG0:%.+]]: tensor<8x2x16x16x[[QTYPE]]>)
+func.func @convertQuantPadToConcat(%arg0: tensor<8x2x16x16x!qElemTypeIn>) -> tensor<8x4x16x16x!qElemTypeOut> {
+    %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [0, 1, 0, 0], pads_end_attr = [0, 1, 0, 0]}
+                        : tensor<8x2x16x16x!qElemTypeIn> -> tensor<8x4x16x16x!qElemTypeOut>
+    return %0 : tensor<8x4x16x16x!qElemTypeOut>
+
+    // CHECK:   [[CST0:%.*]] = const.Declare tensor<8x1x16x16x[[QTYPE2]]> = dense<1.000000e+00> : tensor<8x1x16x16xf32>, [#const.CastElemType<[[QTYPE2]]>]
+    // CHECK:   [[CST1:%.*]] = const.Declare tensor<8x1x16x16x[[QTYPE3]]> = dense<1.000000e+00> : tensor<8x1x16x16xf32>, [#const.CastElemType<[[QTYPE3]]>]
+
+    // CHECK-NOT:      IE.Pad
+    // CHECK:       [[CONCAT0:%.*]] = IE.Concat([[CST0]], [[ARG0]], [[CST1]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:       tensor<8x1x16x16x[[QTYPE2]]>, tensor<8x2x16x16x[[QTYPE]]>, tensor<8x1x16x16x[[QTYPE3]]> -> tensor<8x4x16x16x[[QTYPE1]]>
+    // CHECK:       return [[CONCAT0]] : tensor<8x4x16x16x[[QTYPE1]]>
+}
+
+// -----
+
+!qElemTypeIn = !quant.uniform<i8:f16:1, {0.00906,0.00819}>
+!qElemTypeOut = !quant.uniform<i8:f16:1, {0.00906,0.00906,0.00906,0.00819}>
+
+// CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03,8.190000e-03}>
+// CHECK-DAG: [[QTYPE1:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03,9.060000e-03,9.060000e-03,8.190000e-03}>
+// CHECK-DAG: [[QTYPE2:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03,9.060000e-03}>
+
+// Note: CHECK-LABEL must NOT be used: it resets quantization checks above such
+//       that [[QTYPE*]] captured variables become undefined.
+// CHECK: @convertQuantPadToConcatLeft
+// CHECK-SAME: [[ARG0:%.+]]: tensor<8x2x16x16x[[QTYPE]]>)
+func.func @convertQuantPadToConcatLeft(%arg0: tensor<8x2x16x16x!qElemTypeIn>) -> tensor<8x4x16x16x!qElemTypeOut> {
+    %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [0, 2, 0, 0], pads_end_attr = [0, 0, 0, 0]}
+                        : tensor<8x2x16x16x!qElemTypeIn> -> tensor<8x4x16x16x!qElemTypeOut>
+    return %0 : tensor<8x4x16x16x!qElemTypeOut>
+
+    // CHECK:   [[CST0:%.*]] = const.Declare tensor<8x2x16x16x[[QTYPE2]]> = dense<1.000000e+00> : tensor<8x2x16x16xf32>, [#const.CastElemType<[[QTYPE2]]>]
+
+    // CHECK-NOT:      IE.Pad
+    // CHECK:       [[CONCAT0:%.*]] = IE.Concat([[CST0]], [[ARG0]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:       tensor<8x2x16x16x[[QTYPE2]]>, tensor<8x2x16x16x[[QTYPE]]> -> tensor<8x4x16x16x[[QTYPE1]]>
+    // CHECK:       return [[CONCAT0]] : tensor<8x4x16x16x[[QTYPE1]]>
+}
+
+// -----
+
+!qElemTypeIn = !quant.uniform<i8:f16:1, {0.00906,0.00819}>
+!qElemTypeOut = !quant.uniform<i8:f16:1, {0.00906,0.00819,0.00819,0.00819}>
+
+// CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03,8.190000e-03}>
+// CHECK-DAG: [[QTYPE1:!.+]] = !quant.uniform<i8:f16:1, {9.060000e-03,8.190000e-03,8.190000e-03,8.190000e-03}>
+// CHECK-DAG: [[QTYPE2:!.+]] = !quant.uniform<i8:f16:1, {8.190000e-03,8.190000e-03}>
+
+// Note: CHECK-LABEL must NOT be used: it resets quantization checks above such
+//       that [[QTYPE*]] captured variables become undefined.
+// CHECK: @convertQuantPadToConcatRight
+// CHECK-SAME: [[ARG0:%.+]]: tensor<8x2x16x16x[[QTYPE]]>)
+func.func @convertQuantPadToConcatRight(%arg0: tensor<8x2x16x16x!qElemTypeIn>) -> tensor<8x4x16x16x!qElemTypeOut> {
+    %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [0, 0, 0, 0], pads_end_attr = [0, 2, 0, 0]}
+                        : tensor<8x2x16x16x!qElemTypeIn> -> tensor<8x4x16x16x!qElemTypeOut>
+    return %0 : tensor<8x4x16x16x!qElemTypeOut>
+
+    // CHECK:   [[CST0:%.*]] = const.Declare tensor<8x2x16x16x[[QTYPE2]]> = dense<1.000000e+00> : tensor<8x2x16x16xf32>, [#const.CastElemType<[[QTYPE2]]>]
+
+    // CHECK-NOT:      IE.Pad
+    // CHECK:       [[CONCAT0:%.*]] = IE.Concat([[ARG0]], [[CST0]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:       tensor<8x2x16x16x[[QTYPE]]>, tensor<8x2x16x16x[[QTYPE2]]> -> tensor<8x4x16x16x[[QTYPE1]]>
+    // CHECK:       return [[CONCAT0]] : tensor<8x4x16x16x[[QTYPE1]]>
+}
+
+// -----
+
+!qElemTypeIn = !quant.uniform<i8:f16:1, {1.00236,2.00906,3.00819,4.00768}>
+!qElemTypeOut = !quant.uniform<i8:f16:1, {1.00236,1.00236,1.00236,2.00906,3.00819,4.00768,4.00768,4.00768}>
+// CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<i8:f16:1, {1.002360e+00,2.009060e+00,3.008190e+00,4.007680e+00}>
+// CHECK-DAG: [[QTYPE1:!.+]] = !quant.uniform<i8:f16:1, {1.002360e+00,1.002360e+00,1.002360e+00,2.009060e+00,3.008190e+00,4.007680e+00,4.007680e+00,4.007680e+00}>
+// CHECK-DAG: [[QTYPE2:!.+]] = !quant.uniform<i8:f16:1, {1.002360e+00,1.002360e+00}>
+// CHECK-DAG: [[QTYPE3:!.+]] = !quant.uniform<i8:f16:1, {4.007680e+00,4.007680e+00}>
+
+// Note: CHECK-LABEL must NOT be used: it resets quantization checks above such
+//       that [[QTYPE*]] captured variables become undefined.
+// CHECK: @convertQuantPadToConcatBeginEndEqualToTwo
+// CHECK-SAME: [[ARG0:%.+]]: tensor<8x4x16x16x[[QTYPE]]>)
+func.func @convertQuantPadToConcatBeginEndEqualToTwo(%arg0: tensor<8x4x16x16x!qElemTypeIn>) -> tensor<8x8x16x16x!qElemTypeOut> {
+    %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [0, 2, 0, 0], pads_end_attr = [0, 2, 0, 0]}
+                        : tensor<8x4x16x16x!qElemTypeIn> -> tensor<8x8x16x16x!qElemTypeOut>
+    return %0 : tensor<8x8x16x16x!qElemTypeOut>
+
+    // CHECK:   [[CST0:%.*]] = const.Declare tensor<8x2x16x16x[[QTYPE2]]> = dense<1.000000e+00> : tensor<8x2x16x16xf32>, [#const.CastElemType<[[QTYPE2]]>]
+    // CHECK:   [[CST1:%.*]] = const.Declare tensor<8x2x16x16x[[QTYPE3]]> = dense<1.000000e+00> : tensor<8x2x16x16xf32>, [#const.CastElemType<[[QTYPE3]]>]
+
+    // CHECK-NOT:      IE.Pad
+    // CHECK:       [[CONCAT0:%.*]] = IE.Concat([[CST0]], [[ARG0]], [[CST1]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:       tensor<8x2x16x16x[[QTYPE2]]>, tensor<8x4x16x16x[[QTYPE]]>, tensor<8x2x16x16x[[QTYPE3]]> -> tensor<8x8x16x16x[[QTYPE1]]>
+    // CHECK:       return [[CONCAT0]] : tensor<8x8x16x16x[[QTYPE1]]>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<i8:f16, 0.5:120>
+// CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<i8:f16, 5.000000e-01:120>
+
+// Note: CHECK-LABEL must NOT be used: it resets quantization checks above such
+//       that [[QTYPE*]] captured variables become undefined.
+// CHECK: @convertQuantPadToConcatPerTensor
+// CHECK-SAME: [[ARG0:%.+]]: tensor<8x2x16x16x[[QTYPE]], {order = #NHWC}>)
+func.func @convertQuantPadToConcatPerTensor(%arg0: tensor<8x2x16x16x!qElemType, {order = #NHWC}>) -> tensor<8x4x16x16x!qElemType, {order = #NHWC}> {
+    %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [0, 1, 0, 0], pads_end_attr = [0, 1, 0, 0]}
+                        : tensor<8x2x16x16x!qElemType, {order = #NHWC}> -> tensor<8x4x16x16x!qElemType, {order = #NHWC}>
+    return %0 : tensor<8x4x16x16x!qElemType, {order = #NHWC}>
+
+    // CHECK:   [[CST0:%.*]] = const.Declare tensor<8x1x16x16x[[QTYPE]], {order = #NHWC}> = dense<1.000000e+00> : tensor<8x1x16x16xf32>, [#const.CastElemType<[[QTYPE]]>, #const.Reorder<#NHWC>]
+
+    // CHECK-NOT:      IE.Pad
+    // CHECK:       [[CONCAT0:%.*]] = IE.Concat([[CST0]], [[ARG0]], [[CST0]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:       tensor<8x1x16x16x[[QTYPE]], {order = #NHWC}>, tensor<8x2x16x16x[[QTYPE]], {order = #NHWC}>, tensor<8x1x16x16x[[QTYPE]], {order = #NHWC}> -> tensor<8x4x16x16x[[QTYPE]], {order = #NHWC}>
+    // CHECK:       return [[CONCAT0]] : tensor<8x4x16x16x[[QTYPE]], {order = #NHWC}>
+}

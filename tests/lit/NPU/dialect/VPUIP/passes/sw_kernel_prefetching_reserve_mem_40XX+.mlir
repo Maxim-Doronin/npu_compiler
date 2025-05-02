@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,7 +15,7 @@ module @SimpleGraph {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>
@@ -58,7 +58,7 @@ module @SimpleGraphWithReservedMem {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>
@@ -101,7 +101,7 @@ module @SimpleGraphWithReservedMemHasEnoughSize {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>
@@ -148,7 +148,7 @@ module @SimpleGraphWith2ReservedMem {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>
@@ -197,7 +197,7 @@ module @SimpleGraphWith2ReservedMemHaveEnoughTotalSize {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>
@@ -233,7 +233,7 @@ module @SimpleGraphNoSWKernel {
     IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>

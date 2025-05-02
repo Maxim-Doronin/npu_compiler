@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -115,7 +115,7 @@ mlir::Value createPaddingConstForConcat(ArrayRef<int64_t> constShape, mlir::Loca
 }
 
 const mlir::ArrayAttr inferOffsetsAttrWithAxis(IE::ConcatOp origOp, int64_t& axis) {
-    auto rank = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getRank();
+    auto rank = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getRank();
 
     SmallVector<SmallVector<int64_t>> finalOffsets;
     finalOffsets.reserve(origOp.getInputs().size());

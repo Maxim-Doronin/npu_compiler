@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,7 +24,7 @@ mlir::LogicalResult VPU::DetectionOutputCollectResultsOp::inferReturnTypes(
 
     const auto keepTopK = collectResults.getKeepTopK();
 
-    const auto confidenceType = collectResults.getConfidence().getType().cast<NDTypeInterface>();
+    const auto confidenceType = mlir::cast<vpux::NDTypeInterface>(collectResults.getConfidence().getType());
     const auto detectionSize = 7;
     const auto outputShape = SmallVector<int64_t>{1, 1, keepTopK, detectionSize};
     const auto outputType = confidenceType.changeShape(Shape(outputShape));

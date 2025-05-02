@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -104,7 +104,7 @@ void dfs(mlir::Value val, llvm::SetVector<mlir::Value>& visited, size_t indexMax
 
         auto bar = barOp.getResult();
 
-        auto barIndex = bar.getType().cast<VPURegMapped::IndexType>().getValue();
+        auto barIndex = mlir::cast<vpux::VPURegMapped::IndexType>(bar.getType()).getValue();
         if (barIndex > indexMax) {
             continue;
         }
@@ -121,8 +121,8 @@ llvm::SmallVector<mlir::Value> lca(mlir::Value lhs, mlir::Value rhs, lcaCache& c
 
     auto lhsBar = mlir::cast<VPUMI40XX::ConfigureBarrierOp>(lhs.getDefiningOp());
     auto rhsBarr = mlir::cast<VPUMI40XX::ConfigureBarrierOp>(rhs.getDefiningOp());
-    auto lhsPos = lhsBar.getType().cast<VPURegMapped::IndexType>().getValue();
-    auto rhsPos = rhsBarr.getType().cast<VPURegMapped::IndexType>().getValue();
+    auto lhsPos = mlir::cast<vpux::VPURegMapped::IndexType>(lhsBar.getType()).getValue();
+    auto rhsPos = mlir::cast<vpux::VPURegMapped::IndexType>(rhsBarr.getType()).getValue();
 
     if (lhsPos > rhsPos) {
         std::swap(lhs, rhs);
@@ -401,7 +401,7 @@ void setBarrierIDs(mlir::MLIRContext* ctx, mlir::func::FuncOp funcOp) {
     std::vector<VPUMI40XX::ConfigureBarrierOp> lastAssignedBarrier(MAX_PID);
 
     for (auto op : funcOp.getOps<VPUMI40XX::ConfigureBarrierOp>()) {
-        auto vid = op.getOperation()->getResult(0).getType().cast<VPURegMapped::IndexType>().getValue();
+        auto vid = mlir::cast<vpux::VPURegMapped::IndexType>(op.getOperation()->getResult(0).getType()).getValue();
         auto pid = op.getId();
 
         auto& lastBarrier = lastAssignedBarrier[pid];

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -146,8 +147,8 @@ bool hasSiblingCopyFusable(VPUIP::SubViewOp subViewOp, VPUIP::CopyOp copyOp, mli
                     log.trace("Is not fusable because childOfSiblingOp is not CopyOp");
                     continue;
                 }
-                const auto input = childCopyOfSiblingOp.getInput().getType().cast<vpux::NDTypeInterface>();
-                const auto output = childCopyOfSiblingOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+                const auto input = mlir::cast<vpux::NDTypeInterface>(childCopyOfSiblingOp.getInput().getType());
+                const auto output = mlir::cast<vpux::NDTypeInterface>(childCopyOfSiblingOp.getOutput().getType());
                 if (input.getMemoryKind() != VPU::MemoryKind::CMX_NN ||
                     output.getMemoryKind() != VPU::MemoryKind::DDR) {
                     log.trace("Is not fusable because childCopyOfSiblingOp is not CMX->DDR copy");
@@ -165,8 +166,8 @@ bool hasSiblingCopyFusable(VPUIP::SubViewOp subViewOp, VPUIP::CopyOp copyOp, mli
 
 bool ParallelCopiesRewriter::isCopyFusable(VPUIP::CopyOp copyOp, Logger& log) const {
     // Check 1: copy DDR->CMX
-    const auto srcMemory = copyOp.getInput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
-    const auto dstMemory = copyOp.getOutput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+    const auto srcMemory = mlir::cast<vpux::NDTypeInterface>(copyOp.getInput().getType()).getMemoryKind();
+    const auto dstMemory = mlir::cast<vpux::NDTypeInterface>(copyOp.getOutput().getType()).getMemoryKind();
     if (srcMemory == dstMemory || srcMemory == VPU::MemoryKind::CMX_NN) {
         log.trace("Is not fusable because not DDR->CMX copy: {0}->{1}", srcMemory, dstMemory);
         return false;
@@ -399,8 +400,8 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
         if (rootCopyOp == nullptr) {
             return false;
         }
-        const auto srcMemory = rootCopyOp.getInput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
-        const auto dstMemory = rootCopyOp.getOutput().getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+        const auto srcMemory = mlir::cast<vpux::NDTypeInterface>(rootCopyOp.getInput().getType()).getMemoryKind();
+        const auto dstMemory = mlir::cast<vpux::NDTypeInterface>(rootCopyOp.getOutput().getType()).getMemoryKind();
         if (srcMemory == dstMemory || srcMemory == VPU::MemoryKind::CMX_NN) {
             return false;
         }
@@ -423,6 +424,10 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
 
         positions.clear();
         auto parentOp = rootCopyOp.getInput().getDefiningOp();
+        if (parentOp == nullptr) {
+            return false;
+        }
+
         // 2. check if the weight/input is from subview, and the subview parent has sibling subview copies,
         //    which are used by consecutive CONVs
         if (auto subViewOp = mlir::dyn_cast<VPUIP::SubViewOp>(parentOp)) {

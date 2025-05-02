@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/constant_fusion.hpp"
 
 #include "vpux/compiler/utils/analysis.hpp"
@@ -133,7 +135,7 @@ bool isSizeAlignmentRequired(Const::DeclareOp decOp, VPU::ArchKind archKind,
         return true;
     };
 
-    auto type = decOp.getType().cast<NDTypeInterface>();
+    auto type = mlir::cast<vpux::NDTypeInterface>(decOp.getType());
     if (distributedType == nullptr) {
         return isAlignmentRequired(type);
     } else {
@@ -154,15 +156,15 @@ bool isSizeAlignmentRequired(Const::DeclareOp decOp, VPU::ArchKind archKind,
 
         for (auto i = 0; i < numClusters; i++) {
             mlir::Type newType = nullptr;
-            if (auto qType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+            if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
                 const auto newQType = tileScalesAndZP(qType, perClusterShapes[i], perClusterOffsets[i]);
                 newType = type.changeShapeElemType(perClusterShapes[i], newQType);
             } else {
                 newType = type.changeShape(perClusterShapes[i]);
             }
 
-            newType = VPUIP::tileTypeSparsityCompression(newType, perClusterOffsets[i], perClusterShapes[i])
-                              .cast<vpux::NDTypeInterface>();
+            newType = mlir::cast<vpux::NDTypeInterface>(
+                    VPUIP::tileTypeSparsityCompression(newType, perClusterOffsets[i], perClusterShapes[i]));
 
             if (isAlignmentRequired(newType)) {
                 return true;
@@ -263,7 +265,7 @@ bool Swizzling::checkCMXUsage(VPUIP::NCEClusterTaskOp nceOp, const ValuesSet& ne
 // 2. isSizeAlignmentRequired <- This case will be enabled with E#48057
 bool Swizzling::canSwizzleWeights(VPUIP::NCEClusterTaskOp nceOp, DeviceInfo& deviceInfo, OpsInfo& opsInfo,
                                   AliasesInfo& aliasesInfo) {
-    auto isTiled = nceOp->getResult(0).getType().dyn_cast<VPUIP::DistributedBufferType>() != nullptr;
+    auto isTiled = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(nceOp->getResult(0).getType()) != nullptr;
     auto isFused = nceOp->hasAttr(vpux::ConstantFusing::constantsFused);
     auto weights = nceOp.getWeights();
     auto weightsSM = nceOp.getWeightsSparsityMap();
@@ -328,7 +330,7 @@ bool Swizzling::canSwizzleWeights(VPUIP::NCEClusterTaskOp nceOp, DeviceInfo& dev
             if (distributedBufferOp == nullptr) {
                 return false;
             }
-            auto distrType = value.getType().cast<VPUIP::DistributedBufferType>();
+            auto distrType = mlir::cast<vpux::VPUIP::DistributedBufferType>(value.getType());
             if (_checkConstantSizeAlignment && isSizeAlignmentRequired(decOp, deviceInfo.archKind, distrType)) {
                 return false;
             }
@@ -433,10 +435,10 @@ void Swizzling::addSwizzlingAttributesToBuffer(mlir::OpBuilder& builder, InAlloc
 bool isTypeSwizzled(mlir::Type type) {
     vpux::MemRefAttr memRefAttr;
     type = VPUIP::extractDataType(type);
-    if (auto bufferMemRefType = type.dyn_cast<mlir::MemRefType>()) {
-        memRefAttr = bufferMemRefType.getLayout().dyn_cast<vpux::MemRefAttr>();
-    } else if (auto distBufferType = type.dyn_cast<VPUIP::DistributedBufferType>()) {
-        memRefAttr = distBufferType.getLayout().dyn_cast<vpux::MemRefAttr>();
+    if (auto bufferMemRefType = mlir::dyn_cast<mlir::MemRefType>(type)) {
+        memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(bufferMemRefType.getLayout());
+    } else if (auto distBufferType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
+        memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(distBufferType.getLayout());
     }
 
     if (memRefAttr && memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>() != nullptr) {
@@ -453,7 +455,7 @@ void Swizzling::updateConstantTypeForSwizzling(Const::DeclareOp cstOp, mlir::Ope
     // of weight table const. The new transformation will swizzle the constant with swizzle key parameter
     _log.nest().trace("Constant for swizzling transformation'{0}'", cstOp->getLoc());
 
-    auto cstType = cstOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto cstType = mlir::cast<vpux::NDTypeInterface>(cstOp.getOutput().getType());
     if (auto swizzlingSchemeAttr = vpux::getSwizzlingSchemeAttr(cstType)) {
         // Check if swizzling transformation is already attached, this can happen when constant is shared
         // between 2 or more NCEOps or when constants are fused
@@ -475,7 +477,7 @@ void Swizzling::constantBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCEClus
         return;
     }
 
-    auto isTiled = nceOp->getResult(0).getType().dyn_cast<VPUIP::DistributedBufferType>() != nullptr;
+    auto isTiled = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(nceOp->getResult(0).getType()) != nullptr;
     auto isFused = nceOp->hasAttr(vpux::ConstantFusing::constantsFused);
     auto swizzlingSchemeAttr = createSwizzlingSchemeAttr(&getContext(), deviceInfo.archKind, SWIZZLING_KEY_5);
 
@@ -511,7 +513,7 @@ void Swizzling::constantBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCEClus
 
         updateConstantTypeForSwizzling(decOp, copyOp, SWIZZLING_KEY_5, deviceInfo);
 
-        auto origType = distributedBuffer.getType().cast<VPUIP::DistributedBufferType>();
+        auto origType = mlir::cast<vpux::VPUIP::DistributedBufferType>(distributedBuffer.getType());
 
         // Create new DistributedBufferType which as part of layout will have swizzling set
         newType = getDistributedBufferTypeWithSwizzling(origType, swizzlingSchemeAttr);
@@ -528,7 +530,7 @@ void Swizzling::constantBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCEClus
 
         updateConstantTypeForSwizzling(decOp, copyOp.getOperation(), SWIZZLING_KEY_5, deviceInfo);
 
-        auto origType = allocOp.getType().cast<vpux::NDTypeInterface>();
+        auto origType = mlir::cast<vpux::NDTypeInterface>(allocOp.getType());
         newType = getMemRefType(origType.getShape(), origType.getElementType(), origType.getDimsOrder(),
                                 origType.getMemSpace(), StridesRef(), swizzlingSchemeAttr,
                                 VPUIP::getSparsityCompressionAttr(origType));
@@ -674,7 +676,7 @@ void Swizzling::activationBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCECl
 
     auto getResultIndex = [&](mlir::Value outputBuffer) {
         // data always has index 0. Profiling isn't enabled yet, so sparsityMap's index 1
-        auto type = outputBuffer.getType().cast<vpux::NDTypeInterface>();
+        auto type = mlir::cast<vpux::NDTypeInterface>(outputBuffer.getType());
         return type.getElemTypeSize() == Bit(1) ? 1 : 0;
     };
 
@@ -696,7 +698,7 @@ void Swizzling::activationBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCECl
                 vpux::getAddressAlignmentForSwizzling(swizzlingSchemeAttr.getKey().getInt(), deviceInfo.archKind);
         auto addressAlignmentAttr = getIntAttr(&getContext(), addressAlignment);
 
-        auto origType = (*sourceAllocOp->getResultTypes().begin()).cast<vpux::NDTypeInterface>();
+        auto origType = mlir::cast<vpux::NDTypeInterface>(*sourceAllocOp->getResultTypes().begin());
 
         const auto outputIndex = getResultIndex(bufVal);
 
@@ -735,7 +737,7 @@ void Swizzling::activationBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCECl
                 }
             }
         } else if (auto allocOp = mlir::dyn_cast<VPURT::AllocDistributed>(sourceAllocOp)) {
-            auto distributedType = origType.dyn_cast<VPUIP::DistributedBufferType>();
+            auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(origType);
 
             // Create new DistributedBufferType which as part of layout will have swizzling set
             auto newType = getDistributedBufferTypeWithSwizzling(distributedType, swizzlingSchemeAttr);

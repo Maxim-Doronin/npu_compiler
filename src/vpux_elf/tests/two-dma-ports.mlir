@@ -13,7 +13,7 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilati
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
   IE.MemoryResource 524288000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @race_condition_dma_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @race_condition_dma_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x16x16x16xf16, {order = #NHWC}>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x16x16x16xf16, {order = #NHWC}>

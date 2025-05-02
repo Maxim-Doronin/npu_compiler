@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <mlir/IR/BuiltinTypes.h>
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/utils/dynamic_shape_propagation.hpp"
 
 using namespace vpux;
 
@@ -19,24 +20,23 @@ mlir::LogicalResult VPU::NonZeroOp::inferReturnTypes(mlir::MLIRContext* ctx, std
         return mlir::failure();
     }
 
-    const auto inType = nonZero.getInput().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(nonZero.getInput().getType());
     const auto inRank = inType.getRank();
     const auto outShape = Shape{inRank, mlir::ShapedType::kDynamic};
 
     const auto inShape = inType.getShape();
     const auto numElements = std::accumulate(inShape.begin(), inShape.end(), ShapeRef::ValueType{1},
                                              std::multiplies<ShapeRef::ValueType>());
-    const auto bounds = SmallVector<int64_t>{inRank, numElements};
+    const auto outBounds = SmallVector<int64_t>{inRank, numElements};
 
-    const auto typeComponents = TypeComponents()
-                                        .setShape(outShape)
-                                        .setDimsOrder(DimsOrder::fromNumDims(outShape.size()))
-                                        .setElementType(mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed))
-                                        .setBounds(getIntArrayAttr(ctx, bounds));
+    auto typeComponents = TypeComponents()
+                                  .setElementType(mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed))
+                                  .setDimsOrder(DimsOrder::fromNumDims(outShape.size()));
+
+    assignDynamicTypeComponents(typeComponents, nonZero.getBoundsRepresentation(), outShape.raw(), outBounds);
 
     auto outType = inType.changeTypeComponents(typeComponents);
-
-    inferredReturnTypes.emplace_back(outType);
+    inferredReturnTypes.push_back(outType);
 
     return mlir::success();
 }

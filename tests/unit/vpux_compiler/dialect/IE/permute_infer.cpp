@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/init.hpp"
+
+#include <mlir/Dialect/Quant/QuantOps.h>
 
 #include <gtest/gtest.h>
 
@@ -61,7 +64,7 @@ TEST_P(MLIR_IE_PermuteInfer, inferPermuteReturnTypeComponents) {
     const mlir::Type elemType = inferredReturnShapes[0].getElementType();
     ASSERT_NE(elemType, nullptr);
 
-    const auto perAxisQuantType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType);
     ASSERT_NE(perAxisQuantType, nullptr);
 
     const auto newAxis = perAxisQuantType.getQuantizedDimension();

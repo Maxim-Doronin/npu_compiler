@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include "intel_npu/config/compiler.hpp"
+#include "intel_npu/config/options.hpp"
 #include "npu_driver_compiler.h"
 #include "ov_ops/rms.hpp"
 #include "ov_ops/rotary_positional_embeddings.hpp"
@@ -325,14 +325,14 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
             logger->debug("config options - key: {0} value: {1}", key, config[key]);
         }
     } catch (const std::exception& error) {
-        logger->outputError(error.what());
+        logger->outputError(formatv("Failed to parse config options:\n{0}", error.what()));
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     } catch (...) {
         logger->outputError("Internal exception in config parser!");
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     }
 
-    /// Foce to use MLIR compiler.
+    /// Force to use MLIR compiler.
     config[ov::intel_npu::compiler_type.name()] = "MLIR";
 
     // If platform exists, check if it has a valid value
@@ -352,12 +352,12 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
         /// Set NPU_PLATFORM and DEVICE_ID
         /// Value from VpuFamilyId.h
         switch (deviceDesc.deviceID) {
-        case 0x7D1D:
-        case 0xAD1D:
+        case 0x7D1D:  /// MeteorLake (MTL-P, MTL-H)
+        case 0xAD1D:  /// ArrowLake (ARL)
             config[ov::intel_npu::platform.name()] = "3720";
             config[ov::device::id.name()] = "3720";
             break;
-        case 0x643E:
+        case 0x643E:  /// LunarLake (LNL)
             config[ov::intel_npu::platform.name()] = "4000";
             config[ov::device::id.name()] = "4000";
             break;
@@ -374,11 +374,23 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
             enableProfiling = true;
     }
 
+    /// Remove runtime option MODEL_PRIORITY passed by plugin versions <= OV25.1
+    iter = config.find(ov::hint::model_priority.name());
+    if (iter != config.end()) {
+        config.erase(iter);
+    }
+
+    /// Remove runtime option CACHE_DIR passed by plugin versions <= OV25.1
+    iter = config.find(ov::cache_dir.name());
+    if (iter != config.end()) {
+        config.erase(iter);
+    }
+
     /// Update default compilation config options with the new values we parsed from user descriptions
     try {
         parsedConfig.update(config, intel_npu::OptionMode::CompileTime);
     } catch (const std::exception& error) {
-        logger->outputError(error.what());
+        logger->outputError(formatv("Failed to update default config:\n{0}", error.what()));
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     } catch (...) {
         logger->outputError(formatv("Internal exception! Can not update config! DescOptions: {0}", descOptions));
@@ -478,7 +490,7 @@ vcl_result_t BuildInfo::prepareBuildFlags(const std::string& descOptions) {
     try {
         ret = parseIOOption(ioInfoOptions);
     } catch (const std::exception& error) {
-        logger->outputError(error.what());
+        logger->outputError(formatv("Failed to parse IO option:\n{0}", error.what()));
         ret = VCL_RESULT_ERROR_INVALID_ARGUMENT;
     } catch (...) {
         logger->outputError(formatv("Internal exception! Can't parse ioInfo! DescOptions: {0}", descOptions));
@@ -551,10 +563,8 @@ vcl_result_t BuildInfo::prepareModel(const uint8_t* modelIR, uint64_t modelIRSiz
     /// The pointer to model weight
     const uint8_t* weights = modelIR + weightsOffset;
     /// Deserialize the model
-    size_t modelHash;
     try {
         std::string modelData(buffer, buffer + bufferSize);
-        modelHash = std::hash<std::string>()(modelData);
 
         ov::Tensor weightsTensor;
         if (weightsSize > 0)
@@ -578,30 +588,14 @@ vcl_result_t BuildInfo::prepareModel(const uint8_t* modelIR, uint64_t modelIRSiz
             logger->info("The time to convert data to model: {0} ms", stopWatch.delta_ms());
         }
     } catch (const std::exception& error) {
+        logger->outputError(formatv("Failed to read/deserialize model. Used OpenVino version {0}.",
+                                    pvc->getCompilerProp().supportedOpsets));
         logger->outputError(error.what());
         return VCL_RESULT_ERROR_UNKNOWN;
     } catch (...) {
-        logger->outputError("Internal exception! Could not deserialize the model!");
+        logger->outputError(formatv("Internal exception! Failed to read/deserialize model. Used OpenVino version {0}.",
+                                    pvc->getCompilerProp().supportedOpsets));
         return VCL_RESULT_ERROR_UNKNOWN;
-    }
-
-    const std::string hashOption = "model-hash=" + std::to_string(modelHash);
-    std::string compilationOptions = hashOption;
-    if (parsedConfig.has<intel_npu::COMPILATION_MODE_PARAMS>()) {
-        const auto existingOptions = parsedConfig.get<intel_npu::COMPILATION_MODE_PARAMS>();
-        compilationOptions = existingOptions + " " + hashOption;
-    }
-    std::map<std::string, std::string> config = {{ov::intel_npu::compilation_mode_params.name(), compilationOptions}};
-
-    /// Update default compilation config options with the new values we parsed from user descriptions
-    try {
-        parsedConfig.update(config, intel_npu::OptionMode::CompileTime);
-    } catch (const std::exception& error) {
-        logger->outputError(error.what());
-        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
-    } catch (...) {
-        logger->outputError(formatv("Internal exception! Can not update config!"));
-        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     }
 
     return VCL_RESULT_SUCCESS;

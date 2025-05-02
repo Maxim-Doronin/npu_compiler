@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,9 +11,7 @@
 #include <openvino/util/file_util.hpp>
 #include <transformations/utils/utils.hpp>
 
-#include "intel_npu/config/common.hpp"
-#include "intel_npu/config/compiler.hpp"
-#include "intel_npu/config/runtime.hpp"
+#include "intel_npu/config/options.hpp"
 #include "intel_npu/npu_private_properties.hpp"
 #include "vpux/compiler/compiler.hpp"
 
@@ -126,10 +124,30 @@ VPUXCompilerL0::VPUXCompilerL0(vcl_compiler_desc_t* compilerDesc, vcl_device_des
           _compilerDesc(*compilerDesc),
           _deviceDesc(*deviceDesc),
           _logger(vclLogger) {
-    // Prepare default compilation configs
-    registerCommonOptions(*_options);
-    registerCompilerOptions(*_options);
-    registerRunTimeOptions(*_options);
+    // Register compiler configuration options
+    _options->add<intel_npu::PERFORMANCE_HINT>();
+    _options->add<intel_npu::PERFORMANCE_HINT_NUM_REQUESTS>();
+    _options->add<intel_npu::INFERENCE_PRECISION_HINT>();
+    _options->add<intel_npu::PERF_COUNT>();
+    _options->add<intel_npu::LOG_LEVEL>();
+    _options->add<intel_npu::PLATFORM>();
+    _options->add<intel_npu::COMPILER_TYPE>();
+    _options->add<intel_npu::DEVICE_ID>();
+    _options->add<intel_npu::BATCH_MODE>();
+    _options->add<intel_npu::COMPILATION_MODE>();
+    _options->add<intel_npu::COMPILATION_MODE_PARAMS>();
+    _options->add<intel_npu::BACKEND_COMPILATION_PARAMS>();
+    _options->add<intel_npu::COMPILATION_NUM_THREADS>();
+    _options->add<intel_npu::DPU_GROUPS>();
+    _options->add<intel_npu::TILES>();
+    _options->add<intel_npu::STEPPING>();
+    _options->add<intel_npu::MAX_TILES>();
+    _options->add<intel_npu::DMA_ENGINES>();
+    _options->add<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
+    _options->add<intel_npu::EXECUTION_MODE_HINT>();
+    _options->add<intel_npu::COMPILER_DYNAMIC_QUANTIZATION>();
+    _options->add<intel_npu::BATCH_COMPILER_MODE_SETTINGS>();
+    _options->add<intel_npu::QDQ_OPTIMIZATION>();
 
     // Create compiler instance with the default config
     // COMPILER_TYPE DRIVER is assumed
@@ -152,32 +170,53 @@ std::pair<VPUXExecutableL0*, vcl_result_t> VPUXCompilerL0::importNetwork(BuildIn
         // Output time cost on vcl level
         stopWatch.start();
     }
+
+    ov::RTMap& runtimeInfoMap = model->get_rt_info();
+    int64_t irVersion = OLDEST_IR_VERSION_SUPPORTED;
+    const auto& irVersionMatch = runtimeInfoMap.find("version");
+    if (irVersionMatch != runtimeInfoMap.end()) {
+        irVersion = irVersionMatch->second.as<int64_t>();
+    }
+
+    bool useIndices = false;
+    const auto& useIndicesMatch = runtimeInfoMap.find("use_indices_for_io_metadata");
+    if (useIndicesMatch != runtimeInfoMap.end()) {
+        useIndices = useIndicesMatch->second.as<bool>();
+    }
+
+    // Compiler needs to maintain compatiblity with older OpenVINO (plugin) versions.
+    // Compiler needs to support applications that are still using OV 1.0 API.
+    //     | OV API Version | IR version | Needs preprocessing? |
+    //     | 1.0            | v10        | Yes                  |
+    //     | 2.0            | v10        | Yes                  |
+    //     | 1.0            | v11        | Invalid usecase      |
+    //     | 2.0            | v11        | NO                   |
+    // OpenVINO releases >= 23.2 are passing a runtime attribute "is_new_api" to inform
+    // the compiler if API2.0 is being used. However, given the compatibility matrix
+    // above, compiler will ignore "is_new_api" to maintain compatibility with even
+    // older applications that use OV versions < 23.2 and IRv11
+    if (irVersion < 11) {
+        try {
+            bool skipIOInfo = false;
+#if defined(VPUX_DEVELOPER_BUILD)
+            if (const auto env = std::getenv("IE_VPUX_VCL_SKIP_IOINFO")) {
+                skipIOInfo = std::stoi(env);
+            }
+#endif
+            if (!skipIOInfo) {
+                model = preprocessModel(model, buildInfo.inputPrecisions, buildInfo.outputPrecisions,
+                                        buildInfo.inputLayouts, buildInfo.outputLayouts, useIndices);
+            }
+        } catch (const std::exception& error) {
+            _logger->outputError(formatv("Failed to process model:\n{0}", error.what()));
+            return std::pair<VPUXExecutableL0*, vcl_result_t>(nullptr, VCL_RESULT_ERROR_INVALID_ARGUMENT);
+        } catch (...) {
+            _logger->outputError("Internal exception! Can not process model!");
+            return std::pair<VPUXExecutableL0*, vcl_result_t>(nullptr, VCL_RESULT_ERROR_INVALID_ARGUMENT);
+        }
+    }
+
     try {
-        bool isNewAPI = false;
-        int64_t irVersion = OLDEST_IR_VERSION_SUPPORTED;
-        bool useIndices = false;
-
-        ov::RTMap& runtimeInfoMap = model->get_rt_info();
-        const auto& isNewAPIMatch = runtimeInfoMap.find("is_new_api");
-        if (isNewAPIMatch != runtimeInfoMap.end()) {
-            isNewAPI = isNewAPIMatch->second.as<bool>();
-        }
-
-        const auto& irVersionMatch = runtimeInfoMap.find("version");
-        if (irVersionMatch != runtimeInfoMap.end()) {
-            irVersion = irVersionMatch->second.as<int64_t>();
-        }
-
-        const auto& useIndicesMatch = runtimeInfoMap.find("use_indices_for_io_metadata");
-        if (useIndicesMatch != runtimeInfoMap.end()) {
-            useIndices = useIndicesMatch->second.as<bool>();
-        }
-
-        if (!isNewAPI || irVersion < 11) {
-            model = preprocessModel(model, buildInfo.inputPrecisions, buildInfo.outputPrecisions,
-                                    buildInfo.inputLayouts, buildInfo.outputLayouts, useIndices);
-        }
-
         // Call compiler to compile the model and create blob
         // Create executable with the result NetworkDescription, profiling option and logger
         // Note we rely on implicit move semantics thanks to compile result being an rvalue,
@@ -186,7 +225,7 @@ std::pair<VPUXExecutableL0*, vcl_result_t> VPUXCompilerL0::importNetwork(BuildIn
 
         exe = new VPUXExecutableL0(network, buildInfo.enableProfiling, _logger);
     } catch (const std::exception& error) {
-        _logger->outputError(formatv("{0}", error.what()));
+        _logger->outputError(formatv("Compiler returned msg:\n{0}", error.what()));
         return std::pair<VPUXExecutableL0*, vcl_result_t>(nullptr, VCL_RESULT_ERROR_INVALID_ARGUMENT);
     } catch (...) {
         _logger->outputError("Internal exception! Can not compile!");
@@ -237,11 +276,6 @@ NetworkDescriptionView VPUXCompilerL0::importNetwork(BuildInfo& buildInfo, const
     auto model = buildInfo.model;
     auto& runtimeInfoMap = model->get_rt_info();
 
-    bool isNewAPI = false;
-    if (const auto isNewAPIMatch = runtimeInfoMap.find("is_new_api"); isNewAPIMatch != runtimeInfoMap.end()) {
-        isNewAPI = isNewAPIMatch->second.as<bool>();
-    }
-
     int64_t irVersion = OLDEST_IR_VERSION_SUPPORTED;
     if (const auto irVersionMatch = runtimeInfoMap.find("version"); irVersionMatch != runtimeInfoMap.end()) {
         irVersion = irVersionMatch->second.as<int64_t>();
@@ -253,7 +287,18 @@ NetworkDescriptionView VPUXCompilerL0::importNetwork(BuildInfo& buildInfo, const
         useIndices = useIndicesMatch->second.as<bool>();
     }
 
-    if (!isNewAPI || irVersion < 11) {
+    // Compiler needs to maintain compatiblity with older OpenVINO (plugin) versions.
+    // Compiler needs to support applications that are still using OV 1.0 API.
+    //     | OV API Version | IR version | Needs preprocessing? |
+    //     | 1.0            | v10        | Yes                  |
+    //     | 2.0            | v10        | Yes                  |
+    //     | 1.0            | v11        | Invalid usecase      |
+    //     | 2.0            | v11        | NO                   |
+    // OpenVINO releases >= 23.2 are passing a runtime attribute "is_new_api" to inform
+    // the compiler if API2.0 is being used. However, given the compatibility matrix
+    // above, compiler will ignore "is_new_api" to maintain compatibility with even
+    // older applications that use OV versions < 23.2 and IRv11
+    if (irVersion < 11) {
         model = preprocessModel(model, buildInfo.inputPrecisions, buildInfo.outputPrecisions, buildInfo.inputLayouts,
                                 buildInfo.outputLayouts, useIndices);
     }
@@ -268,7 +313,7 @@ vcl_result_t VPUXCompilerL0::queryNetwork(const BuildInfo& buildInfo, VPUXQueryN
     try {
         queryNetworkResult = _compiler->query(buildInfo.model, buildInfo.parsedConfig);
     } catch (const std::exception& error) {
-        _logger->outputError(error.what());
+        _logger->outputError(formatv("Compiler returned msg:\n{0}", error.what()));
         return VCL_RESULT_ERROR_UNKNOWN;
     } catch (...) {
         _logger->outputError("Failed to call query from compiler!");
@@ -278,6 +323,50 @@ vcl_result_t VPUXCompilerL0::queryNetwork(const BuildInfo& buildInfo, VPUXQueryN
 
     // Serialize the result to predefined format
     auto ret = pQueryNetwork->setQueryResult(queryNetworkResult);
+    return ret;
+}
+
+vcl_result_t VPUXCompilerL0::getSupportedOptions(char* buffer, uint64_t size) {
+    vcl_result_t ret = VCL_RESULT_SUCCESS;
+    // get the registered options list, excluding private options (false param)
+    std::string optListStr = _options->getSupportedAsString(false);
+    // check if it fits
+    uint64_t stringsize = optListStr.size() + 1;
+    if (stringsize > size) {
+        _logger->outputError("Compiler supported options list does not fit into the provided buffer!");
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    }
+    // serialize
+    std::memcpy(buffer, optListStr.c_str(), stringsize);
+
+    return ret;
+}
+
+vcl_result_t VPUXCompilerL0::getSupportedOptionsSize(uint64_t* stringSize) {
+    vcl_result_t ret = VCL_RESULT_SUCCESS;
+    // get the registered options list, excluding private options (false param)
+    std::string optionsList = _options->getSupportedAsString(false);
+    // get string size +1 for null-termination
+    *stringSize = optionsList.size() + 1;
+    return ret;
+}
+
+bool VPUXCompilerL0::isOptionValueSupported(const char* option, const char* value) {
+    bool ret = false;
+    std::string optName(reinterpret_cast<const char*>(option));
+    std::vector<std::string> optList = _options->getSupported(true);  // include private
+    if (std::find(optList.begin(), optList.end(), optName) != optList.end()) {
+        ret = true;  // found
+    } else {
+        return false;  // not found
+    };
+    // see if we need to check for supported value too
+    if (value != nullptr) {
+        // value is to be checked too
+        /*TO BE IMPLEMENTED*/
+        return false;
+    }
+
     return ret;
 }
 

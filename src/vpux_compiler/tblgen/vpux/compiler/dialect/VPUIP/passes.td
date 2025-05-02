@@ -172,6 +172,21 @@ def CopyOpTiling : PassBase<"tile-copies", "vpux::FunctionPass"> {
 
     let constructor = "vpux::VPUIP::createCopyOpTilingPass()";
 }
+//
+
+// ConvertDynamicReshapeToInPlace
+
+//
+ 
+def ConvertDynamicReshapeToInPlace : PassBase<"convert-dynamic-reshape-to-in-place", "vpux::FunctionPass"> {
+    let summary = "Convert DynamicReshape operation to read and write to the same buffer in memory";
+ 
+    let description = [{
+        This pass will convert DynamicReshape to an inplace operation when the input rank is equal with the output rank.
+    }];
+ 
+    let constructor = "vpux::VPUIP::createConvertDynamicReshapeToInPlacePass()";
+}
 
 //
 // ConvertEltwiseToInPlace
@@ -821,6 +836,21 @@ def UnwrapClusterTiling : PassBase<"unwrap-cluster-tiling", "vpux::FunctionPass"
 
 }
 
+//
+// WrapVPUIPOpsInNCEClusterTiling
+//
+
+def WrapVPUIPOpsInNCEClusterTiling : PassBase<"wrap-vpuip-ops-in-cluster-tiling", "vpux::FunctionPass"> {
+    let summary = "Wrap operations that have distributed tensors for input or output, into NCEClusterTilingOps";
+
+    let description = [{
+        Wrap operations that use Distributed tensors either for input or output in NCEClusterTiling op
+        TODO:E#158598 This pass is to be removed once NCEClusterTilingOp is no longer used
+    }];
+
+    let constructor = "vpux::VPUIP::createWrapVPUIPOpsInNCEClusterTilingPass()";
+}
+
 
 //
 // UnrollExpandDMA
@@ -1017,7 +1047,7 @@ def Swizzling : PassBase<"swizzling", "vpux::FunctionPass"> {
     let summary = "Configure swizzling for eligible buffers";
 
     let description = [{
-        On HW with swizzling support (NPU37XX) enable activation swizzling for DPU to DPU
+        On HW with swizzling support (VPUX37XX) enable activation swizzling for DPU to DPU
         buffers. This includes setting specific swizzling key and alignment as part of
         allocation operation.
         Swizzling requirement:
@@ -1059,7 +1089,7 @@ def Swizzling : PassBase<"swizzling", "vpux::FunctionPass"> {
 //
 
 def DMABarrierOptimization : PassBase<"dma-barrier-optimization", "vpux::FunctionPass"> {
-    let summary = "Optimize DMA related barriers after dma port has been assigned for NPU37XX";
+    let summary = "Optimize DMA related barriers after dma port has been assigned for VPUX37XX";
     let constructor = "vpux::VPUIP::createDMABarrierOptimizationPass()";
 }
 
@@ -1539,7 +1569,7 @@ def UngroupBoundedBuffersAsFuncArgs : PassBase<"ungroup-bounded-buffers-as-func-
         Pass also introduces two new operations:
         - VPUIP.GroupBoundedBuffer that groups the input data and dynamic_shape memref arguments into !VPUIP.BoundedBuffer types at the begin of func
         - VPUIP.UngroupBoundedBuffer that ungroups the !VPUIP.BoundedBuffer at the end of func into separate memref types for data and dynamic_shape.
-        Pass also makes changes in CNNNetwork accordinally
+        Pass also makes changes in NetworkInfo accordinally
     }];
 
     let constructor = "vpux::VPUIP::createUngroupBoundedBuffersAsFuncArgsPass()";
@@ -1586,6 +1616,32 @@ def AddCopyBetweenSWKernelsAndNetworkIO : PassBase<"add-copy-between-swkernels-a
 }
 
 //
+// ConvertVPUIPCopyToSWCopy
+//
+
+def ConvertVPUIPCopyToSWCopy : PassBase<"convert-vpuip-copy-to-sw-copy", "vpux::ModulePass"> {
+    let summary = "Convert VPUIP.Copy to SW.Kernel Copy";
+
+    let description = [{
+           Traverses the IR and when found VPUIP.Copy it is converted as SW.Copy operator
+           which is created in this pass on certain conditions.
+           Need to cover the cases of memory transfers, with strides which are not byte aligned,
+           and because of that can't be executed as DMA ops.
+
+           The only solution for that is to have a dedicated SW Copy operator which can handle these sub byte accesses.
+           Copy has the inBitOffset and outBitOffset attributes to suggest which nibble to start copying from.
+
+           Current version has the base functionality: INPUT (strided) -> OUTPUT && INPUT -> OUTPUT (strided)
+            The main conditions for using Copy operator are:
+                sub_byte_type_used && strides_non_byte_aligned
+                                    OR
+                strides_aligned && strides_in_bit > dims_in_bit && innermost_dim_not_aligned
+    }];
+
+    let constructor = "vpux::VPUIP::createConvertVPUIPCopyToSWCopyPass()";
+}
+
+//
 // UnrollAnalysis
 //
 
@@ -1614,4 +1670,61 @@ def InvalidateUnrollDMAAnalysis : PassBase<"invalidate-unroll-dma-analysis", "vp
 
     let constructor = "vpux::VPUIP::createInvalidateUnrollDMAAnalysisPass()";
 }
+
+//
+// DispatchedInliner
+//
+
+def DispatchedInliner : PassBase<"dispatched-inliner", "vpux::ModulePass"> {
+    let summary = "Inlines using VPUIP's FuncInlinerInterface";
+
+    let description = [{
+        This pass executes MLIR's inliner pass which dispatches to VPUIP's FuncInlinerInterface.
+    }];
+
+    let constructor = "vpux::VPUIP::createDispatchedInlinerPass()";
+
+    let dependentDialects = [
+        "vpux::VPUIP::VPUIPDialect"
+    ];
+}
+
+//
+// MoveReflectPadToCMX
+//
+
+def MoveReflectPadToCMX : PassBase<"move-reflect-pad-to-cmx", "vpux::FunctionPass"> {
+    let summary = "Moves Reflect Pad ops to CMX";
+
+    let description = [{
+        This pass moves the Reflect Pad patterns to CMX for better performance. The patterns are formed by Subview ops,
+        Copy ops and each ending with a ConcatView op. The input of the pattern that does padding on a certain dimention will be moved
+        from DDR to CMX, all the ops forming the pattern will be executed in CMX, the output of the ConcatView op
+        will be moved from CMX to DDR. The same will happen for each dimension. The copies are expected to be later optimized by OptimizeCopies.
+    }];
+
+    let constructor = "vpux::VPUIP::createMoveReflectPadToCMXPass()";
+}
+
+//
+// SerializeELFToBinary
+//
+
+def SerializeELFToBinary : PassBase<"serialize-elf-to-binary", "vpux::FunctionPass"> {
+    let summary = "Serialize ELF module to binary";
+
+    let description = [{
+        The pass serializes NPU code in the ELF dialect into a binary and stores the binary in IR as a VPUIP.Binary op.
+        An extern func op is created with the call signature the same as the entry point into the ELF binary.
+
+        The resultant ELF files will be used within the host function.
+    }];
+
+    let constructor = "vpux::VPUIP::createSerializeELFToBinaryPass()";
+
+    let dependentDialects = [
+        "vpux::VPUIP::VPUIPDialect"
+    ];
+}
+
 #endif

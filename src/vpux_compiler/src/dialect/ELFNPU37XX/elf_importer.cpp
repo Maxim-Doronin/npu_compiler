@@ -7,9 +7,14 @@
 
 #include <vpux_elf/accessor.hpp>
 #include "vpux/compiler/dialect/ELFNPU37XX/attributes.hpp"
+#include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IERT/dialect.hpp"
+#include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/types.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -43,18 +48,18 @@ vpux::ELFNPU37XX::ElfImporter::~ElfImporter() {
     delete _accessor;
 }
 
-void vpux::ELFNPU37XX::ElfImporter::buildCNNNetworkOp() {
+void vpux::ELFNPU37XX::ElfImporter::buildNetworkInfoOp() {
     OpBuilderLogger builderLog(_log.nest());
     auto builder = mlir::OpBuilder::atBlockEnd(_module.getBody(), &builderLog);
 
-    auto cnnOp = builder.create<IE::CNNNetworkOp>(mlir::UnknownLoc::get(_ctx), _mainFuncName, false);
+    auto netInfo = builder.create<net::NetworkInfoOp>(mlir::UnknownLoc::get(_ctx), _mainFuncName, false);
 
-    parseUserInputsOutputs(builderLog, cnnOp);
+    parseUserInputsOutputs(builderLog, netInfo);
 }
 
-void vpux::ELFNPU37XX::ElfImporter::parseUserInputsOutputs(OpBuilderLogger& builderLog, IE::CNNNetworkOp& cnnOp) {
-    cnnOp.getInputsInfo().emplaceBlock();
-    cnnOp.getOutputsInfo().emplaceBlock();
+void vpux::ELFNPU37XX::ElfImporter::parseUserInputsOutputs(OpBuilderLogger& builderLog, net::NetworkInfoOp& netInfo) {
+    netInfo.getInputsInfo().emplaceBlock();
+    netInfo.getOutputsInfo().emplaceBlock();
 
     const auto processUserIO = [this](const elf::Reader<elf::ELF_Bitness::Elf64>::Section& section,
                                       mlir::OpBuilder& builder, SmallVector<mlir::Type>& paramTypes) {
@@ -73,12 +78,12 @@ void vpux::ELFNPU37XX::ElfImporter::parseUserInputsOutputs(OpBuilderLogger& buil
             const auto userTypeAttr = mlir::TypeAttr::get(rankedTensor);
 
             paramTypes.push_back(memRefRankedTensor);
-            builder.create<IE::DataInfoOp>(mlir::UnknownLoc::get(_ctx), nameAttr, userTypeAttr,
-                                           /*OptionalAttr originalShape*/ nullptr,
-                                           /*OptionalAttr friendlyName*/ nullptr,
-                                           /*OptionalAttr inputName*/ nullptr,
-                                           /*OptionalAttr tensorNames*/ nullptr,
-                                           /*profilingSectionsCount=*/0);
+            builder.create<net::DataInfoOp>(mlir::UnknownLoc::get(_ctx), nameAttr, userTypeAttr,
+                                            /*OptionalAttr originalShape*/ nullptr,
+                                            /*OptionalAttr friendlyName*/ nullptr,
+                                            /*OptionalAttr inputName*/ nullptr,
+                                            /*OptionalAttr tensorNames*/ nullptr,
+                                            /*profilingSectionsCount=*/0);
         }
     };
 
@@ -89,10 +94,10 @@ void vpux::ELFNPU37XX::ElfImporter::parseUserInputsOutputs(OpBuilderLogger& buil
         if (elf::SHT_SYMTAB == sectionHeader->sh_type) {
             auto sectionFlags = sectionHeader->sh_flags;
             if (sectionFlags & elf::VPU_SHF_USERINPUT) {
-                auto inputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&cnnOp.getInputsInfo().front(), &builderLog);
+                auto inputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&netInfo.getInputsInfo().front(), &builderLog);
                 processUserIO(section, inputsInfoBuilder, _inputTypes);
             } else if (sectionFlags & elf::VPU_SHF_USEROUTPUT) {
-                auto outputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&cnnOp.getOutputsInfo().front(), &builderLog);
+                auto outputsInfoBuilder = mlir::OpBuilder::atBlockBegin(&netInfo.getOutputsInfo().front(), &builderLog);
                 processUserIO(section, outputsInfoBuilder, _outputTypes);
             }
         }
@@ -1053,7 +1058,7 @@ mlir::OwningOpRef<mlir::ModuleOp> vpux::ELFNPU37XX::ElfImporter::read() {
     _module = mlir::ModuleOp::create(mlir::UnknownLoc::get(_ctx), StringRef(moduleName));
 
     // buildRunTimeResourcesOp(); - not supported at the moment
-    buildCNNNetworkOp();
+    buildNetworkInfoOp();
     buildMainFunc();
 
     return _module;

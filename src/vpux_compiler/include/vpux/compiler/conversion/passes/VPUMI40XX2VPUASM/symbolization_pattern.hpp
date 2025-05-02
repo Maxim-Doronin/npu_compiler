@@ -1,12 +1,10 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.hpp"
 #include "vpux/compiler/conversion/passes/VPUMI40XX2VPUASM/symbolization_type_converter.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
@@ -39,7 +37,7 @@ public:
         VPUX_THROW_UNLESS(base->getResults().size() == 1,
                           "Default symbolic converter only supports ops with exactly one result. For {0} got {1}",
                           fullName, base->getResults().size());
-        auto indexType = base->getResult(0).getType().dyn_cast<VPURegMapped::IndexType>();
+        auto indexType = mlir::dyn_cast<vpux::VPURegMapped::IndexType>(base->getResult(0).getType());
 
         VPUX_THROW_UNLESS(indexType,
                           " Can't use the generic symbolizer if for an Op that does not return IndexType {0}",

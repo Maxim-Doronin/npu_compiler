@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@
 namespace vpux {
 
 vpux::KB getPeakMemoryUsage() {
-    size_t peakMemUsageKB = 0;
+    int64_t peakMemUsageKB = 0;
 
     std::ifstream statusFile("/proc/self/status");
     std::string line;
@@ -24,7 +24,7 @@ vpux::KB getPeakMemoryUsage() {
             iss >> peakMemUsageKB;
         }
     }
-    return vpux::KB(static_cast<int64_t>(peakMemUsageKB));
+    return vpux::KB(peakMemUsageKB);
 }
 
 }  // namespace vpux

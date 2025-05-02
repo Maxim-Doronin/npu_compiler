@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -43,7 +44,7 @@ SmallVector<VPUIP::NCEClusterTaskOp> findProducerOps(mlir::Value value) {
                     producerNCEOps.append(ops);
                 })
                 .Case<MultiViewOpInterface>([&](MultiViewOpInterface viewOp) {
-                    if (auto opResult = value.dyn_cast<mlir::OpResult>()) {
+                    if (auto opResult = mlir::dyn_cast<mlir::OpResult>(value)) {
                         const auto source = viewOp.getViewSource(opResult.getResultNumber());
                         const auto ops = findProducerOps(source);
                         producerNCEOps.append(ops);
@@ -99,7 +100,7 @@ std::optional<int64_t> getInputSESizeForConcatOverC(mlir::Value operand) {
     // Check if the number of output channels of the producer variants is different than the consumer operation's
     // input channels, as this represents a case where the activations are concatenated over channels
     const auto producerChannels = producerOpsNumChannels.front();
-    const auto consumerChannels = operand.getType().cast<vpux::NDTypeInterface>().getShape()[Dims4D::Act::C];
+    const auto consumerChannels = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getShape()[Dims4D::Act::C];
     if (producerChannels != consumerChannels) {
         return producerChannels;
     }
@@ -200,8 +201,8 @@ void ComputeSESizesPass::safeRunOnFunc() {
                 VPUX_THROW_WHEN(nceOp.getTaskType() == VPUIP::NCETaskType::ELTWISE,
                                 "Explicit SETable for Eltwise operations is not yet supported");
 
-                auto inputType = nceOp.getInput().getType().cast<vpux::NDTypeInterface>();
-                auto seTableType = nceOp.getInputStorageElementTable().getType().cast<vpux::NDTypeInterface>();
+                auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
+                auto seTableType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInputStorageElementTable().getType());
                 const auto numChannels = inputType.getShape()[Dims4D::Act::C];
                 const auto seDepth = seTableType.getShape()[Dims4D::Act::C];
                 VPUX_THROW_WHEN(numChannels % seDepth != 0, "Storage element size is not an integer");
@@ -212,7 +213,7 @@ void ComputeSESizesPass::safeRunOnFunc() {
                 _log.nest().trace("Setting input_se_size to '{0}' [SE]", seSize);
                 nceOp.setInputSeSizeAttr(getIntAttr(&ctx, seSize));
             } else if (nceOp.getInputSparsityMap() != nullptr) {
-                auto inputType = nceOp.getInput().getType().cast<vpux::NDTypeInterface>();
+                auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
                 auto numChannels = inputType.getShape()[Dims4D::Act::C];
                 VPUX_THROW_UNLESS(constraint.areChannelsFitForSESize(inputType, numChannels),
                                   "Invalid number of channels '{0}' for input", numChannels);
@@ -221,7 +222,7 @@ void ComputeSESizesPass::safeRunOnFunc() {
 
                 if (nceOp.getTaskType() == VPUIP::NCETaskType::ELTWISE) {
                     auto numChannelsInput2 =
-                            nceOp.getWeights().getType().cast<vpux::NDTypeInterface>().getShape()[Dims4D::Act::C];
+                            mlir::cast<vpux::NDTypeInterface>(nceOp.getWeights().getType()).getShape()[Dims4D::Act::C];
                     VPUX_THROW_UNLESS(
                             numChannels == numChannelsInput2,
                             "Different storage element sizes expected for the two Eltwise inputs: {0} and {1}",

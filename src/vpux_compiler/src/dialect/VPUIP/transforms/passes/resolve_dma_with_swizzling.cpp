@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
@@ -36,7 +38,7 @@ void createNewFlatAlignedConst(Const::DeclareOp& constOp) {
     const auto& contentAttr = constOp.getContentAttr();
 
     const auto newOutputType = contentAttr.getType();
-    auto constType = constOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto constType = mlir::cast<vpux::NDTypeInterface>(constOp.getOutput().getType());
     constType = mlir::isa<VPUIP::DistributedBufferType>(constType)
                         ? VPU::changeShapeElemTypeForDuplicatedDistributedBuffers(constType, newOutputType.getShape(),
                                                                                   newOutputType.getElementType())
@@ -65,8 +67,8 @@ void ResolveDMAWithSwizzlingPass::safeRunOnFunc() {
             return;
         }
 
-        const auto inputBuffType = dmaOp.getInput().getType().cast<vpux::NDTypeInterface>();
-        const auto outputBuffType = dmaOp.getOutputBuff().getType().cast<vpux::NDTypeInterface>();
+        const auto inputBuffType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
+        const auto outputBuffType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutputBuff().getType());
 
         auto inputSwizzling = getSwizzlingKey(inputBuffType);
         auto outputSwizzling = getSwizzlingKey(outputBuffType);

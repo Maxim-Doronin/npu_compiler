@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/IE/locations.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -40,9 +42,9 @@ private:
 void UseUserPrecisionPass::safeRunOnModule() {
     auto module = getOperation();
 
-    IE::CNNNetworkOp netInfo;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(module, netInfo, netFunc);
+    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
 
     auto userInputs = netInfo.getInputsDataInfo();
     auto userOutputs = netInfo.getOutputsDataInfo();
@@ -54,8 +56,8 @@ void UseUserPrecisionPass::safeRunOnModule() {
     for (const auto& p : funcType.getInputs() | indexed) {
         const auto ind = checked_cast<uint32_t>(p.index());
 
-        const auto origType = p.value().cast<vpux::NDTypeInterface>();
-        const auto userType = userInputs[ind].getUserType().cast<vpux::NDTypeInterface>();
+        const auto origType = mlir::cast<vpux::NDTypeInterface>(p.value());
+        const auto userType = mlir::cast<vpux::NDTypeInterface>(userInputs[ind].getUserType());
 
         const auto newType = origType.changeElemType(userType.getElementType());
         newArgTypes[ind] = newType;
@@ -66,8 +68,8 @@ void UseUserPrecisionPass::safeRunOnModule() {
     for (const auto& p : funcType.getResults() | indexed) {
         const auto ind = checked_cast<uint32_t>(p.index());
 
-        const auto origType = p.value().cast<vpux::NDTypeInterface>();
-        const auto userType = userOutputs[ind].getUserType().cast<vpux::NDTypeInterface>();
+        const auto origType = mlir::cast<vpux::NDTypeInterface>(p.value());
+        const auto userType = mlir::cast<vpux::NDTypeInterface>(userOutputs[ind].getUserType());
 
         const auto newType = origType.changeElemType(userType.getElementType());
         newResultTypes[ind] = newType;

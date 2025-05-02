@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -29,7 +31,7 @@ namespace {
 auto createFQ(mlir::PatternRewriter& rewriter, mlir::Value input, IE::FakeQuantizeOp fq, int64_t index,
               StringRef composedIndex) {
     const auto sliceFqConstInput = [&](mlir::Value fqInput, StringRef locSuffix) {
-        auto fqInputType = fqInput.getType().cast<NDTypeInterface>();
+        auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
         const auto fqInputShape = fqInputType.getShape();
         auto newFqInputShape = to_small_vector(fqInputShape);
         Shape inputOffsets(fqInputShape.size(), 0);
@@ -98,7 +100,7 @@ SmallVector<mlir::Value> getSlicedFilters(mlir::PatternRewriter& rewriter, mlir:
             }
         }
 
-        const auto elemType = input.getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto elemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
         const auto dataStorageType = mlir::RankedTensorType::get(outputWeightShape.raw(), elemType);
         auto newConstInput =
                 Const::createConst(rewriter, takeOpLoc(origOp, "cst_in"), dataStorageType, ArrayRef(subWeights));
@@ -134,11 +136,11 @@ mlir::LogicalResult ConvGeneralAggregation<ConcreteOp>::matchAndRewrite(Concrete
 
     auto spatialDimKernelIndex = 2;
 
-    const auto input = origOp->getOperand(0);
+    const auto input = origOp.getInput();
     const auto filter = origOp.getFilter();
     // Reduce shape over spatial dims with kernel 1
-    const auto inputShape = input.getType().template cast<vpux::NDTypeInterface>().getShape();
-    const auto filterShape = filter.getType().template cast<vpux::NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
+    const auto filterShape = mlir::cast<vpux::NDTypeInterface>(filter.getType()).getShape();
     if (inputShape.size() != 5) {
         return mlir::failure();
     }
@@ -157,8 +159,10 @@ mlir::LogicalResult ConvGeneralAggregation<ConcreteOp>::matchAndRewrite(Concrete
             auto spatialIndex = kernelIndex - 2;
             auto arePadsZero = newPadsBegin[spatialIndex] == 0 && newPadsBegin[spatialIndex + 1] == 0 &&
                                newPadsEnd[spatialIndex] == 0 && newPadsEnd[spatialIndex + 1] == 0;
-            auto isStrideSame = newStrides[spatialIndex] == newStrides[spatialIndex + 1];
-            auto isDilationSame = newDilations[spatialIndex] == newDilations[spatialIndex + 1];
+            auto isStrideSame =
+                    newStrides[spatialIndex] == 1 && newStrides[spatialIndex] == newStrides[spatialIndex + 1];
+            auto isDilationSame =
+                    newDilations[spatialIndex] == 1 && newDilations[spatialIndex] == newDilations[spatialIndex + 1];
             if (arePadsZero && isStrideSame && isDilationSame) {
                 newFilterShape.erase(kernelIt + 1);
                 newInputShape[kernelIndex] *= newInputShape[kernelIndex + 1];
@@ -197,7 +201,7 @@ mlir::LogicalResult ConvGeneralAggregation<ConcreteOp>::matchAndRewrite(Concrete
 
     vpux::inferReturnTypes(newConvOp, vpux::InferShapedTypeMode::ALL);
 
-    const auto outputType = origOp.getOutput().getType().template dyn_cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShapeAttr = getIntArrayAttr(ctx, outputType.getShape());
     auto reshapeOut = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), nullptr, false,
                                                                  outputShapeAttr);
@@ -321,15 +325,15 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
                         newLoc, lastOp->getResult(0), slicedFilters[depthIndex],
                         /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr,
                         groupConv.getGroupsAttr(),
-                        /*post_opAttr=*/nullptr, /*clamp=*/nullptr, /*outputChannels=*/nullptr,
-                        /*inputChannels=*/nullptr);
+                        /*post_opAttr=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
+                        /*inputPadding=*/nullptr);
             } else {
                 auto conv = mlir::dyn_cast_or_null<IE::ConvolutionOp>(origOp.getOperation());
                 newConvOp = rewriter.create<IE::ConvolutionOp>(
                         newLoc, lastOp->getResult(0), slicedFilters[depthIndex], /*bias=*/nullptr, stridesAttr,
                         padBeginAttr, padEndAttr, dilationsAttr,
                         /*post_opAttr=*/nullptr, /*clamp=*/nullptr, conv.getStaticScaleAttr(),
-                        origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                        origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             }
 
             newSubConvs.push_back(newConvOp->getResult(0));
@@ -343,11 +347,12 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
                     vpux::IE::AutoBroadcastTypeAttr::get(origOp->getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
             mlir::Value add = newSubConvs.front();
             for (size_t i = 1; i < newSubConvs.size(); i++) {
+                const auto isLast = (i == newSubConvs.size() - 1);
                 add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, StringLiteral("add_{0}_{1}"), actIndex, i), add,
                                                  newSubConvs[i], broadcastType,
-                                                 (i == newSubConvs.size() - 1) ? origOp.getClampAttr(),
-                                                 origOp.getPostOpAttr() : nullptr, nullptr,
-                                                 origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr())
+                                                 isLast ? origOp.getPostOpAttr() : nullptr,
+                                                 isLast ? origOp.getClampAttr() : nullptr,
+                                                 origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr())
                               ->getResult(0);
             }
 
@@ -401,7 +406,7 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
                                                                    mlir::PatternRewriter& rewriter) const {
     _log.trace("Got layer '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
     const auto dilations = Shape(parseIntArrayAttr<int64_t>(origOp.getDilations()));
-    const auto outputPadding = Shape(parseIntArrayAttr<int64_t>(origOp.getOutputPaddingAttr()));
+    const auto outputPadding = Shape(parseIntArrayAttr<int64_t>(origOp.getSpatialOutputPaddingAttr()));
     const auto filterShape = getShape(origOp.getFilter());
 
     const auto kernelZ = filterShape[Dims5D::Filter::KZ];
@@ -469,8 +474,9 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
                     takeOpLoc(origOp, StringLiteral("tconv_{0}_{1}"), actIndex, depthIndex), lastOp->getResult(0),
                     slicedFilters[depthIndex], /*output_shape=*/nullptr,
                     /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, outputPaddingAttr,
-                    /*post_opAttr=*/nullptr, /*clamp=*/nullptr, /*output_channels=*/origOp.getOutputChannelsAttr(),
-                    /*input_channels=*/nullptr);
+                    /*post_opAttr=*/nullptr, /*clamp=*/nullptr,
+                    /*outputPadding=*/origOp.getOutputPaddingAttr(),
+                    /*inputPadding=*/nullptr);
             newSubConvs.push_back(std::make_pair(newConvOp->getResult(0), actIndex * stridesZ + depthIndex));
         }
     }
@@ -488,8 +494,9 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
                                 origOp->getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
                         add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, StringLiteral("add_{0}_{1}"), i, addId++),
                                                          add, conv->first, broadcastType,
-                                                         /*post_opAttr=*/nullptr, /*clamp=*/nullptr,
-                                                         /*output_channels*/ nullptr, /*input_channels*/ nullptr)
+                                                         /*post_opAttr=*/nullptr,
+                                                         /*clamp=*/nullptr,
+                                                         /*outputPadding*/ nullptr, /*inputPadding*/ nullptr)
                                       ->getResult(0);
                     }
                 }
@@ -545,12 +552,12 @@ void UnrollConv3dToConv2dPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     const auto isLegalNceOp = [&](mlir::Operation* op) {
-        const auto inputShape = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto inputShape = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape();
         return inputShape.size() != 5;
     };
 
     const auto isLegalGroupConvOp = [&](IE::GroupConvolutionOp groupConv) {
-        const auto inputShape = groupConv.getFilter().getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto inputShape = mlir::cast<vpux::NDTypeInterface>(groupConv.getFilter().getType()).getShape();
         const auto hasGroups = groupConv.getGroups().has_value() ? 1 : 0;
         return (inputShape.size() + hasGroups) != 6;
     };

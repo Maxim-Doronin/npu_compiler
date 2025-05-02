@@ -6,6 +6,7 @@
 #include "vpux/compiler/core/bounded_buffer.hpp"
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -59,7 +60,7 @@ SmallVector<mlir::Value> getOuterMostMappingOperand(VPUIP::SwKernelRun swKernelR
     };
 
     for (auto operand : swKernelRun->getOperands()) {
-        auto blockArg = operand.dyn_cast<mlir::BlockArgument>();
+        auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(operand);
         VPUX_THROW_WHEN(blockArg == nullptr, "Matching argument was not identified");
         outerMostOperands.push_back(getOuterOperand(blockArg));
     }
@@ -167,11 +168,11 @@ VPURT::TaskOp SwKernelRewriter::createNewTaskOp(VPUIP::SwKernelOp swKernelOp, VP
         maybeProfMeta =
                 getUpdatedSwProfilingMetadataAttr(swKernelOp.getProfilingMetadataAttr(), index, /*clusterId=*/0);
         auto profilingBufferDecl = profilingBuffer.getDefiningOp<VPURT::DeclareBufferOp>();
-        auto profilingBufferNDType = profilingBuffer.getType().cast<vpux::NDTypeInterface>();
+        auto profilingBufferNDType = mlir::cast<vpux::NDTypeInterface>(profilingBuffer.getType());
 
         int64_t numEl =
                 VPUIP::HW_ACT_SHAVE_PROFILING_SIZE_BYTES / vpux::Byte(profilingBufferNDType.getElemTypeSize()).count();
-        if (auto distrProfilingType = profilingBuffer.getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto distrProfilingType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(profilingBuffer.getType())) {
             numEl *= distrProfilingType.getDistribution().getNumClusters().getInt();
         }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -60,11 +60,11 @@ mlir::LogicalResult MoveConvertAfterOperation<ViewLikeOp>::matchAndRewrite(ViewL
     auto result = newViewLikeOp->getResult(0);
     newViewLikeOp->setOperand(0, convertOp.getInput());
 
-    auto newOpResultType = result.getType().template cast<vpux::NDTypeInterface>();
-    auto inputType = convertOp.getInput().getType().template cast<vpux::NDTypeInterface>();
+    auto newOpResultType = mlir::cast<vpux::NDTypeInterface>(result.getType());
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(convertOp.getInput().getType());
     result.setType(newOpResultType.changeElemType(inputType.getElementType()));
 
-    auto originOpType = originOp->getResult(0).getType().template cast<vpux::NDTypeInterface>();
+    auto originOpType = mlir::cast<vpux::NDTypeInterface>(originOp->getResult(0).getType());
     auto newConvert = rewriter.replaceOpWithNewOp<VPU::ConvertOp>(originOp, result, convertOp.getDstElemTypeAttr());
     newConvert->getResult(0).setType(originOpType);
 
@@ -102,20 +102,20 @@ mlir::LogicalResult MoveConvertBeforeAffineReshape::matchAndRewrite(VPU::Convert
         return mlir::failure();
     }
 
-    auto affineReshapeOutputType = affineReshapeOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto affineReshapeOutputType = mlir::cast<vpux::NDTypeInterface>(affineReshapeOp.getOutput().getType());
     if (affineReshapeOutputType.getShape().size() == 4) {
         nestedLogger.trace("AffineReshape output is already 4D {0}", affineReshapeOp->getName());
         return mlir::failure();
     }
 
     // If the AffineReshape input is not 4D then this movement is useless
-    auto affineReshapeInputType = affineReshapeOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto affineReshapeInputType = mlir::cast<vpux::NDTypeInterface>(affineReshapeOp.getInput().getType());
     if (affineReshapeInputType.getShape().size() != 4) {
         nestedLogger.trace("AffineReshape input is not 4D {0}", affineReshapeOp->getName());
         return mlir::failure();
     }
     // Move ConvertOp before AffineReshape so we can wrap ConvertOp in NCEClusterTiling with all 4 Dims
-    auto originOpType = originOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto originOpType = mlir::cast<vpux::NDTypeInterface>(originOp->getResult(0).getType());
     auto newConvertOp = rewriter.create<VPU::ConvertOp>(originOp.getLoc(), affineReshapeOp.getInput(),
                                                         originOp.getDstElemTypeAttr());
     auto newAffineReshape = rewriter.replaceOpWithNewOp<VPU::AffineReshapeOp>(originOp, newConvertOp->getResult(0),

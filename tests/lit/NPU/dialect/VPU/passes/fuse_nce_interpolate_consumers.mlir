@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -49,7 +49,7 @@ func.func @FuseInterpolateNearestWithConv(%arg0: tensor<1x16x3x3xf16, {order = #
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [32, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x32x6x6xf16, {order = #NHWC}>
+        } : tensor<1x16x6x6xf16, {order = #NHWC}>, tensor<32x16x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x6x6xf16, {order = #NHWC}>
 
     return %conv_output : tensor<1x32x6x6xf16, {order = #NHWC}>
 
@@ -86,7 +86,8 @@ func.func @FuseInterpolateNearestWithConv(%arg0: tensor<1x16x3x3xf16, {order = #
     // CHECK-SAME:     ppe = #VPU.PPEStub<>,
     // CHECK-SAME:     rawFilterShape = [32, 16, 1, 1],
     // CHECK-SAME:     strides = [1, 1]
-    // CHECK-SAME: } -> tensor<1x32x6x6xf16, {order = #NHWC}>
+    // CHECK-SAME: }
+    // CHECK-SAME: -> tensor<1x32x6x6xf16, {order = #NHWC}>
     // CHECK:      return [[CONV_OUTPUT]]
 }
 
@@ -136,7 +137,7 @@ func.func @DoNotFuseInterpolateBilinearWithConv(%arg0: tensor<1x16x3x3xf16, {ord
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [32, 16, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x32x6x6xf16, {order = #NHWC}>
+        } : tensor<1x16x6x6xf16, {order = #NHWC}>, tensor<32x16x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x6x6xf16, {order = #NHWC}>
 
     return %conv_output : tensor<1x32x6x6xf16, {order = #NHWC}>
 

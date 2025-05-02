@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/constant_fusion.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -45,18 +47,18 @@ private:
 mlir::Value createAllocOp(Const::DeclareOp declOp, VPURT::AllocDistributed allocDistributed,
                           mlir::PatternRewriter& rewriter) {
     if (allocDistributed) {
-        auto origType = allocDistributed.getType().cast<VPUIP::DistributedBufferType>();
+        auto origType = mlir::cast<vpux::VPUIP::DistributedBufferType>(allocDistributed.getType());
         auto newType = vpux::ConstantFusing::getDistributedBufferType(origType, declOp, rewriter);
-        auto distributedBufferType = newType.cast<VPUIP::DistributedBufferType>();
+        auto distributedBufferType = mlir::cast<vpux::VPUIP::DistributedBufferType>(newType);
         return rewriter.create<VPURT::AllocDistributed>(declOp.getLoc(), distributedBufferType, nullptr, nullptr)
                 .getBuffer();
 
     } else {
-        const auto type = declOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto type = mlir::cast<vpux::NDTypeInterface>(declOp.getOutput().getType());
         vpux::IndexedSymbolAttr memKindAttr =
                 IndexedSymbolAttr::get(rewriter.getContext(), stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
         auto newType = type.changeMemSpace(memKindAttr);
-        auto memrefType = newType.cast<mlir::MemRefType>();
+        auto memrefType = mlir::cast<mlir::MemRefType>(newType);
         return rewriter.create<mlir::memref::AllocOp>(declOp.getLoc(), memrefType).getMemref();
     }
 }
@@ -76,7 +78,7 @@ VPUIP::CopyOp createFusedCopyOp(mlir::Value allocDefiningOp, Const::DeclareOp de
 
 void replaceConstantsWithFusedConstant(vpux::ConstantFusing::ConstantVector& constantVector,
                                        mlir::PatternRewriter& rewriter, VPUIP::CopyOp newCopyOp) {
-    auto opElementType = newCopyOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto opElementType = mlir::cast<vpux::NDTypeInterface>(newCopyOp.getOutput().getType()).getElementType();
     const auto opElementSizeBytes = opElementType.getIntOrFloatBitWidth() / CHAR_BIT;
 
     // 5.  Replace constants constant with sequence fused_constant -> subview -> view
@@ -176,7 +178,7 @@ mlir::RankedTensorType FuseConstants::getFusedConstantType(vpux::ConstantFusing:
     unsigned jointF16ConstantSize = 0;
     for (auto& constant : constantVector) {
         if (constant.second != nullptr) {
-            auto contentType = constant.second.getType().cast<NDTypeInterface>();
+            auto contentType = mlir::cast<vpux::NDTypeInterface>(constant.second.getType());
             auto elemType = contentType.getElementType();
             if (elemType.isF16()) {
                 jointF16ConstantSize += vpux::getTotalSize(constant.second->getOpResult(0)).count();
@@ -203,6 +205,10 @@ mlir::RankedTensorType FuseConstants::getFusedConstantType(vpux::ConstantFusing:
 
 mlir::LogicalResult FuseConstants::matchAndRewrite(VPUIP::NCEClusterTaskOp nceOp,
                                                    mlir::PatternRewriter& rewriter) const {
+    if (nceOp.getWeightTable() == nullptr) {
+        return mlir::failure();
+    }
+
     if (nceOp->hasAttr(vpux::ConstantFusing::constantsFused)) {
         return mlir::failure();
     }

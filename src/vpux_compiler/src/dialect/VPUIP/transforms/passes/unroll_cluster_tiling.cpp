@@ -6,8 +6,10 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_cluster_tiling.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -76,7 +78,7 @@ bool needToAdaptStrides(vpux::NDTypeInterface originType) {
         return false;
     }
 
-    const auto originDistType = originType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto originDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(originType);
     if (originDistType == nullptr) {
         return false;
     }
@@ -115,7 +117,7 @@ bool needToAdaptStrides(vpux::NDTypeInterface originType) {
 
 vpux::NDTypeInterface changeShape(vpux::NDTypeInterface originType, ShapeRef shape, ShapeRef offset) {
     const auto elemType = originType.getElementType();
-    if (auto qType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto newQType = tileScalesAndZP(qType, shape, offset);
         auto newType = originType.changeShapeElemType(shape, newQType);
         return VPUIP::tileTypeSparsityCompression(newType, offset, shape);
@@ -127,12 +129,12 @@ vpux::NDTypeInterface changeShape(vpux::NDTypeInterface originType, ShapeRef sha
 
 vpux::NDTypeInterface changeShapeUpdateStrides(NDTypeInterface origType, NDTypeInterface origInnerType, ShapeRef shape,
                                                ShapeRef offset) {
-    VPUX_THROW_UNLESS((origInnerType.isa<mlir::MemRefType>()),
+    VPUX_THROW_UNLESS((mlir::isa<mlir::MemRefType>(origInnerType)),
                       "Only MemRefType is supported for 'changeShapeUpdateStrides'. Got '{0}'", origInnerType);
     const auto strides = origType.getStrides();
     auto newType = origInnerType;
     const auto elemType = origInnerType.getElementType();
-    if (auto qType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto newQType = tileScalesAndZP(qType, shape, offset);
         newType = origInnerType.changeShapeElemType(shape, newQType);
     } else {
@@ -214,6 +216,27 @@ SmallVector<mlir::IntegerAttr> VPUIP::ClusterNCEBaseRewriter::getOutChannelOffse
     return outChannelOffsets;
 }
 
+SmallVector<mlir::Value> VPUIP::ClusterNCEBaseRewriter::getWeightTableBuffs(mlir::Location loc, StringRef bufferName,
+                                                                            mlir::Value weightTableConstituent,
+                                                                            const int64_t numClusters,
+                                                                            mlir::OpBuilder& builder) const {
+    bool isDuplicatedOverSegmentedMode = false;
+    auto distType = mlir::dyn_cast<VPUIP::DistributedBufferType>(weightTableConstituent.getType());
+    VPUX_THROW_WHEN(distType == nullptr, "Unsupported operand type {0}", weightTableConstituent.getType());
+    if (distType.getDistribution().getMode().getValue() ==
+        (VPU::DistributionMode::DUPLICATED | VPU::DistributionMode::SEGMENTED)) {
+        isDuplicatedOverSegmentedMode = true;
+    }
+
+    auto weightTableBuffs = isDuplicatedOverSegmentedMode
+                                    ? VPUIP::getDuplOverSegPerClusterMemoryBuffers(
+                                              _ctx, loc, bufferName, weightTableConstituent, numClusters, builder)
+                                    : VPUIP::getPerClusterMemoryBuffers(_ctx, loc, bufferName, weightTableConstituent,
+                                                                        numClusters, builder);
+
+    return weightTableBuffs;
+}
+
 void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceTask, mlir::OpBuilder& builder) const {
     _log.trace("Process NCE op: '{0}'", nceTask);
 
@@ -235,8 +258,8 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
     auto parentInput = *nceTask.getInputs().begin();
     auto parentOutput = *nceTask.getOutputs().begin();
 
-    auto parentInputType = parentInput.getType().dyn_cast<VPUIP::DistributedBufferType>();
-    auto parentOutputType = parentOutput.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto parentInputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(parentInput.getType());
+    auto parentOutputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(parentOutput.getType());
 
     auto loc = nceTask->getLoc();
     if (parentInputType == nullptr && parentOutputType == nullptr) {
@@ -270,21 +293,32 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
     auto weightsSparsityMapBuffs = VPUIP::getPerClusterMemoryBuffers(
             _ctx, loc, "weightsSparsityMap", nceTask.getWeightsSparsityMap(), numClusters, builder);
 
-    bool isDuplicatedOverSegmentedMode = false;
+    auto weightTable = SmallVector<mlir::Value>(numClusters, nullptr);
+    auto dataPtrTable = SmallVector<mlir::Value>(numClusters, nullptr);
+    auto sparsityPtrTable = SmallVector<mlir::Value>(numClusters, nullptr);
+    auto scaleTable = SmallVector<mlir::Value>(numClusters, nullptr);
+    auto biasTable = SmallVector<mlir::Value>(numClusters, nullptr);
+    auto zeroPointTable = SmallVector<mlir::Value>(numClusters, nullptr);
+
     if (nceTask.getWeightTable() != nullptr) {
-        auto distType = mlir::dyn_cast<VPUIP::DistributedBufferType>(nceTask.getWeightTable().getType());
-        VPUX_THROW_WHEN(distType == nullptr, "Unsupported operand type {0}", nceTask.getWeightTable().getType());
-        if (distType.getDistribution().getMode().getValue() ==
-            (VPU::DistributionMode::DUPLICATED | VPU::DistributionMode::SEGMENTED)) {
-            isDuplicatedOverSegmentedMode = true;
-        }
+        weightTable = getWeightTableBuffs(loc, "weightTable", nceTask.getWeightTable(), numClusters, builder);
+    }
+    if (nceTask.getWeightTableDataPtr() != nullptr) {
+        dataPtrTable = getWeightTableBuffs(loc, "weightTable", nceTask.getWeightTableDataPtr(), numClusters, builder);
+    }
+    if (nceTask.getWeightTableSpPtr() != nullptr) {
+        sparsityPtrTable = getWeightTableBuffs(loc, "weightTable", nceTask.getWeightTableSpPtr(), numClusters, builder);
+    }
+    if (nceTask.getWeightTableScale() != nullptr) {
+        scaleTable = getWeightTableBuffs(loc, "weightTable", nceTask.getWeightTableScale(), numClusters, builder);
+    }
+    if (nceTask.getWeightTableBias() != nullptr) {
+        biasTable = getWeightTableBuffs(loc, "weightTable", nceTask.getWeightTableBias(), numClusters, builder);
+    }
+    if (nceTask.getWeightZeroPoints() != nullptr) {
+        zeroPointTable = getWeightTableBuffs(loc, "weightTable", nceTask.getWeightZeroPoints(), numClusters, builder);
     }
 
-    auto weightTableBuffs = isDuplicatedOverSegmentedMode
-                                    ? VPUIP::getDuplOverSegPerClusterMemoryBuffers(
-                                              _ctx, loc, "weightTable", nceTask.getWeightTable(), numClusters, builder)
-                                    : VPUIP::getPerClusterMemoryBuffers(_ctx, loc, "weightTable",
-                                                                        nceTask.getWeightTable(), numClusters, builder);
     auto sprLookupTableBuffs = VPUIP::getPerClusterMemoryBuffers(_ctx, loc, "sprLookupTable",
                                                                  nceTask.getSprLookupTable(), numClusters, builder);
     auto palletLookupTableBuffs = VPUIP::getPerClusterMemoryBuffers(
@@ -348,12 +382,11 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
                 builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, outputType,
                 outputSparsityMapType, profilingOutputType, inputBuffs[clusterId], inputSparsityMapBuffs[clusterId],
                 inputSETableBuffs[clusterId], weightsBuffs[clusterId], weightsSparsityMapBuffs[clusterId],
-                weightTableBuffs[clusterId], /*weight_table_data_ptr=*/nullptr, /*weight_table_sp_ptr=*/nullptr,
-                /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr, /*weight_zero_points=*/nullptr,
-                sprLookupTableBuffs[clusterId], palletLookupTableBuffs[clusterId], parentInputBuffs[clusterId],
-                parentInputSparsityMap[clusterId], parentInputSETable[clusterId], parentOutputBuffs[clusterId],
-                parentOutputSparsityMap[clusterId], mlir::ValueRange(outputItiBuffs[clusterId]), outputBuffs[clusterId],
-                outputSparsityMap, profilingData,
+                weightTable[clusterId], dataPtrTable[clusterId], sparsityPtrTable[clusterId], scaleTable[clusterId],
+                biasTable[clusterId], zeroPointTable[clusterId], sprLookupTableBuffs[clusterId],
+                palletLookupTableBuffs[clusterId], parentInputBuffs[clusterId], parentInputSparsityMap[clusterId],
+                parentInputSETable[clusterId], parentOutputBuffs[clusterId], parentOutputSparsityMap[clusterId],
+                mlir::ValueRange(outputItiBuffs[clusterId]), outputBuffs[clusterId], outputSparsityMap, profilingData,
                 /*max_per_xy=*/nullptr, /*min_per_xy=*/nullptr, /*min_max_per_tensor=*/mlir::ValueRange(),
                 nceTask.getTaskType(), nceTask.getKernelSizeAttr(), nceTask.getKernelStridesAttr(),
                 padAttrForCluster[clusterId], nceTask.getIsContinuedAttr(), nceTask.getCmSpPatternAttr(),
@@ -402,7 +435,7 @@ SmallVector<mlir::Value> VPUIP::ClusterNCEBaseRewriter::getWeightsBuffers(mlir::
     }
 
     auto operandType = clusterOperand.getType();
-    auto distributedType = operandType.dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operandType);
 
     const auto distribution = distributedType.getDistribution();
@@ -428,7 +461,7 @@ SmallVector<mlir::Value> VPUIP::ClusterNCEBaseRewriter::getWeightsBuffers(mlir::
                       nceTask.getLoc(), nceTask);
 
     const auto cmxNameAttr = mlir::FlatSymbolRefAttr::get(_ctx, stringifyEnum(VPU::MemoryKind::CMX_NN));
-    const auto innerOperandType = distributedType.getCompactType().cast<vpux::NDTypeInterface>();
+    const auto innerOperandType = mlir::cast<vpux::NDTypeInterface>(distributedType.getCompactType());
     SmallVector<mlir::Value> perClusterBuffers(numClusters);
     auto insertionPoint = declBuff.getOperation();
     for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
@@ -463,13 +496,13 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
     auto vpurtTask = dmaOp->getParentOfType<VPURT::TaskOp>();
     VPUX_THROW_UNLESS(vpurtTask != nullptr, "Can't get VPURT task operation");
 
-    const auto inputType = dmaOp.getInput().getType().dyn_cast<NDTypeInterface>();
-    const auto outputType = dmaOp.getOutputBuff().getType().dyn_cast<NDTypeInterface>();
+    const auto inputType = mlir::dyn_cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
+    const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(dmaOp.getOutputBuff().getType());
 
     const auto loc = dmaOp->getLoc();
 
-    const auto inputDistType = inputType.dyn_cast<VPUIP::DistributedBufferType>();
-    const auto outputDistType = outputType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto inputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType);
+    const auto outputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
     if (inputDistType == nullptr && outputDistType == nullptr) {
         // nothing to unroll
         return;
@@ -508,7 +541,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
 }
 
 bool isStorageElementTableConstantOp(Const::DeclareOp constOp) {
-    auto elementType = constOp.getType().cast<NDTypeInterface>().getElementType();
+    auto elementType = mlir::cast<NDTypeInterface>(constOp.getType()).getElementType();
     if (!elementType.isInteger(32) || constOp.getResult().use_empty()) {
         return false;
     }
@@ -548,17 +581,17 @@ bool isStorageElementTableConstantOp(Const::DeclareOp constOp) {
 //   -------------------------------------------------
 //   | xx |           DATA_PTR            | BASE_PTR |
 //   -------------------------------------------------
-// For 40XX platform and SEP Operation, the OVERLLAPED data is found in two clusters that need do this patch.
+// For 40XX+ platform and SEP Operation, the OVERLLAPED data is found in two clusters that need do this patch.
 // There is an example: Bilinear Interpolate H size from 5 to 10
 // Input Date:               0         1       2       3       4
 // Effective Data:           0 0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 4
 // - For 37XX:
 // BASE_PTR at Cluster 0:    0 0 0 0 0 0 0 0 0 0 0 0 0
 // BASE_PTR at Cluster 1:                              1 1 1 1 1 1 1 1 1
-// - For 40XX:
+// - For 40XX+:
 // BASE_PTR at Cluster 0:    0 0 0 0 0 0 0 0 0 0 0 0
 // BASE_PTR at Cluster 1:                        1 1 1 1 1 1 1 1 1 1 1 1
-// The third data "2" exists in two clusters on 40XX
+// The third data "2" exists in two clusters on 40XX+
 mlir::Value patchSETableValue(mlir::Location loc, Const::DeclareOp constOp, const int64_t clusterId,
                               mlir::OpBuilder& builder) {
     auto seTableContent = constOp.getContent();
@@ -595,19 +628,21 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
     const auto input = dmaOp.getInput();
     const auto output = dmaOp.getOutputBuff();
 
-    const auto inputType = input.getType().cast<NDTypeInterface>();
-    const auto outputType = output.getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     const auto innerInputType =
-            inputType.isa<VPUIP::DistributedBufferType>()
-                    ? inputType.cast<VPUIP::DistributedBufferType>().getCompactType().cast<vpux::NDTypeInterface>()
+            mlir::isa<vpux::VPUIP::DistributedBufferType>(inputType)
+                    ? mlir::cast<vpux::NDTypeInterface>(
+                              mlir::cast<vpux::VPUIP::DistributedBufferType>(inputType).getCompactType())
                     : inputType;
     const auto innerOutputType =
-            outputType.isa<VPUIP::DistributedBufferType>()
-                    ? outputType.cast<VPUIP::DistributedBufferType>().getCompactType().cast<vpux::NDTypeInterface>()
+            mlir::isa<vpux::VPUIP::DistributedBufferType>(outputType)
+                    ? mlir::cast<vpux::NDTypeInterface>(
+                              mlir::cast<vpux::VPUIP::DistributedBufferType>(outputType).getCompactType())
                     : outputType;
 
-    const auto inputDistType = inputType.dyn_cast<VPUIP::DistributedBufferType>();
-    const auto outputDistType = outputType.dyn_cast<VPUIP::DistributedBufferType>();
+    const auto inputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType);
+    const auto outputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
 
     VPUX_THROW_UNLESS(inputDistType != nullptr || outputDistType != nullptr,
                       "One of operands must have DistributedBuffer type");
@@ -720,7 +755,11 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
             auto subviewOp = builder.createOrFold<VPUIP::SubViewOp>(loc, cst, perClusterShapeOffsets[clusterId].raw(),
                                                                     perClusterShapes[clusterId].raw());
 
-            bool requirePatching = isDataOverlapped && isStorageElementTableConstantOp(cst);
+            // Don't patch SETable when distribution is segmented on input channel.
+            // The reason for that is because there is no overlap of values. Each depth is generated
+            // separately for each cluster.
+            const auto isSOK = distributionAttr != nullptr && VPU::isSegmentedOverC(distributionAttr);
+            bool requirePatching = isDataOverlapped && !isSOK && isStorageElementTableConstantOp(cst);
             if (requirePatching) {
                 auto newCstOp = subviewOp.getDefiningOp<Const::DeclareOp>();
                 VPUX_THROW_WHEN(newCstOp == nullptr, "Cannot get the constant operation of SETable");
@@ -820,7 +859,8 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
                                         newType.getStrides()[Dim(tilingAxis)]);
         }
 
-        const auto distType = refDistType.changeElemType(newType.getElementType()).cast<VPUIP::DistributedBufferType>();
+        const auto distType =
+                mlir::cast<vpux::VPUIP::DistributedBufferType>(refDistType.changeElemType(newType.getElementType()));
 
         auto section = declBuff.getSection();
         auto sectionIndex = declBuff.getSectionIndex();
@@ -948,13 +988,13 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollDuplicated(mlir::Location lo
     const auto input = dmaOp.getInput();
     const auto output = dmaOp.getOutputBuff();
 
-    const auto inputDistType = input.getType().dyn_cast<VPUIP::DistributedBufferType>();
-    const auto outputDistType = output.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    const auto inputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(input.getType());
+    const auto outputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
     VPUX_THROW_UNLESS(inputDistType != nullptr || outputDistType != nullptr,
                       "One of operands must have DistributedBuffer type");
 
     const auto getInputOperand = [&](mlir::Value input) -> mlir::Value {
-        if (!input.getType().isa<VPUIP::DistributedBufferType>()) {
+        if (!mlir::isa<vpux::VPUIP::DistributedBufferType>(input.getType())) {
             return input;
         }
 
@@ -964,8 +1004,8 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollDuplicated(mlir::Location lo
         VPUX_THROW_UNLESS(inDeclBuff != nullptr, "Can't get input buffer");
 
         const auto symbolAttr = vpux::IndexedSymbolAttr::get(_ctx, {_cmxNameAttr, vpux::getIntAttr(_ctx, 0)});
-        const auto innerInputType =
-                input.getType().cast<VPUIP::DistributedBufferType>().getCompactType().cast<vpux::NDTypeInterface>();
+        const auto innerInputType = mlir::cast<vpux::NDTypeInterface>(
+                mlir::cast<vpux::VPUIP::DistributedBufferType>(input.getType()).getCompactType());
         const auto newInType = innerInputType.changeMemSpace(symbolAttr);
 
         return VPURT::createOp<VPURT::DeclareBufferOp>(
@@ -974,7 +1014,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollDuplicated(mlir::Location lo
     };
 
     const auto getOutputOperand = [&](mlir::Value output) -> mlir::Value {
-        const auto outputDistType = output.getType().dyn_cast<VPUIP::DistributedBufferType>();
+        const auto outputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
         if (outputDistType == nullptr) {
             return output;
         }
@@ -1091,7 +1131,7 @@ void ClusterNCERewriter::getOutputBuffers(SmallVector<mlir::Value>& parentOutput
                                           mlir::OpBuilder& builder) const {
     const auto hasHalo = [&]() -> bool {
         auto operandType = nceTask.getOutputBuff().getType();
-        auto distributedType = operandType.dyn_cast<VPUIP::DistributedBufferType>();
+        auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
         const auto distribution = distributedType.getDistribution();
         const auto distributionMode = distribution.getMode().getValue();
 

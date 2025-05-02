@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 using namespace vpux;
 
 void vpux::VPUASM::ProfilingMetadataOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto denseMetaAttr = getMetadata().dyn_cast<mlir::DenseElementsAttr>();
+    auto denseMetaAttr = mlir::dyn_cast<mlir::DenseElementsAttr>(getMetadata());
     auto buf = denseMetaAttr.getRawData();
     binDataSection.appendData(reinterpret_cast<const uint8_t*>(buf.data()), buf.size());
 }

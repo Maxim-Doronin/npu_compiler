@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -52,7 +52,7 @@ mlir::OpFoldResult vpux::VPU::ReduceL1Op::fold(FoldAdaptor) {
 //
 
 bool vpux::VPU::ReduceL1Op::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t numTiles) {
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inShape = inputType.getShape();
     const auto axesVec = parseIntArrayAttr<int64_t>(getAxesValueAttr());
     return checkStrategyCompatibilityReduce(strategy, numTiles, inShape, axesVec);
@@ -84,7 +84,7 @@ bool vpux::VPU::ReduceL1Op::supportCycleCostCalculation() {
 //
 
 vpux::InputTiling vpux::VPU::ReduceL1Op::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger /*log*/) {
-    const auto inShape = getInput().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto inShape = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getShape();
     const auto axesValue = getAxesValue();
     const auto keepDims = getKeepDims();
 
@@ -103,7 +103,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::ReduceL1Op::getTilingStrategy(TilingMod
         const auto axes = parseIntArrayAttr<int64_t>(getAxesValueAttr());
         maxNumTiles = getMaxNumTilesWithAxesExclusion(op, axes);
     } else {
-        const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
         const auto outputShape = outputType.getShape();
         maxNumTiles = to_small_vector(outputShape);
     }

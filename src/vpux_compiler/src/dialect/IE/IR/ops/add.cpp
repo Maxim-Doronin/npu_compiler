@@ -5,8 +5,13 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+
+#include "vpux/compiler/dialect/core/types.hpp"
 
 #include "vpux/utils/core/numeric.hpp"
+#include "vpux/utils/core/range.hpp"
 
 using namespace vpux;
 
@@ -16,32 +21,25 @@ mlir::AffineMap inferOrder(const mlir::RankedTensorType lhsType, const mlir::Ran
 }
 
 SmallVector<int64_t> dispatchBounds(const mlir::Value operand) {
-    auto boundsAttr = getBounds(operand);
-    if (boundsAttr == nullptr) {
-        return to_small_vector(getShape(operand));
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(operand.getType())) {
+        return boundedType.getBounds().raw();
     }
-    return parseIntArrayAttr<int64_t>(boundsAttr);
+
+    return to_small_vector(getShape(operand));
 }
 
-mlir::ArrayAttr inferOutputBounds(const mlir::Value lhs, const mlir::Value rhs, const ShapeRef outputShape,
-                                  const std::optional<int64_t> outputChannels,
-                                  const IE::AutoBroadcastType autoBroadcast) {
+SmallVector<int64_t> inferOutputBounds(const mlir::Value lhs, const mlir::Value rhs, const ShapeRef outputShape,
+                                       const IE::AutoBroadcastType autoBroadcast) {
     if (outputShape.isStatic()) {
-        return nullptr;
+        return {};
     }
     const auto lhsBounds = dispatchBounds(lhs);
     const auto rhsBounds = dispatchBounds(rhs);
     auto outBoundsRes = IE::broadcastEltwiseShape(lhsBounds, rhsBounds, autoBroadcast, lhs.getLoc());
     if (mlir::failed(outBoundsRes)) {
-        return nullptr;
+        return {};
     }
-
-    auto outBoundsVec = outBoundsRes.value();
-    const auto dimC = Dims4D::Act::C.ind();
-    if (outputChannels.has_value() && dimC < checked_cast<int32_t>(outBoundsVec.size())) {
-        outBoundsVec[dimC] = outputChannels.value();
-    }
-    return getIntArrayAttr(lhs.getContext(), outBoundsVec);
+    return outBoundsRes.value();
 }
 };  // namespace
 
@@ -59,18 +57,28 @@ mlir::LogicalResult vpux::IE::AddOp::inferReturnTypeComponents(
     const auto in1Type = mlir::cast<mlir::RankedTensorType>(add.getInput1().getType());
     const auto in2Type = mlir::cast<mlir::RankedTensorType>(add.getInput2().getType());
 
-    auto outShapeRes = IE::broadcastEltwiseShape(in1Type.getShape(), in2Type.getShape(), add.getAutoBroadcast(), loc);
+    auto in1Shape = SmallVector<int64_t>(in1Type.getShape());
+    auto in2Shape = SmallVector<int64_t>(in2Type.getShape());
+    if (mlir::failed(IE::unpadInputShape(in1Shape, add.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
+    if (mlir::failed(IE::unpadInputShape(in2Shape, add.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
+
+    auto outShapeRes = IE::broadcastEltwiseShape(in1Shape, in2Shape, add.getAutoBroadcast(), loc);
 
     if (mlir::succeeded(outShapeRes)) {
-        auto outShapeResVec = outShapeRes.value();
-        const auto outBoundsAttr = inferOutputBounds(add.getInput1(), add.getInput2(), Shape(outShapeResVec),
-                                                     add.getOutputChannels(), add.getAutoBroadcast());
-        if (add.getOutputChannels().has_value()) {
-            outShapeResVec[Dims4D::Act::C.ind()] = add.getOutputChannels().value();
+        auto outShape = outShapeRes.value();
+        if (mlir::failed(IE::padOutputShape(outShape, add.getOutputPaddingAttr(), loc))) {
+            return mlir::failure();
         }
+        const auto outBounds =
+                inferOutputBounds(add.getInput1(), add.getInput2(), Shape(outShape), add.getAutoBroadcast());
 
-        const auto outDesc = vpux::getTensorAttr(inferOrder(in1Type, in2Type), /*memSpace=*/nullptr, outBoundsAttr);
-        inferredReturnShapes.emplace_back(outShapeResVec, in1Type.getElementType(), outDesc);
+        const auto outDesc =
+                vpux::getTensorAttr(ctx, inferOrder(in1Type, in2Type), /*memSpace=*/nullptr, Bounds(outBounds));
+        inferredReturnShapes.emplace_back(outShape, in1Type.getElementType(), outDesc);
     }
 
     return outShapeRes;

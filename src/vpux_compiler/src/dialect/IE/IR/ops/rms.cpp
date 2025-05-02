@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,8 +21,8 @@ mlir::LogicalResult vpux::IE::RMSOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = rms.getInput().getType().cast<mlir::ShapedType>();
-    const auto gammaType = rms.getGamma().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(rms.getInput().getType());
+    const auto gammaType = mlir::cast<mlir::ShapedType>(rms.getGamma().getType());
     const auto inputRank = inType.getRank();
     const auto gammaRank = gammaType.getRank();
 

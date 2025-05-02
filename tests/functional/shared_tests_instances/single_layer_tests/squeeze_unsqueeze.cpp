@@ -8,20 +8,13 @@
 
 namespace ov {
 namespace test {
-
 class SqueezeUnsqueezeLayerTestCommon : public SqueezeUnsqueezeLayerTest, virtual public VpuOv2LayerTest {
 protected:
     ov::test::utils::SkipCallback skipCompilationCallback = [this](std::stringstream& str) {
         const auto inRank = function->get_parameters().at(0)->get_output_shape(0).size();
         const auto outRank = function->get_results().at(0)->get_input_shape(0).size();
-        if (inRank == 0 || outRank == 0) {
-            str << "SCALAR case is not supported by run-time";
-        }
         if (inRank > 4 || outRank > 4) {
-            str << ">4D case is not supported by run-time";
-        }
-        if (getBackendName(*this->core) == "LEVEL0") {
-            str << "Level0: failure on device";
+            str << "> 4D case is not supported";
         }
     };
 };

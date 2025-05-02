@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,7 +33,7 @@ mlir::LogicalResult vpux::IE::FakeConvertOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inputType = cvt.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto inputType = mlir::cast<mlir::RankedTensorType>(cvt.getInput().getType());
 
     inferredReturnShapes.emplace_back(inputType.getShape(), inputType.getElementType());
 

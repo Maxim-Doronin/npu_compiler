@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 //
 
+#include <vector>
 #include <vpux/compiler/core/attributes/shape.hpp>
 #include <vpux/compiler/core/attributes/strides.hpp>
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -19,6 +20,26 @@
 
 using namespace vpux;
 
+struct SeSizes {
+    int64_t singleSeSize;
+    std::vector<int64_t> multiSeSize = {};
+
+    SeSizes(int64_t singleVal, std::vector<int64_t> multiVals)
+            : singleSeSize(singleVal), multiSeSize(std::move(multiVals)){};
+
+    SeSizes(int64_t singleVal): singleSeSize(singleVal){};
+};
+
+struct ExpectedOffsetsOut {
+    std::vector<int32_t> singleSeSize = {};
+    std::vector<int32_t> multiSeSize = {};
+
+    ExpectedOffsetsOut(std::vector<int32_t> singleOut, std::vector<int32_t> multiOut)
+            : singleSeSize(std::move(singleOut)), multiSeSize(std::move(multiOut)){};
+
+    ExpectedOffsetsOut(std::vector<int32_t> singleOut): singleSeSize(std::move(singleOut)){};
+};
+
 struct SEInterpolateAttrParams {
     VPU::NCEInterpolateMode mode;
     IE::InterpolateNearestMode nearestMode;
@@ -29,8 +50,8 @@ struct SEInterpolateAttrParams {
     std::vector<int64_t> dataShape;
     std::vector<Bit> dataStrides;
     int64_t dataElemByteSize;
-    int64_t seSize;
-    std::vector<int32_t> expectedOutput;
+    SeSizes seSizes;
+    ExpectedOffsetsOut expectedOutputs;
 };
 
 class SEInterpolateAttrTests : public testing::TestWithParam<SEInterpolateAttrParams> {};
@@ -53,14 +74,24 @@ TEST_P(SEInterpolateAttrTests, ComputeSEOffsets) {
                                                        offsetsAttr, sizesAttr, /*initialInputShapeAttr=*/nullptr,
                                                        /*initialOutputShapeAttr=*/nullptr);
 
-    auto seAttrInterface = interpolateAttr.dyn_cast<VPU::SEAttr>();
+    auto seAttrInterface = mlir::dyn_cast<vpux::VPU::SEAttr>(interpolateAttr);
     ASSERT_TRUE(seAttrInterface != nullptr);
 
     Shape dataShape(params.dataShape);
     Strides dataStrides(params.dataStrides);
     Byte elemSize(params.dataElemByteSize);
-    const auto seOffsets = seAttrInterface.computeSEOffsets(dataShape, dataStrides, elemSize, params.seSize);
-    EXPECT_EQ(seOffsets, params.expectedOutput);
+
+    // Single SeSize
+    const auto seOffsets =
+            seAttrInterface.computeSEOffsets(dataShape, dataStrides, elemSize, params.seSizes.singleSeSize);
+    EXPECT_EQ(seOffsets, params.expectedOutputs.singleSeSize);
+
+    // Multiple SeSizes
+    if (!params.seSizes.multiSeSize.empty() && !params.expectedOutputs.multiSeSize.empty()) {
+        const auto multiSeOffsets = seAttrInterface.computeSEOffsetsWithMultiSeSize(dataShape, dataStrides, elemSize,
+                                                                                    params.seSizes.multiSeSize);
+        EXPECT_EQ(multiSeOffsets, params.expectedOutputs.multiSeSize);
+    }
 }
 
 // clang-format off
@@ -71,152 +102,215 @@ std::vector<SEInterpolateAttrParams> nearestAsymmetricParams = {
     //
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::ROUND_PREFER_FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  16,  16,  32,  32, \
-                          0,  0,  16,  16,  32,  32, \
-                         48, 48,  64,  64,  80,  80, \
-                         48, 48,  64,  64,  80,  80, \
-                         96, 96, 112, 112, 128, 128, \
-                         96, 96, 112, 112, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16, {32, 16}),
+     /*expectedOutput=*/ ExpectedOffsetsOut(
+        { 0,  0,  16,  16,  32,  32, \
+          0,  0,  16,  16,  32,  32, \
+         48, 48,  64,  64,  80,  80, \
+         48, 48,  64,  64,  80,  80, \
+         96, 96, 112, 112, 128, 128, \
+         96, 96, 112, 112, 128, 128},
+        {  0,   0,   0,   0,  32,  16,  32,  16,  64,  32,  64,  32, \
+           0,   0,   0,   0,  32,  16,  32,  16,  64,  32,  64,  32, \
+          96,  48,  96,  48, 128,  64, 128,  64, 160,  80, 160,  80, \
+          96,  48,  96,  48, 128,  64, 128,  64, 160,  80, 160,  80, \
+         192,  96, 192,  96, 224, 112, 224, 112, 256, 128, 256, 128, \
+         192,  96, 192,  96, 224, 112, 224, 112, 256, 128, 256, 128})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::ROUND_PREFER_CEIL, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  16,  16,  32,  32,  32, \
-                         48,  64,  64,  80,  80,  80, \
-                         48,  64,  64,  80,  80,  80, \
-                         96, 112, 112, 128, 128, 128, \
-                         96, 112, 112, 128, 128, 128, \
-                         96, 112, 112, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16, {64, 32, 16}),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+            { 0,  16,  16,  32,  32,  32, \
+             48,  64,  64,  80,  80,  80, \
+             48,  64,  64,  80,  80,  80, \
+             96, 112, 112, 128, 128, 128, \
+             96, 112, 112, 128, 128, 128, \
+             96, 112, 112, 128, 128, 128},
+            {  0,   0,   0,  64,  32,  16,  64,  32,  16, 128,  64,  32, 128,  64,  32, 128,  64,  32, \
+             192,  96,  48, 256, 128,  64, 256, 128,  64, 320, 160,  80, 320, 160,  80, 320, 160,  80, \
+             192,  96,  48, 256, 128,  64, 256, 128,  64, 320, 160,  80, 320, 160,  80, 320, 160,  80, \
+             384, 192,  96, 448, 224, 112, 448, 224, 112, 512, 256, 128, 512, 256, 128, 512, 256, 128, \
+             384, 192,  96, 448, 224, 112, 448, 224, 112, 512, 256, 128, 512, 256, 128, 512, 256, 128, \
+             384, 192,  96, 448, 224, 112, 448, 224, 112, 512, 256, 128, 512, 256, 128, 512, 256, 128})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  16,  16,  32,  32, \
-                          0,  0,  16,  16,  32,  32, \
-                         48, 48,  64,  64,  80,  80, \
-                         48, 48,  64,  64,  80,  80, \
-                         96, 96, 112, 112, 128, 128, \
-                         96, 96, 112, 112, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16, {64, 16}),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  16,  16,  32,  32, \
+          0,  0,  16,  16,  32,  32, \
+         48, 48,  64,  64,  80,  80, \
+         48, 48,  64,  64,  80,  80, \
+         96, 96, 112, 112, 128, 128, \
+         96, 96, 112, 112, 128, 128},
+        {   0,   0,   0,   0,  64,  16,  64,  16, 128,  32, 128,  32, \
+            0,   0,   0,   0,  64,  16,  64,  16, 128,  32, 128,  32, \
+          192,  48, 192,  48, 256,  64, 256,  64, 320,  80, 320,  80, \
+          192,  48, 192,  48, 256,  64, 256,  64, 320,  80, 320,  80, \
+          384,  96, 384,  96, 448, 112, 448, 112, 512, 128, 512, 128, \
+          384,  96, 384,  96, 448, 112, 448, 112, 512, 128, 512, 128})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::CEIL, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  16,  16,  32,  32,  32, \
-                         48,  64,  64,  80,  80,  80, \
-                         48,  64,  64,  80,  80,  80, \
-                         96, 112, 112, 128, 128, 128, \
-                         96, 112, 112, 128, 128, 128, \
-                         96, 112, 112, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16, {32, 16}),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  16,  16,  32,  32,  32, \
+         48,  64,  64,  80,  80,  80, \
+         48,  64,  64,  80,  80,  80, \
+         96, 112, 112, 128, 128, 128, \
+         96, 112, 112, 128, 128, 128, \
+         96, 112, 112, 128, 128, 128},
+        {  0,   0,  32,  16,  32,  16,  64,  32,  64,  32,  64,  32, \
+          96,  48, 128,  64, 128,  64, 160,  80, 160,  80, 160,  80, \
+          96,  48, 128,  64, 128,  64, 160,  80, 160,  80, 160,  80, \
+         192,  96, 224, 112, 224, 112, 256, 128, 256, 128, 256, 128, \
+         192,  96, 224, 112, 224, 112, 256, 128, 256, 128, 256, 128, \
+         192,  96, 224, 112, 224, 112, 256, 128, 256, 128, 256, 128})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::SIMPLE, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  16,  16,  32,  32, \
-                          0,  0,  16,  16,  32,  32, \
-                         48, 48,  64,  64,  80,  80, \
-                         48, 48,  64,  64,  80,  80, \
-                         96, 96, 112, 112, 128, 128, \
-                         96, 96, 112, 112, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16, {16, 16}),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  16,  16,  32,  32, \
+          0,  0,  16,  16,  32,  32, \
+         48, 48,  64,  64,  80,  80, \
+         48, 48,  64,  64,  80,  80, \
+         96, 96, 112, 112, 128, 128, \
+         96, 96, 112, 112, 128, 128},
+        { 0,  0,   0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
+          0,  0,   0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
+         48, 48,  48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
+         48, 48,  48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
+         96, 96,  96, 96, 112, 112, 112, 112, 128, 128, 128, 128, \
+         96, 96,  96, 96, 112, 112, 112, 112, 128, 128, 128, 128})
+    },
 
     //
     // Scales
     //
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 3, 3}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  0,  16,  16,  16,  32,  32,  32, \
-                          0,  0,  0,  16,  16,  16,  32,  32,  32, \
-                          0,  0,  0,  16,  16,  16,  32,  32,  32, \
-                         48, 48, 48,  64,  64,  64,  80,  80,  80, \
-                         48, 48, 48,  64,  64,  64,  80,  80,  80, \
-                         48, 48, 48,  64,  64,  64,  80,  80,  80, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  0,  16,  16,  16,  32,  32,  32, \
+          0,  0,  0,  16,  16,  16,  32,  32,  32, \
+          0,  0,  0,  16,  16,  16,  32,  32,  32, \
+         48, 48, 48,  64,  64,  64,  80,  80,  80, \
+         48, 48, 48,  64,  64,  64,  80,  80,  80, \
+         48, 48, 48,  64,  64,  64,  80,  80,  80, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 4, 4}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
-                          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
-                          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
-                          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
+          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
+          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
+          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128})
+    },
 
     //
     // Element byte sizes
     //
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/2, /*seSize=*/16,
-     /*expectedOutput=*/{  0,   0,  32,  32,  64,  64, \
-                           0,   0,  32,  32,  64,  64, \
-                          96,  96, 128, 128, 160, 160, \
-                          96,  96, 128, 128, 160, 160, \
-                         192, 192, 224, 224, 256, 256, \
-                         192, 192, 224, 224, 256, 256}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/2, /*seSize=*/SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,   0,  32,  32,  64,  64, \
+           0,   0,  32,  32,  64,  64, \
+          96,  96, 128, 128, 160, 160, \
+          96,  96, 128, 128, 160, 160, \
+         192, 192, 224, 224, 256, 256, \
+         192, 192, 224, 224, 256, 256})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/4, /*seSize=*/16,
-     /*expectedOutput=*/{  0,   0, 64,   64, 128, 128, \
-                           0,   0, 64,   64, 128, 128, \
-                         192, 192, 256, 256, 320, 320, \
-                         192, 192, 256, 256, 320, 320, \
-                         384, 384, 448, 448, 512, 512, \
-                         384, 384, 448, 448, 512, 512}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/4, /*seSize=*/SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,   0, 64,   64, 128, 128, \
+           0,   0, 64,   64, 128, 128, \
+         192, 192, 256, 256, 320, 320, \
+         192, 192, 256, 256, 320, 320, \
+         384, 384, 448, 448, 512, 512, \
+         384, 384, 448, 448, 512, 512})
+    },
 
     //
     // Storage element sizes
     //
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 32, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{  0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80, \
-                           0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80, \
-                          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, \
-                          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, \
-                         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, \
-                         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272}},
+     /*dataShape=*/{1, 32, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80, \
+           0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80, \
+          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, \
+          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, \
+         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, \
+         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 64, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/32,
-     /*expectedOutput=*/{  0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, \
-                           0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, \
-                         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, \
-                         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, \
-                         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, \
-                         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544}},
+     /*dataShape=*/{1, 64, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(32),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, \
+           0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, \
+         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, \
+         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, \
+         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, \
+         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 96, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/32,
-     /*expectedOutput=*/{  0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, \
-                           0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, \
-                         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, \
-                         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, \
-                         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, \
-                         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832}},
+     /*dataShape=*/{1, 96, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(32),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, \
+           0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, \
+         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, \
+         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, \
+         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, \
+         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832})
+    },
 
     //
     // Offsets & sizes
     //
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{0, 0, 0, 0}, /*sizes=*/{1, 16, 5, 6},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  16,  16,  32,  32, \
-                          0,  0,  16,  16,  32,  32, \
-                         48, 48,  64,  64,  80,  80, \
-                         48, 48,  64,  64,  80,  80, \
-                         96, 96, 112, 112, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16, {32, 16}),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  16,  16,  32,  32, \
+          0,  0,  16,  16,  32,  32, \
+         48, 48,  64,  64,  80,  80, \
+         48, 48,  64,  64,  80,  80, \
+         96, 96, 112, 112, 128, 128},
+        {  0,   0,   0,   0,  32,  16,  32,  16,  64,  32,  64,  32, \
+           0,   0,   0,   0,  32,  16,  32,  16,  64,  32,  64,  32, \
+          96,  48,  96,  48, 128,  64, 128,  64, 160,  80, 160,  80, \
+          96,  48,  96,  48, 128,  64, 128,  64, 160,  80, 160,  80, \
+         192,  96, 192,  96, 224, 112, 224, 112, 256, 128, 256, 128})
+    },
     {VPU::NCEInterpolateMode::NEAREST, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{0, 0, 1, 1}, /*sizes=*/{1, 16, 4, 4},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  16,  16,  32, \
-                         48,  64,  64,  80, \
-                         48,  64,  64,  80, \
-                         96, 112, 112, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  16,  16,  32, \
+         48,  64,  64,  80, \
+         48,  64,  64,  80, \
+         96, 112, 112, 128})
+    }
 };
 
 std::vector<SEInterpolateAttrParams> bilinearAsymmetricParams = {
@@ -225,125 +319,152 @@ std::vector<SEInterpolateAttrParams> bilinearAsymmetricParams = {
     //
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  16,  16,  32,  32,  32, \
-                          0,  0,  16,  16,  32,  32,  32, \
-                         48, 48,  64,  64,  80,  80,  80, \
-                         48, 48,  64,  64,  80,  80,  80, \
-                         96, 96, 112, 112, 128, 128, 128, \
-                         96, 96, 112, 112, 128, 128, 128, \
-                         96, 96, 112, 112, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(16, {32, 16}),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,   0,  16,  16,  32,  32,  32, \
+           0,   0,  16,  16,  32,  32,  32, \
+          48,  48,  64,  64,  80,  80,  80, \
+          48,  48,  64,  64,  80,  80,  80, \
+          96,  96, 112, 112, 128, 128, 128, \
+          96,  96, 112, 112, 128, 128, 128, \
+          96,  96, 112, 112, 128, 128, 128},
+        {   0,   0,   0,   0,  32,  16,  32,  16,  64,  32,  64,  32,  64,  32, \
+            0,   0,   0,   0,  32,  16,  32,  16,  64,  32,  64,  32,  64,  32, \
+           96,  48,  96,  48, 128,  64, 128,  64, 160,  80, 160,  80, 160,  80, \
+           96,  48,  96,  48, 128,  64, 128,  64, 160,  80, 160,  80, 160,  80, \
+          192,  96, 192,  96, 224, 112, 224, 112, 256, 128, 256, 128, 256, 128, \
+          192,  96, 192,  96, 224, 112, 224, 112, 256, 128, 256, 128, 256, 128, \
+          192,  96, 192,  96, 224, 112, 224, 112, 256, 128, 256, 128, 256, 128})
+    },
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 3, 3}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  0,  16,  16,  16,  32,  32,  32,  32,  32, \
-                          0,  0,  0,  16,  16,  16,  32,  32,  32,  32,  32, \
-                          0,  0,  0,  16,  16,  16,  32,  32,  32,  32,  32, \
-                         48, 48, 48,  64,  64,  64,  80,  80,  80,  80,  80, \
-                         48, 48, 48,  64,  64,  64,  80,  80,  80,  80,  80, \
-                         48, 48, 48,  64,  64,  64,  80,  80,  80,  80,  80, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  0,  16,  16,  16,  32,  32,  32,  32,  32, \
+          0,  0,  0,  16,  16,  16,  32,  32,  32,  32,  32, \
+          0,  0,  0,  16,  16,  16,  32,  32,  32,  32,  32, \
+         48, 48, 48,  64,  64,  64,  80,  80,  80,  80,  80, \
+         48, 48, 48,  64,  64,  64,  80,  80,  80,  80,  80, \
+         48, 48, 48,  64,  64,  64,  80,  80,  80,  80,  80, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128, \
+         96, 96, 96, 112, 112, 112, 128, 128, 128, 128, 128})
+    },
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 4, 4}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
-                          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
-                          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
-                          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
-                         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
-                         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
+          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
+          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
+          0,  0,  0,  0,  16,  16,  16,  16,  32,  32,  32,  32,  32,  32,  32, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
+         48, 48, 48, 48,  64,  64,  64,  64,  80,  80,  80,  80,  80,  80,  80, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128, \
+         96, 96, 96, 96, 112, 112, 112, 112, 128, 128, 128, 128, 128, 128, 128})
+    },
 
     //
     // Element byte sizes
     //
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/2, /*seSize=*/16,
-     /*expectedOutput=*/{  0,   0,  32,  32,  64,  64, 64, \
-                           0,   0,  32,  32,  64,  64, 64, \
-                          96,  96, 128, 128, 160, 160, 160, \
-                          96,  96, 128, 128, 160, 160, 160, \
-                         192, 192, 224, 224, 256, 256, 256, \
-                         192, 192, 224, 224, 256, 256, 256, \
-                         192, 192, 224, 224, 256, 256, 256}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/2, SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,   0,  32,  32,  64,  64, 64, \
+           0,   0,  32,  32,  64,  64, 64, \
+          96,  96, 128, 128, 160, 160, 160, \
+          96,  96, 128, 128, 160, 160, 160, \
+         192, 192, 224, 224, 256, 256, 256, \
+         192, 192, 224, 224, 256, 256, 256, \
+         192, 192, 224, 224, 256, 256, 256})
+    },
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/4, /*seSize=*/16,
-     /*expectedOutput=*/{  0,   0, 64,   64, 128, 128, 128, \
-                           0,   0, 64,   64, 128, 128, 128, \
-                         192, 192, 256, 256, 320, 320, 320, \
-                         192, 192, 256, 256, 320, 320, 320, \
-                         384, 384, 448, 448, 512, 512, 512, \
-                         384, 384, 448, 448, 512, 512, 512, \
-                         384, 384, 448, 448, 512, 512, 512}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/4, SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,   0, 64,   64, 128, 128, 128, \
+           0,   0, 64,   64, 128, 128, 128, \
+         192, 192, 256, 256, 320, 320, 320, \
+         192, 192, 256, 256, 320, 320, 320, \
+         384, 384, 448, 448, 512, 512, 512, \
+         384, 384, 448, 448, 512, 512, 512, \
+         384, 384, 448, 448, 512, 512, 512})
+    },
 
     //
     // Storage element sizes
     //
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 32, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{  0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80,  64,  80, \
-                           0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80,  64,  80, \
-                          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, 160, 176, \
-                          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, 160, 176, \
-                         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, 256, 272, \
-                         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, 256, 272, \
-                         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, 256, 272}},
+     /*dataShape=*/{1, 32, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80,  64,  80, \
+           0,  16,   0,  16,  32,  48,  32,  48,  64,  80,  64,  80,  64,  80, \
+          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, 160, 176, \
+          96, 112,  96, 112, 128, 144, 128, 144, 160, 176, 160, 176, 160, 176, \
+         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, 256, 272, \
+         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, 256, 272, \
+         192, 208, 192, 208, 224, 240, 224, 240, 256, 272, 256, 272, 256, 272})
+    },
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 64, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/32,
-     /*expectedOutput=*/{  0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, 128, 160, \
-                           0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, 128, 160, \
-                         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, 320, 352, \
-                         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, 320, 352, \
-                         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, 512, 544, \
-                         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, 512, 544, \
-                         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, 512, 544}},
+     /*dataShape=*/{1, 64, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(32),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, 128, 160, \
+           0,  32,   0,  32,  64,  96,  64,  96, 128, 160, 128, 160, 128, 160, \
+         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, 320, 352, \
+         192, 224, 192, 224, 256, 288, 256, 288, 320, 352, 320, 352, 320, 352, \
+         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, 512, 544, \
+         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, 512, 544, \
+         384, 416, 384, 416, 448, 480, 448, 480, 512, 544, 512, 544, 512, 544})
+    },
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{}, /*sizes=*/{},
-     /*dataShape=*/{1, 96, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/32,
-     /*expectedOutput=*/{  0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, 192, 224, 256, \
-                           0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, 192, 224, 256, \
-                         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, 480, 512, 544, \
-                         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, 480, 512, 544, \
-                         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, 768, 800, 832, \
-                         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, 768, 800, 832, \
-                         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, 768, 800, 832}},
+     /*dataShape=*/{1, 96, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(32),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        {  0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, 192, 224, 256, \
+           0,  32,  64,   0,  32,  64,  96, 128, 160,  96, 128, 160, 192, 224, 256, 192, 224, 256, 192, 224, 256, \
+         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, 480, 512, 544, \
+         288, 320, 352, 288, 320, 352, 384, 416, 448, 384, 416, 448, 480, 512, 544, 480, 512, 544, 480, 512, 544, \
+         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, 768, 800, 832, \
+         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, 768, 800, 832, \
+         576, 608, 640, 576, 608, 640, 672, 704, 736, 672, 704, 736, 768, 800, 832, 768, 800, 832, 768, 800, 832})
+    },
 
     //
     // Offsets & sizes
     //
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{0, 0, 0, 0}, /*sizes=*/{1, 16, 6, 7},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  0,  16,  16,  32,  32,  32, \
-                          0,  0,  16,  16,  32,  32,  32, \
-                         48, 48,  64,  64,  80,  80,  80, \
-                         48, 48,  64,  64,  80,  80,  80, \
-                         96, 96, 112, 112, 128, 128, 128, \
-                         96, 96, 112, 112, 128, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  0,  16,  16,  32,  32,  32, \
+          0,  0,  16,  16,  32,  32,  32, \
+         48, 48,  64,  64,  80,  80,  80, \
+         48, 48,  64,  64,  80,  80,  80, \
+         96, 96, 112, 112, 128, 128, 128, \
+         96, 96, 112, 112, 128, 128, 128})
+    },
     {VPU::NCEInterpolateMode::BILINEAR, IE::InterpolateNearestMode::FLOOR, IE::InterpolateCoordMode::ASYMMETRIC,
      /*scales=*/{1, 1, 2, 2}, /*offsets=*/{0, 0, 1, 1}, /*sizes=*/{1, 16, 5, 5},
-     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, /*seSize=*/16,
-     /*expectedOutput=*/{ 0,  16,  16,  32,  32, \
-                         48,  64,  64,  80,  80, \
-                         48,  64,  64,  80,  80, \
-                         96, 112, 112, 128, 128, \
-                         96, 112, 112, 128, 128}},
+     /*dataShape=*/{1, 16, 3, 3}, /*dataStrides=*/{}, /*dataElemByteSize=*/1, SeSizes(16),
+     /*expectedOutput=*/ExpectedOffsetsOut(
+        { 0,  16,  16,  32,  32, \
+         48,  64,  64,  80,  80, \
+         48,  64,  64,  80,  80, \
+         96, 112, 112, 128, 128, \
+         96, 112, 112, 128, 128})
+    }
 };
 
 // clang-format on
@@ -396,7 +517,7 @@ TEST_P(SEUpsamplingAttrTests, SEAttrInterface) {
     auto sizesAttr = params.sizes.empty() ? nullptr : getIntArrayAttr(&ctx, params.sizes);
     auto upsamplingAttr = VPU::SEUpsamplingAttr::get(&ctx, factorsAttr, paddingAttr, offsetsAttr, sizesAttr);
 
-    auto seAttrInterface = upsamplingAttr.dyn_cast<VPU::SEAttr>();
+    auto seAttrInterface = mlir::dyn_cast<vpux::VPU::SEAttr>(upsamplingAttr);
     ASSERT_TRUE(seAttrInterface != nullptr);
 
     // inferOutputShape
@@ -669,7 +790,7 @@ TEST_P(SEPaddingAttrTests, SEAttrInterface) {
     auto sizesAttr = params.sizes.empty() ? nullptr : getIntArrayAttr(&ctx, params.sizes);
     auto PaddingAttr = VPU::SEPaddingAttr::get(&ctx, padModeAttr, paddingAttr, offsetsAttr, sizesAttr);
 
-    auto seAttrInterface = PaddingAttr.dyn_cast<VPU::SEAttr>();
+    auto seAttrInterface = mlir::dyn_cast<vpux::VPU::SEAttr>(PaddingAttr);
     ASSERT_TRUE(seAttrInterface != nullptr);
 
     // inferOutputShape
@@ -1035,7 +1156,7 @@ TEST_P(SERollAttrTests, SEAttrInterface) {
     auto sizesAttr = params.sizes.empty() ? nullptr : getIntArrayAttr(&ctx, params.sizes);
     auto rollAttr = VPU::SERollAttr::get(&ctx, shiftsAttr, axesAttr, offsetsAttr, sizesAttr);
 
-    auto seAttrInterface = rollAttr.dyn_cast<VPU::SEAttr>();
+    auto seAttrInterface = mlir::dyn_cast<vpux::VPU::SEAttr>(rollAttr);
     ASSERT_TRUE(seAttrInterface != nullptr);
 
     // inferOutputShape
@@ -1246,7 +1367,7 @@ struct SEDilatedConvAttrParams {
     SmallVector<int64_t> dataShape;
     SmallVector<Bit> dataStrides;
     int64_t dataElemByteSize;
-    int64_t seSize;
+    SeSizes seSizes;
     SmallVector<int64_t> outputTileOffset;
     SmallVector<int64_t> outputTileShape;
 
@@ -1258,7 +1379,7 @@ struct SEDilatedConvAttrParams {
     SmallVector<int64_t> expectedAttrOffsets;
     SmallVector<int64_t> expectedAttrSizes;
     std::vector<std::vector<int64_t>> expectedInputCoords;
-    std::vector<int32_t> expectedSEOffsets;
+    ExpectedOffsetsOut expectedSEOffsets;
 };
 
 class SEDilatedConvAttrTests : public testing::TestWithParam<SEDilatedConvAttrParams> {};
@@ -1285,7 +1406,7 @@ TEST_P(SEDilatedConvAttrTests, SEAttrInterface) {
     auto dilatedConvAttr = VPU::SEDilatedConvAttr::get(&ctx, dilationAttr, kernelStrideAttr, kernelSizeAttr,
                                                        dataOffsetAttr, dataSizesAttr, offsetsAttr, sizesAttr);
 
-    auto seAttrInterface = dilatedConvAttr.dyn_cast<VPU::SEAttr>();
+    auto seAttrInterface = mlir::dyn_cast<vpux::VPU::SEAttr>(dilatedConvAttr);
     ASSERT_TRUE(seAttrInterface != nullptr);
 
     // inferOutputShape
@@ -1347,9 +1468,18 @@ TEST_P(SEDilatedConvAttrTests, SEAttrInterface) {
     const Strides dataStrides(params.dataStrides);
     const Byte elemSize(params.dataElemByteSize);
 
-    const auto seOffsets = seAttrInterface.computeSEOffsets(dataShape, dataStrides, elemSize, params.seSize);
+    // Single SeSize
+    const auto seOffsets =
+            seAttrInterface.computeSEOffsets(dataShape, dataStrides, elemSize, params.seSizes.singleSeSize);
+    EXPECT_EQ(seOffsets, params.expectedSEOffsets.singleSeSize);
 
-    EXPECT_EQ(seOffsets, params.expectedSEOffsets);
+    // Multiple SeSizes
+    if (!params.seSizes.multiSeSize.empty() && !params.expectedSEOffsets.multiSeSize.empty()) {
+        const auto multiSeOffsets = seAttrInterface.computeSEOffsetsWithMultiSeSize(dataShape, dataStrides, elemSize,
+                                                                                    params.seSizes.multiSeSize);
+
+        EXPECT_EQ(multiSeOffsets, params.expectedSEOffsets.multiSeSize);
+    }
 }
 
 // clang-format off
@@ -1406,7 +1536,7 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
      /* dataShape = */ { 1, 16, 8, 7 },
      /* dataStrides = */ {},
      /* dataElemByteSize = */ 1,
-     /* seSize = */ 16,
+     /* seSize = */ SeSizes(16, {32, 16}),
 
      /* outputTileOffset = */ { 0, 0,  0, 0 },
      /* outputTileShape = */  { 1, 16, 4, 4 },
@@ -1425,10 +1555,17 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
                                    {4, 1}, {4, 3}, {4, 5},
                                    {6, 1}, {6, 3}, {6, 5} },
 
-     /* expectedSEOffsets = */ { 16,  48,  80,
-                                 240, 272, 304,
-                                 464, 496, 528,
-                                 688, 720, 752 }},
+     /* expectedSEOffsets = */ ExpectedOffsetsOut(
+        { 16,  48,  80,
+         240, 272, 304,
+         464, 496, 528,
+         688, 720, 752 },
+         {    32,  16,   96,  48,  160,  80,
+             480, 240,  544, 272,  608, 304,
+             928, 464,  992, 496, 1056, 528,
+            1376, 688, 1440, 720, 1504, 752 }
+        )
+    },
 
 
     // TEST-CASE 2
@@ -1447,7 +1584,7 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
      /* dataShape = */ { 1, 16, 12, 12 },
      /* dataStrides = */ {},
      /* dataElemByteSize = */ 1,
-     /* seSize = */ 16,
+     /* seSize = */ SeSizes(16),
 
      /* outputTileOffset = */ { 0, 0,  0, 0 },
      /* outputTileShape = */  { 1, 16, 6, 6 },
@@ -1468,12 +1605,14 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
                                    {8,  0}, {8,  2}, {8,  4}, {8, 6},  {8, 8},  {8,  10},
                                    {10, 0}, {10, 2}, {10, 4}, {10, 6}, {10, 8}, {10, 10} },
 
-     /* expectedSEOffsets = */ { 0,    32,   64,   96,   128,  160,
-                                 384,  416,  448,  480,  512,  544,
-                                 768,  800,  832,  864,  896,  928,
-                                 1152, 1184, 1216, 1248, 1280, 1312,
-                                 1536, 1568, 1600, 1632, 1664, 1696,
-                                 1920, 1952, 1984, 2016, 2048, 2080 }},
+     /* expectedSEOffsets = */ ExpectedOffsetsOut(
+     {    0,   32,   64,   96,  128,  160,
+        384,  416,  448,  480,  512,  544,
+        768,  800,  832,  864,  896,  928,
+        1152, 1184, 1216, 1248, 1280, 1312,
+        1536, 1568, 1600, 1632, 1664, 1696,
+        1920, 1952, 1984, 2016, 2048, 2080 })
+    },
 
 
     // TEST-CASE 3
@@ -1492,7 +1631,7 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
      /* dataShape = */ { 1, 16, 32, 1 },
      /* dataStrides = */ {},
      /* dataElemByteSize = */ 1,
-     /* seSize = */ 16,
+     /* seSize = */ SeSizes(16),
 
      /* outputTileOffset = */ { 0, 0,  0,  0 },
      /* outputTileShape = */  { 1, 16, 16, 1 },
@@ -1511,10 +1650,12 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
                                    {16, 0}, {18, 0}, {20, 0}, {22, 0},
                                    {24, 0}, {26, 0}, {28, 0}, {30, 0} },
 
-     /* expectedSEOffsets = */ { 0,   32,  64,  96,
-                                 128, 160, 192, 224,
-                                 256, 288, 320, 352,
-                                 384, 416, 448, 480 }},
+     /* expectedSEOffsets = */ ExpectedOffsetsOut(
+        { 0,   32,  64,  96,
+        128, 160, 192, 224,
+        256, 288, 320, 352,
+        384, 416, 448, 480 })
+    },
 
     // TEST-CASE 4
 
@@ -1532,7 +1673,7 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
      /* dataShape = */ { 1, 16, 8, 8 },
      /* dataStrides = */ {},
      /* dataElemByteSize = */ 1,
-     /* seSize = */ 16,
+     /* seSize = */ SeSizes(16),
 
      /* outputTileOffset = */ { 0, 0,  0, 0 },
      /* outputTileShape = */  { 1, 16, 4, 4 },
@@ -1551,10 +1692,12 @@ std::vector<SEDilatedConvAttrParams> dilatedConvParams = {
                                    {5, 1}, {5, 3}, {5, 5}, {5, 7},
                                    {7, 1}, {7, 3}, {7, 5}, {7, 7} },
 
-     /* expectedSEOffsets = */ { 144, 176, 208, 240,
-                                 400, 432, 464, 496,
-                                 656, 688, 720, 752,
-                                 912, 944, 976, 1008}},
+     /* expectedSEOffsets = */ ExpectedOffsetsOut(
+        { 144, 176, 208, 240,
+          400, 432, 464, 496,
+          656, 688, 720, 752,
+          912, 944, 976, 1008})
+    },
 };
 
 // clang-format on

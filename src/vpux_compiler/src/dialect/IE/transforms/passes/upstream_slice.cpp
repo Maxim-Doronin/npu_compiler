@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -54,7 +55,7 @@ private:
 };
 
 bool isUpstreamPossible(IE::LayerOpInterface sliceOp, mlir::Value tensor, Logger log) {
-    if (tensor.isa<mlir::BlockArgument>())
+    if (mlir::isa<mlir::BlockArgument>(tensor))
         return false;
     mlir::Operation* parentOp = tensor.getDefiningOp();
     // Unary and eltwise ops are primary candidates for upstreaming slice ops.
@@ -80,8 +81,9 @@ bool isUpstreamPossible(IE::LayerOpInterface sliceOp, mlir::Value tensor, Logger
     // Strided slice does not support datatypes generically
     // so we can't afford changing datatype of this operation.
     if (mlir::isa<IE::StridedSliceOp>(sliceOp)) {
-        auto sliceOpElementType = tensor.getType().cast<vpux::NDTypeInterface>().getElementType();
-        auto parentOpElementType = parentOp->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+        auto sliceOpElementType = mlir::cast<vpux::NDTypeInterface>(tensor.getType()).getElementType();
+        auto parentOpElementType =
+                mlir::cast<vpux::NDTypeInterface>(parentOp->getOperand(0).getType()).getElementType();
         if (sliceOpElementType != parentOpElementType) {
             return false;
         }

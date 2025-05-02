@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
@@ -66,7 +67,7 @@ std::optional<ConcreteOp> MoveEltwiseAfterGather<ConcreteOp>::getSupportedEltwis
     }
 
     if (eltwiseOp.getPostOpAttr() != nullptr || eltwiseOp.getClampAttr() != nullptr ||
-        eltwiseOp.getOutputChannelsAttr() != nullptr || eltwiseOp.getInputChannelsAttr() != nullptr) {
+        eltwiseOp.getOutputPaddingAttr() != nullptr || eltwiseOp.getInputPaddingAttr() != nullptr) {
         _log.trace("Eltwise operation is not supported");
         return std::nullopt;
     }

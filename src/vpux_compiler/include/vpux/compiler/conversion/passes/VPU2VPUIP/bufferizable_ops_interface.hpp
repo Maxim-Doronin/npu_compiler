@@ -1,15 +1,16 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h>
 #include <mlir/Dialect/Bufferization/IR/Bufferization.h>
@@ -76,7 +77,6 @@ void registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& regist
 void registerVpuNceBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerFuncAndReturnBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerVPUBufferizableOpInterfaces(mlir::DialectRegistry& registry);
-void registerNCEClusterTilingBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerConstDeclareBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 
 //
@@ -161,13 +161,6 @@ mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEMatMulOp origOp,
 
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, Const::DeclareOp origOp, Const::DeclareOp::Adaptor newArgs,
                                 mlir::RewriterBase& rewriter);
-
-//
-// bufferize nce cluster tiling op function
-//
-
-mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEClusterTilingOp origOp,
-                                VPU::NCEClusterTilingOp::Adaptor newArgs, mlir::RewriterBase& rewriter);
 
 // generic VPU-specific one-shot bufferization model
 template <typename ConcreteOp>

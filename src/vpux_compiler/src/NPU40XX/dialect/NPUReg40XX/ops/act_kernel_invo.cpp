@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -86,9 +86,8 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::ActKernelInvocationOp::getRel
 
     if (auto nextLink = getNextLinkAttr()) {
         auto addend = ELF::getOffsetOfSymRef(symRefMap, nextLink);
-        relocs.push_back(ELF::RelocationInfo(nextLink, targetSection,
-                                             offsetof(nn_public::VpuActKernelInvocation, next_aki_wl_addr),
-                                             ELF::RelocationType::R_VPU_32_BIT_OR_B21_B26_UNSET, addend));
+        relocs.emplace_back(nextLink, targetSection, offsetof(nn_public::VpuActKernelInvocation, next_aki_wl_addr),
+                            ELF::RelocationType::R_VPU_32_BIT_OR_B21_B26_UNSET, addend);
     }
 
     return relocs;

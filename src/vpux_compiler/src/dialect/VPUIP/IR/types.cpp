@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -41,9 +41,9 @@ void vpux::VPUIP::VPUIPDialect::registerTypes() {
 vpux::VPUIP::SparseBufferType vpux::VPUIP::SparseBufferType::cloneWith(std::optional<mlir::ArrayRef<int64_t>> shape,
                                                                        mlir::Type elementType) const {
     if (!shape.has_value()) {
-        return changeElemType(elementType).cast<vpux::VPUIP::SparseBufferType>();
+        return mlir::cast<vpux::VPUIP::SparseBufferType>(changeElemType(elementType));
     }
-    return changeShapeElemType(ShapeRef(shape.value()), elementType).cast<vpux::VPUIP::SparseBufferType>();
+    return mlir::cast<vpux::VPUIP::SparseBufferType>(changeShapeElemType(ShapeRef(shape.value()), elementType));
 }
 
 mlir::Attribute vpux::VPUIP::SparseBufferType::getMemorySpace() const {
@@ -63,9 +63,9 @@ mlir::Attribute vpux::VPUIP::DistributedBufferType::getMemorySpace() const {
 vpux::VPUIP::DistributedBufferType vpux::VPUIP::DistributedBufferType::cloneWith(
         std::optional<mlir::ArrayRef<int64_t>> shape, mlir::Type elementType) const {
     if (!shape.has_value()) {
-        return changeElemType(elementType).cast<vpux::VPUIP::DistributedBufferType>();
+        return mlir::cast<vpux::VPUIP::DistributedBufferType>(changeElemType(elementType));
     }
-    return changeShapeElemType(ShapeRef(shape.value()), elementType).cast<vpux::VPUIP::DistributedBufferType>();
+    return mlir::cast<vpux::VPUIP::DistributedBufferType>(changeShapeElemType(ShapeRef(shape.value()), elementType));
 }
 
 vpux::ShapeRef vpux::VPUIP::DistributedBufferType::getShape() const {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,9 +22,9 @@ func.func @ConvertAvgPoolToConv(%arg0 : tensor<1x3x640x640xf16, {order = #NHWC}>
     return %pool : tensor<1x3x320x320xf16, {order = #NHWC}>
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<3x3x2x2xf16, {order = #NHWC}> = dense<[
-    // CHECK-SAME{{LITERAL}}:   [[[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
-    // CHECK-SAME{{LITERAL}}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
-    // CHECK-SAME{{LITERAL}}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]]]
+    // CHECK-SAME{LITERAL}:   [[[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
+    // CHECK-SAME{LITERAL}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
+    // CHECK-SAME{LITERAL}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]]]
     // CHECK-SAME:          ]> : tensor<3x3x2x2xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]], [[CST]]) {
@@ -57,9 +57,9 @@ func.func @ConvertAvgPoolWithStaticScaleToConv(%arg0 : tensor<1x3x640x640xf16, {
     return %pool : tensor<1x3x320x320xf16, {order = #NHWC}>
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<3x3x2x2xf16, {order = #NHWC}> = dense<[
-    // CHECK-SAME{{LITERAL}}:   [[[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
-    // CHECK-SAME{{LITERAL}}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
-    // CHECK-SAME{{LITERAL}}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]]]
+    // CHECK-SAME{LITERAL}:   [[[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
+    // CHECK-SAME{LITERAL}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]]],
+    // CHECK-SAME{LITERAL}:   [[[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[0.000000e+00, 0.000000e+00], [0.000000e+00, 0.000000e+00]], [[2.500000e-01, 2.500000e-01], [2.500000e-01, 2.500000e-01]]]
     // CHECK-SAME:          ]> : tensor<3x3x2x2xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]], [[CST]]) {
@@ -91,7 +91,7 @@ func.func @NotConvertAvgPoolWithAlignedChannelNums(%arg0 : tensor<1x16x640x640xf
 
     return %pool : tensor<1x16x320x320xf16, {order = #NHWC}>
     // CHECK:       [[POOL:%.+]] = IE.AvgPool([[INPUT]])
-    // CHECK-SAME{{LITERAL}}:   {exclude_pads, kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x640x640xf16, {order = #NHWC}> -> tensor<1x16x639x639xf16, {order = #NHWC}>
+    // CHECK-SAME{LITERAL}:   {exclude_pads, kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x16x640x640xf16, {order = #NHWC}> -> tensor<1x16x320x320xf16, {order = #NHWC}>
 
     // CHECK: return [[POOL]] : tensor<1x16x320x320xf16, {order = #NHWC}>
 }

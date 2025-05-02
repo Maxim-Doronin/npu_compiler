@@ -1,11 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/inverse.hpp"
-#include <iostream>
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -22,6 +20,8 @@ TEST_P(InverseLayerTestCommon, NPU3720_HW) {
 
 TEST_P(InverseLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

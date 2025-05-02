@@ -5,15 +5,17 @@
 
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include "vpux/compiler/core/aliases_info.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/IE/locations.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/profiling/location.hpp"
 
@@ -60,18 +62,18 @@ namespace {
 // tensors -> buffers
 
 mlir::BaseMemRefType tensorWithBoundsToBoundedBuffer(mlir::RankedTensorType tensorType) {
-    const auto boundsAttr = tensorType.cast<vpux::BoundedTypeInterface>().getBounds();
-    VPUX_THROW_UNLESS(boundsAttr != nullptr, "Expected to have dynamic tensor, got {0}", tensorType);
-    const auto bounds = parseIntArrayAttr<int64_t>(boundsAttr);
+    VPUX_THROW_UNLESS(mlir::isa<Core::DynamicDimsMaskTensorType>(tensorType),
+                      "Expected to have dynamic tensor, got {0}", tensorType);
 
-    const auto ndType = tensorType.cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::cast<vpux::NDTypeInterface>(tensorType);
 
+    const auto dataMemShape = ndType.getShape();
     const auto dataMemOrder = ndType.getDimsOrder();
     const auto dataMemType = ndType.getElementType();
     const auto dataMemSpace = ndType.getMemSpace();
-    const auto dataMemRef = getMemRefType(Shape(bounds), dataMemType, dataMemOrder, dataMemSpace);
+    const auto dataMemRef = getMemRefType(dataMemShape, dataMemType, dataMemOrder, dataMemSpace);
 
-    const auto rank = checked_cast<int32_t>(ndType.getShape().size());
+    const auto rank = checked_cast<int32_t>(dataMemShape.size());
     const auto si32 = getSInt32Type(tensorType.getContext());
     const auto dynamicShapeMemRef = getMemRefType({rank}, si32, DimsOrder::C, dataMemSpace);
 
@@ -79,10 +81,10 @@ mlir::BaseMemRefType tensorWithBoundsToBoundedBuffer(mlir::RankedTensorType tens
 }
 
 mlir::BaseMemRefType tensorToBuffer(mlir::RankedTensorType tensorType) {
-    if (tensorType.cast<vpux::BoundedTypeInterface>().getBounds()) {
+    if (mlir::isa<Core::DynamicDimsMaskTensorType>(tensorType)) {
         return tensorWithBoundsToBoundedBuffer(tensorType);
     }
-    const auto type = tensorType.cast<vpux::NDTypeInterface>();
+    const auto type = mlir::cast<vpux::NDTypeInterface>(tensorType);
     const auto shape = type.getShape();
     const auto elemType = type.getElementType();
     const auto order = type.getDimsOrder();
@@ -90,9 +92,37 @@ mlir::BaseMemRefType tensorToBuffer(mlir::RankedTensorType tensorType) {
     return getMemRefType(shape, elemType, order, memSpace);
 }
 
-VPUIP::DistributedBufferType distributedTensorToBuffer(VPU::DistributedTensorType type) {
-    return VPUIP::DistributedBufferType::get(type.getContext(), type.getShape().raw(), type.getElementType(),
-                                             type.getOrder(), type.getMemSpace(), type.getDistribution());
+mlir::BaseMemRefType distributedTensorToBuffer(VPU::DistributedTensorType type) {
+    mlir::MLIRContext* ctx = type.getContext();
+    if (mlir::isa<Core::DynamicDimsMaskTensorType>(type)) {
+        const auto data =
+                VPUIP::DistributedBufferType::get(ctx, type.getShape().raw(), type.getElementType(), type.getOrder(),
+                                                  type.getMemSpace(), type.getDistribution());
+        const auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
+
+        const auto dataMemShape = ndType.getShape();
+        const auto dataMemSpace = ndType.getMemSpace();
+        const auto rank = checked_cast<int32_t>(dataMemShape.size());
+        const auto si32 = getSInt32Type(ctx);
+
+        const DimsOrder order = DimsOrder::C;
+        const auto orderAttr = mlir::AffineMapAttr::get(order.toAffineMap(ctx));
+        const auto memRefLayoutAttr = vpux::MemRefAttr::get(orderAttr, nullptr, nullptr, ctx);
+
+        const auto duplicatedMode = VPU::DistributionModeAttr::get(ctx, VPU::DistributionMode::DUPLICATED);
+        auto shapeDistribution = VPU::DistributionInfoAttr::get(ctx, duplicatedMode, nullptr, nullptr, nullptr, nullptr,
+                                                                type.getDistribution().getNumClusters(), nullptr,
+                                                                type.getDistribution().getUniformDistributedSegments(),
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+
+        const auto dynamicShapeMemRef =
+                VPUIP::DistributedBufferType::get(ctx, {rank}, si32, memRefLayoutAttr, dataMemSpace, shapeDistribution);
+
+        return VPUIP::BoundedBufferType::get(data, dynamicShapeMemRef);
+    }
+
+    return VPUIP::DistributedBufferType::get(ctx, type.getShape().raw(), type.getElementType(), type.getOrder(),
+                                             type.getMemSpace(), type.getDistribution());
 }
 
 mlir::Type bufferizeTensor(mlir::Type tensorType) {
@@ -100,9 +130,9 @@ mlir::Type bufferizeTensor(mlir::Type tensorType) {
         return nullptr;
     }
 
-    if (auto distributedType = tensorType.dyn_cast<VPU::DistributedTensorType>()) {
+    if (auto distributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(tensorType)) {
         return distributedTensorToBuffer(distributedType);
-    } else if (auto rankedType = tensorType.dyn_cast<mlir::RankedTensorType>()) {
+    } else if (auto rankedType = mlir::dyn_cast<mlir::RankedTensorType>(tensorType)) {
         return tensorToBuffer(rankedType);
     }
     VPUX_THROW("Unsupported type for bufferization '{0}'", tensorType);
@@ -147,9 +177,9 @@ mlir::Type tensorizeBuffer(mlir::Type bufferType) {
         return nullptr;
     }
 
-    if (auto distributedType = bufferType.dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(bufferType)) {
         return bufferToTensor(distributedType);
-    } else if (auto rankedType = bufferType.dyn_cast<mlir::MemRefType>()) {
+    } else if (auto rankedType = mlir::dyn_cast<mlir::MemRefType>(bufferType)) {
         return bufferToTensor(rankedType);
     }
     VPUX_THROW("Unsupported buffer type for tensor conversion '{0}'", bufferType);
@@ -174,10 +204,11 @@ VPU::SparseTensorType bufferToTensor(VPUIP::SparseBufferType type) {
 }
 
 mlir::RankedTensorType bufferToTensor(VPUIP::BoundedBufferType type) {
-    auto data = tensorizeBuffer(type.getData());
-    data = data.cast<vpux::BoundedTypeInterface>().changeBounds(
-            getIntArrayAttr(type.getContext(), data.cast<NDTypeInterface>().getShape()));
-    return data.cast<mlir::RankedTensorType>();
+    auto dataType = tensorizeBuffer(type.getData());
+    auto ndType = mlir::cast<NDTypeInterface>(dataType);
+    auto dimsMask = SmallVector<int64_t>(ndType.getShape().size(), 1);
+    dataType = Core::DynamicDimsMaskTensorType::get(ndType, dimsMask);
+    return mlir::cast<mlir::RankedTensorType>(dataType);
 }
 
 mlir::Value materializeToTensor(mlir::OpBuilder& builder, mlir::TensorType type, mlir::ValueRange inputs,
@@ -226,7 +257,7 @@ mlir::LogicalResult vpux::convertFunc(mlir::func::FuncOp funcOp, ArrayRef<mlir::
 
         log.nest().trace("Process argument #{0}", ind);
 
-        const auto origType = val.getType().cast<vpux::NDTypeInterface>();
+        const auto origType = mlir::cast<vpux::NDTypeInterface>(val.getType());
         const auto newType = newArgTypes[ind];
 
         if (newType == origType) {
@@ -258,10 +289,10 @@ mlir::LogicalResult vpux::convertFunc(mlir::func::FuncOp funcOp, ArrayRef<mlir::
 
     log.trace("Convert results");
     auto moduleOp = getModuleOp(funcOp);
-    auto netOps = to_small_vector(moduleOp.getOps<IE::CNNNetworkOp>());
-    SmallVector<IE::DataInfoOp> outputsInfo;
-    if (netOps.size() == 1) {
-        outputsInfo = to_small_vector(netOps.front().getOutputsInfo().getOps<IE::DataInfoOp>());
+    auto netInfoOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
+    SmallVector<net::DataInfoOp> outputsInfo;
+    if (netInfoOps.size() == 1) {
+        outputsInfo = to_small_vector(netInfoOps.front().getOutputsInfo().getOps<net::DataInfoOp>());
     } else {
         log.warning("Can't get location for output. If it isn't a test, please, debug this.");
     }
@@ -279,7 +310,7 @@ mlir::LogicalResult vpux::convertFunc(mlir::func::FuncOp funcOp, ArrayRef<mlir::
             log.nest(2).trace("Process result #{0}", ind);
 
             const auto origType = val.getType();
-            const auto newType = newResultTypes[ind].cast<vpux::NDTypeInterface>();
+            const auto newType = mlir::cast<vpux::NDTypeInterface>(newResultTypes[ind]);
 
             if (newType == origType) {
                 log.nest(3).trace("Nothing to change");
@@ -333,7 +364,7 @@ mlir::Location vpux::appendLoc(mlir::Location baseLoc, mlir::StringAttr suffix) 
     VPUX_THROW_WHEN(suffix.getValue().find(LOCATION_ORIGIN_SEPARATOR) != std::string::npos,
                     "'{0}' character is reserved inside locations", LOCATION_ORIGIN_SEPARATOR);
     const mlir::Location suffixLoc = mlir::NameLoc::get(suffix);
-    if (auto fusedLoc = baseLoc.dyn_cast<mlir::FusedLoc>()) {
+    if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(baseLoc)) {
         const auto metadata = fusedLoc.getMetadata();
         auto locations = fusedLoc.getLocations().vec();
         locations.push_back(suffixLoc);
@@ -483,7 +514,7 @@ mlir::Value vpux::getBuffer(mlir::RewriterBase& rewriter, mlir::Value value) {
     rewriter.setInsertionPointAfterValue(value);
 
     auto bufferType = vpux::getBufferType(value);
-    auto origType = value.getType().cast<vpux::NDTypeInterface>();
+    auto origType = mlir::cast<vpux::NDTypeInterface>(value.getType());
     VPUX_THROW_WHEN(origType.hasRank() && origType.getRank() != bufferType.getRank(),
                     "Incompatible ranks: original rank {0}, buffer rank {1}", origType.getRank(), bufferType.getRank());
 
@@ -533,26 +564,26 @@ void vpux::inferReturnTypes(mlir::Operation* op, InferShapedTypeMode mode) {
 
     for (auto p : zip(op->getResults(), newTypes)) {
         auto val = std::get<0>(p);
-        auto newType = std::get<1>(p).dyn_cast<vpux::NDTypeInterface>();
+        auto newType = mlir::dyn_cast<vpux::NDTypeInterface>(std::get<1>(p));
         VPUX_THROW_UNLESS(newType != nullptr, "newType has non vpux::NDTypeInterface type '{0}'", std::get<1>(p));
 
         if (!bitEnumContains(mode, InferShapedTypeMode::SHAPE)) {
-            if (const auto oldType = val.getType().dyn_cast<vpux::NDTypeInterface>()) {
+            if (const auto oldType = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType())) {
                 newType = newType.changeShape(oldType.getShape());
             }
         }
         if (!bitEnumContains(mode, InferShapedTypeMode::ELEM_TYPE)) {
-            if (const auto oldType = val.getType().dyn_cast<vpux::NDTypeInterface>()) {
+            if (const auto oldType = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType())) {
                 newType = newType.changeElemType(oldType.getElementType());
             }
         }
         if (!bitEnumContains(mode, InferShapedTypeMode::LAYOUT)) {
-            if (const auto oldType = val.getType().dyn_cast<vpux::NDTypeInterface>()) {
+            if (const auto oldType = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType())) {
                 newType = newType.changeDimsOrder(oldType.getDimsOrder());
             }
         }
         if (!bitEnumContains(mode, InferShapedTypeMode::MEM_SPACE)) {
-            if (const auto oldType = val.getType().dyn_cast<vpux::NDTypeInterface>()) {
+            if (const auto oldType = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType())) {
                 newType = newType.changeMemSpace(oldType.getMemSpace());
             }
         }

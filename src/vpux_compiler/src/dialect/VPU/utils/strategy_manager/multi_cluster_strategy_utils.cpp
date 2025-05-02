@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -110,7 +111,7 @@ mlir::Value getInputFromClusteredOp(VPU::ClusteredOpInterface clusteredOp, mlir:
 }
 
 bool hasUserMVN(VPU::ClusteredOpInterface clusteredOp) {
-    if (!clusteredOp->getOperand(0).isa<mlir::BlockArgument>() &&
+    if (!mlir::isa<mlir::BlockArgument>(clusteredOp->getOperand(0)) &&
         mlir::isa<VPU::MVNOp>(clusteredOp->getOperand(0).getDefiningOp())) {
         // MVN producer
         return true;
@@ -149,8 +150,8 @@ bool isSOHAlignmentCompatibleOrAdjustedCompatible(std::pair<mlir::Type, VPU::Dis
 
 bool isDistributedCastCompatible(std::pair<mlir::Type, VPU::DistributionInfo>& srcTypeDistribution,
                                  std::pair<mlir::Type, VPU::DistributionInfo>& dstTypeDistribution) {
-    auto srcType = srcTypeDistribution.first.cast<vpux::NDTypeInterface>();
-    auto dstType = dstTypeDistribution.first.cast<vpux::NDTypeInterface>();
+    auto srcType = mlir::cast<vpux::NDTypeInterface>(srcTypeDistribution.first);
+    auto dstType = mlir::cast<vpux::NDTypeInterface>(dstTypeDistribution.first);
     auto srcDistribution = srcTypeDistribution.second;
     auto dstDistribution = dstTypeDistribution.second;
     if (srcType.getShape() != dstType.getShape()) {
@@ -279,12 +280,12 @@ LayerCostModel::LayerCostModel(mlir::func::FuncOp func, bool enablePrefetchTilin
 vpux::NDTypeInterface LayerCostModel::getNormalInputType(VPU::ClusteredOpInterface origOp,
                                                          mlir::Operation* parentOp) const {
     auto input = getInputFromClusteredOp(origOp, parentOp);
-    return input.getType().dyn_cast<vpux::NDTypeInterface>();
+    return mlir::dyn_cast<vpux::NDTypeInterface>(input.getType());
 }
 
 vpux::NDTypeInterface LayerCostModel::getNormalOutputType(VPU::ClusteredOpInterface origOp) const {
     auto output = origOp->getResult(0);
-    return output.getType().dyn_cast<vpux::NDTypeInterface>();
+    return mlir::dyn_cast<vpux::NDTypeInterface>(output.getType());
 }
 
 std::pair<mlir::Type, TensorDistributionMap> LayerCostModel::getInputWithDistribution(
@@ -292,7 +293,7 @@ std::pair<mlir::Type, TensorDistributionMap> LayerCostModel::getInputWithDistrib
         VPU::MultiClusterStrategy specifiedStrategy) const {
     auto input = getInputFromClusteredOp(origOp, parentOp);
     auto numClustersAttr = VPU::getOptimalNumClusters(
-            origOp, origOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape(), specifiedStrategy);
+            origOp, mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getShape(), specifiedStrategy);
     if (auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation())) {
         auto isFilter = nceOp->getNumOperands() > 1 && input == nceOp->getOperand(1) &&
                         !mlir::isa<VPU::NCEEltwiseOp>(origOp.getOperation());
@@ -311,7 +312,7 @@ std::pair<mlir::Type, TensorDistributionMap> LayerCostModel::getInputWithDistrib
         mlir::ArrayRef<int64_t> customAlignment) const {
     auto input = getInputFromClusteredOp(origOp, parentOp);
     auto numClustersAttr = VPU::getOptimalNumClusters(
-            origOp, origOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape(), specifiedStrategy);
+            origOp, mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getShape(), specifiedStrategy);
     return std::make_pair(input.getType(), getActivationDistributionAttrFromOp(origOp, input.getType(), numClustersAttr,
                                                                                specifiedStrategy, _siblingsOpsAnalysis,
                                                                                customAlignment));
@@ -321,7 +322,8 @@ VPU::DistributedTypeInterface LayerCostModel::getDistributedInputType(
         VPU::ClusteredOpInterface origOp, mlir::Operation* parentOp,
         VPU::MultiClusterStrategy specifiedStrategy) const {
     auto [type, distribution] = getInputWithDistribution(origOp, parentOp, specifiedStrategy);
-    return getDistributedTypeFromDistributionMap(type, distribution).dyn_cast<VPU::DistributedTypeInterface>();
+    return mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
+            getDistributedTypeFromDistributionMap(type, distribution));
 }
 
 VPU::DistributedTypeInterface LayerCostModel::getDistributedInputType(VPU::ClusteredOpInterface origOp,
@@ -330,20 +332,21 @@ VPU::DistributedTypeInterface LayerCostModel::getDistributedInputType(VPU::Clust
                                                                       mlir::ArrayAttr customAlignment) const {
     auto customAlignmentArr = parseIntArrayAttr<int64_t>(customAlignment);
     auto [type, distribution] = getInputWithDistribution(origOp, parentOp, specifiedStrategy, customAlignmentArr);
-    return getDistributedTypeFromDistributionMap(type, distribution).dyn_cast<VPU::DistributedTypeInterface>();
+    return mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
+            getDistributedTypeFromDistributionMap(type, distribution));
 }
 
 VPU::DistributedTypeInterface LayerCostModel::getDistributedOutputType(
         VPU::ClusteredOpInterface origOp, VPU::MultiClusterStrategy specifiedStrategy) const {
     auto numClusters = VPU::getOptimalNumClusters(
-            origOp, origOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape(), specifiedStrategy);
+            origOp, mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getShape(), specifiedStrategy);
     return VPU::getDistributedOutputTypeFromOp(origOp, origOp->getResult(0).getType(), numClusters, specifiedStrategy);
 }
 
 std::pair<mlir::Type, TensorDistributionMap> LayerCostModel::getOutputWithDistribution(
         VPU::ClusteredOpInterface origOp, VPU::MultiClusterStrategy specifiedStrategy) const {
     auto numClustersAttr = VPU::getOptimalNumClusters(
-            origOp, origOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape(), specifiedStrategy);
+            origOp, mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getShape(), specifiedStrategy);
     return std::make_pair(origOp->getResult(0).getType(),
                           getOutputDistributionAttrFromOp(origOp, origOp->getResult(0).getType(), numClustersAttr,
                                                           specifiedStrategy, _siblingsOpsAnalysis));
@@ -392,7 +395,7 @@ LayerCostModel::SpillingCost LayerCostModel::getSpillingCost(vpux::NDTypeInterfa
 }
 
 double LayerCostModel::getDMACostOfType(vpux::NDTypeInterface srcType, SpillingType spillingType) const {
-    auto distributedSrcType = srcType.dyn_cast<DistributedTensorType>();
+    auto distributedSrcType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(srcType);
     auto srcMode = distributedSrcType != nullptr ? distributedSrcType.getDistribution().getMode().getValue()
                                                  : VPU::DistributionMode::NONE;
 
@@ -409,8 +412,8 @@ double LayerCostModel::getDMACostOfType(vpux::NDTypeInterface srcType, SpillingT
 }
 
 double LayerCostModel::getSpillingDMACost(vpux::NDTypeInterface srcTensorType, SpillingType spillingType) const {
-    if (auto sparseTensorType = srcTensorType.dyn_cast<VPU::SparseTensorType>()) {
-        srcTensorType = sparseTensorType.getData().cast<vpux::NDTypeInterface>();
+    if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(srcTensorType)) {
+        srcTensorType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
     }
     return getDMACostOfType(srcTensorType, spillingType);
 }
@@ -439,8 +442,8 @@ double LayerCostModel::getDMACostOfType(vpux::NDTypeInterface srcType, const VPU
 
 double LayerCostModel::getSpillingDMACost(vpux::NDTypeInterface srcTensorType,
                                           const TensorDistributionMap& distributions, SpillingType spillingType) const {
-    if (auto sparseTensorType = srcTensorType.dyn_cast<VPU::SparseTensorType>()) {
-        srcTensorType = sparseTensorType.getData().cast<vpux::NDTypeInterface>();
+    if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(srcTensorType)) {
+        srcTensorType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
     }
     VPU::DistributionInfo distribution{};
     if (distributions.contains(srcTensorType)) {
@@ -503,13 +506,13 @@ double LayerCostModel::computeSplitEfficiency(VPU::NCEOpInterface nceOp, VPU::Mu
     VPUX_THROW_UNLESS(clusteredOp.checkStrategyCompatibility(strategy, _numTiles) == true,
                       "Unsupported multi-cluster strategy '{0}' for layer type '{1}'", strategy, nceOp->getName());
     auto numClusters = getOptimalNumClusters(
-            clusteredOp, nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getShape(), strategy);
+            clusteredOp, mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType()).getShape(), strategy);
     const auto distributedOutputTensorType = VPU::getDistributedOutputTypeFromOp(
-            clusteredOp, nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>(), numClusters, strategy);
+            clusteredOp, mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType()), numClusters, strategy);
 
     VPUX_THROW_UNLESS(distributedOutputTensorType.containsDistributedTypes(), "Missing output distributed types");
     const auto distributedOutputDataType =
-            distributedOutputTensorType.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+            mlir::cast<vpux::VPU::DistributedTensorType>(distributedOutputTensorType.getDistributedTypes().front());
     const auto perClusterShape = distributedOutputDataType.getLargestCompactShape();
     const auto perClusterOutputTensorVolume =
             perClusterShape[Dims4D::Act::H] * perClusterShape[Dims4D::Act::W] * perClusterShape[Dims4D::Act::C];
@@ -588,7 +591,7 @@ double LayerCostModel::totalDMATime(VPU::NCEOpInterface nceOp, VPU::MultiCluster
 
         SmallVector<int64_t> numElemsPerOC;
         int64_t weightSetAlignment = _cmxAddressAlignment;
-        if (auto sparseWeightsType = weights.getType().dyn_cast<VPU::SparseTensorType>()) {
+        if (auto sparseWeightsType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(weights.getType())) {
             VPU::SparsityCompressionAttr sparsityCompression = sparseWeightsType.getSparsityCompression();
             if (sparsityCompression != nullptr && sparsityCompression.getAxis() != nullptr) {
                 auto axis = sparsityCompression.getAxis().getInt();
@@ -613,7 +616,7 @@ double LayerCostModel::totalDMATime(VPU::NCEOpInterface nceOp, VPU::MultiCluster
                     VPU::getDistributedFilterTypeFromOp(nceOp, weights.getType(), numClusters, strategy);
 
             for (auto type : distributedWeightsTensorType.getDistributedTypes() | indexed) {
-                auto distributedWeightsType = type.value().cast<VPU::DistributedTensorType>();
+                auto distributedWeightsType = mlir::cast<vpux::VPU::DistributedTensorType>(type.value());
                 auto tiledWeightsShapes = distributedWeightsType.getPerClusterMemoryShapes();
                 auto tiledWeightsOffsets = distributedWeightsType.getPerClusterMemoryShapeOffsets();
 
@@ -648,7 +651,7 @@ double LayerCostModel::totalDMATime(VPU::NCEOpInterface nceOp, VPU::MultiCluster
             // Duplicated mode in other strategies has ddr->cmx cost
             // The weight set size (IC * KX * KY * BytesPerElement) needs to be aligned to 16B for kernels
 
-            auto ndWeightsType = weights.getType().cast<vpux::NDTypeInterface>();
+            auto ndWeightsType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
             const Bit elemBiSize = ndWeightsType.getElemTypeSize();
             const int64_t weightSetSize =
                     IC * kernelSize[Dims4D::Kernel::Y.ind()] * kernelSize[Dims4D::Kernel::X.ind()];
@@ -664,7 +667,7 @@ double LayerCostModel::totalDMATime(VPU::NCEOpInterface nceOp, VPU::MultiCluster
                         OC * alignMemSize(elemBiSize * weightSetSize, Byte(_cmxAddressAlignment)).to<Byte>().count();
             }
 
-            if (weights.getType().isa<VPU::SparseTensorType>()) {
+            if (mlir::isa<vpux::VPU::SparseTensorType>(weights.getType())) {
                 const int64_t weightSetBitAlignment = 128;
                 const int64_t sparsityMapSize = (OC * alignValUp<int64_t>(weightSetSize, weightSetBitAlignment));
                 const int64_t sparsityMapByteSize = sparsityMapSize / CHAR_BIT;
@@ -739,7 +742,7 @@ double LayerCostModel::getNCELayerCost(VPU::NCEOpInterface nceOp, VPU::MultiClus
 double LayerCostModel::getSWLayerCost(VPU::SWOpInterface swOp, VPU::MultiClusterStrategy strategy) const {
     const auto allTypesSupported = [](mlir::ValueRange values) -> bool {
         return llvm::all_of(values, [](mlir::Value value) {
-            const auto valueType = value.getType().cast<vpux::NDTypeInterface>();
+            const auto valueType = mlir::cast<vpux::NDTypeInterface>(value.getType());
             const auto nnType = VPU::getVPUNNElementType(valueType.getElementType());
             return nnType.has_value();
         });
@@ -753,8 +756,8 @@ double LayerCostModel::getSWLayerCost(VPU::SWOpInterface swOp, VPU::MultiCluster
     auto getVPUTensors = [&](mlir::ValueRange values) -> std::vector<VPUNN::VPUTensor> {
         std::vector<VPUNN::VPUTensor> tensors;
         std::transform(values.begin(), values.end(), std::back_inserter(tensors), [](mlir::Value value) {
-            auto valueType = value.getType().cast<vpux::NDTypeInterface>();
-            return VPU::getVPUTensor(valueType.getShape(), valueType.getElementType());
+            auto valueType = mlir::cast<vpux::NDTypeInterface>(value.getType());
+            return VPU::getVPUTensor(valueType.getShape(), valueType.getElementType(), valueType.getDimsOrder());
         });
         return tensors;
     };
@@ -861,13 +864,13 @@ bool isSoftwareOpCustomStrategyIncompatibleWithOtherNceOp(mlir::Operation* swOp,
 
     // Rank need to be 4 when checking strategy compatibility
     for (const auto& input : swOp->getOperands()) {
-        const auto inputShape = input.getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
         if (inputShape.size() != RANK_REQUIRED_FOR_TILING) {
             return false;
         }
     }
     for (const auto& output : swOp->getResults()) {
-        const auto outputShape = output.getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto outputShape = mlir::cast<vpux::NDTypeInterface>(output.getType()).getShape();
         if (outputShape.size() != RANK_REQUIRED_FOR_TILING) {
             return false;
         }
@@ -891,9 +894,9 @@ bool isSoftwareOpCustomStrategyIncompatibleWithOtherNceOp(mlir::Operation* swOp,
     return false;
 }
 
-double LayerCostModel::getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface nceOp,
-                                                            VPU::MultiClusterStrategy strategy,
-                                                            const OutputTiling& outTiles) const {
+HwLayerTilingStrategyCosts LayerCostModel::getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface nceOp,
+                                                                                VPU::MultiClusterStrategy strategy,
+                                                                                const OutputTiling& outTiles) const {
     // Types for each tile
     std::vector<std::vector<std::pair<NDTypeInterface, TensorDistributionMap>>> tilesTypes;
 
@@ -904,18 +907,18 @@ double LayerCostModel::getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface 
     auto distributionMode = DistributionMode::NONE;
     auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(nceOp.getOperation());
     if (clusteredOp != nullptr) {
-        auto outputType = clusteredOp->getResult(0).getType().cast<NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
         auto tiledOutputType = outputType.extractDenseTile(outTiles[0].offsets, outTiles[0].shape);
         distributionMode = getOutputTensorDistributionMode(clusteredOp, strategy, tiledOutputType);
     }
 
     const auto vpunnStrategy =
-            VPU::getVPULayerStrategy(strategy, _numDPUs, _numTiles, _arch, 1, true, distributionMode);
+            VPU::getVPULayerStrategy(strategy, _numDPUs, _numTiles, _arch, 1, true, distributionMode, nceOp);
 
     auto vpunnLayerDPUCosts =
             getDPUCostForNCEOp(nceOp, strategy, outTiles, costParams, vpunnStrategy, _layerCostModel, _log);
     if (vpunnLayerDPUCosts.empty()) {
-        return COST_MAX;
+        return {COST_MAX, COST_MAX};
     }
     _log.trace("VPUNN DPU layer costs {0}", vpunnLayerDPUCosts);
 
@@ -954,11 +957,11 @@ double LayerCostModel::getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface 
                     const auto dimOrder = currentTileType.getDimsOrder();
                     const auto lowestDim = dimOrder.dimAt(dimOrder.numDims() - 1);
                     const Bit elemSize = currentTileType.getElemTypeSize();
-                    if (auto sparseTensorType = currentTileType.dyn_cast<VPU::SparseTensorType>()) {
-                        currentTileType = sparseTensorType.getData().cast<NDTypeInterface>();
+                    if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(currentTileType)) {
+                        currentTileType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
                     }
                     Bit continuousBitsOnLowestDim;
-                    if (auto distributedType = currentTileType.dyn_cast<VPU::DistributedTensorType>()) {
+                    if (auto distributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(currentTileType)) {
                         continuousBitsOnLowestDim = distributedType.getLargestCompactShape()[lowestDim] * elemSize;
                     } else {
                         continuousBitsOnLowestDim = currentTileType.getShape()[lowestDim] * elemSize;
@@ -980,24 +983,30 @@ double LayerCostModel::getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface 
         return getDistributedTypeFromDistributionMap(srcType, distributionMap);
     };
 
-    double cost = 0;
-
     // Accumulate all the DPU costs
-    cost += std::accumulate(vpunnLayerDPUCosts.begin(), vpunnLayerDPUCosts.end(), 0);
+    double cost = std::accumulate(vpunnLayerDPUCosts.begin(), vpunnLayerDPUCosts.end(), 0.0);
+    double costWithPrefetching = cost;
     auto tilingBuilderOp = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(nceOp.getOperation());
     for (auto& outTile : outTiles) {
         auto inTiles = tilingBuilderOp.backInferTileInfo(outTile, _log);
         tilesTypes.push_back(getTileDistributions(nceOp.getOperation(), _siblingsOpsAnalysis, outTile, inTiles));
     }
+    _log.trace(" VPUNN accumulated DPU cost {0}", cost);
 
-    // Add weights DMA costs
+    // Add weights DMA costs, which considers DMA prefetching and pipelining and only accumulates extra DMA costs based
+    // on DPU cost
     auto vpunnLayerWeightsCosts =
             getPerTileWeightsDMACosts(nceOp, _siblingsOpsAnalysis, tilesTypes, getSpillingReadCost);
     _log.trace("VPUNN weights DMA costs {0}", vpunnLayerWeightsCosts);
-    const auto weightsCost = getWeightsDMACostForNCEOp(nceOp, outTiles, vpunnLayerDPUCosts, vpunnLayerWeightsCosts,
-                                                       _enablePrefetchTiling, _log);
+    const auto [weightsCost, weightsCostWithPrefetching] = getWeightsDMACostForNCEOp(
+            nceOp, outTiles, vpunnLayerDPUCosts, vpunnLayerWeightsCosts, _enablePrefetchTiling, _log);
+    _log.trace(" VPUNN accumulated weights DMA cost {0} with prefetchTiling option {1}", weightsCost,
+               _enablePrefetchTiling);
     cost += weightsCost;
-    _log.trace("cost + weights DMA cost cost {0} = {1}", weightsCost, cost);
+    costWithPrefetching += weightsCostWithPrefetching;
+    _log.trace("cost + weights DMA cost {0} = {1}", weightsCost, cost);
+    _log.trace("costWithPrefetching + weightsWithPrefetching DMA cost {0} = {1}", weightsCostWithPrefetching,
+               costWithPrefetching);
 
     auto getParentOp = [&]() -> mlir::Operation* {
         mlir::Operation* parentOp = nceOp->getOperand(0).getDefiningOp();
@@ -1016,8 +1025,12 @@ double LayerCostModel::getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface 
         _log.trace("VPUNN activation DMA costs {0}", vpunnLayerActCosts);
         const auto actCost = getActivationDMACostForNCEOp(nceOp, outTiles, vpunnLayerDPUCosts, vpunnLayerActCosts,
                                                           _enablePrefetchTiling, _log);
+        _log.trace(" VPUNN accumulated activation DMA cost {0} with prefetchTiling option {1}", actCost,
+                   _enablePrefetchTiling);
         cost += actCost;
+        costWithPrefetching += actCost;
         _log.trace("cost + activation DMA cost {0} = {1}", actCost, cost);
+        _log.trace("costWithPrefetching + activation DMA cost {0} = {1}", actCost, costWithPrefetching);
     }
 
     // Add output spilling cost
@@ -1033,11 +1046,15 @@ double LayerCostModel::getDPUandDMATimeCostWithCustomTiling(VPU::NCEOpInterface 
         _log.trace("VPUNN output DMA costs {0}", vpunnLayerOutputCosts);
         const auto outCost = getOutputDMACostForNCEOp(nceOp, outTiles, vpunnLayerDPUCosts, vpunnLayerOutputCosts,
                                                       _enablePrefetchTiling, _log);
+        _log.trace(" VPUNN accumulated output DMA cost {0} with prefetchTiling option {1}", outCost,
+                   _enablePrefetchTiling);
         cost += outCost;
+        costWithPrefetching += outCost;
         _log.trace("cost + output DMA cost {0} = {1}", outCost, cost);
+        _log.trace("costWithPrefetching + output DMA cost {0} = {1}", outCost, costWithPrefetching);
     }
 
-    return cost;
+    return {cost, costWithPrefetching};
 }
 
 /// @brief Time-cost : return a sum of layer DPU time and weights DMA time (cycles)
@@ -1102,7 +1119,16 @@ double LayerCostModel::getDPUandDMATimeCost(VPU::NCEOpInterface nceOp, VPU::Mult
             }
         }
 
-        auto cost = getDPUandDMATimeCostWithCustomTiling(nceOp, strategy, outTiles);
+        auto [costWithoutPrefetching, costWithPrefetching] =
+                getDPUandDMATimeCostWithCustomTiling(nceOp, strategy, outTiles);
+        auto tilingInfoOp = mlir::dyn_cast<VPU::TilingInfoOpInterface>(nceOp.getOperation());
+        double cost = 0;
+        if (_enablePrefetchTiling && tilingInfoOp != nullptr &&
+            tilingInfoOp.isSupportedTiling(outTiles, vpux::TilingMode::PREFETCHING, _log)) {
+            cost = costWithPrefetching;
+        } else {
+            cost = costWithoutPrefetching;
+        }
 
         _log.trace("VPUNN total layer cost for {0} is {1}", strategy, cost);
 
@@ -1144,7 +1170,7 @@ bool LayerCostModel::hasSpilling(VPU::ClusteredOpInterface /*clusteredOp*/,
                                  std::pair<mlir::Type, TensorDistributionMap>& dstTensorType) const {
     auto getActivationTypeFromSparseType = [](std::pair<mlir::Type, TensorDistributionMap>& tensorType) {
         VPU::DistributionInfo distribution{};
-        if (auto sparseTensorType = tensorType.first.dyn_cast<VPU::SparseTensorType>()) {
+        if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(tensorType.first)) {
             if (tensorType.second.contains(sparseTensorType.getData())) {
                 distribution = tensorType.second.at(sparseTensorType.getData());
             }
@@ -1199,7 +1225,7 @@ LayerCostModel::getDistributionsWithStrategy(VPU::ClusteredOpInterface parentOp,
 
     VPU::DistributionInfo outputDistribution{};
     auto outputType = mlir::isa<VPU::SparseTensorType>(targetOutput.first)
-                              ? targetOutput.first.cast<VPU::SparseTensorType>().getData()
+                              ? mlir::cast<vpux::VPU::SparseTensorType>(targetOutput.first).getData()
                               : targetOutput.first;
     if (targetOutput.second.contains(outputType)) {
         outputDistribution = targetOutput.second.at(outputType);
@@ -1207,7 +1233,7 @@ LayerCostModel::getDistributionsWithStrategy(VPU::ClusteredOpInterface parentOp,
 
     VPU::DistributionInfo inputDistribution{};
     auto inputType = mlir::isa<VPU::SparseTensorType>(targetInput.first)
-                             ? targetInput.first.cast<VPU::SparseTensorType>().getData()
+                             ? mlir::cast<vpux::VPU::SparseTensorType>(targetInput.first).getData()
                              : targetInput.first;
     if (targetInput.second.contains(inputType)) {
         inputDistribution = targetInput.second.at(inputType);
@@ -1222,7 +1248,7 @@ LayerCostModel::getDistributionsWithStrategy(VPU::ClusteredOpInterface parentOp,
     if (!parentOutAlignment.empty() && UserInAlignment.empty() &&
         mlir::isa<VPU::SWOpInterface>(userOp.getOperation()) &&
         isSWOpChannelAlignmentCompatible(userOp, targetInput.first,
-                                         userOp->getResult(0).getType().cast<vpux::NDTypeInterface>())) {
+                                         mlir::cast<vpux::NDTypeInterface>(userOp->getResult(0).getType()))) {
         targetInput = getInputWithDistribution(userOp, parentOp, userStrategy, parentOutAlignment);
     }
     return std::make_pair(targetOutput, targetInput);
@@ -1238,23 +1264,23 @@ std::pair<vpux::NDTypeInterface, vpux::NDTypeInterface> LayerCostModel::getDistr
 
 bool LayerCostModel::hasSpilling(VPU::ClusteredOpInterface clustered, VPU::ClusteredOpInterface userOp) const {
     auto targetOutputType = hasMultiClusterStrategy(clustered)
-                                    ? getDistributedOutputType(clustered, getMultiClusterStrategyValue(clustered))
-                                              .cast<vpux::NDTypeInterface>()
+                                    ? mlir::cast<vpux::NDTypeInterface>(getDistributedOutputType(
+                                              clustered, getMultiClusterStrategyValue(clustered)))
                                     : getNormalOutputType(clustered);
 
     auto targetInputType = hasMultiClusterStrategy(userOp)
-                                   ? getDistributedInputType(userOp, clustered, getMultiClusterStrategyValue(userOp))
-                                             .cast<vpux::NDTypeInterface>()
+                                   ? mlir::cast<vpux::NDTypeInterface>(getDistributedInputType(
+                                             userOp, clustered, getMultiClusterStrategyValue(userOp)))
                                    : getNormalInputType(userOp, clustered);
     return hasSpilling(clustered, targetOutputType, targetInputType);
 }
 
 bool LayerCostModel::hasSpilling(VPU::ClusteredOpInterface origOp, VPU::MultiClusterStrategy origOpStrategy,
                                  VPU::ClusteredOpInterface userOp) const {
-    auto targetOutputType = getDistributedOutputType(origOp, origOpStrategy).cast<vpux::NDTypeInterface>();
+    auto targetOutputType = mlir::cast<vpux::NDTypeInterface>(getDistributedOutputType(origOp, origOpStrategy));
     auto targetInputType = hasMultiClusterStrategy(userOp)
-                                   ? getDistributedInputType(userOp, origOp, getMultiClusterStrategyValue(origOp))
-                                             .cast<vpux::NDTypeInterface>()
+                                   ? mlir::cast<vpux::NDTypeInterface>(getDistributedInputType(
+                                             userOp, origOp, getMultiClusterStrategyValue(origOp)))
                                    : getNormalInputType(userOp, origOp);
     if (hasMultiClusterStrategy(userOp)) {
         std::tie(targetOutputType, targetInputType) =
@@ -1267,10 +1293,10 @@ bool LayerCostModel::hasSpilling(VPU::ClusteredOpInterface origOp, VPU::Clustere
                                  VPU::MultiClusterStrategy userOpStrategy) const {
     auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
     auto targetOutputType = hasMultiClusterStrategy(origOp)
-                                    ? getDistributedOutputType(origOp, getMultiClusterStrategyValue(clusteredOp))
-                                              .cast<vpux::NDTypeInterface>()
+                                    ? mlir::cast<vpux::NDTypeInterface>(getDistributedOutputType(
+                                              origOp, getMultiClusterStrategyValue(clusteredOp)))
                                     : getNormalOutputType(origOp);
-    auto targetInputType = getDistributedInputType(userOp, origOp, userOpStrategy).cast<vpux::NDTypeInterface>();
+    auto targetInputType = mlir::cast<vpux::NDTypeInterface>(getDistributedInputType(userOp, origOp, userOpStrategy));
     if (hasMultiClusterStrategy(origOp)) {
         std::tie(targetOutputType, targetInputType) =
                 getDistributionTypesWithStrategy(origOp, getMultiClusterStrategyValue(origOp), userOp, userOpStrategy);
@@ -1293,10 +1319,12 @@ bool LayerCostModel::doesLayerRequireTiling(VPU::ClusteredOpInterface clusteredO
 
 bool LayerCostModel::doesLayerHaveVPUNNSupportedTypes(VPU::ClusteredOpInterface clusteredOp) const {
     const bool hasSupportedOperandTypes = llvm::all_of(clusteredOp->getOperands(), [](const mlir::Value val) {
-        return vpux::VPU::isVPUNNSupportedElementType(val.getType().cast<vpux::NDTypeInterface>().getElementType());
+        return vpux::VPU::isVPUNNSupportedElementType(
+                mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType());
     });
     const bool hasSupportedResultTypes = llvm::all_of(clusteredOp->getResults(), [](const mlir::Value val) {
-        return vpux::VPU::isVPUNNSupportedElementType(val.getType().cast<vpux::NDTypeInterface>().getElementType());
+        return vpux::VPU::isVPUNNSupportedElementType(
+                mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType());
     });
     return hasSupportedOperandTypes && hasSupportedResultTypes;
 }
@@ -1322,10 +1350,11 @@ VPU::MultiClusterStrategy LayerCostModel::getOptimalLayerStrategy(VPU::Clustered
         clusteredOp.isOperationSplitOverHeightCompatible(/*vpux::TileInfo=*/vpux::TileInfo(ShapeRef()))) {
         splitOverHeightIsCompatible = true;
         splitOverHeightCost = getLayerCost(clusteredOp, VPU::MultiClusterStrategy::SplitOverHeight);
-        _log.nest().trace("SplitOverHeight cost is {0}", splitOverHeightCost);
         splitOverHeightFitIntoCMX =
                 clusteredOp.doesLayerFitIntoCMX(VPU::MultiClusterStrategy::SplitOverHeight, _siblingsOpsAnalysis,
                                                 /*reservedMem=*/Byte(0));
+        _log.nest().debug("SplitOverHeight cost is {0}. Fit into CMX is {1}", splitOverHeightCost,
+                          splitOverHeightFitIntoCMX);
     }
 
     if (clusteredOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverKernel, _numTiles) &&
@@ -1333,10 +1362,11 @@ VPU::MultiClusterStrategy LayerCostModel::getOptimalLayerStrategy(VPU::Clustered
                                                          /*axis=*/ShapeRef())) {
         splitOverKernelIsCompatible = true;
         splitOverKernelCost = getLayerCost(clusteredOp, VPU::MultiClusterStrategy::SplitOverKernel);
-        _log.nest().trace("SplitOverKernel cost is {0}", splitOverKernelCost);
         splitOverKernelFitIntoCMX =
                 clusteredOp.doesLayerFitIntoCMX(VPU::MultiClusterStrategy::SplitOverKernel, _siblingsOpsAnalysis,
                                                 /*reservedMem=*/Byte(0));
+        _log.nest().debug("SplitOverKernel cost is {0}. Fit into CMX is {1}", splitOverKernelCost,
+                          splitOverKernelFitIntoCMX);
     }
 
     const auto optimalHeightTiling = [&](void) {
@@ -1352,7 +1382,7 @@ VPU::MultiClusterStrategy LayerCostModel::getOptimalLayerStrategy(VPU::Clustered
 
     // Compute amount of clusters so that SOK is compatible
     const auto outputChannels =
-            clusteredOp->getResult(0).getType().template cast<vpux::NDTypeInterface>().getShape()[Dims4D::Act::C];
+            mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType()).getShape()[Dims4D::Act::C];
     auto uniformDistributedSegments = VPU::isUniformDistributedSegmentsSupported(clusteredOp);
     const auto sokOptimalClusters =
             getNumberOfClustersForSOKToAvoidAlignment(outputChannels, _numTiles, uniformDistributedSegments);
@@ -1486,21 +1516,42 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
              VPU::MultiClusterStrategy::SplitOverBatch, VPU::MultiClusterStrategy::SplitOverKernel,
              VPU::MultiClusterStrategy::SplitOverWidth});
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
+    const auto outputShape = outputType.getShape();
     const auto highestDim =
             vpux::getHighestNonTrivialDim(outputType.getShape(), outputType.getDimsOrder()).value_or(Dim(0));
+    const auto numActShaves = IE::getTotalNumOfEngines(clusteredOp, VPU::ExecutorKind::SHAVE_ACT);
+
+    DenseMap<int64_t, SmallVector<VPU::MultiClusterStrategy>> dimToStrategyMap{
+            {Dims4D::Act::N.ind(), {VPU::MultiClusterStrategy::SplitOverBatch}},
+            {Dims4D::Act::H.ind(),
+             {VPU::MultiClusterStrategy::SplitOverHeight, VPU::MultiClusterStrategy::SplitOverHeightOverlapped}},
+            {Dims4D::Act::W.ind(), {VPU::MultiClusterStrategy::SplitOverWidth}},
+            {Dims4D::Act::C.ind(), {VPU::MultiClusterStrategy::SplitOverKernel}},
+    };
+
+    auto updateStrategyOrder = [&](Dim priorityDim) {
+        const auto& strategies = dimToStrategyMap[priorityDim.ind()];
+        for (const auto& strategy : strategies) {
+            strategyOrder.erase(llvm::find(strategyOrder, strategy));
+        }
+        strategyOrder.insert(strategyOrder.begin(), strategies.begin(), strategies.end());
+    };
+
+    // For EltwiseOp, any layout is acceptable. Prioritize the highest dimension for MC and MS tiling
+    const auto isEltwiseSwOp =
+            clusteredOp->hasTrait<VPU::EltwiseOp>() && mlir::isa<VPU::SWOpInterface>(clusteredOp.getOperation());
+    if (isEltwiseSwOp && outputShape[highestDim] >= numActShaves) {
+        updateStrategyOrder(highestDim);
+    }
+
     // For DequantizeOp with layout [OC, IC, KY, KX], SOK segmentation is on OC
     const auto isWeightDequant =
             mlir::isa_and_nonnull<VPU::DequantizeOp>(clusteredOp.getOperation()) && highestDim == Dims4D::Filter::OC;
     if (highestDim == Dims4D::Act::C || isWeightDequant) {
-        strategyOrder =
-                SmallVector({VPU::MultiClusterStrategy::SplitOverKernel, VPU::MultiClusterStrategy::SplitOverHeight,
-                             VPU::MultiClusterStrategy::SplitOverHeightOverlapped,
-                             VPU::MultiClusterStrategy::SplitOverBatch, VPU::MultiClusterStrategy::SplitOverWidth});
+        updateStrategyOrder(Dims4D::Act::C);
     }
 
     auto findDimCanSupportShaveTiling = [&]() -> std::optional<Dim> {
-        const auto isEltwiseSwOp =
-                clusteredOp->hasTrait<VPU::EltwiseOp>() && mlir::isa<VPU::SWOpInterface>(clusteredOp.getOperation());
         if (!isEltwiseSwOp) {
             return std::nullopt;
         }
@@ -1512,9 +1563,7 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
             return std::nullopt;
         }
 
-        const auto numActShaves = IE::getTotalNumOfEngines(clusteredOp, VPU::ExecutorKind::SHAVE_ACT);
-        const auto outShape = outputType.getShape();
-        if (outShape[highestDim] >= numActShaves) {
+        if (outputShape[highestDim] >= numActShaves) {
             return std::nullopt;
         }
         auto allInputsHaveSameShape = llvm::all_of(clusteredOp->getOperands(), [&](auto operand) {
@@ -1527,7 +1576,7 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
 
         auto dimRange = irange(dimOrder.dimPos(highestDim) + 1, dimOrder.numDims());
         auto shaveTilingSupportDim = llvm::find_if(dimRange, [&](size_t dimIdx) {
-            return outShape[dimOrder.dimAt(dimIdx)] >= numActShaves;
+            return outputShape[dimOrder.dimAt(dimIdx)] >= numActShaves;
         });
         if (shaveTilingSupportDim == dimRange.end()) {
             return std::nullopt;
@@ -1541,7 +1590,7 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
             auto tileOp = IE::getTileExecutor(clusteredOp->getParentOfType<mlir::ModuleOp>());
             auto dpuCount = tileOp.getCount();
             auto outType = mlir::cast<vpux::NDTypeInterface>(sigmoidOp.getOutput().getType());
-            Shape tiledOutShape = Shape(outShape);
+            Shape tiledOutShape = Shape(outputShape);
             tiledOutShape[tileDim] = tiledOutShape[tileDim] / dpuCount;
             auto tiledOutType = outType.changeShape(tiledOutShape);
             auto tiledSize = tiledOutType.getTotalAllocSize() / dpuCount;
@@ -1555,23 +1604,7 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
     if (shaveTilingDim.has_value()) {
         // The compiler tend to use strategy which also supports shave tiling, since the gain of multi shaves usually is
         // greater than the loss of stride DMA.
-        DenseMap<int64_t, SmallVector<VPU::MultiClusterStrategy>> dimToStrategy{
-                {Dims4D::Act::N.ind(), {VPU::MultiClusterStrategy::SplitOverBatch}},
-                {Dims4D::Act::H.ind(),
-                 {VPU::MultiClusterStrategy::SplitOverHeight, VPU::MultiClusterStrategy::SplitOverHeightOverlapped}},
-                {Dims4D::Act::W.ind(), {VPU::MultiClusterStrategy::SplitOverWidth}},
-                {Dims4D::Act::C.ind(), {VPU::MultiClusterStrategy::SplitOverKernel}},
-        };
-
-        const auto dim = shaveTilingDim.value();
-        const auto& shaveTilingStrategy = dimToStrategy[dim.ind()];
-        for (auto strategy : shaveTilingStrategy) {
-            strategyOrder.erase(llvm::find(strategyOrder, strategy));
-        }
-        auto insertIter = strategyOrder.begin();
-        for (auto strategy : shaveTilingStrategy) {
-            insertIter = std::next(strategyOrder.insert(insertIter, strategy));
-        }
+        updateStrategyOrder(shaveTilingDim.value());
     }
 
     for (auto strategy : strategyOrder) {
@@ -1597,7 +1630,7 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
         }
         if (strategy == VPU::MultiClusterStrategy::SplitOverWidth) {
             if (mlir::isa<VPU::SoftMaxOp, VPU::DepthToSpaceOp, VPU::PadOp, VPU::MVN1NormalizeOp, VPU::SwishOp,
-                          VPU::SelectOp, VPU::DynamicDequantizeOp>(clusteredOp.getOperation()) &&
+                          VPU::MultiplyOp, VPU::SelectOp, VPU::DynamicDequantizeOp>(clusteredOp.getOperation()) &&
                 clusteredOp.isOperationSplitOverWidthCompatible(/*outputShape=*/ShapeRef(), /*offset=*/ShapeRef(),
                                                                 /*axis=*/ShapeRef())) {
                 return strategy;
@@ -1663,12 +1696,11 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
                                                     VPUNN::VPULayerStrategy vpunnStrategy,
                                                     const std::shared_ptr<VPUNN::VPULayerCostModel>& vpunnCostModel,
                                                     Logger log) {
-    std::vector<VPUNN::DPULayer> vpunnLayers{VPU::getDPULayer(costParams)};
-
-    // E#113592 For not supported SEP layer costs - optimize activation spills
-    if (VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
+    if (!VPU::isArchVPUX3XXX(costParams.arch) && VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
         return SmallVector<uint32_t>(outTiles.size(), 1);
     }
+
+    std::vector<VPUNN::DPULayer> vpunnLayers{VPU::getDPULayer(costParams)};
 
     auto& cache = VPU::OpTilingCache::instance();
     std::optional<llvm::hash_code> opHash = std::nullopt;
@@ -1685,25 +1717,36 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
         auto tilingBuilderOp = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(nceOp.getOperation());
         VPUX_THROW_WHEN(tilingBuilderOp == nullptr, "NCE op {0} at {1} should be a tiling op", nceOp->getName(),
                         nceOp.getLoc());
-        const auto tilingVPUNNLayer = [&](const VPUNN::DPULayer& vpunnLayer) -> std::vector<VPUNN::DPULayer> {
+        const auto tilingVPUNNLayer =
+                [&](const VPUIP::WorkloadCostParams& basicCostParams) -> std::vector<VPUNN::DPULayer> {
             std::vector<VPUNN::DPULayer> vpunnLayers;
             vpunnLayers.reserve(outTiles.size());
             for (auto& outTile : outTiles) {
-                vpunnLayers.push_back(vpunnLayer);
                 auto inTiles = tilingBuilderOp.backInferTileInfo(outTile, log);
                 auto& inputTile = inTiles.tiles.front();
                 auto inPad = inTiles.pads;
-                vpunnLayers.back().inputs = {getVPUTensor(inputTile.shape, costParams.inDataType)};
-                vpunnLayers.back().outputs = {getVPUTensor(outTile.shape, costParams.outDataType)};
+                auto curCostParams = basicCostParams;
+                curCostParams.inputShape = inputTile.shape;
+                curCostParams.outputShape = outTile.shape;
                 if (inPad.has_value()) {
-                    vpunnLayers.back().padding = {
-                            static_cast<unsigned int>(inPad->top), static_cast<unsigned int>(inPad->bottom),
-                            static_cast<unsigned int>(inPad->left), static_cast<unsigned int>(inPad->right)};
+                    curCostParams.padInfo = {
+                            static_cast<unsigned int>(inPad->left), static_cast<unsigned int>(inPad->right),
+                            static_cast<unsigned int>(inPad->top), static_cast<unsigned int>(inPad->bottom)};
                 }
+                if (VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
+                    auto input = nceOp->getOperand(0);
+                    auto inputSparseTensorOp = input.getDefiningOp<VPU::GroupSparseTensorOp>();
+                    auto tilingViewOp = mlir::cast<VPU::TilingViewLikeOpInterface>(inputSparseTensorOp.getOperation());
+                    auto sepInTiles = tilingViewOp.backInferTileInfo(inputTile, log);
+                    auto sepDataTile = sepInTiles.tiles.front();
+                    auto sepTableTile = sepInTiles.tiles.back();
+                    curCostParams.sepInfo = VPUIP::SEPInfo{sepTableTile.shape, sepDataTile.shape};
+                }
+                vpunnLayers.push_back(VPU::getDPULayer(curCostParams));
             }
             return vpunnLayers;
         };
-        vpunnLayers = tilingVPUNNLayer(vpunnLayers[0]);
+        vpunnLayers = tilingVPUNNLayer(costParams);
     }
 
     auto getVPUNNLayerCostFromCache = [&](VPUNN::DPULayer& vpunnLayer) {
@@ -1760,15 +1803,6 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
             cost *= NCEELTWISE_DPU_COST_RATIO;
         }
 
-        if (mlir::isa<VPU::NCEPermuteOp>(nceOp.getOperation()) && ((outTiles[0].axis.size()) > 1)) {
-            // The VPUNN cost of NCEPermuteOp is inaccurate
-            // HW profiling timing does not co-relate to the cycle cost we get from VPUNN
-            // Multiply a ratio to correct the cost for multi-dim tiling
-            // Track [E#10732]
-            log.trace("Using NCEPERMUTE_DPU_COST_RATIO for DPU cost");
-            cost *= NCEPERMUTE_DPU_COST_RATIO;
-        }
-
         auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(nceOp.getOperation());
         const auto arch = VPU::getArch(clusteredOp);
         if (mlir::isa<VPU::NCEDepthConvolutionOp>(nceOp.getOperation())) {
@@ -1783,11 +1817,9 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
                     ((VPU::bitEnumContainsAny(modeOut, VPU::DistributionMode::DUPLICATED) ||
                       VPU::bitEnumContainsAny(modeOut, VPU::DistributionMode::MULTICASTED)))) {
                     VPUX_THROW_WHEN(nTiles <= 0, "nTiles should be positive but got {0}", nTiles);
-                    auto outputChannels = clusteredOp.getOperation()
-                                                  ->getResult(0)
-                                                  .getType()
-                                                  .cast<NDTypeInterface>()
-                                                  .getShape()[Dims4D::Act::C];
+                    auto outputChannels =
+                            mlir::cast<vpux::NDTypeInterface>(clusteredOp.getOperation()->getResult(0).getType())
+                                    .getShape()[Dims4D::Act::C];
                     size_t perTileCh = outputChannels / nTiles;
                     if (perTileCh <= 32) {
                         // The VPUNN cost of NCEDWCONV is inaccurate
@@ -1798,11 +1830,9 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
                     }
                 }
             } else if (mcStrategy == VPU::MultiClusterStrategy::HKSwitch) {
-                auto outputHeight = clusteredOp.getOperation()
-                                            ->getResult(0)
-                                            .getType()
-                                            .cast<NDTypeInterface>()
-                                            .getShape()[Dims4D::Act::H];
+                auto outputHeight =
+                        mlir::cast<vpux::NDTypeInterface>(clusteredOp.getOperation()->getResult(0).getType())
+                                .getShape()[Dims4D::Act::H];
                 size_t perTileH = outputHeight / nTiles;
                 if (perTileH < 6) {
                     // The VPUNN cost of NCEDWCONV is inaccurate
@@ -1814,14 +1844,17 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
             }
         }
 
-        if ((nceOp->getOperand(0).getType().dyn_cast<VPU::SparseTensorType>() ||
-             nceOp->getResult(0).getType().dyn_cast<VPU::SparseTensorType>()) &&
+        if ((mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceOp->getOperand(0).getType()) ||
+             mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceOp->getResult(0).getType())) &&
             (mcStrategy == VPU::MultiClusterStrategy::SplitOverKernel)) {
-            // The VPUNN cost of ACT-SPARSITY is inaccurate
-            // Multiply a ratio to correct the cost
-            // Track [E#117195]
-            log.trace("Using ACTSPARSE_DPU_COST_RATIO for DPU cost");
-            cost *= ACTSPARSE_DPU_COST_RATIO;
+            // op with SEP activation should not use this ratio
+            if (!VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
+                // The VPUNN cost of ACT-SPARSITY is inaccurate
+                // Multiply a ratio to correct the cost
+                // Track [E#117195]
+                log.trace("Using ACTSPARSE_DPU_COST_RATIO for DPU cost");
+                cost *= ACTSPARSE_DPU_COST_RATIO;
+            }
         }
 
         layerDPUCosts.push_back(cost);
@@ -1926,9 +1959,11 @@ SmallVector<uint32_t> vpux::VPU::getPerTileOutputDMACosts(
     return perTileOutputCosts;
 }
 
-uint32_t vpux::VPU::getWeightsDMACostForNCEOp(VPU::NCEOpInterface nceOp, const OutputTiling& outTiles,
-                                              SmallVector<uint32_t>& layerDPUCosts, ArrayRef<uint32_t> layerDMACosts,
-                                              bool enablePrefetchTiling, vpux::Logger log) {
+std::pair<uint32_t, uint32_t> vpux::VPU::getWeightsDMACostForNCEOp(VPU::NCEOpInterface nceOp,
+                                                                   const OutputTiling& outTiles,
+                                                                   SmallVector<uint32_t>& layerDPUCosts,
+                                                                   ArrayRef<uint32_t> layerDMACosts,
+                                                                   bool enablePrefetchTiling, vpux::Logger log) {
     VPUX_THROW_WHEN(layerDPUCosts.empty() || layerDPUCosts.size() != layerDMACosts.size(),
                     "Layer DPU costs must be non-empty and equal to DMA costs in size");
 
@@ -1936,6 +1971,7 @@ uint32_t vpux::VPU::getWeightsDMACostForNCEOp(VPU::NCEOpInterface nceOp, const O
     auto tiles = outTiles.empty() ? OutputTiling({TileInfo(outShape)}) : outTiles;
     auto tilingStrategy = tiles.front().axis;
     const auto isWeightsSharedNestedTiling = isWeightsFirstNestedTiling(nceOp.getOperation(), tilingStrategy);
+    log.trace("Weights DMA Cost found nested tiling: {0}", isWeightsSharedNestedTiling);
     SmallVector<uint32_t> filteredDMACosts;
     SmallVector<uint32_t> filteredDPUCosts;
     if (isWeightsSharedNestedTiling) {
@@ -1955,17 +1991,12 @@ uint32_t vpux::VPU::getWeightsDMACostForNCEOp(VPU::NCEOpInterface nceOp, const O
     bool isWeightsDMASplitOnEachTile = (weightsOperand != nullptr && tilingStrategy[Dims4D::Act::C] > 1);
 
     auto tilingInfoOp = mlir::dyn_cast<VPU::TilingInfoOpInterface>(nceOp.getOperation());
-    // The first weights DMA should not be counted, overlapping with the parent op
-    bool isFirstWeightsDMAOverlappedWithParent =
-            enablePrefetchTiling ? tilingInfoOp != nullptr &&
-                                           tilingInfoOp.isSupportedTiling(tiles, vpux::TilingMode::PREFETCHING, log)
-                                 : false;
     // If the DMA will overlap with DPU from the second tile on
     bool isDMAOverlappedWithDPU =
             enablePrefetchTiling ? tilingInfoOp != nullptr &&
                                            tilingInfoOp.isSupportedTiling(tiles, vpux::TilingMode::PIPELINING, log)
                                  : false;
-
+    log.trace(" weights DMA cost option: isDMAOverlappedWithDPU {1}", isDMAOverlappedWithDPU);
     uint32_t totalDMACost = 0;
 
     if (isDMAOverlappedWithDPU) {
@@ -1981,12 +2012,7 @@ uint32_t vpux::VPU::getWeightsDMACostForNCEOp(VPU::NCEOpInterface nceOp, const O
                                 : filteredDMACosts.front();
     }
 
-    if (isFirstWeightsDMAOverlappedWithParent) {
-        // the first DMA will overlap with previous op's DPU, so exclude it from cost
-        totalDMACost -= filteredDMACosts.front();
-    }
-
-    return totalDMACost;
+    return std::make_pair(totalDMACost, totalDMACost - filteredDMACosts.front());
 }
 
 uint32_t vpux::VPU::getActivationDMACostForNCEOp(VPU::NCEOpInterface nceOp, const OutputTiling& outTiles,
@@ -2077,5 +2103,5 @@ bool vpux::VPU::hasLayerWithMultipleInputs(mlir::Operation* op) {
 }
 
 bool vpux::VPU::isSingleBatchRequired(mlir::Operation* op) {
-    return !mlir::isa<VPU::MVN1NormalizeOp, VPU::MVN1SumOp, VPU::LSTMSequenceOp, VPU::DequantizeOp>(op);
+    return !mlir::isa<VPU::MVN1NormalizeOp, VPU::MVN1SumOp, VPU::LSTMSequenceOp, VPU::DequantizeOp, VPU::ReverseOp>(op);
 }

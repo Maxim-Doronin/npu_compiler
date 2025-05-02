@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPU {
@@ -32,10 +33,11 @@ private:
 };
 
 mlir::LogicalResult ConcatViewRewriter::matchAndRewrite(VPU::ConcatOp origOp, mlir::PatternRewriter& rewriter) const {
-    const auto outputShape = origOp.getOutput().getType().cast<NDTypeInterface>().getShape();
-    if (outputShape.isStatic()) {
+    const auto outputType = origOp.getOutput().getType();
+    if (!mlir::isa<Core::DynamicDimsMaskTensorType>(outputType)) {
         return mlir::failure();
     }
+
     const auto concatInputs = origOp.getInputs();
     if (concatInputs.size() <= 2) {
         return mlir::failure();

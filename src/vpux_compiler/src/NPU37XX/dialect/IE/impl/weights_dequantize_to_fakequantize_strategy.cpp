@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -118,61 +118,16 @@ private:
     Logger _log;
 };
 
-class WeightsDequantizeToFakeQuantizeBlockRewriter final : public mlir::OpRewritePattern<IE::ConvertOp> {
-public:
-    WeightsDequantizeToFakeQuantizeBlockRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::ConvertOp>(ctx), _log(log) {
-        setDebugName("WeightsDequantizeToFakeQuantizeRewriter");
-    }
-
-public:
-    mlir::LogicalResult matchAndRewrite(IE::ConvertOp origOp, mlir::PatternRewriter& rewriter) const final {
-        _log.trace("Got {0} at `{1}`.", origOp->getName(), origOp->getLoc());
-
-        auto maybeWdInfo = IE::WeightsDequantizeStructureInfo::create(origOp, _log.nest());
-        if (mlir::failed(maybeWdInfo)) {
-            _log.trace("Failed to match WeightsDequantize structure");
-            return mlir::failure();
-        }
-        auto wdInfo = maybeWdInfo.value();
-        if (wdInfo.getDynamicScale()) {
-            _log.trace("Can't create FakeQuantize with dynamic scale");
-            return mlir::failure();
-        }
-        if (!wdInfo.getInput()) {
-            _log.trace("Can't create FakeQuantize without a valid input");
-            return mlir::failure();
-        }
-        if (!wdInfo.getScale() && !wdInfo.getShift()) {
-            _log.trace("Can't create FakeQuantize without static scale and shift");
-            return mlir::failure();
-        }
-        return commonMatchAndRewrite(origOp, wdInfo, rewriter);
-    }
-
-private:
-    Logger _log;
-};
-
 }  // namespace
 
 //
 // WeightsDequantizeToFakeQuantizeStrategy
 //
 
-IE::arch37xx::WeightsDequantizeToFakeQuantizeStrategy::WeightsDequantizeToFakeQuantizeStrategy(
-        bool enableWDBlockArgumentInput) noexcept
-        : _enableWDBlockArgumentInput(enableWDBlockArgumentInput) {
-}
-
 void IE::arch37xx::WeightsDequantizeToFakeQuantizeStrategy::addPatterns(mlir::RewritePatternSet& patterns,
                                                                         Logger& log) const {
     auto ctx = patterns.getContext();
 
     IE::ConvertOp::getCanonicalizationPatterns(patterns, ctx);
-
     patterns.add<WeightsDequantizeToFakeQuantizeConstRewriter>(ctx, log);
-    if (_enableWDBlockArgumentInput) {
-        patterns.add<WeightsDequantizeToFakeQuantizeBlockRewriter>(ctx, log);
-    }
 }

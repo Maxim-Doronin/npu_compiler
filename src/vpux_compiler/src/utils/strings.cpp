@@ -17,9 +17,9 @@ std::pair<mlir::SmallVector<std::string>, mlir::DictionaryAttr> getPrimaryLocati
     mlir::SmallVector<std::string> locParts;
     auto metadata = mlir::DictionaryAttr::get(location.getContext());
 
-    if (auto fusedLoc = location.dyn_cast<mlir::FusedLoc>()) {
+    if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(location)) {
         if (auto fusedMeta = fusedLoc.getMetadata()) {
-            auto metaDict = fusedMeta.dyn_cast<mlir::DictionaryAttr>();
+            auto metaDict = mlir::dyn_cast<mlir::DictionaryAttr>(fusedMeta);
             VPUX_THROW_UNLESS(metaDict, "Metadata is not a DictionaryAttribute", fusedMeta);
             if (!metaDict.empty()) {
                 metadata = metaDict;
@@ -29,7 +29,7 @@ std::pair<mlir::SmallVector<std::string>, mlir::DictionaryAttr> getPrimaryLocati
         for (mlir::Location subLoc : fusedLoc.getLocations()) {
             // if fusedLoc has multiple nested FusedLocs -- we only handle the first one
             // and ignore other fused locs
-            if (subLoc.isa<mlir::FusedLoc>()) {
+            if (mlir::isa<mlir::FusedLoc>(subLoc)) {
                 if (seenNestedFusedLoc) {
                     continue;
                 }
@@ -41,9 +41,9 @@ std::pair<mlir::SmallVector<std::string>, mlir::DictionaryAttr> getPrimaryLocati
                 metadata = partsAndMeta.second;
             }
         }
-    } else if (auto nameLoc = location.dyn_cast<mlir::NameLoc>()) {
+    } else if (auto nameLoc = mlir::dyn_cast<mlir::NameLoc>(location)) {
         locParts.push_back(nameLoc.getName().str());
-    } else if (auto callSiteLoc = location.dyn_cast<mlir::CallSiteLoc>()) {
+    } else if (auto callSiteLoc = mlir::dyn_cast<mlir::CallSiteLoc>(location)) {
         // CallSiteLoc consist of Caller location and Callee location. At this moment compile doesn't support recursive
         // and nested calls, so Caller locations is @main func loc with some extra suffix. Caller metadata will be
         // always same and doesn't represent actual layer type, so we will forward metadata from the Callee
@@ -53,7 +53,7 @@ std::pair<mlir::SmallVector<std::string>, mlir::DictionaryAttr> getPrimaryLocati
         locParts = callerParts.first;
         locParts.append(calleeParts.first.begin(), calleeParts.first.end());
         metadata = calleeParts.second;
-    } else if (location.dyn_cast<mlir::UnknownLoc>() || location.dyn_cast<mlir::FileLineColLoc>()) {
+    } else if (mlir::dyn_cast<mlir::UnknownLoc>(location) || mlir::dyn_cast<mlir::FileLineColLoc>(location)) {
         // NOTE: This behavior is here to prevent breaking 100+ lit tests which assume that
         // stringifyPrimaryLocation() for FileLineColLoc and UnknownLoc returns an empty string.
         // TODO: E#93652
@@ -87,7 +87,7 @@ std::string getLayerTypeFromMeta(mlir::DictionaryAttr meta) {
     VPUX_THROW_WHEN(meta.empty(), "Missing location metadata.");
     auto typeAttr = meta.get("type");
     VPUX_THROW_UNLESS(typeAttr, "Location metadata is expected to provide type: {0}", meta);
-    auto stringAttr = typeAttr.dyn_cast<mlir::StringAttr>();
+    auto stringAttr = mlir::dyn_cast<mlir::StringAttr>(typeAttr);
     VPUX_THROW_UNLESS(stringAttr, "type is supposed to be StringAttr: {0}", typeAttr);
     return stringAttr.getValue().str();
 }

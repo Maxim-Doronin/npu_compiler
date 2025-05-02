@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,15 +7,15 @@
 // REQUIRES: arch-NPU37XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-IE.CNNNetwork entryPoint : @maxpool_f16_f16 inputsInfo : {
+net.NetworkInfo entryPoint : @maxpool_f16_f16 inputsInfo : {
   DataInfo "input_0" : tensor<1x64x16x16xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x64x8x8xf16>
 }
 
 func.func @maxpool_f16_f16() {
-  %0 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
-  %1 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
+  %0 = VPUMI37XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
+  %1 = VPUMI37XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
 
   %8 = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>
   %9 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>

@@ -48,7 +48,7 @@ func.func @FoldDequantize() -> tensor<1x320x64x64xf16>  {
 
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-!qElemType = !quant.quantile<i4:f16:f16, {-1.0000,-0.8667,-0.7333,-0.6000,-0.4667,-0.3333,-0.2000,-0.0667,0.0667,0.2000,0.3333,0.4667,0.6000,0.7333,0.8667,1.0000}:0.0045055291231940776>
+!qElemType = !quant.quantile<u4:f16:f16, {-1.0000,-0.8667,-0.7333,-0.6000,-0.4667,-0.3333,-0.2000,-0.0667,0.0667,0.2000,0.3333,0.4667,0.6000,0.7333,0.8667,1.0000}:0.0045055291231940776>
 
 // CHECK-LABEL: @FoldDequantizeNF4()
 func.func @FoldDequantizeNF4() -> tensor<1x320x64x64xf16>  {
@@ -70,7 +70,7 @@ func.func @FoldDequantizeNF4() -> tensor<1x320x64x64xf16>  {
 
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-!qElemType = !quant.quantile<i4:i8:f16:2, {-8.0,-7.0,-6.0,-5.0,-4.0,-3.0,-2.0,-1.0,0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0}:{1.000000e-01:0,2.000000e-01:0,3.000000e-01}>
+!qElemType = !quant.quantile<u4:i8:f16:2, {-8.0,-7.0,-6.0,-5.0,-4.0,-3.0,-2.0,-1.0,0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0}:{1.000000e-01:0,2.000000e-01:0,3.000000e-01}>
 
 // CHECK-LABEL: @FoldDequantizeQuantilePerAxis()
 func.func @FoldDequantizeQuantilePerAxis() -> tensor<1x320x64x64xf16>  {

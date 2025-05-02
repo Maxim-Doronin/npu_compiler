@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // CHECK-LABEL: @Network
 module @Network {
-    IE.CNNNetwork entryPoint : @SingleLayer
+    net.NetworkInfo entryPoint : @SingleLayer
     inputsInfo : {
         DataInfo "input" : tensor<1x1000xf16> loc(fused<{name = "input", type = "Parameter"}>["input"])
     } outputsInfo : {
@@ -50,7 +50,7 @@ func.func @SingleLayer(%arg0: memref<1x1000xf16>) -> memref<1x1000xf16> {
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16> loc(fused<{name = "input", type = "Parameter"}>["input"])
     } outputsInfo : {
@@ -147,7 +147,7 @@ module @TwoFunctions {
 // foo1 has more outputs than main
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16> loc(fused<{name = "input", type = "Parameter"}>["input"])
     } outputsInfo : {
@@ -236,7 +236,7 @@ module @TwoFunctions {
 // Corner case: foo2 is empty
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x8x60x60xf16> loc(fused<{name = "input", type = "Parameter"}>["input"])
     } outputsInfo : {
@@ -311,3 +311,119 @@ module @TwoFunctions {
 // CHECK: [[LOC_FOO1_OUTPUT1]] = loc(fused<{name = "Slice2_out", type = "Slice2"}>[{{[^:]+}}, [[CAST]], [[LOC_FOO1_OUT1_NAME]]])
 
 // CHECK: [[LOC_FOO2_OUTPUT]] = loc(fused[[[LOC_FOO2]], [[LOC_FOO2_OUT_NAME]]])
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+!DistributedBufferInput = !VPUIP.DistributedBuffer<1x3x384x336xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 3, 96, 336], [1, 3, 96, 336], [1, 3, 96, 336], [1, 3, 96, 336]], compute_offsets = [[0, 0, 0, 0], [0, 0, 96, 0], [0, 0, 192, 0], [0, 0, 288, 0]], memory_shapes = [[1, 3, 96, 336], [1, 3, 96, 336], [1, 3, 96, 336], [1, 3, 96, 336]], memory_offsets = [[0, 0, 0, 0], [0, 0, 96, 0], [0, 0, 192, 0], [0, 0, 288, 0]]}>
+!DistributedBufferNCEInput = !VPUIP.DistributedBuffer<1x336x3x384xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 336, 3, 96], [1, 336, 3, 96], [1, 336, 3, 96], [1, 336, 3, 96]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 96], [0, 0, 0, 192], [0, 0, 0, 288]], memory_shapes = [[1, 336, 3, 96], [1, 336, 3, 96], [1, 336, 3, 96], [1, 336, 3, 96]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 96], [0, 0, 0, 192], [0, 0, 0, 288]]}>
+!DistributedBufferFoo1Result = !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 96], [0, 0, 0, 192], [0, 0, 0, 288]], memory_shapes = [[1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 96], [0, 0, 0, 192], [0, 0, 0, 288]]}>
+// CHECK-LABEL: @TwoFunctionsDistributedType
+module @TwoFunctionsDistributedType {
+    net.NetworkInfo entryPoint : @main
+    inputsInfo : {
+        DataInfo "input" : tensor<1x3x384x336xf16> loc(fused<{name = "input", type = "Parameter"}>["input"])
+    } outputsInfo : {
+        DataInfo "output" : tensor<1x16x384x336xf16> loc(fused<{name = "output", type = "Result"}>["output"])
+    }
+
+    // CHECK: DataInfo "input" : tensor<1x3x384x336xf16> loc([[LOC_INPUT:#.+]])
+    // CHECK: DataInfo "output" : tensor<1x16x384x336xf16> loc([[LOC_OUTPUT:#.+]])
+
+    // CHECK:       func.func @foo1({{[^:]+}}: memref<1x3x384x336xf16> loc([[LOC_FOO1_ARG0:.+]]),
+    // CHECK-SAME:                 [[FOO1_ARG1:%.+]]: !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN,
+    // CHECK-SAME:                                 {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments
+    // CHECK-SAME:                                 }> loc([[LOC_FOO1_ARG1:.+]]))
+    // CHECK-SAME:      -> !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN
+    func.func @foo1(%arg0: memref<1x3x384x336xf16>) -> (!DistributedBufferFoo1Result) {
+        %0 = VPURT.AllocDistributed -> !DistributedBufferInput
+        %1 = VPUIP.Copy inputs(%arg0 : memref<1x3x384x336xf16>) outputs(%0 : !DistributedBufferInput) -> !DistributedBufferInput
+        %2 = VPUIP.ViewOp %1 : !DistributedBufferInput to !DistributedBufferNCEInput
+        %3 = VPURT.AllocDistributed -> !DistributedBufferFoo1Result
+        %4 = VPUIP.NCEClusterTask {is_permute_quantize, minimumHardwareExecutionCost = 9753 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+                input(%2 : !DistributedBufferNCEInput)
+                weights(%2 : !DistributedBufferNCEInput)
+                parent_input(%2 : !DistributedBufferNCEInput)
+                parent_output(%3 : !DistributedBufferFoo1Result)
+                outputs(%3 : !DistributedBufferFoo1Result) -> !DistributedBufferFoo1Result variants : {
+                    DPUTask {cluster_id = 0 : i64, inEnd = [95, 2, 335], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [95, 2, 335], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+                    DPUTask {cluster_id = 1 : i64, inEnd = [95, 2, 335], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [95, 2, 335], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+                    DPUTask {cluster_id = 2 : i64, inEnd = [95, 2, 335], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [95, 2, 335], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+                    DPUTask {cluster_id = 3 : i64, inEnd = [95, 2, 335], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [95, 2, 335], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+                    } PPE : {
+                    PPETask {ppe = #VPU.PPEInt<mode = <ADD>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [5.000000e-01], fp_prelu_alpha = 1.000000e+00 : f64>}
+        }
+        return %4 : !DistributedBufferFoo1Result
+        // CHECK: [[FOO1_NCE_OUTPUT:%.+]] = VPUIP.NCEClusterTask
+        // CHECK:   } loc([[LOC_FOO1_NCE_OUTPUT:#.+]])
+
+        // CHECK: [[FOO1_OUT:%.+]] = VPUIP.Copy inputs([[FOO1_NCE_OUTPUT]] : !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments
+        // CHECK-SAME: outputs([[FOO1_ARG1]] : !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments
+        // CHECK-SAME: -> !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments
+        // CHECK-SAME:   loc([[LOC_FOO1_OUTPUT:#.+]])
+
+        // CHECK: return [[FOO1_OUT]] :
+        // CHECK-SAME: !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments
+    }
+
+    // CHECK: func.func @foo2({{[^:]+}}: !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN,
+    // CHECK-SAME:                            {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments
+    // CHECK-SAME:                            }> loc([[LOC_FOO2_ARG0:.+]]),
+    // CHECK-SAME:            [[FOO2_ARG1:%.+]]: memref<1x16x384x336xf16, #NHWC> loc([[LOC_FOO2_ARG1:.+]]))
+    // CHECK-SAME:     -> memref<1x16x384x336xf16, #NHWC>
+    func.func @foo2(%arg0: !DistributedBufferFoo1Result) -> memref<1x16x384x336xf16, #NHWC> {
+        %0 = VPUIP.ViewOp %arg0 : !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 96], [0, 0, 0, 192], [0, 0, 0, 288]], memory_shapes = [[1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96], [1, 336, 16, 96]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 96], [0, 0, 0, 192], [0, 0, 0, 288]]}> to !VPUIP.DistributedBuffer<1x16x384x336xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336]], compute_offsets = [[0, 0, 0, 0], [0, 0, 96, 0], [0, 0, 192, 0], [0, 0, 288, 0]], memory_shapes = [[1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336]], memory_offsets = [[0, 0, 0, 0], [0, 0, 96, 0], [0, 0, 192, 0], [0, 0, 288, 0]]}>
+        %alloc = memref.alloc() : memref<1x16x384x336xf16, #NHWC>
+        %1 = VPUIP.Copy inputs(%0 : !VPUIP.DistributedBuffer<1x16x384x336xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336]], compute_offsets = [[0, 0, 0, 0], [0, 0, 96, 0], [0, 0, 192, 0], [0, 0, 288, 0]], memory_shapes = [[1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336], [1, 16, 96, 336]], memory_offsets = [[0, 0, 0, 0], [0, 0, 96, 0], [0, 0, 192, 0], [0, 0, 288, 0]]}>)
+                         outputs(%alloc : memref<1x16x384x336xf16, #NHWC>) -> memref<1x16x384x336xf16, #NHWC>
+        return %1 : memref<1x16x384x336xf16, #NHWC>
+
+        // CHECK: [[ALLOC:%.+]] = memref.alloc() : memref<1x16x384x336xf16, #NHWC>
+        // CHECK: [[FOO2_COPY_OUTPUT:%.+]] = VPUIP.Copy
+        // CHECK-SAME: inputs({{[^:]+}} : !VPUIP.DistributedBuffer<1x16x384x336xf16, #NHWC, @CMX_NN
+        // CHECK-SAME: outputs([[ALLOC]] : memref<1x16x384x336xf16, #NHWC>)
+        // CHECK-SAME: loc([[LOC_FOO2_COPY_OUTPUT:#.+]])
+
+        // CHECK: [[FOO2_OUT:%.+]] = VPUIP.Copy
+        // CHECK-SAME: inputs([[FOO2_COPY_OUTPUT]] : memref<1x16x384x336xf16, #NHWC>)
+        // CHECK-SAME: outputs([[FOO2_ARG1]] : memref<1x16x384x336xf16, #NHWC>)
+        // CHECK-SAME: -> memref<1x16x384x336xf16, #NHWC>
+        // CHECK: loc([[LOC_FOO2_OUTPUT:#.+]])
+
+        // CHECK: return [[FOO2_OUT]] : memref<1x16x384x336xf16, #NHWC>
+    }
+
+    // CHECK:       func.func @main([[ARG0:%.+]]: memref<1x3x384x336xf16> loc([[LOC_MAIN_ARG1:.+]]), [[ARG1:%.+]]: memref<1x16x384x336xf16, #NHWC> loc([[LOC_MAIN_ARG2:.+]]))
+    // CHECK-SAME:      -> memref<1x16x384x336xf16, #NHWC> {
+    func.func @main(%arg0: memref<1x3x384x336xf16>) -> (memref<1x16x384x336xf16, #NHWC>) {
+        %0 = call @foo1(%arg0) : (memref<1x3x384x336xf16>) -> (!DistributedBufferFoo1Result)
+        %1 = call @foo2(%0) : (!DistributedBufferFoo1Result) -> memref<1x16x384x336xf16, #NHWC>
+        return %1 : memref<1x16x384x336xf16, #NHWC>
+        // CHECK: [[ALLOC0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN,
+        // CHECK-SAME:             {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 4], num_clusters = 4 : i64, uniform_distributed_segments
+        // CHECK: [[FOO1_RES:%.+]] = call @foo1([[ARG0]], [[ALLOC0]]) :
+        // CHECK-SAME:                    (memref<1x3x384x336xf16>, !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN
+        // CHECK-SAME:                    -> !VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN
+
+        // CHECK: [[ALLOC1:%.+]] = memref.alloc() : memref<1x16x384x336xf16, #NHWC>
+        // CHECK: [[FOO2_RES:%.+]] = call @foo2([[FOO1_RES]], [[ALLOC1]]) :
+        // CHECK-SAME:                    (!VPUIP.DistributedBuffer<1x336x16x384xf16, #NWCH, @CMX_NN
+        // CHECK-SAME:                     memref<1x16x384x336xf16, #NHWC>) -> memref<1x16x384x336xf16, #NHWC>
+        // CHECK: [[OUT:%.+]] = VPUIP.Copy inputs([[FOO2_RES]] : memref<1x16x384x336xf16, #NHWC>) outputs([[ARG1]] : memref<1x16x384x336xf16, #NHWC>) -> memref<1x16x384x336xf16, #NHWC> loc([[LOC_OUTPUT]])
+        // CHECK: return [[OUT]] : memref<1x16x384x336xf16, #NHWC>
+    }
+}
+
+// CHECK: [[LOC_INPUT_NAME:#.+]] = loc("input")
+// CHECK: [[LOC_OUTPUT_NAME:#.+]] = loc("output")
+
+// CHECK: [[LOC_FOO1_OUT_NAME:#.+]] = loc("foo1_outputBuff0")
+// CHECK: [[LOC_FOO2_OUT_NAME:#.+]] = loc("foo2_outputBuff0")
+
+// CHECK: [[LOC_INPUT]] = loc(fused<{name = "input", type = "Parameter"}>[[[LOC_INPUT_NAME]]]
+// CHECK: [[LOC_OUTPUT]] = loc(fused<{name = "output", type = "Result"}>[[[LOC_OUTPUT_NAME]]])
+
+// CHECK: [[LOC_FOO1_OUTPUT]] = loc(fused[{{[^:]+}}, [[LOC_FOO1_OUT_NAME]]])
+// CHECK: [[LOC_FOO2_OUTPUT]] = loc(fused[{{[^:]+}}, [[LOC_FOO2_OUT_NAME]]])

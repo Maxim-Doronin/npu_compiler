@@ -1,9 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -17,8 +19,8 @@ mlir::LogicalResult vpux::IE::ConvertLikeOp::inferReturnTypeComponents(
     if (mlir::failed(cvt.verify(loc))) {
         return mlir::failure();
     }
-    const auto data = cvt.getInput().getType().cast<mlir::ShapedType>();
-    const auto like = cvt.getLike().getType().cast<mlir::ShapedType>();
+    const auto data = mlir::cast<mlir::ShapedType>(cvt.getInput().getType());
+    const auto like = mlir::cast<mlir::ShapedType>(cvt.getLike().getType());
 
     inferredReturnShapes.emplace_back(data.getShape(), like.getElementType());
     return mlir::success();
@@ -38,7 +40,7 @@ public:
 
 mlir::LogicalResult ConvertConvertLikeToConvert::matchAndRewrite(IE::ConvertLikeOp convertLikeOp,
                                                                  mlir::PatternRewriter& rewriter) const {
-    const auto outputType = convertLikeOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(convertLikeOp.getOutput().getType()).getElementType();
 
     rewriter.replaceOpWithNewOp<IE::ConvertOp>(convertLikeOp, convertLikeOp.getInput(), outputType);
 

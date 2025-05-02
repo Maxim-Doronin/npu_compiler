@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="extraction-mode=gen-all" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-all" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 // CHECK-LABEL: @CommonSubexpressionElimination
@@ -17,7 +17,7 @@
 #-}
 
 module @CommonSubexpressionElimination {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<4x4xf32>
         DataInfo "output2" : tensor<4x4xf32>
@@ -39,7 +39,7 @@ module @CommonSubexpressionElimination {
         return %cst_t1, %cst_t2, %cst_t2_t3_t4, %cst_t2_t3_t5, %cst_t2_t3_t5_copy, %cst_empty_1, %cst_empty_2 : tensor<4x4xf32>, tensor<4x4xf32>, tensor<8x4xf32>, tensor<8x4xf16>, tensor<8x4xf16>, tensor<4x4xf32>, tensor<4x4xf32>
     }
 
-    // CHECK:       IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK:       net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:       } outputsInfo : {
     // CHECK:           DataInfo "output1" : tensor<4x4xf32>
 
@@ -82,7 +82,7 @@ module @CommonSubexpressionElimination {
 #-}
 
 module @SubViewOutside {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xf32>
     }
@@ -92,7 +92,7 @@ module @SubViewOutside {
         return %cst_t1 : tensor<2x2xf32>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output1" : tensor<2x2xf32>
 
@@ -126,13 +126,13 @@ module @SubViewOutside {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @SubViewOutsideAdvanced
 module @SubViewOutsideAdvanced {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "Parameter_58" : tensor<1x192x100x100xf16>
     } outputsInfo : {
         DataInfo "Convolution_63" friendlyName = "Result_64" : tensor<48x16x1x1xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "Parameter_58" : tensor<1x192x100x100xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "Convolution_63" friendlyName = "Result_64" : tensor<48x16x1x1xf16>
@@ -191,12 +191,12 @@ module @SubViewOutsideAdvanced {
 
 // CHECK: module @QuantizedToQuantizedConversion
 module @QuantizedToQuantizedConversion {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output_0" : tensor<16x3x3x3xui8>
     }
 
-    // CHECK:    IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK:    net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:    } outputsInfo : {
     // CHECK:        DataInfo "output_0" : tensor<16x3x3x3xui8>
 
@@ -278,14 +278,14 @@ module @QuantizedToQuantizedConversion {
 
 // CHECK: module @QuantizedToQuantizedConversion_PerAxis
 module @QuantizedToQuantizedConversion_PerAxis {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output_0" : tensor<16x1x3x3xui8, {order = #NHWC}>
         DataInfo "output_1" : tensor<16x2x3x3xui8, {order = #NHWC}>
         DataInfo "output_2" : tensor<10x20x1x1xui8>
     }
 
-    // CHECK:    IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK:    net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:    } outputsInfo : {
     // CHECK:        DataInfo "output_0" : tensor<16x1x3x3xui8, {order = #NHWC}>
     // CHECK:        DataInfo "output_1" : tensor<16x2x3x3xui8, {order = #NHWC}>
@@ -388,7 +388,7 @@ module @QuantizedToQuantizedConversion_PerAxis {
 
 // CHECK-LABEL: @Convolution
 module @Convolution {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
         DataInfo "output_0" : tensor<1x16x60x60xf16>
@@ -396,7 +396,7 @@ module @Convolution {
         DataInfo "output_2" : tensor<1x2x1x1xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "input" : tensor<1x3x62x62xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output_0" : tensor<1x16x60x60xf16>
@@ -413,7 +413,7 @@ module @Convolution {
         %2 = VPU.Slice %1 [0, 0, 0, 0] [1, 16, 62, 62] : tensor<1x16x62x64xf16, {order = #NHWC}> to tensor<1x16x62x62xf16, {order = #NHWC}>
         %3 = VPU.NCE.Convolution(%2, %cst_0, %cst) {
               pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, rawFilterShape = [16, 16, 3, 3], strides = [1, 1], ppe = #VPU.PPEStub<>}
-                  -> tensor<1x16x60x60xf16>
+                  : tensor<1x16x62x62xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x60x60xf16>
 
         %cst_1 = const.Declare tensor<2x1x1x1xf16, {order = #NHWC}> = dense_resource<ov_1> : tensor<1x2x1x1xf16>, [#const.Reshape<[2, 1, 1, 1]>, #const.Reorder<#NHWC>]
         %cst_2 = const.Declare tensor<1x2x1x1xf16> = dense_resource<ov_1> : tensor<1x2x1x1xf16>, [#const.Add<1.0>]
@@ -464,13 +464,13 @@ module @Convolution {
 
 // CHECK-LABEL: @QuantizeAttr
 module @QuantizeAttr {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<2x2xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<2x2xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "input" : tensor<2x2xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
@@ -511,13 +511,13 @@ module @QuantizeAttr {
 
 // CHECK-LABEL: @UniqueArgumentChains
 module @UniqueArgumentChains {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<2x2xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<2x2xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "input" : tensor<2x2xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
@@ -557,13 +557,13 @@ module @UniqueArgumentChains {
 
 // CHECK-LABEL: @OutlinedConstants
 module @OutlinedConstants {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<2x2xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<2x2xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "input" : tensor<2x2xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
@@ -685,13 +685,13 @@ module @OutlinedConstants {
 
 // CHECK-LABEL: @OutlinedConstants_MultiCall
 module @OutlinedConstants_MultiCall {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<2x2xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<2x2xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "input" : tensor<2x2xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
@@ -772,13 +772,13 @@ module @OutlinedConstants_MultiCall {
 
 // CHECK: @OutlinedConstants_Quantized
 module @OutlinedConstants_Quantized {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<2x2xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<2x2xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "input" : tensor<2x2xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
@@ -847,13 +847,13 @@ module @OutlinedConstants_Quantized {
 
 // CHECK-LABEL: @OutlinedConstants_PostInitTransformations
 module @OutlinedConstants_PostInitTransformations {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<2x2xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<2x2xf16>
     }
 
-    // CHECK: IE.CNNNetwork entryPoint : @wrapper_main inputsInfo : {
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
     // CHECK:     DataInfo "input" : tensor<2x2xf16>
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>

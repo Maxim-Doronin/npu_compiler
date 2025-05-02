@@ -10,7 +10,7 @@
 // CHECK-LABEL: @SimpleGraph
 module @SimpleGraph {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x4x4xf16>
@@ -127,7 +127,7 @@ IE.TileResource 1 of @NCE at 1.300000e+03 MHz {
     }
 }
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x4x4xf16>
@@ -237,7 +237,7 @@ func.func @main(%in: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>, %out: memref<1x1
 // CHECK-LABEL: @TwoOutputs
 module @TwoOutputs {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x4x4xf16>
@@ -324,7 +324,7 @@ func.func @main(%arg0: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<
 // CHECK-LABEL: @DeclareBuffersInMiddle
 module @DeclareBuffersInMiddle {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         DataInfo "data" : tensor<1x16x4x4xf16>

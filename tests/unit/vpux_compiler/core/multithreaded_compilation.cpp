@@ -1,14 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <common_test_utils/test_common.hpp>
-#include "intel_npu/config/common.hpp"
-#include "intel_npu/config/compiler.hpp"
+#include "intel_npu/config/options.hpp"
 #include "vpux/compiler/compiler.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/range.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include "llvm/Support/SHA256.h"
 
@@ -214,8 +213,30 @@ protected:
         _numThreads = std::get<1>(GetParam());
         _numIterations = std::get<2>(GetParam());
 
-        registerCommonOptions(*_options);
-        registerCompilerOptions(*_options);
+        _options->add<intel_npu::PERFORMANCE_HINT>();
+        _options->add<intel_npu::PERFORMANCE_HINT_NUM_REQUESTS>();
+        _options->add<intel_npu::INFERENCE_PRECISION_HINT>();
+        _options->add<intel_npu::PERF_COUNT>();
+        _options->add<intel_npu::LOG_LEVEL>();
+        _options->add<intel_npu::PLATFORM>();
+        _options->add<intel_npu::DEVICE_ID>();
+        _options->add<intel_npu::CACHE_DIR>();
+        _options->add<intel_npu::LOADED_FROM_CACHE>();
+        _options->add<intel_npu::BATCH_MODE>();
+        _options->add<intel_npu::COMPILER_TYPE>();
+        _options->add<intel_npu::COMPILATION_MODE>();
+        _options->add<intel_npu::COMPILATION_MODE_PARAMS>();
+        _options->add<intel_npu::BACKEND_COMPILATION_PARAMS>();
+        _options->add<intel_npu::COMPILATION_NUM_THREADS>();
+        _options->add<intel_npu::DPU_GROUPS>();
+        _options->add<intel_npu::TILES>();
+        _options->add<intel_npu::STEPPING>();
+        _options->add<intel_npu::MAX_TILES>();
+        _options->add<intel_npu::DMA_ENGINES>();
+        _options->add<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
+        _options->add<intel_npu::EXECUTION_MODE_HINT>();
+        _options->add<intel_npu::COMPILER_DYNAMIC_QUANTIZATION>();
+        _options->add<intel_npu::QDQ_OPTIMIZATION>();
 
         _compiler = std::make_shared<CompilerImpl>();
     }
@@ -348,8 +369,30 @@ protected:
 
         validateAndExpandModelPaths(_modelPaths);
 
-        registerCommonOptions(*_options);
-        registerCompilerOptions(*_options);
+        _options->add<intel_npu::PERFORMANCE_HINT>();
+        _options->add<intel_npu::PERFORMANCE_HINT_NUM_REQUESTS>();
+        _options->add<intel_npu::INFERENCE_PRECISION_HINT>();
+        _options->add<intel_npu::PERF_COUNT>();
+        _options->add<intel_npu::LOG_LEVEL>();
+        _options->add<intel_npu::PLATFORM>();
+        _options->add<intel_npu::DEVICE_ID>();
+        _options->add<intel_npu::CACHE_DIR>();
+        _options->add<intel_npu::LOADED_FROM_CACHE>();
+        _options->add<intel_npu::BATCH_MODE>();
+        _options->add<intel_npu::COMPILER_TYPE>();
+        _options->add<intel_npu::COMPILATION_MODE>();
+        _options->add<intel_npu::COMPILATION_MODE_PARAMS>();
+        _options->add<intel_npu::BACKEND_COMPILATION_PARAMS>();
+        _options->add<intel_npu::COMPILATION_NUM_THREADS>();
+        _options->add<intel_npu::DPU_GROUPS>();
+        _options->add<intel_npu::TILES>();
+        _options->add<intel_npu::STEPPING>();
+        _options->add<intel_npu::MAX_TILES>();
+        _options->add<intel_npu::DMA_ENGINES>();
+        _options->add<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
+        _options->add<intel_npu::EXECUTION_MODE_HINT>();
+        _options->add<intel_npu::COMPILER_DYNAMIC_QUANTIZATION>();
+        _options->add<intel_npu::QDQ_OPTIMIZATION>();
 
         _compiler = std::make_shared<CompilerImpl>();
     }

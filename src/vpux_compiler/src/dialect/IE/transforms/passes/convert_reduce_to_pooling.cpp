@@ -1,16 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/handle_kernels_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -461,8 +463,8 @@ void ConvertReduceToPoolingPass::safeRunOnFunc() {
             }
         }
 
-        const auto inputElementType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-        const auto outputElementType = op->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto inputElementType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+        const auto outputElementType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
         const auto isDataTypeDpuCompatible = inputElementType.isF16() && outputElementType.isF16();
 
         const auto maxKernelSize = VPU::getMaxKernelSize(op);
@@ -473,7 +475,7 @@ void ConvertReduceToPoolingPass::safeRunOnFunc() {
                                    : vpux::IE::isPoolingKernelSizeValid(mergedDim, maxKernelSize);
         const auto dpuCompatible = isKernelSizeDpuCompatible && isDataTypeDpuCompatible;
 
-        const bool isHWCompilationMode = VPU::getCompilationMode(op) == VPU::CompilationMode::DefaultHW;
+        const bool isHWCompilationMode = VPU::getCompilationMode(op) != VPU::CompilationMode::ReferenceSW;
 
         // Apply the conversion only if the resulting Pooling operation can run on DPU
         return !(dpuCompatible && isHWCompilationMode);

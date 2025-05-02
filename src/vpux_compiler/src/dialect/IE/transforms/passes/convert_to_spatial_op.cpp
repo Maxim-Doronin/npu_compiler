@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -168,7 +170,8 @@ mlir::LogicalResult TransposeInterpolation::matchAndRewrite(IE::InterpolateOp or
     auto newInterpolate = rewriter.create<IE::InterpolateOp>(
             origOp->getLoc(), inTranspose, origOp.getSizes(), origOp.getScales(), origOp.getAxes(), newSizesAttr,
             newScalesAttr, newAxesAttr, origOp.getTileOffsetAttrAttr(), origOp.getInitialInputDimsAttrAttr(),
-            origOp.getInitialOutputDimsAttrAttr(), origOp.getAttr(), origOp.getOutputChannelsAttr());
+            origOp.getInitialOutputDimsAttrAttr(), origOp.getAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
 
     // Create output Transpose
     auto outTransposeOutput = createOutTranspose(inOrderMap, newInterpolate.getOutput(),
@@ -208,7 +211,7 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
         return mlir::failure();
     }
 
-    const auto inputType = origOp.getData().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getData().getType());
     if (inputType.getRank() != 4) {
         _log.trace("only 4D input supported");
         return mlir::failure();
@@ -258,10 +261,12 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
     const auto newAxes = axes.size() == 1 ? SmallVector<int32_t>{Dims4D::Act::H.ind()}
                                           : SmallVector<int32_t>{Dims4D::Act::H.ind(), Dims4D::Act::W.ind()};
     const auto newAxesElems = checked_cast<int64_t>(axes.size());
-    const auto axesDimOrder = origOp.getAxes().getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto axesDimOrder = mlir::cast<vpux::NDTypeInterface>(origOp.getAxes().getType()).getDimsOrder();
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(origOp.getAxes().getType()),
+                      "{0} doesn't support dynamic shapes", IE::RollOp::getOperationName());
     const auto newAxesType =
             mlir::RankedTensorType::get(ArrayRef(newAxesElems), origOp.getAxes().getType().getElementType(),
-                                        getTensorAttr(rewriter.getContext(), axesDimOrder, nullptr, nullptr));
+                                        getTensorAttr(rewriter.getContext(), axesDimOrder, nullptr));
     const auto newAxesValue = Const::createConst(rewriter, origOp.getAxes().getLoc(), newAxesType, ArrayRef(newAxes));
 
     auto newRollOp = rewriter.create<IE::RollOp>(origOp.getLoc(), newRollInput.getType(), newRollInput,

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/types.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include "vpux/utils/core/error.hpp"
 
@@ -42,7 +43,7 @@ int64_t vpux::details::calcTotalShapeSize(ArrayRef<int64_t> shape) {
 //
 
 ShapeRef vpux::getShape(mlir::Value val) {
-    auto type = val.getType().dyn_cast<vpux::NDTypeInterface>();
+    auto type = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType());
     VPUX_THROW_UNLESS(type != nullptr, "Value '{0}' has non vpux::NDTypeInterface '{1}'", val, val.getType());
     return type.getShape();
 }
@@ -52,7 +53,7 @@ ShapeRef vpux::getShape(mlir::Value val) {
 //
 
 MemShape vpux::getMemShape(mlir::Value val) {
-    auto type = val.getType().dyn_cast<vpux::NDTypeInterface>();
+    auto type = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType());
     VPUX_THROW_UNLESS(type != nullptr, "Value '{0}' has non vpux::NDTypeInterface '{1}'", val, val.getType());
     return type.getMemShape();
 }

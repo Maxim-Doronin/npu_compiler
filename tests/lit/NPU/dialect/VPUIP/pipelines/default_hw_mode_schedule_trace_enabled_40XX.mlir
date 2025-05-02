@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -31,7 +31,7 @@ module @Gather attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMo
         }
     }
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x1xsi32>
     } outputsInfo : {
         DataInfo "gather" : tensor<1x1x4096xf16>

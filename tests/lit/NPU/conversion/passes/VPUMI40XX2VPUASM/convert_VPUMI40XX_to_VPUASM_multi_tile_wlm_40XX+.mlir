@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -29,7 +29,7 @@ module @"resnet-320-pytorch" {
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork {inferenceTiming = 18466 : i64} entryPoint : @main inputsInfo : {
+  net.NetworkInfo {inferenceTiming = 18466 : i64} entryPoint : @main inputsInfo : {
     DataInfo "result.1" tensorNames = ["result.1"] : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "prob" friendlyName = "495/sink_port_0" tensorNames = ["prob"] : tensor<1x16x14x14xf16>
@@ -37,26 +37,26 @@ module @"resnet-320-pytorch" {
   func.func @main() {
     %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, @DDR>
     %1 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x14x14xf16, @DDR>
-    %31 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:29>
-    %32 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:30>
-    %33 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:31>
-    %127 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:61>
-    %128 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:62>
-    %129 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:63>
-    %224 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:30>
-    %225 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:31>
-    %288 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:30>
-    %289 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:31>
-    %351 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<1:0:29>
-    %352 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<1:0:30>
-    %353 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<1:0:31>
-    %447 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<1:0:61>
-    %448 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<1:0:62>
-    %449 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<1:0:63>
-    %544 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<1:0:30>
-    %545 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<1:0:31>
-    %608 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<1:0:30>
-    %609 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<1:0:31>
+    %31 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:29>
+    %32 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:30>
+    %33 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:31>
+    %127 = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:61>
+    %128 = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:62>
+    %129 = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:63>
+    %224 = VPUMI40XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:30>
+    %225 = VPUMI40XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:31>
+    %288 = VPUMI40XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:30>
+    %289 = VPUMI40XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:31>
+    %351 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<1:0:29>
+    %352 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<1:0:30>
+    %353 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<1:0:31>
+    %447 = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<1:0:61>
+    %448 = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<1:0:62>
+    %449 = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<1:0:63>
+    %544 = VPUMI40XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<1:0:30>
+    %545 = VPUMI40XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<1:0:31>
+    %608 = VPUMI40XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<1:0:30>
+    %609 = VPUMI40XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<1:0:31>
     %cst = const.Declare memref<1x1x1x2432xf16> = dense<1.0> : tensor<1x1x1x2432xf16>
     %642 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x16x8x16xf16, {order = #NCHW, strides = [4096, 256, 16, 1]}, @DDR>
     %643 = VPURT.DeclareBuffer <NetworkInput> [0] <256> -> memref<1x16x8x16xf16, {order = #NCHW, strides = [4096, 256, 16, 1]}, @DDR>

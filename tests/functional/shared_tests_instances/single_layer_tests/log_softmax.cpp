@@ -3,7 +3,6 @@
 //
 
 #include "single_op_tests/log_softmax.hpp"
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;

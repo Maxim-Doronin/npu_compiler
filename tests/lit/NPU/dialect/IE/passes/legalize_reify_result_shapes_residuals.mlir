@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,16 +8,16 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @LegalizeTensorDim
-// CHECK-SAME:  [[IN:%.+]]: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+// CHECK-SAME:  [[IN:%.+]]: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 func.func @LegalizeTensorDim(
-    %arg0: tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    %arg0: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 ) -> tensor<1xsi64> {
     %0 = IE.ReLU(%arg0) :
-        tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+        tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
 
     %c3 = arith.constant 3 : index
-    %dim = tensor.dim %0, %c3 : tensor<1x3x16x?xf32, {bounds = [1, 3, 16, 32], order = #NCHW}>
+    %dim = tensor.dim %0, %c3 : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
     %1 = arith.index_cast %dim : index to i64
     %from_elements = tensor.from_elements %1 : tensor<1xi64>
     %2 = tensor.bitcast %from_elements : tensor<1xi64> to tensor<1xsi64>
@@ -44,14 +44,14 @@ func.func @LegalizeTensorDim(
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @LegalizeTensorDimAndDivSI
-// CHECK-SAME:  [[IN:%.+]]: tensor<1x16x32x?xf16, {bounds = [1, 16, 32, 64], order = #NCHW}>
+// CHECK-SAME:  [[IN:%.+]]: tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
 func.func @LegalizeTensorDimAndDivSI(
-    %arg0: tensor<1x16x32x?xf16, {bounds = [1, 16, 32, 64], order = #NCHW}>
+    %arg0: tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
 ) -> tensor<1xsi64> {
     %c2 = arith.constant 2 : index
     %c3 = arith.constant 3 : index
-    %0 = IE.MaxPool(%arg0) {kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x16x32x?xf16, {bounds = [1, 16, 32, 64], order = #NCHW}> -> tensor<1x16x16x?xf16, {bounds = [1, 16, 16, 64], order = #NCHW}>
-    %dim = tensor.dim %0, %c3 : tensor<1x16x16x?xf16, {bounds = [1, 16, 16, 64], order = #NCHW}>
+    %0 = IE.MaxPool(%arg0) {kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x16x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 16, 64]> : tensor<4xsi64>, order = #NCHW}>
+    %dim = tensor.dim %0, %c3 : tensor<1x16x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 16, 64]> : tensor<4xsi64>, order = #NCHW}>
     %1 = arith.divsi %dim, %c2 : index
     %2 = arith.index_cast %1 : index to i64
     %from_elements = tensor.from_elements %2 : tensor<1xi64>

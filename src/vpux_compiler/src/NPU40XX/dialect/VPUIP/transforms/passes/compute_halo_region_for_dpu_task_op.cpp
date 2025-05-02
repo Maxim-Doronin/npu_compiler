@@ -6,6 +6,7 @@
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -62,8 +63,9 @@ DenseMap<mlir::Attribute, NCEClusterTaskOp> getTargetNCEOpForEachOutwardHalo(VPU
             // halo region will all be the same for all the consumer clusters of the halo.
             // As such, we need to only find one of the ITI Buffs and NCE ops to compute the halo
             // region params.
-            const auto firstInwardHalo = outwardHalo.getInwardHaloRegions().begin()->cast<VPUIP::HaloRegionAttr>();
-            auto itiType = itiOutput.getType().cast<VPUIP::ITIBufferType>();
+            const auto firstInwardHalo =
+                    mlir::cast<vpux::VPUIP::HaloRegionAttr>(*outwardHalo.getInwardHaloRegions().begin());
+            auto itiType = mlir::cast<vpux::VPUIP::ITIBufferType>(itiOutput.getType());
             auto inwardHaloRegions = itiType.getInwardHaloRegions();
             return llvm::find(inwardHaloRegions, firstInwardHalo) != inwardHaloRegions.end();
         });
@@ -75,7 +77,7 @@ DenseMap<mlir::Attribute, NCEClusterTaskOp> getTargetNCEOpForEachOutwardHalo(VPU
         VPUX_THROW_UNLESS(neighbourItiOp != nullptr,
                           "Could not find NCEClusterTaskOp producer for output_ITI buff: {0}", *outputIti);
 
-        outwardHaloDstNCEOpMap.insert(std::make_pair(outwardHalo.cast<mlir::Attribute>(), neighbourItiOp));
+        outwardHaloDstNCEOpMap.insert(std::make_pair(mlir::cast<mlir::Attribute>(outwardHalo), neighbourItiOp));
     }
 
     return outwardHaloDstNCEOpMap;
@@ -90,10 +92,10 @@ void computeHaloRegion(NCEClusterTaskOp nceOp, DPUTaskOp dpuTaskOp,
     mlir::OpBuilder builder(dpuTaskOp);
     auto ctx = builder.getContext();
     auto outputBuffer = nceOp.getOutputBuff().getDefiningOp<VPURT::DeclareBufferOp>();
-    auto outputType = nceOp.getOutput().getType().dyn_cast<VPUIP::ITIBufferType>();
+    auto outputType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(nceOp.getOutput().getType());
 
-    auto srcLayout = nceOp.getInput().getType().cast<vpux::NDTypeInterface>().getDimsOrder();
-    auto dstLayout = nceOp.getOutput().getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    auto srcLayout = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType()).getDimsOrder();
+    auto dstLayout = mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getDimsOrder();
     std::unordered_map<vpux::Dim, vpux::Dim> dimMapping;
     if (srcLayout != dstLayout) {
         for (size_t i = 0; i < dstLayout.numDims(); ++i) {
@@ -117,7 +119,7 @@ void computeHaloRegion(NCEClusterTaskOp nceOp, DPUTaskOp dpuTaskOp,
     SmallVector<mlir::Attribute> haloRegions;
 
     for (const auto& outwardHalo : outputType.getOutwardHaloRegions()) {
-        auto dstNCEOp = outwardHaloDstNCEOpMap[outwardHalo.cast<mlir::Attribute>()];
+        auto dstNCEOp = outwardHaloDstNCEOpMap[mlir::cast<mlir::Attribute>(outwardHalo)];
         auto dstItiValue = dstNCEOp.getOutputBuff();
         auto dstItiBuffer = dstItiValue.getDefiningOp<VPURT::DeclareBufferOp>();
         VPUX_THROW_UNLESS(dstItiBuffer != nullptr, "Defining op of dst NCE op is not a DeclareBufferOp: {0}",
@@ -154,9 +156,10 @@ void computeHaloRegion(NCEClusterTaskOp nceOp, DPUTaskOp dpuTaskOp,
             continue;
         }
 
-        const auto& dstItiType = dstItiBuffer.getBuffer().getType().cast<VPUIP::ITIBufferType>();
+        const auto& dstItiType = mlir::cast<vpux::VPUIP::ITIBufferType>(dstItiBuffer.getBuffer().getType());
 
-        const auto firstInwardHalo = (*outwardHalo.getInwardHaloRegions().begin()).cast<VPUIP::HaloRegionAttr>();
+        const auto firstInwardHalo =
+                mlir::cast<vpux::VPUIP::HaloRegionAttr>(*outwardHalo.getInwardHaloRegions().begin());
         const auto dstItiOffset = parseIntArrayAttr<int64_t>(firstInwardHalo.getOffset());
 
         int64_t targetOffset = dstItiBuffer.getByteOffset() - outputBuffer.getByteOffset();
@@ -193,7 +196,7 @@ void computeHaloRegion(NCEClusterTaskOp nceOp, DPUTaskOp dpuTaskOp,
 
         SmallVector<int64_t> targetClustersVec;
         for (auto& inHaloAttr : outwardHalo.getInwardHaloRegions()) {
-            const auto inwardHalo = inHaloAttr.cast<VPUIP::HaloRegionAttr>();
+            const auto inwardHalo = mlir::cast<vpux::VPUIP::HaloRegionAttr>(inHaloAttr);
             targetClustersVec.push_back(inwardHalo.getClusterId().getInt());
         }
 
@@ -256,7 +259,7 @@ void ComputeHaloRegionForDPUTaskOpPass::safeRunOnFunc() {
     }
 
     func.walk([&](NCEClusterTaskOp nceOp) {
-        auto outputType = nceOp.getOutput().getType().dyn_cast<VPUIP::ITIBufferType>();
+        auto outputType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(nceOp.getOutput().getType());
         if (outputType == nullptr) {
             return;
         }

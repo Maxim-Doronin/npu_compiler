@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -84,7 +85,7 @@ bool hasAnyConstBuffer(mlir::ValueRange buffers) {
 bool hasResultsInDDR(mlir::Value op) {
     auto opResultTypes = op.getDefiningOp()->getResultTypes();
     return llvm::any_of(opResultTypes, [](mlir::Type resType) {
-        return resType.cast<vpux::NDTypeInterface>().getMemoryKind() == VPU::MemoryKind::DDR;
+        return mlir::cast<vpux::NDTypeInterface>(resType).getMemoryKind() == VPU::MemoryKind::DDR;
     });
 }
 

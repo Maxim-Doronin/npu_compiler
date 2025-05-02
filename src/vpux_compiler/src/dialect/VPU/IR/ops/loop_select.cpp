@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -42,14 +42,14 @@ mlir::LogicalResult vpux::VPU::LoopSelectOp::inferReturnTypes(mlir::MLIRContext*
         return mlir::failure();
     }
 
-    const auto inputType = loopSelect.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto inputType = mlir::cast<mlir::RankedTensorType>(loopSelect.getInput().getType());
     const auto inputShape = inputType.getShape();
     SmallVector<int64_t> outShape;
     for (size_t i = 0; i < inputShape.size(); ++i) {
         outShape.push_back(inputShape[i]);
     }
 
-    const auto execCondsType = loopSelect.getExecConds().getType().cast<mlir::ShapedType>();
+    const auto execCondsType = mlir::cast<mlir::ShapedType>(loopSelect.getExecConds().getType());
     const auto numIterations = execCondsType.getShape()[0];
     outShape[0] = outShape[0] / numIterations;
 

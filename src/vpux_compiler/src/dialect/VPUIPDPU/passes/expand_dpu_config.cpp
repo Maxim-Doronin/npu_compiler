@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,6 +11,7 @@
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/MLIRContext.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::VPUIPDPU {
 #define GEN_PASS_DECL_EXPANDDPUCONFIG

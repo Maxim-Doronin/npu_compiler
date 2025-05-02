@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -69,7 +69,7 @@ bool isSupportedSEPPadImpl(mlir::Operation* op, NDTypeInterface inputType, NDTyp
     }
     const auto tensorAttr = vpux::getTensorAttr(ctx, DimsOrder::OYXI, nullptr);
     const auto weightsType =
-            mlir::RankedTensorType::get(weightShape.raw(), elemType, tensorAttr).cast<vpux::NDTypeInterface>();
+            mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(weightShape.raw(), elemType, tensorAttr));
 
     const auto dilations = SmallVector<int64_t>{1, 1};
     const auto pads = PadInfo(0, 0, 0, 0);
@@ -86,8 +86,8 @@ bool isSupportedSEPPadImpl(mlir::Operation* op, NDTypeInterface inputType, NDTyp
 
 bool VPU::isSupportedSEPPadOp(IE::PadOp padOp, LogCb logCb, bool checkLayout, bool checkChannelAlignment,
                               bool supportsInputActCompression) {
-    auto inputType = padOp.getInput().getType().cast<NDTypeInterface>();
-    auto outputType = padOp.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(padOp.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(padOp.getOutput().getType());
     return isSupportedSEPPadImpl(padOp.getOperation(), inputType, outputType, padOp.getMode(),
                                  padOp.getPadsBeginAttrAttr(), padOp.getPadsEndAttrAttr(), padOp.getPadValueAttrAttr(),
                                  logCb, checkLayout, checkChannelAlignment, supportsInputActCompression,
@@ -96,8 +96,8 @@ bool VPU::isSupportedSEPPadOp(IE::PadOp padOp, LogCb logCb, bool checkLayout, bo
 
 bool VPU::isSupportedSEPPadOp(VPU::PadOp padOp, LogCb logCb, bool checkLayout, bool checkChannelAlignment,
                               bool supportsInputActCompression) {
-    auto inputType = padOp.getInput().getType().cast<NDTypeInterface>();
-    auto outputType = padOp.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(padOp.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(padOp.getOutput().getType());
     return isSupportedSEPPadImpl(padOp.getOperation(), inputType, outputType, padOp.getMode(),
                                  padOp.getPadsBeginAttrAttr(), padOp.getPadsEndAttrAttr(), padOp.getPadValueAttrAttr(),
                                  logCb, checkLayout, checkChannelAlignment, supportsInputActCompression,

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -85,9 +86,9 @@ private:
 
 void ConvertConstArgsToMultiConstants::safeRunOnModule() {
     auto moduleOp = getOperation();
-    IE::CNNNetworkOp netInfo;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
     // prints and error and returns false if precondition is not met
     if (!checkPrecondition(netFunc)) {
@@ -285,7 +286,7 @@ Const::RodataBundleOp ConvertConstArgsToMultiConstants::buildRodataBundleOp(Cons
         // create 'const.Rodata' op from a 'const.Declare' op, if it doesn't already exist
         if (rodataOp == nullptr) {
             std::string symName = formatv("{0}{1}", RODATA_PREFIX, _declareOpToRodataOp.getOperationMap().size());
-            auto content = declareOp.getContentAttr().getBaseContent();
+            const auto content = declareOp.getContentAttr().getBaseContent();
             rodataOp = dataBodyBuilder.create<Const::RodataOp>(dataOp->getLoc(), symName, content);
             _declareOpToRodataOp.map(declareOp, rodataOp);
         }

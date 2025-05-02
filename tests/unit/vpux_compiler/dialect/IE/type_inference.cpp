@@ -1,12 +1,15 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "common/utils.hpp"
-#include "vpux/compiler/utils/infer_output_shape.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
+
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 
 #include <gtest/gtest.h>
 
@@ -28,7 +31,7 @@ public:
 
     mlir::Value createOperand(ArrayRef<int64_t> shape, DimsOrder order) {
         return builder->create<mlir::tensor::EmptyOp>(builder->getUnknownLoc(), shape, mlir::Float32Type::get(&ctx),
-                                                      getTensorAttr(&ctx, order, nullptr, nullptr));
+                                                      getTensorAttr(&ctx, order, nullptr));
     }
 
     mlir::DictionaryAttr createAttributes(ArrayRef<mlir::NamedAttribute> attributes) {

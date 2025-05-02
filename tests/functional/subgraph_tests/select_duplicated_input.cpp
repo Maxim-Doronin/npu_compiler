@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -80,10 +80,6 @@ TEST_P(SelectDuplicatedInputTestCommon, NPU3720_HW) {
 }
 
 TEST_P(SelectDuplicatedInputTestCommon, NPU4000_HW) {
-    // Tracking number [E#116403]
-    setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Incorrect inference results";
-    });
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@ using namespace vpux;
 
 mlir::func::FuncOp vpux::getCalledFunction(mlir::CallOpInterface callOp) {
     mlir::func::FuncOp funcOp = nullptr;
-    auto symRefAttr = callOp.mlir::CallOpInterface::getCallableForCallee().dyn_cast<mlir::SymbolRefAttr>();
+    auto symRefAttr = mlir::dyn_cast<mlir::SymbolRefAttr>(callOp.mlir::CallOpInterface::getCallableForCallee());
     if (symRefAttr != nullptr) {
         funcOp = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
                 mlir::SymbolTable::lookupNearestSymbolFrom(callOp, symRefAttr));

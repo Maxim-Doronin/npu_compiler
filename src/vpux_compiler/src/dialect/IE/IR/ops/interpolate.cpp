@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,8 @@
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -23,7 +25,7 @@ mlir::LogicalResult vpux::IE::InterpolateOp::inferReturnTypeComponents(
 
     auto outShape = IE::calcOutputShapes(interpolate, loc, Logger::global(), ctx);
 
-    const auto inType = interpolate.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(interpolate.getInput().getType());
     inferredReturnShapes.emplace_back(outShape, inType.getElementType());
 
     return mlir::success();
@@ -100,7 +102,8 @@ mlir::LogicalResult ConvertInputsToAttr::matchAndRewrite(IE::InterpolateOp inter
     rewriter.replaceOpWithNewOp<IE::InterpolateOp>(
             interpolateOp, interpolateOp.getInput(), nullptr, nullptr, nullptr, sizesAttr, scalesAttr, axesAttr,
             interpolateOp.getTileOffsetAttrAttr(), interpolateOp.getInitialInputDimsAttrAttr(),
-            interpolateOp.getInitialOutputDimsAttrAttr(), interpolateAttr, interpolateOp.getOutputChannelsAttr());
+            interpolateOp.getInitialOutputDimsAttrAttr(), interpolateAttr, interpolateOp.getOutputPaddingAttr(),
+            interpolateOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -114,7 +117,7 @@ public:
 };
 
 mlir::LogicalResult ConvertInputToFP16::matchAndRewrite(IE::InterpolateOp op, mlir::PatternRewriter& rewriter) const {
-    const auto inputType = op.getInput().getType().cast<mlir::ShapedType>().getElementType();
+    const auto inputType = mlir::cast<mlir::ShapedType>(op.getInput().getType()).getElementType();
     const auto arch = VPU::getArch(op);
 
     // VPU4000-M2I does not support C-minor FP16
@@ -129,7 +132,7 @@ mlir::LogicalResult ConvertInputToFP16::matchAndRewrite(IE::InterpolateOp op, ml
                 op.getLoc(), convertOpBefore.getOutput(), op.getSizes(), op.getScales(), op.getAxes(),
                 op.getSizesAttrAttr(), op.getScalesAttrAttr(), op.getAxesAttrAttr(), op.getTileOffsetAttrAttr(),
                 op.getInitialInputDimsAttrAttr(), op.getInitialOutputDimsAttrAttr(), op.getAttr(),
-                op.getOutputChannelsAttr());
+                op.getOutputPaddingAttr(), op.getInputPaddingAttr());
 
         rewriter.replaceOpWithNewOp<IE::ConvertOp>(op, interpolateOp.getOutput(), inputType);
         return mlir::success();
@@ -179,7 +182,7 @@ mlir::LogicalResult ConvertToNearest::matchAndRewrite(IE::InterpolateOp op, mlir
     rewriter.replaceOpWithNewOp<IE::InterpolateOp>(
             op, op.getInput(), op.getSizes(), op.getScales(), op.getAxes(), op.getSizesAttrAttr(),
             op.getScalesAttrAttr(), op.getAxesAttrAttr(), op.getTileOffsetAttrAttr(), op.getInitialInputDimsAttrAttr(),
-            op.getInitialOutputDimsAttrAttr(), newInterpolateAttr, op.getOutputChannelsAttr());
+            op.getInitialOutputDimsAttrAttr(), newInterpolateAttr, op.getOutputPaddingAttr(), op.getInputPaddingAttr());
 
     return mlir::success();
 }

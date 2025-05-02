@@ -1,18 +1,18 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "intel_npu/config/common.hpp"
-#include "intel_npu/config/compiler.hpp"
+#include "intel_npu/config/options.hpp"
 
 #include "vpux/compiler/compiler.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/options_mapper.hpp"
 #include "vpux/compiler/utils/platform_resources.hpp"
 #include "vpux/utils/IE/private_properties.hpp"
 
-#include "vpux/compiler/NPU37XX/pipelines.hpp"
-#include "vpux/compiler/NPU40XX/pipelines.hpp"
+#include "vpux/compiler/NPU37XX/pipeline_options.hpp"
+#include "vpux/compiler/NPU40XX/pipeline_options.hpp"
 
 #include <openvino/runtime/properties.hpp>
 #include <vpux/utils/core/error.hpp>
@@ -119,7 +119,7 @@ std::optional<bool> getCompilerDynamicQuantization(const intel_npu::Config& conf
 
 }  // namespace
 
-VPU::InitCompilerOptions vpux::getInitCompilerOptions(const intel_npu::Config& config) {
+std::unique_ptr<VPU::InitCompilerOptions> vpux::getInitCompilerOptions(const intel_npu::Config& config) {
     const auto archKind = getArchKind(config);
     const auto compilationMode = getCompilationMode(config);
     const auto revisionID = getRevisionID(config);
@@ -135,22 +135,13 @@ VPU::InitCompilerOptions vpux::getInitCompilerOptions(const intel_npu::Config& c
     const auto enableIsReduceSupported = getReduceOperations(config);
     const auto compilerDynamicQuantization = getCompilerDynamicQuantization(config);
     const auto enableAdaptiveStripping = getEnableAdaptiveStripping(config);
+    const auto enableExtraStaticShapeOps = getEnableExtraStaticShapeOps(config);
 
-    return {archKind,
-            compilationMode,
-            revisionID,
-            numOfDPUGroups,
-            numOfDMAPorts,
-            wlmRollback,
-            availableCmx,
-            enableFP16CompressedConv,
-            enableAutoPaddingIDU,
-            enableAutoPaddingODU,
-            enableSEPtrsOperations,
-            enableExperimentalSEPtrsOperations,
-            enableIsReduceSupported,
-            compilerDynamicQuantization,
-            enableAdaptiveStripping};
+    return std::make_unique<VPU::InitCompilerOptions>(
+            archKind, compilationMode, revisionID, numOfDPUGroups, numOfDMAPorts, wlmRollback, availableCmx,
+            enableFP16CompressedConv, enableAutoPaddingIDU, enableAutoPaddingODU, enableSEPtrsOperations,
+            enableExperimentalSEPtrsOperations, enableIsReduceSupported, compilerDynamicQuantization,
+            enableAdaptiveStripping, enableExtraStaticShapeOps);
 }
 
 //
@@ -313,32 +304,20 @@ namespace vpux {
 
 template <typename Options>
 std::optional<bool> getWlmRollback(const intel_npu::Config& config) {
-    const auto options = Options::createFromString(config.get<intel_npu::COMPILATION_MODE_PARAMS>());
-    if (options == nullptr) {
+    if (getCompilationMode(config) == VPU::CompilationMode::ReferenceSW) {
         return std::nullopt;
     }
 
-    return options->wlmRollback;
-}
-
-template <typename ReferenceSWOptions, typename DefaultHWOptions>
-std::optional<bool> getWlmRollback(const intel_npu::Config& config) {
-    const auto compilationMode = getCompilationMode(config);
-    if (compilationMode == VPU::CompilationMode::ReferenceSW) {
-        return getWlmRollback<ReferenceSWOptions>(config);
-    } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
-        return getWlmRollback<DefaultHWOptions>(config);
-    } else {
-        return std::nullopt;
-    }
+    auto options = Options::createFromString(config.get<intel_npu::COMPILATION_MODE_PARAMS>());
+    return options != nullptr ? std::optional<bool>{options->wlmRollback} : std::nullopt;
 }
 
 std::optional<bool> getWlmRollback(const intel_npu::Config& config) {
     const auto arch = getArchKind(config);
     if (arch == VPU::ArchKind::NPU37XX) {
-        return getWlmRollback<ReferenceSWOptions37XX, DefaultHWOptions37XX>(config);
+        return std::nullopt;
     } else if (arch == VPU::ArchKind::NPU40XX) {
-        return getWlmRollback<ReferenceSWOptions40XX, DefaultHWOptions40XX>(config);
+        return getWlmRollback<DefaultHWOptions40XX>(config);
     } else {
         return std::nullopt;
     }
@@ -410,6 +389,8 @@ std::optional<bool> getEnableFP16CompressConv(const intel_npu::Config& config) {
         return getEnableFP16CompressConv<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
         return getEnableFP16CompressConv<DefaultHWOptions>(config);
+    } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
+        return getEnableFP16CompressConv<DefaultHWOptions>(config);
     } else {
         return std::nullopt;
     }
@@ -443,6 +424,8 @@ std::optional<bool> getReduceOperations(const intel_npu::Config& config) {
         return getReduceOperations<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
         return getReduceOperations<DefaultHWOptions>(config);
+    } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
+        return getReduceOperations<DefaultHWOptions>(config);
     } else {
         return std::nullopt;
     }
@@ -461,7 +444,7 @@ std::optional<bool> getReduceOperations(const intel_npu::Config& config) {
 
 template <typename Options>
 std::optional<bool> getWlmEnabled(const intel_npu::Config& config) {
-    const auto options = Options::createFromString(config.get<intel_npu::BACKEND_COMPILATION_PARAMS>());
+    const auto options = Options::createFromString(config.get<intel_npu::COMPILATION_MODE_PARAMS>());
     if (options == nullptr) {
         return std::nullopt;
     }
@@ -474,7 +457,7 @@ std::optional<bool> getWlmEnabled(const intel_npu::Config& config) {
     if (arch == VPU::ArchKind::NPU37XX) {
         return std::nullopt;
     } else if (arch == VPU::ArchKind::NPU40XX) {
-        return getWlmEnabled<BackendCompilationOptions40XX>(config);
+        return getWlmEnabled<DefaultHWOptions40XX>(config);
     } else {
         return std::nullopt;
     }
@@ -496,6 +479,8 @@ std::optional<bool> getEnableAutoPaddingIDU(const intel_npu::Config& config) {
     if (compilationMode == VPU::CompilationMode::ReferenceSW) {
         return getEnableAutoPaddingIDU<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
+        return getEnableAutoPaddingIDU<DefaultHWOptions>(config);
+    } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
         return getEnableAutoPaddingIDU<DefaultHWOptions>(config);
     } else {
         return std::nullopt;
@@ -529,6 +514,8 @@ std::optional<bool> getEnableAutoPaddingODU(const intel_npu::Config& config) {
     if (compilationMode == VPU::CompilationMode::ReferenceSW) {
         return getEnableAutoPaddingODU<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
+        return getEnableAutoPaddingODU<DefaultHWOptions>(config);
+    } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
         return getEnableAutoPaddingODU<DefaultHWOptions>(config);
     } else {
         return std::nullopt;
@@ -565,6 +552,8 @@ std::optional<bool> getEnableSEPtrsOperations(const intel_npu::Config& config) {
         return getEnableSEPtrsOperations<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
         return getEnableSEPtrsOperations<DefaultHWOptions>(config);
+    } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
+        return getEnableSEPtrsOperations<DefaultHWOptions>(config);
     } else {
         return std::nullopt;
     }
@@ -598,6 +587,8 @@ std::optional<bool> getEnableExperimentalSEPtrsOperations(const intel_npu::Confi
         return getEnableExperimentalSEPtrsOperations<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
         return getEnableExperimentalSEPtrsOperations<DefaultHWOptions>(config);
+    } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
+        return getEnableExperimentalSEPtrsOperations<DefaultHWOptions>(config);
     } else {
         return std::nullopt;
     }
@@ -618,6 +609,9 @@ std::optional<bool> getEnableExperimentalSEPtrsOperations(const intel_npu::Confi
 
 template <typename Options>
 std::optional<bool> getEnableAdaptiveStripping(const intel_npu::Config& config) {
+    if (config.has<intel_npu::QDQ_OPTIMIZATION>()) {
+        return config.get<intel_npu::QDQ_OPTIMIZATION>();
+    }
     const auto options = Options::createFromString(config.get<intel_npu::COMPILATION_MODE_PARAMS>());
     if (options == nullptr) {
         return std::nullopt;
@@ -632,6 +626,8 @@ std::optional<bool> getEnableAdaptiveStripping(const intel_npu::Config& config) 
     if (compilationMode == VPU::CompilationMode::ReferenceSW) {
         return getEnableAdaptiveStripping<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
+        return getEnableAdaptiveStripping<DefaultHWOptions>(config);
+    } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
         return getEnableAdaptiveStripping<DefaultHWOptions>(config);
     } else {
         return std::nullopt;
@@ -827,36 +823,36 @@ std::optional<ConstantFoldingConfig> getConstantFoldingInBackground(const intel_
 #endif
 
 template <typename Options>
-bool getEnableExtraShapeBoundOps(const intel_npu::Config& config) {
+std::optional<bool> getEnableExtraStaticShapeOps(const intel_npu::Config& config) {
     const auto options = Options::createFromString(config.get<intel_npu::COMPILATION_MODE_PARAMS>());
     if (options == nullptr) {
-        return false;
+        return std::nullopt;
     }
-    return options->enableExtraShapeBoundOps;
+    return options->enableExtraStaticShapeOps;
 }
 
 template <typename ReferenceSWOptions, typename DefaultHWOptions>
-bool getEnableExtraShapeBoundOps(const intel_npu::Config& config) {
+std::optional<bool> getEnableExtraStaticShapeOps(const intel_npu::Config& config) {
     const auto compilationMode = getCompilationMode(config);
     if (compilationMode == VPU::CompilationMode::ReferenceSW) {
-        return getEnableExtraShapeBoundOps<ReferenceSWOptions>(config);
+        return getEnableExtraStaticShapeOps<ReferenceSWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::DefaultHW) {
-        return getEnableExtraShapeBoundOps<DefaultHWOptions>(config);
+        return getEnableExtraStaticShapeOps<DefaultHWOptions>(config);
     } else if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
-        return getEnableExtraShapeBoundOps<DefaultHWOptions>(config);
+        return getEnableExtraStaticShapeOps<DefaultHWOptions>(config);
     } else {
-        return false;
+        return std::nullopt;
     }
 }
 
-bool getEnableExtraShapeBoundOps(const intel_npu::Config& config) {
+std::optional<bool> getEnableExtraStaticShapeOps(const intel_npu::Config& config) {
     const auto arch = getArchKind(config);
     if (arch == VPU::ArchKind::NPU37XX) {
-        return getEnableExtraShapeBoundOps<ReferenceSWOptions37XX, DefaultHWOptions37XX>(config);
+        return getEnableExtraStaticShapeOps<ReferenceSWOptions37XX, DefaultHWOptions37XX>(config);
     } else if (arch == VPU::ArchKind::NPU40XX) {
-        return getEnableExtraShapeBoundOps<ReferenceSWOptions40XX, DefaultHWOptions40XX>(config);
+        return getEnableExtraStaticShapeOps<ReferenceSWOptions40XX, DefaultHWOptions40XX>(config);
     } else {
-        return false;
+        return std::nullopt;
     }
 }
 

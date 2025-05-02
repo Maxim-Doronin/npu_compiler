@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2024 - 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -32,9 +32,9 @@ func.func @DepthToSpaceWithConversionBS2(%input: tensor<1x32x3x3xf16>) -> tensor
     // CHECK:                [[TRANSCONV:%.+]] = IE.TransposedConvolution([[INPUT]], [[FAKEQUANTIZE]]) {
     // CHECK-SAME:               dilations = [1, 1],
     // CHECK-SAME:               operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:               output_padding = [0, 0],
     // CHECK-SAME:               pads_begin = [0, 0],
     // CHECK-SAME:               pads_end = [0, 0],
+    // CHECK-SAME:               spatial_output_padding = [0, 0],
     // CHECK-SAME:               strides = [2, 2]
     // CHECK-SAME:           } : tensor<1x32x3x3xf16>, tensor<8x32x2x2xf16> -> tensor<1x8x6x6xf16>
 
@@ -66,9 +66,9 @@ func.func @DepthToSpaceWithConversionBS3(%input: tensor<1x9x3x3xf16>) -> tensor<
     // CHECK:                [[TRANSCONV:%.+]] = IE.TransposedConvolution([[INPUT]], [[FAKEQUANTIZE]]) {
     // CHECK-SAME:               dilations = [1, 1],
     // CHECK-SAME:               operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:               output_padding = [0, 0],
     // CHECK-SAME:               pads_begin = [0, 0],
     // CHECK-SAME:               pads_end = [0, 0],
+    // CHECK-SAME:               spatial_output_padding = [0, 0],
     // CHECK-SAME:               strides = [3, 3]
     // CHECK-SAME:           } : tensor<1x9x3x3xf16>, tensor<1x9x3x3xf16> -> tensor<1x1x9x9xf16>
 

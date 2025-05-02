@@ -1,0 +1,31 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
+//
+
+#include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_general_algorithm.hpp"
+#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+
+using namespace vpux;
+using namespace VPU;
+
+mlir::LogicalResult TilingGeneralAlgorithm::applyTiling(mlir::Operation* operation, mlir::RewriterBase& builder,
+                                                        Logger log) {
+    if (!operation->hasAttr(tilingStrategy)) {
+        return mlir::failure();
+    }
+    const auto strategy = Shape(parseIntArrayAttr<int64_t>(operation->getAttr(tilingStrategy).cast<mlir::ArrayAttr>()));
+
+    auto tilingBuilder = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(operation);
+    VPUX_THROW_WHEN(tilingBuilder == nullptr, "Operation '{0}' doesn't implement TilingInfoOpInterface",
+                    operation->getName());
+
+    const auto tiles = fillDividedTiles(operation, strategy, getShape(operation->getResult(0)));
+
+    if (mlir::failed(tiles)) {
+        return mlir::failure();
+    }
+    operation->removeAttr(tilingStrategy);
+    return VPU::applyTileStrategy(tilingBuilder, tiles.value(), builder, log);
+}

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,7 +9,6 @@
 #include <pretty_test_arguments.hpp>
 
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset3.hpp>
 #include <random>
 
 using namespace ov::test;

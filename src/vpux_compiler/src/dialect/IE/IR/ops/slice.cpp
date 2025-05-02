@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -42,7 +43,7 @@ mlir::LogicalResult vpux::IE::SliceOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto origType = sliceOp.getSource().getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(sliceOp.getSource().getType());
     if (origType == nullptr) {
         return errorAt(loc, "IE::SliceOp operand must have vpux::NDTypeInterface type");
     }
@@ -59,7 +60,7 @@ mlir::LogicalResult vpux::IE::SliceOp::inferReturnTypeComponents(
     }
 
     const auto newType = origType.extractDenseTile(ShapeRef(sliceOffsets), ShapeRef(sliceShape));
-    const auto newTensorType = newType.cast<mlir::RankedTensorType>();
+    const auto newTensorType = mlir::cast<mlir::RankedTensorType>(newType);
     inferredReturnShapes.emplace_back(newTensorType.getShape(), newTensorType.getElementType(),
                                       newTensorType.getEncoding());
 

@@ -5,11 +5,13 @@
 
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/factories/profiling_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/profiling/common.hpp"
@@ -159,9 +161,9 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     const auto isOutOfOrderOptimizationApplicable =
             (arch == VPU::ArchKind::NPU37XX);  // For 37XX PROFBEGIN and profiled DMA may be proceeded by different
                                                // channels, which allow such DMAs issued  out of order
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp func;
-    IE::CNNNetworkOp::getFromModule(module, netOp, func);
+    net::NetworkInfoOp::getFromModule(module, netInfo, func);
     mlir::OpBuilder builder(&func.getBody().front().front());
 
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
@@ -221,7 +223,7 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     _timerType = timeStampCb(ctx);
     _timestampSize = _timerType.getIntOrFloatBitWidth() / 8;
     _hwAddr = getHwProfAddress(arch);
-    _profOutputId = static_cast<int64_t>(netOp.getProfilingOutputsCount());
+    _profOutputId = static_cast<int64_t>(netInfo.getProfilingOutputsCount());
 
     // DMA profiling data is stored in CMX slice 0
     _Cmx0MemKind = IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
@@ -229,7 +231,7 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     const auto outputResult = mlir::MemRefType::get({2 * totalNumberOfDmas}, _timerType);
 
     // Update network output information to have also new dma profiling result
-    auto profilingResult = addNewProfilingOutput(ctx, func, netOp, outputResult, profiling::ExecutorType::DMA_SW);
+    auto profilingResult = addNewProfilingOutput(ctx, func, netInfo, outputResult, profiling::ExecutorType::DMA_SW);
     auto returnOp = mlir::dyn_cast_or_null<mlir::func::ReturnOp>(func.getBody().front().getTerminator());
     VPUX_THROW_UNLESS(returnOp != nullptr, "No ReturnOp was found");
     builder.setInsertionPoint(returnOp);

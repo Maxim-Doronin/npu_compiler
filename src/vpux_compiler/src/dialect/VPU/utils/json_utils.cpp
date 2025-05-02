@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,8 +9,7 @@
 #include <fstream>
 #include <iomanip>
 
-namespace vpux {
-namespace VPU {
+namespace vpux::VPU {
 
 llvm::Expected<llvm::json::Value> readManualStrategyJSON(StringRef fileName) {
     VPUX_THROW_WHEN(fileName.empty(), "Output file name for input strategy json was not provided");
@@ -33,10 +32,10 @@ void writeManualStrategyJSON(StringRef fileName, const llvm::json::Value& json) 
 }
 
 llvm::json::Value convertAttrToJSON(mlir::Attribute attr) {
-    if (attr.isa<VPU::MultiClusterStrategyAttr>()) {
-        return stringifyMultiClusterStrategy(attr.cast<VPU::MultiClusterStrategyAttr>().getValue());
-    } else if (attr.isa<mlir::ArrayAttr>()) {
-        auto values = Shape(parseIntArrayAttr<int64_t>(attr.cast<mlir::ArrayAttr>()));
+    if (mlir::isa<vpux::VPU::MultiClusterStrategyAttr>(attr)) {
+        return stringifyMultiClusterStrategy(mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(attr).getValue());
+    } else if (mlir::isa<mlir::ArrayAttr>(attr)) {
+        auto values = Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attr)));
         VPUX_THROW_UNLESS(values.size() == 4, "Shape has fewer dimensions than expected (4), got '{0}'", values.size());
         llvm::json::Object tilingStrategy{};
         tilingStrategy["N"] = values[Dims4D::Act::N];
@@ -50,10 +49,10 @@ llvm::json::Value convertAttrToJSON(mlir::Attribute attr) {
 }
 
 mlir::Attribute convertJSONToAttr(mlir::Attribute oldAttr, const llvm::json::Value& newAttrVal) {
-    if (oldAttr.isa<VPU::MultiClusterStrategyAttr>()) {
+    if (mlir::isa<vpux::VPU::MultiClusterStrategyAttr>(oldAttr)) {
         return VPU::MultiClusterStrategyAttr::get(
                 oldAttr.getContext(), symbolizeMultiClusterStrategy(newAttrVal.getAsString().value()).value());
-    } else if (oldAttr.isa<mlir::ArrayAttr>()) {
+    } else if (mlir::isa<mlir::ArrayAttr>(oldAttr)) {
         Shape newShape(4, 1);
         VPUX_THROW_WHEN(newAttrVal.getAsObject() == nullptr, "Invalid JSON representation of array attribute");
         llvm::json::Object dimenstions = *newAttrVal.getAsObject();
@@ -189,7 +188,7 @@ void overwriteManualStrategy(llvm::json::Value& manualStrategyValue,
                     auto manualAttribute = convertJSONToAttr(dummyAttr, it->second);
 
                     if (auto clusteredOp = mlir::dyn_cast<ClusteredOpInterface>(op.second)) {
-                        auto manualStratAttr = manualAttribute.cast<VPU::MultiClusterStrategyAttr>();
+                        auto manualStratAttr = mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(manualAttribute);
                         clusteredOp.setMultiClusterStrategy(manualStratAttr.getValue());
                     }
 
@@ -285,39 +284,4 @@ void updateTilingStrategyInJSONForOperations(llvm::json::Value& json,
     }
 }
 
-void saveMCSideLoadStrategyToFile(mlir::func::FuncOp func, StringRef strategyJsonPath,
-                                  const mlir::DenseMap<mlir::Operation*, size_t>& opToHash, StringRef modelHash) {
-    constexpr StringLiteral MODEL_HASH_KEY = "ModelHash";
-    constexpr StringLiteral OP_HASH_KEY = "Op";
-
-    llvm::json::Object model{};
-    model[MODEL_HASH_KEY.str()] = modelHash.str();
-    llvm::json::Object opsToStrategies{};
-    func->walk([&](VPU::LayerOpInterface op) {
-        auto isNCEOp = mlir::isa<VPU::NCEOpInterface>(op.getOperation());
-        auto isSWOp = mlir::isa<VPU::SWOpInterface>(op.getOperation());
-        if (!isNCEOp && !isSWOp) {
-            return;
-        }
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(op.getOperation());
-        if (clusteredOp == nullptr) {
-            return;
-        }
-        VPUX_THROW_WHEN(opToHash.find(op.getOperation()) == opToHash.end(), "Can not find hash at '{0}'", op.getLoc());
-
-        auto strategyValue = clusteredOp.getMultiClusterStrategy().has_value()
-                                     ? convertAttrToJSON(op->getAttr(vpux::multiClusterStrategy))
-                                     : llvm::json::Value(defaultNoValue);
-
-        llvm::json::Object layerAttributes{};
-        layerAttributes[vpux::multiClusterStrategy.str()] = std::move(strategyValue);
-        auto layerHashStr = std::to_string(opToHash.at(op.getOperation()));
-        opsToStrategies[std::move(layerHashStr)] = llvm::json::Value(std::move(layerAttributes));
-    });
-    model[OP_HASH_KEY.str()] = std::move(opsToStrategies);
-    auto json = llvm::json::Value(std::move(model));
-    writeManualStrategyJSON(strategyJsonPath, json);
-}
-
-}  // namespace VPU
-}  // namespace vpux
+}  // namespace vpux::VPU

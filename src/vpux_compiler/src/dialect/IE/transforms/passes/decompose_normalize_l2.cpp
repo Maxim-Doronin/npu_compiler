@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -54,7 +55,7 @@ mlir::LogicalResult DecomposeNormalizeL2::matchAndRewrite(IE::NormalizeL2Op orig
 
     // Don't decompose if the axes tensor doesn't contain all available dimensions
     const int64_t axesSize = static_cast<int64_t>(axesValueAttr.getValue().size());
-    const int64_t dataRank = data.getType().cast<vpux::NDTypeInterface>().getRank();
+    const int64_t dataRank = mlir::cast<vpux::NDTypeInterface>(data.getType()).getRank();
     if (axesSize != dataRank) {
         _log.debug("NormalizeL2Op axes tensor:'{0}' doesn't contain all dimensions - '{1}'", axesValueAttr, loc);
         return mlir::failure();
@@ -64,7 +65,7 @@ mlir::LogicalResult DecomposeNormalizeL2::matchAndRewrite(IE::NormalizeL2Op orig
     auto multiplyOp = rewriter.create<IE::MultiplyOp>(appendLoc(loc, "_mul"), data, data, IE::AutoBroadcastType::NUMPY,
                                                       nullptr, nullptr, nullptr, nullptr);
     auto reduceSumOp = rewriter.create<IE::ReduceSumOp>(appendLoc(loc, "_reduceSum"), multiplyOp.getOutput(), nullptr,
-                                                        axesValueAttr, false);
+                                                        axesValueAttr, false, nullptr, nullptr);
 
     auto sqrtOp = rewriter.create<IE::SqrtOp>(appendLoc(loc, "_sqrt"), reduceSumOp.getOutput());
 

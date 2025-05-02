@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,11 +22,12 @@ namespace {
 class FindWlmEnqueueBarrierPass final :
         public VPURT::arch40xx::impl::FindWlmEnqueueBarrierBase<FindWlmEnqueueBarrierPass> {
 public:
-    explicit FindWlmEnqueueBarrierPass(Logger log) {
+    explicit FindWlmEnqueueBarrierPass(bool disableDmaSwFifo, Logger log): _disableDmaSwFifo(disableDmaSwFifo) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
+    bool _disableDmaSwFifo;
     void safeRunOnFunc() final;
 };
 
@@ -52,7 +53,7 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
     // and work items are triggered on barrier consumption events
     VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
 
-    VPURT::EnqueueBarrierHandler enqueueBarrier(func, barrierInfo, _log);
+    VPURT::EnqueueBarrierHandler enqueueBarrier(func, barrierInfo, _disableDmaSwFifo, _log);
 
     const auto res = enqueueBarrier.calculateEnqueueBarriers();
     if (mlir::failed(res)) {
@@ -85,6 +86,6 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
 // createFindWlmEnqueueBarrierPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPURT::arch40xx::createFindWlmEnqueueBarrierPass(Logger log) {
-    return std::make_unique<FindWlmEnqueueBarrierPass>(log);
+std::unique_ptr<mlir::Pass> vpux::VPURT::arch40xx::createFindWlmEnqueueBarrierPass(bool disableDmaSwFifo, Logger log) {
+    return std::make_unique<FindWlmEnqueueBarrierPass>(disableDmaSwFifo, log);
 }

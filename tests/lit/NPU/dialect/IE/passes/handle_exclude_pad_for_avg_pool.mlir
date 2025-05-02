@@ -88,7 +88,7 @@ func.func @HandleExcludePadForAvgPool(%arg0 : tensor<1x1024x7x7xf16>) -> (tensor
     //CHECK-SAME{LITERAL}:      {static_offsets = [[0, 0, 1, 1], [0, 0, 0, 0], [0, 0, 0, 6], [0, 0, 6, 6], [0, 0, 6, 0], [0, 0, 1, 0], [0, 0, 1, 6], [0, 0, 0, 1], [0, 0, 6, 1]]}
     //CHECK-SAME:   : tensor<1x1024x5x5xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x5x1xf16>, tensor<1x1024x5x1xf16>, tensor<1x1024x1x5xf16>, tensor<1x1024x1x5xf16> -> tensor<1x1024x7x7xf16>
 
-    // CHECK        return [[VAR17]]
+    // CHECK:       return [[VAR17]]
 }
 
 // -----
@@ -172,7 +172,7 @@ func.func @HandleExcludePadForAvgPoolCommonCase(%arg0 : tensor<1x1024x7x7xf16>) 
     //CHECK:        [[CONCAT:%.+]] = IE.Concat([[AVGPOOL0]], [[AVGPOOL1]], [[AVGPOOL2]], [[AVGPOOL3]], [[AVGPOOL4]], [[AVGPOOL5]], [[AVGPOOL6]], [[AVGPOOL7]], [[AVGPOOL8]])
     //CHECK-SAME{LITERAL}:      {static_offsets = [[0, 0, 1, 1], [0, 0, 0, 0], [0, 0, 0, 2], [0, 0, 7, 2], [0, 0, 7, 0], [0, 0, 1, 0], [0, 0, 1, 2], [0, 0, 0, 1], [0, 0, 7, 1]]}
     //CHECK-SAME:   : tensor<1x1024x5x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x5x1xf16>, tensor<1x1024x5x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16> -> tensor<1x1024x8x3xf16>
-    // CHECK        return [[CONCAT]]
+    // CHECK:       return [[CONCAT]]
 
 }
 
@@ -201,7 +201,7 @@ func.func @HandleExcludePadForAvgPoolPadWithZeroCase1(%arg0 : tensor<1x128x1x249
     //CHECK:        [[CONCAT:%.+]] = IE.Concat([[AVGPOOL0]], [[AVGPOOL1]])
     //CHECK-SAME{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 49]]}
     //CHECK-SAME:   : tensor<1x128x1x49xf16>, tensor<1x128x1x1xf16> -> tensor<1x128x1x50xf16>
-    // CHECK        return [[CONCAT]]
+    // CHECK:       return [[CONCAT]]
 
 }
 
@@ -230,7 +230,7 @@ func.func @HandleExcludePadForAvgPoolPadWithZeroCase2(%arg0 : tensor<1x128x1x10x
     //CHECK:        [[CONCAT:%.+]] = IE.Concat([[AVGPOOL0]], [[AVGPOOL1]])
     //CHECK-SAME{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 2]]}
     //CHECK-SAME:   : tensor<1x128x1x2xf16>, tensor<1x128x1x1xf16> -> tensor<1x128x1x3xf16>
-    // CHECK        return [[CONCAT]]
+    // CHECK:       return [[CONCAT]]
 
 }
 
@@ -259,7 +259,7 @@ func.func @HandleExcludePadForAvgPoolPadWithZeroCase3(%arg0 : tensor<1x128x249x1
     //CHECK:        [[CONCAT:%.+]] = IE.Concat([[AVGPOOL0]], [[AVGPOOL1]])
     //CHECK-SAME{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 0, 49, 0]]}
     //CHECK-SAME:   : tensor<1x128x49x1xf16>, tensor<1x128x1x1xf16> -> tensor<1x128x50x1xf16>
-    // CHECK        return [[CONCAT]]
+    // CHECK:       return [[CONCAT]]
 
 }
 
@@ -319,7 +319,7 @@ func.func @HandleExcludePadForAvgPoolPadWithZeroCase4(%arg0 : tensor<1x1024x7x7x
     //CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 1, 0], [0, 0, 0, 2], [0, 0, 7, 2], [0, 0, 1, 2], [0, 0, 0, 0], [0, 0, 7, 0]]}
     //CHECK-SAME:   : tensor<1x1024x5x2xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x1x1xf16>, tensor<1x1024x5x1xf16>, tensor<1x1024x1x2xf16>, tensor<1x1024x1x2xf16> -> tensor<1x1024x8x3xf16>
 
-    // CHECK        return [[CONCAT]]
+    // CHECK:       return [[CONCAT]]
 }
 
 // -----
@@ -339,5 +339,5 @@ func.func @HandleExcludePadForAvgPoolPadWithZeroCase5(%arg0 : tensor<1x256x96x32
     //CHECK:        [[AVGPOOL:%.+]] = IE.AvgPool({{[^:]+}})
     //CHECK-SAME:   {kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x256x96x32xf16> -> tensor<1x256x48x16xf16>
 
-    // CHECK        return [[AVGPOOL]]
+    // CHECK:       return [[AVGPOOL]]
 }

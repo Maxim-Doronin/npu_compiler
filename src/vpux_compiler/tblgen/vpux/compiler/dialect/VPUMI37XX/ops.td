@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -717,6 +717,41 @@ def PlatformInfoOp :
     let builders = [
         OpBuilder<(ins)>
         ];
+}
+
+
+//
+// DeclareTaskBufferOp
+//
+
+def VPUMI37XX_DeclareTaskBufferOp :
+        VPUMI37XX_Op<"DeclareTaskBuffer", [
+        ]> {
+    let summary = "Buffer Op representing a discrete location of a task in runtime metadataBuffer";
+
+    let arguments = (ins
+        VPURegMapped_TaskTypeAttr:$task_type,
+        OptionalAttr<UI64Attr>:$offset
+    );
+
+    let results = (outs
+        VPURegMapped_IndexType:$index
+    );
+
+    let assemblyFormat = [{
+        attr-dict
+        $task_type `->` type(results)
+    }];
+
+    let extraClassDeclaration = [{
+        uint64_t getMemoryOffset() {
+            return getOffset().value_or(0);
+        }
+
+        void setMemoryOffset(mlir::IntegerAttr offset) {
+            setOffsetAttr(offset);
+        }
+    }];
 }
 
 #endif

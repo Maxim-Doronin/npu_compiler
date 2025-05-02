@@ -7,7 +7,7 @@
 
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 #include "vpux/utils/profiling/location.hpp"
 #include "vpux/utils/profiling/tasknames.hpp"
 

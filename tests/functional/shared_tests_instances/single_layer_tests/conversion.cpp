@@ -3,9 +3,6 @@
 //
 
 #include "single_op_tests/conversion.hpp"
-#include <vector>
-
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -23,6 +20,7 @@ TEST_P(ConversionLayerTestCommon_HW, NPU3720_HW) {
 
 TEST_P(ConversionLayerTestCommon_HW, NPU4000_HW) {
     setDefaultHardwareMode();
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 

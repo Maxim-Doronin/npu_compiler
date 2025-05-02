@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,8 +21,8 @@ mlir::LogicalResult vpux::VPU::LogicalXorOp::inferReturnTypes(mlir::MLIRContext*
         return mlir::failure();
     }
 
-    const auto in1Type = logicalxor.getInput1().getType().cast<vpux::NDTypeInterface>();
-    const auto in2Type = logicalxor.getInput2().getType().cast<vpux::NDTypeInterface>();
+    const auto in1Type = mlir::cast<vpux::NDTypeInterface>(logicalxor.getInput1().getType());
+    const auto in2Type = mlir::cast<vpux::NDTypeInterface>(logicalxor.getInput2().getType());
 
     const auto outShapeRes = IE::broadcastEltwiseShape(in1Type.getShape().raw(), in2Type.getShape().raw(),
                                                        logicalxor.getAutoBroadcast(), loc);

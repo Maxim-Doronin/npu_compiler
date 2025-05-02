@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,24 +8,12 @@
 #include "vpux/compiler/dialect/VPUASM/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUASM/types.hpp"
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.hpp"
 
 #include "vpux/compiler/dialect/VPURegMapped/attributes.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 
 #include "vpux/compiler/dialect/VPUMI40XX/attributes.hpp"
-
-#include <mlir/Dialect/Func/IR/FuncOps.h>
-#include <mlir/Dialect/Quant/QuantOps.h>
-#include <mlir/Dialect/SCF/IR/SCF.h>
-#include <mlir/IR/BuiltinOps.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/Dialect.h>
-#include <mlir/IR/DialectImplementation.h>
-#include <mlir/IR/SymbolTable.h>
-#include <mlir/Interfaces/CopyOpInterface.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 //
 // Generated

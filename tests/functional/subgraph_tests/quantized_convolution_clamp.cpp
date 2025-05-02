@@ -6,7 +6,6 @@
 
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include "common_test_utils/node_builders/activation.hpp"
-#include "common_test_utils/node_builders/constant.hpp"
 #include "common_test_utils/node_builders/fake_quantize.hpp"
 
 using namespace ov::test::utils;

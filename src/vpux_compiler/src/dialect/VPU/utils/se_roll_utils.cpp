@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -46,7 +46,7 @@ bool isSupportedSEPRollImpl(mlir::Operation* op, NDTypeInterface inputType, NDTy
     }
     const auto tensorAttr = vpux::getTensorAttr(ctx, DimsOrder::OYXI, nullptr);
     const auto weightsType =
-            mlir::RankedTensorType::get(weightShape.raw(), elemType, tensorAttr).cast<vpux::NDTypeInterface>();
+            mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(weightShape.raw(), elemType, tensorAttr));
 
     const int64_t SY = 1;
     const int64_t SX = 1;
@@ -62,8 +62,8 @@ bool isSupportedSEPRollImpl(mlir::Operation* op, NDTypeInterface inputType, NDTy
 
 bool VPU::isSupportedSEPRoll(IE::RollOp op, vpux::LogCb logCb, bool checkLayout, bool checkChannelAlignment,
                              bool supportsInputActCompression) {
-    const auto inputType = op.getData().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getData().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     const auto inputShape = inputType.getShape();
     auto shiftAndAxesOrFail = IE::getShiftAndAxesForRollOp(op.getLoc(), op.getShift(), op.getAxes(), inputShape);
@@ -79,8 +79,8 @@ bool VPU::isSupportedSEPRoll(IE::RollOp op, vpux::LogCb logCb, bool checkLayout,
 
 bool VPU::isSupportedSEPRoll(VPU::RollOp op, vpux::LogCb logCb, bool checkLayout, bool checkChannelAlignment,
                              bool supportsInputActCompression) {
-    const auto inputType = op.getData().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getData().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     const auto inputShape = inputType.getShape();
     auto shiftAndAxesOrFail = IE::getShiftAndAxesForRollOp(op.getLoc(), op.getShift(), op.getAxes(), inputShape);

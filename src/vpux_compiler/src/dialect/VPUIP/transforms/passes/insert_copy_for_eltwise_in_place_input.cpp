@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
@@ -75,7 +76,7 @@ std::optional<mlir::Value> InsertCopyForEltwiseInPlaceInputPass::getInputToOverw
 
 void InsertCopyForEltwiseInPlaceInputPass::insertCopies(VPUIP::NCEClusterTaskOp eltwise, mlir::Value overwrittenInput) {
     mlir::OpBuilder builder(eltwise);
-    auto inDistributedType = overwrittenInput.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto inDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(overwrittenInput.getType());
     NDTypeInterface inputType = nullptr;
     if (inDistributedType != nullptr) {
         // DistributedBuffer
@@ -89,7 +90,7 @@ void InsertCopyForEltwiseInPlaceInputPass::insertCopies(VPUIP::NCEClusterTaskOp 
     const auto compactStrides = getCompactStrides(inputType);
     auto newDDRType = inputType.changeMemSpace(VPU::MemoryKind::DDR).changeStrides(compactStrides);
     auto newAllocDDROp = builder.create<mlir::memref::AllocOp>(appendLoc(eltwise->getLoc(), "_elt_in_place_input_DDR"),
-                                                               newDDRType.cast<mlir::MemRefType>());
+                                                               mlir::cast<mlir::MemRefType>(newDDRType));
     auto newCopyToDDR = builder.create<VPUIP::CopyOp>(appendLoc(eltwise->getLoc(), "_unique_consumer_spill"),
                                                       overwrittenInput, newAllocDDROp);
 
@@ -103,7 +104,7 @@ void InsertCopyForEltwiseInPlaceInputPass::insertCopies(VPUIP::NCEClusterTaskOp 
     } else {
         // memref
         auto newAllocCMXOp = builder.create<mlir::memref::AllocOp>(
-                appendLoc(eltwise->getLoc(), "_elt_in_place_input_CMX"), inputType.cast<mlir::MemRefType>());
+                appendLoc(eltwise->getLoc(), "_elt_in_place_input_CMX"), mlir::cast<mlir::MemRefType>(inputType));
         bufferResult = newAllocCMXOp->getResult(0);
     }
     auto newCopyToCMX = builder.create<VPUIP::CopyOp>(appendLoc(eltwise->getLoc(), "_unique_consumer_spill"),

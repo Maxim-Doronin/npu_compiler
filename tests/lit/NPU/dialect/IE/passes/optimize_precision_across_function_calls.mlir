@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -454,7 +454,7 @@ module @DoNotOptimizeMissingConversionPair {
 
 // CHECK-LABEL: @RepeatedCalls
 module @RepeatedCalls {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x48x60x60xf16>
@@ -492,7 +492,7 @@ module @RepeatedCalls {
 
 // CHECK-LABEL: @RepeatedCallsIncompletePairs
 module @RepeatedCallsIncompletePairs {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x48x60x60xf16>
@@ -564,5 +564,20 @@ module @RepeatedCallsPairsInsideAndOusideCalls {
     // CHECK:      [[CALL2_FN1:%.+]] = call @function1([[ARG0]]) : (tensor<1x48x60x60x!qElemType>) -> tensor<1x48x60x60x!qElemType>
     // CHECK:      [[CALL_FN2:%.+]] = call @function2([[CALL1_FN1]]) : (tensor<1x48x60x60x!qElemType>) -> tensor<1x48x60x60x!qElemType>
     // CHECK:      return [[CALL_FN2]], [[CALL2_FN1]]
+    // CHECK:  }
+}
+
+// -----
+
+// CHECK-LABEL: @ConstReturnCall
+module @ConstReturnCall {
+    func.func private @function(%arg0: tensor<1x1xf16>) -> tensor<1x1xf16> {
+        %cst = const.Declare tensor<1x1xf16> = dense<1.000000e+00> : tensor<1x1xf32>, [#const.CastElemType<f16>]
+        return %cst : tensor<1x1xf16>
+    }
+
+    // CHECK:  func.func private @function([[ARG0:%.+]]: tensor<1x1xf16>) -> tensor<1x1xf16> {
+    // CHECK:      [[CST:%.+]] = const.Declare tensor<1x1xf16> = dense<1.000000e+00> : tensor<1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK:      return [[CST]]
     // CHECK:  }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -140,20 +140,21 @@ void vpux::VPU::NCEClusterTilingOp::build(mlir::OpBuilder& builder, mlir::Operat
     auto& bodyBlock = bodyRegion->emplaceBlock();
     for (auto operand : operands) {
         auto type = operand.getType();
-        if (auto distributedType = type.dyn_cast<DistributedTensorType>()) {
+        if (auto distributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(type)) {
             type = distributedType.getCompactType();
-        } else if (auto sparseType = type.dyn_cast<SparseTensorType>()) {
-            if (auto distDataType = sparseType.getData().dyn_cast<DistributedTensorType>()) {
+        } else if (auto sparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(type)) {
+            if (auto distDataType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(sparseType.getData())) {
                 mlir::RankedTensorType dataType = distDataType.getCompactType();
                 mlir::RankedTensorType smType = nullptr;
                 if (sparseType.getSparsityMap() != nullptr &&
-                    sparseType.getSparsityMap().isa<DistributedTensorType>()) {
-                    smType = sparseType.getSparsityMap().cast<DistributedTensorType>().getCompactType();
+                    mlir::isa<vpux::VPU::DistributedTensorType>(sparseType.getSparsityMap())) {
+                    smType = mlir::cast<vpux::VPU::DistributedTensorType>(sparseType.getSparsityMap()).getCompactType();
                 }
                 mlir::RankedTensorType seType = nullptr;
                 if (sparseType.getStorageElementTable() != nullptr &&
-                    sparseType.getStorageElementTable().isa<DistributedTensorType>()) {
-                    seType = sparseType.getStorageElementTable().cast<DistributedTensorType>().getCompactType();
+                    mlir::isa<vpux::VPU::DistributedTensorType>(sparseType.getStorageElementTable())) {
+                    seType = mlir::cast<vpux::VPU::DistributedTensorType>(sparseType.getStorageElementTable())
+                                     .getCompactType();
                 }
                 type = SparseTensorType::get(dataType, smType, seType, sparseType.getIsWeights(),
                                              sparseType.getSparsityCompression(), sparseType.getSeAttr());
@@ -199,7 +200,7 @@ mlir::LogicalResult vpux::VPU::NCEClusterTilingOp::verify() {
 
     const auto checkShape = [&](mlir::ValueRange operands) {
         for (auto operand : operands) {
-            if (auto distributedTensor = operand.getType().dyn_cast<vpux::VPU::DistributedTensorType>()) {
+            if (auto distributedTensor = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(operand.getType())) {
                 auto rank = distributedTensor.getShape().size();
                 if (rank != 4 && rank != DimsGroups5D::Act::numDims) {
                     return errorAt(op->getLoc(), "Only 4D or {0}D tensors are supported. Got {1}",
@@ -275,8 +276,9 @@ mlir::LogicalResult EliminateCopyPairs::matchAndRewrite(VPU::NCEClusterTilingOp 
     auto output = origOp.getResult(0);
 
     if (producerInput.getType() != output.getType()) {
-        const auto inDistributedTypeInterface = producerInput.getType().dyn_cast<VPU::DistributedTypeInterface>();
-        const auto outDistributedTypeInterface = output.getType().dyn_cast<VPU::DistributedTypeInterface>();
+        const auto inDistributedTypeInterface =
+                mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(producerInput.getType());
+        const auto outDistributedTypeInterface = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(output.getType());
 
         if (inDistributedTypeInterface == nullptr || outDistributedTypeInterface == nullptr ||
             !inDistributedTypeInterface.containsDistributedTypes() ||
@@ -284,9 +286,10 @@ mlir::LogicalResult EliminateCopyPairs::matchAndRewrite(VPU::NCEClusterTilingOp 
             return mlir::failure();
         }
 
-        if (VPU::isDistributedCastCompatible(
-                    inDistributedTypeInterface.getDistributedTypes().front().cast<VPU::DistributedTensorType>(),
-                    outDistributedTypeInterface.getDistributedTypes().front().cast<VPU::DistributedTensorType>())
+        if (VPU::isDistributedCastCompatible(mlir::cast<vpux::VPU::DistributedTensorType>(
+                                                     inDistributedTypeInterface.getDistributedTypes().front()),
+                                             mlir::cast<vpux::VPU::DistributedTensorType>(
+                                                     outDistributedTypeInterface.getDistributedTypes().front()))
                     .failed()) {
             return mlir::failure();
         }

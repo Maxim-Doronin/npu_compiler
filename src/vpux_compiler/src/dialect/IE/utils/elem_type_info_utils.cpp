@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,7 +15,7 @@ using namespace IE;
 void vpux::IE::propagateElementTypeDown(IE::LayerDataInfo<mlir::Type>& info) {
     const auto inputElemType = info.getInput(0);
 
-    if (inputElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inputElemType)) {
         // Do not propagate element type down in per channel case.
         return;
     }
@@ -28,7 +28,7 @@ void vpux::IE::propagateElementTypeDown(IE::LayerDataInfo<mlir::Type>& info) {
 void vpux::IE::propagateElementTypeUp(IE::LayerDataInfo<mlir::Type>& info) {
     const auto outputElemType = info.getOutput(0);
 
-    if (outputElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outputElemType)) {
         // Do not propagate element type up in per channel case.
         return;
     }
@@ -105,7 +105,7 @@ void vpux::IE::propagateElemTypeDownForExpandDilatedOp(IE::ExpandDilatedOp expan
     const auto dilationsVal = parseIntArrayAttr<int64_t>(expandDilated.getDilations());
     const auto inputElemType = info.getInput(0);
 
-    if (inputElemType.isa<mlir::quant::UniformQuantizedPerAxisType>() && dilationsVal.size() > 2) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inputElemType) && dilationsVal.size() > 2) {
         return;
     }
     for (size_t outputInd = 0; outputInd < info.getNumOutputs(); ++outputInd) {
@@ -134,7 +134,7 @@ void vpux::IE::propagateElemTypeUpForExpandDilatedOp(IE::ExpandDilatedOp expandD
     const auto dilationsVal = parseIntArrayAttr<int64_t>(expandDilated.getDilations());
     const auto outputElemType = info.getOutput(0);
 
-    if (outputElemType.isa<mlir::quant::UniformQuantizedPerAxisType>() && dilationsVal.size() > 2) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outputElemType) && dilationsVal.size() > 2) {
         return;
     }
     for (size_t inputInd = 0; inputInd < info.getNumInputs(); ++inputInd) {
@@ -159,7 +159,7 @@ std::optional<mlir::Type> vpux::IE::inferElemTypeAffineReshape(AffineReshapeOpAd
 //
 
 Dim vpux::IE::normalizeAxis(IE::ConcatOpAdaptor concat) {
-    const auto inType = concat.getInputs().front().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(concat.getInputs().front().getType());
     const auto inRank = inType.getRank();
 
     auto axisInd = concat.getPerAxis().value().getAxis().getValue().getSExtValue();
@@ -186,7 +186,7 @@ mlir::FailureOr<Shape> vpux::IE::inferOutShapeWithOffsets(IE::ConcatOpAdaptor co
                        staticOffsets.size(), concat.getInputs().size());
     }
 
-    const auto inType = concat.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(concat.getInputs().front().getType());
     const auto allOffsets = staticOffsets.getAsRange<mlir::ArrayAttr>();
 
     Shape outShape(checked_cast<size_t>(inType.getRank()), 0);
@@ -222,7 +222,7 @@ mlir::FailureOr<mlir::Type> vpux::IE::inferOutElemTypeWithAxis(ArrayRef<mlir::Ty
                                                                IE::ConcatOpAdaptor concat, LogCb logCb) {
     const auto inElemType = elemTypes[0];
 
-    const auto perAxisQType = inElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inElemType);
     SmallVector<mlir::quant::UniformQuantizedPerAxisType> inPerAxisQTypes;
 
     if (perAxisQType != nullptr) {
@@ -240,7 +240,7 @@ mlir::FailureOr<mlir::Type> vpux::IE::inferOutElemTypeWithAxis(ArrayRef<mlir::Ty
                 return mlir::failure();
             }
         } else {
-            const auto curPerAxisQType = curElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+            const auto curPerAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(curElemType);
 
             if (curPerAxisQType == nullptr) {
                 logCb(formatv("Misaligned element types : not all of them are per-axis quantized : '{0}' vs '{1}'",
@@ -290,7 +290,7 @@ mlir::FailureOr<mlir::Type> vpux::IE::inferOutElemTypeWithOffsets(ArrayRef<mlir:
                                                                   LogCb logCb) {
     const auto inElemType = elemTypes[0];
 
-    const auto perAxisQType = inElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inElemType);
 
     const auto isConcatOverPerAxisQuantization = [&]() {
         if (perAxisQType == nullptr) {
@@ -321,7 +321,7 @@ mlir::FailureOr<mlir::Type> vpux::IE::inferOutElemTypeWithOffsets(ArrayRef<mlir:
 
     for (const auto& p : zip(elemTypes, allOffsets)) {
         const auto curElemType = std::get<0>(p);
-        const auto curPerAxisQType = curElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+        const auto curPerAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(curElemType);
 
         if (curPerAxisQType == nullptr) {
             logCb(formatv("Misaligned element types : not all of them are per-axis quantized : '{0}' vs '{1}'",

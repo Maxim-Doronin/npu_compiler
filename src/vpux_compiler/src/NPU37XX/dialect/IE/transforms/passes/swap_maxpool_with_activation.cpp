@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -66,7 +66,7 @@ mlir::LogicalResult GenericConverter<ConcreteOp>::matchAndRewrite(ConcreteOp ori
     rewriter.replaceOpWithNewOp<IE::MaxPoolOp>(
             originOp, maxPool.getType(), newActivationOp.getOutput(), maxPool.getKernelSize(), maxPool.getStrides(),
             maxPool.getPadsBegin(), maxPool.getPadsEnd(), maxPool.getRoundingType(), maxPool.getPostOpAttr(),
-            maxPool.getClampAttr(), maxPool.getOutputChannelsAttr(), maxPool.getInputChannelsAttr());
+            maxPool.getClampAttr(), maxPool.getOutputPaddingAttr(), maxPool.getInputPaddingAttr());
 
     return mlir::success();
 }

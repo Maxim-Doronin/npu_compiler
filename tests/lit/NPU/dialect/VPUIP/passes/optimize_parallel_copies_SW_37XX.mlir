@@ -190,7 +190,7 @@ func.func @OptimizeParallelSubViewPatternCopies(
 // CHECK:       [[VAR0:%.+]] =  VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Convert inputs(%arg0 as [[ARG3:%.*]]: memref<1x16x112x113xf32, #NHWC>)
 // CHECK:       [[VAR1:%.*]] =  VPUIP.SubView [[VAR0]] [0, 0, 0, 0] [1, 16, 112, 112]
 // CHECK:       [[VAR2:%.*]] =  VPUIP.Copy
-// CHECK-SAME       inputs([[VAR1]] : memref<1x16x112x112xf16, {order = #NCHW, strides = [202496, 1, 1808, 16]}, @DDR>)
+// CHECK-SAME:      inputs([[VAR1]] : memref<1x16x112x112xf16, {order = #NHWC, strides = [202496, 1, 1808, 16]}, @DDR>)
 // CHECK:       [[VAR3:%.+]] = VPUIP.NCEClusterTask
 // CHECK-SAME:       input([[VAR2]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
 // CHECK:       [[VAR4:%.*]] =  VPUIP.Copy inputs([[VAR3]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)

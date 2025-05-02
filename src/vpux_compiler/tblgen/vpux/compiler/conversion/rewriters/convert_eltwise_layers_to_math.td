@@ -27,4 +27,32 @@ def RewriteCos :
             (createCosOp $input)
         >;
 
+def createFastMathAttr :
+        NativeCodeCall<[{
+            mlir::arith::FastMathFlagsAttr::get(
+                       $_builder.getContext(),
+                       static_cast<mlir::arith::FastMathFlags>($0.getValue().getLimitedValue()))
+        }]>;
+
+//
+// IE.Log -> math.Log
+//
+
+def RewriteLog :
+        Pat<
+            (IE_LogOp $input),
+            (Math_LogOp $input, (createFastMathAttr FASTMATH_APPROX_FUNC))
+        >;
+
+
+//
+// IE.Exp -> math.Exp
+//
+
+def RewriteExp :
+        Pat<
+            (IE_ExpOp $input),
+            (Math_ExpOp $input, (createFastMathAttr FASTMATH_APPROX_FUNC))
+        >;
+
 #endif

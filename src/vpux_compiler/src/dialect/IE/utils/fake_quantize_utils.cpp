@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -142,14 +142,16 @@ mlir::LogicalResult WeightsDequantizeStructureInfo::initializeStructure(IE::Mult
     // Retrieve scale
     auto scaleCst = multiplyOp.getInput2().getDefiningOp<Const::DeclareOp>();
     if (scaleCst == nullptr) {
-        auto scaleBlockArg = multiplyOp.getInput2();
-        if (!mlir::isa<mlir::BlockArgument>(scaleBlockArg)) {
-            log.trace("Match failed: Got non-const and non-blockArgument scale");
-            return mlir::failure();
+        if (const auto scale = multiplyOp.getInput2(); mlir::isa<mlir::BlockArgument>(scale)) {
+            dynamicScale = scale;
+            return mlir::success();
         }
-        log.trace("Got blockArgument scale");
-        dynamicScale = scaleBlockArg;
-        return mlir::success();
+        if (const auto scale = multiplyOp.getInput1(); mlir::isa<mlir::BlockArgument>(scale)) {
+            dynamicScale = scale;
+            return mlir::success();
+        }
+        log.trace("Match failed: Got non-const and non-blockArgument scale");
+        return mlir::failure();
     }
     scale = scaleCst.getContentAttr();
 

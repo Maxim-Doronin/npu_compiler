@@ -471,11 +471,11 @@ func.func @ConvertSubtractWithConstantMultiplyInput(%arg0: tensor<1x1x1x1xf16>, 
     return %sub : tensor<1x1x1x1xf16>
 
   // CHECK: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>,
-  // CHEKC-SAME:    [#const.Rescale<-1.000000e+00 : f64>]
+  // CHECK-SAME:    [#const.Rescale<-1.000000e+00 : f64>]
   // CHECK: [[MUL:%.+]] = IE.Multiply([[INPUT_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHEKC-SAME:    tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
+  // CHECK-SAME:    tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
   // CHECK: [[ADD:%.+]] = IE.Add([[INPUT_1]], [[MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHEKC-SAME:    tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
+  // CHECK-SAME:    tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
   // CHECK: return [[ADD]] : tensor<1x1x1x1xf16>
 }
 
@@ -502,8 +502,8 @@ func.func @ConvertSubtractWithFQConstantMultiplyInput(%arg0: tensor<1x1x1x1xf16>
   // CHECK-SAME:      tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
 
   // CHECK: [[MUL:%.+]] = IE.Multiply([[MUL_CST_INPUT]], [[INPUT_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHEKC-SAME:                tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
+  // CHECK-SAME:                tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
   // CHECK: [[ADD:%.+]] = IE.Add([[INPUT_1]], [[MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHEKC-SAME:                tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
+  // CHECK-SAME:                tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
   // CHECK: return [[ADD]] : tensor<1x1x1x1xf16>
 }

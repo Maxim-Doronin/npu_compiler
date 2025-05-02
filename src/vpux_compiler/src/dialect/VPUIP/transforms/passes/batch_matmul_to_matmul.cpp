@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_BATCHMATMULTOMATMUL
@@ -16,7 +17,7 @@ using namespace vpux;
 namespace {
 
 mlir::Type typeTo4D(const mlir::Type type) {
-    auto origType = type.cast<NDTypeInterface>();
+    auto origType = mlir::cast<vpux::NDTypeInterface>(type);
     const ShapeRef origShape = origType.getShape();
     VPUX_THROW_WHEN(origShape.size() != DimsGroups5D::Act::numDims, "typeTo4D expects only 5-d shapes as inputs.");
 
@@ -38,7 +39,7 @@ mlir::Type typeTo4D(const mlir::Type type) {
 
     // Update axis in per-axis quantization
     auto elemType = origType.getElementType();
-    if (auto perAxisType = elemType.dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>()) {
+    if (auto perAxisType = mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(elemType)) {
         const auto origQuantAxis = perAxisType.getQuantizedDimension();
         VPUX_THROW_WHEN(origQuantAxis <= 0, "Quantization over batch is not supported.");
         const auto newQuantAxis = origQuantAxis - 1;
@@ -48,7 +49,7 @@ mlir::Type typeTo4D(const mlir::Type type) {
                 perAxisType.getExpressedType(), perAxisType.getQuantiles(), perAxisType.getScales(),
                 perAxisType.getZeroPoints(), newQuantAxis, perAxisType.getStorageTypeMin(),
                 perAxisType.getStorageTypeMax());
-    } else if (auto perAxisType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto origQuantAxis = perAxisType.getQuantizedDimension();
         VPUX_THROW_WHEN(origQuantAxis <= 0, "Quantization over batch is not supported.");
         const auto newQuantAxis = origQuantAxis - 1;
@@ -81,7 +82,7 @@ VPURT::DeclareBufferOp createNewValue(const mlir::Value val, const int64_t step,
 }
 
 int64_t getStep(const mlir::Type type) {
-    auto origType = type.cast<NDTypeInterface>();
+    auto origType = mlir::cast<vpux::NDTypeInterface>(type);
     auto batchSize = origType.getShape()[DimsGroups5D::Act::G];
     return origType.getTotalAllocSize().count() / batchSize;
 }
@@ -104,7 +105,11 @@ mlir::LogicalResult MatMulRewriter::matchAndRewrite(VPURT::TaskOp vpurtTask, mli
         return mlir::failure();
     }
 
-    auto origType = nceOp.getOutput().getType().cast<NDTypeInterface>();
+    if (nceOp.getWeightTable() == nullptr) {
+        return mlir::failure();
+    }
+
+    auto origType = mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType());
     const ShapeRef origShape = origType.getShape();
     if (origShape.size() != DimsGroups5D::Act::numDims) {
         return mlir::failure();

@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <vpux/compiler/utils/rewriter.hpp>
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
@@ -60,9 +61,9 @@ mlir::LogicalResult BroadcastInputRewriter::matchAndRewrite(IE::AddOp origOp, ml
     const auto ctx = origOp->getContext();
     const auto loc = origOp->getLoc();
 
-    const auto lhsShape = origOp.getInput1().getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto rhsShape = origOp.getInput2().getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto outputShape = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto lhsShape = mlir::cast<vpux::NDTypeInterface>(origOp.getInput1().getType()).getShape();
+    const auto rhsShape = mlir::cast<vpux::NDTypeInterface>(origOp.getInput2().getType()).getShape();
+    const auto outputShape = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getShape();
 
     if (lhsShape.size() != 4) {
         _log.trace("Only support 4D tensor, but got {0}D", lhsShape.size());
@@ -75,11 +76,11 @@ mlir::LogicalResult BroadcastInputRewriter::matchAndRewrite(IE::AddOp origOp, ml
     }
 
     const auto findTrivialBiasInput = [&](IE::AddOp origOp) {
-        const auto biasInput = (origOp.getInput1().getType().cast<vpux::NDTypeInterface>() ==
-                                origOp.getOutput().getType().cast<vpux::NDTypeInterface>())
+        const auto biasInput = (mlir::cast<vpux::NDTypeInterface>(origOp.getInput1().getType()) ==
+                                mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()))
                                        ? origOp.getInput2()
                                        : origOp.getInput1();
-        const auto biasShape = biasInput.getType().cast<vpux::NDTypeInterface>().getShape();
+        const auto biasShape = mlir::cast<vpux::NDTypeInterface>(biasInput.getType()).getShape();
 
         const auto trivialDimExceptDimC = [](ShapeRef inputShape) -> bool {
             return inputShape[Dims4D::Act::N] == 1 && inputShape[Dims4D::Act::H] == 1 &&
@@ -114,7 +115,7 @@ mlir::LogicalResult BroadcastInputRewriter::matchAndRewrite(IE::AddOp origOp, ml
 
     auto addOp = rewriter.replaceOpWithNewOp<IE::AddOp>(origOp, lhsInput, rhsInput, origOp.getAutoBroadcast(),
                                                         origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                                        origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                                        origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     extendOpLoc(addOp, "as_add");
 
     return mlir::success();

@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -185,7 +187,7 @@ mlir::LogicalResult OptimizeConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::P
     auto targetContentAttr = weightContentAttr.transform().castElemType(weightExpressedElemType).get();
     auto weightsConst = rewriter.create<Const::DeclareOp>(declLoc, weightExpressedType, std::move(targetContentAttr));
     const auto reorderLoc = appendLoc(weightsConst.getLoc(), "reorder_weights_for_DPU_concat");
-    const auto weightTypeNCHW = weightsConst.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto weightTypeNCHW = mlir::cast<vpux::NDTypeInterface>(weightsConst.getOutput().getType());
     const auto reorderType = weightTypeNCHW.changeDimsOrder(DimsOrder::NHWC);
     const auto orderMap = DimsOrder::NHWC.toAffineMap(ctx);
     auto weightsReorder =
@@ -196,7 +198,7 @@ mlir::LogicalResult OptimizeConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::P
                                                       getIntArrayAttr(ctx, padBegin), getIntArrayAttr(ctx, padEnd),
                                                       getIntArrayAttr(ctx, dilations),
                                                       /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                                      /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+                                                      /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
     _log.trace("create new conv {0}", newConv);
     auto newOutLayoutCast = rewriter.create<IE::LayoutCastOp>(appendLoc(newConv.getLoc(), "_layout_cast_"),
                                                               newConv.getOutput(), DimsOrder::NCHW.toAffineMap(ctx));

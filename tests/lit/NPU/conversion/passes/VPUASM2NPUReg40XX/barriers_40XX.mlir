@@ -10,7 +10,7 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 6 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_0" : tensor<1x2x3x4xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x2x3x4xf16>

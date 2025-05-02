@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
@@ -141,13 +142,13 @@ bool isLegalConvertToPool(IE::MemPermuteOp memPermuteOp, mlir::AffineMap memPerm
     const auto inMemShape = inOrder.toMemoryOrder(inShape);
 
     // E-128307: Replace with using a robust NCE-Op supported datatype checking mechanism
-    const auto elementType = memPermuteOp.getType().cast<NDTypeInterface>().getElementType();
+    const auto elementType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getType()).getElementType();
     if (elementType.isSignedInteger() || elementType.isUnsignedInteger()) {
         log.trace("NCE MaxPool does not support signed or unsigned integer");
         return false;
     }
-    if (elementType.isa<mlir::FloatType>() &&
-        elementType.cast<mlir::FloatType>().getWidth() > mlir::Float16Type::get(ctx).getWidth()) {
+    if (mlir::isa<mlir::FloatType>(elementType) &&
+        mlir::cast<mlir::FloatType>(elementType).getWidth() > mlir::Float16Type::get(ctx).getWidth()) {
         log.trace("NCE MaxPool does not support float type larger than 16 bits");
         return false;
     }
@@ -181,7 +182,12 @@ bool isLegalConvertToPool(IE::MemPermuteOp memPermuteOp, mlir::AffineMap memPerm
     }
 
     if (memPerm == DimsOrder::NHCW && !isBeneficialToConvert(inShape)) {
-        log.trace("MemPermuteOp is not performant using OPU permute");
+        log.trace("MemPermuteOp is not performant using ODU permute");
+        return false;
+    }
+
+    if (inShape[Dim(Dims4D::Act::W)] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT && memPerm == DimsOrder::NCWH) {
+        log.trace("MemPermuteOp is not performant using ODU permute");
         return false;
     }
 
@@ -197,7 +203,7 @@ bool isLegalConvertToPool(IE::MemPermuteOp memPermuteOp, mlir::AffineMap memPerm
     for (const auto idx : irange(inShape.size())) {
         poolInLogicShape[poolInOrder.dimAt(idx)] = inMemShape[MemDim(idx)];
     }
-    auto poolInputType = memPermuteOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto poolInputType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getOutput().getType());
 
     const auto IC = poolInLogicShape[Dims4D::Act::C];
     const auto alignedChannel = VPU::NCEInvariant::getAlignment(poolInputType.getElementType());
@@ -213,6 +219,12 @@ bool isLegalConvertToPool(IE::MemPermuteOp memPermuteOp, mlir::AffineMap memPerm
         auto isNotPerformant = memPerm == DimsOrder::NHCW && (hasToSplitOnDimC || conversionMap.size() > 2);
         if (conversionMap.empty() || isNotPerformant) {
             log.trace("Channels of an IE.MaxPool are not aligned or the Conversion is not performant.");
+            return false;
+        }
+
+        auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(poolInputType.getElementType());
+        if (perAxisType && perAxisType.getQuantizedDimension() == Dims4D::Act::C.ind()) {
+            log.trace("It's illegal to reshape perAxisType when quantizeDim is also IC");
             return false;
         }
     }
@@ -275,7 +287,7 @@ mlir::LogicalResult MemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp origOp,
     for (const auto idx : irange(inShape.size())) {
         poolInLogicShape[poolInOrder.dimAt(idx)] = inMemShape[MemDim(idx)];
     }
-    auto poolInputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto poolInputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const auto IC = poolInLogicShape[Dims4D::Act::C];
     const auto alignedChannel = VPU::NCEInvariant::getAlignment(poolInputType.getElementType());
@@ -283,7 +295,7 @@ mlir::LogicalResult MemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp origOp,
 
     if (IC % alignedChannel == 0) {
         const auto maxPoolOutType =
-                inPermuteCastOp.getResult().getType().cast<NDTypeInterface>().changeDimsOrder(targetOrder);
+                mlir::cast<vpux::NDTypeInterface>(inPermuteCastOp.getResult().getType()).changeDimsOrder(targetOrder);
         auto maxPool = IE::createIdentityMaxPool(inPermuteCastOp.getResult(), maxPoolOutType, rewriter);
         auto alignInterface = mlir::dyn_cast_or_null<IE::AlignedChannelsOpInterface>(maxPool);
         VPUX_THROW_WHEN(alignInterface == nullptr, "{0} don't have aligninterface.", origOp);
@@ -294,7 +306,7 @@ mlir::LogicalResult MemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp origOp,
         for (const auto& item : conversionMap) {
             auto shapeCastTmp = rewriter.createOrFold<IE::ShapeCastOp>(origOp.getLoc(), latestInput,
                                                                        getIntArrayAttr(ctx, item.first.raw()));
-            const auto layoutCastType = shapeCastTmp.getType().cast<NDTypeInterface>();
+            const auto layoutCastType = mlir::cast<vpux::NDTypeInterface>(shapeCastTmp.getType());
             const auto outType = layoutCastType.changeDimsOrder(item.second);
             auto maxPool = IE::createIdentityMaxPool(shapeCastTmp, outType, rewriter);
             latestPooling = maxPool->getResult(0);

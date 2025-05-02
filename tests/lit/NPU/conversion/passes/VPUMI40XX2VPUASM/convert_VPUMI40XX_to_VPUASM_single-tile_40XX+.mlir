@@ -8,14 +8,14 @@
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @oneDma inputsInfo : {
+  net.NetworkInfo entryPoint : @oneDma inputsInfo : {
     DataInfo "input" : tensor<1x2x3x4xf16>
   } outputsInfo : {
     DataInfo "output" : tensor<1x2x3x4xf16>
   }
 
   func.func @oneDma() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
     %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x2x3x4xf16, @DDR>
     %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x2x3x4xf16, @DDR>
     %3 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%0 : !VPURegMapped.Index<0:0:0>) inputs(%1 : memref<1x2x3x4xf16, @DDR>) outputs(%2 : memref<1x2x3x4xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
@@ -52,7 +52,7 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @twoDma inputsInfo : {
+  net.NetworkInfo entryPoint : @twoDma inputsInfo : {
     DataInfo "input_0" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x16x16x16xf16>
@@ -60,12 +60,12 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   }
 
   func.func @twoDma() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:0>
-    %1 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:1>
-    %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:2>
-    %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %4 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
-    %5 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
+    %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:0>
+    %1 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:1>
+    %2 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:2>
+    %3 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %4 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+    %5 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
 
     %6 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, #NHWC, @DDR>
     %7 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, #NHWC, @DDR>
@@ -157,20 +157,20 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @maxpool_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @maxpool_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x64x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x64x8x8xf16>
   }
 
   func.func @maxpool_f16_f16() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
-    %1 = VPURegMapped.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
+    %0 = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
+    %1 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
 
-    %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
-    %4 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
-    %5 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:3>
+    %2 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %3 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+    %4 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:2>
+    %5 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:3>
 
     %cst = const.Declare memref<64x1x1x4xsi32, #NHWC, @DDR> = dense<1> : tensor<64x1x1x4xsi32>, [#const.Reorder<#NHWC>]
     %cst_0 = const.Declare memref<1x1x1x16xui8, #NHWC, @DDR> = dense<[[[[3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]]]> : tensor<1x1x1x16xui8>, [#const.Reorder<#NHWC>]
@@ -271,7 +271,7 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @single_hswish inputsInfo : {
+  net.NetworkInfo entryPoint : @single_hswish inputsInfo : {
     DataInfo "input" : tensor<1x1000xf16>
   } outputsInfo : {
     DataInfo "hswish" : tensor<1x1000xf16>
@@ -283,10 +283,10 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   }
 
   func.func @single_hswish() {
-    %0 = VPURegMapped.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
-    %1 = VPURegMapped.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
-    %2 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
-    %3 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
+    %0 = VPUMI40XX.DeclareTaskBuffer <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
+    %1 = VPUMI40XX.DeclareTaskBuffer <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
+    %2 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %3 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:1>
 
     %4 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16>
     %5 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x1x1x1000xf16>
@@ -373,16 +373,16 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @continued_conv_f16_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @continued_conv_f16_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x16384x1x1xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x16x1x1xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}>
   }
   func.func @continued_conv_f16_f16_f16() {
-    %0 = VPURegMapped.DeclareTaskBuffer {offset = 0 : ui64} <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
-    %1 = VPURegMapped.DeclareTaskBuffer {offset = 352 : ui64} <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
-    %2 = VPURegMapped.DeclareTaskBuffer {offset = 22528 : ui64} <DPUVariant> -> !VPURegMapped.Index<0:0:0>
-    %3 = VPURegMapped.DeclareTaskBuffer {offset = 22752 : ui64} <DPUVariant> -> !VPURegMapped.Index<0:0:1>
+    %0 = VPUMI40XX.DeclareTaskBuffer {offset = 0 : ui64} <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
+    %1 = VPUMI40XX.DeclareTaskBuffer {offset = 352 : ui64} <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
+    %2 = VPUMI40XX.DeclareTaskBuffer {offset = 22528 : ui64} <DPUVariant> -> !VPURegMapped.Index<0:0:0>
+    %3 = VPUMI40XX.DeclareTaskBuffer {offset = 22752 : ui64} <DPUVariant> -> !VPURegMapped.Index<0:0:1>
     %14 = VPURT.DeclareBuffer <CMX_NN> [0] <96> -> memref<1x8192x1x1xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>
     %15 = VPURT.DeclareBuffer <CMX_NN> [0] <33376> -> memref<16x8192x1x1xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>
     %16 = VPURT.DeclareBuffer <CMX_NN> [0] <16480> -> memref<1x8192x1x1xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>

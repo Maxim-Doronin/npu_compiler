@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,8 +33,8 @@ mlir::LogicalResult vpux::IE::MaxPool8Op::inferReturnTypeComponents(
     const auto windowDilations = parseIntArrayAttr<int64_t>(maxPool8.getDilations());
     const auto roundingType = maxPool8.getRoundingType();
 
-    const auto inType = maxPool8.getInput().getType().cast<mlir::ShapedType>().getElementType();
-    const auto inShape = maxPool8.getInput().getType().cast<mlir::ShapedType>().getShape();
+    const auto inType = mlir::cast<mlir::ShapedType>(maxPool8.getInput().getType()).getElementType();
+    const auto inShape = mlir::cast<mlir::ShapedType>(maxPool8.getInput().getType()).getShape();
 
     auto outputShape = inferMaxPool8OutputShape(inShape, windowStrides, windowDilations, dataPaddingBelow,
                                                 dataPaddingAbove, windowShape, roundingType);

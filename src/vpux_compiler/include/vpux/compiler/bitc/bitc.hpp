@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,13 +9,14 @@
 
 namespace vpux::bitc {
 // clang-format off
-enum class ArchType : uint32_t { NPU27, NPU4 };
+enum class ArchType : uint32_t { NPU27, NPU4
+};
 
 struct BitCompactorConfig {
     ArchType arch_type;
     bool weight_compress_enable{true};
     bool bypass_compression{false};
-    bool mode_fp16_enable{false};  // NPU40XX
+    bool mode_fp16_enable{false};  // NPU4+ only
 
     // For sparse mode
     std::vector<uint8_t> bitmap;

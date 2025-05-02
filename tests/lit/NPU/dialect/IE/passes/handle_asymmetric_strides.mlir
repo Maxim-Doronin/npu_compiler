@@ -25,7 +25,7 @@ func.func @HandleConvolutionWithAsymmetricStrides(%arg0: tensor<1x16x64x1024xf16
   // CHECK:       %[[CONCAT:.*]] = IE.Concat(%[[SLICED_CONV0]], %[[SLICED_CONV1]])
   // CHECK-SAME:    {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 2 : i64>}
 
-  // CHECK        return %[[CONCAT]]
+  // CHECK:       return %[[CONCAT]]
 }
 
 // -----
@@ -43,7 +43,7 @@ func.func @ConvWithAsymStridesEqualInputAndKernel(%arg0: tensor<1x256x4x1xf16>) 
   // CHECK:       %[[CONV:.*]] = IE.Convolution(%arg0, %[[CST]])
   // CHECK-SAME:    {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 0], strides = [2, 2]}
 
-  // CHECK        return %[[CONV]]
+  // CHECK:       return %[[CONV]]
 }
 
 // -----
@@ -91,5 +91,5 @@ func.func @HandleConvolutionWithAsymmetricStridesWithFQ(%arg0: tensor<1x16x64x10
 
   // CHECK:       [[OUT_FQ:%.*]] = IE.FakeQuantize([[CONCAT]], [[CST1]], [[CST2]], [[CST1]], [[CST2]])
 
-  // CHECK        return [[OUT_FQ]]
+  // CHECK:       return [[OUT_FQ]]
 }

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
 namespace vpux::VPUIP {
@@ -74,14 +75,22 @@ void AdjustInputDataForExplicitSETablePass::safeRunOnFunc() {
         _log.trace("Got '{0}' at '{1}'", nceOp->getName(), nceOp->getLoc());
         VPUX_THROW_UNLESS(nceOp.getInputSeSize().has_value(), "Missing input storage element size");
 
+        const auto currentCluster = mlir::cast<NDTypeInterface>(nceOp.getInput().getType()).getMemSpace().getIndex();
+
         auto getNewType = [&](VPURT::DeclareBufferOp declareOp, mlir::Value seOperand) {
-            auto seOperandType = seOperand.getType().cast<vpux::NDTypeInterface>();
-            auto dataType = declareOp.getType().cast<vpux::NDTypeInterface>();
+            auto seOperandType = mlir::cast<vpux::NDTypeInterface>(seOperand.getType());
+            auto dataType = mlir::cast<vpux::NDTypeInterface>(declareOp.getType());
             auto newShape = Shape(seOperandType.getShape().raw());
+
+            auto seDistributedType = mlir::dyn_cast<VPUIP::DistributedBufferType>(seOperandType);
+            if (seDistributedType != nullptr) {
+                VPUX_THROW_WHEN(!currentCluster.has_value(), "Cannot get the cluster on which the DPU op is executed");
+                newShape[Dims4D::Act::C] = seDistributedType.getCompactShape(currentCluster.value())[Dims4D::Act::C];
+            }
+
             newShape[Dims4D::Act::C] *= nceOp.getInputSeSize().value();
 
             auto dataDistributedType = mlir::dyn_cast<VPUIP::DistributedBufferType>(dataType);
-            auto seDistributedType = mlir::dyn_cast<VPUIP::DistributedBufferType>(seOperandType);
             if (dataDistributedType != nullptr && seDistributedType != nullptr) {
                 auto dataDistributedAttr = dataDistributedType.getDistribution();
                 auto seDistributedAttr = seDistributedType.getDistribution();

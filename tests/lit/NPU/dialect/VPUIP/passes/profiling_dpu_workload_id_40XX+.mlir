@@ -17,7 +17,7 @@
 // CHECK-LABEL: @DpuProfiling
 module @DpuProfiling  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x16x62x62xf16>
     DataInfo "weights" : tensor<48x16x3x3xf16>
     DataInfo "weightsTable" : tensor<48x1x1x4xsi32>
@@ -81,7 +81,7 @@ module @DpuProfiling  {
 // CHECK-LABEL: @DpuProfilingWithMulticlustering
 module @DpuProfilingWithMulticlustering  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x16x62x62xf16>
     DataInfo "weights" : tensor<48x16x3x3xf16>
     DataInfo "weightsTable" : tensor<48x1x1x4xsi32>
@@ -158,7 +158,7 @@ module @DpuProfilingWithMulticlustering  {
 // CHECK-LABEL: @DpuProfilingMultipleOps
 module @DpuProfilingMultipleOps  {
 
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x3x224x224xf16>
   } outputsInfo :  {
     DataInfo "output" : tensor<1x32x55x55xf16>

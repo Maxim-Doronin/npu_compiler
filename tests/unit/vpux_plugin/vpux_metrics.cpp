@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,8 +7,7 @@
 
 #include <gmock/gmock-matchers.h>
 
-#include "intel_npu/config/common.hpp"
-#include "intel_npu/config/runtime.hpp"
+#include "intel_npu/config/options.hpp"
 #include "vpux_metrics.hpp"
 
 #include "test_utils/npu_backends_test.hpp"

@@ -42,7 +42,8 @@ func.func @LowerSparsifyOpUniformQuantUnalignedShape(%arg0: !inputType, %wt: ten
     // CHECK-SAME:        ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:        rawFilterShape = [16, 16, 1, 1],
     // CHECK-SAME:        strides = [1, 1]
-    // CHECK-SAME:    } -> !VPU.SparseTensor<data=tensor<1x16x120x110x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x16x120x110xi1, {order = #NHWC}>>
+    // CHECK-SAME:    }
+    // CHECK-SAME:    -> !VPU.SparseTensor<data=tensor<1x16x120x110x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x16x120x110xi1, {order = #NHWC}>>
     // CHECK:       [[VAL2:%.+]] = VPU.Slice [[VAL1]] [0, 0, 0, 0] [1, 4, 120, 110]
     // CHECK-SAME:    : !VPU.SparseTensor<data=tensor<1x16x120x110x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x16x120x110xi1, {order = #NHWC}>> to
     // CHECK-SAME:      !VPU.SparseTensor<data=tensor<1x4x120x110x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x4x120x110xi1, {order = #NHWC}>>
@@ -90,7 +91,8 @@ func.func @LowerSparsifyOpFloatUnalignedShape(%arg0: !inputType, %wt: tensor<64x
     // CHECK-SAME:        ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:        rawFilterShape = [16, 16, 1, 1],
     // CHECK-SAME:        strides = [1, 1]
-    // CHECK-SAME:    } -> !VPU.SparseTensor<data=tensor<1x16x31x31xf16, {order = #NHWC}>, sparsity_map=tensor<1x16x31x31xi1, {order = #NHWC}>>
+    // CHECK-SAME:    }
+    // CHECK-SAME:    -> !VPU.SparseTensor<data=tensor<1x16x31x31xf16, {order = #NHWC}>, sparsity_map=tensor<1x16x31x31xi1, {order = #NHWC}>>
     // CHECK:       [[VAL2:%.+]] = VPU.Slice [[VAL1]] [0, 0, 0, 0] [1, 4, 31, 31]
     // CHECK-SAME:    : !VPU.SparseTensor<data=tensor<1x16x31x31xf16, {order = #NHWC}>, sparsity_map=tensor<1x16x31x31xi1, {order = #NHWC}>> to
     // CHECK-SAME:      !VPU.SparseTensor<data=tensor<1x4x31x31xf16, {order = #NHWC}>, sparsity_map=tensor<1x4x31x31xi1, {order = #NHWC}>>

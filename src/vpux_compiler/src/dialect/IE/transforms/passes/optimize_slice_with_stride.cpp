@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -103,8 +105,8 @@ bool SliceOpConverter::isBeneficialToConvert(IE::SliceOp sliceOp) const {
         return false;
     }
 
-    const auto sliceInType = sliceOp.getSource().getType().cast<vpux::NDTypeInterface>();
-    const auto sliceOutType = sliceOp.getResult().getType().cast<vpux::NDTypeInterface>();
+    const auto sliceInType = mlir::cast<vpux::NDTypeInterface>(sliceOp.getSource().getType());
+    const auto sliceOutType = mlir::cast<vpux::NDTypeInterface>(sliceOp.getResult().getType());
     const auto sliceInShape = sliceInType.getShape();
     const auto supportedLayout = DimsOrder::NHWC;
     const auto sliceInLayout = sliceInType.getDimsOrder();
@@ -126,12 +128,15 @@ bool SliceOpConverter::isBeneficialToConvert(IE::SliceOp sliceOp) const {
         }
     }
 
-    // Check if the input of slice op cannot fit CMX, it ensure a copy with DDR source
-    // E#103384::IE dialect should be HW-agnostic as much as possible, here should not depend on VPU/VPUIP dialect.
-    // An option is to use interfaces like registerLayerWithPostOpModelInterface for vpux::VPU::getTotalCMXSize(op)
-    // for such op which need to this function to check memory size in IE dialect.
-    if (sliceInType.getTotalAllocSize() <= vpux::VPU::getTotalCMXSize(sliceOp)) {
-        _log.trace("Slice at {0} is not a copy with DDR source", sliceOp.getLoc());
+    static constexpr int64_t SPATIAL_CHANNEL_RATIO_TO_CONVERT = 100;
+    auto checkShape = [&]() -> bool {
+        const auto sliceOutShape = sliceOutType.getShape();
+        int minHW = std::min(sliceOutShape[Dims4D::Act::H], sliceOutShape[Dims4D::Act::W]);
+        return (minHW / sliceOutShape[Dims4D::Act::C]) >= SPATIAL_CHANNEL_RATIO_TO_CONVERT;
+    };
+    // If slice with NHWC layout and channel is small, it's efficient to convert it to Convolution.
+    if (!checkShape()) {
+        _log.trace("Slice at {0} is not efficient to convert", sliceOp.getLoc());
         return false;
     }
 
@@ -184,7 +189,7 @@ IE::ConvolutionOp SliceOpConverter::createConvolution(IE::SliceOp origOp, mlir::
 
     // IE::ConvolutionOp output type inference sets NCHW output order.
     // Specify convolution output type explicitly.
-    const auto origOutType = origOp.getResult().getType().cast<vpux::NDTypeInterface>();
+    const auto origOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
     const auto weightsShape = getShape(weights);
     const auto outChannels = weightsShape[Dims4D::Filter::OC];
     const Shape convInShape = getShape(activation).toValues();
@@ -196,7 +201,7 @@ IE::ConvolutionOp SliceOpConverter::createConvolution(IE::SliceOp origOp, mlir::
     return rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), convOutType, activation, weights,
                                               /*bias=*/nullptr, strides, kernelPadsBegin, kernelPadsEnd, dilations,
                                               /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 }
 
 mlir::Value SliceOpConverter::composeWeights(IE::SliceOp origOp, const mlir::Type convolutionInputType,
@@ -277,7 +282,7 @@ mlir::Value SliceOpConverter::composeWeights(IE::SliceOp origOp, const mlir::Typ
             rewriter.create<Const::DeclareOp>(declLoc, weightExpressedType, Const::ContentAttr::get(weightStorageAttr));
 
     const auto reorderLoc = appendLoc(origOp.getLoc(), "reorder weights for DPU slice");
-    const auto weightTypeNCHW = declOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto weightTypeNCHW = mlir::cast<vpux::NDTypeInterface>(declOp.getOutput().getType());
     const auto reorderType = weightTypeNCHW.changeDimsOrder(DimsOrder::OYXI);
     const auto orderMap = DimsOrder::OYXI.toAffineMap(ctx);
     auto reorderOut = rewriter.createOrFold<IE::ReorderOp>(reorderLoc, reorderType, declOp.getOutput(), orderMap);
@@ -298,8 +303,8 @@ mlir::LogicalResult SliceOpConverter::matchAndRewrite(IE::SliceOp origOp, mlir::
     }
 
     const auto sliceInput = origOp.getSource();
-    const auto sliceInType = sliceInput.getType().cast<vpux::NDTypeInterface>();
-    const auto sliceOutType = origOp.getResult().getType().cast<vpux::NDTypeInterface>();
+    const auto sliceInType = mlir::cast<vpux::NDTypeInterface>(sliceInput.getType());
+    const auto sliceOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
     const auto convolutionAlignment = calculateAlignmentFactor(sliceInType, sliceOutType);
 
     auto reshapeIn = reshapeConvInput(origOp.getLoc(), sliceInput, convolutionAlignment, rewriter);
@@ -345,7 +350,7 @@ IE::ConvolutionOp SliceConcatRewriter::createIdentityConvolution(IE::SliceOp sli
     // Compose new weights
     const auto origInputChannel = getShape(sliceOp.getSource())[Dims4D::Act::C];
     const auto newOutputChannel = getShape(concatOp.getOutput())[Dims4D::Act::C];
-    const auto convOutType = concatOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto convOutType = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType());
 
     const int64_t kernelY = 1;
     const int64_t kernelX = 1;
@@ -365,7 +370,7 @@ IE::ConvolutionOp SliceConcatRewriter::createIdentityConvolution(IE::SliceOp sli
             rewriter.create<Const::DeclareOp>(declLoc, weightExpressedType, Const::ContentAttr::get(weightStorageAttr));
 
     const auto reorderLoc = appendLoc(sliceOp.getLoc(), "reorder weights for DPU slice");
-    const auto weightTypeNCHW = declOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto weightTypeNCHW = mlir::cast<vpux::NDTypeInterface>(declOp.getOutput().getType());
     const auto reorderType = weightTypeNCHW.changeDimsOrder(DimsOrder::OYXI);
     const auto orderMap = DimsOrder::OYXI.toAffineMap(ctx);
     auto reorderOut = rewriter.createOrFold<IE::ReorderOp>(reorderLoc, reorderType, declOp.getOutput(), orderMap);
@@ -373,7 +378,7 @@ IE::ConvolutionOp SliceConcatRewriter::createIdentityConvolution(IE::SliceOp sli
     return rewriter.create<IE::ConvolutionOp>(sliceOp.getLoc(), convOutType, sliceOp.getSource(), reorderOut,
                                               /*bias=*/nullptr, strides, kernelPadsBegin, kernelPadsEnd, dilations,
                                               /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 }
 
 bool doesSliceConcatMeetRequirement(IE::SliceOp sliceOp, IE::ConcatOp concatOp) {
@@ -521,7 +526,7 @@ mlir::LogicalResult SliceConcatRewriter::matchAndRewrite(IE::ConcatOp concatOp, 
             inConvOp, inConvOp.getOutput().getType(), inConvOp.getInput(), newFilter, inConvOp.getBias(),
             inConvOp.getStrides(), inConvOp.getPadsBegin(), inConvOp.getPadsEnd(), inConvOp.getDilations(),
             inConvOp.getPostOpAttr(), inConvOp.getClampAttr(), inConvOp.getStaticScaleAttr(),
-            inConvOp.getOutputChannelsAttr(), inConvOp.getInputChannelsAttr());
+            inConvOp.getOutputPaddingAttr(), inConvOp.getInputPaddingAttr());
     sliceOp.getResult().replaceAllUsesWith(sliceOp.getSource());
 
     // Replace Concat with Add.
@@ -605,13 +610,13 @@ mlir::LogicalResult FuseSliceWithConvRewriter::matchAndRewrite(IE::SliceOp slice
         return mlir::failure();
     }
 
-    const auto origOutType = inConvOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto origOutType = mlir::cast<vpux::NDTypeInterface>(inConvOp.getOutput().getType());
     const auto newOutType = origOutType.changeShape(vpux::getShape(sliceOp.getResult()));
     auto newConv = rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
             inConvOp, newOutType, inConvOp.getInput(), newFilter, inConvOp.getBias(), inConvOp.getStrides(),
             inConvOp.getPadsBegin(), inConvOp.getPadsEnd(), inConvOp.getDilations(), inConvOp.getPostOpAttr(),
-            inConvOp.getClampAttr(), inConvOp.getStaticScaleAttr(), inConvOp.getOutputChannelsAttr(),
-            inConvOp.getInputChannelsAttr());
+            inConvOp.getClampAttr(), inConvOp.getStaticScaleAttr(), inConvOp.getOutputPaddingAttr(),
+            inConvOp.getInputPaddingAttr());
     sliceOp.getResult().replaceAllUsesWith(newConv.getOutput());
 
     _log.trace("[{0}] Successfully Fuse Slice into Conv '{1}' at '{2}'", getDebugName(), newConv->getName(),

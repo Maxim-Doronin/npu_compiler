@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -34,7 +34,7 @@ func.func @NotFoldConvertIntoMaxPool(%arg0: tensor<1x64x28x28xf16, {order = #NHW
 // CHECK-SAME: ([[INPUT:%.+]]: tensor<1x64x28x28xf16, {order = #NHWC}>)
 func.func @NotFoldConvertIntoEltwiseWithClamp(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}>) -> tensor<1x64x28x28xf32, {order = #NHWC}> {
   %0 = IE.Add(%arg0, %arg0) {
-    auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.PostOp<name = "IE.Clamp", attrs = {max = 6.0, min = 0.0}>
+    auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>
   }
       : tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<1x64x28x28xf16, {order = #NHWC}>
       -> tensor<1x64x28x28xf16, {order = #NHWC}>
@@ -69,5 +69,26 @@ func.func @NotFoldConvertIntoConvQuantInput(%arg0: tensor<1x8x128x128x!qElemType
   // CHECK-SAME:    -> tensor<1x2x128x64xf16, {order = #NHWC}>
   // CHECK-NEXT:  [[RET:%.+]] = IE.Convert([[CONV]]) {dstElemType = f32}
   // CHECK-SAME:    -> tensor<1x2x128x64xf32, {order = #NHWC}>
+  // CHECK:       return [[RET]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-LABEL: @NotFoldConvertIntoInterpolate
+// CHECK-SAME: ([[INPUT:%.+]]: tensor<1x16x512x1024xf16, {order = #NHWC}>)
+func.func @NotFoldConvertIntoInterpolate(%arg0: tensor<1x16x512x1024xf16, {order = #NHWC}>) -> tensor<1x16x1024x2048xf32, {order = #NHWC}> {
+  %0 = IE.Interpolate(%arg0)
+      {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR_ONNX>, nearest_mode = <FLOOR>,
+      pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>, axes_attr = [2, 3],
+      operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [192, 352]
+      } : tensor<1x16x512x1024xf16, {order = #NHWC}> -> tensor<1x16x1024x2048xf16, {order = #NHWC}>
+  %1 = IE.Convert(%0) {dstElemType = f32} : tensor<1x16x1024x2048xf16, {order = #NHWC}> -> tensor<1x16x1024x2048xf32, {order = #NHWC}>
+  return %1 : tensor<1x16x1024x2048xf32, {order = #NHWC}>
+
+  // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[INPUT]])
+  // CHECK-SAME:    : tensor<1x16x512x1024xf16, {order = #NHWC}> -> tensor<1x16x1024x2048xf16, {order = #NHWC}>
+  // CHECK-NEXT:  [[RET:%.+]] = IE.Convert([[INTERP]])
+  // CHECK-SAME:    -> tensor<1x16x1024x2048xf32, {order = #NHWC}>
   // CHECK:       return [[RET]]
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU40XX
 
 module {
-  IE.CNNNetwork entryPoint : @DynamicConcat inputsInfo : {
+  net.NetworkInfo entryPoint : @DynamicConcat inputsInfo : {
     DataInfo "input_bound" : tensor<1x3x5x16xf16>
     DataInfo "input_shape" : tensor<4xsi32>
   } outputsInfo : {

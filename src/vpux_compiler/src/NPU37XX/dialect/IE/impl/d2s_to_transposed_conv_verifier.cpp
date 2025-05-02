@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2024 - 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,18 +22,18 @@ using namespace vpux::IE::arch37xx;
 mlir::LogicalResult D2SToTransposedConvVerifier::isBeneficialConversion(Logger log, mlir::PatternRewriter& rewriter,
                                                                         IE::DepthToSpaceOp d2sOp) const {
     if (d2sOp.getBlockSize() >= 4) {
-        return matchFailed(log, rewriter, d2sOp, "mapping D2S to DPU is not benefical: blockSize({0}) >= 4",
+        return matchFailed(log, rewriter, d2sOp, "mapping D2S to DPU is not beneficial: blockSize({0}) >= 4",
                            d2sOp.getBlockSize());
     }
 
-    auto outputType = d2sOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(d2sOp.getOutput().getType());
     auto outputChannels = outputType.getShape()[Dims4D::Act::C];
 
     auto alignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
 
     if (outputChannels < alignment) {
         return matchFailed(log, rewriter, d2sOp,
-                           "mapping D2S to DPU is not benefical: outputChannels({0}) < alignment({1})", outputChannels,
+                           "mapping D2S to DPU is not beneficial: outputChannels({0}) < alignment({1})", outputChannels,
                            alignment);
     }
 

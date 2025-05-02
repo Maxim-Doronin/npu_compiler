@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,23 +9,10 @@
 
 #pragma once
 
-#include "vpux/utils/core/containers.hpp"
-
-#include <string.h>
 #include <functional>
-#include <memory>
-#include <string>
 #include <string_view>
 
 namespace vpux {
-
-std::string printFormattedCStr(const char* fmt, ...)
-#if defined(__clang__)
-        ;
-#elif defined(__GNUC__) || defined(__GNUG__)
-        __attribute__((format(printf, 1, 2)));
-#else
-        ;
-#endif
-
+void splitRangeAndApply(std::string_view::const_iterator begin, std::string_view::const_iterator end, char delim,
+                        std::function<void(std::string_view)> callback);
 }  // namespace vpux

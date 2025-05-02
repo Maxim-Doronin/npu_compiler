@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/unsqueeze.hpp"
 
@@ -29,25 +30,29 @@ mlir::LogicalResult vpux::VPU::UnsqueezeOp::inferReturnTypes(mlir::MLIRContext* 
     }
 
     const auto input = unsqueeze.getInput();
-    const auto inType = input.getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto inShape = inType.getShape();
     const auto inOrder = DimsOrder::fromValue(input);
 
-    const auto outShape = IE::propagateShape(loc, inShape, axes.value());
-    if (mlir::failed(outShape)) {
+    const auto propagatedOutShape = IE::propagateShape(loc, inShape, axes.value());
+    if (mlir::failed(propagatedOutShape)) {
+        return mlir::failure();
+    }
+    const auto outShape = Shape(propagatedOutShape.value());
+
+    const auto outDynamicAttr = IE::propagateDynamicAttr(loc, input, axes.value());
+    if (mlir::failed(outDynamicAttr)) {
         return mlir::failure();
     }
 
-    const auto outBounds = IE::propagateBoundsAttr(ctx, loc, input, axes.value());
-    if (mlir::failed(outBounds)) {
-        return mlir::failure();
-    }
+    auto outOrder = vpux::VPU::inferUnsqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inShape);
+    auto typeComponents = TypeComponents().setShape(outShape).setDimsOrder(outOrder);
 
-    const auto typeComponents =
-            TypeComponents()
-                    .setShape(Shape(outShape.value()))
-                    .setDimsOrder(vpux::VPU::inferUnsqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inShape))
-                    .setBounds(outBounds.value());
+    if (mlir::isa<Core::BoundedTensorType>(inType)) {
+        typeComponents.setBounds(Bounds(outDynamicAttr.value()));
+    } else {
+        typeComponents.setDynamicDimsMask(DynamicDimsMask(outDynamicAttr.value()));
+    }
 
     auto outType = inType.changeTypeComponents(typeComponents);
     inferredReturnTypes.push_back(outType);

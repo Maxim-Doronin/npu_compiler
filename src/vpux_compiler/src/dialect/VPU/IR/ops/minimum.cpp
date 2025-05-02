@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,8 +22,8 @@ mlir::LogicalResult vpux::VPU::MinimumOp::inferReturnTypes(mlir::MLIRContext* ct
         return mlir::failure();
     }
 
-    const auto in1Type = minimum.getInput1().getType().cast<vpux::NDTypeInterface>();
-    const auto in2Type = minimum.getInput2().getType().cast<vpux::NDTypeInterface>();
+    const auto in1Type = mlir::cast<vpux::NDTypeInterface>(minimum.getInput1().getType());
+    const auto in2Type = mlir::cast<vpux::NDTypeInterface>(minimum.getInput2().getType());
 
     const auto outShapeRes = IE::broadcastEltwiseShape(in1Type.getShape().raw(), in2Type.getShape().raw(),
                                                        minimum.getAutoBroadcast(), loc);
@@ -38,7 +38,7 @@ mlir::LogicalResult vpux::VPU::MinimumOp::inferReturnTypes(mlir::MLIRContext* ct
 }
 
 bool vpux::VPU::MinimumOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto inputType = getInput1().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput1().getType());
     const auto inShape = inputType.getShape();
 
     if (strategy == VPU::MultiClusterStrategy::Clustering) {

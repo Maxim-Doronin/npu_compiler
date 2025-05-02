@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -20,7 +22,7 @@ namespace {
 Dim normalizeAxis(IE::SplitOpAdaptor split) {
     VPUX_THROW_UNLESS(split.getAxisValue().has_value(), "Got non constant axis");
 
-    const auto inType = split.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(split.getInput().getType());
     const auto inRank = inType.getRank();
 
     auto axisInd = split.getAxisValue().value();
@@ -48,7 +50,7 @@ mlir::FailureOr<Dim> extractAxis(mlir::Location loc, IE::SplitOpAdaptor split) {
         }
 
         const auto axisContent = axisConst.getContent();
-        const auto inType = split.getInput().getType().cast<mlir::ShapedType>();
+        const auto inType = mlir::cast<mlir::ShapedType>(split.getInput().getType());
         const auto inRank = inType.getRank();
 
         auto axisInd = axisContent.getSplatValue<int64_t>();
@@ -82,7 +84,7 @@ mlir::LogicalResult vpux::IE::SplitOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = split.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(split.getInput().getType());
 
     const auto axis = extractAxis(loc, split);
     if (mlir::failed(axis)) {
@@ -91,7 +93,7 @@ mlir::LogicalResult vpux::IE::SplitOp::inferReturnTypeComponents(
 
     const auto num_splits = split.getNumSplits();
 
-    auto outShape = inType.cast<vpux::NDTypeInterface>().getShape().toValues();
+    auto outShape = mlir::cast<vpux::NDTypeInterface>(inType).getShape().toValues();
     if ((outShape[*axis] < num_splits) || (outShape[*axis] % num_splits != 0)) {
         return errorAt(loc, "Unsupported num_splits parameter");
     }

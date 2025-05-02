@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,9 @@
 
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
+
+#include "vpux/compiler/dialect/VPU/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 
 using namespace vpux;
 
@@ -82,4 +85,9 @@ SmallVector<int64_t> vpux::countNonSparseElementsPerOC(const Const::Content& con
         VPUX_THROW("Unexpected weights data type: {0}", elementType);
     }
     return numActualElements;
+}
+
+bool vpux::isActSparseOp(mlir::Operation* op) {
+    return mlir::isa<VPU::SparseTensorType, VPUIP::SparseBufferType>(op->getResult(0).getType()) ||
+           mlir::isa<VPU::SparseTensorType, VPUIP::SparseBufferType>(op->getOperand(0).getType());
 }

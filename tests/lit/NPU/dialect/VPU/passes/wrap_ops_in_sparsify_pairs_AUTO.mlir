@@ -15,22 +15,22 @@ module @main {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
 
         return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
         // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
         // CHECK-NOT:   VPU.Desparsify
         // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
-            // CHECK-NOT:       !VPU.SparseTensor
-        // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
         // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
         // CHECK:       [[VAL3:%.+]] = VPU.Desparsify([[VAL2]]
         // CHECK:       return [[VAL3]]
     }
 
-    IE.SparsityStatistics sparsityInfo : {
-        IE.SparsityInfo 0.3 at input 0 of "Conv_1" loc(#loc0)
+    net.SparsityStatistics sparsityInfo : {
+        net.SparsityInfo 0.3 at input 0 of "Conv_1" loc(#loc0)
     }
 }
 
@@ -50,22 +50,22 @@ module @main {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
 
         return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
         // CHECK-NOT:   VPU.Sparsify
         // CHECK-NOT:   VPU.Desparsify
         // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, %arg2, %arg1)
-            // CHECK-NOT:       !VPU.SparseTensor
-        // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
         // CHECK:       [[VAL1:%.+]] = VPU.Sparsify([[VAL0]])
         // CHECK:       [[VAL2:%.+]] = VPU.Desparsify([[VAL1]]
         // CHECK:       return [[VAL2]]
     }
 
-    IE.SparsityStatistics sparsityInfo : {
-        IE.SparsityInfo 0.3 at input 0 of "Conv_2" loc(#loc0)
+    net.SparsityStatistics sparsityInfo : {
+        net.SparsityInfo 0.3 at input 0 of "Conv_2" loc(#loc0)
     }
 }
 
@@ -82,15 +82,15 @@ module @main {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
 
         return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
         // CHECK-NOT:   VPU.Sparsify
         // CHECK-NOT:   VPU.Desparsify
         // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, %arg2, %arg1)
-            // CHECK-NOT:       !VPU.SparseTensor
-        // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
         // CHECK-NOT:   VPU.Sparsify
         // CHECK-NOT:   VPU.Desparsify
         // CHECK:       return [[VAL0]]
@@ -111,19 +111,19 @@ module @main {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
         %2 = VPU.NCE.Convolution(%1, %weights, %wt) {
                 ppe = #VPU.PPEStub<>,
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_2", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_2", "t_Convolution"])
         %3 = VPU.NCE.Convolution(%1, %weights, %wt) {
                 ppe = #VPU.PPEStub<>,
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_3", "t_Convolution", "broadcast"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_3", "t_Convolution", "broadcast"])
 
         return %2, %3 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -131,8 +131,8 @@ module @main {
         // CHECK-NOT:   VPU.Desparsify
 
         // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
-        // CHECK-NOT:       !VPU.SparseTensor
-        // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
         // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
         // CHECK:       [[VAL3:%.+]] = VPU.Desparsify([[VAL2]]
@@ -141,8 +141,8 @@ module @main {
         // CHECK-NOT:   VPU.Desparsify
 
         // CHECK:       [[VAL4:%.+]] = VPU.NCE.Convolution([[VAL3]], %arg2, %arg1)
-        // CHECK-NOT:       !VPU.SparseTensor
-        // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
         // CHECK:       [[VAL5:%.+]] = VPU.Sparsify([[VAL4]])
         // CHECK:       [[VAL6:%.+]] = VPU.Desparsify([[VAL5]]
@@ -151,8 +151,8 @@ module @main {
         // CHECK-NOT:   VPU.Desparsify
 
         // CHECK:       [[VAL8:%.+]] = VPU.NCE.Convolution([[VAL7]], %arg2, %arg1)
-        // CHECK-NOT:       !VPU.SparseTensor
-        // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
         // CHECK:       [[VAL9:%.+]] = VPU.Sparsify([[VAL8]])
         // CHECK:       [[VAL10:%.+]] = VPU.Desparsify([[VAL9]]
@@ -160,10 +160,10 @@ module @main {
         // CHECK:       return [[VAL6]], [[VAL10]]
     }
 
-    IE.SparsityStatistics sparsityInfo : {
-        IE.SparsityInfo 0.3 at input 0 of "Conv_1" loc(#loc0)
-        IE.SparsityInfo 0.0 at input 0 of "Conv_2" loc(#loc0)
-        IE.SparsityInfo 0.3 at input 0 of "Conv_3" loc(#loc0)
+    net.SparsityStatistics sparsityInfo : {
+        net.SparsityInfo 0.3 at input 0 of "Conv_1" loc(#loc0)
+        net.SparsityInfo 0.0 at input 0 of "Conv_2" loc(#loc0)
+        net.SparsityInfo 0.3 at input 0 of "Conv_3" loc(#loc0)
     }
 }
 
@@ -181,7 +181,7 @@ module @main {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
         %2 = VPU.NCE.Eltwise(%1, %1) {
                     op_type = #VPU.eltwise_type<ADD>,
                     ppe = #VPU.PPEStub<>
@@ -201,8 +201,8 @@ module @main {
         // CHECK-NOT:   VPU.Desparsify
 
         // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
-        // CHECK-NOT:       !VPU.SparseTensor
-        // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
         // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
         // CHECK:       [[VAL3:%.+]] = VPU.Desparsify([[VAL2]]
@@ -222,9 +222,9 @@ module @main {
         // CHECK:       return [[VAL8]], [[VAL9]]
     }
 
-    IE.SparsityStatistics sparsityInfo : {
-        IE.SparsityInfo 0.8 at input 0 of "Conv_1" loc(#loc0)
-        IE.SparsityInfo 0.8 at input 0 of "Add_1" loc(#loc0)
-        IE.SparsityInfo 0.8 at input 0 of "Maxpool_1" loc(#loc0)
+    net.SparsityStatistics sparsityInfo : {
+        net.SparsityInfo 0.8 at input 0 of "Conv_1" loc(#loc0)
+        net.SparsityInfo 0.8 at input 0 of "Add_1" loc(#loc0)
+        net.SparsityInfo 0.8 at input 0 of "Maxpool_1" loc(#loc0)
     }
 }

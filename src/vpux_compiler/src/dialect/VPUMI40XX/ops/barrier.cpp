@@ -1,12 +1,13 @@
 
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <vpux/compiler/dialect/VPUMI40XX/utils.hpp>
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
 using namespace VPUMI40XX;
@@ -17,27 +18,28 @@ using namespace VPUMI40XX;
 
 void ConfigureBarrierOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
                                VPURegMapped::IndexType index, int64_t id, int64_t next_same_id,
-                               mlir::IntegerAttr producer_count, mlir::IntegerAttr consumer_count) {
-    build(odsBuilder, odsState, index, mlir::ValueRange{}, checked_cast<uint8_t>(id), next_same_id,
-          /*previousSameId*/ nullptr, producer_count, consumer_count);
-    return;
-}
-
-void ConfigureBarrierOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
-                               VPURegMapped::IndexType index, int64_t id, int64_t next_same_id,
                                mlir::IntegerAttr producer_count, mlir::IntegerAttr consumer_count,
-                               bool isFinalBarrier) {
+                               mlir::IntegerAttr wlmPageAttr) {
     build(odsBuilder, odsState, index, mlir::ValueRange{}, checked_cast<uint8_t>(id), next_same_id,
-          /*previousSameId*/ nullptr, producer_count, consumer_count, isFinalBarrier);
+          /*previousSameId*/ nullptr, producer_count, consumer_count, false, false, wlmPageAttr);
     return;
 }
 
 void ConfigureBarrierOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
                                VPURegMapped::IndexType index, int64_t id, int64_t next_same_id,
                                mlir::IntegerAttr producer_count, mlir::IntegerAttr consumer_count, bool isFinalBarrier,
-                               bool isStartBarrier) {
+                               mlir::IntegerAttr wlmPageAttr) {
     build(odsBuilder, odsState, index, mlir::ValueRange{}, checked_cast<uint8_t>(id), next_same_id,
-          /*previousSameId*/ nullptr, producer_count, consumer_count, isFinalBarrier, isStartBarrier);
+          /*previousSameId*/ nullptr, producer_count, consumer_count, isFinalBarrier, false, wlmPageAttr);
+    return;
+}
+
+void ConfigureBarrierOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
+                               VPURegMapped::IndexType index, int64_t id, int64_t next_same_id,
+                               mlir::IntegerAttr producer_count, mlir::IntegerAttr consumer_count, bool isFinalBarrier,
+                               bool isStartBarrier, mlir::IntegerAttr wlmPageAttr) {
+    build(odsBuilder, odsState, index, mlir::ValueRange{}, checked_cast<uint8_t>(id), next_same_id,
+          /*previousSameId*/ nullptr, producer_count, consumer_count, isFinalBarrier, isStartBarrier, wlmPageAttr);
     return;
 }
 

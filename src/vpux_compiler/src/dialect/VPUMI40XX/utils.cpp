@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -142,7 +142,7 @@ size_t reindexEnqueueList(VPURegMapped::EnqueueOp head) {
 
 uint32_t generateTileMask(mlir::ArrayRef<uint32_t> usedTileIndexes) {
     // this offset is actually maybe generation-specific, so shouldn't be
-    // exposed to VPUMI40XX dialect that is generic for NPU40XX gens
+    // exposed to VPUMI40XX dialect that is generic for NPU4+ gens
     // E#146739
     constexpr auto CMX_TILE_SELECT_OFFSET = uint32_t{21};
     auto tileMask = uint32_t{0};
@@ -151,6 +151,35 @@ uint32_t generateTileMask(mlir::ArrayRef<uint32_t> usedTileIndexes) {
     }
     return tileMask;
 }
+
+//
+// AddBarrierProgrammingOp Util
+//
+
+template <typename TaskOpType>
+void reindexList(VPUMI40XX::MappedInferenceOp mpi, TaskOpType firstTask, size_t fetchTaskTileIdx,
+                 size_t fetchTaskListIdx) {
+    auto ctx = mpi.getContext();
+    auto oldHead = mpi.getListHead(VPURegMapped::TaskType::DMA, fetchTaskTileIdx, fetchTaskListIdx);
+
+    oldHead.replaceUsesWithIf(firstTask, [](mlir::OpOperand& opOperand) {
+        return mlir::isa<VPUMI40XX::OpRanges>(opOperand.getOwner());
+    });
+
+    mpi.getListHeadMutable(VPURegMapped::TaskType::DMA, fetchTaskTileIdx, fetchTaskListIdx).assign(firstTask);
+
+    auto newCount = VPUMI40XX::reindexList(mlir::cast<VPURegMapped::TaskOpInterface>(
+            mpi.getListHead(VPURegMapped::TaskType::DMA, fetchTaskTileIdx, fetchTaskListIdx).getDefiningOp()));
+
+    auto dmaCount = parseIntArrayOfArrayAttr<int64_t>(mpi.getDmaCount());
+    dmaCount[fetchTaskTileIdx][fetchTaskListIdx] = newCount;
+    mpi.setDmaCountAttr(getIntArrayOfArray(ctx, dmaCount));
+}
+
+// Explicit instantiations
+template void reindexList<VPUMI40XX::NNDMAOp>(VPUMI40XX::MappedInferenceOp, VPUMI40XX::NNDMAOp, size_t, size_t);
+template void reindexList<VPURegMapped::FetchTaskOp>(VPUMI40XX::MappedInferenceOp, VPURegMapped::FetchTaskOp, size_t,
+                                                     size_t);
 
 }  // namespace VPUMI40XX
 }  // namespace vpux

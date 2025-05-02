@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -81,7 +81,7 @@ func.func @AdjustInputDistributedType(%arg0: !InputDistributed1) -> !OutputDistr
     %4 = VPU.NCE.Convolution(%1, %2, %3) {
         ppe = #VPU.PPEStub<>,
         pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-        rawFilterShape = [64, 128, 1, 1], strides = [1, 1]} -> !OutputDistributed
+        rawFilterShape = [64, 128, 1, 1], strides = [1, 1]} : !InputDistributed2, !WeightsDistributed, !WeightTableDistributed -> !OutputDistributed
     return %4 : !OutputDistributed
 
     // CHECK:    [[WEIGHTS:%.+]] = const.Declare tensor<64x128x1x1xi8, {order = #NHWC}> = dense<1> : tensor<64x128x1x1xi8>, [#const.Reorder<#NHWC>]

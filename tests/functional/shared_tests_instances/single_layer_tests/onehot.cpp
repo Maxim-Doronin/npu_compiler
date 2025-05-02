@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
 #include "single_op_tests/one_hot.hpp"
 #include "vpu_ov2_layer_test.hpp"
 

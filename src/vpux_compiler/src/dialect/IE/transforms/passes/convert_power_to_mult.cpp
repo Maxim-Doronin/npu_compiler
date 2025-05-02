@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -58,8 +60,8 @@ mlir::LogicalResult PowerToMultRewriter::matchAndRewrite(IE::PowerOp powerOp, ml
         const auto newLoc = takeOpLoc(powerOp, StringLiteral("exponent_{0}"), idx);
         return rewriter
                 .create<IE::MultiplyOp>(newLoc, input1, input2, broadcastType,
-                                        /*post_op=*/nullptr, /*clamp=*/nullptr, /*output_channels=*/nullptr,
-                                        /*input_channels=*/nullptr)
+                                        /*post_op=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
+                                        /*inputPadding=*/nullptr)
                 .getResult();
     };
 

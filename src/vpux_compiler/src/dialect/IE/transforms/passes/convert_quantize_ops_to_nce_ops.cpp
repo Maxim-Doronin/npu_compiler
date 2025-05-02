@@ -1,14 +1,17 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes/convert_quantize_ops_to_nce_ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/factories/convert_quantize_ops_to_nce_ops_strategy_getter.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTQUANTIZEOPSTONCEOPS
@@ -39,8 +42,8 @@ private:
 };
 
 bool isPerAxisQuant(mlir::Value val) {
-    auto elemType = val.getType().cast<vpux::NDTypeInterface>().getElementType();
-    return elemType.isa<mlir::quant::UniformQuantizedPerAxisType>();
+    auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
+    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
 }
 
 void ConvertQuantizeOpsToNceOpsPass::safeRunOnFunc() {

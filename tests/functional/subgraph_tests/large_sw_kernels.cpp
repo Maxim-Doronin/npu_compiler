@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -106,7 +106,7 @@ class TwoMishTest_NPU4000 : public TwoMishTest_NPU3720 {};
 TEST_P(TwoMishTest_NPU4000, HW) {
     setDefaultHardwareMode();
     // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
+    configuration["NPU_COMPILATION_MODE_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 

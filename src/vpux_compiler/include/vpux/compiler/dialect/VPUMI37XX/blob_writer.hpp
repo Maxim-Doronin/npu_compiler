@@ -12,9 +12,9 @@
 
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/dense_map.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/string_ref.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Operation.h>

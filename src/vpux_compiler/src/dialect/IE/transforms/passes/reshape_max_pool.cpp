@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -121,7 +122,7 @@ mlir::LogicalResult MaxPoolConverter::matchAndRewrite(IE::MaxPoolOp origOp, mlir
     auto maxpool = rewriter.create<IE::MaxPoolOp>(
             origOp.getLoc(), reshapeIn.getOutput(), newKernel, newStrides, origOp.getPadsBeginAttr(),
             origOp.getPadsEndAttr(), origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     const SmallVector<int64_t> newOutputShape = {
             outShape[Dims4D::Act::N],

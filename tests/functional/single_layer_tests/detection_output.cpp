@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,9 +7,6 @@
 #include <common/print_test_case_name.hpp>
 #include <common/tensor_view.hpp>
 #include <numeric>
-#include <openvino/core/shape.hpp>
-#include <openvino/core/type/element_type.hpp>
-#include <ratio>
 #include <type_traits>
 #include <vpu_ov2_layer_test.hpp>
 

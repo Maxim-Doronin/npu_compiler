@@ -38,6 +38,7 @@ class ConvWithActivationQuantizedTest :
     }
 
     void SetUp() override {
+        rel_threshold = 0.002f;
         const auto& [activationType, quantParams] = GetParam();
 
         init_input_shapes(static_shapes_to_test_representation({ov::Shape{1, 16, 16, 16}}));
@@ -59,7 +60,9 @@ class ConvWithActivationQuantizedTest :
 
         lastOutput = buildConv(lastOutput, weights);
 
-        lastOutput = utils::make_activation(lastOutput, ov::element::f16, activationType)->get_default_output();
+        lastOutput = activationType == utils::Swish
+                             ? utils::make_activation(lastOutput, ov::element::f16, activationType, ov::Shape{}, {1.f})
+                             : utils::make_activation(lastOutput, ov::element::f16, activationType);
 
         if (quantParams.outputQuant.has_value()) {
             lastOutput = utils::makeFakeQuantize(lastOutput, ov::element::f16, 256, *quantParams.outputQuant)
@@ -115,7 +118,7 @@ public:
     };
 };
 
-const std::vector<utils::ActivationTypes> activations = {utils::Tanh, utils::Sigmoid};
+const std::vector<utils::ActivationTypes> activations = {utils::Tanh, utils::Sigmoid, utils::Swish, utils::Gelu};
 
 const std::vector<ConvQuantParams> quantParams = {
         ConvQuantParams{FakeQuantizeParams({0.f}, {100.f}, {0.f}, {100.f}), std::nullopt, std::nullopt},

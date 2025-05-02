@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
+#include "vpux/compiler/utils/types.hpp"
 
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
@@ -71,13 +72,13 @@ VPUIP::SparsityCompressionAttr VPUIP::getSparsityCompressionAttr(mlir::Type type
         return nullptr;
     }
 
-    if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+    if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
         if (const auto memRefAttr = memref.getLayout().dyn_cast_or_null<vpux::MemRefAttr>()) {
             return memRefAttr.hwSpecificField<VPUIP::SparsityCompressionAttr>();
         }
-    } else if (auto distributedBuffer = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+    } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
         return distributedBuffer.getSparsityCompression();
-    } else if (auto sparseType = type.dyn_cast<VPUIP::SparseBufferType>()) {
+    } else if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(type)) {
         return sparseType.getSparsityCompression();
     }
 
@@ -89,16 +90,16 @@ mlir::Type VPUIP::setSparsityCompressionAttr(mlir::Type type, VPUIP::SparsityCom
         return nullptr;
     }
 
-    if (type.isa<mlir::MemRefType>()) {
-        auto ndType = type.cast<vpux::NDTypeInterface>();
+    if (mlir::isa<mlir::MemRefType>(type)) {
+        auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
         return getMemRefType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(), ndType.getMemSpace(),
                              ndType.getStrides(), getSwizzlingSchemeAttr(type), sparsityCompressionAttr);
-    } else if (auto distributedBuffer = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+    } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
         return VPUIP::DistributedBufferType::get(type.getContext(), distributedBuffer.getShape().raw(),
                                                  distributedBuffer.getElementType(), distributedBuffer.getLayout(),
                                                  distributedBuffer.getMemSpace(), distributedBuffer.getDistribution(),
                                                  sparsityCompressionAttr);
-    } else if (auto sparseType = type.dyn_cast<VPUIP::SparseBufferType>()) {
+    } else if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(type)) {
         return VPUIP::SparseBufferType::get(sparseType.getData(), sparseType.getSparsityMap(),
                                             sparseType.getStorageElementTable(), sparseType.getIsWeights(),
                                             sparsityCompressionAttr);

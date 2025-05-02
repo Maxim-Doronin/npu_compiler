@@ -1,9 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 
 using namespace vpux;
 
@@ -20,15 +23,15 @@ mlir::LogicalResult vpux::VPU::GridSampleOp::inferReturnTypes(mlir::MLIRContext*
         return mlir::failure();
     }
 
-    const auto inType = gridSample.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(gridSample.getInput().getType());
     const auto inputShape = inType.getShape().raw();
 
-    const auto gridType = gridSample.getGrid().getType().cast<vpux::NDTypeInterface>();
+    const auto gridType = mlir::cast<vpux::NDTypeInterface>(gridSample.getGrid().getType());
     const auto gridShape = gridType.getShape().raw();
 
     SmallVector<int64_t> outShape = {inputShape[0], inputShape[1], gridShape[1], gridShape[2]};
 
-    const auto outType = inType.changeShape(Shape(outShape));
+    auto outType = mlir::RankedTensorType::get(outShape, inType.getElementType(), createTensorAttrFromType(inType));
     inferredReturnTypes.push_back(outType);
 
     return mlir::success();
@@ -68,7 +71,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GridSampleOp::getTilingStrategy(TilingM
     auto op = this->getOperation();
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
 
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     const auto outputShape = outputType.getShape();
 
     Shape nTilesOnDimforGridSample(outputShape.size(), 1);
@@ -102,4 +105,65 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GridSampleOp::getTilingStrategy(TilingM
 
     auto origTiles = fillDividedTiles(op, nTilesOnDimforGridSample, outputShape);
     return origTiles;
+}
+
+void vpux::VPU::GridSampleOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
+                                    ::mlir::Value input, ::mlir::Value grid, ::mlir::UnitAttr align_corners,
+                                    vpux::IE::GridSampleModeAttr mode,
+                                    vpux::IE::GridSamplePaddingModeAttr padding_mode) {
+    build(odsBuilder, odsState, input, grid, align_corners, mode, padding_mode, nullptr);
+}
+
+//
+// ClusteredOpInterface
+//
+
+bool vpux::VPU::GridSampleOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
+    auto ddrAccessOp = mlir::dyn_cast<VPU::DDRAccessOpInterface>(getOperation());
+    if (ddrAccessOp != nullptr && ddrAccessOp.isDDRAccessNecessaryOrBeneficial(Logger::global())) {
+        return false;
+    }
+
+    return strategy == VPU::MultiClusterStrategy::Clustering ||
+           strategy == VPU::MultiClusterStrategy::SplitOverKernel ||
+           strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
+           strategy == VPU::MultiClusterStrategy::SplitOverWidth;
+}
+
+vpux::VPU::DistributionInfo vpux::VPU::GridSampleOp::getExplicitDistributionInfoAttr(
+        vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
+        const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
+        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+    return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
+                                              numTiles, numClusters, alignment, uniformDistributedSegments,
+                                              overlapParams);
+}
+
+//
+// SWOpInterface
+//
+
+bool vpux::VPU::GridSampleOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem) {
+    VPUX_THROW_UNLESS(buffers.size() == 3,
+                      "GridSampleOp requires 2 inputs and 1 output, but the number of buffer is {0}", buffers.size());
+
+    SmallVector<Byte> buffersSize;
+    std::transform(buffers.begin(), buffers.end(), std::back_inserter(buffersSize), [](const auto buffer) {
+        return buffer.getTotalAllocSize();
+    });
+
+    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
+                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
+
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+                   reservedMem.count() <=
+           totalAvailableCMXSize;
+}
+
+bool vpux::VPU::GridSampleOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers) {
+    return fitIntoCMX(buffers, Byte(0));
+}
+
+bool vpux::VPU::GridSampleOp::supportCycleCostCalculation() {
+    return false;
 }

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -37,9 +38,9 @@ bool isAsymmetricQuant(mlir::quant::QuantizedType quantType) {
         return false;
     }
     SmallVector<int64_t> zeroPoints = {};
-    if (auto perAxis = quantType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto perAxis = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(quantType)) {
         zeroPoints = to_small_vector(perAxis.getZeroPoints());
-    } else if (auto perTensor = quantType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    } else if (auto perTensor = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(quantType)) {
         zeroPoints.push_back(perTensor.getZeroPoint());
     }
     const auto qMin = quantType.getStorageTypeMin();
@@ -100,8 +101,8 @@ mlir::LogicalResult DequantizeConst::matchAndRewrite(IE::DequantizeOp dCastOp, m
         return op->getNumOperands() > 2 && op->getOperand(2) == dCastOp.getResult();
     };
 
-    const auto qType = inputConst.getType().cast<vpux::NDTypeInterface>();
-    const auto qElemType = qType.getElementType().cast<mlir::quant::QuantizedType>();
+    const auto qType = mlir::cast<vpux::NDTypeInterface>(inputConst.getType());
+    const auto qElemType = mlir::cast<mlir::quant::QuantizedType>(qType.getElementType());
     auto users = dCastOp.getOutput().getUsers();
     if (_enableRuntimeDequantization && isAsymmetricQuant(qElemType) && qElemType.getStorageTypeIntegralWidth() == 8 &&
         std::all_of(users.begin(), users.end(), isMixedPrecisionOp) &&
@@ -112,7 +113,7 @@ mlir::LogicalResult DequantizeConst::matchAndRewrite(IE::DequantizeOp dCastOp, m
         return mlir::failure();
     }
 
-    const auto outType = dCastOp.getType().cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(dCastOp.getType());
     const auto newConstType = outType.changeElemType(qElemType.getExpressedType());
     auto newConstAttr = inputConst.transformContentAttr().dequantize().get();
     rewriter.replaceOpWithNewOp<Const::DeclareOp>(dCastOp, newConstType, std::move(newConstAttr))

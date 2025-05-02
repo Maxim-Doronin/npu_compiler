@@ -1,12 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 namespace IE {
@@ -36,7 +37,7 @@ mlir::FailureOr<mlir::Value> createUpsampling(mlir::PatternRewriter& rewriter, m
 
     if (isGroupTransposedConv) {
         auto origFilterShape =
-                to_small_vector(origOp.getFilter().getType().template dyn_cast<mlir::ShapedType>().getShape());
+                to_small_vector(mlir::dyn_cast<mlir::ShapedType>(origOp.getFilter().getType()).getShape());
         if (origFilterShape.size() != 5) {
             return errorAt(origOp, "Only 2D GroupTransposedConvolution is supported, expected 5D filter but got {0}",
                            origFilterShape.size());
@@ -57,7 +58,8 @@ mlir::FailureOr<mlir::Value> createUpsampling(mlir::PatternRewriter& rewriter, m
         // Input: 1x16x128x128xf16    Weights: 32x16x2x2xf16    OutputShape: 2xsi32 = dense<128>
         //                   \                |               /
         //                   TransposedConv: 1x32x128x128xf16
-        //                   (strides = [2, 2], output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64, 64])
+        //                   (strides = [2, 2], spatial_output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64,
+        //                   64])
         // The padL/padR/padT/padB should be non-negative integer, here will be set to 0 instead of -63.
         // Then the Upsampling output shape will be 1x32x255x255xf16 with strides = [2, 2].
         // So the sliceOp wiil be added after NCEConv (1x32x254x254xf16) for crop to 1x32x128x128xf16.
@@ -97,7 +99,8 @@ mlir::FailureOr<mlir::Value> createUpsampling(mlir::PatternRewriter& rewriter, m
             ctx, SmallVector<int64_t>{stridesVector[Dims4D::Strides::X], stridesVector[Dims4D::Strides::Y], 1});
 
     return rewriter
-            .create<IE::UpsamplingOp>(loc, origOp.getInput(), upsamplingFactor, padAttr, origOp.getOutputChannelsAttr())
+            .create<IE::UpsamplingOp>(loc, origOp.getInput(), upsamplingFactor, padAttr, origOp.getOutputPaddingAttr(),
+                                      origOp.getInputPaddingAttr())
             .getOutput();
 }
 

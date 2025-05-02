@@ -1,13 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 //
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 
-#include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
-#include "vpux/compiler/utils/convert_utils.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 #include "common/utils.hpp"

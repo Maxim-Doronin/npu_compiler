@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -41,7 +41,7 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter40XX::getSupportedChannels(
     auto supportedChannels = WorkloadSplitterBase::getSupportedChannels(nceOps, sparsityConstraint);
 
     const auto hasSparseOutput = llvm::any_of(nceOps, [](mlir::Operation* op) {
-        return op->getResult(0).getType().isa<VPU::SparseTensorType>();
+        return mlir::isa<vpux::VPU::SparseTensorType>(op->getResult(0).getType());
     });
     if ((std::find(supportedChannels.begin(), supportedChannels.end(), VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT) !=
          supportedChannels.end()) &&
@@ -51,7 +51,7 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter40XX::getSupportedChannels(
         const auto KX = kernelSize[Dims4D::Kernel::X.ind()];
         const auto kernelStride = nceOp.getStridesVal();
         const auto SX = kernelStride[Dims4D::Strides::X.ind()];
-        const auto outputType = nceOp.getOperation()->getResult(0).getType().cast<NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getOperation()->getResult(0).getType());
         const auto OC = outputType.getShape()[vpux::Dims4D::Act::C];
 
         SmallVector<int64_t> workloadsChannels = {OC};

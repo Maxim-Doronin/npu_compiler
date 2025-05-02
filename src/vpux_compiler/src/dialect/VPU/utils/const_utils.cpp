@@ -8,13 +8,13 @@
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/hw_settings.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/custom_pwl_table.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 
 #include <vpux/utils/core/numeric.hpp>
@@ -32,8 +32,9 @@ std::vector<int32_t> createWeightsTableData(mlir::Value opInput, mlir::Type opOu
     const auto weightPtrStep = VPU::NCESparsity::getWeightPtrStep(weights);
     const auto sparsityPtrStep = 0;
 
-    const auto inElemType = opInput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto weightsElemType = weights ? weights.getType().cast<vpux::NDTypeInterface>().getElementType() : nullptr;
+    const auto inElemType = mlir::cast<vpux::NDTypeInterface>(opInput.getType()).getElementType();
+    const auto weightsElemType =
+            weights ? mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType() : nullptr;
 
     const auto wtVec = VPU::NCESparsity::getWeightsTable(inElemType, opOutputElemType, weightPtrOffset, weightPtrStep,
                                                          sparsityPtrOffset, sparsityPtrStep, ppeConverter,
@@ -51,7 +52,7 @@ std::vector<int32_t> createWeightsTableData(mlir::Value opInput, mlir::Value opO
                                             VPU::NCESparsity::PPEConverterCb ppeConverter,
                                             VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale,
                                             bool hasAutopad) {
-    const auto outElemType = opOutput.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
     return createWeightsTableData(opInput, outElemType, weights, bias, OC, ppeConverter, biasConverter, constScale,
                                   hasAutopad);
 }
@@ -66,41 +67,89 @@ mlir::Value createWeightsTableTensor(mlir::OpBuilder& builder, mlir::Location lo
     return Const::createConst(builder, loc, dataStorageType, weightsTable);
 }
 
-std::vector<int32_t> createDataPointerTableData(mlir::Value opInput, mlir::Value opOutput,
-                                                ArrayRef<int32_t> workloadsSizes, mlir::Value weights,
-                                                int32_t weightPtrOffset, int64_t OC, ArrayRef<uint8_t> zeroPoints) {
-    const auto weightPtrStep = VPU::NCESparsity::getWeightPtrStep(weights);
+std::vector<float> createBiasTableData(mlir::Value opInput, mlir::Type outElemType, mlir::Value weights,
+                                       const Const::ContentAttr& bias, int64_t OC,
+                                       VPU::NCESparsity::BiasConverterCb biasConverter) {
+    const auto inElemType = mlir::cast<vpux::NDTypeInterface>(opInput.getType()).getElementType();
+    const auto weightsElemType =
+            weights ? mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType() : nullptr;
 
-    const auto inElemType = opInput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto outElemType = opOutput.getType().cast<vpux::NDTypeInterface>().getElementType();
-
-    return VPU::NCESparsity::getDataPointerTable(inElemType, outElemType, workloadsSizes, weightPtrOffset,
-                                                 weightPtrStep, OC, zeroPoints);
-}
-
-std::pair<std::vector<int32_t>, std::vector<int32_t>> createSparseDataPointerTableDataPair(
-        mlir::Value opInput, mlir::Value opOutput, ArrayRef<int32_t> workloadsSizes, mlir::Value weights,
-        int32_t weightPtrOffset, int32_t sparsityPtrOffset, ArrayRef<uint8_t> sparsityArray, int64_t OC,
-        ArrayRef<uint8_t> zeroPoints) {
-    const auto inElemType = opInput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto outElemType = opOutput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto weightsElemType = weights ? weights.getType().cast<vpux::NDTypeInterface>().getElementType() : nullptr;
-
-    const auto weightsShape = getShape(weights);
-
-    return VPU::NCESparsity::getSparseDataPointerTablePair(inElemType, outElemType, workloadsSizes, weightPtrOffset,
-                                                           weightsShape, sparsityPtrOffset, sparsityArray, OC,
-                                                           weightsElemType, zeroPoints);
+    return VPU::NCESparsity::getBiasTable(inElemType, outElemType, biasConverter, OC, weightsElemType, bias);
 }
 
 std::vector<float> createBiasTableData(mlir::Value opInput, mlir::Value opOutput, mlir::Value weights,
                                        const Const::ContentAttr& bias, int64_t OC,
                                        VPU::NCESparsity::BiasConverterCb biasConverter) {
-    const auto inElemType = opInput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto outElemType = opOutput.getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto weightsElemType = weights ? weights.getType().cast<vpux::NDTypeInterface>().getElementType() : nullptr;
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
 
-    return VPU::NCESparsity::getBiasTable(inElemType, outElemType, biasConverter, OC, weightsElemType, bias);
+    return createBiasTableData(opInput, outElemType, weights, bias, OC, biasConverter);
+}
+
+NewWeightsTableData::NewWeightsTableData(VPU::ArchKind arch, mlir::Value opInput, mlir::Type opOutputElemType,
+                                         mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
+                                         VPU::NCESparsity::PPEConverterCb ppeConverter,
+                                         VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
+    initializeData(arch, opInput, opOutputElemType, weights, bias, OC, ppeConverter, biasConverter, constScale);
+}
+
+NewWeightsTableData::NewWeightsTableData(VPU::ArchKind arch, mlir::Value opInput, mlir::Value opOutput,
+                                         mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
+                                         VPU::NCESparsity::PPEConverterCb ppeConverter,
+                                         VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
+
+    initializeData(arch, opInput, outElemType, weights, bias, OC, ppeConverter, biasConverter, constScale);
+}
+
+void NewWeightsTableData::initializeData(VPU::ArchKind /*arch*/, mlir::Value /*opInput*/,
+                                         mlir::Type /*opOutputElemType*/, mlir::Value /*weights*/,
+                                         const Const::ContentAttr& /*bias*/, int64_t /*OC*/,
+                                         VPU::NCESparsity::PPEConverterCb /*ppeConverter*/,
+                                         VPU::NCESparsity::BiasConverterCb /*biasConverter*/,
+                                         mlir::FloatAttr /*constScale*/) {
+    return;
+}
+
+NewWeightsTableTensors::NewWeightsTableTensors(VPU::ArchKind arch, mlir::OpBuilder& builder, mlir::Location loc,
+                                               mlir::Value opInput, mlir::Type opOutputElemType, mlir::Value weights,
+                                               const Const::ContentAttr& bias, int64_t OC,
+                                               VPU::NCESparsity::PPEConverterCb ppeConverter,
+                                               VPU::NCESparsity::BiasConverterCb biasConverter,
+                                               mlir::FloatAttr constScale) {
+    initializeTensors(arch, builder, loc, opInput, opOutputElemType, weights, bias, OC, ppeConverter, biasConverter,
+                      constScale);
+}
+
+NewWeightsTableTensors::NewWeightsTableTensors(VPU::ArchKind arch, mlir::OpBuilder& builder, mlir::Location loc,
+                                               mlir::Value opInput, mlir::Value opOutput, mlir::Value weights,
+                                               const Const::ContentAttr& bias, int64_t OC,
+                                               VPU::NCESparsity::PPEConverterCb ppeConverter,
+                                               VPU::NCESparsity::BiasConverterCb biasConverter,
+                                               mlir::FloatAttr constScale) {
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
+
+    initializeTensors(arch, builder, loc, opInput, outElemType, weights, bias, OC, ppeConverter, biasConverter,
+                      constScale);
+}
+
+void NewWeightsTableTensors::initializeTensors(VPU::ArchKind arch, mlir::OpBuilder& builder, mlir::Location loc,
+                                               mlir::Value opInput, mlir::Type opOutputElemType, mlir::Value weights,
+                                               const Const::ContentAttr& bias, int64_t OC,
+                                               VPU::NCESparsity::PPEConverterCb ppeConverter,
+                                               VPU::NCESparsity::BiasConverterCb biasConverter,
+                                               mlir::FloatAttr constScale) {
+    const auto newWeightsTableData = NewWeightsTableData(arch, opInput, opOutputElemType, weights, bias, OC,
+                                                         ppeConverter, biasConverter, constScale);
+
+    if (!newWeightsTableData.scaleData.empty()) {
+        scaleTensor =
+                createNewWeightsTableTensor<float>(builder, loc, newWeightsTableData.scaleData, builder.getF32Type());
+    }
+
+    if (!newWeightsTableData.biasData.empty()) {
+        biasTensor =
+                createNewWeightsTableTensor<float>(builder, loc, newWeightsTableData.biasData, builder.getF32Type());
+    }
 }
 
 namespace {
@@ -118,9 +167,9 @@ mlir::Value getAlignedConstWeights(mlir::OpBuilder& builder, mlir::Location loc,
     const auto OC = flatWeightShape[Dims4D::Filter::OC];
     const auto flatWeightChannelsCount = flatWeightShape[Dims4D::Filter::IC];
     const auto alignedWeightShape = SmallVector<int64_t>{OC, flatWeightChannelsCount + padding, 1, 1};
-    const auto origFilterType = weightsConst.getOutput().getType().cast<vpux::NDTypeInterface>();
-    const auto outAllocType = mlir::RankedTensorType::get(alignedWeightShape, origFilterType.getElementType())
-                                      .cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(weightsConst.getOutput().getType());
+    const auto outAllocType = mlir::cast<vpux::NDTypeInterface>(
+            mlir::RankedTensorType::get(alignedWeightShape, origFilterType.getElementType()));
     const auto outAllocTypeNHWC = outAllocType.changeDimsOrder(DimsOrder::NHWC);
     auto alignedWeightsOp = builder.create<Const::DeclareOp>(loc, outAllocTypeNHWC, std::move(nhwcWeightsContentAttr));
 
@@ -131,13 +180,13 @@ Const::ContentAttr buildPadData(const mlir::Type type, ArrayRef<int64_t> shape) 
     VPUX_THROW_UNLESS(shape.size() == 4, "Unsupported shape size {0}", shape.size());
     const auto OC = shape[Dims4D::Filter::OC.ind()];
 
-    if (const auto quantizedType = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    if (const auto quantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         const auto padType = mlir::RankedTensorType::get(shape, normalizeQuantStorageType(quantizedType));
         uint8_t padValueUint8 = 0;
 
-        if (const auto uniformType = quantizedType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+        if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(quantizedType)) {
             padValueUint8 = static_cast<uint8_t>(uniformType.getZeroPoint());
-        } else if (const auto perAxisType = quantizedType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+        } else if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(quantizedType)) {
             const auto zeroPoints = perAxisType.getZeroPoints();
             VPUX_THROW_UNLESS(checked_cast<size_t>(OC) == zeroPoints.size(),
                               "Number of zero points {0} and channels {1} don't match", zeroPoints.size(), OC);
@@ -154,8 +203,8 @@ Const::ContentAttr buildPadData(const mlir::Type type, ArrayRef<int64_t> shape) 
 
         return Const::ContentAttr::get(padAttr, Const::ContentSetup(padType).castElemType(quantizedType));
     } else {
-        const auto ndType = mlir::RankedTensorType::get(shape, type).cast<vpux::NDTypeInterface>();
-        const auto padType = ndType.changeDimsOrder(DimsOrder::NCHW).cast<mlir::RankedTensorType>();
+        const auto ndType = mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(shape, type));
+        const auto padType = mlir::cast<mlir::RankedTensorType>(ndType.changeDimsOrder(DimsOrder::NCHW));
         const auto padAttr = Const::createConstContent(padType, ArrayRef(vpux::type::float16(0.f)));
 
         return Const::ContentAttr::get(padAttr);
@@ -166,7 +215,7 @@ mlir::Value getAlignedNonConstWeights(mlir::OpBuilder& builder, mlir::Location l
                                       ShapeRef flatWeightShape, int64_t padding) {
     auto ctx = builder.getContext();
     // Step 1: Flatten input to OCxICx1x1, where IC = filters * KY * KX.
-    const auto origFilterType = origFilter.getType().cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(origFilter.getType());
     const auto origOrder = origFilterType.getDimsOrder();
     const auto flatWeightType = origFilterType.changeShape(flatWeightShape).changeDimsOrder(origOrder);
     auto flatWeightsOp =
@@ -184,15 +233,15 @@ mlir::Value getAlignedNonConstWeights(mlir::OpBuilder& builder, mlir::Location l
     const auto OC = flatWeightShape[Dims4D::Filter::OC];
     const auto flatWeightChannelsCount = flatWeightShape[Dims4D::Filter::IC];
     const auto alignedWeightShape = SmallVector<int64_t>{OC, flatWeightChannelsCount + padding, 1, 1};
-    const auto outShapedType = mlir::RankedTensorType::get(alignedWeightShape, origFilterType.getElementType())
-                                       .cast<vpux::NDTypeInterface>();
+    const auto outShapedType = mlir::cast<vpux::NDTypeInterface>(
+            mlir::RankedTensorType::get(alignedWeightShape, origFilterType.getElementType()));
     const auto outAllocType = outShapedType.changeDimsOrder(DimsOrder::NHWC);
 
     const auto padShape = SmallVector<int64_t>{OC, padding, 1, 1};
     auto padContentAttr = buildPadData(origFilterType.getElementType(), padShape);
 
     const auto padAllocType =
-            mlir::RankedTensorType::get(padShape, origFilterType.getElementType()).cast<vpux::NDTypeInterface>();
+            mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(padShape, origFilterType.getElementType()));
     const auto padAllocTypeNHWC = padAllocType.changeDimsOrder(DimsOrder::NCHW);
     auto paddedTensor = builder.create<Const::DeclareOp>(loc, padAllocTypeNHWC, std::move(padContentAttr));
 
@@ -220,7 +269,7 @@ mlir::Value alignDepthWiseWeightsTensor(mlir::OpBuilder& builder, mlir::Location
     const auto KY = filterShape[Dims4D::Filter::KY];
     const auto KX = filterShape[Dims4D::Filter::KX];
 
-    const auto origFilterType = origFilter.getType().cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(origFilter.getType());
     const auto alignment = VPU::NCEInvariant::getAlignment(origFilterType.getElementType());
 
     const auto remainder = (filtersPerInChan * KY * KX) % alignment;
@@ -249,7 +298,7 @@ mlir::Value alignConvWeightsTensor(mlir::OpBuilder& builder, mlir::Location loc,
     const auto KY = filterShape[Dims4D::Filter::KY];
     const auto KX = filterShape[Dims4D::Filter::KX];
 
-    const auto origFilterType = origFilter.getType().cast<vpux::NDTypeInterface>();
+    const auto origFilterType = mlir::cast<vpux::NDTypeInterface>(origFilter.getType());
     const auto alignment = VPU::NCEInvariant::getAlignment(origFilterType.getElementType());
 
     const auto remainder = (IC * KY * KX) % alignment;
@@ -262,7 +311,7 @@ mlir::Value alignConvWeightsTensor(mlir::OpBuilder& builder, mlir::Location loc,
     const auto flatWeightShape = Shape{OC, 1, 1, IC * KY * KX};
     const auto padding = alignment - remainder;
 
-    if (origFilter.isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(origFilter)) {
         auto reshape =
                 builder.create<VPU::ReshapeOp>(loc, origFilter,
                                                /*shape=*/nullptr,
@@ -286,8 +335,8 @@ mlir::Value alignConvWeightsTensor(mlir::OpBuilder& builder, mlir::Location loc,
                                              .get();
 
     const auto alignedWeightShape = SmallVector<int64_t>{OC, 1, 1, IC * KY * KX + padding};
-    const auto outAllocType = mlir::RankedTensorType::get(alignedWeightShape, origFilterType.getElementType())
-                                      .cast<vpux::NDTypeInterface>();
+    const auto outAllocType = mlir::cast<vpux::NDTypeInterface>(
+            mlir::RankedTensorType::get(alignedWeightShape, origFilterType.getElementType()));
     const auto outAllocTypeNHWC = outAllocType.changeDimsOrder(DimsOrder::NHWC);
 
     auto alignedWeightsOp =
@@ -319,9 +368,12 @@ bool isNullOrConstWithSingleValue(mlir::Value value) {
 }
 
 vpux::TensorAttr createTensorAttrFromType(vpux::NDTypeInterface inType, mlir::MLIRContext* ctx) {
-    const auto bounds =
-            mlir::isa<BoundedTypeInterface>(inType) ? mlir::cast<BoundedTypeInterface>(inType).getBounds() : nullptr;
-    return vpux::getTensorAttr(inType.getDimsOrder().toAffineMap(ctx), inType.getMemSpace(), bounds);
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(inType)) {
+        return getTensorAttr(inType.getContext(), inType.getDimsOrder().toAffineMap(ctx), inType.getMemSpace(),
+                             boundedType.getBounds());
+    }
+
+    return getTensorAttr(inType.getContext(), inType.getDimsOrder().toAffineMap(ctx), inType.getMemSpace());
 }
 
 }  // namespace VPU

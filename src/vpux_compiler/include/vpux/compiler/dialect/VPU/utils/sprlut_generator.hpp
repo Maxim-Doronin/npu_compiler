@@ -1,11 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <openvino/core/type/float16.hpp>
 
@@ -30,6 +30,62 @@ struct SaturationBypassRange {
 
     void serialize(std::vector<uint16_t>& buffer) const;
 };
+
+// Right now saturation/bypass values are set statically based on function plot analysis and adjusting
+// the values to satisfy the required error
+
+//
+// TanH
+//
+
+// Can be approximated as f(x) = x when its close to zero
+constexpr auto TANH_BYPASS_LOW = 0.f;
+constexpr auto TANH_BYPASS_HIGH = 0.03125f;
+
+// Converges to 1 if x -> +inf
+constexpr auto TANH_SAT_LOW = 4.156f;
+constexpr auto TANH_SAT_HIGH = std::numeric_limits<float>::infinity();
+constexpr auto TANH_SAT_VALUE = 1.f;
+
+//
+// Sigmoid
+//
+
+// Converges to 0 if x -> -inf
+constexpr auto SIGMOID_NEG_SAT_LOW = -1 * std::numeric_limits<float>::infinity();
+constexpr auto SIGMOID_NEG_SAT_HIGH = -16.f;
+constexpr auto SIGMOID_NEG_SAT_VALUE = 0.f;
+
+// Converges to 1 if x -> +inf
+constexpr auto SIGMOID_POS_SAT_LOW = 16.f;
+constexpr auto SIGMOID_POS_SAT_HIGH = std::numeric_limits<float>::infinity();
+constexpr auto SIGMOID_POS_SAT_VALUE = 1.f;
+
+//
+// Swish
+//
+
+// Converges to 0 if x -> -inf
+constexpr auto SWISH_SAT_LOW = -1 * std::numeric_limits<float>::infinity();
+constexpr auto SWISH_SAT_HIGH = -16.f;
+constexpr auto SWISH_SAT_VALUE = 0.f;
+
+// Can be approximated as f(x) = x when x -> -inf
+constexpr auto SWISH_BYPASS_LOW = 16.f;
+constexpr auto SWISH_BYPASS_HIGH = std::numeric_limits<float>::infinity();
+
+//
+// GELU
+//
+
+// Converges to 0 if x -> -inf
+constexpr auto GELU_SAT_LOW = -1 * std::numeric_limits<float>::infinity();
+constexpr auto GELU_SAT_HIGH = -4.f;
+constexpr auto GELU_SAT_VALUE = 0.f;
+
+// Can be approximated as f(x) = x when x -> +inf
+constexpr auto GELU_BYPASS_LOW = 4.f;
+constexpr auto GELU_BYPASS_HIGH = std::numeric_limits<float>::infinity();
 
 //
 // Lut config

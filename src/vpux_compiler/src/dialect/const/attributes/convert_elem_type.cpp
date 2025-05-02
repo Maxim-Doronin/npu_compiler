@@ -1,15 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
-#include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/utils/convert_utils.hpp"
-#include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 
@@ -69,7 +66,7 @@ Const::Content vpux::Const::ConvertElemTypeAttr::transform(vpux::Const::Content&
             (inElementType.isSignedInteger() && outElementType.isSignedInteger()) ||
             (inElementType.isUnsignedInteger() && outElementType.isUnsignedInteger()) ||
             (inElementType.isSignlessIntOrIndex() && outElementType.isSignlessIntOrIndex()) ||
-            (mlir::isa<vpux::type::QuantileFloatType>(inElementType) && outElementType.isSignedInteger()) ||
+            (mlir::isa<vpux::type::QuantileFloatType>(inElementType) && outElementType.isUnsignedInteger()) ||
             bitWidth == 1;  // Don't care sign type when bitWidth is 1
 
     // For subbyte type, we unpack the data

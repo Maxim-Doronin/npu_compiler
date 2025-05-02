@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -124,8 +124,26 @@ bool OutputPipelineTilingPass::isTilingAdjustmentBeneficial(VPU::NCEOpInterface 
     // However, if the 'big' newCost is still smaller than the accurate origCost, new strategy must be better than the
     // old one. As a result, the costs checking still can ensure new tiling strategy is optimal even though newCost is
     // not so accurate.
-    auto newCost = costModel->getDPUandDMATimeCostWithCustomTiling(nceOp, mcStrategy, newTiling);
-    auto origCost = costModel->getDPUandDMATimeCostWithCustomTiling(nceOp, mcStrategy, origTiling);
+    auto [newCostWithoutPrefetching, newCostWithPrefetching] =
+            costModel->getDPUandDMATimeCostWithCustomTiling(nceOp, mcStrategy, newTiling);
+    auto [origCostWithoutPrefetching, origCostWithPrefetching] =
+            costModel->getDPUandDMATimeCostWithCustomTiling(nceOp, mcStrategy, origTiling);
+
+    auto tilingInfoOp = mlir::dyn_cast<VPU::TilingInfoOpInterface>(nceOp.getOperation());
+    double newCost = 0;
+    double origCost = 0;
+    if (_enablePrefetchTiling && tilingInfoOp != nullptr &&
+        tilingInfoOp.isSupportedTiling(newTiling, vpux::TilingMode::PREFETCHING, _log)) {
+        newCost = newCostWithPrefetching;
+    } else {
+        newCost = newCostWithoutPrefetching;
+    }
+    if (_enablePrefetchTiling && tilingInfoOp != nullptr &&
+        tilingInfoOp.isSupportedTiling(origTiling, vpux::TilingMode::PREFETCHING, _log)) {
+        origCost = origCostWithPrefetching;
+    } else {
+        origCost = origCostWithoutPrefetching;
+    }
 
     _log.nest().trace("Original cost: {0} , Current cost: {1}", origCost, newCost);
 
@@ -163,7 +181,7 @@ void OutputPipelineTilingPass::safeRunOnFunc() {
         }
 
         const auto origTilingStrategy =
-                Shape(parseIntArrayAttr<int64_t>(origOp->getAttr(tilingStrategy).cast<mlir::ArrayAttr>()));
+                Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(origOp->getAttr(tilingStrategy))));
         const auto nonOneDims = getNonOneDim(origTilingStrategy);
         if (nonOneDims.size() != 1) {
             _log.nest().trace("Operation {0} has nested tiling strategy {1}", origOp->getLoc(), origTilingStrategy);

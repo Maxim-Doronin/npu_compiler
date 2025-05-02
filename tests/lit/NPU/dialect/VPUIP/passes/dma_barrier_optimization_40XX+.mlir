@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -193,7 +193,7 @@ func.func @NoDMABarrierOptimizationDifferentPortSameChannel() -> !type_DDR {
 // because DMA2 executes on same engine after DMA1 So there is implicit dep from DMA1- > DMA2
 
 module @DmaRedundantBar {
-IE.CNNNetwork entryPoint : @main
+net.NetworkInfo entryPoint : @main
 inputsInfo : {
   DataInfo "input" : tensor<1x3x64x64xf16>
 } outputsInfo : {
@@ -339,7 +339,7 @@ func.func @removeRedundantWaitAndUpdateBarriers(%arg0: memref<1x3x224x224xf16, @
     %48 = VPURT.DeclareBuffer <CMX_NN> [3] <75840> -> memref<1x16x59x224x!qElemType3, #NHWC, [@CMX_NN, 3]>
 
     //  DPUx(y): x - DPUTask id, y - cluster id
-    //  
+    //
     //                                DMA
     //                                 |
     //                                 b0
@@ -546,7 +546,7 @@ func.func @removeRedundantWaitAndUpdateBarriersSharedCase(%arg0: memref<1x3x224x
     %48 = VPURT.DeclareBuffer <CMX_NN> [3] <75840> -> memref<1x16x59x224x!qElemType3, #NHWC, [@CMX_NN, 3]>
 
     //  DPUx(y): x - DPUTask id, y - cluster id
-    //  
+    //
     //                                DMA
     //                                 |
     //                                 b0

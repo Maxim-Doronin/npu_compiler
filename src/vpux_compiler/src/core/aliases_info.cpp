@@ -27,11 +27,11 @@ using namespace vpux;
 namespace {
 
 std::string getValueForLog(mlir::Value val) {
-    if (const auto arg = val.dyn_cast<mlir::BlockArgument>()) {
+    if (const auto arg = mlir::dyn_cast<mlir::BlockArgument>(val)) {
         return printToString("BlockArgument #{0} at '{1}'", arg.getArgNumber(), val.getLoc());
     }
 
-    const auto res = val.cast<mlir::OpResult>();
+    const auto res = mlir::cast<mlir::OpResult>(val);
     return printToString("Operation result #{0} for '{1}' at '{2}'", res.getResultNumber(), res.getOwner()->getName(),
                          val.getLoc());
 }
@@ -40,16 +40,16 @@ void logAddAlias(const Logger& log, mlir::Value source, mlir::Value alias) {
     log.trace("Adding alias:");
     auto innerLog = log.nest();
 
-    if (const auto arg = source.dyn_cast<mlir::BlockArgument>()) {
+    if (const auto arg = mlir::dyn_cast<mlir::BlockArgument>(source)) {
         innerLog.trace("- from: BlockArgument #{0} at '{1}'", arg.getArgNumber(), arg.getLoc());
-    } else if (const auto res = source.cast<mlir::OpResult>()) {
+    } else if (const auto res = mlir::cast<mlir::OpResult>(source)) {
         innerLog.trace("- from: Operation result #{0} for '{1}' at '{2}'", res.getResultNumber(),
                        res.getOwner()->getName(), res.getLoc());
     }
 
-    if (const auto arg = alias.dyn_cast<mlir::BlockArgument>()) {
+    if (const auto arg = mlir::dyn_cast<mlir::BlockArgument>(alias)) {
         innerLog.trace("- to: BlockArgument #{0} at '{1}'", arg.getArgNumber(), arg.getLoc());
-    } else if (const auto res = alias.cast<mlir::OpResult>()) {
+    } else if (const auto res = mlir::cast<mlir::OpResult>(alias)) {
         innerLog.trace("- to: Operation result #{0} for '{1}' at '{2}'", res.getResultNumber(),
                        res.getOwner()->getName(), res.getLoc());
     }
@@ -100,7 +100,7 @@ void AliasesInfoBase::uniqueAppend(ValuesVectorMap& map, mlir::Value key, mlir::
 void AliasesInfoBase::visitOp(mlir::Operation* op, bool ignoreInnerRegions = false) {
     VPUX_THROW_WHEN(op == nullptr, "NULL operation provided");
     std::function<bool(mlir::Type)> isBufferizedType = [&](mlir::Type type) -> bool {
-        if (const auto asyncType = type.dyn_cast<mlir::async::ValueType>()) {
+        if (const auto asyncType = mlir::dyn_cast<mlir::async::ValueType>(type)) {
             return isBufferizedType(asyncType.getValueType());
         }
 
@@ -243,7 +243,7 @@ void AliasesInfoBase::visitOp(mlir::Operation* op, bool ignoreInnerRegions = fal
                 _log = _log.nest();
 
                 if (const auto& result = waitOp.getResult()) {
-                    const auto futureType = waitOp.getOperand().getType().dyn_cast<mlir::async::ValueType>();
+                    const auto futureType = mlir::dyn_cast<mlir::async::ValueType>(waitOp.getOperand().getType());
                     VPUX_THROW_UNLESS(futureType != nullptr,
                                       "AliasesInfo analysis works only with !async.value<MemRef> types, got '{0}'",
                                       waitOp.getOperand().getType());
@@ -300,7 +300,7 @@ ValueSourceInfo::ValueSourceInfo(mlir::Value val): AliasesInfoBase(Logger::globa
             auto currSource = _sources.find(currVal);
             if (currSource != _sources.end()) {
                 currOp = (*currSource->second.begin()).getDefiningOp();
-            } else if (auto blockArg = currVal.dyn_cast<mlir::BlockArgument>()) {
+            } else if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(currVal)) {
                 currOp = blockArg.getOwner()->getParentOp();
             }
         }
@@ -389,11 +389,11 @@ void AliasesInfo::addAlias(mlir::Value source, mlir::Value alias) {
         auto isTargetMemType = [&](mlir::Value buffer) {
             auto type = buffer.getType();
 
-            if (const auto asyncType = type.dyn_cast<mlir::async::ValueType>()) {
+            if (const auto asyncType = mlir::dyn_cast<mlir::async::ValueType>(type)) {
                 type = asyncType.getValueType();
             }
 
-            auto ndType = type.dyn_cast<vpux::NDTypeInterface>();
+            auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(type);
 
             if (ndType == nullptr) {
                 return false;

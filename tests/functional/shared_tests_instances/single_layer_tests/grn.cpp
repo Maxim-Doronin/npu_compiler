@@ -4,10 +4,6 @@
 //
 
 #include "single_op_tests/grn.hpp"
-
-#include <vector>
-
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -24,6 +20,8 @@ TEST_P(GRNLayerTestCommon, NPU3720_HW) {
 
 TEST_P(GRNLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

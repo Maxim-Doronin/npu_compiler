@@ -65,138 +65,6 @@ class IE_LayerOp<string mnemonic, list<Trait> traits = []> :
 }
 
 //
-// CNNNetworkOp
-//
-
-def IE_CNNNetworkOp :
-        IE_Op<
-            "CNNNetwork",
-            [
-                IsolatedFromAbove,
-                HasParent<"mlir::ModuleOp">,
-                NoRegionArguments,
-                DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-                OpAsmOpInterface
-            ]
-            # GraphRegionNoTerminator.traits
-        > {
-    let summary = "InferenceEngine CNN Network description";
-
-    let description = [{
-        This operation is bound to MLIR Module and holds extra information about InferenceEngine CNN Network:
-
-          * Precision and layout for user-provided inputs.
-          * Precision and layout for user-provided outputs.
-          * Layout for output profiling data(optional).
-          * Entry point (Function name) for the network inference.
-          * Model inference time by DPU cycle unit.
-    }];
-
-    let arguments = (ins
-        FlatSymbolRefAttr:$entryPoint,
-        OptionalAttr<IntAttr>:$inferenceTiming
-    );
-
-    let regions = (region
-        SizedRegion<1>:$inputs_info,
-        SizedRegion<1>:$outputs_info,
-        VariadicRegion<SizedRegion<1>>:$profiling_outputs_info
-    );
-
-    let extraClassDeclaration = [{
-        size_t getNetInputsCount();
-        vpux::SmallVector<vpux::IE::DataInfoOp, 1> getInputsDataInfo();
-
-        size_t getNetOutputsCount();
-        vpux::SmallVector<vpux::IE::DataInfoOp, 1> getOutputsDataInfo();
-
-        size_t getProfilingOutputsCount();
-        vpux::SmallVector<vpux::IE::DataInfoOp, 1> getProfilingOutputsDataInfo();
-
-        static void getFromModule(
-                mlir::ModuleOp module,
-                vpux::IE::CNNNetworkOp& netInfo,
-                mlir::func::FuncOp& netFunc);
-
-        static mlir::StringRef getDefaultDialect() {
-            return "IE";
-        }
-    }];
-
-    let builders = [
-        OpBuilder<
-            (ins "mlir::FlatSymbolRefAttr":$entryPoint, "bool":$withProfiling)
-        >
-    ];
-
-    let assemblyFormat = [{
-        attr-dict
-        `entryPoint` `:` $entryPoint
-        `inputsInfo` `:` $inputs_info
-        `outputsInfo` `:` $outputs_info
-        (`profilingOutputsInfo` `:` $profiling_outputs_info^)?
-    }];
-
-    let hasVerifier = 1;
-}
-
-//
-// DataInfoOp
-//
-
-def IE_DataInfoOp :
-        IE_Op<
-            "DataInfo",
-            [
-                IsolatedFromAbove,
-                NoRegionArguments,
-                OpAsmOpInterface,
-                HasParent<"vpux::IE::CNNNetworkOp">
-            ]
-            # GraphRegionNoTerminator.traits
-        > {
-    let summary = "Information about InferenceEngine CNN Network input/output Data object";
-
-    let description = [{
-        This operation is bound to `IE.CNNNetwork` Operation and holds information about Data object:
-
-          * Name - primary name of Data object
-          * Actual shape - OV node output tensor shape after batching
-          * Original shape - OV node output tensor shape before batching
-          * Friendly name - OV node friendly name
-          * Input name - legacy name of Parameter or Result tensor
-          * Tensor names - OV node tensor names
-          * User-defined shape
-          * User-defined precision (element type)
-          * User-defined layout
-    }];
-
-    let arguments = (ins
-        StrAttr:$name,
-        TypeAttr:$userType,
-        OptionalAttr<TypeAttr>:$originalShape,
-        OptionalAttr<StrAttr>:$friendlyName,
-        OptionalAttr<StrAttr>:$inputName,
-        OptionalAttr<ArrayAttr>:$tensorNames
-    );
-
-    let regions = (region
-        VariadicRegion<SizedRegion<1>>:$sections
-    );
-
-    let extraClassDeclaration = [{
-        vpux::DimsOrder getDimsOrder();
-    }];
-
-    let assemblyFormat = [{
-        $name (`friendlyName` `=` $friendlyName^)? (`inputName` `=` $inputName^)? (`tensorNames` `=` $tensorNames^)? ($sections^)? `:` $userType (`originalShape` `=` $originalShape^)?
-        attr-dict
-    }];
-
-    let hasVerifier = 1;
-}
-
-//
 // IE_PipelineOptionsOp
 //
 
@@ -258,81 +126,6 @@ def IE_OptionOp :
         attr-dict
     }];
 }
-
-//
-// SparsityStatisticsOp
-//
-
-def IE_SparsityStatisticsOp :
-        IE_Op<
-            "SparsityStatistics",
-            [
-                IsolatedFromAbove,
-                HasParent<"mlir::ModuleOp">,
-                NoRegionArguments,
-                OpAsmOpInterface
-            ]
-            # GraphRegionNoTerminator.traits
-        > {
-    let summary = "Sparsity statistics for inputs of operations";
-
-    let description = [{
-        This operation is bound to MLIR Module and holds extra information about input sparsity ratios collected from dataset:
-
-          * NGraph layer name.
-          * Input id.
-          * Sparsity ratio.
-
-    }];
-
-    let regions = (region
-        SizedRegion<1>:$sparsityInfo
-    );
-
-    let assemblyFormat = [{
-        attr-dict
-        `sparsityInfo` `:` $sparsityInfo
-    }];
-
-    let hasVerifier = 0;
-}
-
-//
-// SparsityInfoOp
-//
-
-def IE_SparsityInfoOp :
-        IE_Op<
-            "SparsityInfo",
-            [
-                IsolatedFromAbove,
-                HasParent<"vpux::IE::SparsityStatisticsOp">
-            ]
-        > {
-    let summary = "Information about estimated sparsity ratio for input of specific layer";
-
-    let description = [{
-        This operation is bound to `IE.SparsityStatistics` Operation and holds information about SparsityInfo object:
-
-          * Node name
-          * Input ID
-          * Sparsity ratio
-    }];
-
-    let arguments = (ins
-        StrAttr:$name,
-        IntAttr:$inputId,
-        F64Attr:$ratio
-    );
-
-    let assemblyFormat = [{
-        $ratio `at` `input` $inputId `of` $name
-        attr-dict
-    }];
-
-    let hasVerifier = 0;
-}
-
 
 //
 // MemoryResourceOp
@@ -476,7 +269,6 @@ def IE_TileResourceOp :
         bool hasAvailableMemory(mlir::SymbolRefAttr memSpace);
 
         vpux::IE::MemoryResourceOp getAvailableMemory(mlir::SymbolRefAttr memSpace);
-
 
         template <typename Enum, typename OutT = vpux::IE::ExecutorResourceOp>
         using exec_resource_if = enable_t<OutT, std::is_enum<Enum>, details::HasStringifyEnum<Enum>>;
@@ -785,7 +577,7 @@ def IE_ReLUOp :
             [
                 IE_EltwiseOp,
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-                ShapeBoundOp
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
         > {
     let summary = "InferenceEngine ReLU layer";
@@ -867,7 +659,7 @@ def IE_AddOp :
                 Commutative,
                 IE_EltwiseOp,
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-                ShapeBoundOp
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
         > {
     let summary = "InferenceEngine Add layer";
@@ -879,8 +671,8 @@ def IE_AddOp :
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -1195,6 +987,8 @@ def IE_MultiplyOp :
         IE_LayerOp<
             "Multiply",
             [
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>,
                 Commutative,
                 IE_EltwiseOp
             ]
@@ -1208,8 +1002,8 @@ def IE_MultiplyOp :
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -1357,7 +1151,7 @@ def IE_ConvolutionOp :
             "Convolution",
             [
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-                ShapeBoundOp
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
         > {
     let summary = "InferenceEngine Convolution layer";
@@ -1375,8 +1169,8 @@ def IE_ConvolutionOp :
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<F32Attr>:$static_scale, // constant applied to the weights table
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -1411,8 +1205,8 @@ def IE_GroupConvolutionOp :
 
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -1472,8 +1266,8 @@ def IE_AvgPoolOp :
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<F32Attr>:$static_scale,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -1492,7 +1286,7 @@ def IE_MaxPoolOp :
             "MaxPool",
             [
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-                ShapeBoundOp
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
         > {
     let summary = "InferenceEngine MaxPool layer";
@@ -1508,8 +1302,8 @@ def IE_MaxPoolOp :
 
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -1660,13 +1454,22 @@ def IE_GatherNDOp :
     let arguments = (ins
         AnyRankedTensor:$input,
         RankedTensorOf<[AnyInteger]>:$indices,
+        IntAttr:$batch_dims,
 
-        IntAttr:$batch_dims
+        OptionalAttr<I64ArrayAttr>:$original_shape
     );
 
     let results = (outs
         AnyRankedTensor:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input,
+            "::mlir::Value":$indices,
+            "::mlir::IntegerAttr":$batch_dims
+        )>
+    ];
 
     let hasVerifier = 1;
 }
@@ -2202,15 +2005,34 @@ def IE_ReduceMeanOp :
         Optional<TensorRankOf<[AnyInteger], [0, 1]>>:$axes,
 
         OptionalAttr<I64ArrayAttr>:$axes_value,
-        UnitAttr:$keep_dims
+        UnitAttr:$keep_dims,
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
         AnyRankedTensor:$output
     );
 
+    let builders = [
+        OpBuilder<(ins
+            "mlir::Type":$outputType,
+            "mlir::Value":$input,
+            "mlir::Value":$axes,
+            "mlir::ArrayAttr":$axes_value,
+            "mlir::UnitAttr":$keep_dims
+        )>,
+        OpBuilder<(ins
+            "mlir::Value":$input,
+            "mlir::Value":$axes,
+            "mlir::ArrayAttr":$axes_value,
+            "mlir::UnitAttr":$keep_dims
+        )>
+    ];
+
     let hasCanonicalizer = 1;
     let hasFolder = 1;
+    let hasVerifier = 1;
 }
 
 //
@@ -2306,12 +2128,30 @@ def IE_ReduceSumOp :
         Optional<TensorRankOf<[AnyInteger], [0, 1]>>:$axes,
 
         OptionalAttr<I64ArrayAttr>:$axes_value,
-        UnitAttr:$keep_dims
+        UnitAttr:$keep_dims,
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
         AnyRankedTensor:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "mlir::Type":$outputType,
+            "mlir::Value":$input,
+            "mlir::Value":$axes,
+            "mlir::ArrayAttr":$axes_value,
+            "mlir::UnitAttr":$keep_dims
+        )>,
+        OpBuilder<(ins
+            "mlir::Value":$input,
+            "mlir::Value":$axes,
+            "mlir::ArrayAttr":$axes_value,
+            "mlir::UnitAttr":$keep_dims
+        )>
+    ];
 
     let hasCanonicalizer = 1;
     let hasFolder = 1;
@@ -2454,7 +2294,9 @@ def IE_FakeQuantizeOp :
         IE_LayerOp<
             "FakeQuantize",
             [
-                IE_EltwiseOp
+                IE_EltwiseOp,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
         > {
     let summary = "InferenceEngine FakeQuantize layer";
@@ -2547,7 +2389,9 @@ def IE_DynamicQuantizeOp :
     let summary = "InferenceEngine Dynamic-Quantize layer";
 
     let arguments = (ins
-        RankedTensorOf<[F32]>:$input
+        RankedTensorOf<[F32]>:$input,
+        1DTensorOf<[F32]>:$min,
+        1DTensorOf<[F32]>:$max
     );
 
     let results = (outs
@@ -2594,7 +2438,7 @@ def IE_MatMulOp:
             "MatMul",
             [
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-                ShapeBoundOp
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
         > {
     let summary = "InferenceEngine MatMul layer";
@@ -3287,7 +3131,8 @@ def IE_TransposeOp :
         IE_LayerOp<
             "Transpose",
             [
-                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+                DeclareOpInterfaceMethods<StaticShapeOpInterface, ["requiresStaticShape"]>
             ]
         > {
     let summary = "InferenceEngine Transpose layer";
@@ -3362,7 +3207,8 @@ def IE_InterpolateOp :
         OptionalAttr<I64ArrayAttr>:$initial_output_dims_attr,
 
         IE_InterpolateAttr:$attr,
-        OptionalAttr<IntAttr>:$output_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -3897,7 +3743,7 @@ def IE_ConvolutionBackpropDataOp:
           in the output; expected values `[PAD_BOTTOM, PAD_RIGHT]`
         - `dilations`: has the same definition as dilations for a regular Convolution but
           applied in the backward way, for the output tensor; expected values `[DY, DX]`
-        - `output_padding`: adds additional amount of paddings per each spatial axis in
+        - `spatial_output_padding`: adds additional amount of paddings per each spatial axis in
           the output tensor; expected values `[PY; PX]`
 
         Results:
@@ -3913,7 +3759,7 @@ def IE_ConvolutionBackpropDataOp:
         I64ArrayAttr:$pads_begin,
         I64ArrayAttr:$pads_end,
         I64ArrayAttr:$dilations,
-        I64ArrayAttr:$output_padding
+        I64ArrayAttr:$spatial_output_padding
     );
 
     let results = (outs
@@ -3954,7 +3800,7 @@ def IE_GroupConvolutionBackpropDataOp:
           in the output; expected values `[PAD_BOTTOM, PAD_RIGHT]`
         - `dilations`: has the same definition as dilations for a regular Convolution but
           applied in the backward way, for the output tensor; expected values `[DY, DX]`
-        - `output_padding`: adds additional amount of paddings per each spatial axis in
+        - `spatial_output_padding`: adds additional amount of paddings per each spatial axis in
           the output tensor; expected values `[PAD_Y; PAD_X]`
 
         Results:
@@ -3970,7 +3816,7 @@ def IE_GroupConvolutionBackpropDataOp:
         I64ArrayAttr:$pads_begin,
         I64ArrayAttr:$pads_end,
         I64ArrayAttr:$dilations,
-        I64ArrayAttr:$output_padding
+        I64ArrayAttr:$spatial_output_padding
     );
 
     let results = (outs
@@ -4014,7 +3860,7 @@ def IE_TransposedConvolutionOp:
           in the output; expected values `[PAD_BOTTOM, PAD_RIGHT]`
         - `dilations`: has the same definition as dilations for a regular Convolution but
           applied in the backward way, for the output tensor; expected values `[DY, DX]`
-        - `output_padding`: adds additional amount of paddings per each spatial axis in
+        - `spatial_output_padding`: adds additional amount of paddings per each spatial axis in
           the output tensor; expected values `[PY; PX]`
 
         Results:
@@ -4031,12 +3877,12 @@ def IE_TransposedConvolutionOp:
         I64ArrayAttr:$pads_begin,
         I64ArrayAttr:$pads_end,
         I64ArrayAttr:$dilations,
-        I64ArrayAttr:$output_padding,
+        I64ArrayAttr:$spatial_output_padding,
 
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -4084,7 +3930,7 @@ def IE_GroupTransposedConvolutionOp:
           in the output; expected values `[PAD_BOTTOM, PAD_RIGHT]`
         - `dilations`: has the same definition as dilations for a regular Convolution but
           applied in the backward way, for the output tensor; expected values `[DY, DX]`
-        - `output_padding`: adds additional amount of paddings per each spatial axis in
+        - `spatial_output_padding`: adds additional amount of paddings per each spatial axis in
           the output tensor; expected values `[PAD_Y; PAD_X]`
 
         Results:
@@ -4100,12 +3946,12 @@ def IE_GroupTransposedConvolutionOp:
         I64ArrayAttr:$pads_begin,
         I64ArrayAttr:$pads_end,
         I64ArrayAttr:$dilations,
-        I64ArrayAttr:$output_padding,
+        I64ArrayAttr:$spatial_output_padding,
 
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -4231,7 +4077,8 @@ def IE_UpsamplingOp :
         RankedTensorOf<[F16, F32, quant_QuantizedType]>:$input,
         I64ArrayAttr:$upsampling_factor,
         OptionalAttr<IE_UpsamplingPadAttr>:$pad,
-        OptionalAttr<IntAttr>:$output_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -4281,6 +4128,8 @@ def IE_NegativeOp :
     let results = (outs
         RankedTensorOf<[F16, F32, SI32, SI64]>:$output
     );
+
+    let hasCanonicalizer = 1;
 }
 
 //
@@ -4314,7 +4163,7 @@ def IE_FullyConnectedOp:
             "FullyConnected",
             [
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-                ShapeBoundOp
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
         > {
     let summary = "InferenceEngine FullyConnected layer";
@@ -4402,7 +4251,8 @@ def IE_PadOp :
         OptionalAttr<F64Attr>:$pad_value_attr,
 
         IE_PadModeAttr:$mode,
-        OptionalAttr<IntAttr>:$output_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -4580,8 +4430,8 @@ def IE_SubtractOp :
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
         OptionalAttr<IE_PostOpAttr>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
-        OptionalAttr<IntAttr>:$output_channels,
-        OptionalAttr<IntAttr>:$input_channels
+        OptionalAttr<I64ArrayAttr>:$output_padding,
+        OptionalAttr<I64ArrayAttr>:$input_padding
     );
 
     let results = (outs
@@ -4601,7 +4451,8 @@ def IE_LSTMSequenceOp :
         IE_LayerOp<
             "LSTMSequence",
             [
-                AttrSizedOperandSegments
+                AttrSizedOperandSegments,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine LSTMSequence layer";
@@ -5343,6 +5194,42 @@ def IE_GRUCellOp :
 
     let results = (outs
         2DTensorOf<[F16, F32]>:$output_hidden_state
+    );
+}
+
+//
+// GRUGatesOp
+//
+
+def IE_GRUGatesOp :
+        IE_LayerOp<
+            "GRUGates"
+        > {
+    let summary = "Computes GRU activation functions";
+
+    let description = [{
+        This operation is intended to be run as a software stage after computing and adding GRU matrix multiplications.
+        Formula is just for Gru with should_linear_before_reset true.
+            ```
+            -**input_data** = (inputData * weights + bias) [batchSize, 3 * hiddenSize]** or **[1, 1, batchSize, 3 * hiddenSize]**
+            -**initial_hidden_state** =  [batchSize, hiddenSize]** or **[1, 1, batchSize, hiddenSize]**
+            -**hidden_data** =  (initialHiddenState * recurrenceWeights) [batchSize, 3 * hiddenSize]** or **[1, 1, batchSize, 3 * hiddenSize]**
+            -**biases** =  Rbh, 4't bias plan if exist (optional) [1, hiddenSize]** or **[1, 1, 1, hiddenSize]**
+            * - Matrix multiplication
+            + - Element-wise add
+            ```
+        - The meaning of other operands are identical to those in GRUCell operation.
+    }];
+
+    let arguments = (ins
+        AnyTypeOf<[2DTensorOf<[F16, F32]>, 4DTensorOf<[F16, F32]>]>:$input_data,
+        AnyTypeOf<[2DTensorOf<[F16, F32]>, 4DTensorOf<[F16, F32]>]>:$initial_hidden_state,
+        AnyTypeOf<[2DTensorOf<[F16, F32]>, 4DTensorOf<[F16, F32]>]>:$hidden_data,
+        Optional<AnyTypeOf<[1DTensorOf<[F16, F32]>, 4DTensorOf<[F16, F32]>]>>:$biases
+    );
+
+    let results = (outs
+        AnyTypeOf<[2DTensorOf<[F16, F32]>, 4DTensorOf<[F16, F32]>]>:$output_hidden_state
     );
 }
 
@@ -6320,6 +6207,50 @@ def IE_RoPEOp :
         RankedTensorOf<[F16, F32]>:$input,
         RankedTensorOf<[F16, F32]>:$input_cos,
         RankedTensorOf<[F16, F32]>:$input_sin
+     );
+   let results = (outs
+        RankedTensorOf<[F16, F32]>:$output
+    );
+}
+
+//
+// DynamicDataMaskOp
+//
+
+def IE_DynamicDataMaskOp :
+        IE_LayerOp<
+            "DynamicDataMask",
+            [
+                DeclareOpInterfaceMethods<StaticShapeOpInterface>
+            ]
+        > {
+    let summary = "Create mask to clear garbage from pad area, added by processing dynamic tensors by upper bounds";
+
+    let arguments = (ins
+        AnyRankedTensor:$realShape,
+        TypeAttr:$outputTensorType
+    );
+
+    let results = (outs
+        AnyRankedTensor:$output
+    );
+}
+
+//
+// SDPAOp
+//
+
+def IE_SDPAOp :
+        IE_LayerOp<
+            "SDPA"
+        > {
+    let summary = "InferenceEngine SDPA layer";
+
+    let arguments = (ins
+        RankedTensorOf<[F16, F32]>:$inputQ,
+        RankedTensorOf<[F16, F32]>:$inputK,
+        RankedTensorOf<[F16, F32]>:$inputV,
+        RankedTensorOf<[F16, F32]>:$inputMask
      );
    let results = (outs
         RankedTensorOf<[F16, F32]>:$output

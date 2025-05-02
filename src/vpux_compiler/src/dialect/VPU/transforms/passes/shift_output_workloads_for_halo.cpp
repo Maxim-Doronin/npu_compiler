@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -31,7 +31,7 @@ bool needsHaloWorkloadsCorrection(VPU::NCEOpInterface nceOp, VPU::DistributedTyp
         return false;
     }
 
-    auto distributedOutType = outputTypes.getDistributedTypes().begin()->cast<VPU::DistributedTensorType>();
+    auto distributedOutType = mlir::cast<vpux::VPU::DistributedTensorType>(*outputTypes.getDistributedTypes().begin());
     auto distributionAttr = distributedOutType.getDistribution();
     auto distributionMode = distributionAttr.getMode().getValue();
 
@@ -121,7 +121,8 @@ void ShiftOutputWorkloadsForHaloPass::safeRunOnFunc() {
         _log.trace("Adapting workloads for operation '{0}' at '{1}'.", nceOp->getName(), nceOp->getLoc());
 
         auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
-        auto outDataDistributedType = outputTypes.getDistributedTypes().begin()->cast<VPU::DistributedTensorType>();
+        auto outDataDistributedType =
+                mlir::cast<vpux::VPU::DistributedTensorType>(*outputTypes.getDistributedTypes().begin());
         const auto clusteringOffsets = getClusteringOffsets(outDataDistributedType);
         for (auto workloadOp : llvm::make_early_inc_range(workloads)) {
             VPUX_THROW_UNLESS(workloadOp.getClusterId().has_value(),

@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -153,7 +154,7 @@ mlir::LogicalResult ConvertToReduceSumRewriter::matchAndRewrite(IE::ExtractImage
         mlir::MLIRContext* ctx = origOp->getContext();
         auto axesAttr = getIntArrayAttr(ctx, ArrayRef(aboveReduceSumOpAxes));
         auto newReduceSumOp = rewriter.create<IE::ReduceSumOp>(takeOpLoc(origOp, "reduce_sum_in"),
-                                                               aboveReduceSumOp.getInput(), nullptr, axesAttr, false);
+                                                               aboveReduceSumOp.getInput(), nullptr, axesAttr, nullptr);
         mlir::SmallVector<int64_t> unsqueezeAxis{vpux::Dims4D::Act::H.ind()};
         if (belowReduceSumOp.getKeepDims()) {
             unsqueezeAxis.push_back(belowReduceSumOpAxes[0]);

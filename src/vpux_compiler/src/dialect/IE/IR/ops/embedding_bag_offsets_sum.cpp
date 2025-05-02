@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,7 +24,7 @@ mlir::LogicalResult vpux::IE::EmbeddingBagOffsetsSumOp::verify() {
             return true;
         }
 
-        numElements = tensor.getType().cast<vpux::NDTypeInterface>().getNumElements();
+        numElements = mlir::cast<vpux::NDTypeInterface>(tensor.getType()).getNumElements();
         return numElements == 1;
     };
 
@@ -45,12 +45,12 @@ mlir::LogicalResult vpux::IE::EmbeddingBagOffsetsSumOp::inferReturnTypeComponent
         return mlir::failure();
     }
 
-    const auto inTypeEmbTable = embeddingBag.getEmbTable().getType().cast<mlir::ShapedType>();
+    const auto inTypeEmbTable = mlir::cast<mlir::ShapedType>(embeddingBag.getEmbTable().getType());
 
     SmallVector<int64_t> outShape(to_small_vector(inTypeEmbTable.getShape()));
 
     if (embeddingBag.getOffsets() != nullptr) {
-        const auto inTypeOffsets = embeddingBag.getOffsets().getType().cast<mlir::ShapedType>();
+        const auto inTypeOffsets = mlir::cast<mlir::ShapedType>(embeddingBag.getOffsets().getType());
         const auto offsetsShape = inTypeOffsets.getShape();
         outShape[0] = checked_cast<int64_t>(offsetsShape[0]);
     } else if (embeddingBag.getOffsetsValue().has_value()) {

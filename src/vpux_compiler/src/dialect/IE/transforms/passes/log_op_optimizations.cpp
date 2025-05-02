@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -39,8 +41,8 @@ void checkSEPInterpolate(IE::InterpolateOp op, const Logger& log) {
         scalesAttr.has_value()) {
         scales = parseFPArrayAttr<double>(scalesAttr.value());
     } else {
-        auto inputShape = op.getInput().getType().cast<vpux::NDTypeInterface>().getShape();
-        auto outputShape = op.getOutput().getType().cast<vpux::NDTypeInterface>().getShape();
+        auto inputShape = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getShape();
+        auto outputShape = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getShape();
         scales = {static_cast<double>(outputShape[Dims4D::Act::H]) / static_cast<double>(inputShape[Dims4D::Act::H]),
                   static_cast<double>(outputShape[Dims4D::Act::W]) / static_cast<double>(inputShape[Dims4D::Act::W])};
     }
@@ -108,7 +110,7 @@ void checkSEPDilatedConv(IE::ConvolutionOp op, const Logger& log) {
 
 void checkSEPPad(IE::PadOp op, const Logger& log) {
     // Tensor has to be at least 3D so that it has spatial dimensions for padding
-    auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     if (inputType.getRank() < 3) {
         return;
     }
@@ -195,7 +197,7 @@ void checkSEPTile(IE::TileOp op, const Logger& log) {
 
     // Align the number of dimensions in the repeats vector and input shape by padding left the smaller container
     // with 1
-    auto inputShape = to_small_vector(op.getInput().getType().cast<vpux::NDTypeInterface>().getShape());
+    auto inputShape = to_small_vector(mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getShape());
     if (repeats.size() < inputShape.size()) {
         const auto numElems = inputShape.size() - repeats.size();
         repeats.insert(repeats.begin(), numElems, 1);

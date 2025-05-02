@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -30,7 +30,7 @@ rawFilterShape = [16, 1, 1, 1],
         ppe = #VPU.PPEStub<>,
 rawFilterShape = [96, 16, 7, 7],
         strides = [2, 2]
-        } -> tensor<1x96x111x111xf16, {order = #NHWC}>
+        } : tensor<1x16x227x227xf16, {order = #NHWC}>, tensor<96x16x7x7xf16, {order = #NHWC}>, tensor<96x1x1x4xsi32> -> tensor<1x96x111x111xf16, {order = #NHWC}>
 
     return %1 : tensor<1x96x111x111xf16, {order = #NHWC}>
 
@@ -153,7 +153,7 @@ rawFilterShape = [96, 16, 7, 7],
     // CHECK:       [[DWCONV_2:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_2]], [[COPY_WEIGHTS_2]], [[COPY_WEIGHTS_TBL_2]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:           rawFilterShape = [16, 1, 1, 1],
-    // CHEKC-SAME:          strides = [1, 1]
+    // CHECK-SAME:          strides = [1, 1]
     // CHECK-SAME:          -> !VPU.DistributedTensor<1x16x75x227xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:              {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:      compute_shapes = [[1, 16, 38, 227], [1, 16, 37, 227]]

@@ -8,7 +8,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace VPUIP {
@@ -52,6 +52,10 @@ private:
     SmallVector<mlir::IntegerAttr> getOutChannelOffsets(VPUIP::NCEClusterTaskOp nceTask,
                                                         VPUIP::DistributedBufferType inType,
                                                         VPUIP::DistributedBufferType outType) const;
+
+    SmallVector<mlir::Value> getWeightTableBuffs(mlir::Location loc, StringRef bufferName,
+                                                 mlir::Value weightTableConstituent, const int64_t numClusters,
+                                                 mlir::OpBuilder& builder) const;
 
 protected:
     Logger _log;

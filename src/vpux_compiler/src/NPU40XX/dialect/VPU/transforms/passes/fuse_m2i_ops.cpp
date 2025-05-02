@@ -84,8 +84,10 @@ mlir::LogicalResult FuseM2iCscResizePl::matchAndRewrite(VPU::MemPermuteOp origOp
     auto postInterpInVal = origOp.getInput();
     auto postConvertOp = origOp.getInput().getDefiningOp<VPU::ConvertOp>();
     if (postConvertOp) {
-        if (!postConvertOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType().isUnsignedInteger(8) ||
-            !postConvertOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType().isF16()) {
+        if (!mlir::cast<vpux::NDTypeInterface>(postConvertOp.getInput().getType())
+                     .getElementType()
+                     .isUnsignedInteger(8) ||
+            !mlir::cast<vpux::NDTypeInterface>(postConvertOp.getOutput().getType()).getElementType().isF16()) {
             _log.trace("[{0}] Only convert from u8 to fp16 accepted", getDebugName());
             return mlir::failure();
         }
@@ -121,8 +123,10 @@ mlir::LogicalResult FuseM2iCscResizePl::matchAndRewrite(VPU::MemPermuteOp origOp
     VPU::M2IColorConvertOp m2iCsc;
     auto preConvertOp = sclInput.getDefiningOp<VPU::ConvertOp>();
     if (preConvertOp) {
-        if (!preConvertOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType().isUnsignedInteger(8) ||
-            !preConvertOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType().isF16()) {
+        if (!mlir::cast<vpux::NDTypeInterface>(preConvertOp.getInput().getType())
+                     .getElementType()
+                     .isUnsignedInteger(8) ||
+            !mlir::cast<vpux::NDTypeInterface>(preConvertOp.getOutput().getType()).getElementType().isF16()) {
             _log.trace("[{0}] Only convert from u8 to fp16 accepted", getDebugName());
             return mlir::failure();
         }
@@ -143,7 +147,7 @@ mlir::LogicalResult FuseM2iCscResizePl::matchAndRewrite(VPU::MemPermuteOp origOp
             return mlir::failure();
         }
         const auto lastAxis = axes[axesSize - 1];
-        const auto lastDim = sclInput.getType().cast<vpux::NDTypeInterface>().getRank() - 1;
+        const auto lastDim = mlir::cast<vpux::NDTypeInterface>(sclInput.getType()).getRank() - 1;
         const bool isScalingInterleaved = (lastAxis != lastDim);
         if (!isScalingInterleaved) {
             _log.trace("[{0}] Pattern assumes an interleaved scaling", getDebugName());
@@ -164,7 +168,7 @@ mlir::LogicalResult FuseM2iCscResizePl::matchAndRewrite(VPU::MemPermuteOp origOp
         inLumaOrder = getM2iLumaOrderReg(m2iCsc.getInFmtAttr().getValue());
         outLumaOrder = getM2iLumaOrderReg(m2iCsc.getOutFmtAttr().getValue());
         iFmt = IEtoM2iColorFmt(m2iCsc.getInFmtAttr().getValue());
-        const auto oType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto oType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getElementType();
         const auto cscOutFmt = m2iCsc.getOutFmtAttr().getValue();
 
         const auto res = getM2iPlanarOutFmt(oType, cscOutFmt);
@@ -213,8 +217,8 @@ mlir::LogicalResult FuseM2iTask2Pl::matchAndRewrite(VPU::MemPermuteOp origOp, ml
     // Optional ConvertOp
     auto opConvert = origOp.getInput().getDefiningOp<VPU::ConvertOp>();
     if (opConvert) {
-        if (!opConvert.getInput().getType().cast<vpux::NDTypeInterface>().getElementType().isUnsignedInteger(8) ||
-            !opConvert.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType().isF16()) {
+        if (!mlir::cast<vpux::NDTypeInterface>(opConvert.getInput().getType()).getElementType().isUnsignedInteger(8) ||
+            !mlir::cast<vpux::NDTypeInterface>(opConvert.getOutput().getType()).getElementType().isF16()) {
             _log.trace("[{0}] Only convert from u8 to fp16 accepted in pattern", getDebugName());
             return mlir::failure();
         }
@@ -325,7 +329,7 @@ mlir::LogicalResult FuseM2iCscPl::matchAndRewrite(VPU::MemPermuteOp origOp, mlir
     if (opConvert == nullptr) {
         m2iCsc = origOp.getInput().getDefiningOp<VPU::M2IColorConvertOp>();
     } else {
-        if (!opConvert.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType().isF16()) {
+        if (!mlir::cast<vpux::NDTypeInterface>(opConvert.getOutput().getType()).getElementType().isF16()) {
             _log.trace("[{0}] Only convert from u8 to fp16 accepted", getDebugName());
             return mlir::failure();
         }
@@ -343,7 +347,7 @@ mlir::LogicalResult FuseM2iCscPl::matchAndRewrite(VPU::MemPermuteOp origOp, mlir
     auto outLumaOrder = getM2iLumaOrderReg(m2iCsc.getOutFmtAttr().getValue());
 
     const auto iFmt = IEtoM2iColorFmt(m2iCsc.getInFmtAttr().getValue());
-    const auto oType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto oType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getElementType();
     const auto cscOutFmt = m2iCsc.getOutFmtAttr().getValue();
 
     M2iColorFmt oFmt;
@@ -402,7 +406,7 @@ mlir::LogicalResult FuseNormBase<ConcreteOp>::matchAndRewrite(VPU::M2INormOp nor
                                                               mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), normOp->getName(), normOp->getLoc());
 
-    if (!normOp.getInput().getType().template cast<vpux::NDTypeInterface>().getElementType().isF16()) {
+    if (!mlir::cast<vpux::NDTypeInterface>(normOp.getInput().getType()).getElementType().isF16()) {
         return mlir::failure();
     }
 
@@ -536,7 +540,7 @@ mlir::LogicalResult FuseM2ITaskOpNormBase<ConcreteOp>::matchAndRewrite(ConcreteO
                                                                        mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
 
-    if (!origOp.getInput().getType().template cast<vpux::NDTypeInterface>().getElementType().isF16()) {
+    if (!mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getElementType().isF16()) {
         return mlir::failure();
     }
 

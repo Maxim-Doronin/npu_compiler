@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
+#include "vpux/compiler/utils/dynamic_shape_propagation.hpp"
+#include "vpux/utils/core/range.hpp"
 
 using namespace vpux;
 
@@ -21,14 +24,12 @@ mlir::LogicalResult vpux::VPU::DynamicReshapeOp::inferReturnTypes(
 
     const auto outShape = parseIntArrayAttr<int64_t>(reshape.getOutputShapeAttr());
     const auto outBounds = parseIntArrayAttr<int64_t>(reshape.getOutputBoundsAttr());
-    const auto inType = reshape.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<NDTypeInterface>(reshape.getInput().getType());
 
-    const auto typeComponents = TypeComponents()
-                                        .setShape(Shape(outShape))
-                                        .setDimsOrder(DimsOrder::fromNumDims(outShape.size()))
-                                        .setBounds(getIntArrayAttr(ctx, outBounds));
+    auto typeComponents = TypeComponents().setDimsOrder(DimsOrder::fromNumDims(outShape.size()));
+    assignDynamicTypeComponents(typeComponents, reshape.getBoundsRepresentation(), outShape, outBounds);
+
     auto outType = inType.changeTypeComponents(typeComponents);
-
     inferredReturnTypes.push_back(outType);
 
     return mlir::success();

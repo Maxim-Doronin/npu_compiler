@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/interfaces/workload_splitter_base.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 
@@ -72,8 +74,9 @@ void vpux::VPU::WorkloadSplitterBase::correctInvalidWorkload(const VPU::Sparsity
 
             const auto offsetsCorrectionNeeded = isNCEPermuteOffsetsCorrectionNeeded(nceOp);
             if (isInvalidNCEPermuteOp) {
-                channelPadding = op->getResult(0).getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::C] -
-                                 op->getOperand(0).getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::C];
+                channelPadding =
+                        mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getShape()[Dims4D::Act::C] -
+                        mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape()[Dims4D::Act::C];
             }
             auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
             for (auto workloadOp : llvm::make_early_inc_range(workloads)) {
@@ -97,14 +100,12 @@ SmallVector<Shape> vpux::VPU::WorkloadSplitterBase::getPerClusterShapesWhenSOK(V
     auto clusterOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(nceOp.getOperation());
     if (clusterOp != nullptr && clusterOp.getMultiClusterStrategy().has_value() &&
         clusterOp.getMultiClusterStrategy().value() == VPU::MultiClusterStrategy::SplitOverKernel) {
-        auto outputType = clusterOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(clusterOp->getResult(0).getType());
         auto numClusters = VPU::getOptimalNumClusters(clusterOp, outputType.getShape(),
                                                       VPU::MultiClusterStrategy::SplitOverKernel);
         auto distributedType = getDistributedOutputTypeFromOp(clusterOp, outputType, numClusters,
                                                               VPU::MultiClusterStrategy::SplitOverKernel);
-        perClusterShapes = distributedType.getDistributedTypes()
-                                   .front()
-                                   .cast<VPU::DistributedTensorType>()
+        perClusterShapes = mlir::cast<vpux::VPU::DistributedTensorType>(distributedType.getDistributedTypes().front())
                                    .getPerClusterComputeShapes();
     }
     return perClusterShapes;
@@ -145,7 +146,7 @@ mlir::DenseSet<int64_t> vpux::VPU::WorkloadSplitterBase::getWorkloadsChannels(
                                                                       }));
                 workloadsChannels.insert(channels.begin(), channels.end());
             } else {
-                const auto outputType = nceOp.getOperation()->getResult(0).getType().cast<NDTypeInterface>();
+                const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getOperation()->getResult(0).getType());
                 const auto OC = outputType.getShape()[vpux::Dims4D::Act::C];
                 workloadsChannels.insert(OC);
             }
@@ -201,7 +202,7 @@ mlir::DenseSet<mlir::Operation*> vpux::VPU::WorkloadSplitterBase::findProducerNC
             const auto ops = findProducerNCEOps(viewOp->getOperand(0));
             producerNCEOps.insert(ops.begin(), ops.end());
         } else if (auto viewOp = mlir::dyn_cast<MultiViewOpInterface>(producerOp)) {
-            if (auto opResult = value.dyn_cast<mlir::OpResult>()) {
+            if (auto opResult = mlir::dyn_cast<mlir::OpResult>(value)) {
                 const auto source = viewOp.getViewSource(opResult.getResultNumber());
                 const auto ops = findProducerNCEOps(source);
                 producerNCEOps.insert(ops.begin(), ops.end());
@@ -269,7 +270,7 @@ mlir::DenseSet<mlir::Operation*> vpux::VPU::WorkloadSplitterBase::findInvalidSpa
         VPU::NCEOpInterface nceOp, const VPU::SparsityConstraint& sparsityConstraint) {
     mlir::DenseSet<mlir::Operation*> invalidSparseOps;
 
-    if (!nceOp->getResult(0).getType().isa<VPU::SparseTensorType>()) {
+    if (!mlir::isa<vpux::VPU::SparseTensorType>(nceOp->getResult(0).getType())) {
         return invalidSparseOps;
     }
 
@@ -331,7 +332,8 @@ mlir::DenseSet<mlir::Operation*> vpux::VPU::WorkloadSplitterBase::findInvalidNCE
         const auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
         const auto nonZeroPadding = llvm::any_of(workloads, [&](VPU::DPUWorkloadOp workload) -> bool {
             const auto expandChannels = mlir::cast<VPU::NCEPermuteOp>(op).getExpandedChannels();
-            const auto origInChannels = op->getOperand(0).getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::C];
+            const auto origInChannels =
+                    mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape()[Dims4D::Act::C];
             const auto zeroPadding = expandChannels == origInChannels;
             const auto wlOffsets = parseIntArrayAttr<int64_t>(workload.getOutOffsetsAttr());
             const auto isZeroPredicate = [](const int64_t value) -> bool {
@@ -373,7 +375,7 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitterBase::getSupportedChannels(
     }
 
     const auto hasSparseOutput = llvm::any_of(nceOps, [](mlir::Operation* op) {
-        return op->getResult(0).getType().isa<VPU::SparseTensorType>();
+        return mlir::isa<vpux::VPU::SparseTensorType>(op->getResult(0).getType());
     });
     if (hasSparseOutput) {
         if (supportedChannels.empty()) {
@@ -409,7 +411,7 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitterBase::getSupportedChannels(
         } else if (!nceOps.empty()) {
             eraseInvalidChannels(getWorkloadsChannels(nceOps, true));
             auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(*(nceOps.begin()));
-            const auto outputType = nceOp.getOperation()->getResult(0).getType().cast<NDTypeInterface>();
+            const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getOperation()->getResult(0).getType());
             auto lastChannel = outputType.getShape()[vpux::Dims4D::Act::C];
             auto workloads = to_small_vector(nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>());
 
@@ -438,6 +440,17 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitterBase::getSupportedChannels(
                                        }),
                         supportedChannels.end());
             }
+        }
+    }
+
+    // In case the autopadding feature is used, the output channels might not be aligned to be a multiple of 16
+    // If this happens, the current output channel configuration can be considered a supported workload configuration
+    for (auto op : nceOps) {
+        if (VPU::canAutopadOutput(op)) {
+            const auto outputChannels =
+                    mlir::cast<NDTypeInterface>(op->getResult(0).getType()).getShape()[Dims4D::Act::C];
+            supportedChannels.push_back(outputChannels);
+            break;
         }
     }
 

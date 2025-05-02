@@ -6,11 +6,9 @@
 #pragma once
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/IR/IRMapping.h>
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 
@@ -289,6 +287,23 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::AccumulateOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// RandomUniformRewrite
+//
+
+class RandomUniformRewrite final : public mlir::OpRewritePattern<IE::RandomUniformOp> {
+public:
+    RandomUniformRewrite(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::RandomUniformOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::RandomUniformOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;

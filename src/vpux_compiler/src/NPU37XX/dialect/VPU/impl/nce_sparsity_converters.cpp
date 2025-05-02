@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,7 +15,7 @@ VPU::NCESparsity::IntOrFloatType VPU::arch37xx::getScale(uint8_t shift, int16_t 
                                                          mlir::Type inputType) {
     // VPUX37XX expects scale in IEEE754 format in NCE_DPU_PPE_FP_SCALE register in case input has FP16/BF16 type
     auto inStorageType = mlir::quant::QuantizedType::castToStorageType(inputType);
-    if (inputType.isa<mlir::FloatType>() || inStorageType.isFloat8E5M2() || inStorageType.isFloat8E4M3FN()) {
+    if (mlir::isa<mlir::FloatType>(inputType) || inStorageType.isFloat8E5M2() || inStorageType.isFloat8E4M3FN()) {
         return VPU::NCESparsity::toHex(rescale);
     }
 

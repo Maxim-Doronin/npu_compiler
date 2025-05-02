@@ -70,13 +70,13 @@ mlir::LogicalResult vpux::IE::MatMulOp::inferReturnTypeComponents(
     auto shapeInfo =
             inferMatMulOutputShapeInfo(inShapeInfo1, inShapeInfo2, matMul.getTransposeA(), matMul.getTransposeB());
 
-    mlir::ArrayAttr outBoundsAttr = nullptr;
+    ArrayRef<int64_t> outBounds = {};
     if (!shapeInfo.bounds.empty()) {
-        outBoundsAttr = getIntArrayAttr(ctx, shapeInfo.bounds);
+        outBounds = shapeInfo.bounds;
     }
 
     const auto inElementType = inType1.getElementType();
-    const auto outDesc = vpux::getTensorAttr(ctx, inType1.getDimsOrder(), /*memSpace=*/nullptr, outBoundsAttr);
+    const auto outDesc = vpux::getTensorAttr(ctx, inType1.getDimsOrder(), /*memSpace=*/nullptr, Bounds(outBounds));
     inferredReturnShapes.emplace_back(shapeInfo.shape, inElementType, outDesc);
 
     return mlir::success();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -82,9 +82,9 @@ void VPUIP::DistributedBufferType::print(mlir::AsmPrinter& printer) const {
     printer << getElementType();
 
     const auto layout = getLayout();
-    if (const auto mapAttr = layout.dyn_cast<mlir::AffineMapAttr>()) {
+    if (const auto mapAttr = mlir::dyn_cast<mlir::AffineMapAttr>(layout)) {
         printer << ", " << mapAttr;
-    } else if (const auto descAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+    } else if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
         printer << ", " << descAttr;
     } else {
         VPUX_THROW("Unsupported MemRefType layout '{0}'", layout);
@@ -331,7 +331,7 @@ mlir::LogicalResult VPUIP::DistributedBufferType::verify(FuncRef<mlir::InFlightD
     }
 
     if (sparsityCompression != nullptr) {
-        if (const auto descAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+        if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
             const Bit elemTypeSize = vpux::getElemTypeSize(elementType);
             if (auto stridesAttr = descAttr.strides()) {
                 const auto elemStrides = parseIntArrayAttr<int64_t>(stridesAttr);
@@ -393,7 +393,7 @@ mlir::MemRefType VPUIP::DistributedBufferType::getCompactType() const {
         // buffer, will aligned to 4096 bytes.
         // When spilling to DDR, need static allocation on DDR is 8192 bytes. However, static allocation thinks DDR
         // buffer just needs 6144 bytes(1x48x8x8xf16). If we use sizeAlignment * numClusters as new alignment (for
-        // example on NPU40XX is 2048), the original size 6144 bytes is 2048 aligned. It's will casuse buffer overflow.
+        // example on VPUX40XX is 2048), the original size 6144 bytes is 2048 aligned. It's will casuse buffer overflow.
         // Here we increase the alignment until the memory meet the real requirements. For this case, the new alignment
         // will increase to 4096.
         size_t expectedAlignedByteSize = 0;
@@ -588,7 +588,7 @@ NDTypeInterface VPUIP::DistributedBufferType::changeShapeElemTypeForExplicitDist
                       newOrder, shape);
 
     auto layoutAttr = getLayout();
-    if (auto memRefAttr = getLayout().dyn_cast<vpux::MemRefAttr>()) {
+    if (auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(getLayout())) {
         const auto orderAttr = mlir::AffineMapAttr::get(newOrder.toAffineMap(ctx));
         // If swizzlingKey is set get rid of strides settings
         if (memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>()) {
@@ -665,7 +665,7 @@ NDTypeInterface VPUIP::DistributedBufferType::extractDenseTileForExplicitDistrib
     const auto order = mlir::AffineMapAttr::get(getDimsOrder().toAffineMap(ctx));
 
     auto tileElemType = getElementType();
-    if (const auto perAxisQType = tileElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(tileElemType)) {
         tileElemType = vpux::tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
     }
 
@@ -688,7 +688,7 @@ NDTypeInterface VPUIP::DistributedBufferType::extractViewTileForExplicitDistribu
     const auto memSpace = getMemSpace();
 
     auto tileElemType = getElementType();
-    if (const auto perAxisQType = tileElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(tileElemType)) {
         tileElemType = vpux::tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
     }
 
@@ -747,11 +747,11 @@ int64_t VPUIP::DistributedBufferType::getNumElements() const {
 
 DimsOrder VPUIP::DistributedBufferType::getDimsOrder() const {
     const auto layout = getLayout();
-    if (const auto mapAttr = layout.dyn_cast<mlir::AffineMapAttr>()) {
+    if (const auto mapAttr = mlir::dyn_cast<mlir::AffineMapAttr>(layout)) {
         return DimsOrder::fromAffineMap(mapAttr.getValue());
     }
 
-    if (const auto descAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+    if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
         return DimsOrder::fromAffineMap(descAttr.order().getValue());
     }
 
@@ -770,11 +770,11 @@ VPU::MemoryKind VPUIP::DistributedBufferType::getMemoryKind() const {
 Strides VPUIP::DistributedBufferType::getStrides() const {
     const auto layout = getLayout();
 
-    if (const auto mapAttr = layout.dyn_cast<mlir::AffineMapAttr>()) {
+    if (const auto mapAttr = mlir::dyn_cast<mlir::AffineMapAttr>(layout)) {
         VPUX_THROW_UNLESS(mapAttr.getValue().isPermutation(), "Got non permutation layout attribute '{0}'", layout);
     }
 
-    if (const auto descAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+    if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
         if (auto stridesAttr = descAttr.strides()) {
             const auto elemStrides = parseIntArrayAttr<int64_t>(stridesAttr);
             const Bit elemSize = getElemTypeSize();
@@ -832,7 +832,7 @@ Byte VPUIP::DistributedBufferType::getTotalAllocSize() const {
                 getStridedAllocSize(stridedTiledShape, stridedTiledOffsets, sparsityCompression, order, elemBitSize);
     }
 
-    if (const auto memRefAttr = getLayout().dyn_cast<vpux::MemRefAttr>()) {
+    if (const auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(getLayout())) {
         auto swizzlingScheme = memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>();
         if (!swizzlingScheme || swizzlingScheme.getKey().getInt() == 0) {
             return allocSizeByte;
@@ -869,7 +869,7 @@ Byte VPUIP::DistributedBufferType::getAllocSizeOfCluster(size_t clusterId) const
                 getStridedAllocSize(stridedTiledShape, stridedTiledOffsets, sparsityCompression, order, elemBitSize);
     }
 
-    if (const auto memRefAttr = getLayout().dyn_cast<vpux::MemRefAttr>()) {
+    if (const auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(getLayout())) {
         auto swizzlingScheme = memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>();
         if (!swizzlingScheme || swizzlingScheme.getKey().getInt() == 0) {
             return allocSizeByte;
@@ -969,7 +969,7 @@ NDTypeInterface VPUIP::DistributedBufferType::changeShapeElemType(ShapeRef shape
                       newOrder, shape);
 
     auto layoutAttr = getLayout();
-    if (auto memRefAttr = getLayout().dyn_cast<vpux::MemRefAttr>()) {
+    if (auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(getLayout())) {
         const auto orderAttr = mlir::AffineMapAttr::get(newOrder.toAffineMap(ctx));
         // If swizzlingKey is set get rid of strides settings
         if (memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>()) {
@@ -995,7 +995,7 @@ NDTypeInterface VPUIP::DistributedBufferType::changeDimsOrder(DimsOrder order) c
 
     auto layoutAttr = getLayout();
     auto orderAttr = mlir::AffineMapAttr::get(order.toAffineMap(ctx));
-    if (auto memRefAttr = getLayout().dyn_cast<vpux::MemRefAttr>()) {
+    if (auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(getLayout())) {
         // Assume compact strides
         layoutAttr = vpux::MemRefAttr::get(orderAttr, nullptr,
                                            /*allocSize=*/nullptr, memRefAttr.hwSpecificFields(), ctx);
@@ -1068,7 +1068,7 @@ NDTypeInterface VPUIP::DistributedBufferType::extractDenseTile(ShapeRef tileOffs
     const auto order = mlir::AffineMapAttr::get(getDimsOrder().toAffineMap(ctx));
 
     auto tileElemType = getElementType();
-    if (const auto perAxisQType = tileElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(tileElemType)) {
         tileElemType = vpux::tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
     }
 
@@ -1091,7 +1091,7 @@ NDTypeInterface VPUIP::DistributedBufferType::extractViewTile(vpux::ShapeRef til
     const auto memSpace = getMemSpace();
 
     auto tileElemType = getElementType();
-    if (const auto perAxisQType = tileElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(tileElemType)) {
         tileElemType = vpux::tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
     }
 

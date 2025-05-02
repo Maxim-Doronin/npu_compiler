@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/VPU/utils/adaptive_stripping_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -270,7 +273,7 @@ void alignFQRanges(IE::ConcatOp origOp, MutableArrayRef<IE::FakeQuantizeOp> fqOp
     log.trace("Set insertion point for common constants at {0}", theUppestFQOp->getLoc());
     rewriter.setInsertionPoint(theUppestFQOp);
     // Create the input/output low/high constants and level attribute that will be used to align the FQ ranges
-    const auto elemType = fqOpsToAlign[0].getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(fqOpsToAlign[0].getInput().getType()).getElementType();
     const auto fqArgType = mlir::RankedTensorType::get({1, 1, 1, 1}, elemType);
     auto commonInputLow = IE::createFQConst(ctx, origOp->getLoc(), min, fqArgType, rewriter);
     auto commonInputHigh = IE::createFQConst(ctx, origOp->getLoc(), max, fqArgType, rewriter);
@@ -475,6 +478,18 @@ mlir::LogicalResult AlignSliceRewriter::matchAndRewrite(IE::FakeQuantizeOp fqOp,
     if (minRange * IE::QUANT_RANGE_RATIO <= maxRange) {
         _log.trace("Failed to align slice due to range has big difference");
         return mlir::failure();
+    }
+
+    auto moduleOp = getModuleOp(fqOp);
+    auto setAdaptiveStrippingEnabled = VPU::hasEnableAdaptiveStripping(moduleOp);
+
+    if (setAdaptiveStrippingEnabled) {
+        // If values are similar, and within range, return failure to avoid adding Clamp
+        if (areQuantizationRangesSimilar(fqOutputHighVal, parentFqOutputHighVal)) {
+            _log.trace("FakeQuantize output high value is similar to parent FakeQuantize output high value. "
+                       "No need to align scales.");
+            return mlir::failure();
+        }
     }
 
     auto newFQOp = rewriter.create<IE::FakeQuantizeOp>(fqOp->getLoc(), sliceOp->getResult(0), parentFqOp.getInputLow(),

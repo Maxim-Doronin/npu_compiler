@@ -1,3 +1,8 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
+//
+
 #include "vpux/compiler/dialect/IE/utils/matmul.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
@@ -33,8 +38,8 @@ int64_t getExpandedCMXUsagePerGroup(IE::MatMulOp matmulOp, ShapeRef input1Shape,
     // into CMX we dont run with batched matmul
     // OC dimension must be expanded to be multiple of 16
 
-    const auto input1ElementType = matmulOp.getInput1().getType().cast<NDTypeInterface>().getElementType();
-    const auto outputElementType = matmulOp.getOutput().getType().cast<NDTypeInterface>().getElementType();
+    const auto input1ElementType = mlir::cast<vpux::NDTypeInterface>(matmulOp.getInput1().getType()).getElementType();
+    const auto outputElementType = mlir::cast<vpux::NDTypeInterface>(matmulOp.getOutput().getType()).getElementType();
     const int64_t inputChannelAlignment = VPU::NCEInvariant::getAlignment(input1ElementType);
     const int64_t outputChannelAlignment = VPU::NCEInvariant::getAlignment(outputElementType);
     constexpr auto float16Size = sizeof(type::float16);

@@ -3,9 +3,6 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include <llvm/ADT/SmallVector.h>
-#include <mlir/IR/BuiltinAttributes.h>
-#include <cstdint>
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -26,6 +23,7 @@
 #include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/loop.hpp"
@@ -33,6 +31,12 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/range.hpp"
+
+#include <llvm/ADT/SmallVector.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/Transforms/DialectConversion.h>
+
+#include <cstdint>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_LOWEROPSTOSENCE
@@ -123,7 +127,7 @@ mlir::Value createWeightsConstantImpl(vpux::NDTypeInterface inputType, SmallVect
 
 mlir::Value convertOpToConv(mlir::Operation* origOp, mlir::Value weights, mlir::Value sparseInput, VPU::ArchKind arch,
                             mlir::PatternRewriter& rewriter) {
-    const auto outputType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     const auto OC = outputType.getShape()[Dims4D::Act::C];
     const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
     const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, arch);
@@ -145,14 +149,19 @@ mlir::Value convertOpToConv(mlir::Operation* origOp, mlir::Value weights, mlir::
     const auto padAttr = VPU::getPaddingAttr(origOp->getContext(), PadInfo(0, 0, 0, 0));
     const auto rawFilterShape = getIntArrayAttr(rewriter, getShape(weights));
 
-    auto outputChannelsAttr = origOp->hasAttr(VPU::outChanAttrName)
-                                      ? origOp->getAttr(VPU::outChanAttrName).cast<mlir::IntegerAttr>()
-                                      : nullptr;
+    auto inputPaddingAttr = origOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)
+                                    ? mlir::cast<mlir::ArrayAttr>(origOp->getAttr(VPU::INPUT_PADDING_ATTR_NAME))
+                                    : nullptr;
+    auto outputPaddingAttr = origOp->hasAttr(VPU::OUTPUT_PADDING_ATTR_NAME)
+                                     ? mlir::cast<mlir::ArrayAttr>(origOp->getAttr(VPU::OUTPUT_PADDING_ATTR_NAME))
+                                     : nullptr;
 
     return rewriter
-            .create<VPU::NCEConvolutionOp>(origOp->getLoc(), outputType, sparseInput, weights, weightsTable,
-                                           stridesAttr, padAttr, ppeAttr, mpeEngineAttr, rawFilterShape,
-                                           /*multi_cluster_strategyAttr=*/nullptr, outputChannelsAttr)
+            .create<VPU::NCEConvolutionOp>(
+                    origOp->getLoc(), outputType, sparseInput, weights, weightsTable, /*weight_table_data_ptr=*/nullptr,
+                    /*weight_table_sp_ptr=*/nullptr, /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr,
+                    /*weight_zero_points=*/nullptr, stridesAttr, padAttr, ppeAttr, mpeEngineAttr, rawFilterShape,
+                    /*multi_cluster_strategyAttr=*/nullptr, outputPaddingAttr, inputPaddingAttr)
             .getResult();
 }
 
@@ -188,8 +197,8 @@ private:
 mlir::Value InterpolateToNCE::createSparseInput(VPU::InterpolateOp origOp, mlir::PatternRewriter& rewriter,
                                                 VPU::NCEInterpolateModeAttr modeAttr, ArrayRef<double> scales) const {
     auto ctx = origOp.getContext();
-    auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto inputShape = inputType.getShape();
     auto outputShape = outputType.getShape();
     auto inputDimsOrder = inputType.getDimsOrder();
@@ -213,7 +222,7 @@ mlir::Value InterpolateToNCE::createSparseInput(VPU::InterpolateOp origOp, mlir:
     auto seInterpolateAttr = VPU::SEInterpolateAttr::get(ctx, modeAttr, coordModeAttr, scalesAttr, nearestModeAttr,
                                                          /*offsets=*/nullptr, /*sizes=*/nullptr, initialInputShapeAttr,
                                                          initialOutputShapeAttr);
-    auto seAttr = seInterpolateAttr.cast<VPU::SEAttr>();
+    auto seAttr = mlir::cast<vpux::VPU::SEAttr>(seInterpolateAttr);
 
     // Create the StorageElementTable operation
     auto arch = VPU::getArch(origOp);
@@ -255,40 +264,8 @@ mlir::Value InterpolateToNCE::createWeightsConstant(VPU::InterpolateOp origOp, m
     const auto modeAttr = VPU::getNCEInterpolateModeAttr(origOp.getAttr().getMode());
     const auto coordMode = origOp.getAttr().getCoordMode();
     const auto scales = VPU::getNCEInterpolateScales(inputType, outputType, coordMode).value();
-    auto scaleH = static_cast<int64_t>(scales[Dims4D::Act::H.ind()]);
-    auto scaleW = static_cast<int64_t>(scales[Dims4D::Act::W.ind()]);
-
-    const SmallVector<float> kernel = [&]() -> SmallVector<float> {
-        const auto kernelNumElems = kernelSize[Dims4D::Kernel::Y.ind()] * kernelSize[Dims4D::Kernel::X.ind()];
-
-        const bool isHalfPixelCoordMode = coordMode.getValue() == IE::InterpolateCoordMode::HALF_PIXEL ||
-                                          coordMode.getValue() == IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL;
-        const bool areBothScalesOdd = (scaleH % 2 == 1) && (scaleW % 2 == 1);
-
-        if (modeAttr.getValue() != VPU::NCEInterpolateMode::BILINEAR || !isHalfPixelCoordMode || areBothScalesOdd) {
-            const auto weightsValue = 1.0f / checked_cast<float>(kernelNumElems);
-
-            return SmallVector<float>(kernelNumElems, weightsValue);
-        }
-
-        auto kernel = SmallVector<float>(kernelNumElems, static_cast<float>(1.0f / (scales[Dims4D::Act::H.ind()] *
-                                                                                    scales[Dims4D::Act::W.ind()])));
-
-        for (int64_t khIdx = 0; khIdx < kernelSize[Dims4D::Kernel::Y.ind()]; khIdx++) {
-            for (int64_t kwIdx = 0; kwIdx < kernelSize[Dims4D::Kernel::X.ind()]; kwIdx++) {
-                const auto offset = kwIdx + khIdx * kernelSize[Dims4D::Kernel::X.ind()];
-                if (scaleH % 2 == 0 && (khIdx == 0 || khIdx == kernelSize[Dims4D::Kernel::Y.ind()] - 1)) {
-                    kernel[offset] /= 2;
-                }
-
-                if (scaleW % 2 == 0 && (kwIdx == 0 || kwIdx == kernelSize[Dims4D::Kernel::X.ind()] - 1)) {
-                    kernel[offset] /= 2;
-                }
-            }
-        }
-
-        return kernel;
-    }();
+    const SmallVector<float> kernel =
+            VPU::getNCEInterpolateKernelContent(kernelSize, modeAttr.getValue(), coordMode.getValue(), scales);
 
     auto weightsVal =
             createWeightsConstantImpl(inputType, kernel, kernelSize, rewriter, origOp.getContext(), origOp.getLoc());
@@ -402,8 +379,8 @@ SmallVector<uint8_t> TransposedConvolutionToNCE::createSparsityMapContent(ArrayR
 mlir::Value TransposedConvolutionToNCE::createSparseInput(VPU::TransposedConvolutionOp origOp,
                                                           mlir::PatternRewriter& rewriter) const {
     auto ctx = origOp.getContext();
-    auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto filterType = origOp.getFilter().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
     const auto inputShape = inputType.getShape();
     const auto inputDimsOrder = inputType.getDimsOrder();
     const auto filterShape = filterType.getShape();
@@ -414,7 +391,7 @@ mlir::Value TransposedConvolutionToNCE::createSparseInput(VPU::TransposedConvolu
     const auto factorW = strides[Dims4D::Strides::X.ind()] - 1;
     const auto factorsAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{factorH, factorW});
 
-    auto outputPadding = parseIntArrayAttr<int64_t>(origOp.getOutputPadding());
+    auto outputPadding = parseIntArrayAttr<int64_t>(origOp.getSpatialOutputPadding());
     if (outputPadding.empty()) {
         outputPadding = SmallVector<int64_t>({0, 0});
     }
@@ -425,7 +402,7 @@ mlir::Value TransposedConvolutionToNCE::createSparseInput(VPU::TransposedConvolu
     // Input: 1x16x128x128xf16    Weights: 32x16x2x2xf16    OutputShape: 2xsi32 = dense<128>
     //                   \                |               /
     //                   TransposedConv: 1x32x128x128xf16
-    //                   (strides = [2, 2], output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64, 64])
+    //                   (strides = [2, 2], spatial_output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64, 64])
     // The padL/padR/padT/padB should be non-negative integer, here will be set to 0 instead of -63.
     // Then the Upsampling output shape will be 1x32x255x255xf16 with strides = [2, 2].
     auto padLeft = filterShape[Dims4D::Filter::KX] - origPads.left - 1;
@@ -444,7 +421,7 @@ mlir::Value TransposedConvolutionToNCE::createSparseInput(VPU::TransposedConvolu
 
     auto seUpsamplingAttr =
             VPU::SEUpsamplingAttr::get(ctx, factorsAttr, paddingAttr, /*offsets=*/nullptr, /*sizes=*/nullptr);
-    auto seAttr = seUpsamplingAttr.cast<VPU::SEAttr>();
+    auto seAttr = mlir::cast<vpux::VPU::SEAttr>(seUpsamplingAttr);
 
     // Create the StorageElementTable operation
     auto arch = VPU::getArch(origOp);
@@ -455,7 +432,7 @@ mlir::Value TransposedConvolutionToNCE::createSparseInput(VPU::TransposedConvolu
                                                                  inputType.getElementType(), seSize, seDepth, seAttr);
 
     // Create the sparsity map constant
-    auto smShape = to_small_vector(seTableOp.getType().cast<vpux::NDTypeInterface>().getShape());
+    auto smShape = to_small_vector(mlir::cast<vpux::NDTypeInterface>(seTableOp.getType()).getShape());
     smShape[Dims4D::Act::C.ind()] = seSize * seDepth;
     auto smContentElemType = mlir::IntegerType::get(ctx, 8);
     auto smContentType = mlir::RankedTensorType::get(smShape, smContentElemType);
@@ -482,27 +459,28 @@ mlir::LogicalResult TransposedConvolutionToNCE::matchAndRewrite(VPU::TransposedC
         return matchFailed(rewriter, origOp, "Unable to create sparse input");
     }
     const auto weights = origOp.getFilter();
-    const auto weightsShape = weights.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto weightsShape = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getShape();
     const auto rawFilterShape = getIntArrayAttr(rewriter, weightsShape);
 
     const auto stridesAttr = getIntArrayAttr(origOp.getContext(), SmallVector<int64_t>{1, 1});
     const auto padAttr = VPU::getPaddingAttr(getContext(), PadInfo(0, 0, 0, 0));
 
-    auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto OC = outputType.getShape()[Dims4D::Act::C];
     const auto outputShape = outputType.getShape();
-    const auto sparseInType = sparseInput.getType().dyn_cast<VPU::SparseTensorType>();
+    const auto sparseInType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(sparseInput.getType());
 
     // In case the outputShape is specified, update the convOp outputType. For example:
     // Input: 1x16x128x128xf16      Weights: 32x16x2x2xf16      OutputShape: 2xsi32 = dense<128>
     //                      \               |                  /
     //                       TransposedConv: 1x32x128x128xf16
-    //                       (strides = [2, 2], output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64, 64])
+    //                       (strides = [2, 2], spatial_output_padding = [0, 0], pads_begin = [64, 64], pads_end = [64,
+    //                       64])
     // The SEUpsampling output shape will be 1x32x255x255xf16.
     // So the NCEConv output shape should be updated to: 1x32x254x254xf16 instead of original output shape
     // 1x32x128x128xf16, and then sliceOp will be added for crop to 1x32x128x128xf16.
     if (origOp.getOutputShape() != nullptr) {
-        const auto sparseInShape = sparseInType.cast<vpux::NDTypeInterface>().getShape();
+        const auto sparseInShape = mlir::cast<vpux::NDTypeInterface>(sparseInType).getShape();
         const auto OH = sparseInShape[Dims4D::Act::H] - weightsShape[Dims4D::Filter::KY] + 1;
         const auto OW = sparseInShape[Dims4D::Act::W] - weightsShape[Dims4D::Filter::KX] + 1;
         auto convOutputShape = SmallVector<int64_t>{outputShape[Dims4D::Act::N], outputShape[Dims4D::Act::C], OH, OW};
@@ -531,12 +509,13 @@ mlir::LogicalResult TransposedConvolutionToNCE::matchAndRewrite(VPU::TransposedC
     const auto weightsTable = VPU::createWeightsTableTensor(rewriter, origOp->getLoc(), weightsTableVec);
 
     auto nceOp = rewriter.create<VPU::NCEConvolutionOp>(
-            origOp->getLoc(), outputType, sparseInput, weights, weightsTable, stridesAttr, padAttr, ppeAttr,
-            mpeEngineAttr, rawFilterShape,
-            /*multi_cluster_strategyAttr=*/nullptr, origOp.getOutputChannelsAttr());
+            origOp->getLoc(), outputType, sparseInput, weights, weightsTable, /*weight_table_data_ptr=*/nullptr,
+            /*weight_table_sp_ptr=*/nullptr, /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr,
+            /*weight_zero_points=*/nullptr, stridesAttr, padAttr, ppeAttr, mpeEngineAttr, rawFilterShape,
+            /*multi_cluster_strategyAttr=*/nullptr, origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     // In case the outputShape is specified, create sliceOp for crop
-    const auto nceOutputShape = nceOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto nceOutputShape = mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape();
     if (origOp.getOutputShape() != nullptr && nceOutputShape != outputShape) {
         const auto seUpsamplingAttr = sparseInType.getSeAttr().dyn_cast_or_null<VPU::SEUpsamplingAttr>();
         const auto seUpsamplingAttrPadding = parseIntArrayAttr<int64_t>(seUpsamplingAttr.getPadding());
@@ -638,10 +617,11 @@ mlir::Value DilatedConvolutionToNCE::createSparseInput(Logger log, VPU::GroupCon
     const auto arch = VPU::getArch(origOp);
     const auto sparsityConstraint = VPU::getSparsityConstraint(arch);
 
-    // Depthwise limitation WL size is limited by 64
-    constexpr int64_t depthwiseWorkloadLimit = 64;
-
-    const int64_t seSize = VPU::getSESize(inputShape[Dims4D::Act::C], sparsityConstraint, depthwiseWorkloadLimit);
+    // Depthwise limitation WL min size is 16, here we only set this minimum value by default, and later the actual
+    // seSize will be updated after the op is tiled.
+    // NOTE: This means we have an overestimation of occupied memory during tiling, which can lead to more tiling
+    // than strictly necessary and an impact on overall performance.
+    const int64_t seSize = 16;
 
     const int64_t seDepth = inputShape[Dims4D::Act::C] / seSize;
 
@@ -762,10 +742,11 @@ mlir::LogicalResult DilatedConvolutionToNCE::matchAndRewrite(VPU::GroupConvoluti
             auto nceDepthConvolutionOp = rewriter.create<VPU::NCEDepthConvolutionOp>(
                     vpux::appendLoc(origOp->getLoc(), "_subconv_y_{0}_x_{1}", y, x), sparseInput, alignedWeights,
                     weightsTable, strides, padAttr, ppeAttr, rawFilterShape,
-                    /* multiClusterStrategyAttr = */ nullptr, origOp.getOutputChannelsAttr());
-            auto originalLayout = origOp.getResult().getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+                    /* multiClusterStrategyAttr = */ nullptr, origOp.getOutputPaddingAttr(),
+                    origOp.getInputPaddingAttr());
+            auto originalLayout = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType()).getDimsOrder();
 
-            auto convType = nceDepthConvolutionOp.getResult().getType().cast<vpux::NDTypeInterface>();
+            auto convType = mlir::cast<vpux::NDTypeInterface>(nceDepthConvolutionOp.getResult().getType());
             nceDepthConvolutionOp.getResult().setType(convType.changeDimsOrder(originalLayout));
             subConvolutions.emplace_back(nceDepthConvolutionOp.getResult());
 
@@ -843,7 +824,7 @@ SmallVector<uint8_t> PadToNCE::createSparsityMapContent(IE::PadMode padMode, Arr
 // which defines the relationship between the input data and sparsity metadata.
 mlir::Value PadToNCE::createSparseInput(VPU::PadOp origOp, mlir::PatternRewriter& rewriter) const {
     auto ctx = origOp.getContext();
-    auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inputShape = inputType.getShape();
     const auto inputDimsOrder = inputType.getDimsOrder();
     const auto padMode = origOp.getMode();
@@ -855,7 +836,7 @@ mlir::Value PadToNCE::createSparseInput(VPU::PadOp origOp, mlir::PatternRewriter
                                        padsEnd[Dims4D::Act::W.ind()], padsEnd[Dims4D::Act::H.ind()]};
     auto sePaddingAttr = VPU::SEPaddingAttr::get(ctx, origOp.getModeAttr(), getIntArrayAttr(ctx, padding),
                                                  /*offsets=*/nullptr, /*sizes=*/nullptr);
-    auto seAttr = sePaddingAttr.cast<VPU::SEAttr>();
+    auto seAttr = mlir::cast<vpux::VPU::SEAttr>(sePaddingAttr);
 
     // Create the StorageElementTable operation
     auto arch = VPU::getArch(origOp);
@@ -870,7 +851,7 @@ mlir::Value PadToNCE::createSparseInput(VPU::PadOp origOp, mlir::PatternRewriter
     if (VPU::isSEOnlyWithoutSMSupported(arch) && padMode != IE::PadMode::CONSTANT) {
         smConst = nullptr;
     } else {
-        auto smShape = to_small_vector(seTableOp.getType().cast<vpux::NDTypeInterface>().getShape());
+        auto smShape = to_small_vector(mlir::cast<vpux::NDTypeInterface>(seTableOp.getType()).getShape());
         smShape[Dims4D::Act::C.ind()] = seSize * seDepth;
         const auto smContent = createSparsityMapContent(padMode, smShape, padding);
         auto smContentElemType = mlir::IntegerType::get(ctx, 8);
@@ -975,7 +956,7 @@ mlir::Value RollToNCE::createSparseInput(VPU::RollOp origOp, SmallVector<int64_t
     // Create the SERollAttr
     auto seRollAttr = VPU::SERollAttr::get(ctx, getIntArrayAttr(ctx, shift), getIntArrayAttr(ctx, axes),
                                            /*offsets=*/nullptr, /*sizes=*/nullptr);
-    auto seAttr = seRollAttr.cast<VPU::SEAttr>();
+    auto seAttr = mlir::cast<vpux::VPU::SEAttr>(seRollAttr);
 
     // Create the StorageElementTable operation
     auto sparsityConstraint = VPU::getSparsityConstraint(_arch);
@@ -987,7 +968,7 @@ mlir::Value RollToNCE::createSparseInput(VPU::RollOp origOp, SmallVector<int64_t
     // Skip creating sparsity map constant that contains only ones if SE only operations are supported
     mlir::Value smConst = nullptr;
     if (!VPU::isSEOnlyWithoutSMSupported(_arch)) {
-        auto smShape = to_small_vector(seTableOp.getType().cast<vpux::NDTypeInterface>().getShape());
+        auto smShape = to_small_vector(mlir::cast<vpux::NDTypeInterface>(seTableOp.getType()).getShape());
         smShape[Dims4D::Act::C.ind()] = seSize * seDepth;
         auto smContentElemType = mlir::IntegerType::get(ctx, 8);
         auto smContentType = mlir::RankedTensorType::get(smShape, smContentElemType);
@@ -1009,7 +990,7 @@ mlir::Value RollToNCE::createSparseInput(VPU::RollOp origOp, SmallVector<int64_t
 mlir::LogicalResult RollToNCE::matchAndRewrite(VPU::RollOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
-    const auto inputType = origOp.getData().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getData().getType());
     const auto inputShape = inputType.getShape();
 
     auto shiftAndAxesOrFail =
@@ -1100,7 +1081,8 @@ void LowerOpsToSENCEPass::safeRunOnFunc() {
                                                                       /*checkChannelAlignment=*/true));
     });
     target.addDynamicallyLegalOp<VPU::GroupConvolutionOp>([&](VPU::GroupConvolutionOp op) {
-        return !(VPU::isSupportedSEPDilatedConv(op, logCb, /*checkLayout=*/true,
+        return !(_seExperimentalOpsEnabled &&
+                 VPU::isSupportedSEPDilatedConv(op, logCb, /*checkLayout=*/true,
                                                 /*checkChannelAlignment=*/true) &&
                  VPU::isDilatedGroupConv(op));
     });
@@ -1122,8 +1104,8 @@ void LowerOpsToSENCEPass::safeRunOnFunc() {
     if (_seExperimentalOpsEnabled) {
         patterns.add<PadToNCE>(&ctx, arch, _log);
         patterns.add<RollToNCE>(&ctx, arch, _log);
+        patterns.add<DilatedConvolutionToNCE>(&ctx, arch, _log);
     }
-    patterns.add<DilatedConvolutionToNCE>(&ctx, arch, _log);
 
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();

@@ -8,10 +8,10 @@
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Support/LLVM.h>
 #include <optional>
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/tiling_info.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/utils/core/range.hpp"
@@ -126,6 +126,10 @@ mlir::SymbolRefAttr createBuiltInFunction(mlir::ModuleOp module, VPU::LayerOpInt
             result.emplace_back(mlir::UnrankedMemRefType::get(dataNDType.getElementType(), dataNDType.getMemSpace()));
             const auto shapeNDType = mlir::cast<NDTypeInterface>(type.getDynamicShape());
             result.emplace_back(mlir::UnrankedMemRefType::get(shapeNDType.getElementType(), shapeNDType.getMemSpace()));
+        } else if (auto type = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(operand.getType())) {
+            const auto compactType = type.getCompactType();
+            result.emplace_back(
+                    mlir::UnrankedMemRefType::get(compactType.getElementType(), compactType.getMemorySpace()));
         }
         VPUX_THROW_UNLESS(!result.empty(),
                           "Only MemRef or VPUIP::BoundedBufferType type are supported as createBuiltInFunction "
@@ -143,7 +147,7 @@ mlir::SymbolRefAttr createBuiltInFunction(mlir::ModuleOp module, VPU::LayerOpInt
         inputTypes.append(convertToUnrankedTypes(result));
     };
     std::transform(args.begin(), args.end(), std::back_inserter(inputTypes), [&module](mlir::Attribute arg) {
-        const auto typedAttr = arg.dyn_cast<mlir::TypedAttr>();
+        const auto typedAttr = mlir::dyn_cast<mlir::TypedAttr>(arg);
         return typedAttr != nullptr ? typedAttr.getType() : mlir::NoneType::get(module.getContext());
     });
 
@@ -186,10 +190,12 @@ void createRuntimeKernelDefinition(mlir::ModuleOp module, const Logger& log, vpu
 
     static constexpr int64_t defaultStackSize = 4096;
 
-    // TODO: always extract num shaves info from VPURT::SW.Runtime, which can be extracted from module
-    auto maxShaves = 4;
+    // as for now all arches have 2 shaves per tile
+    constexpr int nShavePerTile = 2;
+    auto tilesUsed = VPUIP::getNumTilesUsed(module);
+    auto maxShaves = tilesUsed * nShavePerTile;
     if (arch == vpux::VPU::ArchKind::NPU40XX) {
-        maxShaves = 12;
+        maxShaves = std::min(maxShaves, static_cast<int64_t>(12));
     }
     SmallVector<int64_t> stacksArray(maxShaves, defaultStackSize);
 
@@ -338,8 +344,12 @@ void initSwKernel(VPUIP::SwKernelOp swKernelOp, VPUIP::SwKernelRun swKernelRunOp
 
 SmallString getSwKernelEntryName(VPUIP::SwKernelOp swKernelOp) {
     auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
-    auto kernelFunc = module.lookupSymbol<mlir::func::FuncOp>(swKernelOp.getKernelFunctionAttr());
+    auto kernelFunc = module.lookupSymbol<mlir::FunctionOpInterface>(swKernelOp.getKernelFunctionAttr());
     VPUX_THROW_WHEN(kernelFunc == nullptr, "Cannot find kernel function symbol at '{0}'", swKernelOp->getLoc());
+    if (!kernelFunc.isExternal()) {
+        // ShaveCodeGen kernel, just return its name.
+        return kernelFunc.getName();
+    }
     auto kernelEntryPoint = kernelFunc->getAttrOfType<mlir::StringAttr>("VPU.kernel_name");
     // Ensure backward compatibility; kernel_name can be the same as kernel_entry.
     if (kernelEntryPoint == nullptr) {
@@ -365,6 +375,40 @@ bool isSwKernelTilingSupported(VPUIP::SwKernelOp swKernelOp) {
         return true;
     }
     return false;
+}
+
+// Check whether SwKernelOp use dpu.
+bool isSwKernelUseDpu(VPUIP::SwKernelOp swKernelOp) {
+    auto kernelEntryName = getSwKernelEntryName(swKernelOp);
+    if (llvm::find(SW_KERNELS_USE_DPU, kernelEntryName) != SW_KERNELS_USE_DPU.end()) {
+        return true;
+    }
+    return false;
+}
+
+bool isDpuShaveKernelType(VPURT::TaskOp taskOp) {
+    if (taskOp.getExecutorKind() != VPU::ExecutorKind::SHAVE_ACT) {
+        return false;
+    }
+    auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(taskOp.getInnerTaskOp());
+
+    if (swKernelOp == nullptr) {
+        return false;
+    }
+
+    auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
+    auto kernelFunc = module.lookupSymbol<mlir::func::FuncOp>(swKernelOp.getKernelFunctionAttr());
+    if (kernelFunc == nullptr) {
+        return false;
+    }
+    const auto kernelEntryPoint = kernelFunc->getAttrOfType<mlir::StringAttr>("VPU.kernel_entry");
+    if (kernelEntryPoint == nullptr) {
+        return false;
+    }
+    if (!isSwKernelUseDpu(swKernelOp)) {
+        return false;
+    }
+    return true;
 }
 
 // Check whether SwKernelOp support discontinuous input/output.
@@ -435,13 +479,14 @@ InputTiling backInferInterpolateSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, 
         lambdasShape = to_small_vector(getShape(lambdas));
     }
 
-    const auto interpolateMode = static_cast<IE::InterpolateMode>(attrs[1].dyn_cast<mlir::IntegerAttr>().getInt());
-    const auto coordMode = static_cast<IE::InterpolateCoordMode>(attrs[2].dyn_cast<mlir::IntegerAttr>().getInt());
-    const auto nearestMode = static_cast<IE::InterpolateNearestMode>(attrs[3].dyn_cast<mlir::IntegerAttr>().getInt());
-    const auto initialInputDims = reverseIntArrayAttr(inOrder, attrs[6].dyn_cast<mlir::ArrayAttr>());
-    const auto initialOutputDims = reverseIntArrayAttr(inOrder, attrs[7].dyn_cast<mlir::ArrayAttr>());
-    const auto initialInputOffset = reverseIntArrayAttr(inOrder, attrs[10].dyn_cast<mlir::ArrayAttr>());
-    const auto initialOutputOffset = reverseIntArrayAttr(inOrder, attrs[11].dyn_cast<mlir::ArrayAttr>());
+    const auto interpolateMode = static_cast<IE::InterpolateMode>(mlir::dyn_cast<mlir::IntegerAttr>(attrs[1]).getInt());
+    const auto coordMode = static_cast<IE::InterpolateCoordMode>(mlir::dyn_cast<mlir::IntegerAttr>(attrs[2]).getInt());
+    const auto nearestMode =
+            static_cast<IE::InterpolateNearestMode>(mlir::dyn_cast<mlir::IntegerAttr>(attrs[3]).getInt());
+    const auto initialInputDims = reverseIntArrayAttr(inOrder, mlir::dyn_cast<mlir::ArrayAttr>(attrs[6]));
+    const auto initialOutputDims = reverseIntArrayAttr(inOrder, mlir::dyn_cast<mlir::ArrayAttr>(attrs[7]));
+    const auto initialInputOffset = reverseIntArrayAttr(inOrder, mlir::dyn_cast<mlir::ArrayAttr>(attrs[10]));
+    const auto initialOutputOffset = reverseIntArrayAttr(inOrder, mlir::dyn_cast<mlir::ArrayAttr>(attrs[11]));
 
     const auto currentInputDims = to_small_vector(getShape(inputs[0]));
 
@@ -469,17 +514,41 @@ InputTiling backInferGatherSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const
     const auto attrs = swKernelRun.getAttrs().value();
     const auto inputs = swKernelOp.getInputs();
 
-    const auto kernelAxis = attrs[0].dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    const auto kernelAxis = mlir::dyn_cast<mlir::IntegerAttr>(attrs[0]).getValue().getSExtValue();
     const auto axisValue = convertKernelAxisToOrigAxis(inputs[0], kernelAxis);
-    const auto batchDims = attrs[1].dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    const auto batchDims = mlir::dyn_cast<mlir::IntegerAttr>(attrs[1]).getValue().getSExtValue();
 
-    const auto origInputShape = inputs[0].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origIndicesShape = inputs[1].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
+    const auto origInputShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[0].getType()).getShape();
+    const auto origIndicesShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[1].getType()).getShape();
 
-    const auto indicesRank = attrs[2].dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    const auto indicesRank = mlir::dyn_cast<mlir::IntegerAttr>(attrs[2]).getValue().getSExtValue();
 
     return vpux::backInferGatherTile(outputTile, origInputShape, origIndicesShape, axisValue, batchDims, false,
                                      indicesRank, log);
+}
+
+InputTiling backInferGatherNDSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                               Logger log) {
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+    auto swKernelRun = *swKernelRuns.begin();
+    VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "GatherND SwKernelOp has no attr '{0}'", swKernelOp);
+    const auto attrs = swKernelRun.getAttrs().value();
+    VPUX_THROW_UNLESS(attrs.size() == checked_cast<size_t>(2), "GatherND SwKernelOp should has two attrs '{0}'",
+                      swKernelOp);
+
+    const auto inputs = swKernelOp.getInputs();
+    const auto origInputShape = getShape(inputs[0]);
+    const auto origIndicesShape = getShape(inputs[1]);
+    const auto batchDims = mlir::cast<mlir::IntegerAttr>(attrs[0]).getValue().getSExtValue();
+
+    const auto originalShapeAttrVal =
+            vpux::extractOriginalShapeAttrFromGatherNDSwOp(mlir::cast<mlir::ArrayAttr>(attrs[1]))
+                    .value_or(Shape(origInputShape));
+
+    return vpux::backInferGatherNDTile(outputTile, origInputShape, origIndicesShape, batchDims, originalShapeAttrVal,
+                                       log);
 }
 
 InputTiling backInferGatherElementsSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
@@ -492,14 +561,28 @@ InputTiling backInferGatherElementsSwKernelInputTile(VPUIP::SwKernelOp swKernelO
     const auto attrs = swKernelRun.getAttrs().value();
     const auto inputs = swKernelOp.getInputs();
 
-    const auto kernelAxis = attrs[0].dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    const auto kernelAxis = mlir::dyn_cast<mlir::IntegerAttr>(attrs[0]).getValue().getSExtValue();
     const auto axisValue = convertKernelAxisToOrigAxis(inputs[0], kernelAxis);
 
-    const auto origInputShape = inputs[0].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origIndicesShape = inputs[1].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
+    const auto origInputShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[0].getType()).getShape();
+    const auto origIndicesShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[1].getType()).getShape();
 
     return vpux::backInferGatherElementsTile(outputTile, origInputShape, origIndicesShape, axisValue,
                                              origIndicesShape.size(), log);
+}
+
+InputTiling backInferGridSampleSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                                 Logger log) {
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+    auto swKernelRun = *swKernelRuns.begin();
+    VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "SwKernelOp has no attr '{0}'", swKernelOp);
+    const auto inputs = swKernelOp.getInputs();
+
+    const auto origInputShape = mlir::cast<vpux::NDTypeInterface>(inputs[0].getType()).getShape();
+    const auto origGridShape = mlir::cast<vpux::NDTypeInterface>(inputs[1].getType()).getShape();
+    return vpux::backInferGridSampleTile(outputTile, origInputShape, origGridShape, log);
 }
 
 InputTiling backInferRMSSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
@@ -525,18 +608,50 @@ InputTiling backInferRoPESwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
     TileInfo cosTile(getShape(inputs[1]));
     TileInfo sinTile(getShape(inputs[2]));
     auto inTile = outputTile;
-
-    cosTile.shape[Dim(2)] = inTile.shape[Dim(2)];
-    cosTile.offsets[Dim(3)] = inTile.offsets[Dim(3)];
-    cosTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
-    cosTile.offsets[Dim(0)] = cosTile.offsets[Dim(1)] = inTile.offsets[Dim(1)];
-
-    sinTile.shape[Dim(2)] = inTile.shape[Dim(2)];
-    sinTile.offsets[Dim(3)] = inTile.offsets[Dim(3)];
-    sinTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
-    sinTile.offsets[Dim(0)] = sinTile.offsets[Dim(1)] = inTile.offsets[Dim(1)];
+    // The number of channels for the Cosine and Sine operations can either match the input number of channels or be set
+    // to 1, depending on the specific requirements of the operation.
+    if (cosTile.shape[Dim(1)] > 1) {
+        cosTile = inTile;
+        sinTile = inTile;
+    } else {
+        cosTile.shape[Dim(2)] = inTile.shape[Dim(2)];
+        sinTile.shape[Dim(2)] = inTile.shape[Dim(2)];
+        sinTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
+        cosTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
+    }
 
     return TilingInfo{{std::move(inTile), std::move(cosTile), std::move(sinTile)}};
+}
+
+InputTiling backInferSDPASwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                           Logger /*log*/) {
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+    const auto inputs = swKernelOp.getInputs();
+    TileInfo inKTile(getShape(inputs[1]));
+    TileInfo inVTile(getShape(inputs[2]));
+    TileInfo inMaskTile(getShape(inputs[3]));
+    TileInfo dataStorageTile(getShape(inputs[4]));
+    auto inQTile = outputTile;
+
+    inKTile.shape[Dim(1)] = outputTile.shape[Dim(1)];
+    inKTile.shape[Dim(0)] = outputTile.shape[Dim(0)];
+    inKTile.offsets[Dim(1)] = outputTile.offsets[Dim(1)];
+    inKTile.offsets[Dim(0)] = outputTile.offsets[Dim(0)];
+
+    inVTile.shape[Dim(1)] = outputTile.shape[Dim(1)];
+    inVTile.shape[Dim(0)] = outputTile.shape[Dim(0)];
+    inVTile.offsets[Dim(1)] = outputTile.offsets[Dim(1)];
+    inVTile.offsets[Dim(0)] = outputTile.offsets[Dim(0)];
+
+    dataStorageTile.shape[Dim(1)] = outputTile.shape[Dim(1)];
+    dataStorageTile.shape[Dim(0)] = outputTile.shape[Dim(0)];
+    dataStorageTile.offsets[Dim(1)] = outputTile.offsets[Dim(1)];
+    dataStorageTile.offsets[Dim(0)] = outputTile.offsets[Dim(0)];
+
+    return TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile), std::move(inMaskTile),
+                       std::move(dataStorageTile)}};
 }
 
 InputTiling backInferDepthToSpaceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
@@ -549,8 +664,8 @@ InputTiling backInferDepthToSpaceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "SwKernelOp has no attr '{0}'", swKernelOp);
     const auto attrs = swKernelRun.getAttrs().value();
 
-    auto inShape = swKernelOp.getInputs()[0].getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto blockSize = attrs[0].cast<mlir::IntegerAttr>().getInt();
+    auto inShape = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType()).getShape();
+    const auto blockSize = mlir::cast<mlir::IntegerAttr>(attrs[0]).getInt();
 
     return vpux::backInferDepthToSpaceTile(outputTile, inShape, blockSize, log);
 }
@@ -564,15 +679,15 @@ InputTiling backInferPadSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vp
     VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "SwKernelOp has no attr '{0}'", swKernelOp);
     const auto attrs = swKernelRun.getAttrs().value();
 
-    const auto origInputType = swKernelOp.getInputs()[0].getType().cast<vpux::NDTypeInterface>();
+    const auto origInputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType());
     const auto origInputShape = origInputType.getShape();
-    const auto origOutputShape = swKernelOp.getResults()[0].getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto origOutputShape = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getResults()[0].getType()).getShape();
     const auto order = origInputType.getDimsOrder();
 
     // Padding attr at VPUIP dialect are stored in memory order so convert to default order
     // to be aligned with shape representation
-    const auto origPadsBegin = reverseIntArrayAttr(order, attrs[0].dyn_cast<mlir::ArrayAttr>());
-    const auto origPadsEnd = reverseIntArrayAttr(order, attrs[1].dyn_cast<mlir::ArrayAttr>());
+    const auto origPadsBegin = reverseIntArrayAttr(order, mlir::dyn_cast<mlir::ArrayAttr>(attrs[0]));
+    const auto origPadsEnd = reverseIntArrayAttr(order, mlir::dyn_cast<mlir::ArrayAttr>(attrs[1]));
 
     return backInferPadTile(outputTile, origInputShape, origOutputShape, Shape(origPadsBegin), Shape(origPadsEnd), log);
 }
@@ -591,7 +706,7 @@ InputTiling backInferReduceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const
     VPUX_THROW_UNLESS(numInputs, "SwKernelOp {0} should have 1 input, got '{1}'", swKernelOp, numInputs);
 
     const auto input = swKernelOp.getOperand(0);
-    const auto inputOrder = input.getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto inputOrder = mlir::cast<vpux::NDTypeInterface>(input.getType()).getDimsOrder();
     const auto inputShape = getShape(input);
     const auto attrs = swKernelRun.getAttrs().value();
 
@@ -602,7 +717,7 @@ InputTiling backInferReduceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const
                       swKernelOp->getName(), swKernelOp->getLoc());
 
     auto inputTile = outputTile;
-    const auto reversedAxes = parseIntArrayAttr<int64_t>(attrs[2].cast<mlir::ArrayAttr>());
+    const auto reversedAxes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attrs[2]));
     for (const auto reversedAxis : reversedAxes) {
         const auto axis = reverseMemDim(inputOrder, reversedAxis);
         const auto d = Dim(axis);
@@ -662,12 +777,12 @@ SmallVector<mlir::Attribute> getInterpolateSwkernelNewAttrsAfterTiling(VPUIP::Sw
     VPUX_THROW_UNLESS(origAttr.size() == attrs.size(), "Unmatched attr size found at '{0}'", swKernelOp);
 
     SmallVector<mlir::Attribute> newAttrs(attrs.begin(), attrs.end());
-    auto dim = swKernelOp.getInputs()[0].getType().dyn_cast<vpux::NDTypeInterface>().getDimsOrder();
+    auto dim = mlir::dyn_cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType()).getDimsOrder();
     TileInfo inputTile = inputTiling.tiles[0];
-    const auto initialInputDims = reverseIntArrayAttr(dim, attrs[6].dyn_cast<mlir::ArrayAttr>());
-    const auto initialOutputDims = reverseIntArrayAttr(dim, attrs[7].dyn_cast<mlir::ArrayAttr>());
-    const auto initialInputOffset = reverseIntArrayAttr(dim, attrs[10].dyn_cast<mlir::ArrayAttr>());
-    const auto initialOutputOffset = reverseIntArrayAttr(dim, attrs[11].dyn_cast<mlir::ArrayAttr>());
+    const auto initialInputDims = reverseIntArrayAttr(dim, mlir::dyn_cast<mlir::ArrayAttr>(attrs[6]));
+    const auto initialOutputDims = reverseIntArrayAttr(dim, mlir::dyn_cast<mlir::ArrayAttr>(attrs[7]));
+    const auto initialInputOffset = reverseIntArrayAttr(dim, mlir::dyn_cast<mlir::ArrayAttr>(attrs[10]));
+    const auto initialOutputOffset = reverseIntArrayAttr(dim, mlir::dyn_cast<mlir::ArrayAttr>(attrs[11]));
     const auto localInputOffset = to_small_vector(inputTile.offsets);
     const auto localOutputOffset = to_small_vector(outTile.offsets);
     SmallVector<int64_t> inputTileOffset;
@@ -694,14 +809,14 @@ SmallVector<mlir::Attribute> getPadSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp
     VPUX_THROW_UNLESS(origAttr.size() == attrs.size(), "Unmatched attr size found at '{0}'", swKernelOp);
 
     SmallVector<mlir::Attribute> newAttrs(attrs.begin(), attrs.end());
-    const auto outType = swKernelOp.getResults()[0].getType().cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getResults()[0].getType());
     const auto outShape = outType.getShape();
     auto order = outType.getDimsOrder();
 
     // Padding attrs at VPUIP dialect are stored in memory-order so convert to default-order
     // to be aligned with shape representation
-    auto padsBegin = reverseIntArrayAttr(order, attrs[0].dyn_cast<mlir::ArrayAttr>());
-    auto padsEnd = reverseIntArrayAttr(order, attrs[1].dyn_cast<mlir::ArrayAttr>());
+    auto padsBegin = reverseIntArrayAttr(order, mlir::dyn_cast<mlir::ArrayAttr>(attrs[0]));
+    auto padsEnd = reverseIntArrayAttr(order, mlir::dyn_cast<mlir::ArrayAttr>(attrs[1]));
 
     vpux::updatePadOpAttrsAfterTiling(outShape, outTile, padsBegin, padsEnd);
 
@@ -733,6 +848,35 @@ SmallVector<mlir::Attribute> getLstmSequenceSwkernelNewAttrsAfterTiling(VPUIP::S
     return newAttrs;
 }
 
+SmallVector<mlir::Attribute> getGatherNDSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp swKernelOp,
+                                                                    ArrayRef<mlir::Attribute> origAttr,
+                                                                    const TileInfo& outTile, Logger log) {
+    log.trace("Update attrs for GatherND SwKernelOp at '{0}' for out tile {1}", swKernelOp, outTile);
+
+    SmallVector<mlir::Attribute> newAttrs(origAttr.begin(), origAttr.end());
+
+    auto originalShape = extractOriginalShapeAttrFromGatherNDSwOp(mlir::dyn_cast<mlir::ArrayAttr>(origAttr[1]));
+    if (!originalShape.has_value()) {
+        return newAttrs;
+    }
+
+    const auto batchDims = mlir::cast<mlir::IntegerAttr>(origAttr[0]).getValue().getSExtValue();
+    const auto outTileShape = outTile.shape;
+
+    // Input data with coord part cannot be tiled
+    // Only other dimension needs update
+    auto newOriginalShape = originalShape.value();
+    for (auto idx = 0; idx < batchDims; idx++) {
+        newOriginalShape[Dim(idx)] = outTileShape[Dim(idx)];
+    }
+    newOriginalShape.back() = outTileShape.back();
+
+    auto newOriginalShapeAttr = getIntArrayAttr(swKernelOp.getContext(), newOriginalShape);
+    newAttrs[1] = packOriginalShapeAttrForGatherNDSwOp(newOriginalShapeAttr, swKernelOp.getContext());
+
+    return newAttrs;
+}
+
 InputTiling backInferTopKSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile, Logger) {
     auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
     VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
@@ -740,9 +884,9 @@ InputTiling backInferTopKSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
 
     auto swKernelRun = *swKernelRuns.begin();
     VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "SwKernelOp has no attr '{0}'", swKernelOp);
-    const auto inOrder = swKernelOp.getInputs()[0].getType().cast<vpux::NDTypeInterface>().getDimsOrder();
+    const auto inOrder = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType()).getDimsOrder();
     const auto attrs = swKernelRun.getAttrs().value();
-    const auto axis = reverseMemDim(inOrder, attrs[0].cast<mlir::IntegerAttr>().getInt());
+    const auto axis = reverseMemDim(inOrder, mlir::cast<mlir::IntegerAttr>(attrs[0]).getInt());
 
     const auto isLargerThanZero = [](const int64_t dimSize) -> bool {
         return dimSize > 0;
@@ -791,11 +935,11 @@ InputTiling backInferGRUSequenceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, 
                       "SwKernelOp has already been tiled at '{0}'", swKernelOp);
     const auto inputs = swKernelOp.getInputs();
 
-    const auto origInputShape = inputs[0].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origInitialHiddenStateShape = inputs[1].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origWShape = inputs[2].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origRShape = inputs[3].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origBShape = inputs[4].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
+    const auto origInputShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[0].getType()).getShape();
+    const auto origInitialHiddenStateShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[1].getType()).getShape();
+    const auto origWShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[2].getType()).getShape();
+    const auto origRShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[3].getType()).getShape();
+    const auto origBShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[4].getType()).getShape();
 
     TileInfo inputTile(origInputShape);
     TileInfo initialHiddenStateTile(origInitialHiddenStateShape);
@@ -820,10 +964,10 @@ InputTiling backInferGRUSequenceLastPartSwKernelInputTile(VPUIP::SwKernelOp swKe
                       "SwKernelOp has already been tiled at '{0}'", swKernelOp);
     const auto inputs = swKernelOp.getInputs();
 
-    const auto origInputShape = inputs[0].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origInitialHiddenStateShape = inputs[1].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origRShape = inputs[2].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
-    const auto origBShape = inputs[3].getType().dyn_cast<vpux::NDTypeInterface>().getShape();
+    const auto origInputShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[0].getType()).getShape();
+    const auto origInitialHiddenStateShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[1].getType()).getShape();
+    const auto origRShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[2].getType()).getShape();
+    const auto origBShape = mlir::dyn_cast<vpux::NDTypeInterface>(inputs[3].getType()).getShape();
 
     TileInfo inputTile(origInputShape);
     TileInfo initialHiddenStateTile(origInitialHiddenStateShape);
@@ -851,12 +995,37 @@ InputTiling backInferLSTMGatesSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, co
         VPUX_THROW_UNLESS(curShape.size() == outputTile.shape.size(),
                           "Can't tile SwKernel operation '{0}' at '{1}', which has operands with different rank",
                           swKernelOp->getName(), swKernelOp->getLoc());
-
         auto curTile = outputTile;
         curTile.shape[Dim(curShape.size() - 1)] = curShape[Dim(curShape.size() - 1)];
-
         inputTiles.push_back(curTile);
     }
+    return TilingInfo{inputTiles};
+}
+
+InputTiling backInferGRUGatesSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile, Logger) {
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+    SmallVector<TileInfo> inputTiles;
+
+    auto curTile = outputTile;
+    auto curShape = getShape(swKernelOp.getInputs()[0]);
+    curTile.shape[Dim(curShape.size() - 1)] = curShape[Dim(curShape.size() - 1)];
+    inputTiles.push_back(curTile);
+
+    curTile = outputTile;
+    curShape = getShape(swKernelOp.getInputs()[1]);
+    curTile.shape[Dim(curShape.size() - 1)] = curShape[Dim(curShape.size() - 1)];
+    inputTiles.push_back(curTile);
+
+    curTile = outputTile;
+    curShape = getShape(swKernelOp.getInputs()[2]);
+    curTile.shape[Dim(curShape.size() - 1)] = curShape[Dim(curShape.size() - 1)];
+    inputTiles.push_back(curTile);
+
+    curShape = getShape(swKernelOp.getInputs()[3]);
+    TileInfo bTile(curShape);
+    inputTiles.push_back(bTile);
 
     return TilingInfo{inputTiles};
 }
@@ -974,6 +1143,33 @@ InputTiling backInferLSTMSequenceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     return TilingInfo{inputTiles};
 }
 
+InputTiling backInferRandomUniformSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                                    Logger) {
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+
+    SmallVector<TileInfo> inputTiles;
+    for (const auto& origInput : swKernelOp.getInputs()) {
+        const auto curShape = getShape(origInput);
+        VPUX_THROW_UNLESS(curShape.size() == outputTile.shape.size(),
+                          "Can't tile SwKernel operation '{0}' at '{1}', which has operands with different rank",
+                          swKernelOp->getName(), swKernelOp->getLoc());
+
+        auto curTile = outputTile;
+        for (auto ind : irange(curShape.size())) {
+            const auto d = Dim(ind);
+            curTile.shape[d] = 1;
+            curTile.offsets[d] = 0;
+            curTile.axis[d] = 1;
+        }
+
+        inputTiles.push_back(curTile);
+    }
+
+    return TilingInfo{inputTiles};
+}
+
 InputTiling backInferMvn1SumSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile, Logger) {
     auto tileAxis = outputTile.axis;
     auto tilingDims = getNonOneDim(tileAxis);
@@ -1070,13 +1266,13 @@ InputTiling backInferMvn1NormSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, con
     VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "SwKernelOp has no attr '{0}'", swKernelOp);
     const auto attrs = swKernelRun.getAttrs().value();
 
-    const auto origMeanVarType = swKernelOp.getInputs()[1].getType().cast<vpux::NDTypeInterface>();
+    const auto origMeanVarType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[1].getType());
     const auto origMeanVarShape = origMeanVarType.getShape();
 
     TileInfo inDataTile(outputTile);
     TileInfo inMeanVarTile(origMeanVarShape);
 
-    const auto acrossChannels = attrs[0].cast<mlir::BoolAttr>().getValue();
+    const auto acrossChannels = mlir::cast<mlir::BoolAttr>(attrs[0]).getValue();
     if (!acrossChannels) {
         inMeanVarTile.shape[Dims4D::Act::C] = inDataTile.shape[Dims4D::Act::C];
         inMeanVarTile.offsets[Dims4D::Act::C] = inDataTile.offsets[Dims4D::Act::C];
@@ -1100,12 +1296,18 @@ InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const Small
         return backInferTopKSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "gather") {
         return backInferGatherSwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "gatherND") {
+        return backInferGatherNDSwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "grid_sample") {
+        return backInferGridSampleSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "gather_elements") {
         return backInferGatherElementsSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "rms_norm") {
         return backInferRMSSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "rope") {
         return backInferRoPESwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "sdpa") {
+        return backInferSDPASwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "pad") {
         return backInferPadSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "mvn1_sum") {
@@ -1124,10 +1326,14 @@ InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const Small
         return backInferMatMulSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "lstm_gates") {
         return backInferLSTMGatesSwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "gru_gates") {
+        return backInferGRUGatesSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "lstm_cell") {
         return backInferLSTMCellSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "lstm_sequence") {
         return backInferLSTMSequenceSwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "random_uniform") {
+        return backInferRandomUniformSwKernelInputTile(swKernelOp, outputTile, log);
     } else if ((kernelEntryName == "detection_output_sort") && (arch == VPU::ArchKind::NPU37XX)) {
         return vpux::VPU::DetectionOutputSortOpInputTilingOnShave(swKernelOp, outputTile, tileId, outputTiles.size(),
                                                                   log);
@@ -1167,6 +1373,8 @@ SmallVector<mlir::Attribute> getSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp sw
         return getPadSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
     } else if (kernelEntryName == "lstm_sequence") {
         return getLstmSequenceSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
+    } else if (kernelEntryName == "gatherND") {
+        return getGatherNDSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
     } else {
         return SmallVector<mlir::Attribute>(origAttr.begin(), origAttr.end());
     }
@@ -1189,7 +1397,7 @@ void updatePopulateWeightTableSwKernel(VPUIP::SwKernelOp swKernelOp, int64_t cur
     for (auto entry : swKernelRun | indexed) {
         auto attrs = entry.value().getAttrs().value();
         SmallVector<mlir::Attribute> newAttrs(attrs.begin(), attrs.end());
-        const auto newOffset = newAttrs[0].cast<mlir::IntegerAttr>().getInt() + currOffset;
+        const auto newOffset = mlir::cast<mlir::IntegerAttr>(newAttrs[0]).getInt() + currOffset;
         newAttrs[0] = getIntAttr(swKernelOp->getContext(), newOffset);
         entry.value().setAttrsAttr(mlir::ArrayAttr::get(swKernelOp->getContext(), newAttrs));
         log.trace("Updated base offset to {0}", newOffset);
@@ -1209,7 +1417,7 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
         return {inputType, auxType, outputType, targetShapeType};
     } else if (kernelEntryName == "gather") {
         auto args = kernelArgsRange(swKernelOp);
-        const auto kernelAxisAttr = args.begin()[0].dyn_cast<mlir::IntegerAttr>();
+        const auto kernelAxisAttr = mlir::dyn_cast<mlir::IntegerAttr>(args.begin()[0]);
         VPUX_THROW_UNLESS(kernelAxisAttr != nullptr, "Failed to extract axis at '{0}'", swKernelOp->getLoc());
         const auto kernelAxis = kernelAxisAttr.getValue().getSExtValue();
         const auto axisVal = convertKernelAxisToOrigAxis(swKernelOp.getInputs()[0], kernelAxis);
@@ -1240,15 +1448,15 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
         const auto outputHoType = swKernelOp->getResult(1).getType();
         return {inputDataType, initialHiddenStateType, outputYType, outputHoType};
     } else if (kernelEntryName == "accumulate") {
-        const auto lhsType = swKernelOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-        const auto rhsType = swKernelOp->getOperand(1).getType().cast<vpux::NDTypeInterface>();
-        const auto outputType = swKernelOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto lhsType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(0).getType());
+        const auto rhsType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(1).getType());
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
 
         SmallVector<vpux::NDTypeInterface> tiledTypes = {lhsType, rhsType};
 
         const auto lhsScale = swKernelOp->getOperand(2);
         if (lhsScale != nullptr) {
-            const auto lhsScaleType = lhsScale.getType().cast<vpux::NDTypeInterface>();
+            const auto lhsScaleType = mlir::cast<vpux::NDTypeInterface>(lhsScale.getType());
 
             // lhs Scale is broadcasted on tile axis
             if (lhsScaleType.getShape()[tileDim] != 1) {
@@ -1258,7 +1466,7 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
 
         const auto rhsScale = swKernelOp->getOperand(3);
         if (rhsScale != nullptr) {
-            const auto rhsScaleType = rhsScale.getType().cast<vpux::NDTypeInterface>();
+            const auto rhsScaleType = mlir::cast<vpux::NDTypeInterface>(rhsScale.getType());
 
             // rhs Scale is broadcasted on tile axis
             if (rhsScaleType.getShape()[tileDim] != 1) {
@@ -1276,10 +1484,10 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
         // For SW Eltwise Op with multi inputs
         // Only the input which does not need broadcast and output will be tiled
         SmallVector<vpux::NDTypeInterface> tiledTypes;
-        const auto outputType = swKernelOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
         const auto outputShape = outputType.getShape();
         for (auto input : swKernelOp->getOperands()) {
-            const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
             const auto inputShape = inputType.getShape();
             if (inputShape == outputShape) {
                 tiledTypes.push_back(inputType);
@@ -1292,13 +1500,13 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
         SmallVector<vpux::NDTypeInterface> tiledTypes;
         // Optional scale/bias with broadcast on 'tileDim' are not tiled
         for (auto input : swKernelOp->getOperands()) {
-            const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
             const auto inputShape = inputType.getShape();
             if (inputShape[tileDim] != 1) {
                 tiledTypes.push_back(inputType);
             }
         }
-        const auto outputType = swKernelOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
         tiledTypes.push_back(outputType);
         return tiledTypes;
     } else if (kernelEntryName == "mvn1_norm") {
@@ -1306,7 +1514,7 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
         const auto outputType = swKernelOp->getResult(0).getType();
 
         auto args = kernelArgsRange(swKernelOp);
-        const auto isAcrossChannelsAttr = args.begin()[0].dyn_cast<mlir::BoolAttr>();
+        const auto isAcrossChannelsAttr = mlir::dyn_cast<mlir::BoolAttr>(args.begin()[0]);
         VPUX_THROW_UNLESS(isAcrossChannelsAttr != nullptr, "Failed to extract AcrossChannelsAttr at '{0}'",
                           swKernelOp->getLoc());
         const bool isAcrossChannels = isAcrossChannelsAttr.getValue();

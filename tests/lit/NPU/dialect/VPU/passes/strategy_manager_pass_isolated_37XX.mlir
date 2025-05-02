@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ func.func @TileWithSOKTiling(%arg0 : tensor<1x32x30x30xf16, {order = #NHWC}>)->t
         ppe = #VPU.PPEStub<>,
         pad = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>,
         rawFilterShape = [ 768, 32, 7, 7 ], strides = [ 1, 1 ]
-    } ->tensor<1x768x30x30xf16, {order = #NHWC}>
+    } : tensor<1x32x30x30xf16, {order = #NHWC}>, tensor<768x32x7x7xf16, {order = #NHWC}>, tensor<768x1x1x4xsi32> ->tensor<1x768x30x30xf16, {order = #NHWC}>
 
     return %0 : tensor<1x768x30x30xf16, {order = #NHWC}>
 
@@ -42,16 +42,20 @@ func.func @TileWithSOKTiling(%arg0 : tensor<1x32x30x30xf16, {order = #NHWC}>)->t
 // -----
 
 // CHECK-LABEL:   func.func @GridSampleSplit
+// CHECK-SAME:    [[INPUT0:%.+]]: tensor<1x3x272x480xf16>
+// CHECK-SAME:    [[INPUT1:%.+]]: tensor<1x272x480x2xf16>
 func.func @GridSampleSplit(%arg0: tensor<1x3x272x480xf16>, %arg1: tensor<1x272x480x2xf16>) -> tensor<1x3x272x480xf16> {
     %0 = VPU.GridSample(%arg0, %arg1) {align_corners, mode = #IE.grid_sample_mode<BILINEAR>, padding_mode = #IE.grid_sample_padding_mode<BORDER>} : tensor<1x3x272x480xf16>, tensor<1x272x480x2xf16> -> tensor<1x3x272x480xf16>
     return %0 : tensor<1x3x272x480xf16>
 
-    // CHECK:       [[OUTPUT:%.+]] = VPU.GridSample(%arg0, %arg1)
-    // CHECK-NOT:           multiClusterStrategy = #VPU.multi_cluster_strategy
-    // CHECK-SAME:          tilingStrategy = [1, 2, 1, 1]
-    // CHECK-SAME:     : tensor<1x3x272x480xf16>, tensor<1x272x480x2xf16> -> tensor<1x3x272x480xf16>
+    // CHECK:       [[OUTPUT:%.+]] = VPU.GridSample([[INPUT0]], [[INPUT1]]) {
+    // CHECK-SAME:          align_corners, mode = #IE.grid_sample_mode<BILINEAR>,
+    // CHECK-SAME:          multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+    // CHECK-SAME:          padding_mode = #IE.grid_sample_padding_mode<BORDER>} :
+    // CHECK-SAME:          tensor<1x3x272x480xf16>, tensor<1x272x480x2xf16>
+    // CHECK-SAME:          -> tensor<1x3x272x480xf16>
 
-    // CHECK:       return [[OUTPUT]] :  tensor<1x3x272x480xf16>
+    // CHECK:       return [[OUTPUT]] : tensor<1x3x272x480xf16>
 }
 
 // -----

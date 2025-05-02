@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
@@ -142,7 +143,7 @@ bool isSupportedConv(SmallVector<IE::ConvolutionOp>& convOps) {
         }
 
         if (conv.getPostOpAttr() != nullptr || conv.getClampAttr() != nullptr ||
-            conv.getOutputChannelsAttr() != nullptr || conv.getBias() != nullptr ||
+            conv.getOutputPaddingAttr() != nullptr || conv.getBias() != nullptr ||
             conv.getStaticScaleAttr() != refStaticScale) {
             return false;
         }
@@ -301,8 +302,8 @@ mlir::LogicalResult MergeWeightsSharedConv::matchAndRewrite(IE::ConvolutionOp or
     auto newConv = rewriter.create<IE::ConvolutionOp>(
             appendLoc(origOp->getLoc(), "_concat"), inputConcat.getOutput(), filter, origOp.getBias(),
             origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputChannelsAttr(),
-            origOp.getInputChannelsAttr());
+            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
     for (auto operand : newConv->getOperands()) {
         if (operand != nullptr && !mlir::isa<mlir::BlockArgument>(operand) &&
             newConv->isBeforeInBlock(operand.getDefiningOp())) {

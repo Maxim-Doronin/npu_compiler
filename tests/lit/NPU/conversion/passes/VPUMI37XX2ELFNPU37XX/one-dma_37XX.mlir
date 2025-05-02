@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 module @OneDMA {
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x2x3x4xf16>
   } outputsInfo :  {
     DataInfo "output" : tensor<1x2x3x4xf16>
@@ -34,7 +34,7 @@ module @OneDMA {
 // -----
 
 module @DMANetworkOutputAsInput {
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "input" : tensor<1x2x3x4xf16>
   } outputsInfo :  {
     DataInfo "output" : tensor<1x2x3x4xf16>

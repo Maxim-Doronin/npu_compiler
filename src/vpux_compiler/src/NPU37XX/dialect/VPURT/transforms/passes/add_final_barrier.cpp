@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -34,34 +34,7 @@ private:
 void AddFinalBarrierPass::safeRunOnFunc() {
     auto func = getOperation();
 
-    auto findInsertPoint = [&]() {
-        auto barrierOpsIt = func.getOps<VPURT::DeclareVirtualBarrierOp>();
-        if (barrierOpsIt.empty()) {
-            return &func.getBody().front().front();
-        }
-        auto numOfBarrierOp = std::distance(barrierOpsIt.begin(), barrierOpsIt.end());
-        auto lastBarrierOpIter = barrierOpsIt.begin();
-        for (auto i : irange(numOfBarrierOp - 1)) {
-            VPUX_UNUSED(i);
-            lastBarrierOpIter++;
-        }
-        auto lastBarrierOp = *lastBarrierOpIter;
-        return lastBarrierOp.getOperation();
-    };
-    auto insertPoint = findInsertPoint();
-    mlir::OpBuilder builder(func);
-    builder.setInsertionPointAfter(insertPoint);
-    auto loc = mlir::NameLoc::get(mlir::StringAttr::get(&getContext(), "finishing_barrier"));
-    auto barrierOp = builder.create<VPURT::DeclareVirtualBarrierOp>(loc, mlir::UnitAttr::get(&getContext()));
-    auto finalBarrier = barrierOp.getBarrier();
-
-    for (auto taskQueueFirstAndLastOp : vpux::VPURT::getTaskQueuesFirstAndLastOp(func)) {
-        auto& lastOpInQueue = taskQueueFirstAndLastOp.second.second;
-        if (lastOpInQueue.getUpdateBarriers().empty()) {
-            _log.trace("Add finishing barrier for {0}", lastOpInQueue->getLoc());
-            lastOpInQueue.getUpdateBarriersMutable().assign(finalBarrier);
-        }
-    }
+    VPURT::addFinalBarrierIfNotExists(func, _log);
     VPURT::verifyBarrierSlots(func, _log);
 }
 }  // namespace

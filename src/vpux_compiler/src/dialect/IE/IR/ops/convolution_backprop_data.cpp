@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -38,9 +38,6 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/error.hpp"
-
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include <openvino/core/coordinate.hpp>
@@ -59,17 +56,17 @@ mlir::LogicalResult vpux::IE::ConvolutionBackpropDataOp::inferReturnTypeComponen
         return mlir::failure();
     }
 
-    const auto inputType = convBackpropData.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(convBackpropData.getInput().getType());
     const auto inputShape = inputType.getShape().raw();
     const auto inputElemType = inputType.getElementType();
     const auto outputShape = convBackpropData.getOutputShape();
-    const auto filterShape = convBackpropData.getFilter().getType().cast<mlir::ShapedType>().getShape();
+    const auto filterShape = mlir::cast<mlir::ShapedType>(convBackpropData.getFilter().getType()).getShape();
 
     const auto dataPaddingBelow = parseIntArrayAttr<int64_t>(convBackpropData.getPadsEnd());
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(convBackpropData.getPadsBegin());
     const auto windowStrides = parseIntArrayAttr<int64_t>(convBackpropData.getStrides());
     const auto windowDilations = parseIntArrayAttr<int64_t>(convBackpropData.getDilations());
-    const auto outputPadding = parseIntArrayAttr<int64_t>(convBackpropData.getOutputPadding());
+    const auto outputPadding = parseIntArrayAttr<int64_t>(convBackpropData.getSpatialOutputPadding());
 
     if (outputShape != nullptr) {
         const SmallVector<ov::Dimension> nDataShape(std::next(inputShape.begin(), 2), inputShape.end());

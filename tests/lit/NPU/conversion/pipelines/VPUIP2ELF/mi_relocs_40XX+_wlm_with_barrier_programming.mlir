@@ -1,21 +1,21 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --lower-VPUIP-to-ELF="workload-management-mode=PWLM_V1_BARRIER_FIFO"  %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --lower-VPUIP-to-ELF="workload-management-mode=PWLM_V1_BARRIER_FIFO workload-management-barrier-programming-mode=NO_BARRIER_DMAS_SCHEDULED"  %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 //
 
 module @Test {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x32xf16>
+        DataInfo "input" : tensor<1x32xf16>
     }
     outputsInfo : {
-        IE.DataInfo "hswish" : tensor<1x32xf16>
+        DataInfo "hswish" : tensor<1x32xf16>
     }
 
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {

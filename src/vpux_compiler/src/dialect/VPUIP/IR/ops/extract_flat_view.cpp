@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -40,11 +40,11 @@ mlir::LogicalResult VPUIP::ExtractFlatSliceOp::inferReturnTypes(mlir::MLIRContex
         return mlir::failure();
     }
 
-    const auto distributedType = extractOp.getSource().getType().dyn_cast<VPUIP::DistributedBufferType>();
+    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(extractOp.getSource().getType());
     if (distributedType == nullptr) {
         return errorAt(loc, "ExtractFlatSliceOp must operate on Distributed buffers");
     }
-    if (distributedType.getElementType().isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(distributedType.getElementType())) {
         return errorAt(loc, "ExtractFlatSliceOp does not support UniformQuantizedPerAxisType");
     }
 

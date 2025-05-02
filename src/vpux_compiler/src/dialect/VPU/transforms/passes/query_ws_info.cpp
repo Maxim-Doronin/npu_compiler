@@ -1,0 +1,60 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
+//
+
+#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/BuiltinDialect.h>
+
+namespace vpux::VPU {
+#define GEN_PASS_DECL_QUERYWSINFO
+#define GEN_PASS_DEF_QUERYWSINFO
+#include "vpux/compiler/dialect/VPU/passes.hpp.inc"
+}  // namespace vpux::VPU
+
+using namespace vpux;
+
+namespace {
+
+class QueryWSInfo final : public VPU::impl::QueryWSInfoBase<QueryWSInfo> {
+public:
+    explicit QueryWSInfo(const Logger& log) {
+        Base::initLogger(log, Base::getArgumentName());
+    }
+
+private:
+    void safeRunOnModule() final;
+
+    static constexpr vpux::Byte DEFAULT_MEMORY_LIMIT = vpux::Byte(std::numeric_limits<int64_t>::max());
+    vpux::Byte getMemoryLimit() const {
+        return memoryLimit.hasValue() ? vpux::Byte(memoryLimit.getValue()) : DEFAULT_MEMORY_LIMIT;
+    }
+};
+
+void QueryWSInfo::safeRunOnModule() {
+    auto moduleOp = getOperation();
+
+    net::NetworkInfoOp netInfo;
+    mlir::func::FuncOp mainFuncOp;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+
+    auto tree = VPU::getOutliningRepresentation(mainFuncOp);
+    auto splits = VPU::collectMoveWorthyTransformationSplits(_log, tree, [](auto&) {});
+    llvm::sort(splits.begin(), splits.end());
+
+    auto slicedSplits = VPU::sliceAccordingToMemoryLimit(_log, splits, getMemoryLimit());
+
+    moduleOp->setAttr("VPU.WsTotalInitPartCount", getIntAttr(&getContext(), slicedSplits.size()));
+}
+
+}  // namespace
+
+std::unique_ptr<mlir::Pass> vpux::VPU::createQueryWSInfoPass(const Logger& log) {
+    return std::make_unique<QueryWSInfo>(log);
+}

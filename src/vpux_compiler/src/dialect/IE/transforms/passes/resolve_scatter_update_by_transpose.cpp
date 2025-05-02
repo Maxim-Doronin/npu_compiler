@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -58,7 +59,7 @@ mlir::LogicalResult ResolveScatterUpdateByTransposePass::TransposePlanning::matc
     _log.trace("Found IE::ScatterUpdate Operation '{0}'", origOp->getLoc());
     IE::LayerOpInterface newOp;
 
-    const auto inType = origOp.getInput().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inputShape = inType.getShape();
 
     const auto axis = origOp.getAxisValue().value();
@@ -83,9 +84,9 @@ mlir::LogicalResult ResolveScatterUpdateByTransposePass::TransposePlanning::matc
             refVal++;
         }
 
-        const auto updatesType = origOp.getUpdates().getType().cast<NDTypeInterface>();
+        const auto updatesType = mlir::cast<vpux::NDTypeInterface>(origOp.getUpdates().getType());
         const auto updatesShape = updatesType.getShape();
-        const auto indicesType = origOp.getIndices().getType().cast<NDTypeInterface>();
+        const auto indicesType = mlir::cast<vpux::NDTypeInterface>(origOp.getIndices().getType());
 
         const auto indicesSize = static_cast<unsigned int>(indicesType.getShape().size());
         const auto updatesSize = static_cast<unsigned int>(updatesShape.size());

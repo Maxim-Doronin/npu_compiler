@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 #include "vpux/utils/profiling/common.hpp"
 
@@ -80,9 +81,9 @@ void DPUProfilingPass::safeRunOnModule() {
     }
     auto memKind = maybeMemKind.value();
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(module, netOp, netFunc);
+    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
     const auto arch = VPU::getArch(module);
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
@@ -114,7 +115,7 @@ void DPUProfilingPass::safeRunOnModule() {
     }
 
     const auto outputResult = mlir::MemRefType::get({totalDpuDdrProfilingOutputSize}, getUInt64Type(ctx));
-    auto profilingResult = addNewProfilingOutput(ctx, netFunc, netOp, outputResult, profiling::ExecutorType::DPU);
+    auto profilingResult = addNewProfilingOutput(ctx, netFunc, netInfo, outputResult, profiling::ExecutorType::DPU);
 
     SmallVector<mlir::Value> concatResults;
     unsigned currentDDROffset = 0;

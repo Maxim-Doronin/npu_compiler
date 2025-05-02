@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,7 +10,7 @@ using namespace vpux;
 
 size_t countEmptyArray(mlir::ArrayAttr array, int64_t limit) {
     const auto emptyPredicate = [](const auto& item) -> bool {
-        return item.template cast<mlir::ArrayAttr>().empty();
+        return mlir::cast<mlir::ArrayAttr>(item).empty();
     };
     return std::count_if(array.begin(), array.begin() + limit, emptyPredicate);
 }
@@ -24,7 +24,7 @@ size_t countZeroes(mlir::ArrayAttr array, int64_t limit) {
 }
 
 mlir::ArrayAttr subArray(mlir::ArrayAttr attr, int64_t idx) {
-    return attr[checked_cast<unsigned>(idx)].cast<mlir::ArrayAttr>();
+    return mlir::cast<mlir::ArrayAttr>(attr[checked_cast<unsigned>(idx)]);
 }
 
 mlir::Value vpux::VPUMI40XX::MappedInferenceOp::getListHead(VPURegMapped::TaskType taskType, int64_t tileIdx,
@@ -70,7 +70,7 @@ mlir::Value vpux::VPUMI40XX::MappedInferenceOp::getListHead(VPURegMapped::TaskTy
 mlir::MutableOperandRange vpux::VPUMI40XX::MappedInferenceOp::getListHeadMutable(VPURegMapped::TaskType taskType,
                                                                                  int64_t tileIdx, int64_t listIdx) {
     auto arrayIdx = [](mlir::ArrayAttr attr, int64_t idx) -> int64_t {
-        return attr[checked_cast<unsigned>(idx)].cast<mlir::IntegerAttr>().getInt();
+        return mlir::cast<mlir::IntegerAttr>(attr[checked_cast<unsigned>(idx)]).getInt();
     };
 
     auto taskListSizeIsNotValid = [&arrayIdx](mlir::ArrayAttr array, int64_t tileIdx) -> bool {

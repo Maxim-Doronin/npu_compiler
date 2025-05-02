@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ func.func @NceConvMaxKernelSize(%arg0: tensor<1x16x16x16xf16, {mem_space = @CMX_
                 ppe = #VPU.PPEStub<>,
                 rawFilterShape = [16, 16, 16, 16],
                 strides = [1, 1]
-            } -> tensor<1x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}> {
+            } : tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN}> -> tensor<1x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}> {
         VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
     }
 

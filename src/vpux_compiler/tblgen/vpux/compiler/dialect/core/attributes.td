@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,7 @@
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
+include "vpux/compiler/dialect/core/attr_interfaces.td"
 
 def IntAttr : Attr<CPred<"$_self.isa<mlir::IntegerAttr>()">, "Integer attribute"> {
     let storageType = "mlir::IntegerAttr";
@@ -46,6 +47,23 @@ def TensorAttr :
     let returnType = "vpux::TensorAttr";
     let convertFromStorage = "$_self";
     let constBuilderCall = "$0";
+}
+
+class InlinerDispatchAttr<Dialect dialect, string name> : AttrDef<dialect, name, [DeclareAttrInterfaceMethods<InlinerDispatchAttrInterface>]> {
+    let mnemonic = name;
+    let description = "Dialects can implement this class when they want to support custom inlining semantics for 'func' operations";
+    let summary = [{
+        Dialects can implement this class when they want to support custom inlining semantics for 'func' operations.
+
+        ```
+        def MyInlinerDispatchAttr : InlinerDispatchAttr<My_Dialect, "MyInlinerDispatch">
+        ```
+
+        In IR:
+        ```MLIR
+        func.call {inliner_dispatch = #MyDialect.MyInlinerDispatchAttr} @someFunction() -> ()
+        ```
+    }];
 }
 
 #endif

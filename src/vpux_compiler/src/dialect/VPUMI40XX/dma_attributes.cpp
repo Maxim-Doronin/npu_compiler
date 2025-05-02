@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,8 +13,8 @@ using namespace vpux;
 DMATransaction VPUMI40XX::NNDMATransactionAttr::getDMATransaction() const {
     DMATransaction dmaTransaction;
 
-    dmaTransaction.inputs.push_back(reduceDimsForDma(getInputType().cast<NDTypeInterface>()));
-    dmaTransaction.outputs.push_back(reduceDimsForDma(getOutputType().cast<NDTypeInterface>()));
+    dmaTransaction.inputs.push_back(reduceDimsForDma(mlir::cast<vpux::NDTypeInterface>(getInputType())));
+    dmaTransaction.outputs.push_back(reduceDimsForDma(mlir::cast<vpux::NDTypeInterface>(getOutputType())));
 
     return dmaTransaction;
 }

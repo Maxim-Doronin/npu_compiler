@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ mlir::LogicalResult vpux::VPU::YuvToRgbOp::inferReturnTypes(mlir::MLIRContext* c
         return mlir::failure();
     }
 
-    const auto inType = colorConv.getInput1().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(colorConv.getInput1().getType());
     const auto shape = inType.getShape().raw();
     if (shape[3] != 1) {
         return errorAt(loc, "Incorrect input shape format: '{0}'", shape);
@@ -104,7 +104,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::YuvToRgbOp::getTilingStrategy(TilingMod
                     getLoc());
 
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     const auto outputShape = outputType.getShape();
     Shape nTilesOnDimforYuv2RGB(outputShape.size(), 1);
 

@@ -1,3 +1,8 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache 2.0
+//
+
 #include <cstdint>
 #include "BitStream.hpp"
 
@@ -13,7 +18,7 @@ enum class DecoderAlgorithm : uint32_t {
     SIGNSHFTPROC,
     SIGNSHFTADDPROC,
     ADDPROC,
-    SIGNSHFTADDBLK,  // NPU40XX only
+    SIGNSHFTADDBLK,  // NPU4/5 only
     LFTSHFTPROC,
     BINEXPPROC,
     BTEXPPROC,
@@ -71,7 +76,7 @@ enum class EncoderAlgorithm {
     NOPRDCT,
     NOSPRDCT,
     MEDPRDCT,
-    PREVBLKPRDCT,  // >= NPU40XX only
+    PREVBLKPRDCT,  // >= NPU4 only
     BINCMPCT,
     BTMAP,
     ALGO_COUNT

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/batch.hpp"
@@ -61,7 +62,7 @@ mlir::SmallVector<mlir::Operation*> sliceCallsOp(mlir::OpBuilder& builder, mlir:
                 // prepare  slice offset: we must create slice offset with shape rank
                 // equal to the batched operand rank
                 Shape sliceOffset{
-                        SmallVector<int64_t>(batchedInput.getType().cast<vpux::NDTypeInterface>().getRank(), 0)};
+                        SmallVector<int64_t>(mlir::cast<vpux::NDTypeInterface>(batchedInput.getType()).getRank(), 0)};
                 sliceOffset[Dims4D::Act::N] = getShape(debatchedInput)[Dims4D::Act::N] * i;
                 const auto sliceLoc = appendLoc(callLoc, "slice_{0}_op_{1}", sliceIdx + 1, i + 1);
                 auto slicedOperand =
@@ -95,7 +96,8 @@ void concatenateCallOps(mlir::OpBuilder& builder, mlir::func::CallOp callOp, Sma
             newCallResults.push_back(res);
         }
 
-        auto newConcatResult = builder.create<IE::ConcatOp>(callLoc, newCallResults, 0);
+        const auto concatCallLoc = appendLoc(callLoc, "_" + std::to_string(i));
+        auto newConcatResult = builder.create<IE::ConcatOp>(concatCallLoc, newCallResults, 0);
         auto origCallResUsers = callOp.getResult(i).getUsers();
         for (auto usr : origCallResUsers) {
             usr->getResult(0).replaceAllUsesWith(newConcatResult->getResult(0));

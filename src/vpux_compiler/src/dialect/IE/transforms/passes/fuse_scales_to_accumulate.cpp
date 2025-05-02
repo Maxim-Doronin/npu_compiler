@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -155,8 +157,8 @@ std::optional<SmallVector<float>> FuseScalesToAccumulate::fetchScales(IE::FakeQu
 
     auto outLowConst = fqOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
     auto outHighConst = fqOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
-    const auto realType = fqOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto realElemType = realType.getElementType().cast<mlir::FloatType>();
+    const auto realType = mlir::cast<vpux::NDTypeInterface>(fqOp.getInput().getType());
+    const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
 
     const auto levels = fqOp.getLevels();
     if (!levels.has_value()) {
@@ -173,7 +175,7 @@ std::optional<SmallVector<float>> FuseScalesToAccumulate::fetchScales(IE::FakeQu
         return std::nullopt;
     }
 
-    auto perAxis = outQuantizeElemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+    auto perAxis = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(outQuantizeElemType);
     if (perAxis == nullptr) {
         return std::nullopt;
     }

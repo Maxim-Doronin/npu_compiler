@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -99,5 +99,5 @@ func.func @MemPermuteProcessingWithNDReorder(%arg0: tensor<6x10x10x4x1xf16, {ord
     // CHECK: [[VAL3:%.*]] = IE.AffineReshape([[VAL2]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [1, 2], [3, 4]], shape_value = [6, 10, 10, 4, 1]} : tensor<1x6x100x4xf16> -> tensor<6x10x10x4x1xf16>
 
-    // CHECK return [[VAL3]] : tensor<6x10x10x4x1xf16>
+    // CHECK: return [[VAL3]] : tensor<6x10x10x4x1xf16>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,12 +18,12 @@ mlir::LogicalResult vpux::VPU::OneHotOp::inferReturnTypes(mlir::MLIRContext* ctx
         return mlir::failure();
     }
 
-    auto inType = oneHot.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(oneHot.getInput().getType());
     mlir::Type outType = oneHot.getOutputType();
     auto anyRankedTensorType = inType.changeElemType(outType);
 
     SmallVector<int64_t> outShape =
-            to_small_vector(oneHot.getInput().getType().cast<vpux::NDTypeInterface>().getShape());
+            to_small_vector(mlir::cast<vpux::NDTypeInterface>(oneHot.getInput().getType()).getShape());
     const auto axis = oneHot.getAxis();
     int64_t depth = oneHot.getDepthAttr().getInt();
     if (axis < 0) {

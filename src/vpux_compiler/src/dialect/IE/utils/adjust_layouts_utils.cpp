@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -49,7 +50,7 @@ IE::ReorderOp insertReorderForOutput(mlir::Operation* op, mlir::Value output, Di
 }
 
 void changeDimsOrder(mlir::Value val, DimsOrder newOrder, Logger log) {
-    const auto origType = val.getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(val.getType());
     const auto newType = origType.changeDimsOrder(newOrder);
 
     log.trace("Change Value type to '{0}'", newType);
@@ -58,9 +59,9 @@ void changeDimsOrder(mlir::Value val, DimsOrder newOrder, Logger log) {
 
 mlir::FailureOr<vpux::AdjustConvShapeParams> getAdjustConvShapeParameters(IE::ConvolutionOp convOp, mlir::Value filter,
                                                                           Shape outputShape, Logger _log) {
-    auto inNDInterface = convOp.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto inNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(convOp.getInput().getType());
     auto inDimOrder = inNDInterface.getDimsOrder();
-    auto outNDInterface = convOp.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+    auto outNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(convOp.getOutput().getType());
     auto outDimOrder = outNDInterface.getDimsOrder();
     const auto strides = Shape(parseIntArrayAttr<int64_t>(convOp.getStrides()));
     if (DimsOrder::NHWC != inDimOrder || DimsOrder::NHWC != outDimOrder) {
@@ -73,7 +74,7 @@ mlir::FailureOr<vpux::AdjustConvShapeParams> getAdjustConvShapeParameters(IE::Co
         return mlir::isa<mlir::quant::QuantizedType>(elementType);
     };
 
-    auto filterNDInterface = filter.getType().dyn_cast<vpux::NDTypeInterface>();
+    auto filterNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(filter.getType());
     if (isQuantizedType(inNDInterface) || isQuantizedType(filterNDInterface) || isQuantizedType(outNDInterface)) {
         _log.trace("Unsupported Convolution with Quantized Type");
         return mlir::failure();

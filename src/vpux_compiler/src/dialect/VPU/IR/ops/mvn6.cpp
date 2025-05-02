@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -21,7 +21,7 @@ mlir::LogicalResult vpux::VPU::MVN6Op::inferReturnTypes(mlir::MLIRContext* ctx, 
         return mlir::failure();
     }
 
-    const auto inType = mvn.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(mvn.getInput().getType());
     inferredReturnTypes.push_back(inType);
 
     return mlir::success();
@@ -30,7 +30,7 @@ mlir::LogicalResult vpux::VPU::MVN6Op::inferReturnTypes(mlir::MLIRContext* ctx, 
 // Return a list with all dims that are not in 'axes' list.
 // (useful for tiling)
 DimArr vpux::VPU::MVN6Op::getNonNormDims() {
-    const auto rank = getInput().getType().cast<vpux::NDTypeInterface>().getRank();
+    const auto rank = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getRank();
     VPUX_THROW_UNLESS(rank == 4, "Function valid only for 4D shape, got {0}D", rank);
 
     DimArr dims;

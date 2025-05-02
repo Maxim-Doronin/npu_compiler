@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -95,8 +95,8 @@ VPU::SparsityRemovalFlag VPU::shouldRemoveOutputSparsity(mlir::Operation* op) {
             return SparsityRemovalFlag::SOKMissingFail;
         }
 
-        const auto outputTensorType = clusteredOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
-        const auto sparseOutputType = outputTensorType.dyn_cast<VPU::SparseTensorType>();
+        const auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
+        const auto sparseOutputType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(outputTensorType);
         if (sparseOutputType == nullptr) {
             return SparsityRemovalFlag::SparseOutputMissingFail;
         }
@@ -140,9 +140,9 @@ VPU::SparsityRemovalFlag VPU::shouldRemoveOutputSparsity(mlir::Operation* op) {
     auto users = to_small_vector(clusteredOp->getUsers());
     if (llvm::find_if(users, [](const mlir::Operation* op) {
             if (auto concatOp = mlir::dyn_cast_or_null<VPU::ConcatOp>(op)) {
-                const auto outputType = concatOp.getOutput().getType().cast<NDTypeInterface>();
+                const auto outputType = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType());
                 const auto outputShape = outputType.getShape();
-                const auto inputDataType = concatOp.getInputs().front().getType().cast<NDTypeInterface>();
+                const auto inputDataType = mlir::cast<vpux::NDTypeInterface>(concatOp.getInputs().front().getType());
                 const auto inputShape = inputDataType.getShape();
 
                 if (inputShape[Dims4D::Act::C] != outputShape[Dims4D::Act::C]) {

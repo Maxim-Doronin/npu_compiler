@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,10 +8,8 @@
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
 namespace vpux {
@@ -20,7 +18,9 @@ namespace IE {
 
 mlir::LogicalResult inferReduceReturnTypeComponents(mlir::Location loc, mlir::Value input, bool keepDims,
                                                     SmallVector<int64_t>& axes,
-                                                    SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnShapes);
+                                                    SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnShapes,
+                                                    mlir::ArrayAttr inputPadding = nullptr,
+                                                    mlir::ArrayAttr outputPadding = nullptr);
 DimsOrder calculateReducedOutputLayout(const DimsOrder& inputDimOrder, const SmallVector<int64_t>& axes);
 
 template <typename ReduceOp>
@@ -72,7 +72,7 @@ mlir::LogicalResult ConvertConstToAttr<ReduceOp>::matchAndRewrite(ReduceOp reduc
     const auto axesAttr = getIntArrayAttr(reduceOp.getContext(), ArrayRef(axesValue));
 
     // rewrite layer pattern
-    rewriter.replaceOpWithNewOp<ReduceOp>(reduceOp, reduceOp.getInput(), nullptr, axesAttr, reduceOp.getKeepDims());
+    rewriter.replaceOpWithNewOp<ReduceOp>(reduceOp, reduceOp.getInput(), nullptr, axesAttr, reduceOp.getKeepDimsAttr());
 
     return mlir::success();
 }

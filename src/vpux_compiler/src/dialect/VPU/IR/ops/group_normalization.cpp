@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ mlir::LogicalResult vpux::VPU::GroupNormalizationOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inType = groupNorm.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(groupNorm.getInput().getType());
     const auto outType = inType.changeShape(inType.getShape());
     inferredReturnTypes.push_back(outType);
 

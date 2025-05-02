@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -55,13 +55,14 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
         const auto numClusters = vpux::VPU::getOptimalNumClusters(clusteredOp, outputShape,
                                                                   clusteredOp.getMultiClusterStrategy().value());
         {
-            const auto outputType = clusteredOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+            const auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
             const auto outputTileType = outputType.extractDenseTile(offset, outputShape);
             auto distributions =
                     VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, siblingsOpsAnalysis);
-            auto distribution = mlir::isa<VPU::SparseTensorType>(outputTileType)
-                                        ? distributions.at(outputTileType.cast<VPU::SparseTensorType>().getData())
-                                        : distributions.at(outputTileType);
+            auto distribution =
+                    mlir::isa<VPU::SparseTensorType>(outputTileType)
+                            ? distributions.at(mlir::cast<vpux::VPU::SparseTensorType>(outputTileType).getData())
+                            : distributions.at(outputTileType);
             if (distribution.getMemoryShapes().empty()) {
                 auto optionalPerClusterMemoryShapes = VPU::getPerClusterMemoryShapes(outputShape, distribution);
                 if (!optionalPerClusterMemoryShapes.has_value()) {
@@ -81,14 +82,15 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
                 return false;
             }
 
-            const auto inputType = clusteredOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
             const auto inputTileType = inputType.extractDenseTile(inputTile.offsets, inputTile.shape);
 
             auto distributions = VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
                                                                           siblingsOpsAnalysis);
-            auto distribution = mlir::isa<VPU::SparseTensorType>(inputTileType)
-                                        ? distributions.at(inputTileType.cast<VPU::SparseTensorType>().getData())
-                                        : distributions.at(inputTileType);
+            auto distribution =
+                    mlir::isa<VPU::SparseTensorType>(inputTileType)
+                            ? distributions.at(mlir::cast<vpux::VPU::SparseTensorType>(inputTileType).getData())
+                            : distributions.at(inputTileType);
             if (distribution.getMemoryShapes().empty()) {
                 auto optionalPerClusterMemoryShapes =
                         VPU::getPerClusterMemoryShapes(inputTileType.getShape(), distribution);
@@ -128,7 +130,7 @@ bool VPU::isOperationSplitOverWidthCompatible(mlir::Operation* op, ShapeRef outp
 
     auto isSOWCompatible = widthCompatibleCheck(outputShape);
     if (arch >= VPU::ArchKind::NPU40XX) {
-        // For NPU40XX, W segmented output needs to have explicit halo regions defined.
+        // For NPU40XX+, W segmented output needs to have explicit halo regions defined.
         // Thus the applicability of SOW on the current operation is tightly dependent
         // if the consumer operations can be SOW themselves.
         // If that's not the case and not all consumers are SOW compatible, we can't represent
@@ -163,7 +165,7 @@ bool VPU::isOperationSplitOverKernelCompatible(mlir::Operation* op, ShapeRef out
 
     // Sparse Eltwise consuming SOK activations leads to the storage element size different than the number of input
     // channels, which is not a validated scenario
-    if (clusteredOp->getResult(0).getType().isa<VPU::SparseTensorType>()) {
+    if (mlir::isa<vpux::VPU::SparseTensorType>(clusteredOp->getResult(0).getType())) {
         const auto hasEltwiseUser = llvm::any_of(clusteredOp->getResult(0).getUsers(), [](mlir::Operation* userOp) {
             return mlir::isa<VPU::NCEEltwiseOp>(userOp);
         });
@@ -186,21 +188,22 @@ bool VPU::isOperationSplitOverKernelCompatible(mlir::Operation* op, ShapeRef out
     // SOK will split the weights over output channels. If the weights are sparse, it is necessary to make sure that
     // no split will have only sparse values inside, since that would lead to zero-sized weights
     auto weights = nceOp.getWeightsOperand();
-    if (weights != nullptr && weights.getType().isa<VPU::SparseTensorType>()) {
-        if (const auto sparsityCompression = weights.getType().cast<VPU::SparseTensorType>().getSparsityCompression()) {
+    if (weights != nullptr && mlir::isa<vpux::VPU::SparseTensorType>(weights.getType())) {
+        if (const auto sparsityCompression =
+                    mlir::cast<vpux::VPU::SparseTensorType>(weights.getType()).getSparsityCompression()) {
             // Create a new type with the new number of output channels
             // If the element type is quantized per-axis, it is replaced with a per-tensor type to avoid the
             // incompatibility between the number of elements per axis and the number of scales & zero-points
-            const auto origType = weights.getType().cast<vpux::NDTypeInterface>();
+            const auto origType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
             auto newShape = Shape(origType.getShape().raw());
             newShape[Dims4D::Filter::OC] = OC;
             auto elemType = origType.getElementType();
-            if (auto qElemType = elemType.dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>()) {
+            if (auto qElemType = mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(elemType)) {
                 elemType = mlir::quant::QuantileQuantizedType::get(
                         qElemType.getFlags(), qElemType.getStorageType(), qElemType.getQuantileType(),
                         qElemType.getExpressedType(), qElemType.getQuantiles(), /*scale=*/1.0,
                         /*zeroPoint=*/0, qElemType.getStorageTypeMin(), qElemType.getStorageTypeMax());
-            } else if (auto qElemType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+            } else if (auto qElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
                 elemType = mlir::quant::UniformQuantizedType::get(
                         qElemType.getFlags(), qElemType.getStorageType(), qElemType.getExpressedType(), /*scale=*/1.0,
                         /*zeroPoint=*/0, qElemType.getStorageTypeMin(), qElemType.getStorageTypeMax());
@@ -210,7 +213,8 @@ bool VPU::isOperationSplitOverKernelCompatible(mlir::Operation* op, ShapeRef out
             // Create a distributed type in order to determine the channel split over clusters
             const auto filterType = VPU::getDistributedFilterTypeFromOp(nceOp, newType, numTiles,
                                                                         VPU::MultiClusterStrategy::SplitOverKernel);
-            const auto filterDistType = filterType.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+            const auto filterDistType =
+                    mlir::cast<vpux::VPU::DistributedTensorType>(filterType.getDistributedTypes().front());
             const auto computeOffsets = filterDistType.getPerClusterComputeShapeOffsets();
             if (!computeOffsets.empty()) {
                 int64_t startOC = computeOffsets[0][Dims4D::Filter::OC];
@@ -296,7 +300,7 @@ bool VPU::doesLayerFitIntoCMX(mlir::Operation* op, VPU::MultiClusterStrategy str
     if (op == nullptr) {
         return false;
     }
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     auto numClusters = getOptimalNumClusters(op, outputType.getShape(), strategy);
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(op);
 

@@ -1,15 +1,17 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -49,7 +51,7 @@ mlir::LogicalResult TransposedConvolutionConversion::matchAndRewrite(IE::Transpo
                                                                      mlir::PatternRewriter& rewriter) const {
     _log.trace("Found IE::TransposedConvolution Operation '{0}'", origOp->getLoc());
 
-    auto padsOutput = Shape(parseIntArrayAttr<int64_t>(origOp.getOutputPadding()));
+    auto padsOutput = Shape(parseIntArrayAttr<int64_t>(origOp.getSpatialOutputPadding()));
 
     const auto featureShape = getShape(origOp.getInput());
     VPUX_THROW_UNLESS(featureShape.size() == 4, "Only 2D transposed convolution is supported");
@@ -85,11 +87,11 @@ mlir::LogicalResult TransposedConvolutionConversion::matchAndRewrite(IE::Transpo
     auto resultOP = rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), paddingOutput, origOp.getFilter(),
                                                        origOp.getBias(), strides, padsBegin, padsEnd, dilations,
                                                        origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                                       /*staticScale=*/nullptr, origOp.getOutputChannelsAttr(),
-                                                       origOp.getInputChannelsAttr())
+                                                       /*staticScale=*/nullptr, origOp.getOutputPaddingAttr(),
+                                                       origOp.getInputPaddingAttr())
                             .getOutput();
 
-    const auto nceOutputShape = resultOP.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto nceOutputShape = mlir::cast<vpux::NDTypeInterface>(resultOP.getType()).getShape();
     if (origOp.getOutputShape() != nullptr && nceOutputShape != outputShape) {
         // In case the outputShape is specified, create sliceOp for crop
         auto upsamplingOp = paddingOutput.getDefiningOp<IE::UpsamplingOp>();

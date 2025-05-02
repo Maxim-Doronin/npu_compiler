@@ -17,7 +17,7 @@
 //
 
 module {
-  IE.CNNNetwork entryPoint : @SingleLayer inputsInfo : {
+  net.NetworkInfo entryPoint : @SingleLayer inputsInfo : {
     DataInfo "Parameter" : tensor<1x1000xf16>
   } outputsInfo : {
     DataInfo "Result" : tensor<1x1000xf16>
@@ -55,7 +55,7 @@ func.func @SingleLayer(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
 // -----
 
 module {
-  IE.CNNNetwork entryPoint : @ReshapeInGraph inputsInfo : {
+  net.NetworkInfo entryPoint : @ReshapeInGraph inputsInfo : {
     DataInfo "Parameter" : tensor<1x512x1x1xf16>
   } outputsInfo : {
     DataInfo "Result" : tensor<1x512x1x1xf16>
@@ -97,7 +97,7 @@ func.func @ReshapeInGraph(%arg0 : tensor<1x512x1x1xf16>) -> tensor<1x512x1x1xf16
 
 // -----
 module {
-  IE.CNNNetwork entryPoint : @ConstantLayer inputsInfo : {
+  net.NetworkInfo entryPoint : @ConstantLayer inputsInfo : {
   } outputsInfo : {
     DataInfo "Result" : tensor<1x2x2x2xf16>
   }
@@ -113,7 +113,7 @@ func.func @ConstantLayer() -> tensor<1x2x2x2xf16> {
 }
 // -----
 module {
-  IE.CNNNetwork entryPoint : @Reshape inputsInfo : {
+  net.NetworkInfo entryPoint : @Reshape inputsInfo : {
     DataInfo "Parameter" : tensor<1x512x1x1xf32>
   } outputsInfo : {
     DataInfo "Result" : tensor<1x512xf32>
@@ -132,7 +132,7 @@ func.func @Reshape(%arg0 : tensor<1x512x1x1xf32>) -> tensor<1x512xf32> {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module {
-  IE.CNNNetwork entryPoint : @NCEConv inputsInfo : {
+  net.NetworkInfo entryPoint : @NCEConv inputsInfo : {
     DataInfo "Parameter" : tensor<1x32x16x16xf16>
   } outputsInfo : {
     DataInfo "Result" : tensor<1x64x14x14xf16>
@@ -147,7 +147,7 @@ func.func @NCEConv(%arg0 : tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = 
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [64, 32, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}> {
+        } : tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}> -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}> {
             VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
         }
 
@@ -181,7 +181,7 @@ func.func @NCEConv(%arg0 : tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module {
-  IE.CNNNetwork entryPoint : @SparseNCEConv inputsInfo : {
+  net.NetworkInfo entryPoint : @SparseNCEConv inputsInfo : {
     DataInfo "Parameter1" : tensor<1x32x16x16xf16>
     DataInfo "Parameter2" : tensor<1x32x16x16xi1>
   } outputsInfo : {
@@ -222,7 +222,7 @@ func.func @SparseNCEConv(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>, %arg1 
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [64, 32, 3, 3],
             strides = [1, 1]
-        } -> !VPU.SparseTensor<data=tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}>,
+        } : !VPU.SparseTensor<data=tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x32x16x16xi1, {mem_space = @CMX_NN, order = #NHWC}>>, !VPU.SparseTensor<data=tensor<64x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<64x1x1x384xi1, {mem_space = @CMX_NN}>, is_weights>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}> -> !VPU.SparseTensor<data=tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}>,
                                sparsity_map=tensor<1x64x14x14xi1, {mem_space = @CMX_NN, order = #NHWC}>> {
             VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
         }
@@ -380,7 +380,7 @@ func.func @SparseNCEConv(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>, %arg1 
 !OutputSM_CMX = tensor<1x64x14x14xi1, {mem_space = @CMX_NN, order = #NHWC}>
 
 module {
-  IE.CNNNetwork entryPoint : @SparseNCEConvSOH inputsInfo : {
+  net.NetworkInfo entryPoint : @SparseNCEConvSOH inputsInfo : {
     DataInfo "Parameter1" : tensor<1x32x16x16xf16>
     DataInfo "Parameter2" : tensor<1x32x16x16xi1>
   } outputsInfo : {
@@ -401,45 +401,25 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
 
     %weights_table = const.Declare !WeightsTable_DDR = dense<1> : tensor<64x1x1x4xsi32>
 
-    %input_sparse_cmx = VPU.NCE.ClusterTiling (%input_sparse as %arg2: !VPU.SparseTensor<data=!Input_DDR, sparsity_map=!InputSM_DDR>)
-            -> !VPU.SparseTensor<data=!InputDistributed, sparsity_map=!InputSMDistributed> {
-        %0 = VPU.Copy(%arg2) {out_mem_space = @CMX_NN} : !VPU.SparseTensor<data=!Input_DDR, sparsity_map=!InputSM_DDR>
-            -> !VPU.SparseTensor<data=!Input_CMX, sparsity_map=!InputSM_CMX>
-        VPU.Yield %0
-    }
-    %weights_sparse_cmx = VPU.NCE.ClusterTiling (%weights_sparse as %arg2: !VPU.SparseTensor<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)
-            -> !VPU.SparseTensor<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights> {
-        %0 = VPU.Copy(%arg2) {out_mem_space = @CMX_NN} : !VPU.SparseTensor<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
-            -> !VPU.SparseTensor<data=!Weights_CMX, sparsity_map=!WeightsSM_CMX, is_weights>
-        VPU.Yield %0
-    }
-    %weights_table_sparse_cmx = VPU.NCE.ClusterTiling (%weights_table as %arg2: !WeightsTable_DDR) -> !WeightsTableDistributed {
-        %0 = VPU.Copy(%arg2) {out_mem_space = @CMX_NN} : !WeightsTable_DDR -> !WeightsTable_CMX
-        VPU.Yield %0
-    }
+    %input_sparse_cmx = VPU.Copy(%input_sparse) {out_mem_space = @CMX_NN} : !VPU.SparseTensor<data=!Input_DDR, sparsity_map=!InputSM_DDR>
+            -> !VPU.SparseTensor<data=!InputDistributed, sparsity_map=!InputSMDistributed>
 
-    %output_sparse_cmx = VPU.NCE.ClusterTiling (
-            %input_sparse_cmx as %arg2: !VPU.SparseTensor<data=!Input_CMX, sparsity_map=!InputSM_CMX>,
-            %weights_sparse_cmx as %arg3: !VPU.SparseTensor<data=!Weights_CMX, sparsity_map=!WeightsSM_CMX, is_weights>,
-            %weights_table_sparse_cmx as %arg4: !WeightsTable_CMX)
-            -> !VPU.SparseTensor<data=!OutputDistributed, sparsity_map=!OutputSMDistributed> {
-        %0 = VPU.NCE.Convolution(%arg2, %arg3, %arg4) {
+    %weights_sparse_cmx = VPU.Copy(%weights_sparse) {out_mem_space = @CMX_NN} : !VPU.SparseTensor<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
+            -> !VPU.SparseTensor<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
+
+    %weights_table_sparse_cmx = VPU.Copy(%weights_table) {out_mem_space = @CMX_NN} : !WeightsTable_DDR -> !WeightsTableDistributed
+
+    %output_sparse_cmx = VPU.NCE.Convolution(%input_sparse_cmx, %weights_sparse_cmx, %weights_table_sparse_cmx) {
                 ppe = #VPU.PPEStub<>,
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [64, 32, 3, 3],
                 strides = [1, 1]
-            } -> !VPU.SparseTensor<data=!Output_CMX, sparsity_map=!OutputSM_CMX> {
+            } : !VPU.SparseTensor<data=!InputDistributed, sparsity_map=!InputSMDistributed>, !VPU.SparseTensor<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>, !WeightsTableDistributed -> !VPU.SparseTensor<data=!OutputDistributed, sparsity_map=!OutputSMDistributed> {
             VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
         }
-        VPU.Yield %0
-    }
 
-    %output_sparse = VPU.NCE.ClusterTiling (%output_sparse_cmx as %arg2: !VPU.SparseTensor<data=!Output_CMX, sparsity_map=!OutputSM_CMX>)
-            -> !VPU.SparseTensor<data=!Output_DDR, sparsity_map=!OutputSM_DDR> {
-        %0 = VPU.Copy(%arg2) {out_mem_space = @DDR} : !VPU.SparseTensor<data=!Output_CMX, sparsity_map=!OutputSM_CMX>
+    %output_sparse = VPU.Copy(%output_sparse_cmx) {out_mem_space = @DDR} : !VPU.SparseTensor<data=!OutputDistributed, sparsity_map=!OutputSMDistributed>
             -> !VPU.SparseTensor<data=!Output_DDR, sparsity_map=!OutputSM_DDR>
-        VPU.Yield %0
-    }
 
     return %output_sparse : !VPU.SparseTensor<data=!Output_DDR, sparsity_map=!OutputSM_DDR>
 
@@ -509,7 +489,11 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
     // CHECK-SAME:                 [[INPUT_SM]] as [[ARG10:%[^:]+]]: memref<1x32x16x16xi1, #NHWC, @CMX_NN>,
     // CHECK-SAME:                 [[WEIGHTS_DATA]] as [[ARG11:%[^:]+]]: memref<64x32x3x3xf16, #NHWC, @CMX_NN>,
     // CHECK-SAME:                 [[WEIGHTS_SM]] as [[ARG12:%[^:]+]]: memref<64x1x1x384xi1, @CMX_NN>,
-    // CHECK-SAME:                 [[WEIGHTS_TABLE]] as [[ARG13:%[^:]+]]: memref<64x1x1x4xsi32, @CMX_NN>)
+    // CHECK-SAME:                 [[WEIGHTS_TABLE]] as [[ARG13:%[^:]+]]: memref<64x1x1x4xsi32, @CMX_NN>,
+    // CHECK-SAME:                 [[INPUT_DATA]] as [[ARG16:%[^:]+]]: memref<1x32x16x16xf16, #NHWC, @CMX_NN>,
+    // CHECK-SAME:                 [[INPUT_SM]] as [[ARG17:%[^:]+]]: memref<1x32x16x16xi1, #NHWC, @CMX_NN>,
+    // CHECK-SAME:                 [[OUTPUT_DATA]] as [[ARG18:%[^:]+]]: memref<1x64x14x14xf16, #NHWC, @CMX_NN>,
+    // CHECK-SAME:                 [[OUTPUT_SM]] as [[ARG19:%[^:]+]]: memref<1x64x14x14xi1, #NHWC, @CMX_NN>
     // CHECK-SAME:          outputs([[OUTPUT_DATA]] as [[ARG14:%[^:]+]]: memref<1x64x14x14xf16, #NHWC, @CMX_NN>,
     // CHECK-SAME:                  [[OUTPUT_SM]] as [[ARG15:%[^:]+]]: memref<1x64x14x14xi1, #NHWC, @CMX_NN>)
     // CHECK-SAME:      -> (!VPUIP.DistributedBuffer<1x64x14x14xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
@@ -522,10 +506,10 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
     // CHECK-SAME:              weights([[ARG11]]
     // CHECK-SAME:              weights_sparsity_map([[ARG12]]
     // CHECK-SAME:              weight_table([[ARG13]]
-    // CHECK-SAME:              parent_input([[ARG9]]
-    // CHECK-SAME:              parent_input_sparsity_map([[ARG10]]
-    // CHECK-SAME:              parent_output([[ARG14]]
-    // CHECK-SAME:              parent_output_sparsity_map([[ARG15]]
+    // CHECK-SAME:              parent_input([[ARG16]]
+    // CHECK-SAME:              parent_input_sparsity_map([[ARG17]]
+    // CHECK-SAME:              parent_output([[ARG18]]
+    // CHECK-SAME:              parent_output_sparsity_map([[ARG19]]
     // CHECK-SAME:              outputs([[ARG14]]
     // CHECK-SAME:              output_sparsity_map([[ARG15]]
     // CHECK-SAME:          -> memref<1x64x14x14xf16, #NHWC, @CMX_NN>, memref<1x64x14x14xi1, #NHWC, @CMX_NN> variants :  {
@@ -557,7 +541,7 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 module {
-  IE.CNNNetwork entryPoint : @SparseNCEConvSETable inputsInfo : {
+  net.NetworkInfo entryPoint : @SparseNCEConvSETable inputsInfo : {
     DataInfo "Parameter1" : tensor<1x32x16x16xf16>
     DataInfo "Parameter2" : tensor<1x32x16x16xi1>
   } outputsInfo : {
@@ -592,7 +576,7 @@ func.func @SparseNCEConvSETable(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             rawFilterShape = [64, 32, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}> {
+        } : !VPU.SparseTensor<data=tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x32x16x16xi1, {mem_space = @CMX_NN, order = #NHWC}>, storage_element_table=tensor<1x1x16x16xi32, {mem_space = @CMX_NN, order = #NHWC}>>, tensor<64x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}> -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}> {
             VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
         }
     %output = VPU.Copy(%output_cmx) :
@@ -672,7 +656,7 @@ func.func @SparseNCEConvSETable(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>,
 #GNHWC = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4, d2)>
 #NCDHW = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
 module {
-  IE.CNNNetwork entryPoint : @NCEMatMul inputsInfo : {
+  net.NetworkInfo entryPoint : @NCEMatMul inputsInfo : {
     DataInfo "Parameter" : tensor<256x1x32x49x1xf16>
   } outputsInfo : {
     DataInfo "Result" : tensor<256x1x64x49x1xf16>
@@ -704,7 +688,7 @@ func.func @NCEMatMul(%arg0 : tensor<256x1x32x49x1xf16, {mem_space = @CMX_NN, ord
     // CHECK:       [[OUTPUT_BUF:%.+]] = memref.alloc() : memref<256x1x64x49x1xf16, #GNHWC, @CMX_NN>
 
     // CHECK:       [[OUT:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    // CHECK-SAME   kernel_size = [1, 1], kernel_strides = [1, 1],
+    // CHECK-SAME:  kernel_size = [1, 1], kernel_strides = [1, 1],
     // CHECK-SAME:  task_type = #VPUIP.nce_task_type<CONV>} input([[ARG0]] : memref<256x1x32x49x1xf16, #GNHWC, @CMX_NN>)
     // CHECK-SAME:  weights([[WEIGHTS]] : memref<256x64x32x1x1xf16, #GNHWC, @CMX_NN>) weight_table([[WEIGHT_TABLE]] : memref<256x64x1x1x4xsi32, @CMX_NN>)
     // CHECK-SAME:  parent_input([[ARG0]] : memref<256x1x32x49x1xf16, #GNHWC, @CMX_NN>) parent_output([[OUTPUT_BUF]] : memref<256x1x64x49x1xf16, #GNHWC, @CMX_NN>)

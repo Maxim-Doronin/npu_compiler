@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/reserved_memory_info.hpp"
 #include "vpux/compiler/core/linear_scan_handler.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 #include "vpux/utils/core/error.hpp"
 
@@ -16,8 +17,8 @@ ReservedMemInfo::ReservedMemInfo(mlir::ModuleOp moduleOp, mlir::AnalysisManager&
     // TODO:#108991 -- for now only "main" function with inner functions is supported,
     // but it is possible support multiple nested calls using a loop through call/function ops
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp netInfo;
-    IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, netFunc);
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
     auto liveRangeInfo = am.getChildAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::DDR>>(netFunc);
     auto scanResult = am.getChildAnalysis<AllocationInfo>(netFunc).getScanResult(VPU::MemoryKind::DDR);

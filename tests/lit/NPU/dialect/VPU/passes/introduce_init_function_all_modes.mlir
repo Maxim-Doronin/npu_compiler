@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="extraction-mode=gen-all" %s | FileCheck --check-prefix=CHECK-ALL %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="extraction-mode=gen-init" %s | FileCheck --check-prefix=CHECK-INIT %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="extraction-mode=gen-main" %s | FileCheck --check-prefix=CHECK-MAIN %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-all" %s | FileCheck --check-prefix=CHECK-ALL %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" %s | FileCheck --check-prefix=CHECK-INIT %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-main" %s | FileCheck --check-prefix=CHECK-MAIN %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
-// Note: these tests verify extraction-mode differences of the
+// Note: these tests verify ws-extraction-mode differences of the
 // introduce-init-function pass. They are not supposed to test everything but
 // rather test the bare minimum, focusing on the difference in the mode.
 
@@ -20,7 +20,7 @@
 #-}
 
 module @TestAllOptions {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input1" : tensor<4x16xf16>
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xf32>
@@ -36,7 +36,7 @@ module @TestAllOptions {
 }
 
 // CHECK-ALL-LABEL:     @TestAllOptions
-// CHECK-ALL:           IE.CNNNetwork entryPoint : @wrapper_main
+// CHECK-ALL:           net.NetworkInfo entryPoint : @wrapper_main
 // CHECK-ALL:               inputsInfo : {
 // CHECK-ALL-NEXT:              DataInfo "input1" : tensor<4x16xf16>
 // CHECK-ALL:               outputsInfo : {
@@ -62,11 +62,11 @@ module @TestAllOptions {
 
 
 // CHECK-INIT-LABEL:    @TestAllOptions
-// CHECK-INIT:          IE.CNNNetwork entryPoint : @init
+// CHECK-INIT:          net.NetworkInfo entryPoint : @init
 // CHECK-INIT:              inputsInfo : {
 // CHECK-INIT-NEXT:             DataInfo "in_ov_1" : tensor<4x4xf32>
 // CHECK-INIT:              outputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_266771224" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
 
 // CHECK-INIT:          func.func @init([[ORIG_CST:%.+]]: tensor<4x4xf32>) -> tensor<4x4xf32>
 // CHECK-INIT-NEXT:         [[ADDEND:%.+]] = const.Declare tensor<1xf32>
@@ -78,10 +78,10 @@ module @TestAllOptions {
 
 
 // CHECK-MAIN-LABEL:    @TestAllOptions
-// CHECK-MAIN:          IE.CNNNetwork entryPoint : @main
+// CHECK-MAIN:          net.NetworkInfo entryPoint : @main
 // CHECK-MAIN:              inputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "input1" : tensor<4x16xf16>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_266771224" : tensor<4x4xf32>
+// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
 // CHECK-MAIN:              outputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "output1" : tensor<2x2xf32>
 // CHECK-MAIN-NEXT:             DataInfo "output2" : tensor<4x16xf32>
@@ -110,7 +110,7 @@ module @TestAllOptions {
 #-}
 
 module @OutlinedConstants {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input1" : tensor<4x16xf16>
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xf32>
@@ -133,7 +133,7 @@ module @OutlinedConstants {
     }
 
 // CHECK-ALL-LABEL:     @OutlinedConstants
-// CHECK-ALL:           IE.CNNNetwork entryPoint : @wrapper_main
+// CHECK-ALL:           net.NetworkInfo entryPoint : @wrapper_main
 // CHECK-ALL:              inputsInfo : {
 // CHECK-ALL-NEXT:             DataInfo "input1" : tensor<4x16xf16>
 // CHECK-ALL:              outputsInfo : {
@@ -148,12 +148,12 @@ module @OutlinedConstants {
 
 
 // CHECK-INIT-LABEL:    @OutlinedConstants
-// CHECK-INIT:          IE.CNNNetwork entryPoint : @init
+// CHECK-INIT:          net.NetworkInfo entryPoint : @init
 // CHECK-INIT:              inputsInfo : {
 // CHECK-INIT-NEXT:             DataInfo "in_ov_1" : tensor<4x4xf32>
 // CHECK-INIT:              outputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_266771224" : tensor<4x4xf32>
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_687568726" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_4063002564071487318" : tensor<4x4xf32>
 
 // CHECK-INIT-NOT:      func.func private @main_part1
 // CHECK-INIT:          func.func @init
@@ -162,11 +162,11 @@ module @OutlinedConstants {
 
 
 // CHECK-MAIN-LABEL:    @OutlinedConstants
-// CHECK-MAIN:          IE.CNNNetwork entryPoint : @main
+// CHECK-MAIN:          net.NetworkInfo entryPoint : @main
 // CHECK-MAIN:              inputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "input1" : tensor<4x16xf16>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_266771224" : tensor<4x4xf32>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_687568726" : tensor<4x4xf32>
+// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
+// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_4063002564071487318" : tensor<4x4xf32>
 // CHECK-MAIN:              outputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "output1" : tensor<2x2xf32>
 // CHECK-MAIN-NEXT:             DataInfo "output2" : tensor<4x16xf16>
@@ -176,4 +176,112 @@ module @OutlinedConstants {
 // CHECK-MAIN-NOT:      func.func private @init
 // CHECK-MAIN:          func.func @main
 // CHECK-MAIN-NOT:      func.func private @wrapper_main
+}
+
+// -----
+
+// This test verifies that constant hashes are computed correctly.
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd",
+            ov_42: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
+        }
+    }
+#-}
+
+module @HashConsistency {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "input1" : tensor<4x4xf16>
+    } outputsInfo : {
+        DataInfo "output1" : tensor<4x4xf16>
+    }
+
+    func.func @main(%input: tensor<4x4xf16>) -> tensor<4x4xf16> {
+        // Note: {ov1, ov42}_common_hash share the exact same "in init"
+        // transformations -> this means their hashes would match
+        %ov1_common_hash = const.Declare tensor<1x1xf16> = dense_resource<ov_1> : tensor<4x4xf32>,
+            [#const.CastElemType<f16>, #const.Rescale<3.0>, #const.SubView<[0, 0], [1, 1]>]
+        %ov42_common_hash = const.Declare tensor<1x1xf16> = dense_resource<ov_42> : tensor<2x8xf32>,
+            [#const.CastElemType<f16>, #const.Rescale<3.0>, #const.SubView<[2, 2], [1, 1]>]
+
+        %ov1_unique_hash = const.Declare tensor<1x1xf16> = dense_resource<ov_1> : tensor<4x4xf32>,
+            [#const.CastElemType<f16>, #const.Add<42.0>, #const.SubView<[0, 0], [1, 1]>]
+
+        %0 = VPU.Add(%input, %ov1_common_hash) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<4x4xf16>, tensor<1x1xf16> -> tensor<4x4xf16>
+        %1 = VPU.Add(%0, %ov42_common_hash) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<4x4xf16>, tensor<1x1xf16> -> tensor<4x4xf16>
+        %2 = VPU.Add(%1, %ov1_unique_hash) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<4x4xf16>, tensor<1x1xf16> -> tensor<4x4xf16>
+
+        return %2 : tensor<4x4xf16>
+    }
+
+// Note: CHECK-ALL also checks how IR generation looks to verify the basics
+
+// CHECK-ALL-LABEL:     @HashConsistency
+// CHECK-ALL:   func.func private @init([[OV_1:%.+]]: tensor<4x4xf32>, [[OV_42:%.+]]: tensor<2x8xf32>)
+// CHECK-ALL-SAME:  -> (tensor<4x4xf16>, tensor<4x4xf16>, tensor<2x8xf16>)
+// CHECK-ALL:       [[CAST_1:%.+]] = IE.Convert([[OV_1]]) {dstElemType = f16}
+
+// CHECK-ALL:       [[FOURTYTWO:%.+]] = const.Declare tensor<1xf16> = dense<4.200000e+01>
+// CHECK-ALL:       [[ADD_1:%.+]] = IE.Add([[CAST_1]], [[FOURTYTWO]])
+
+// CHECK-ALL:       [[THREE0:%.+]] = const.Declare tensor<1xf16> = dense<3.000000e+00>
+// CHECK-ALL:       [[RESCALE_1:%.+]] = IE.Multiply([[CAST_1]], [[THREE0]])
+
+// CHECK-ALL:       [[CAST_42:%.+]] = IE.Convert([[OV_42]]) {dstElemType = f16}
+// CHECK-ALL:       [[THREE1:%.+]] = const.Declare tensor<1xf16> = dense<3.000000e+00>
+// CHECK-ALL:       [[RESCALE_42:%.+]] = IE.Multiply([[CAST_42]], [[THREE1]])
+
+// CHECK-ALL:       return [[ADD_1]], [[RESCALE_1]], [[RESCALE_42]]
+
+
+// CHECK-ALL:   func.func private @main([[INPUT:%.+]]: tensor<4x4xf16>, [[ADD_1:%.+]]: tensor<4x4xf16>, [[RESCALE_1:%.+]]: tensor<4x4xf16>, [[RESCALE_42:%.+]]: tensor<2x8xf16>)
+// CHECK-ALL-SAME:  -> tensor<4x4xf16>
+// CHECK-ALL:       [[SUBVIEW_ADD_1:%.+]] = VPU.Slice [[ADD_1]] [0, 0] [1, 1]
+// CHECK-ALL:       [[SUBVIEW_RESCALE_1:%.+]] = VPU.Slice [[RESCALE_1]] [0, 0] [1, 1]
+// CHECK-ALL:       [[SUBVIEW_RESCALE_42:%.+]] = VPU.Slice [[RESCALE_42]] [2, 2] [1, 1]
+// CHECK-ALL:       [[CHAIN0:%.+]] = VPU.Add([[INPUT]], [[SUBVIEW_RESCALE_1]])
+// CHECK-ALL:       [[CHAIN1:%.+]] = VPU.Add([[CHAIN0]], [[SUBVIEW_RESCALE_42]])
+// CHECK-ALL:       [[CHAIN2:%.+]] = VPU.Add([[CHAIN1]], [[SUBVIEW_ADD_1]])
+// CHECK-ALL:       return [[CHAIN2]]
+
+
+// CHECK-ALL:   func.func @wrapper_main([[INPUT:%.+]]: tensor<4x4xf16>) -> tensor<4x4xf16>
+// CHECK-ALL:       [[OV_1:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<ov_1>
+// CHECK-ALL:       [[OV_42:%.+]] = const.Declare tensor<2x8xf32> = dense_resource<ov_42>
+// CHECK-ALL:       [[INIT:%.+]]:3 = call @init([[OV_1]], [[OV_42]])
+// CHECK-ALL:       [[MAIN:%.+]] = call @main([[INPUT]], [[INIT]]#0, [[INIT]]#1, [[INIT]]#2)
+// CHECK-ALL:       return [[MAIN]]
+
+
+// CHECK-INIT-LABEL:    @HashConsistency
+// CHECK-INIT:          net.NetworkInfo entryPoint : @init
+// CHECK-INIT:              inputsInfo : {
+// CHECK-INIT-NEXT:             DataInfo "in_ov_42" : tensor<2x8xf32>
+// CHECK-INIT-NEXT:             DataInfo "in_ov_1" : tensor<4x4xf32>
+// CHECK-INIT:              outputsInfo : {
+// CHECK-INIT-NEXT:             DataInfo "out_ov_42_hash_6705143075530545067" : tensor<2x8xf16>
+// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_7071254137056153727" : tensor<4x4xf16>
+// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_6705143075530545067" : tensor<4x4xf16>
+
+// CHECK-INIT:  func.func @init([[OV_42:%.+]]: tensor<2x8xf32>, [[OV_1:%.+]]: tensor<4x4xf32>)
+// CHECK-INIT-SAME: -> (tensor<2x8xf16>, tensor<4x4xf16>, tensor<4x4xf16>)
+
+
+// CHECK-MAIN-LABEL:    @HashConsistency
+// CHECK-MAIN:          net.NetworkInfo entryPoint : @main
+// CHECK-MAIN:              inputsInfo : {
+// CHECK-MAIN-NEXT:             DataInfo "input1" : tensor<4x4xf16>
+// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_7071254137056153727" : tensor<4x4xf16>
+// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_6705143075530545067" : tensor<4x4xf16>
+// CHECK-MAIN-NEXT:             DataInfo "out_ov_42_hash_6705143075530545067" : tensor<2x8xf16>
+// CHECK-MAIN:              outputsInfo : {
+// CHECK-MAIN-NEXT:             DataInfo "output1" : tensor<4x4xf16>
+
+// CHECK-MAIN:  func.func @main([[INPUT:%.+]]: tensor<4x4xf16>, [[OV_1_ADD:%.+]]: tensor<4x4xf16>, [[OV_1_RESCALE:%.+]]: tensor<4x4xf16>, [[OV_42_RESCALE:%.+]]: tensor<2x8xf16>)
+// CHECK-MAIN-SAME: -> tensor<4x4xf16>
 }

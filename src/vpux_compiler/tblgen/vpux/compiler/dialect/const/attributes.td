@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,6 +20,37 @@ include "mlir/IR/CommonAttrConstraints.td"
 class Const_Attr<string name, list<Trait> traits = [], string baseCppClass = "mlir::Attribute"> :
         AttrDef<Const_Dialect, name, traits, baseCppClass> {
     let mnemonic = name;
+}
+
+//
+// OpaqueI64ElementsAttr
+//
+
+def Const_OpaqueI64ElementsAttr : Const_Attr<"OpaqueI64Elements", [ElementsAttrInterface, TypedAttrInterface]> {
+    let summary = "An opaque representation of a si64 array";
+    let description = [{
+      Const_OpaqueI64ElementsAttr is a constant attribute that represents an array of 64-bit integers.
+      This attribute stores the data for the 64-bit integer array it represents and contains the necessary
+      memory to hold these constant values, ensuring that the data is directly accessible within the MLIR context.
+    }];
+
+    let parameters = (ins AttributeSelfTypeParameter<"", "mlir::ShapedType">:$type,
+                          ArrayRefParameter<"int64_t">:$value);
+    let builders = [
+        AttrBuilderWithInferredContext<(ins "mlir::ShapedType":$type,
+                                          "mlir::ArrayRef<int64_t>":$value), [{
+            return $_get(type.getContext(), type, value);
+        }]>,
+    ];
+
+    let extraClassDeclaration = [{
+        using ValueType = ArrayRef<int64_t>;
+
+    }];
+
+    let storageNamespace = "details";
+    let hasCustomAssemblyFormat = 1;
+    let skipDefaultBuilders = 1;
 }
 
 //
@@ -323,8 +354,10 @@ def Const_ConvertElemTypeAttr : Const_Attr<"ConvertElemType",
     let summary = "Convert constant content element type";
 
     let description = [{
-        This transformation does actual data type conversion.
-        Right now only support the sub byte type conversion.
+        This transformation performs actual data type conversion. The supported
+        conversions are:
+        * Sub-byte type unpacking (e.g. i4 -> i8)
+        * Quantized to quantized type conversion
     }];
 
     let parameters = (ins

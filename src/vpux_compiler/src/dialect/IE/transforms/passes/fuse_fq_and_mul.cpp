@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -145,9 +147,10 @@ mlir::LogicalResult FuseFQAndMul::matchAndRewrite(IE::MultiplyOp multiplyOp, mli
 
     auto newOutHighConst =
             Const::createFloatConst(rewriter, fakeQuantOp.getLoc(),
-                                    outHighConst.getType().cast<mlir::RankedTensorType>(), ArrayRef(outHighVals));
-    auto newOutLowConst = Const::createFloatConst(
-            rewriter, fakeQuantOp.getLoc(), outLowConst.getType().cast<mlir::RankedTensorType>(), ArrayRef(outLowVals));
+                                    mlir::cast<mlir::RankedTensorType>(outHighConst.getType()), ArrayRef(outHighVals));
+    auto newOutLowConst =
+            Const::createFloatConst(rewriter, fakeQuantOp.getLoc(),
+                                    mlir::cast<mlir::RankedTensorType>(outLowConst.getType()), ArrayRef(outLowVals));
 
     rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(multiplyOp, fakeQuantOp.getInput(), fakeQuantOp.getInputLow(),
                                                     fakeQuantOp.getInputHigh(), newOutLowConst, newOutHighConst,

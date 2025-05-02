@@ -1,10 +1,14 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -20,8 +24,10 @@ mlir::LogicalResult vpux::IE::LayoutCastOp::inferReturnTypeComponents(
     }
 
     const auto outAffineMap = overrideLayout.getDstOrder();
-    const auto inType = overrideLayout.getInput().getType().cast<mlir::RankedTensorType>();
-    const auto outDesc = vpux::getTensorAttr(outAffineMap, nullptr);
+    const auto inType = mlir::cast<mlir::RankedTensorType>(overrideLayout.getInput().getType());
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
+                      IE::LayoutCastOp::getOperationName());
+    const auto outDesc = vpux::getTensorAttr(ctx, outAffineMap, nullptr);
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), outDesc);
 
     return mlir::success();
@@ -33,7 +39,7 @@ mlir::LogicalResult vpux::IE::LayoutCastOp::inferReturnTypeComponents(
 
 mlir::LogicalResult vpux::IE::LayoutCastOp::verify() {
     const auto outAffineMap = getDstOrder();
-    const auto inType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     if (inType.getRank() != outAffineMap.getNumDims()) {
         return errorAt(*this, "Cannot apply {0} map to {1}.", outAffineMap, inType.getShape());
     }

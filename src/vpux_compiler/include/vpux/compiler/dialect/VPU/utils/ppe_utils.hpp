@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,17 +22,6 @@ double computeAvgPoolQuantScale(mlir::Type inputType, mlir::Type outputType, mli
 
 double computeScale(mlir::Operation* operation);
 
-template <typename PostOpT>
-typename PostOpT::Adaptor getPostOpAdaptor(vpux::IE::LayerWithPostOpInterface operation) {
-    typename PostOpT::Adaptor adaptor(std::nullopt, nullptr, vpux::toProperties<PostOpT>(operation.getPostOpAttrs()));
-#ifndef NDEBUG
-    // Validation is enabled in Debug builds to facilitate debugging.
-    VPUX_THROW_WHEN(adaptor.verify(operation.getLoc()).failed(), "Wrong attributes '{0}' for '{1}' PostOp",
-                    operation.getPostOpAttrs(), operation.getPostOp());
-#endif
-    return adaptor;
-}
-
 template <typename F16Type>
 static int32_t packClamp(double value) {
     // The IntPPE HW pipeline branches into 2 cases depending on what is the output type of the operations it handles:
@@ -47,7 +36,7 @@ static int32_t packClamp(double value) {
     static_assert(std::is_same_v<F16Type, vpux::type::float16> || std::is_same_v<F16Type, vpux::type::bfloat16>,
                   "Invalid packing type, expected a 16-bit float type");
     // Convert to f16 using the type ctor:
-    const F16Type valueF16 = value;
+    const F16Type valueF16(value);
     // Reinterpret back to integer:
     const auto valueI16 = reinterpret_cast<const int16_t*>(&valueF16);
     // Cast into the attr type, int32:

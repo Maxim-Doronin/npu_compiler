@@ -8,7 +8,7 @@
 // expected-error@+1 {{The module attribute 'VPU.debatch' doesn't support multiple `OutlinerPassOptions`, got: 2}}
 module @ValidModuleWithAttrButIncorrectOptions attributes {VPU.debatch = 1 : i64} {
 
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<3x3x62x62xf16>
     } outputsInfo : {

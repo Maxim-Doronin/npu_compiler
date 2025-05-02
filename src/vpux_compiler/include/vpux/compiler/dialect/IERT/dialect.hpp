@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/const/dialect.hpp"
+
 #include <mlir/IR/Dialect.h>
 #include <mlir/IR/DialectImplementation.h>
 

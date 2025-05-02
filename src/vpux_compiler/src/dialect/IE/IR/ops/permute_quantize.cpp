@@ -1,12 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -33,7 +36,7 @@ mlir::LogicalResult vpux::IE::PermuteQuantizeOp::inferReturnTypeComponents(
     const auto padBegin = parseIntArrayAttr<int64_t>(permute_quantize.getPadsBegin());
     const auto padEnd = parseIntArrayAttr<int64_t>(permute_quantize.getPadsEnd());
 
-    const auto inType = permute_quantize.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(permute_quantize.getInput().getType());
 
     const auto inOrder = DimsOrder::fromValue(input);
     const auto outOrder = DimsOrder::fromAffineMap(dstOrder);
@@ -45,7 +48,9 @@ mlir::LogicalResult vpux::IE::PermuteQuantizeOp::inferReturnTypeComponents(
     const auto outMemShape = applyPerm(inMemShape, memPerm);
     const auto outShape = outOrder.toLogicalOrder(outMemShape);
 
-    const auto outDesc = vpux::getTensorAttr(dstOrder, nullptr);
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
+                      IE::PermuteQuantizeOp::getOperationName());
+    const auto outDesc = vpux::getTensorAttr(ctx, dstOrder, nullptr);
 
     inferredReturnShapes.emplace_back(outShape.raw(), dstElemType, outDesc);
 
@@ -72,8 +77,8 @@ mlir::LogicalResult ConvertToPermuteCast::matchAndRewrite(IE::PermuteQuantizeOp 
     const auto inShape = getShape(origOp.getInput());
     const auto inMemShape = inOrder.toMemoryOrder(inShape);
 
-    const auto inputType = origOp.getInput().getType().cast<NDTypeInterface>().getElementType();
-    const auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>().getElementType();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getElementType();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getElementType();
 
     if (!isTrivialPermute(inMemShape, origOp.getMemPerm()) || inputType != outputType ||
         inShape != getShape(origOp.getOutput())) {

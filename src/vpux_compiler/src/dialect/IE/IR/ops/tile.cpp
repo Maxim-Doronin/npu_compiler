@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,7 +26,7 @@ mlir::SmallVector<int64_t> calcTileOutputShape(mlir::Value input, ArrayRef<int64
     // "*data*" by prepending 1's to it, e.g. let's shape of *"data"* is equal to (4, 2, 3) and *"repeats"* is equal to
     // [2, 2], then *"repeats"* will be promoted to [1, 2, 2] and result shape will be (4, 4, 6)
 
-    const auto inType = input.getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(input.getType());
     auto outShape = to_small_vector(inType.getShape());
 
     while (repeatsVals.size() > outShape.size()) {
@@ -59,7 +59,7 @@ mlir::LogicalResult vpux::IE::TileOp::inferReturnTypeComponents(
     }
 
     llvm::SmallVector<int64_t> repeatsVector;
-    const auto inType = tile.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(tile.getInput().getType());
     if (tile.getRepeats() != nullptr) {
         auto repeatsConst = tile.getRepeats().getDefiningOp<Const::DeclareOp>().getContent();
         repeatsVector = to_small_vector(repeatsConst.getValues<int64_t>());
@@ -69,8 +69,8 @@ mlir::LogicalResult vpux::IE::TileOp::inferReturnTypeComponents(
         return errorAt(loc, "Repeats was not provided properly");
     }
     auto outShape = calcTileOutputShape(tile.getInput(), repeatsVector);
-
-    inferredReturnShapes.emplace_back(outShape, inType.getElementType());
+    const auto outDesc = vpux::getTensorAttr(ctx, inType.getDimsOrder(), inType.getMemSpace());
+    inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
 
     return mlir::success();
 }
@@ -126,7 +126,7 @@ mlir::LogicalResult AddUnsqueeze::matchAndRewrite(IE::TileOp origOp, mlir::Patte
     }
 
     auto newRepeats = parseIntArrayAttr<int64_t>(origOp.getRepeatsValues().value());
-    auto inputRank = origOp.getInput().getType().cast<mlir::ShapedType>().getRank();
+    auto inputRank = mlir::cast<mlir::ShapedType>(origOp.getInput().getType()).getRank();
     auto numRepeats = static_cast<int64_t>(newRepeats.size());
     int64_t nDimsToAdd = 0;
 
@@ -264,7 +264,7 @@ mlir::LogicalResult vpux::IE::PerAxisTileOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = perAxisTile.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(perAxisTile.getInput().getType());
 
     const auto axis = checked_cast<unsigned int>(perAxisTile.getAxis());
     const auto tiles = checked_cast<unsigned int>(perAxisTile.getTiles());

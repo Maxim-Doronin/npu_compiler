@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
@@ -44,7 +45,7 @@ void UnwrapClusterTilingPass::safeRunOnFunc() {
         builder.setInsertionPointAfter(clusterOp);
 
         for (auto operand : innerOp->getOperands()) {
-            if (auto blockArg = operand.dyn_cast<mlir::BlockArgument>()) {
+            if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
                 mapper.map(operand, clusterOp.getOperand(blockArg.getArgNumber()));
             }
         }

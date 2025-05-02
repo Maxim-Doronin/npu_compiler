@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -158,7 +158,15 @@ SmallVector<std::pair<Strategy, StrategyCost>> StrategyManagerImplPass::getOpera
             // in case prefetch tiling is enabled, both cases should be taken into account
             // with prefetching and without
             hasPrefetch ^= _enablePrefetchTiling;
-            const auto tilingNeeded = opNeedsTiling(operation, prefetchTiling, _log);
+            bool tilingNeeded = false;
+            auto tilingModeOpt = getTilingMode(operation, prefetchTiling, _log);
+            if (tilingModeOpt.has_value()) {
+                auto [tilingMode, prefetchingCandidate] = tilingModeOpt.value();
+                if (tilingMode != TilingMode::PREFETCHING ||
+                    (prefetchingCandidate && VPU::prefetchTilingConditionSatisfied(operation, _log))) {
+                    tilingNeeded = true;
+                }
+            }
             if (tilingNeeded) {
                 const auto layerTilingResult = getLayerTilingStrategy(tilingBuilderOp, prefetchTiling, mode, _log);
 

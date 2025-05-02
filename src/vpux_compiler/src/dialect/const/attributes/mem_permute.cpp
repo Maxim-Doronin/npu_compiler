@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -97,7 +97,7 @@ vpux::NDTypeInterface vpux::Const::MemPermuteAttr::inferOutputType(vpux::NDTypeI
     const auto outShape = dstOrder.toLogicalOrder(outMemShape);
 
     auto elemType = input.getElementType();
-    if (auto perAxisType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto origAxis = perAxisType.getQuantizedDimension();
         const auto inMemAxis = inOrder.dimPos(Dim(origAxis));
         const auto outMemAxis = DimsOrder::fromAffineMap(memPerm).dimPos(Dim(inMemAxis));

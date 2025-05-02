@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 using namespace vpux;
@@ -47,22 +48,24 @@ mlir::LogicalResult vpux::VPU::LSTMSequenceOp::inferReturnTypes(
     const auto outputHiddenStateType = mlir::RankedTensorType::get(initialHiddenStateShape, elementType, tensorAttr);
     const auto outputCellStateType = mlir::RankedTensorType::get(initialHiddenStateShape, elementType, tensorAttr);
 
-    if (inDataShape.isStatic()) {
-        inferredReturnTypes.push_back(outputHiddenValuesType);
-    } else {
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(inDataType)) {
+        const auto inBounds = boundedType.getBounds();
         const auto outputHVRank = outputHiddenValuesShape.size();
         auto outHVBounds = SmallVector<int64_t>(outputHVRank);
-        const auto inDataBoundedType = mlir::cast<vpux::BoundedTypeInterface>(inDataType);
 
         for (size_t i = 0; i < outputHVRank; i++) {
             if (outputHiddenValuesShape[i] == mlir::ShapedType::kDynamic) {
-                outHVBounds[i] = parseIntArrayAttr<int64_t>(inDataBoundedType.getBounds())[lengthIndex];
+                outHVBounds[i] = inBounds[lengthIndex];
             } else {
                 outHVBounds[i] = outputHiddenValuesShape[i];
             }
         }
-        inferredReturnTypes.push_back(mlir::cast<vpux::BoundedTypeInterface>(outputHiddenValuesType)
-                                              .changeBounds(getIntArrayAttr(ctx, outHVBounds)));
+
+        auto boundedHiddenValuesType = Core::BoundedTensorType::get(outputHiddenValuesType, outHVBounds);
+        inferredReturnTypes.push_back(boundedHiddenValuesType);
+
+    } else {
+        inferredReturnTypes.push_back(outputHiddenValuesType);
     }
 
     inferredReturnTypes.push_back(outputHiddenStateType);

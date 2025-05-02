@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2024 - 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/interfaces/d2s_to_transposed_conv_verifier.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -190,8 +191,8 @@ mlir::LogicalResult convertDepthFirstOp(mlir::MLIRContext* ctx, IE::DepthToSpace
                                                                               /* outputPadding = */ outputPadding,
                                                                               /* postOp = */ nullptr,
                                                                               /* clamp = */ nullptr,
-                                                                              /* outputChannels = */ nullptr,
-                                                                              /* inputChannels = */ nullptr);
+                                                                              /* outputPadding = */ nullptr,
+                                                                              /* inputPadding = */ nullptr);
     extendOpLoc(transConv, "as_transcov");
     log.trace("transposed conv: '{0}'", transConv);
 

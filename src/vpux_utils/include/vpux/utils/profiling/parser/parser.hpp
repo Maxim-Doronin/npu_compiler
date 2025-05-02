@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 #include "vpux/utils/profiling/common.hpp"
 #include "vpux/utils/profiling/parser/device.hpp"
 #include "vpux/utils/profiling/parser/hw.hpp"

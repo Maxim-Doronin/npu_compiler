@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -56,7 +56,7 @@ constexpr llvm::StringLiteral inputIR = R"(
 
 constexpr llvm::StringLiteral multipleFuncIR = R"(
  module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xui8>
     } outputsInfo : {

@@ -1,22 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/sparsity_strategy.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-
 #include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/compiler/utils/types.hpp"
-
-#include "vpux/utils/core/enums.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/utils/core/numeric.hpp"
-
-#include <limits>
 
 using namespace vpux;
 namespace vpux {

@@ -21,6 +21,21 @@ func.func @UniquifyReorders(%arg0: tensor<1x16x227x227xf16>) -> tensor<1x16x227x
 
 // -----
 
+#CWH = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
+
+func.func @UniquifyTranspose(%arg0: tensor<1x1537x256xf32>) -> (tensor<1x256x1537xf32>, tensor<1x256x1537xf32>) {
+    %0 = IE.Transpose(%arg0) {order_value = #CWH} : tensor<1x1537x256xf32> -> tensor<1x256x1537xf32>
+    %1 = IE.Transpose(%arg0) {order_value = #CWH} : tensor<1x1537x256xf32> -> tensor<1x256x1537xf32>
+
+    return %0, %1 : tensor<1x256x1537xf32>, tensor<1x256x1537xf32>
+
+    // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose
+    // CHECK-NOT: IE.Transpose
+    // CHECK: return [[TRANSPOSE]], [[TRANSPOSE]]
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 func.func @ReordersWithDifferentConsumerOps(%arg0: tensor<1x16x112x112xf16>) -> tensor<1x16x112x112xf16, {order = #NHWC}> {
@@ -452,7 +467,7 @@ func.func @UniquifyAddsSwappedInputs(%arg0: tensor<1x128x4x4xf16>, %arg1: tensor
     // CHECK:     [[ADD:%.+]] = IE.Add({{[^:]+}}, {{[^:]+}}) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
     // CHECK:     [[CONV:%.+]] = IE.GroupConvolution([[ADD]], [[CST]], [[CST0]]) {dilations = [1, 1], groups = 128 : i64, pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x128x4x4xf16>, tensor<128x1x3x3xf16>, tensor<1x128x1x1xf16> -> tensor<1x128x4x4xf16>
     // CHECK:     [[ADD1:%.+]] = IE.Add([[ADD]], [[CONV]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
-    // CHECK-NOT: IE.ADD
+    // CHECK-NOT: IE.Add
     // CHECK:     return [[ADD1]], [[ADD1]] : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16>
 
 }
@@ -619,6 +634,8 @@ func.func @UniquifyMaxPool(%arg0: tensor<1x1x16x16xf16>) -> (tensor<1x1x8x8xf16>
     //CHECK:      return  [[MAXPOOL]], [[MAXPOOL]] : tensor<1x1x8x8xf16>, tensor<1x1x8x8xf16>
 }
 
+// -----
+
 // CHECK-LABEL: @DoNotUniquifyAvgPool
 func.func @DoNotUniquifyAvgPool(%arg0: tensor<1x1x16x16xf16>) -> (tensor<1x1x8x8xf16>, tensor<1x1x8x8xf16>) {
     %0 = IE.AvgPool(%arg0) {
@@ -649,6 +666,8 @@ func.func @DoNotUniquifyAvgPool(%arg0: tensor<1x1x16x16xf16>) -> (tensor<1x1x8x8
 
     //CHECK:      return  [[AVGPOOL0]], [[AVGPOOL1]] : tensor<1x1x8x8xf16>, tensor<1x1x8x8xf16>
 }
+
+// -----
 
 // CHECK-LABEL: @DoNotUniquifyMaxPool
 func.func @DoNotUniquifyMaxPool(%arg0: tensor<1x1x16x16xf16>) -> (tensor<1x1x8x8xf16>, tensor<1x1x8x8xf16>) {

@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
-#include "intel_npu/npu_private_properties.hpp"
 #include "single_op_tests/interpolate.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -26,7 +23,9 @@ class InterpolateSELayerTest_NPU3720 : public InterpolateLayerTestCommon {
 
 class InterpolateM2ILayerTest_NPU4000 : public InterpolateLayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-m2i=true";
+        // TODO: E129229
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-m2i=true workload-management-enable=false";
     }
 };
 
@@ -51,8 +50,6 @@ TEST_P(InterpolateLayerTest_NPU4000, HW) {
 }
 TEST_P(InterpolateM2ILayerTest_NPU4000, HW) {
     setDefaultHardwareMode();
-    // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 
@@ -65,8 +62,6 @@ TEST_P(InterpolateM2ILayerTestU8LinearPL_NPU4000, HW) {
     rel_threshold = 1.0f;
     abs_threshold = 1.0f;
     setDefaultHardwareMode();
-    // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 
@@ -74,16 +69,12 @@ TEST_P(InterpolateM2ILayerTestU8LinearIL_NPU4000, HW) {
     rel_threshold = 1.0f;
     abs_threshold = 1.0f;
     setDefaultHardwareMode();
-    // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 
 TEST_P(InterpolateM2ILayerTestFP16Linear_NPU4000, HW) {
     rel_threshold = 0.035f;
     setDefaultHardwareMode();
-    // TODO: E129229
-    configuration["NPU_BACKEND_COMPILATION_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 
@@ -121,13 +112,6 @@ const std::vector<InterpolateBase::InterpolateMode> linearModes = {
 
 const std::vector<InterpolateBase::CoordinateTransformMode> coordinateTransformModesNearest = {
         InterpolateBase::CoordinateTransformMode::HALF_PIXEL,
-};
-
-const std::vector<InterpolateBase::CoordinateTransformMode> coordinateTransformModesNearest2x = {
-        InterpolateBase::CoordinateTransformMode::HALF_PIXEL,
-        InterpolateBase::CoordinateTransformMode::PYTORCH_HALF_PIXEL,
-        InterpolateBase::CoordinateTransformMode::ASYMMETRIC,
-        InterpolateBase::CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN,
 };
 
 const std::vector<InterpolateBase::CoordinateTransformMode> coordinateTransformModeAsymmetric = {
@@ -410,7 +394,6 @@ INSTANTIATE_TEST_SUITE_P(
                            ::testing::Values(additional_config)),
         InterpolateLayerTest_NPU3720::getTestCaseName);
 
-const std::vector<std::string> mode = {"nearest", "linear"};
 const std::vector<ov::AxisSet> axes = {{2, 3}};
 
 // NPU4000 M2I
@@ -642,9 +625,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input
                                             ::testing::Values(additional_config)),
                          InterpolateLayerTest_NPU3720::getTestCaseName);
 
-// [Tracking number: E#93574]
-INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input2D,
-                         InterpolateLayerTest_NPU4000,
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input2D, InterpolateLayerTest_NPU4000,
                          ::testing::Combine(interpolateCaseNearestModeNC_Nearst_Input2D(),
                                             ::testing::ValuesIn(modelTypes),
                                             ::testing::ValuesIn(static_shapes_to_test_representation(inShapes2D)),
@@ -1070,9 +1051,8 @@ const auto interpolateNearestAsymmetric2x = ::testing::Combine(
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Nearest_Asymmtric_2x, InterpolateLayerTest_NPU3720,
                          interpolateNearestAsymmetric2x, InterpolateLayerTest_NPU3720::getTestCaseName);
 
-// [Tracking number: E#114800]
-// INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Nearest_Asymmtric_2x, InterpolateLayerTest_NPU4000,
-//                          interpolateNearestAsymmetric2x, InterpolateLayerTest_NPU4000::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Nearest_Asymmtric_2x, InterpolateLayerTest_NPU4000,
+                         interpolateNearestAsymmetric2x, InterpolateLayerTest_NPU4000::getTestCaseName);
 const auto interpolateNearestAsymmetricWH = ::testing::Combine(
         interpolateNearestAsymmetric, ::testing::ValuesIn(modelTypes),
         ::testing::ValuesIn(
@@ -1082,9 +1062,8 @@ const auto interpolateNearestAsymmetricWH = ::testing::Combine(
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Nearest_Asymmtric_WH, InterpolateLayerTest_NPU3720,
                          interpolateNearestAsymmetricWH, InterpolateLayerTest_NPU3720::getTestCaseName);
 
-// [Tracking number: E#114800]
-// INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Nearest_Asymmtric_WH, InterpolateLayerTest_NPU4000,
-//                          interpolateNearestAsymmetricWH, InterpolateLayerTest_NPU4000::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Nearest_Asymmtric_WH, InterpolateLayerTest_NPU4000,
+                         interpolateNearestAsymmetricWH, InterpolateLayerTest_NPU4000::getTestCaseName);
 //
 // Interpolate nearest align corner mode with tilling
 //
@@ -1320,12 +1299,10 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Interpolate_NoTiling_Cubic, Interpolate
 
 //
 // Optimize bilinear Interpolate with HALF_PIXEL and PYTORCH_HALF_PIXEL modes through the conversion to
-// convolution and DMA
+// (depth-)convolution and DMA
 //
 
-const std::vector<std::vector<ov::Shape>> bilinearInterpolateInputShapes = {
-        {{1, 40, 40, 40}},
-};
+const std::vector<std::vector<ov::Shape>> bilinearInterpolateInputShapes = {{{1, 40, 40, 40}, {1, 32, 40, 40}}};
 
 const std::vector<ov::Shape> bilinearInterpolateTargetShapes = {
         {80, 80}, {120, 120}, {160, 160}, {240, 240}, {80, 120}};
@@ -1502,8 +1479,7 @@ const auto interpolateLinearNHWCDownscaleAxes12TileH = ::testing::Combine(
 // and NHWC
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NCHW_Upscale_axes23_tileC, InterpolateLayerTest_NPU3720,
                          interpolateNCHWUpscaleAxes23TileC, InterpolateLayerTest_NPU3720::getTestCaseName);
-// Tracking number [E#88737]
-INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_Interpolate_Tiling_NCHW_Upscale_axes23_tileH, InterpolateLayerTest_NPU3720,
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NCHW_Upscale_axes23_tileH, InterpolateLayerTest_NPU3720,
                          interpolateNCHWUpscaleAxes23TileH, InterpolateLayerTest_NPU3720::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NHWC_Upscale_axes23_tileC, InterpolateLayerTest_NPU3720,
                          interpolateNHWCUpscaleAxes23TileC, InterpolateLayerTest_NPU3720::getTestCaseName);
@@ -1552,8 +1528,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NCHW_Upscale_axes23_tileC, Int
                          interpolateNCHWUpscaleAxes23TileC, InterpolateLayerTest_NPU4000::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NHWC_Upscale_axes23_tileC, InterpolateLayerTest_NPU4000,
                          interpolateNHWCUpscaleAxes23TileC, InterpolateLayerTest_NPU4000::getTestCaseName);
-// Tracking number [E#88737]
-INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_Interpolate_Tiling_NCHW_Upscale_axes23_tileH, InterpolateLayerTest_NPU4000,
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NCHW_Upscale_axes23_tileH, InterpolateLayerTest_NPU4000,
                          interpolateNCHWUpscaleAxes23TileH, InterpolateLayerTest_NPU4000::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NHWC_Upscale_axes23_tileH, InterpolateLayerTest_NPU4000,
                          interpolateNHWCUpscaleAxes23TileH, InterpolateLayerTest_NPU4000::getTestCaseName);

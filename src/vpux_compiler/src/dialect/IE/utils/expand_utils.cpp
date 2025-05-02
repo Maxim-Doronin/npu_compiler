@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,8 +8,10 @@
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <numeric>
@@ -128,7 +130,7 @@ mlir::Value concatWithZeroConst(mlir::Location loc, mlir::Value filter, ShapeRef
         const auto eleType = padType.getElementType();
 
         const auto getEleStorageType = [&]() {
-            if (const auto quantizedType = eleType.dyn_cast<mlir::quant::QuantizedType>()) {
+            if (const auto quantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(eleType)) {
                 return normalizeQuantStorageType(quantizedType);
             } else {
                 return eleType;
@@ -278,7 +280,7 @@ int64_t calculateAlignmentRequirementForExpandOpConversion(const vpux::NDTypeInt
 }
 
 bool beneficialToPadHeight(IE::ExpandOp origOp) {
-    const auto expandInType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto expandInShape = expandInType.getShape();
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
 
@@ -296,7 +298,7 @@ bool beneficialToPadHeight(IE::ExpandOp origOp) {
 }
 
 bool beneficialToPadWidth(IE::ExpandOp origOp) {
-    const auto expandInType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto expandInShape = expandInType.getShape();
     const auto expandInW = expandInShape[Dims4D::Act::W];
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
@@ -356,8 +358,8 @@ bool beneficialToPadWidth(IE::ExpandOp origOp) {
 }
 
 bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugName) {
-    const auto expandInType = expandOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto expandOutType = expandOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(expandOp.getInput().getType());
+    const auto expandOutType = mlir::cast<vpux::NDTypeInterface>(expandOp.getOutput().getType());
     const auto supportedLayout = DimsOrder::NHWC;
     const auto expandInLayout = expandInType.getDimsOrder();
     if (expandInLayout != supportedLayout) {
@@ -408,7 +410,8 @@ bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugN
                   expandInShape[Dims4D::Act::N]);
         return false;
     }
-    if (!expandInType.getElementType().isF16() && !expandInType.getElementType().isa<mlir::quant::QuantizedType>()) {
+    if (!expandInType.getElementType().isF16() &&
+        !mlir::isa<mlir::quant::QuantizedType>(expandInType.getElementType())) {
         log.trace("[{0}]: Expand at {1} has {2} element type. Only float16 and quantized types are supported",
                   debugName, expandOp.getLoc(), expandInType.getElementType());
         return false;

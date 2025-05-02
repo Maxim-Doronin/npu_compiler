@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -99,8 +101,8 @@ mlir::LogicalResult PermuteQuantizeRewriter::matchAndRewrite(IE::PermuteQuantize
 
     auto* ctx = origOp->getContext();
 
-    const auto inputType = origOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     const auto outElemType = outputType.getElementType();
 
     const auto alignment = VPU::NCEInvariant::getAlignment(outElemType);
@@ -168,8 +170,8 @@ void ExpandActivationWidthPass::safeRunOnFunc() {
     auto func = getOperation();
 
     const auto isLegalPermuteQuantize = [&](IE::PermuteQuantizeOp op) {
-        const auto inType = op.getInput().getType().dyn_cast<vpux::NDTypeInterface>();
-        const auto outType = op.getOutput().getType().dyn_cast<vpux::NDTypeInterface>();
+        const auto inType = mlir::dyn_cast<vpux::NDTypeInterface>(op.getInput().getType());
+        const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(op.getOutput().getType());
         const auto inOrder = inType.getDimsOrder();
         const auto outOrder = outType.getDimsOrder();
         // Check that such IE.PermuteQuantize can be executed on DPU.
@@ -198,7 +200,7 @@ void ExpandActivationWidthPass::safeRunOnFunc() {
             return true;
         }
 
-        const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
         const auto outElemType = outputType.getElementType();
         const int64_t alignment = VPU::NCEInvariant::getAlignment(outElemType);
         const auto outPadsEnd = calcOutPadsEnd(outputType, alignment);

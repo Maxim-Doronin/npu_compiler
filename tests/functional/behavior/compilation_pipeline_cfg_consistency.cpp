@@ -9,7 +9,7 @@
 #include "common/functions.h"
 #include "common/npu_test_env_cfg.hpp"
 #include "common/utils.hpp"
-#include "intel_npu/config/common.hpp"
+#include "intel_npu/config/options.hpp"
 #include "intel_npu/npu_private_properties.hpp"
 
 namespace {
@@ -52,7 +52,7 @@ protected:
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithBatchUnrollingDefaultOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg["NPU_COMPILATION_MODE_PARAMS"] = "batch-compile-method=unroll";
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] = "batch-compile-method=unroll";
         OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
     }
 }
@@ -60,7 +60,7 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithBatchUnrollingDefa
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithBatchUnrollingSkipBatchOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg["NPU_COMPILATION_MODE_PARAMS"] =
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
                 "batch-compile-method=unroll batch-unroll-settings={skip-unroll-batch=true}";
         OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
     }
@@ -69,7 +69,7 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithBatchUnrollingSkip
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithDebatchDefaultOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg["NPU_COMPILATION_MODE_PARAMS"] = "batch-compile-method=debatch";
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] = "batch-compile-method=debatch";
         OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
     }
 }
@@ -77,7 +77,7 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithDebatchDefaultOpti
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithDebatchNonDefaultOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg["NPU_COMPILATION_MODE_PARAMS"] =
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
                 "batch-compile-method=debatch debatcher-settings={debatching-inlining-method=reordering}";
         OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
     }
@@ -86,7 +86,7 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithDebatchNonDefaultO
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationMixUnrollWithDebatchNonDefaultOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg["NPU_COMPILATION_MODE_PARAMS"] =
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
                 "batch-compile-method=unroll debatcher-settings={debatching-inlining-method=reordering}";
         std::string device_id = cfg["DEVICE_ID"].as<std::string>();
         if (device_id.find("3720") != std::string::npos) {
@@ -101,15 +101,11 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationMixUnrollWithDebatchNo
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationMixDebatchWithBatchUnrollingSkipBatchOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg["NPU_COMPILATION_MODE_PARAMS"] =
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
                 "batch-compile-method=debatch batch-unroll-settings={skip-unroll-batch=true}";
         std::string device_id = cfg["DEVICE_ID"].as<std::string>();
-        if (device_id.find("3720") != std::string::npos) {
-            OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
-        } else {
-            OV_EXPECT_THROW_HAS_SUBSTRING(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg),
-                                          std::runtime_error, "is inconsistent");
-        }
+        OV_EXPECT_THROW_HAS_SUBSTRING(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg),
+                                      std::runtime_error, "is inconsistent");
     }
 }
 

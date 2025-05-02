@@ -13,7 +13,7 @@ module @act_shave_weights_access {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
 
-  IE.CNNNetwork entryPoint : @act_shave_weights_access inputsInfo : {
+  net.NetworkInfo entryPoint : @act_shave_weights_access inputsInfo : {
     DataInfo "input_0" : tensor<1x32x32x514xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x32x32x514xf16>
@@ -46,7 +46,7 @@ module @act_shave_scratch_access {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
 
-  IE.CNNNetwork entryPoint : @act_shave_scratch_access inputsInfo : {
+  net.NetworkInfo entryPoint : @act_shave_scratch_access inputsInfo : {
     DataInfo "input_0" : tensor<1x32x32x514xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x32x32x514xf16>

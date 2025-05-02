@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,7 +10,6 @@
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/bootstrap_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/declare_buffer_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/declare_const_buffer_rewriter.hpp"
-#include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/declare_task_addr_buffer_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/declare_task_buffer_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/dma_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/dpu_invariant_rewriter.hpp"
@@ -28,14 +27,12 @@
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/platform_info_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/profiling_metadata_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/shave_stack_rewriter.hpp"
-#include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/task_sink_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/view_task_range_rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/symbolization.hpp"
 
 namespace vpux {
@@ -55,7 +52,8 @@ namespace {
 
 class ConvertVPUMI40XX2VPUASMPass final : public impl::ConvertVPUMI40XX2VPUASMBase<ConvertVPUMI40XX2VPUASMPass> {
 public:
-    explicit ConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM): _enablePWLM(enablePWLM) {
+    explicit ConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM, bool disableDmaSwFifo)
+            : _enablePWLM(enablePWLM), _disableDmaSwFifo(disableDmaSwFifo) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -64,6 +62,7 @@ public:
 private:
     void safeRunOnModule() final;
     bool _enablePWLM;
+    bool _disableDmaSwFifo;
 };
 
 mlir::LogicalResult ConvertVPUMI40XX2VPUASMPass::initialize(mlir::MLIRContext* ctx) {
@@ -82,9 +81,8 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     auto& ctx = getContext();
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp cnnOp;
-
-    IE::CNNNetworkOp::getFromModule(moduleOp, cnnOp, netFunc);
+    net::NetworkInfoOp netInfo;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
 
     llvm::DenseMap<mlir::Value, mlir::SymbolRefAttr> symbolNameMappings;
     std::unordered_map<ELF::SectionSignature, ELF::ElfSectionInterface> sectionMap;
@@ -144,12 +142,11 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
     patterns.add<KernelInvocationRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<DPUVariantRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<DPUInvariantRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
-    patterns.add<TaskSinkRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<ViewTaskRangeRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<EnqueueRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
-    patterns.add<DeclareTaskAddrBuffRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<BarrierRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log, _enablePWLM);
-    patterns.add<MappedInferenceRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
+    patterns.add<MappedInferenceRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log,
+                                          _disableDmaSwFifo);
     patterns.add<ProfilingMetadataRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<BootstrapRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<PlatformInfoRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
@@ -168,6 +165,7 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
 // createConvertVPUMI40XX2VPUASMPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::createConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM) {
-    return std::make_unique<ConvertVPUMI40XX2VPUASMPass>(log, enablePWLM);
+std::unique_ptr<mlir::Pass> vpux::createConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM,
+                                                                    bool disableDmaSwFifo) {
+    return std::make_unique<ConvertVPUMI40XX2VPUASMPass>(log, enablePWLM, disableDmaSwFifo);
 }

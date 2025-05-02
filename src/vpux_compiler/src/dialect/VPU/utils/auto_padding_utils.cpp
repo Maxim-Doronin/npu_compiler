@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,7 +13,7 @@
 
 using namespace vpux;
 
-bool hasAutoPadding(mlir::ModuleOp module, StringRef paddingMode) {
+bool hasAutoPaddingOption(mlir::ModuleOp module, StringRef paddingMode) {
     auto pipelineOptionOp = module.lookupSymbol<IE::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS);
     if (pipelineOptionOp == nullptr) {
         auto logger = vpux::Logger::global();
@@ -30,12 +30,16 @@ bool hasAutoPadding(mlir::ModuleOp module, StringRef paddingMode) {
     return static_cast<bool>(attrValue.getOptionValue());
 }
 
+bool VPU::hasAutoPadding(mlir::ModuleOp module) {
+    return hasAutoPaddingOption(module, AUTO_PADDING_IDU) || hasAutoPaddingOption(module, AUTO_PADDING_ODU);
+}
+
 bool VPU::hasAutoPaddingIDU(mlir::ModuleOp module) {
-    return hasAutoPadding(module, AUTO_PADDING_IDU);
+    return hasAutoPaddingOption(module, AUTO_PADDING_IDU);
 }
 
 bool VPU::hasAutoPaddingODU(mlir::ModuleOp module) {
-    return hasAutoPadding(module, AUTO_PADDING_ODU);
+    return hasAutoPaddingOption(module, AUTO_PADDING_ODU);
 }
 
 bool VPU::outputCompatibleWithAutoPad(vpux::NDTypeInterface type) {
@@ -57,38 +61,7 @@ bool VPU::inputCompatibleWithAutoPad(vpux::NDTypeInterface type) {
                                              (elemTypeBitWidth >= FP16_WIDTH && inputC < WIDTH16_CHANNEL_LIMIT)));
 }
 
-bool VPU::hasOnlyOutPadding(mlir::ModuleOp module) {
-    return VPU::hasAutoPaddingODU(module) && !VPU::hasAutoPaddingIDU(module);
-}
-
-bool VPU::hasOnlyInPadding(mlir::ModuleOp module) {
-    return !VPU::hasAutoPaddingODU(module) && VPU::hasAutoPaddingIDU(module);
-}
-
-bool VPU::hasOnlyDirectSWConsumers(mlir::Operation* op) {
-    auto userOps = op->getResult(0).getUsers();
-
-    for (auto user : userOps) {
-        if (VPU::NCEInvariant::isSupported(user).succeeded() || IE::isPureViewOp(user)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 bool VPU::canAutopadOutput(mlir::Operation* op, std::optional<vpux::NDTypeInterface> optType) {
-    vpux::NDTypeInterface outputType;
-    if (optType.has_value()) {
-        outputType = optType.value();
-    } else {
-        outputType = op->getResult(0).getType().template cast<vpux::NDTypeInterface>();
-    }
-
-    const auto inputShape = getShape(op->getOperand(0));
-    // Temporary check because ensure_nce_ops_size creates
-    // eltwise ops with less than 16 channels when IC exceeds this limit
-    const auto doesICfit = inputShape[Dims4D::Act::C] <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT ? true : false;
-
-    return doesICfit && outputCompatibleWithAutoPad(outputType) && hasAutoPaddingODU(getModuleOp(op));
+    const auto outputType = optType.value_or(mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()));
+    return outputCompatibleWithAutoPad(outputType) && hasAutoPaddingODU(getModuleOp(op));
 }

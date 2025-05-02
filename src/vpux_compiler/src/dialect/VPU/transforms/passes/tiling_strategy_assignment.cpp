@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 namespace vpux::VPU {
@@ -18,6 +19,8 @@ namespace vpux::VPU {
 #define GEN_PASS_DEF_TILINGSTRATEGYASSIGNMENT
 #include "vpux/compiler/dialect/VPU/passes.hpp.inc"
 }  // namespace vpux::VPU
+
+#include "vpux/compiler/utils/loop.hpp"
 
 using namespace vpux;
 
@@ -58,8 +61,9 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    void assignStrategy(VPU::TilingBuilderOpInterface origOp, mlir::func::FuncOp func,
-                        VPU::SiblingOpsAnalysis& siblingOpsAnalysis);
+    std::vector<vpux::VPU::StrategyWithCost> getStrategies(VPU::TilingBuilderOpInterface origOp, TilingMode tilingMode,
+                                                           mlir::func::FuncOp func,
+                                                           VPU::SiblingOpsAnalysis& siblingOpsAnalysis);
 
     bool _enablePrefetchTiling = true;
     bool _enableVpunnCostForTiling = false;
@@ -90,57 +94,119 @@ mlir::LogicalResult TilingStrategyAssignmentPass::initialize(mlir::MLIRContext* 
     return mlir::success();
 }
 
-void TilingStrategyAssignmentPass::assignStrategy(VPU::TilingBuilderOpInterface origOp, mlir::func::FuncOp func,
-                                                  VPU::SiblingOpsAnalysis& siblingOpsAnalysis) {
+std::vector<vpux::VPU::StrategyWithCost> TilingStrategyAssignmentPass::getStrategies(
+        VPU::TilingBuilderOpInterface origOp, TilingMode tilingMode, mlir::func::FuncOp func,
+        VPU::SiblingOpsAnalysis& siblingOpsAnalysis) {
     _log.trace("Assign: '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
     auto op = origOp.getOperation();
 
-    mlir::FailureOr<OutputTiling> tiles = mlir::failure();
+    std::vector<vpux::VPU::StrategyWithCost> strategies{};
 
     // Temporarily not apply cost-based tiling strategy to NCE ops with INT4 weights based on VPUNN cost.
     // This can be removed when VPUNN is upgraded to support INT4 data type, tracked in E#113316.
-    // Cost based strategy assignment is not applied to NCEMatMulOp yet #E126102
     if (!_enableVpunnCostForTiling || !mlir::isa<VPU::NCEOpInterface>(op) || VPU::isNCEWithInt4Weights(op) ||
         mlir::isa<VPU::NCEMatMulOp>(op)) {
-        tiles = getLayerTilingStrategy(origOp, _enablePrefetchTiling, _log);
+        auto strategy = origOp.getTilingStrategy(tilingMode, _log);
+        if (mlir::succeeded(strategy)) {
+            strategies.push_back({strategy.value()[0].axis, {0, 0}});
+        }
     } else {
         _log.trace("Get tiling strategy based on VPUNN DPU+DMA cost for NCE ops");
         auto costModel = std::make_shared<vpux::VPU::LayerCostModel>(
                 vpux::VPU::LayerCostModel(func, _enablePrefetchTiling, _log, siblingOpsAnalysis));
-        tiles = getHWLayerTilingStrategy(origOp, _enablePrefetchTiling, costModel, _log);
+        strategies = getHwLayerTilingStrategiesWithCost(origOp, tilingMode, costModel, _log);
     }
-    _log.trace("Assign Tiling: '{0}' : '{1}'", origOp->getLoc(),
-               getIntArrayAttr(op->getContext(), tiles.value()[0].axis));
-    VPUX_THROW_WHEN(mlir::failed(tiles), "Invalid tiling strategy for {0}", origOp->getLoc());
-
-    origOp->setAttr(tilingStrategy, getIntArrayAttr(op->getContext(), tiles.value()[0].axis));
+    return strategies;
 }
 
 void TilingStrategyAssignmentPass::safeRunOnFunc() {
     auto func = getOperation();
+    auto siblingOpsAnalysis = getAnalysis<VPU::EagerSiblingOpsAnalysis>();
+    llvm::DenseSet<VPU::TilingBuilderOpInterface> opsToCheckForPrefetch{};
+    llvm::DenseMap<VPU::TilingBuilderOpInterface, std::vector<vpux::VPU::StrategyWithCost>> strategiesForOp{};
+    std::mutex prefetchSetMutex;
+    std::mutex strategiesMapMutex;
+    const auto opsToTile = func.getOps<VPU::TilingBuilderOpInterface>();
 
-    auto siblingsOpsAnalysis = getAnalysis<VPU::SiblingOpsAnalysis>();
+    // Get cost of possible ISOLATED/PIPELINING strategies in parallel. Note that it is not possible to
+    // say which strategy will be the best since whether strategy can be prefetched depends on parent op tiling.
+    loop_1d(LoopExecPolicy::Parallel, func.getContext(), std::distance(opsToTile.begin(), opsToTile.end()),
+            [&](const size_t index) {
+                auto it = opsToTile.begin();
+                std::advance(it, index);
+                auto tilingOp = *it;
+                auto op = tilingOp.getOperation();
+                if (_shaveDDRAccessOptimizationMode == VPU::EnableShaveDDRAccessOptimization::TRUE) {
+                    auto ddrAccessOp = mlir::dyn_cast<VPU::DDRAccessOpInterface>(op);
+                    if (ddrAccessOp != nullptr && ddrAccessOp.isDDRAccessNecessaryOrBeneficial(_log)) {
+                        return;
+                    }
+                }
 
-    const auto assignWithOnlyCMXAccessStrategy = [&](mlir::Operation* op) {
-        auto tilingOp = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(op);
-        if (tilingOp != nullptr && VPU::opNeedsTiling(op, _enablePrefetchTiling, _log)) {
-            assignStrategy(tilingOp, func, siblingsOpsAnalysis);
+                auto tilingModeOpt = vpux::VPU::getTilingMode(op, _enablePrefetchTiling, _log);
+                if (tilingModeOpt.has_value()) {
+                    auto [tilingMode, prefetchingCandidate] = tilingModeOpt.value();
+                    if (tilingMode == TilingMode::ISOLATED || tilingMode == TilingMode::PIPELINING) {
+                        auto strategies = getStrategies(tilingOp, tilingMode, func, siblingOpsAnalysis);
+                        std::lock_guard<std::mutex> guard(strategiesMapMutex);
+                        strategiesForOp.insert(std::make_pair(tilingOp, strategies));
+                    }
+                    if (prefetchingCandidate) {
+                        std::lock_guard<std::mutex> guard(prefetchSetMutex);
+                        opsToCheckForPrefetch.insert(tilingOp);
+                    }
+                }
+            });
+
+    auto getBestStrategy = [this](VPU::TilingBuilderOpInterface tilingOp,
+                                  std::vector<vpux::VPU::StrategyWithCost>& strategies,
+                                  bool assumePrefetching) -> Shape {
+        double bestCost = strategies.front().cost.costWithoutPrefetching;
+        Shape bestStrategy = strategies.front().strategy;
+        auto tilingInfoOp = mlir::dyn_cast<VPU::TilingInfoOpInterface>(tilingOp.getOperation());
+        for (auto& [strategy, costs] : strategies) {
+            double currentCost = 0;
+            auto [costWithoutPrefetching, costWithPrefetching] = costs;
+            if (assumePrefetching) {
+                currentCost = costWithPrefetching;
+            } else {
+                currentCost =
+                        _enablePrefetchTiling && (tilingInfoOp != nullptr) &&
+                                        tilingInfoOp.isSupportedTilingStrategy(strategy, TilingMode::PREFETCHING, _log)
+                                ? costWithPrefetching
+                                : costWithoutPrefetching;
+            }
+            if (currentCost < bestCost ||
+                (currentCost == bestCost &&
+                 isNewTileWithSameCostHasPotentialDMABenefits(tilingOp.getOperation(), bestStrategy, strategy))) {
+                bestCost = currentCost;
+                bestStrategy = strategy;
+            }
         }
+        return bestStrategy;
     };
 
-    const auto assignStrategyWithDDRAccess = [&](mlir::Operation* op) {
-        auto ddrAccessOp = mlir::dyn_cast<VPU::DDRAccessOpInterface>(op);
-        if (ddrAccessOp != nullptr && ddrAccessOp.isDDRAccessNecessaryOrBeneficial(_log)) {
-            return;
+    // Choose best strategy based on whether it can be prefetched. Also tries to generate prefetching strategies for ops
+    // that can be prefetched.
+    func->walk([&](VPU::TilingBuilderOpInterface tilingOp) {
+        if (strategiesForOp.contains(tilingOp)) {
+            auto strategies = strategiesForOp.at(tilingOp);
+            if (!strategies.empty()) {
+                auto bestStrategy = getBestStrategy(tilingOp, strategies, false);
+                tilingOp.getOperation()->setAttr(tilingStrategy,
+                                                 getIntArrayAttr(tilingOp.getOperation()->getContext(), bestStrategy));
+            }
         }
-        assignWithOnlyCMXAccessStrategy(op);
-    };
-
-    if (_shaveDDRAccessOptimizationMode == VPU::EnableShaveDDRAccessOptimization::TRUE) {
-        func->walk(assignStrategyWithDDRAccess);
-    } else {
-        func->walk(assignWithOnlyCMXAccessStrategy);
-    }
+        if (opsToCheckForPrefetch.contains(tilingOp) &&
+            VPU::prefetchTilingConditionSatisfied(tilingOp.getOperation(), _log.nest())) {
+            auto strategies = getStrategies(tilingOp, TilingMode::PREFETCHING, func, siblingOpsAnalysis);
+            if (!strategies.empty()) {
+                auto bestStrategy = getBestStrategy(tilingOp, strategies, true);
+                tilingOp.getOperation()->setAttr(tilingStrategy,
+                                                 getIntArrayAttr(tilingOp.getOperation()->getContext(), bestStrategy));
+            }
+        }
+    });
 
     auto& cache = VPU::OpTilingCache::instance();
     cache.printStats(_log);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -63,7 +63,7 @@ LogicalResult vpux::IE::IfOp::inferReturnTypeComponents(MLIRContext* ctx, std::o
 
     for (auto& yield : yieldOps) {
         for (mlir::Value operand : yield.getOperands()) {
-            auto inType = operand.getType().cast<RankedTensorType>();
+            auto inType = mlir::cast<mlir::RankedTensorType>(operand.getType());
             const auto outDesc = vpux::getTensorAttr(inType);
             inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), outDesc);
         }

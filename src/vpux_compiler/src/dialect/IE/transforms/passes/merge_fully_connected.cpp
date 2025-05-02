@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
@@ -266,13 +267,13 @@ std::optional<mlir::Operation*> MergeFullyConnectedWithWeightsAsConstant::getMat
     // Matmul op is expected to have 2D input and output. so need check the rank of input and output
     // Left-hand matrix must have exactly two dimensions.
     const auto lhs = origOp.getInput();
-    const auto lhsType = lhs.getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto lhsType = mlir::dyn_cast<vpux::NDTypeInterface>(lhs.getType());
     if (lhsType.getRank() != 2) {
         return std::nullopt;
     }
     // Right-hand matrix must have exactly two dimensions.
     auto rhs = origOp.getWeights();
-    const auto rhsType = rhs.getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto rhsType = mlir::dyn_cast<vpux::NDTypeInterface>(rhs.getType());
     if (rhsType.getRank() != 2) {
         return std::nullopt;
     }
@@ -687,7 +688,7 @@ std::optional<mlir::Operation*> MergeFullyConnectedForDQPatternWithConvert::getM
     }
     // Right-hand matrix must have exactly two dimensions.
     auto rhs = origOp.getWeights();
-    const auto rhsType = rhs.getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto rhsType = mlir::dyn_cast<vpux::NDTypeInterface>(rhs.getType());
     if (rhsType.getRank() != 2) {
         _log.trace("rhsType is not suitable", rhsType);
         return std::nullopt;
@@ -1041,7 +1042,7 @@ std::optional<mlir::Operation*> MergeFullyConnectedForDQPatternWithDequantize::g
     }
     // Right-hand matrix must have exactly two dimensions.
     auto rhs = origOp.getWeights();
-    const auto rhsType = rhs.getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto rhsType = mlir::dyn_cast<vpux::NDTypeInterface>(rhs.getType());
     if (rhsType.getRank() != 2) {
         _log.trace("rhsType is not suitable", rhsType);
         return std::nullopt;

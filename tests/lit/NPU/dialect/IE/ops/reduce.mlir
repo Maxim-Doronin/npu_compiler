@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -71,6 +71,17 @@ func.func @FoldReduceMean(%arg0: tensor<1x1x4x2xf16>) -> tensor<1x1x4x2xf16> {
 
 // -----
 
+// CHECK-LABEL: @DoNotFoldPaddedReduceMean
+func.func @DoNotFoldPaddedReduceMean(%arg0: tensor<1x16x4x2xf16>) -> tensor<1x16x4x2xf16> {
+    %0 = IE.ReduceMean(%arg0) {axes_value = [1], keep_dims, input_padding = [0, 4, 0, 0], output_padding = [0, 15, 0, 0]} : tensor<1x16x4x2xf16> -> tensor<1x16x4x2xf16>
+    return %0 : tensor<1x16x4x2xf16>
+
+    // CHECK:   [[REDUCE:%.+]] = IE.ReduceMean
+    // CHECK:   return [[REDUCE]]
+}
+
+// -----
+
 // CHECK-LABEL: @FoldReduceMin
 func.func @FoldReduceMin(%arg0: tensor<1x1x4x2xf16>) -> tensor<1x1x4x2xf16> {
     %0 = IE.ReduceMin(%arg0) {axes_value = [1], keep_dims} : tensor<1x1x4x2xf16> -> tensor<1x1x4x2xf16>
@@ -100,6 +111,17 @@ func.func @FoldReduceSum(%arg0: tensor<1x1x4x2xf16>) -> tensor<1x1x4x2xf16> {
 
     // CHECK-NOT:   IE.ReduceSum
     // CHECK:       return %arg0
+}
+
+// -----
+
+// CHECK-LABEL: @DoNotFoldPaddedReduceSum
+func.func @DoNotFoldPaddedReduceSum(%arg0: tensor<1x16x4x2xf16>) -> tensor<1x16x4x2xf16> {
+    %0 = IE.ReduceSum(%arg0) {axes_value = [1], keep_dims, input_padding = [0, 4, 0, 0], output_padding = [0, 15, 0, 0]} : tensor<1x16x4x2xf16> -> tensor<1x16x4x2xf16>
+    return %0 : tensor<1x16x4x2xf16>
+
+    // CHECK:   [[REDUCE:%.+]] = IE.ReduceSum
+    // CHECK:   return [[REDUCE]]
 }
 
 // -----

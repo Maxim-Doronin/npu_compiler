@@ -8,7 +8,7 @@
 #include "vpux/compiler/core/pipelines_options.hpp"
 #include "vpux/compiler/core/profiling.hpp"
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Operation.h>
@@ -39,6 +39,7 @@ std::unique_ptr<mlir::Pass> createConvertWeightsTableOp2ConstPass(Logger log = L
 std::unique_ptr<mlir::Pass> createUpdateSwKernelParamsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDumpStatisticsOfTaskOpsPass(Logger log = Logger::global(), bool forceLogging = true);
 std::unique_ptr<mlir::Pass> createUnrollClusterTilingPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWrapVPUIPOpsInNCEClusterTilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnwrapClusterTilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollSwKernelPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDMABarrierOptimizationPass(Logger log = Logger::global());
@@ -59,6 +60,7 @@ std::unique_ptr<mlir::Pass> createCopyOpTilingPass(Logger log = Logger::global()
 std::unique_ptr<mlir::Pass> createSetMemorySpacePass(MemKindCreateFunc memKindCb, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertEltwiseToInPlacePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertSprLUTToConstPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createConvertDynamicReshapeToInPlacePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInsertCopyForEltwiseInPlaceInputPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLinearizationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createBreakDataFlowPass(Logger log = Logger::global());
@@ -102,7 +104,10 @@ std::unique_ptr<mlir::Pass> createFuseDDRCopiesIntoConcats(Logger log = Logger::
 
 std::unique_ptr<mlir::Pass> createLegalizeRepeatingFuncCallsPass(Logger log = Logger::global());
 
+std::unique_ptr<mlir::Pass> createConvertVPUIPCopyToSWCopyPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddCopyBetweenSWKernelsAndNetworkIOPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createDispatchedInlinerPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createMoveReflectPadToCMXPass(Logger log = Logger::global());
 
 //
 // Asynchronous Scheduling pipeline
@@ -158,6 +163,12 @@ std::unique_ptr<mlir::Pass> createUnrollPermuteToNNDMAPass(Logger log = Logger::
 std::unique_ptr<mlir::Pass> createUnrollExpandDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollPerAxisTileDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInvalidateUnrollDMAAnalysisPass(Logger log = Logger::global());
+
+//
+// Host Compilation pipeline
+//
+
+std::unique_ptr<mlir::Pass> createSerializeELFToBinaryPass(Logger log = Logger::global());
 
 //
 // DefaultHWOptions(for all devices)

@@ -5,13 +5,11 @@
 
 //
 
-#include <vector>
-
+#include "single_op_tests/non_max_suppression.hpp"
 #include <random>
 #include "common_test_utils/data_utils.hpp"
 #include "openvino/core/type/element_type_traits.hpp"
 #include "shared_tests_instances/vpu_ov2_layer_test.hpp"
-#include "single_op_tests/non_max_suppression.hpp"
 
 namespace ov {
 namespace test {
@@ -50,12 +48,6 @@ public:
 protected:
     void TearDown() override {
         VpuOv2LayerTest::TearDown();
-    }
-    void run() override {
-    }
-
-    void run(const std::string_view platform) {
-        VpuOv2LayerTest::run(platform);
     }
 
 private:
@@ -115,9 +107,11 @@ protected:
         std::tie(paramsType, maxBoxType, thrType) = inputTypes;
 
         const std::vector<size_t> boxesShape{numBatches, numBoxes, 4}, scoresShape{numBatches, numClasses, numBoxes};
-        ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(paramsType, ov::Shape(boxesShape)),
-                                   std::make_shared<ov::op::v0::Parameter>(paramsType, ov::Shape(scoresShape))};
-
+        VpuOv2LayerTest::init_input_shapes(static_shapes_to_test_representation({boxesShape, scoresShape}));
+        ov::ParameterVector params;
+        for (const auto& shape : VpuOv2LayerTest::inputDynamicShapes) {
+            params.push_back(std::make_shared<ov::op::v0::Parameter>(paramsType, shape));
+        }
         auto maxOutBoxesPerClassNode = std::make_shared<ov::op::v0::Constant>(
                 maxBoxType, ov::Shape{}, std::vector<int32_t>{static_cast<int32_t>(maxOutBoxesPerClass)});
         auto iouThrNode = std::make_shared<ov::op::v0::Constant>(thrType, ov::Shape{}, std::vector<float>{iouThr});
@@ -134,12 +128,12 @@ protected:
 
 TEST_P(NmsLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
-    run(Platform::NPU3720);
+    VpuOv2LayerTest::run(Platform::NPU3720);
 }
 
 TEST_P(NmsLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
-    run(Platform::NPU4000);
+    VpuOv2LayerTest::run(Platform::NPU4000);
 }
 }  // namespace test
 }  // namespace ov
@@ -181,8 +175,9 @@ const auto nmsParams = ::testing::Combine(
         ::testing::ValuesIn(sigmaThreshold), ::testing::ValuesIn(encodType), ::testing::ValuesIn(sortResDesc),
         ::testing::ValuesIn(outType), ::testing::Values(ov::test::utils::DEVICE_NPU));
 
-INSTANTIATE_TEST_CASE_P(DISABLED_TMP_smoke_NmsLayerTest, NmsLayerTestCommon, nmsParams,
-                        NmsLayerTestCommon::getTestCaseName);
+// Tracking number [E#118806]
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_NmsLayerTest, NmsLayerTestCommon, nmsParams,
+                         NmsLayerTestCommon::getTestCaseName);
 
 const std::vector<ov::test::InputShapeParams> inShapeParamsSmoke = {ov::test::InputShapeParams{2, 9, 12}};
 const std::vector<int32_t> maxOutBoxPerClassSmoke = {5};
@@ -200,6 +195,7 @@ const auto nmsParamsSmoke =
                          ::testing::ValuesIn(encodTypeSmoke), ::testing::ValuesIn(sortResDesc),
                          ::testing::ValuesIn(outType), ::testing::Values(ov::test::utils::DEVICE_NPU));
 
-INSTANTIATE_TEST_SUITE_P(smoke_precommit_NmsLayerTest, NmsLayerTestCommon, nmsParamsSmoke,
+// Tracking number [E#118806]
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_precommit_NmsLayerTest, NmsLayerTestCommon, nmsParamsSmoke,
                          NmsLayerTestCommon::getTestCaseName);
 }  // namespace

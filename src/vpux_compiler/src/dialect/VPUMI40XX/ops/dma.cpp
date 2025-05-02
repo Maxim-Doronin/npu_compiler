@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <vpux/compiler/dialect/VPUMI40XX/ops.hpp>
 #include <vpux/compiler/dialect/VPUMI40XX/utils.hpp>
+#include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
 using namespace VPUMI40XX;
@@ -20,7 +21,8 @@ void NNDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
     build(odsBuilder, odsState, index, taskLocation, input, mlir::ValueRange(output_buff), previousDma, waitBarriers,
           updateBarriers, 0, 0, false, false, false, 0, VPUIP::DMAAccMode::DISABLE,
           /*act_compression_size_entry*/ nullptr, /*act_compression_sparsity_map*/ nullptr, dma_transaction,
-          dma_descriptor, 0, nullptr, 0, nullptr, /*enqueue_target_barrier*/ nullptr);
+          dma_descriptor, 0, nullptr, 0, nullptr, /*enqueue_target_barrier*/ nullptr, /*BarProgDmaAtPage*/ nullptr,
+          /*wlmPage*/ nullptr);
 }
 
 mlir::LogicalResult NNDMAOp::verify() {
@@ -33,10 +35,11 @@ mlir::LogicalResult NNDMAOp::verify() {
                        getOperationName());
     }
 
-    const auto currentDMAIdx = getIndex().getType().cast<VPURegMapped::IndexType>();
-    const auto prevDMAIdx = VPUMI40XX::NNDMAOp::getPreviousTask()
-                                    ? VPUMI40XX::NNDMAOp::getPreviousTask().getType().cast<VPURegMapped::IndexType>()
-                                    : nullptr;
+    const auto currentDMAIdx = mlir::cast<vpux::VPURegMapped::IndexType>(getIndex().getType());
+    const auto prevDMAIdx =
+            VPUMI40XX::NNDMAOp::getPreviousTask()
+                    ? mlir::cast<vpux::VPURegMapped::IndexType>(VPUMI40XX::NNDMAOp::getPreviousTask().getType())
+                    : nullptr;
     if (prevDMAIdx) {
         if (prevDMAIdx.getTileIdx() != currentDMAIdx.getTileIdx()) {
             return errorAt(getLoc(), "Operation {0}: tileIndex for previousDMA {1} and currentDma {2} do not match ",
@@ -51,15 +54,17 @@ mlir::LogicalResult NNDMAOp::verify() {
                            getOperationName(), prevDMAIdx.getValue(), currentDMAIdx.getValue());
         }
     }
+    auto outputBuffers = getOutputBuffs();
+    if (!outputBuffers.empty()) {
+        auto inputShape = getShape(getInput());
+        auto outputShape = getShape(outputBuffers[0]);
 
-    auto inputShape = getShape(getInput());
-    auto outputShape = getShape(getOutputBuffs()[0]);
-
-    if (!getAllowDifferentInOutShapes() && (inputShape != outputShape)) {
-        return errorAt(getLoc(),
-                       "Input and output shapes are not equal: {0} != {1}. Not equal shapes allowed in case "
-                       "getAccelerationMode() and getAllowDifferentInOutShapes() enabled only.",
-                       inputShape, outputShape);
+        if (!getAllowDifferentInOutShapes() && (inputShape != outputShape)) {
+            return errorAt(getLoc(),
+                           "Input and output shapes are not equal: {0} != {1}. Not equal shapes allowed in case "
+                           "getAccelerationMode() and getAllowDifferentInOutShapes() enabled only.",
+                           inputShape, outputShape);
+        }
     }
     return ::mlir::success();
 }

@@ -8,10 +8,12 @@
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -71,9 +73,9 @@ void ActShaveProfilingPass::safeRunOnModule() {
         }
     }
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(module, netOp, netFunc);
+    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
 
@@ -114,7 +116,7 @@ void ActShaveProfilingPass::safeRunOnModule() {
     const unsigned outputDdrSize = profiler->getRequiredDdrMemory();
     const auto outputResultDdr = mlir::MemRefType::get({outputDdrSize}, getUInt32Type(ctx));
     auto profilingResult =
-            addNewProfilingOutput(ctx, netFunc, netOp, outputResultDdr, profiling::ExecutorType::ACTSHAVE);
+            addNewProfilingOutput(ctx, netFunc, netInfo, outputResultDdr, profiling::ExecutorType::ACTSHAVE);
 
     SmallVector<mlir::Value> concatResults;
     profiler->addProfilingOps(profilingResult, concatResults);
@@ -155,22 +157,22 @@ void GroupProfilingBuffersPass::safeRunOnModule() {
     auto ctx = &getContext();
     auto module = getOperation();
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
-    IE::CNNNetworkOp::getFromModule(module, netOp, netFunc);
+    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
 
     // If profiling was enabled for SW kernels only and network doesn't have any, there will be
     // getProfilingOutputsInfo with single block "^bb0" and 0 operation inside.
-    if (netOp.getProfilingOutputsInfo().empty() || netOp.getProfilingOutputsInfo().front().empty() ||
-        netOp.getProfilingOutputsInfo().front().getOps().empty()) {
+    if (netInfo.getProfilingOutputsInfo().empty() || netInfo.getProfilingOutputsInfo().front().empty() ||
+        netInfo.getProfilingOutputsInfo().front().getOps().empty()) {
         return;
     }
 
     // Collecting sizes of all profiling buffers in order to calculate offsets in the base buffer
     // New buffer name will be like: [offset]_[name]_[offset]_[name]...
-    auto& profilingOutputs = netOp.getProfilingOutputsInfo().front();
+    auto& profilingOutputs = netInfo.getProfilingOutputsInfo().front();
     SmallVector<uint32_t> outputBases;
 
     struct Section {
@@ -180,7 +182,7 @@ void GroupProfilingBuffersPass::safeRunOnModule() {
     };
     std::vector<Section> sections;
     size_t offset = 0;
-    profilingOutputs.walk([&](IE::DataInfoOp op) {
+    profilingOutputs.walk([&](net::DataInfoOp op) {
         const auto type = mlir::cast<vpux::NDTypeInterface>(op.getUserType());
         const auto sectionName = op.getName();
 
@@ -201,19 +203,19 @@ void GroupProfilingBuffersPass::safeRunOnModule() {
     //
     auto newOutputResult =
             mlir::MemRefType::get({static_cast<int64_t>(totalSize / sizeof(uint32_t))}, getUInt32Type(ctx));
-    auto newOutputShapedType = newOutputResult.cast<vpux::NDTypeInterface>();
+    auto newOutputShapedType = mlir::cast<vpux::NDTypeInterface>(newOutputResult);
     auto outputUserResult = getTensorType(newOutputShapedType.getShape(), newOutputShapedType.getElementType(),
                                           newOutputShapedType.getDimsOrder(), nullptr);
     auto userInfoBuilder = mlir::OpBuilder::atBlockEnd(&profilingOutputs.front(), &builderLog);
 
-    auto dataInfo = userInfoBuilder.create<IE::DataInfoOp>(mlir::UnknownLoc::get(ctx),
-                                                           mlir::StringAttr::get(ctx, profiling::PROFILING_OUTPUT_NAME),
-                                                           mlir::TypeAttr::get(outputUserResult),
-                                                           /*OptionalAttr originalShape*/ nullptr,
-                                                           /*OptionalAttr friendlyName*/ nullptr,
-                                                           /*OptionalAttr inputName*/ nullptr,
-                                                           /*OptionalAttr tensorNames*/ nullptr,
-                                                           /*profilingSectionsCount=*/1);
+    auto dataInfo = userInfoBuilder.create<net::DataInfoOp>(
+            mlir::UnknownLoc::get(ctx), mlir::StringAttr::get(ctx, profiling::PROFILING_OUTPUT_NAME),
+            mlir::TypeAttr::get(outputUserResult),
+            /*OptionalAttr originalShape*/ nullptr,
+            /*OptionalAttr friendlyName*/ nullptr,
+            /*OptionalAttr inputName*/ nullptr,
+            /*OptionalAttr tensorNames*/ nullptr,
+            /*profilingSectionsCount=*/1);
     dataInfo.getSections().front().emplaceBlock();
 
     auto sectionsBuilder =

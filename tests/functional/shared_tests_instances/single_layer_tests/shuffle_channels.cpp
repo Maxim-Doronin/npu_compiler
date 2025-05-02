@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
 #include "single_op_tests/shuffle_channels.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -40,8 +38,8 @@ const auto params0 = testing::Combine(testing::ValuesIn(shuffleParameters), test
                                       testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes)),
                                       testing::Values(ov::test::utils::DEVICE_NPU));
 
-INSTANTIATE_TEST_CASE_P(smoke_ShuffleChannels, ShuffleChannelsLayerTestCommon, params0,
-                        ShuffleChannelsLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_ShuffleChannels, ShuffleChannelsLayerTestCommon, params0,
+                         ShuffleChannelsLayerTestCommon::getTestCaseName);
 
 }  // namespace
 

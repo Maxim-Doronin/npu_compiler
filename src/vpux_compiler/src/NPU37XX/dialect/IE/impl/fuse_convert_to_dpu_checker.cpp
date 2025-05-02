@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,15 +25,20 @@ bool FuseConvertToDPUChecker::isFusionToParentDPUOpSupported(mlir::Operation* dp
         return false;
     }
 
+    // For Interp with MemPerm after, fusing FP16->FP32 Convert with Interp can lead to performance regression from
+    // MemPerm. This is because the MemPerm needs to move 2x data than DPU solution with FP16 output, though the
+    // Interp+Convert fusion is beneficial. So we don't fuse convert to DPU here. Experimental data: E#162186
+    if (mlir::isa<IE::InterpolateOp>(dpuOp)) {
+        log.trace("Fusion with parent op of type {0} at loc {1} is sub-optimal.", dpuOp->getName(), dpuOp->getLoc());
+        return false;
+    }
+
     // There might be a way to set proper FP32 clamp values when bypassing conversion to FP16 in FpPPE
     // Ticket to investigate: E#150685
     if (auto postOpIf = mlir::dyn_cast<IE::LayerWithPostOpInterface>(dpuOp)) {
-        if (postOpIf.getPostOp().has_value()) {
-            auto postOp = postOpIf.getPostOp().value();
-            if (postOp.getStringRef() == IE::ClampOp::getOperationName()) {
-                log.trace("Parent op of type {0} at loc {1} has Clamp post op.", dpuOp->getName(), dpuOp->getLoc());
-                return false;
-            }
+        if (mlir::isa_and_nonnull<IE::ClampAttr>(postOpIf.getPostOp())) {
+            log.trace("Parent op of type {0} at loc {1} has Clamp post op.", dpuOp->getName(), dpuOp->getLoc());
+            return false;
         }
     }
 

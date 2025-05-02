@@ -177,7 +177,7 @@ mlir::LogicalResult AdjustShapeForSoftmax::matchAndRewrite(VPU::SoftMaxOp softma
 
     const auto ctx = getContext();
 
-    const auto inType = softmaxOp.getInput().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(softmaxOp.getInput().getType());
     const auto inOrder = inType.getDimsOrder();
     const auto inShape = inType.getShape();
 
@@ -276,7 +276,7 @@ mlir::LogicalResult AdjustShapeForGelu::matchAndRewrite(VPU::GeluOp geluOp, mlir
 
     const auto ctx = getContext();
 
-    const auto origIOType = geluOp.getOutput().getType().cast<NDTypeInterface>();
+    const auto origIOType = mlir::cast<vpux::NDTypeInterface>(geluOp.getOutput().getType());
     const auto origIOOrder = origIOType.getDimsOrder();
     const auto origIOShape = origIOType.getShape();
 
@@ -359,7 +359,7 @@ mlir::LogicalResult AdjustShapeForMultiply::matchAndRewrite(VPU::MultiplyOp mult
 
     const auto ctx = getContext();
 
-    const auto origIOType = multiplyOp.getOutput().getType().cast<NDTypeInterface>();
+    const auto origIOType = mlir::cast<vpux::NDTypeInterface>(multiplyOp.getOutput().getType());
     const auto origIOOrder = origIOType.getDimsOrder();
     const auto origIOShape = origIOType.getShape();
 
@@ -436,7 +436,7 @@ mlir::LogicalResult AdjustShapeForMVN::matchAndRewrite(VPU::MVNOp mvnOp, mlir::P
 
     const auto ctx = getContext();
 
-    const auto origIOType = mvnOp.getOutput().getType().cast<NDTypeInterface>();
+    const auto origIOType = mlir::cast<vpux::NDTypeInterface>(mvnOp.getOutput().getType());
 
     const auto origIOOrder = origIOType.getDimsOrder();
     const auto origIOShape = origIOType.getShape();
@@ -490,7 +490,7 @@ mlir::LogicalResult AdjustShapeForReduce<ReduceOp>::matchAndRewrite(ReduceOp red
                                                                     mlir::PatternRewriter& rewriter) const {
     _log.trace("Got {0} at loc '{1}'", reduceOp->getName(), reduceOp->getLoc());
 
-    const auto inType = reduceOp.getInput().getType().template cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(reduceOp.getInput().getType());
     const auto inOrder = inType.getDimsOrder();
     const auto inShape = inType.getShape();
 
@@ -527,7 +527,7 @@ mlir::LogicalResult AdjustShapeForReduce<ReduceOp>::matchAndRewrite(ReduceOp red
 
     _log.nest(1).trace("Adjusted shape to {0} for zero axis at {1}", targetShape, reduceOp->getLoc());
 
-    const auto outType = reduceOp.getOutput().getType().template cast<NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(reduceOp.getOutput().getType());
     const auto ctx = rewriter.getContext();
     auto reshapeInOp = rewriter.create<VPU::ShapeCastOp>(reduceOp.getLoc(), inType.changeShape(targetShape),
                                                          reduceOp.getInput(), getIntArrayAttr(ctx, targetShape));
@@ -564,8 +564,8 @@ mlir::LogicalResult AdjustShapeForNCEPermute::matchAndRewrite(VPU::NCEPermuteOp 
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
     auto ctx = origOp->getContext();
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     auto inOrder = inputType.getDimsOrder();
     auto outOrder = outputType.getDimsOrder();
@@ -603,7 +603,7 @@ mlir::LogicalResult AdjustShapeForNCEPermute::matchAndRewrite(VPU::NCEPermuteOp 
             rewriter.create<VPU::ShapeCastOp>(origOp->getLoc(), origOp.getInput(), getIntArrayAttr(ctx, targetShape));
 
     // Create new NCEPermute
-    auto origOutputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     targetShape[Dims4D::Act::C] = origOp.getExpandedChannels();
     auto newOutputType = origOutputType.changeShape(targetShape);
     auto newNCEPermuteOp = rewriter.create<VPU::NCEPermuteOp>(
@@ -715,9 +715,9 @@ mlir::LogicalResult AdjustShapeForNCEMatMul::matchAndRewrite(VPU::NCEMatMulOp or
                                                           getIntArrayOfArray(ctx, inDimMapping),
                                                           getIntArrayAttr(ctx, newInShape));
 
-    auto input1Type = newInput.getOutput().getType().cast<vpux::NDTypeInterface>();
-    auto input2Type = origOp.getWeights().getType().cast<vpux::NDTypeInterface>();
-    auto origOutputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto input1Type = mlir::cast<vpux::NDTypeInterface>(newInput.getOutput().getType());
+    auto input2Type = mlir::cast<vpux::NDTypeInterface>(origOp.getWeights().getType());
+    auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto outputType = VPU::inferNCEMatmulOutputType(input1Type, input2Type, origOutputType);
 
     auto newMatMulOp = rewriter.create<VPU::NCEMatMulOp>(
@@ -834,7 +834,7 @@ mlir::LogicalResult AdjustShapeForNCEAvgPool::matchAndRewrite(VPU::NCEAveragePoo
     auto newPoolOp = rewriter.create<VPU::NCEAveragePoolOp>(
             origOp->getLoc(), newOutputType, inShapeCast.getResult(), origOp.getKernelSizeAttr(),
             origOp.getStridesAttr(), origOp.getPadAttr(), origOp.getPpeAttr(), origOp.getMultiClusterStrategyAttr(),
-            origOp.getOutputChannelsAttr());
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     // Reshape output
     auto origOutputShape = getShape(origOp.getOutput());

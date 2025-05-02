@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,13 +7,8 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attr_interfaces.hpp"
-#include "vpux/compiler/dialect/core/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/attr_interfaces.hpp"
-#include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/mem_size.hpp"
-#include "vpux/utils/core/optional.hpp"
-#include "vpux/utils/core/string_ref.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 

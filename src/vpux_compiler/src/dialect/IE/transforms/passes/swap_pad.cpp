@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
@@ -51,6 +52,9 @@ mlir::LogicalResult SwapWithTranspose::matchAndRewrite(IE::TransposeOp originOp,
     if (padLayer == nullptr) {
         return matchFailed(rewriter, originOp, "Producer is not a Pad operation");
     }
+    if (padLayer.getMode() == IE::PadMode::REFLECT) {
+        return matchFailed(rewriter, originOp, "Pad has mode REFLECT");
+    }
 
     auto newTranspose = rewriter.create<IE::TransposeOp>(takeOpLoc(originOp, "transpose_in"), padLayer.getInput(),
                                                          nullptr, originOp.getOrderValueAttr());
@@ -88,7 +92,7 @@ mlir::LogicalResult SwapWithTranspose::matchAndRewrite(IE::TransposeOp originOp,
                                            getIntArrayAttr(originOp.getContext(), ArrayRef(beginTransposed)),
                                            getIntArrayAttr(originOp.getContext(), ArrayRef(endTransposed)),
                                            padLayer.getPadValueAttrAttr(), padLayer.getMode(),
-                                           padLayer.getOutputChannelsAttr());
+                                           padLayer.getOutputPaddingAttr(), padLayer.getInputPaddingAttr());
 
     return mlir::success();
 }

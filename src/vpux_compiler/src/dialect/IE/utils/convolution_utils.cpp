@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,8 +9,8 @@
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/numeric.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace IE {
@@ -22,9 +22,9 @@ mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, 
         return mlir::failure();
     }
 
-    const auto inputType = groupconv.getInput().getType().cast<NDTypeInterface>();
-    const auto filterType = groupconv.getFilter().getType().cast<NDTypeInterface>();
-    const auto outputType = groupconv.getOutput().getType().cast<NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getInput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(groupconv.getFilter().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getOutput().getType());
     if (inputType.getRank() != 4) {
         logCb(formatv("Only 4D tensors are supported"));
         return mlir::failure();
@@ -83,7 +83,7 @@ mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, 
     return mlir::success();
 }
 
-bool groupConvIsEltwise(IE::GroupConvolutionOp convOp) {
+bool groupConvIsEltwise(IE::GroupConvolutionOp convOp, bool isConstFilter) {
     if (convOp == nullptr) {
         return false;
     }
@@ -101,15 +101,32 @@ bool groupConvIsEltwise(IE::GroupConvolutionOp convOp) {
     if (stridesGreaterThanOne) {
         return false;
     }
-    // check input const is single data or not
-    mlir::SmallVector<Const::DeclareOp> constInputOps;
-    constInputOps.push_back(convOp.getFilter().getDefiningOp<Const::DeclareOp>());
-    if (convOp.getBias()) {
-        constInputOps.push_back(convOp.getBias().getDefiningOp<Const::DeclareOp>());
-    }
-    return llvm::all_of(constInputOps, [](Const::DeclareOp constOp) {
-        return IE::isBaseContentSplat(constOp);
+
+    const auto padStart = parseIntArrayAttr<int64_t>(convOp.getPadsBegin());
+    const auto padEnd = parseIntArrayAttr<int64_t>(convOp.getPadsEnd());
+    const auto nonZeroPadStart = llvm::any_of(padStart, [](auto pad) {
+        return pad > 0;
     });
+    const auto nonZeroPadEnd = llvm::any_of(padEnd, [](auto pad) {
+        return pad > 0;
+    });
+    if (nonZeroPadStart || nonZeroPadEnd) {
+        return false;
+    }
+
+    if (isConstFilter) {
+        // check input const is single data or not
+        mlir::SmallVector<Const::DeclareOp> constInputOps;
+        constInputOps.push_back(convOp.getFilter().getDefiningOp<Const::DeclareOp>());
+        if (convOp.getBias()) {
+            constInputOps.push_back(convOp.getBias().getDefiningOp<Const::DeclareOp>());
+        }
+        return llvm::all_of(constInputOps, [](Const::DeclareOp constOp) {
+            return IE::isBaseContentSplat(constOp);
+        });
+    }
+
+    return filterShape.totalSize() == 1;
 }
 
 //
@@ -219,8 +236,9 @@ mlir::LogicalResult FuseConvAndBias::matchAndRewrite(IE::ScaleShiftOp biasOp, ml
                 transposedConv.getLoc(), transposedConv.getInput(), transposedConv.getFilter(),
                 transposedConv.getOutputShape(), biasOp.getBiases(), transposedConv.getStrides(),
                 transposedConv.getPadsBegin(), transposedConv.getPadsEnd(), transposedConv.getDilations(),
-                transposedConv.getOutputPaddingAttr(), transposedConv.getPostOpAttr(), transposedConv.getClampAttr(),
-                transposedConv.getOutputChannelsAttr(), transposedConv.getInputChannelsAttr());
+                transposedConv.getSpatialOutputPaddingAttr(), transposedConv.getPostOpAttr(),
+                transposedConv.getClampAttr(), transposedConv.getOutputPaddingAttr(),
+                transposedConv.getInputPaddingAttr());
 
         rewriter.replaceOp(biasOp, newTransposedConv->getOpResults());
     } else {

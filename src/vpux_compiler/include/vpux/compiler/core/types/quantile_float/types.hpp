@@ -1,4 +1,4 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,10 +48,14 @@ public:
 };
 
 class NF4Type : public mlir::Type::TypeBase<NF4Type, QuantileFloatType, vpux::detail::QuantileFloatTypeStorage> {
+private:
+    static const SmallVector<double> specQuantiles;
+
 public:
     using Base::Base;
     static NF4Type get(mlir::MLIRContext* context, unsigned width, ArrayRef<double> quantiles);
     static constexpr llvm::StringLiteral name = "nf4";
+    static ArrayRef<double> getSpecQuantiles();
 
     unsigned getWidth() const;
     ArrayRef<double> getQuantiles() const;

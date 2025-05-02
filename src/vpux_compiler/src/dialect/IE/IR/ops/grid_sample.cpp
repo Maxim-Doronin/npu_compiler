@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,10 +19,10 @@ mlir::LogicalResult vpux::IE::GridSampleOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = gridSample.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(gridSample.getInput().getType());
     const auto inShape = inType.getShape();
 
-    const auto gridType = gridSample.getGrid().getType().cast<mlir::ShapedType>();
+    const auto gridType = mlir::cast<mlir::ShapedType>(gridSample.getGrid().getType());
     const auto gridShape = gridType.getShape();
 
     SmallVector<int64_t> outShape = {inShape[0], inShape[1], gridShape[1], gridShape[2]};

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -63,7 +63,7 @@ struct CMXBasedSparsityThreshold {
     double _intRatioThreshold;
 };
 
-// TODO: Add NPU37XX specific intervals
+// TODO: Add VPUX37XX specific intervals
 const std::initializer_list<CMXBasedSparsityThreshold> CMX_BASED_STRATEGY_DEFAULT_INTERVALS = {
         CMXBasedSparsityThreshold(0., CMXBasedSparsityThreshold::DISABLED_SPARSITY_RATIO,
                                   CMXBasedSparsityThreshold::DISABLED_SPARSITY_RATIO),  // No sparsity for any ratio for

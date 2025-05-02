@@ -135,12 +135,12 @@ void getQuantParamsAttr(mlir::MLIRContext* ctx, mlir::Type qType, mlir::Type pTy
     SmallVector<double> scales;
     SmallVector<int64_t> zeroes;
 
-    if (qType.isa<mlir::quant::UniformQuantizedType>()) {
-        auto quantParams = qType.cast<mlir::quant::UniformQuantizedType>();
+    if (mlir::isa<mlir::quant::UniformQuantizedType>(qType)) {
+        auto quantParams = mlir::cast<mlir::quant::UniformQuantizedType>(qType);
         scales = {quantParams.getScale()};
         zeroes = {quantParams.getZeroPoint()};
-    } else if (qType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
-        auto quantParams = qType.cast<mlir::quant::UniformQuantizedPerAxisType>();
+    } else if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
+        auto quantParams = mlir::cast<mlir::quant::UniformQuantizedPerAxisType>(qType);
         scales = {quantParams.getScales().begin(), quantParams.getScales().end()};
         zeroes = {quantParams.getZeroPoints().begin(), quantParams.getZeroPoints().end()};
     } else {
@@ -685,7 +685,12 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{axisParamAttr}, {"gather_elements"}};
             })
             .Case<VPU::GatherNDOp>([&](VPU::GatherNDOp gatherND) {
-                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{gatherND.getBatchDimsAttr()}, {"gatherND"}};
+                const auto storeOrigShapeInfoAttr =
+                        packOriginalShapeAttrForGatherNDSwOp(gatherND.getOriginalShape().value_or(nullptr), ctx);
+
+                return VPUIP::KernelInfo{
+                        SmallVector<mlir::Attribute>{gatherND.getBatchDimsAttr(), storeOrigShapeInfoAttr},
+                        {"gatherND"}};
             })
             .Case<VPU::GatherTreeOp>([&](VPU::GatherTreeOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"gather_tree"}};
@@ -753,7 +758,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 if (softmax.getPadSize().has_value()) {
                     padSizeAttr = softmax.getPadSizeAttr();
                 }
-                const auto iType = softmax.getInput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(softmax.getInput().getType());
                 if (iType.getElementType().isF32()) {
                     return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{axisParamAttr, padSizeAttr}, {"softmaxFp32"}};
                 } else {
@@ -958,8 +963,8 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"activation_mish"}};
             })
             .Case<VPU::MVNOp>([&](VPU::MVNOp mvn) {
-                const auto iType = mvn.getInput().getType().cast<vpux::NDTypeInterface>();
-                const auto oType = mvn.getOutput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(mvn.getInput().getType());
+                const auto oType = mlir::cast<vpux::NDTypeInterface>(mvn.getOutput().getType());
                 const auto iOrder = iType.getDimsOrder();
                 const auto supported = {DimsOrder::NCHW, DimsOrder::NCWH, DimsOrder::NHWC, DimsOrder::NWHC};
                 VPUX_THROW_UNLESS(llvm::any_of(supported,
@@ -1099,7 +1104,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 auto rates = parseIntArrayAttr<int64_t>(op.getRatesAttr());
                 const auto autoPad = static_cast<int32_t>(op.getAutoPadAttr().getValue());
 
-                const auto iType = op.getData().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getData().getType());
                 const auto iOrder = iType.getDimsOrder();
                 const auto supported = {DimsOrder::NCHW};
                 VPUX_THROW_UNLESS(llvm::any_of(supported,
@@ -1168,8 +1173,8 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"adaptive_max_pool"}};
             })
             .Case<VPU::FakeQuantizeOp>([&](VPU::FakeQuantizeOp op) {
-                const auto iType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-                const auto oType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+                const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
                 VPUX_THROW_UNLESS(iType.getElementType().isF16() && oType.getElementType().isF16(),
                                   "Only supports FP16 in/out");
 
@@ -1193,15 +1198,15 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{levelsAttr, LowFpTypeAttr}, {"fake_quantize"}};
             })
             .Case<VPU::QuantizeOp>([&](VPU::QuantizeOp op) {
-                const auto iType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-                const auto oType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+                const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
                 mlir::ArrayAttr paramsAttr;
                 getQuantParamsAttr(ctx, oType.getElementType(), iType.getElementType(), paramsAttr);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{paramsAttr}, {"quantize"}};
             })
             .Case<VPU::DequantizeOp>([&](VPU::DequantizeOp op) {
-                const auto iType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-                const auto oType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+                const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
                 mlir::ArrayAttr paramsAttr;
                 getQuantParamsAttr(ctx, iType.getElementType(), oType.getElementType(), paramsAttr);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{paramsAttr}, {"dequantize"}};
@@ -1396,7 +1401,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                                          {"random_uniform"}};
             })
             .Case<VPU::ROIPoolingOp>([&](VPU::ROIPoolingOp roi) {
-                const auto iType = roi.getInput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(roi.getInput().getType());
                 VPUX_THROW_UNLESS(iType.getRank() == 4, "Supporting only 4D input, got {0}", iType.getRank());
 
                 const auto method = static_cast<int64_t>(roi.getMethodAttr().getValue());
@@ -1406,7 +1411,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                         {"roi_pooling"}};
             })
             .Case<VPU::ROIAlignOp>([&](VPU::ROIAlignOp roiAlign) {
-                const auto iType = roiAlign.getInput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(roiAlign.getInput().getType());
                 VPUX_THROW_UNLESS(iType.getRank() == 4, "Supporting only 4D input, got {0}", iType.getRank());
 
                 const auto pooledH = roiAlign.getPooledHAttr();
@@ -1515,7 +1520,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                                          {"reverse"}};
             })
             .Case<VPU::PSROIPoolingOp>([&](VPU::PSROIPoolingOp psroi) {
-                const auto iType = psroi.getInput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(psroi.getInput().getType());
                 VPUX_THROW_UNLESS(iType.getRank() == 4, "Supporting only 4D input, got {0}", iType.getRank());
                 VPUX_THROW_UNLESS(psroi.getMode() == IE::PSROIPoolingMode::AVERAGE,
                                   "Supporting only average psroi mode, got {0}", psroi.getMode());
@@ -1681,8 +1686,8 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                     PQ_NCHW_NHWC_C1EXP4 = 6
                 };
                 int64_t optMode = PermuteQuantizeOptMode::PQ_NONE;
-                const auto iType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-                const auto oType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+                const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
                 const auto inOrder = DimsOrder::fromValue(op.getInput());
                 const auto outOrder = DimsOrder::fromValue(op.getOutput());
                 if ((inOrder == DimsOrder::NCHW) && (outOrder == DimsOrder::NHWC) &&
@@ -1696,7 +1701,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                     }
                 }
                 // Extract quantize scale and zero
-                auto quantParams = oType.getElementType().cast<mlir::quant::UniformQuantizedType>();
+                auto quantParams = mlir::cast<mlir::quant::UniformQuantizedType>(oType.getElementType());
                 double scale = quantParams.getScale();
                 int64_t zero = quantParams.getZeroPoint();
 
@@ -1811,6 +1816,9 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                                                      shouldLinearBeforeResetAttr, gru.getClipAttr()},
                         {"gru_sequence_last_part"}};
             })
+            .Case<VPU::GRUGatesOp>([&](VPU::GRUGatesOp) {
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"gru_gates"}};
+            })
             .Case<VPU::LSTMCellOp>([&](VPU::LSTMCellOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"lstm_cell"}};
             })
@@ -1894,8 +1902,8 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"activation_gelu"}};
             })
             .Case<VPU::BucketizeOp>([&](VPU::BucketizeOp bucketize) {
-                const auto dataType = bucketize.getData().getType().cast<vpux::NDTypeInterface>();
-                const auto bucketsType = bucketize.getBuckets().getType().cast<vpux::NDTypeInterface>();
+                const auto dataType = mlir::cast<vpux::NDTypeInterface>(bucketize.getData().getType());
+                const auto bucketsType = mlir::cast<vpux::NDTypeInterface>(bucketize.getBuckets().getType());
                 VPUX_THROW_UNLESS(dataType.getElementType().isF16() && bucketsType.getElementType().isF16(),
                                   "Only supports FP16 for Input1 & Input2");
                 const auto with_right_bound = static_cast<int64_t>(bucketize.getWithRightBound());
@@ -2002,7 +2010,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 VPUX_THROW_WHEN(staticOffsetsAttr.size() != 2,
                                 "VPU.Concat must have only 2 values of static_offsets attribute.");
 
-                const auto inType = op.getInputs().front().getType().cast<vpux::NDTypeInterface>();
+                const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInputs().front().getType());
                 VPUX_THROW_UNLESS(inType.getElementType().isF16() || inType.getElementType().isUnsignedInteger(8) ||
                                           inType.getElementType().isInteger(32),
                                   "Only supports FP16, U8, SI32 type");
@@ -2022,7 +2030,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                                          {"concat"}};
             })
             .Case<VPU::RMSOp>([&](VPU::RMSOp op) {
-                const auto iType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
                 VPUX_THROW_UNLESS(iType.getRank() <= 4, "Supporting only 3D and 4D input, got {0}", iType.getRank());
                 const auto epsilonAttr = op.getEpsilonAttr();
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{epsilonAttr}, {"rms_norm"}};
@@ -2052,6 +2060,16 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
                 VPUX_THROW_UNLESS(iType.getRank() <= 4, "Supporting only 3D and 4D input, got {0}", iType.getRank());
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"rope"}, {"rope.cpp"}};
+            })
+            .Case<VPU::DynamicDataMaskOp>([&](VPU::DynamicDataMaskOp) {
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{},
+                                         {"dynamic_data_mask"},
+                                         {"dynamic_data_mask.cpp"}};
+            })
+            .Case<VPU::SDPAOp>([&](VPU::SDPAOp op) {
+                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInputQ().getType());
+                VPUX_THROW_UNLESS(iType.getRank() == 4, "Supporting only 4D input, got {0}", iType.getRank());
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"sdpa"}, {"sdpa.cpp"}};
             })
             .Default([](mlir::Operation* unknownOp) -> VPUIP::KernelInfo {
                 VPUX_THROW("Operation '{0}' is not supported by the act-shaves", unknownOp->getName());

@@ -340,38 +340,38 @@ func.func @ConcatWithConstInputsFoldForQuantize() -> tensor<16x12x2x1x!qElemType
 
     // CHECK-NOT: IE.Concat
     // CHECK: [[cst:%.+]] = const.Declare tensor<16x12x2x1x!qElemType, {order = #NHWC}> = dense<"
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E
-    // CHECK-SAME                         8080807F7F7F7F7F7F7E7E7E"> : tensor<16x12x2x1xui8, {order = #NHWC}>, [#const.CastElemType<!qElemType>]
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E
+    // CHECK-SAME:                        8080807F7F7F7F7F7F7E7E7E"> : tensor<16x12x2x1xui8, {order = #NHWC}>, [#const.CastElemType<!qElemType>]
     // CHECK:     return [[cst]]
 }
 

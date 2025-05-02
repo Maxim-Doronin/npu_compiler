@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/profiling/common.hpp"
@@ -65,12 +66,15 @@ void ConstantDpuProfHwpBasePass::safeRunOnFunc() {
         }
         profDeclBuff.setByteOffsetAttr(vpux::getIntAttr(ctx, 0));
 
+        // Workaround: The dummy DPU task injected by add-dummy-dpu-task-for-sprlut will get the same workload_id
+        // as the next DPU task in the same NCEClusterTask. This is intentional and makes the dummy task write its
+        // profiling data in the buffer that's been allocated for the next task, with the next (non-dummy) DPU task
+        // overwriting the dummy task's profiling data.
+        // TODO: E#160727
         nceClusterTaskOp.walk([&](VPUIP::DPUTaskOp dpuTaskOp) {
-            // We only consider DPUTaskOps with workload_id set to be profiling targets.
-            // For example, dummy DPU tasks injected by add-dummy-dpu-task-for-sprlut are not profiled
-            if (!dpuTaskOp.getWorkloadId().has_value()) {
-                return;
-            }
+            VPUX_THROW_UNLESS(dpuTaskOp.getWorkloadId().has_value(),
+                              "NCEClusterTask at '{0}' does not have workload ids configured",
+                              nceClusterTaskOp->getLoc());
             // Adjust workload_id to represent total offset in CMX
             auto newWorkloadId = workloadIdOffset + dpuTaskOp.getWorkloadId().value();
             dpuTaskOp.setWorkloadIdAttr(vpux::getIntAttr(ctx, newWorkloadId));

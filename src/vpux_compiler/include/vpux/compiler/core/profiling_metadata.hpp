@@ -5,10 +5,11 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 
-std::vector<uint8_t> buildProfilingMetadataBuffer(IE::CNNNetworkOp netOp, mlir::func::FuncOp funcOp, Logger log);
+std::vector<uint8_t> buildProfilingMetadataBuffer(net::NetworkInfoOp netOp, mlir::func::FuncOp funcOp, Logger log);
 
 };  // namespace vpux

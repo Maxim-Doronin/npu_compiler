@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -39,7 +39,11 @@ public:
                                         mlir::PatternRewriter& rewriter) const final;
 
 private:
+#if defined(__clang__)
+    [[maybe_unused]] VPU::ArchKind _arch = VPU::ArchKind::UNKNOWN;
+#else
     VPU::ArchKind _arch = VPU::ArchKind::UNKNOWN;
+#endif
     int64_t getTaskSize(VPURegMapped::TaskType taskType) const;
     Logger _log;
 };
@@ -81,12 +85,12 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
                                                           primaryTaskOpStart.getIndexType().getTileIdx());
 
     auto primaryMemrefDDR = mlir::MemRefType::get({primaryCount, primarySize}, rewriter.getIntegerType(8, false));
-    auto primaryMemrefCMX =
-            primaryMemrefDDR.cast<NDTypeInterface>().changeMemSpace(memSpaceCMX).cast<mlir::MemRefType>();
+    auto primaryMemrefCMX = mlir::cast<mlir::MemRefType>(
+            mlir::cast<vpux::NDTypeInterface>(primaryMemrefDDR).changeMemSpace(memSpaceCMX));
 
     auto secondaryMemrefDDR = mlir::MemRefType::get({secondaryCount, secondarySize}, rewriter.getIntegerType(8, false));
-    auto secondaryMemrefCMX =
-            secondaryMemrefDDR.cast<NDTypeInterface>().changeMemSpace(memSpaceCMX).cast<mlir::MemRefType>();
+    auto secondaryMemrefCMX = mlir::cast<mlir::MemRefType>(
+            mlir::cast<vpux::NDTypeInterface>(secondaryMemrefDDR).changeMemSpace(memSpaceCMX));
 
     auto primaryTaskView = rewriter.create<VPURegMapped::ViewTaskRangeOp>(
             fetchTaskOp.getLoc(), primaryMemrefDDR, fetchTaskOp.getPrimaryStart(), fetchTaskOp.getPrimaryEnd());
@@ -109,18 +113,20 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             fetchTaskOp.getPreviousTask(),  // inherit the previous
             mlir::ValueRange({}), mlir::ValueRange({}), 0,
             0,                  // start_after, clean_after fields have no meaning with WLM
-            true, true, false,  // is_out_of_rder  and is_critical, enable_msc
+            true, true, false,  // is_out_of_order  and is_critical, enable_msc
             0,                  // port has no meaning
             VPUIP::DMAAccMode::DISABLE,
-            nullptr,  // dma_transaction
-            nullptr,  // no descriptor attr required
-            nullptr,  // no act_compression_sparsity_map required
-            nullptr,  // no descriptor attr required
-            nullptr,  // dma_hwp_id 0 s nullptr
-            nullptr,  //  profilingMetadata
-            0,        // allow_different_in_out_shapes
-            nullptr,  // indices
-            nullptr   // enqueueBarrier
+            nullptr,                      // dma_transaction
+            nullptr,                      // no descriptor attr required
+            nullptr,                      // no act_compression_sparsity_map required
+            nullptr,                      // no descriptor attr required
+            nullptr,                      // dma_hwp_id 0 s nullptr
+            nullptr,                      //  profilingMetadata
+            0,                            // allow_different_in_out_shapes
+            nullptr,                      // indices
+            nullptr,                      // enqueueBarrier
+            nullptr,                      // barProgDmaAtPage
+            fetchTaskOp.getWlmPageAttr()  // wlmPageAttr
     );
     auto secondaryDma = rewriter.create<VPUMI40XX::NNDMAOp>(
             fetchTaskOp.getLoc(), fetchTaskOp.getIndexType(),
@@ -128,18 +134,20 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             secondaryTaskView.getResult(), mlir::ValueRange({secondaryTaskLocationsView.getResult()}),
             primaryDma.getResult(), mlir::ValueRange({}), mlir::ValueRange({}), 0,
             0,                  // start_after, clean_after fields have no meaning with WLM
-            true, true, false,  // is_out_of_rder  and is_critical, enable_msc
+            true, true, false,  // is_out_of_order  and is_critical, enable_msc
             0,                  // port has no meaning
             VPUIP::DMAAccMode::DISABLE,
-            nullptr,  // dma_transaction
-            nullptr,  // no descriptor attr required
-            nullptr,  // no act_compression_sparsity_map required
-            nullptr,  // no descriptor attr required
-            nullptr,  // dma_hwp_id 0 s nullptr
-            nullptr,  // profilingMetadata
-            0,        // allow_different_in_out_shapes
-            nullptr,  // indices
-            nullptr   // enqueueBarrier
+            nullptr,                      // dma_transaction
+            nullptr,                      // no descriptor attr required
+            nullptr,                      // no act_compression_sparsity_map required
+            nullptr,                      // no descriptor attr required
+            nullptr,                      // dma_hwp_id 0 s nullptr
+            nullptr,                      // profilingMetadata
+            0,                            // allow_different_in_out_shapes
+            nullptr,                      // indices
+            nullptr,                      // enqueueBarrier
+            nullptr,                      // barProgDmaAtPage
+            fetchTaskOp.getWlmPageAttr()  // wlmPageAttr
     );
 
     // the use of mapped inference is to be replaced with the FIRST dma.

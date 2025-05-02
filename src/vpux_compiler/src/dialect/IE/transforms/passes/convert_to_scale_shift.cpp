@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -62,7 +64,8 @@ bool checkIfNeedToCloneOpChain(mlir::Operation* chainOp, ShapeRef dataConstOpSha
             static const auto H = Dims4D::Act::H;
             static const auto W = Dims4D::Act::W;
 
-            auto broadcastType = userOp->getAttr("auto_broadcast").dyn_cast<IE::AutoBroadcastTypeAttr>().getValue();
+            auto broadcastType =
+                    mlir::dyn_cast<vpux::IE::AutoBroadcastTypeAttr>(userOp->getAttr("auto_broadcast")).getValue();
 
             SmallVector<int64_t> shape1 = {outputShape[N], outputShape[C], outputShape[H], outputShape[W]};
             SmallVector<int64_t> shape2 = {dataConstOpShape[N], dataConstOpShape[C], dataConstOpShape[H],
@@ -203,8 +206,8 @@ template <typename BiasTypeOp>
 mlir::LogicalResult ConvertBiasToScaleShift<BiasTypeOp>::matchAndRewrite(BiasTypeOp biasOp,
                                                                          mlir::PatternRewriter& rewriter) const {
     _log.trace("Got op {0} at {1}", biasOp->getName(), biasOp->getLoc());
-    auto inElemType = biasOp.getInput2().getType().template cast<vpux::NDTypeInterface>().getElementType();
-    auto outElemType = biasOp.getOutput().getType().template cast<vpux::NDTypeInterface>().getElementType();
+    auto inElemType = mlir::cast<vpux::NDTypeInterface>(biasOp.getInput2().getType()).getElementType();
+    auto outElemType = mlir::cast<vpux::NDTypeInterface>(biasOp.getOutput().getType()).getElementType();
 
     // from the ops defination, scale shift can only support F16
     if (!(inElemType.isF16())) {
@@ -295,8 +298,8 @@ protected:
 mlir::LogicalResult ConvertMultiplyToScaleShift::matchAndRewrite(IE::MultiplyOp mulOp,
                                                                  mlir::PatternRewriter& rewriter) const {
     _log.trace("Got op {0} at {1}", mulOp->getName(), mulOp->getLoc());
-    const auto lhsType = mulOp.getInput1().getType().cast<mlir::ShapedType>();
-    const auto outShapeRes = mulOp.getOutput().getType().cast<mlir::ShapedType>();
+    const auto lhsType = mlir::cast<mlir::ShapedType>(mulOp.getInput1().getType());
+    const auto outShapeRes = mlir::cast<mlir::ShapedType>(mulOp.getOutput().getType());
 
     // From the ops definition, scale shift can only support F16
     const auto lhsElementType = lhsType.getElementType();

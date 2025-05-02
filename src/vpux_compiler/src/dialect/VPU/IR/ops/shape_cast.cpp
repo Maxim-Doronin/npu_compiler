@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,7 +24,7 @@ mlir::LogicalResult vpux::VPU::ShapeCastOp::inferReturnTypes(mlir::MLIRContext* 
     }
 
     const auto outShape = parseIntArrayAttr<int64_t>(shapeCast.getShape());
-    const auto inType = shapeCast.getSource().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getSource().getType());
 
     auto outType = inType.changeShape(Shape(outShape));
     inferredReturnTypes.push_back(outType);
@@ -34,8 +34,8 @@ mlir::LogicalResult vpux::VPU::ShapeCastOp::inferReturnTypes(mlir::MLIRContext* 
 
 mlir::OpFoldResult vpux::VPU::ShapeCastOp::fold(FoldAdaptor adaptor) {
     auto operands = adaptor.getOperands();
-    auto inputType = getSource().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = getResult().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(getSource().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getResult().getType());
     if (getSource().getType() == getResult().getType()) {
         return getSource();
     }

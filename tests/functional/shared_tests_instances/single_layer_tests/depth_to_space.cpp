@@ -4,8 +4,6 @@
 //
 
 #include "single_op_tests/depth_to_space.hpp"
-#include <openvino/opsets/opset3.hpp>
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -82,8 +82,8 @@ void FuseQuantizedOpsStrategy::addPatterns(mlir::RewritePatternSet& patterns, Lo
     auto ctx = patterns.getContext();
 
     const auto checkAddInputTypes = [&](mlir::Type input1Type, mlir::Type input2Type) -> mlir::LogicalResult {
-        auto dequantElemIn1Type = input1Type.cast<mlir::quant::UniformQuantizedType>();
-        auto dequantElemIn2Type = input2Type.cast<mlir::quant::UniformQuantizedType>();
+        auto dequantElemIn1Type = mlir::cast<mlir::quant::UniformQuantizedType>(input1Type);
+        auto dequantElemIn2Type = mlir::cast<mlir::quant::UniformQuantizedType>(input2Type);
 
         // Perform check for input types. AddOp supports quantization with different zp, but not different scales.
         if (dequantElemIn1Type.getExpressedType() != dequantElemIn2Type.getExpressedType() ||

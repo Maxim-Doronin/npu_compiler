@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -156,7 +156,7 @@ func.func @SwapWithTanh(%arg0: tensor<1x24x112x224xf16, {order = #NHWC}>) -> ten
 func.func @SwapWithAvgPool(%arg0: tensor<1x24x112x224xf16, {order = #NHWC}>) -> tensor<1x192x56x56xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<16x1x1x1xf16, {order = #NHWC}> = dense<-1.0> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>, #const.Broadcast<0 : i64, 16 : i64>]
     %0 = IE.ShapeCast {shape = [1, 12, 224, 224]} inputs(%arg0 : tensor<1x24x112x224xf16, {order = #NHWC}>) -> tensor<1x12x224x224xf16, {order = #NHWC}>
-    %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x12x224x224xf16, {order = #NHWC}> -> tensor<1x12x224x224xf16, {order = #NHWC}>
+    %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x12x224x224xf16, {order = #NHWC}> -> tensor<1x12x224x224xf16, {order = #NHWC}>
     %2 = IE.ShapeCast {shape = [1, 16, 196, 192]} inputs(%1 : tensor<1x12x224x224xf16, {order = #NHWC}>) -> tensor<1x16x196x192xf16, {order = #NHWC}>
     %3 = IE.GroupConvolution(%2, %cst) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}>, tensor<16x1x1x1xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
     %4 = IE.ShapeCast {shape = [1, 192, 56, 56]} inputs(%3 : tensor<1x16x196x192xf16, {order = #NHWC}>) -> tensor<1x192x56x56xf16, {order = #NHWC}>
@@ -165,7 +165,7 @@ func.func @SwapWithAvgPool(%arg0: tensor<1x24x112x224xf16, {order = #NHWC}>) -> 
 
     // CHECK-DAG:           [[CST:%.*]] = const.Declare tensor<16x1x1x1xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>, #const.Broadcast<0 : i64, 16 : i64>]
     // CHECK:               [[SHAPE_CAST_0:%.*]] = IE.ShapeCast {shape = [1, 16, 196, 192]} inputs([[INPUT]] : tensor<1x24x112x224xf16, {order = #NHWC}>) -> tensor<1x16x196x192xf16, {order = #NHWC}>
-    // CHECK:               [[POOL:%.*]] = IE.AvgPool([[SHAPE_CAST_0]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
+    // CHECK:               [[POOL:%.*]] = IE.AvgPool([[SHAPE_CAST_0]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
     // CHECK:               [[GROUP_CONVOLUTION:%.*]] = IE.GroupConvolution([[POOL]], [[CST]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}>, tensor<16x1x1x1xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
     // CHECK:               [[SHAPE_CAST_1:%.*]] = IE.ShapeCast {shape = [1, 192, 56, 56]} inputs([[GROUP_CONVOLUTION]] : tensor<1x16x196x192xf16, {order = #NHWC}>) -> tensor<1x192x56x56xf16, {order = #NHWC}>
     // CHECK:               return [[SHAPE_CAST_1]] : tensor<1x192x56x56xf16, {order = #NHWC}>
@@ -180,7 +180,7 @@ func.func @SwapWithAvgPool(%arg0: tensor<1x24x112x224xf16, {order = #NHWC}>) -> 
 func.func @SwapWithMaxPool(%arg0: tensor<1x24x112x224xf16, {order = #NHWC}>) -> tensor<1x192x56x56xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<16x1x1x1xf16, {order = #NHWC}> = dense<-1.0> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>, #const.Broadcast<0 : i64, 16 : i64>]
     %0 = IE.ShapeCast {shape = [1, 12, 224, 224]} inputs(%arg0 : tensor<1x24x112x224xf16, {order = #NHWC}>) -> tensor<1x12x224x224xf16, {order = #NHWC}>
-    %1 = IE.MaxPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x12x224x224xf16, {order = #NHWC}> -> tensor<1x12x224x224xf16, {order = #NHWC}>
+    %1 = IE.MaxPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x12x224x224xf16, {order = #NHWC}> -> tensor<1x12x224x224xf16, {order = #NHWC}>
     %2 = IE.ShapeCast {shape = [1, 16, 196, 192]} inputs(%1 : tensor<1x12x224x224xf16, {order = #NHWC}>) -> tensor<1x16x196x192xf16, {order = #NHWC}>
     %3 = IE.GroupConvolution(%2, %cst) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}>, tensor<16x1x1x1xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
     %4 = IE.ShapeCast {shape = [1, 192, 56, 56]} inputs(%3 : tensor<1x16x196x192xf16, {order = #NHWC}>) -> tensor<1x192x56x56xf16, {order = #NHWC}>
@@ -189,7 +189,7 @@ func.func @SwapWithMaxPool(%arg0: tensor<1x24x112x224xf16, {order = #NHWC}>) -> 
 
     // CHECK-DAG:           [[CST:%.*]] = const.Declare tensor<16x1x1x1xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>, #const.Broadcast<0 : i64, 16 : i64>]
     // CHECK:               [[SHAPE_CAST_0:%.*]] = IE.ShapeCast {shape = [1, 16, 196, 192]} inputs([[INPUT]] : tensor<1x24x112x224xf16, {order = #NHWC}>) -> tensor<1x16x196x192xf16, {order = #NHWC}>
-    // CHECK:               [[POOL:%.*]] = IE.MaxPool([[SHAPE_CAST_0]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
+    // CHECK:               [[POOL:%.*]] = IE.MaxPool([[SHAPE_CAST_0]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
     // CHECK:               [[GROUP_CONVOLUTION:%.*]] = IE.GroupConvolution([[POOL]], [[CST]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x196x192xf16, {order = #NHWC}>, tensor<16x1x1x1xf16, {order = #NHWC}> -> tensor<1x16x196x192xf16, {order = #NHWC}>
     // CHECK:               [[SHAPE_CAST_1:%.*]] = IE.ShapeCast {shape = [1, 192, 56, 56]} inputs([[GROUP_CONVOLUTION]] : tensor<1x16x196x192xf16, {order = #NHWC}>) -> tensor<1x192x56x56xf16, {order = #NHWC}>
     // CHECK:               return [[SHAPE_CAST_1]] : tensor<1x192x56x56xf16, {order = #NHWC}>

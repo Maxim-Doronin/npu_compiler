@@ -1,16 +1,19 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 mlir::LogicalResult vpux::IE::inferReduceReturnTypeComponents(
         mlir::Location loc, mlir::Value input, bool keepDims, SmallVector<int64_t>& axes,
-        SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnShapes) {
-    const auto inType = input.getType().cast<mlir::ShapedType>();
-    const auto inShape = inType.getShape();
+        SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnShapes, mlir::ArrayAttr inputPadding,
+        mlir::ArrayAttr outputPadding) {
+    const auto inType = mlir::cast<mlir::ShapedType>(input.getType());
     const auto inRank = inType.getRank();
+    auto inShape = SmallVector<int64_t>(inType.getShape());
 
     for (auto& axis : axes) {
         if (axis < 0) {
@@ -21,6 +24,10 @@ mlir::LogicalResult vpux::IE::inferReduceReturnTypeComponents(
     bool isAllUnique = std::unique(axes.begin(), axes.end()) == axes.end();
     if (!isAllUnique) {
         return errorAt(loc, "Axes values should be unique");
+    }
+
+    if (mlir::failed(IE::unpadInputShape(inShape, inputPadding, loc))) {
+        return errorAt(loc, "Input padding {0} incompatible with input shape {1}", inputPadding, inShape);
     }
 
     // Add to outShape the values with indices not found in axes_set.
@@ -35,6 +42,10 @@ mlir::LogicalResult vpux::IE::inferReduceReturnTypeComponents(
 
     if (outShape.size() == 0) {
         outShape.push_back(1);
+    }
+
+    if (mlir::failed(IE::padOutputShape(outShape, outputPadding, loc))) {
+        return errorAt(loc, "Output padding {0} incompatible with output shape {1}", outputPadding, outShape);
     }
 
     inferredReturnShapes.emplace_back(outShape, inType.getElementType());

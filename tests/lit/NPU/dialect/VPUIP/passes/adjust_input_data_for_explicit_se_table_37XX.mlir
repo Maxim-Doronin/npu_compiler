@@ -157,3 +157,74 @@ func.func @SparseConvSETableWithExplictDistributed() -> memref<1x16x80x288xf16, 
     // CHECK-NOT:      parent_input({{%.+}} : !VPUIP.DistributedBuffer<1x16x80x144xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = {{\[\[}}1, 16, 40, 144], [1, 16, 40, 144]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 40, 0]], memory_shapes = {{\[\[}}1, 16, 44, 144], [1, 16, 36, 144]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 44, 0]]}>)
     // CHECK:          parent_input({{%.+}} : !VPUIP.DistributedBuffer<1x16x161x289xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = {{\[\[}}1, 16, 88, 289], [1, 16, 73, 289]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 88, 0]], memory_shapes = {{\[\[}}1, 16, 88, 289], [1, 16, 73, 289]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 88, 0]]}>)
 }
+
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!InputType = memref<1x32x19x128xf16, #NHWC, [@CMX_NN, 1]>
+
+!ParentInputSM = !VPUIP.DistributedBuffer<
+    1x96x37x256xi1, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 2, 1, 1],
+    num_clusters = 2 : i64,
+    alignment = [1, 16, 1, 1],
+    compute_shapes = [[1, 64, 37, 256], [1, 32, 37, 256]],
+    compute_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]],
+    memory_shapes = [[1, 64, 37, 256], [1, 32, 37, 256]],
+    memory_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]
+}>
+
+!ParentInputSET = !VPUIP.DistributedBuffer<
+    1x2x37x256xi32, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 2, 1, 1],
+    num_clusters = 2 : i64,
+    alignment = [1, 1, 1, 1],
+    compute_shapes = [[1, 1, 37, 256], [1, 1, 37, 256]],
+    compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+    memory_shapes = [[1, 1, 37, 256], [1, 1, 37, 256]],
+    memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]
+}>
+
+!OutputType = memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>
+
+func.func @SparseDWConvSETableWithExplictDistributedSOK() -> !OutputType {
+    %input_sm = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x32x37x256xi1, #NHWC, [@CMX_NN, 1]>
+    %input_se = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x1x37x256xi32, #NHWC, [@CMX_NN, 1]>
+    %weights = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 1]>
+    %weights_table = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<32x1x1x4xsi32, [@CMX_NN, 1]>
+
+    %input = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> !InputType
+    %parent_input_sm = VPURT.DeclareBuffer <CMX_NN> <0> -> !ParentInputSM
+    %parent_input_se = VPURT.DeclareBuffer <CMX_NN> <0> -> !ParentInputSET
+    %output = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> !OutputType
+
+    VPURT.Task {
+      %out = VPUIP.NCEClusterTask {input_se_size = 32 : i64, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<DWCONV>}
+              input(%input : !InputType)
+              input_sparsity_map(%input_sm : memref<1x32x37x256xi1, #NHWC, [@CMX_NN, 1]>)
+              input_storage_element_table(%input_se : memref<1x1x37x256xi32, #NHWC, [@CMX_NN, 1]>)
+              weights(%weights : memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
+              weight_table(%weights_table : memref<32x1x1x4xsi32, [@CMX_NN, 1]>)
+              parent_input(%input : !InputType)
+              parent_input_sparsity_map(%parent_input_sm : !ParentInputSM)
+              parent_input_storage_element_table(%parent_input_se : !ParentInputSET)
+              parent_output(%output : !OutputType)
+              outputs(%output : !OutputType)
+      -> !OutputType variants : {
+        DPUTask {cluster_id = 1 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [255, 36, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>}
+      } PPE : {
+        PPETask {ppe = #VPU.PPEStub<>}
+      }
+    }
+
+    return %output : !OutputType
+
+    // CHECK:       [[IN_VAL:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>
+    // CHECK:       VPUIP.NCEClusterTask
+    // CHECK-SAME:     input([[IN_VAL]] : memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>)
+    // CHECK-SAME:     parent_input([[IN_VAL]] : memref<1x32x37x256xf16, #NHWC, [@CMX_NN, 1]>)
+}

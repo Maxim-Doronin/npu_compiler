@@ -1,15 +1,17 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -39,7 +41,7 @@ IE::ConvolutionOp createStridedSliceConv(mlir::Value input, mlir::ArrayRef<int64
     }
     Shape outShape(outShapeVec);
 
-    const auto elemType = input.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
 
     // OC is equal with IC
     const auto weightShape = Shape{inShape[Dims4D::Act::C], inShape[Dims4D::Act::C], 1, 1};
@@ -51,11 +53,13 @@ IE::ConvolutionOp createStridedSliceConv(mlir::Value input, mlir::ArrayRef<int64
         weightsVals[index] = 1.0f;
     }
 
-    const auto origOutType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto origOutType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const DimsOrder weightOrder = DimsOrder::OIYX;
-    const auto weightType =
-            mlir::RankedTensorType::get(weightShape.raw(), origOutType.getElementType(),
-                                        getTensorAttr(rewriter.getContext(), weightOrder, nullptr, nullptr));
+
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(input.getType()), "{0} doesn't support dynamic shapes",
+                      IE::ConvolutionOp::getOperationName());
+    const auto weightType = mlir::RankedTensorType::get(weightShape.raw(), origOutType.getElementType(),
+                                                        getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
     auto weights = Const::buildWeightsConst(rewriter, input.getLoc(), weightType, ArrayRef(weightsVals));
     const auto dataStorageType = mlir::RankedTensorType::get(to_small_vector(weightShape), elemType);
     // Insert a fake quantize operation after the kernel when necessary.
@@ -85,7 +89,7 @@ IE::ConvolutionOp createStridedSliceConv(mlir::Value input, mlir::ArrayRef<int64
     return rewriter.create<IE::ConvolutionOp>(newLoc, grpConvOutType, input, weights, /*bias=*/nullptr, stridesAttr,
                                               padBeginAttr, padEndAttr, dilationsAttr,
                                               /*post_opAttr=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*output_channelsAttr=*/nullptr, /*input_channelsAttr=*/nullptr);
+                                              /*outputPaddingAttr=*/nullptr, /*inputPaddingAttr=*/nullptr);
 }
 
 IE::ConvolutionOp createParallelStridedSliceToConv(mlir::Value input, mlir::ArrayRef<int64_t> strides,
@@ -109,10 +113,13 @@ IE::ConvolutionOp createParallelStridedSliceToConv(mlir::Value input, mlir::Arra
 
     const auto weightShape = Shape{outputChannel, inShape[Dims4D::Act::C], strides[2], strides[3]};
 
-    const auto elemType = input.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
     const DimsOrder weightOrder = DimsOrder::OIYX;
-    const auto weightType = mlir::RankedTensorType::get(
-            weightShape.raw(), elemType, getTensorAttr(rewriter.getContext(), weightOrder, nullptr, nullptr));
+
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(input.getType()), "{0} doesn't support dynamic shapes",
+                      IE::ConvolutionOp::getOperationName());
+    const auto weightType = mlir::RankedTensorType::get(weightShape.raw(), elemType,
+                                                        getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
     auto weights = Const::buildWeightsConst(rewriter, input.getLoc(), weightType, ArrayRef(weightsVal));
 
     const auto dataStorageType = mlir::RankedTensorType::get(to_small_vector(weightShape), elemType);
@@ -136,13 +143,13 @@ IE::ConvolutionOp createParallelStridedSliceToConv(mlir::Value input, mlir::Arra
     }
     // IE::ConvolutionOp output type inference sets NCHW output order.
     // Specify convolution output type explicitly.
-    const auto origOutType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto origOutType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto convOutType = origOutType.changeShape(outShape);
     auto newLoc = appendLoc(loc, "parallel_strided_slice_Conv");
     return rewriter.create<IE::ConvolutionOp>(newLoc, convOutType, input, weights, /*bias=*/nullptr, stridesAttr,
                                               padBeginAttr, padEndAttr, dilationsAttr,
                                               /*post_opAttr=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputChannels*/ nullptr, /*inputChannels*/ nullptr);
+                                              /*outputPadding*/ nullptr, /*inputPadding*/ nullptr);
 }
 
 //
@@ -221,7 +228,7 @@ mlir::LogicalResult StridedSliceOpConverter::matchAndRewrite(IE::StridedSliceOp 
     const auto inputOffsetsAttr = getIntArrayAttr(ctx, begins);
 
     const auto input = origOp.getInput();
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto inputShape = inType.getShape();
     const auto origElemType = inType.getElementType();
 
@@ -235,7 +242,7 @@ mlir::LogicalResult StridedSliceOpConverter::matchAndRewrite(IE::StridedSliceOp 
         return mlir::failure();
     }
 
-    if (!origElemType.isa<mlir::Float16Type>() && !origElemType.isa<mlir::quant::QuantizedType>()) {
+    if (!mlir::isa<mlir::Float16Type>(origElemType) && !mlir::isa<mlir::quant::QuantizedType>(origElemType)) {
         return mlir::failure();
     }
 
@@ -450,7 +457,7 @@ mlir::LogicalResult ParallelStridedSliceToConvolutionConverter::matchAndRewrite(
     auto inputFQ = origOp.getInput().getDefiningOp<IE::FakeQuantizeOp>();
 
     const auto begins = Shape(parseIntArrayAttr<int64_t>(origOp.getBeginsAttr().value()));
-    const auto inType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto inputShape = inType.getShape();
     const auto ends = Shape(parseIntArrayAttr<int64_t>(origOp.getEndsAttr().value()));
     const auto origElemType = inType.getElementType();
@@ -462,7 +469,7 @@ mlir::LogicalResult ParallelStridedSliceToConvolutionConverter::matchAndRewrite(
         return mlir::failure();
     }
 
-    if (!origElemType.isa<mlir::Float16Type>() && !origElemType.isa<mlir::quant::QuantizedType>()) {
+    if (!mlir::isa<mlir::Float16Type>(origElemType) && !mlir::isa<mlir::quant::QuantizedType>(origElemType)) {
         return mlir::failure();
     }
 

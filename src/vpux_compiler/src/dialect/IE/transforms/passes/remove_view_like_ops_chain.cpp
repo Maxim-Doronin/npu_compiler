@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -69,7 +70,7 @@ mlir::LogicalResult ViewLikeOpsChainRewriter::matchAndRewrite(IE::ViewLikeOpInte
         return mlir::failure();
     }
 
-    auto inputType = origOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
     vpux::NDTypeInterface outputType;
 
     SmallVector<mlir::Operation*> viewLikeOps;
@@ -83,7 +84,7 @@ mlir::LogicalResult ViewLikeOpsChainRewriter::matchAndRewrite(IE::ViewLikeOpInte
             return mlir::failure();
         }
 
-        outputType = potentialViewLikeOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+        outputType = mlir::cast<vpux::NDTypeInterface>(potentialViewLikeOp->getResult(0).getType());
         // Find the first ViewLikeOp in the traversing chain and break the current loop, remove the sub-chain and then
         // traversing from next ViewLikeOp greedily in the next iteration.
         if (inputType == outputType) {

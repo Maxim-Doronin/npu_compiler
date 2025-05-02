@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
@@ -71,15 +73,6 @@ void ConvertSETablesToConstantsPass::safeRunOnFunc() {
 
         auto inputOperand = nceOp.getInput();
         auto seTableOperand = nceOp.getInputStorageElementTable();
-        if (auto parentTilingOp = nceOp->getParentOfType<VPUIP::NCEClusterTilingOp>()) {
-            auto inputArg = nceOp.getInput().dyn_cast<mlir::BlockArgument>();
-            VPUX_THROW_WHEN(inputArg == nullptr, "Input is not a block argument");
-            inputOperand = parentTilingOp.getOperand(inputArg.getArgNumber());
-
-            auto seTableBlockArg = nceOp.getInputStorageElementTable().dyn_cast<mlir::BlockArgument>();
-            VPUX_THROW_WHEN(seTableBlockArg == nullptr, "Input storage element table is not a block argument");
-            seTableOperand = parentTilingOp.getOperand(seTableBlockArg.getArgNumber());
-        }
 
         auto seTable = VPUIP::findSETableOp(seTableOperand);
         VPUX_THROW_WHEN(seTable == nullptr, "Unable to find the storage element table");
@@ -95,13 +88,19 @@ void ConvertSETablesToConstantsPass::safeRunOnFunc() {
             return;
         }
 
-        auto inputType = inputOperand.getType().cast<vpux::NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(inputOperand.getType());
 
         const auto dataShape = Shape(parseIntArrayAttr<int64_t>(seTableOp.getDataShape()));
         const auto dataStrides = inputType.getStrides();
         const auto elemByteSize = getElemTypeSize(seTableOp.getDataElemType()).to<Byte>();
-        const auto seSize = seTableOp.getSeSize();
-        auto seOffsets = seAttr.value().computeSEOffsets(dataShape, dataStrides, elemByteSize, seSize);
+        std::vector<int32_t> seOffsets;
+        if (auto uniformSeSize = mlir::dyn_cast<mlir::IntegerAttr>(seTableOp.getSeSize())) {
+            const auto seSize = uniformSeSize.getValue().getSExtValue();
+            seOffsets = seAttr.value().computeSEOffsets(dataShape, dataStrides, elemByteSize, seSize);
+        } else {
+            auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seTableOp.getSeSize()));
+            seOffsets = seAttr.value().computeSEOffsetsWithMultiSeSize(dataShape, dataStrides, elemByteSize, seSizes);
+        }
 
         std::vector<int32_t> basePtrs(seOffsets.size(), 0);
         if (seTableOp.getBasePtrs().has_value()) {
@@ -110,7 +109,7 @@ void ConvertSETablesToConstantsPass::safeRunOnFunc() {
                               seOffsets.size(), basePtrs.size());
         }
 
-        if (auto distType = inputType.dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto distType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType)) {
             auto perClusterOffsets = distType.getPerClusterMemoryShapeOffsets();
 
             // Reset offsets when the base pointer value changes
@@ -158,9 +157,9 @@ void ConvertSETablesToConstantsPass::safeRunOnFunc() {
         }
 
         mlir::OpBuilder builder(seTableOp);
-        auto seTableType = seTableOp.getOutput().getType().cast<vpux::NDTypeInterface>();
-        auto contentType = mlir::RankedTensorType::get(seTableType.getShape().raw(), seTableType.getElementType())
-                                   .cast<vpux::NDTypeInterface>()
+        auto seTableType = mlir::cast<vpux::NDTypeInterface>(seTableOp.getOutput().getType());
+        auto contentType = mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(seTableType.getShape().raw(),
+                                                                                         seTableType.getElementType()))
                                    .changeDimsOrder(seTableType.getDimsOrder());
         auto seTableContent = Const::createConstContent(mlir::cast<mlir::ShapedType>(contentType), ArrayRef(sePtrs));
         auto constantOp = builder.create<Const::DeclareOp>(seTableOp.getLoc(), seTableType,

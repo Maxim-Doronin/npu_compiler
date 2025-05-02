@@ -2,11 +2,13 @@
 // Copyright (C) 2023-2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -33,7 +35,7 @@ Shape calculateWeightsShape(ShapeRef expandInShape, ShapeRef expandOutShape, con
 IE::AffineReshapeOp buildReshape(mlir::Location loc, mlir::Value input, ArrayRef<int64_t> targetShape,
                                  mlir::PatternRewriter& rewriter) {
     const auto ctx = rewriter.getContext();
-    const auto srcType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto dstType = srcType.changeShape(ShapeRef(targetShape));
     SmallVector<SmallVector<int64_t>> reassociationMap(targetShape.size());
     for (const auto& dimIdx : irange(reassociationMap.size())) {
@@ -238,7 +240,7 @@ mlir::Value composeWeights(mlir::Location loc, ShapeRef origInShape, ShapeRef or
     auto declOp = rewriter.create<Const::DeclareOp>(declLoc, weightExpressedType, std::move(targetContentAttr));
 
     const auto reorderLoc = appendLoc(loc, "reorder weights for DPU expand");
-    const auto weightTypeNCHW = declOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto weightTypeNCHW = mlir::cast<vpux::NDTypeInterface>(declOp.getOutput().getType());
     const auto reorderType = weightTypeNCHW.changeDimsOrder(DimsOrder::NHWC);
     const auto orderMap = DimsOrder::NHWC.toAffineMap(ctx);
     auto reorderOut = rewriter.createOrFold<IE::ReorderOp>(reorderLoc, reorderType, declOp.getOutput(), orderMap);
@@ -256,7 +258,7 @@ IE::ConvolutionOp buildConvolution(IE::ExpandOp expandOp, mlir::Value activation
 
     // IE::ConvolutionOp output type inference sets NCHW output order.
     // Specify convolution output type explicitly.
-    const auto origOutType = expandOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto origOutType = mlir::cast<vpux::NDTypeInterface>(expandOp.getOutput().getType());
     const auto weightsShape = getShape(weights);
     const auto outChannels = weightsShape[Dims4D::Filter::OC];
     const Shape convInShape = getShape(activation).toValues();
@@ -266,7 +268,7 @@ IE::ConvolutionOp buildConvolution(IE::ExpandOp expandOp, mlir::Value activation
     return rewriter.create<IE::ConvolutionOp>(expandOp.getLoc(), convOutType, activation, weights,
                                               /*bias=*/nullptr, strides, kernelPadsBegin, kernelPadsEnd, dilations,
                                               /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 }
 
 bool isDerivedFromQuantize(mlir::Operation* op) {
@@ -276,9 +278,9 @@ bool isDerivedFromQuantize(mlir::Operation* op) {
     if (op->getOperand(0) != op->getOperand(1)) {
         return false;
     }
-    const auto quantInputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto quantOutputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    return quantInputType.isF16() && quantOutputType.isa<mlir::quant::QuantizedType>();
+    const auto quantInputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+    const auto quantOutputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
+    return quantInputType.isF16() && mlir::isa<mlir::quant::QuantizedType>(quantOutputType);
 }
 
 // IE.Add -> IE.QuantizeCast -> IE.Expand is a rare case.
@@ -298,11 +300,11 @@ mlir::Value tryExpandWithAdd(mlir::Value in) {
 
 mlir::Value tryExpandWithAddShapeCast(mlir::Value in) {
     auto outputShapeCast = in.getDefiningOp<IE::ShapeCastOp>();
-    if (outputShapeCast == nullptr || outputShapeCast.getSource().isa<mlir::BlockArgument>()) {
+    if (outputShapeCast == nullptr || mlir::isa<mlir::BlockArgument>(outputShapeCast.getSource())) {
         return nullptr;
     }
     auto quantize = outputShapeCast.getSource().getDefiningOp<IE::AddOp>();
-    if (quantize == nullptr || quantize.getInput1().isa<mlir::BlockArgument>()) {
+    if (quantize == nullptr || mlir::isa<mlir::BlockArgument>(quantize.getInput1())) {
         return nullptr;
     }
     if (!isDerivedFromQuantize(quantize)) {
@@ -366,13 +368,13 @@ mlir::Value tryExpandWithAvgPoolShapeCast(mlir::Value in) {
 // Note that IE.And match is skipped on purpose.
 // IE.And implies that the target architecture does not fully support mixed precision convolutions.
 mlir::Value getExpandInput(mlir::Value origInput) {
-    if (origInput.isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(origInput)) {
         return nullptr;
     }
 
     // For Add case
     if (auto quantizeCast = origInput.getDefiningOp<IE::QuantizeCastOp>()) {
-        if (quantizeCast.getInput().isa<mlir::BlockArgument>()) {
+        if (mlir::isa<mlir::BlockArgument>(quantizeCast.getInput())) {
             return nullptr;
         }
         if (const auto input = tryExpandWithAdd(quantizeCast.getInput())) {
@@ -471,7 +473,7 @@ mlir::Operation* getExpandOutput(mlir::Value origOutput) {
 // In order to avoid the accuracy degradation, fetch the quantization parameters from IE.QuantizeCast input.
 // Also, the scale must be divided by 2 because it comes from IE.Add that adds its input with itself.
 mlir::Type getConvolutionOutputType(IE::ExpandOp expandOp) {
-    const auto origOutType = expandOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto origOutType = mlir::cast<vpux::NDTypeInterface>(expandOp.getOutput().getType());
     if (getExpandInput(expandOp.getInput()) == nullptr) {
         return origOutType.getElementType();
     }
@@ -480,11 +482,8 @@ mlir::Type getConvolutionOutputType(IE::ExpandOp expandOp) {
         return origOutType.getElementType();
     }
 
-    const auto quantCastInType = origInputQuantCast.getInput()
-                                         .getType()
-                                         .cast<vpux::NDTypeInterface>()
-                                         .getElementType()
-                                         .dyn_cast<mlir::quant::UniformQuantizedType>();
+    const auto quantCastInType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(
+            mlir::cast<vpux::NDTypeInterface>(origInputQuantCast.getInput().getType()).getElementType());
     if (quantCastInType == nullptr) {
         return origOutType.getElementType();
     }
@@ -507,7 +506,7 @@ mlir::Value quantCastOutput(IE::ExpandOp expandOp, mlir::Value reshapeOutput, ml
     const auto quantCastLoc = appendLoc(expandOp.getLoc(), "quantize cast for DPU expand");
     auto quantCast = rewriter.create<IE::QuantizeCastOp>(
             quantCastLoc, reshapeOutput,
-            origInputQuantCast.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType());
+            mlir::cast<vpux::NDTypeInterface>(origInputQuantCast.getOutput().getType()).getElementType());
     return quantCast.getOutput();
 }
 
@@ -556,13 +555,13 @@ mlir::LogicalResult ExpandQuantizeSliceRewriter::matchAndRewrite(IE::ExpandOp or
         }
     }
 
-    const auto expandInType = expandInput.getType().cast<vpux::NDTypeInterface>();
+    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(expandInput.getType());
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
     auto reshapeIn = padHReshapeInput(origOp.getLoc(), expandInput, expandInShape, convolutionAlignment, rewriter);
     auto weights = composeWeights(origOp.getLoc(), expandInShape, expandPatternOutShape, expandInType.getElementType(),
                                   convolutionAlignment, rewriter);
 
-    auto convOutElemType = patternLastOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto convOutElemType = mlir::cast<vpux::NDTypeInterface>(patternLastOp->getResult(0).getType()).getElementType();
     auto convOp = buildConvolution(origOp, reshapeIn.getOutput(), weights, convOutElemType, rewriter);
     auto reshapeOut = unpadHReshapeOutput(origOp.getLoc(), expandPatternOutShape, convOp.getOutput(),
                                           convolutionAlignment, rewriter);
@@ -611,7 +610,7 @@ mlir::LogicalResult QuantizedExpandRewriter::matchAndRewrite(IE::ExpandOp origOp
     }
     const auto expandInShape = getShape(origOp.getInput());
     const auto expandOutShape = getShape(origOp.getOutput());
-    const auto expandInType = expandInput.getType().cast<vpux::NDTypeInterface>().changeShape(expandInShape);
+    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(expandInput.getType()).changeShape(expandInShape);
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
     auto reshapeIn = padHReshapeInput(origOp.getLoc(), expandInput, expandInShape, convolutionAlignment, rewriter);
     auto weights = composeWeights(origOp.getLoc(), expandInShape, expandOutShape, expandInType.getElementType(),
@@ -645,7 +644,7 @@ mlir::LogicalResult DPUExpandRewriter::matchAndRewrite(IE::ExpandOp origOp, mlir
                            origOp->getLoc());
     }
     const auto expandInput = origOp.getInput();
-    const auto expandInType = expandInput.getType().cast<vpux::NDTypeInterface>();
+    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(expandInput.getType());
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
     const auto expandInShape = expandInType.getShape();
     const auto expandOutShape = getShape(origOp.getOutput());
@@ -658,7 +657,7 @@ mlir::LogicalResult DPUExpandRewriter::matchAndRewrite(IE::ExpandOp origOp, mlir
 
     auto weights = composeWeights(origOp.getLoc(), expandInShape, expandOutShape, expandInType.getElementType(),
                                   convolutionAlignment, rewriter);
-    const auto expandOutType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto expandOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto convOutElemType = expandOutType.getElementType();
     auto convOp = buildConvolution(origOp, reshapeIn.getOutput(), weights, convOutElemType, rewriter);
     auto reshapeOut = isBeneficialPadW

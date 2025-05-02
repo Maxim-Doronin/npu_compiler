@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
@@ -19,6 +20,40 @@ using namespace vpux;
 
 namespace {
 
+std::tuple<SmallVector<int64_t>, SmallVector<uint32_t>> getOffsetsAndWeightsPtrsForConv(
+        VPU::DistributedTensorType distrType, bool isDistrType) {
+    if (!isDistrType) {
+        return {SmallVector<int64_t>(1, 0), SmallVector<uint32_t>(1, 0)};
+    }
+
+    SmallVector<int64_t> offsets;
+    size_t numClusters = 1;
+    numClusters = distrType.getDistribution().getNumClusters().getInt();
+    const auto perClusterShapeOffsets = distrType.getPerClusterMemoryShapeOffsets();
+    VPUX_THROW_UNLESS(perClusterShapeOffsets.size() == checked_cast<size_t>(numClusters),
+                      "Mismatch between the number of shape offsets '{0}' and the number of clusters '{1}'.",
+                      perClusterShapeOffsets.size(), numClusters);
+    for (auto clusterOffsets : perClusterShapeOffsets | indexed) {
+        offsets.push_back(clusterOffsets.value()[Dims4D::Filter::OC]);
+    }
+    SmallVector<uint32_t> weightsPtrPerCluster(numClusters, static_cast<int32_t>(0));
+    return {offsets, weightsPtrPerCluster};
+}
+
+std::tuple<SmallVector<int64_t>, SmallVector<uint32_t>> getOffsetsAndWeightsPtrsForMatMul(
+        VPU::DistributedTensorType distrType, bool isDistrType) {
+    if (!isDistrType) {
+        return {SmallVector<int64_t>(1, 0), SmallVector<uint32_t>(1, 0)};
+    }
+    SmallVector<int64_t> offsets;
+    const auto shape = distrType.getShape();
+    for (auto group : irange(shape[DimsGroups5D::Filter::G])) {
+        offsets.push_back(group * shape[DimsGroups5D::Filter::OC]);
+    }
+    SmallVector<uint32_t> weightsPtrPerCluster(shape[DimsGroups5D::Filter::G], static_cast<int32_t>(0));
+    return {offsets, weightsPtrPerCluster};
+}
+
 class RelocateWeightTableForReusePass final :
         public VPU::impl::RelocateWeightTableForReuseBase<RelocateWeightTableForReusePass> {
 public:
@@ -33,55 +68,45 @@ private:
 void RelocateWeightTableForReusePass::safeRunOnFunc() {
     auto func = getOperation();
 
-    func.walk([&](VPU::NCEConvolutionOp op) {
-        _log.trace("[{0}]: NCE ConvolutionOp at {1}", op->getName(), op->getLoc());
+    func.walk([&](VPU::NCEOpInterface nceOp) {
+        if (!mlir::isa<VPU::NCEMatMulOp, VPU::NCEConvolutionOp>(nceOp)) {
+            return;
+        }
+        _log.trace("[{0}]: NCE operation at {1}", nceOp->getName(), nceOp->getLoc());
         Const::DeclareOp cstOp = nullptr;
-        auto unrolledOp = mlir::dyn_cast<VPU::UnrolledTypeOp>(op.getWeightsTable().getDefiningOp());
+        const auto weightsTable = nceOp->getOperand(2);
+        auto unrolledOp = mlir::dyn_cast<VPU::UnrolledTypeOp>(weightsTable.getDefiningOp());
         if (unrolledOp != nullptr) {
             cstOp = mlir::dyn_cast<Const::DeclareOp>(unrolledOp.getInput().getDefiningOp());
         } else {
-            cstOp = mlir::dyn_cast<Const::DeclareOp>(op.getWeightsTable().getDefiningOp());
+            cstOp = mlir::dyn_cast<Const::DeclareOp>(weightsTable.getDefiningOp());
         }
 
         if (cstOp == nullptr) {
             return;
         }
 
-        const bool isDistrType = unrolledOp != nullptr &&
-                                 mlir::dyn_cast<VPU::DistributedTensorType>(op.getWeightsTable().getType()) != nullptr;
-        if (op.getFilter().getType().isa<VPU::SparseTensorType>()) {
+        const auto weightTableDistrType = mlir::dyn_cast<VPU::DistributedTensorType>(weightsTable.getType());
+        const bool isDistrType = unrolledOp != nullptr && weightTableDistrType != nullptr;
+        const auto weights = nceOp->getOperand(1);
+        if (mlir::isa<vpux::VPU::SparseTensorType>(weights.getType())) {
             return;
         }
 
         const auto channelOffset = 0;
-        auto weightTableType = op.getWeightsTable().getType().cast<vpux::NDTypeInterface>();
+        auto weightTableType = mlir::dyn_cast<vpux::NDTypeInterface>(weightsTable.getType());
         auto shapeTotalSize = weightTableType.getShape().totalSize();
         auto elementSize = weightTableType.getElemTypeSize().count() / CHAR_BIT;
-        int64_t weightsElemBitSize = CHAR_BIT;
-        if (auto weights = op.getFilter()) {
-            weightsElemBitSize = getElemTypeSize(weights.getType()).count();
-        }
+        auto weightsElemBitSize = getElemTypeSize(weights.getType()).count();
 
-        size_t numClusters = 1;
-        SmallVector<int64_t> offsets;
-        if (isDistrType) {
-            auto distrType = op.getWeightsTable().getType().cast<VPU::DistributedTensorType>();
-            numClusters = distrType.getDistribution().getNumClusters().getInt();
-            const auto perClusterShapeOffsets = distrType.getPerClusterMemoryShapeOffsets();
-            VPUX_THROW_UNLESS(perClusterShapeOffsets.size() == checked_cast<size_t>(numClusters),
-                              "Mismatch between the number of shape offsets '{0}' and the number of clusters '{1}'.",
-                              perClusterShapeOffsets.size(), numClusters);
-            for (auto clusterOffsets : perClusterShapeOffsets | indexed) {
-                offsets.push_back(clusterOffsets.value()[Dims4D::Filter::OC]);
-            }
-        } else {
-            offsets.push_back(0);
-        }
+        auto isMatMul = mlir::isa<VPU::NCEMatMulOp>(nceOp);
+        auto [offsets, weightsPtrPerCluster] =
+                isMatMul ? getOffsetsAndWeightsPtrsForMatMul(weightTableDistrType, isDistrType)
+                         : getOffsetsAndWeightsPtrsForConv(weightTableDistrType, isDistrType);
 
-        SmallVector<uint32_t> weightsPtrPerCluster(numClusters, static_cast<int32_t>(0));
         auto originalOC = 0;
-        if (VPU::canAutopadOutput(op.getOperation())) {
-            originalOC = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getShape()[Dims4D::Act::C];
+        if (VPU::canAutopadOutput(nceOp.getOperation())) {
+            originalOC = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType()).getShape()[Dims4D::Act::C];
         }
         auto newConstAttr = cstOp.getContentAttr()
                                     .transform()
@@ -99,7 +124,7 @@ void RelocateWeightTableForReusePass::safeRunOnFunc() {
         if (isDistrType) {
             unrolledOp->setOperand(0, newConstOp.getOutput());
         } else {
-            op.setOperand(2, newConstOp.getOutput());
+            nceOp->setOperand(2, newConstOp.getOutput());
         }
         if (cstOp->getUses().empty()) {
             cstOp.erase();

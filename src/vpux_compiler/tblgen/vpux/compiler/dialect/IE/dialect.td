@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -41,16 +41,16 @@ func.func @main(%input: tensor<1x1000xf32>) -> tensor<1x1000xf32> {
 }
 ```
 
-The network inputs and outputs information (names, precision, layout) is held in separate Operation - `IE.CNNNetwork`.
+The network inputs and outputs information (names, precision, layout) is held in separate Operation - `net.NetworkInfo`.
 
 ```MLIR
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : memref<1x3x400x400xf32>
+        DataInfo "input" : memref<1x3x400x400xf32>
     }
     outputsInfo : {
-        IE.DataInfo "output" : memref<1x1000xf32>
+        DataInfo "output" : memref<1x1000xf32>
     }
 ```
 
@@ -84,6 +84,7 @@ The `IE.ExecutorResource` and `IE.MemoryResource` are added by underlying low-le
     let dependentDialects = [
         "vpux::Const::ConstDialect",
         "vpux::Core::CoreDialect",
+        "vpux::net::NetDialect",
         "mlir::func::FuncDialect",
         "mlir::tensor::TensorDialect",
         "mlir::quant::QuantizationDialect"
@@ -91,7 +92,6 @@ The `IE.ExecutorResource` and `IE.MemoryResource` are added by underlying low-le
 
     let extraClassDeclaration = [{
         void registerAttributes();
-        static void setupExtraInterfaces(mlir::DialectRegistry& registry);
     }];
 
     let hasConstantMaterializer = 1;

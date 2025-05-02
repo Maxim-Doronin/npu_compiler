@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -53,7 +53,7 @@ mlir::LogicalResult NCEPermuteRewriter::matchAndRewrite(VPU::NCEPermuteOp origOp
     const auto strategy = nextConv == nullptr ? VPU::MultiClusterStrategy::SplitOverHeight
                                               : VPU::MultiClusterStrategy::SplitOverHeightOverlapped;
 
-    auto outputTensorType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
     const auto activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, strategy);
     const auto activationTensorNumTiles = getActivationTensorNumTiles(clusteredOp, numClusters, strategy);
@@ -65,7 +65,7 @@ mlir::LogicalResult NCEPermuteRewriter::matchAndRewrite(VPU::NCEPermuteOp origOp
     const auto overlapParams =
             VPU::OverlapDistributionParams(nceOp.getKernelSizeVal(), neutralPads, nceOp.getStridesVal());
 
-    auto inputTensorType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
 
     const auto uniformDistributedSegments = VPU::getUniformDistributedSegments(
             clusteredOp, inputTensorType.getShape().raw(), activationTensorDistributionMode, activationTensorNumTiles,

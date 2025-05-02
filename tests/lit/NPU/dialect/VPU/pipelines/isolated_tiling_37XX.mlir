@@ -483,7 +483,7 @@ func.func @NoTilingClusterNCEConv(%arg0: tensor<1x32x100x100xf16, {mem_space = @
                 rawFilterShape = [128, 32, 3, 3],
                 strides = [1, 1],
                 ppe = #VPU.PPEStub<>
-            } -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
+            } : tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
       VPU.Yield %1
     }
 
@@ -620,13 +620,13 @@ func.func @Gather4DSplit(%arg0: tensor<1x4004x320x1xf16>) -> tensor<1x4004x1x1xf
     return %0 : tensor<1x4004x1x1xf16>
 
     // CHECK-DAG: [[INDICES:%.+]] = const.Declare tensor<1x1x1x1xsi32> = dense<4003> : tensor<1x1x1x1xsi32>
-    // CHECK:     [[SLICE0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 2002, 320, 1] : tensor<1x4004x320x1xf16> to tensor<1x2002x320x1xf16>
-    // CHECK:     [[GATHER0:%.+]] = VPU.Gather([[SLICE0]], [[INDICES]]) {axis_value = 2 : i64, batch_dims = 1 : i64, indices_rank = 2 : i64} : tensor<1x2002x320x1xf16>, tensor<1x1x1x1xsi32> -> tensor<1x2002x1x1xf16>
+    // CHECK:     [[SLICE0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 2016, 320, 1] : tensor<1x4004x320x1xf16> to tensor<1x2016x320x1xf16>
+    // CHECK:     [[GATHER0:%.+]] = VPU.Gather([[SLICE0]], [[INDICES]]) {axis_value = 2 : i64, batch_dims = 1 : i64, indices_rank = 2 : i64} : tensor<1x2016x320x1xf16>, tensor<1x1x1x1xsi32> -> tensor<1x2016x1x1xf16>
 
-    // CHECK:     [[SLICE1:%.+]] = VPU.Slice [[INPUT]] [0, 2002, 0, 0] [1, 2002, 320, 1] : tensor<1x4004x320x1xf16> to tensor<1x2002x320x1xf16>
-    // CHECK:     [[GATHER1:%.+]] = VPU.Gather([[SLICE1]], [[INDICES]]) {axis_value = 2 : i64, batch_dims = 1 : i64, indices_rank = 2 : i64} : tensor<1x2002x320x1xf16>, tensor<1x1x1x1xsi32> -> tensor<1x2002x1x1xf16>
+    // CHECK:     [[SLICE1:%.+]] = VPU.Slice [[INPUT]] [0, 2016, 0, 0] [1, 1988, 320, 1] : tensor<1x4004x320x1xf16> to tensor<1x1988x320x1xf16>
+    // CHECK:     [[GATHER1:%.+]] = VPU.Gather([[SLICE1]], [[INDICES]]) {axis_value = 2 : i64, batch_dims = 1 : i64, indices_rank = 2 : i64} : tensor<1x1988x320x1xf16>, tensor<1x1x1x1xsi32> -> tensor<1x1988x1x1xf16>
     // CHECK:     [[CONCAT:%.+]] = VPU.Concat([[GATHER0]], [[GATHER1]]) {
-    // CHECK-SAME{LITERAL}:             static_offsets = [[0, 0, 0, 0], [0, 2002, 0, 0]]} : tensor<1x2002x1x1xf16>, tensor<1x2002x1x1xf16> -> tensor<1x4004x1x1xf16>
+    // CHECK-SAME{LITERAL}:             static_offsets = [[0, 0, 0, 0], [0, 2016, 0, 0]]} : tensor<1x2016x1x1xf16>, tensor<1x1988x1x1xf16> -> tensor<1x4004x1x1xf16>
 
     // CHECK:     return [[CONCAT]]
 }
@@ -986,7 +986,7 @@ func.func @SplitNCEConvOverOH(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) ->
         rawFilterShape = [256, 32, 3, 3],
         strides = [1, 1],
         ppe = #VPU.PPEStub<>
-    } -> tensor<1x256x64x64xf16, {order = #NHWC}>
+    } : tensor<1x32x64x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32, {order = #NCHW}> -> tensor<1x256x64x64xf16, {order = #NHWC}>
 
     return %0 : tensor<1x256x64x64xf16, {order = #NHWC}>
 
@@ -1041,7 +1041,7 @@ func.func @SplitQuantNCEConvOverOC(%arg0: tensor<1x32x64x64x!qElemType, {order =
         rawFilterShape = [512, 32, 3, 3],
         strides = [1, 1],
         ppe = #VPU.PPEStub<>
-    } -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x64x64x!qElemType, {order = #NHWC}>, tensor<512x32x3x3x!qElemType2, {order = #NHWC}>, tensor<512x1x1x4xsi32, {order = #NCHW}> -> tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x512x64x64x!qElemType1, {order = #NHWC}>
 
@@ -1839,7 +1839,7 @@ func.func @SplitSparseNCEConvOverOH(%arg0: tensor<1x32x80x80xf16, {order = #NHWC
         rawFilterShape = [160, 32, 3, 3],
         strides = [1, 1],
         ppe = #VPU.PPEStub<>
-    } -> tensor<1x160x80x80xf16, {order = #NHWC}>
+    } : tensor<1x32x80x80xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<160x32x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<160x1x1x384xi1>, is_weights>, tensor<160x1x1x4xsi32, {order = #NCHW}> -> tensor<1x160x80x80xf16, {order = #NHWC}>
 
     return %0 : tensor<1x160x80x80xf16, {order = #NHWC}>
 
@@ -1902,7 +1902,7 @@ func.func @SplitSparseQuantNCEConvOverOH(%arg0: tensor<1x32x80x80x!qElemType, {o
         rawFilterShape = [320, 32, 3, 3],
         strides = [1, 1],
         ppe = #VPU.PPEStub<>
-    } -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
+    } : tensor<1x32x80x80x!qElemType, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<320x32x3x3x!qElemType2, {order = #NHWC}>, sparsity_map=tensor<320x1x1x384xi1>, is_weights>, tensor<320x1x1x4xsi32, {order = #NCHW}> -> tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
     return %0 : tensor<1x320x80x80x!qElemType1, {order = #NHWC}>
 
@@ -3497,4 +3497,124 @@ func.func @MVN1MeanVarSplitTileAtNWithoutInternalReshape(%arg0: tensor<256x1x8x5
     // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[OUTPUT_TILE_1]], [[OUTPUT_TILE_2]], [[OUTPUT_TILE_3]])
 
     // CHECK:       return [[CONCAT]] :  tensor<256x1x1x2xf16, {order = #NHWC}>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDSplitWithoutOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x4x32x56x16xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x4x14580x2xsi32>
+func.func @GatherNDSplitWithoutOriginalShape(%arg0: tensor<1x4x32x56x16xf16>, %arg1: tensor<1x4x14580x2xsi32>) -> tensor<1x4x14580x16xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 2 : i64
+                    } : tensor<1x4x32x56x16xf16>, tensor<1x4x14580x2xsi32> -> tensor<1x4x14580x16xf16>
+
+    return %0 : tensor<1x4x14580x16xf16>
+
+    // CHECK:       [[SLICE_IN_0:%.+]] = VPU.Slice [[INPUT_0]] [0, 0, 0, 0, 0] [1, 2, 32, 56, 16] : tensor<1x4x32x56x16xf16> to tensor<1x2x32x56x16xf16>
+    // CHECK:       [[SLICE_INDICES_0:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 0, 0] [1, 2, 14580, 2] : tensor<1x4x14580x2xsi32> to tensor<1x2x14580x2xsi32>
+    // CHECK:       [[GATHER_0:%.+]] = VPU.GatherND([[SLICE_IN_0]], [[SLICE_INDICES_0]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64
+    // CHECK-SAME:             : tensor<1x2x32x56x16xf16>, tensor<1x2x14580x2xsi32> -> tensor<1x2x14580x16xf16>
+
+    // CHECK:       [[SLICE_IN_1:%.+]] = VPU.Slice [[INPUT_0]] [0, 2, 0, 0, 0] [1, 2, 32, 56, 16] : tensor<1x4x32x56x16xf16> to tensor<1x2x32x56x16xf16>
+    // CHECK:       [[SLICE_INDICES_1:%.+]] = VPU.Slice [[INPUT_1]] [0, 2, 0, 0] [1, 2, 14580, 2] : tensor<1x4x14580x2xsi32> to tensor<1x2x14580x2xsi32>
+    // CHECK:       [[GATHER_1:%.+]] = VPU.GatherND([[SLICE_IN_1]], [[SLICE_INDICES_1]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64
+    // CHECK-SAME:             : tensor<1x2x32x56x16xf16>, tensor<1x2x14580x2xsi32> -> tensor<1x2x14580x16xf16>
+
+    // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[GATHER_0]], [[GATHER_1]]) {
+    // CHECK-SAME{LITERAL}:               static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0]]
+    // CHECK-SAME:             : tensor<1x2x14580x16xf16>, tensor<1x2x14580x16xf16> -> tensor<1x4x14580x16xf16>
+
+    // CHECK: return [[CONCAT]] : tensor<1x4x14580x16xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherND4DSplitWithOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x4x1792x16xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x4x14580x2xsi32>
+func.func @GatherND4DSplitWithOriginalShape(%arg0: tensor<1x4x1792x16xf16>, %arg1: tensor<1x4x14580x2xsi32>) -> tensor<1x4x14580x16xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 2 : i64, original_shape = [1, 4, 32, 56, 16]
+                    } : tensor<1x4x1792x16xf16>, tensor<1x4x14580x2xsi32> -> tensor<1x4x14580x16xf16>
+
+    return %0 : tensor<1x4x14580x16xf16>
+
+    // CHECK:       [[SLICE_IN_0:%.+]] = VPU.Slice [[INPUT_0]] [0, 0, 0, 0] [1, 2, 1792, 16] : tensor<1x4x1792x16xf16> to tensor<1x2x1792x16xf16>
+    // CHECK:       [[SLICE_INDICES_0:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 0, 0] [1, 2, 14580, 2] : tensor<1x4x14580x2xsi32> to tensor<1x2x14580x2xsi32>
+    // CHECK:       [[GATHER_0:%.+]] = VPU.GatherND([[SLICE_IN_0]], [[SLICE_INDICES_0]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64
+    // CHECK-SAME:               original_shape = [1, 2, 32, 56, 16]
+    // CHECK-SAME:             : tensor<1x2x1792x16xf16>, tensor<1x2x14580x2xsi32> -> tensor<1x2x14580x16xf16>
+
+    // CHECK:       [[SLICE_IN_1:%.+]] = VPU.Slice [[INPUT_0]] [0, 2, 0, 0] [1, 2, 1792, 16] : tensor<1x4x1792x16xf16> to tensor<1x2x1792x16xf16>
+    // CHECK:       [[SLICE_INDICES_1:%.+]] = VPU.Slice [[INPUT_1]] [0, 2, 0, 0] [1, 2, 14580, 2] : tensor<1x4x14580x2xsi32> to tensor<1x2x14580x2xsi32>
+    // CHECK:       [[GATHER_1:%.+]] = VPU.GatherND([[SLICE_IN_1]], [[SLICE_INDICES_1]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64
+    // CHECK-SAME:               original_shape = [1, 2, 32, 56, 16]
+    // CHECK-SAME:             : tensor<1x2x1792x16xf16>, tensor<1x2x14580x2xsi32> -> tensor<1x2x14580x16xf16>
+
+    // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[GATHER_0]], [[GATHER_1]]) {
+    // CHECK-SAME{LITERAL}:               static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0]]
+    // CHECK-SAME:             : tensor<1x2x14580x16xf16>, tensor<1x2x14580x16xf16> -> tensor<1x4x14580x16xf16>
+
+    // CHECK: return [[CONCAT]] : tensor<1x4x14580x16xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDSplitAtIndicesWithoutOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x9x16x8xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x104580x2xsi32>
+func.func @GatherNDSplitAtIndicesWithoutOriginalShape(%arg0: tensor<1x9x16x8xf16>, %arg1: tensor<1x104580x2xsi32>) -> tensor<1x104580x8xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 1 : i64
+                    } : tensor<1x9x16x8xf16>, tensor<1x104580x2xsi32> -> tensor<1x104580x8xf16>
+
+    return %0 : tensor<1x104580x8xf16>
+
+    // CHECK:       [[SLICE_0:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 0] [1, 52290, 2] : tensor<1x104580x2xsi32> to tensor<1x52290x2xsi32>
+    // CHECK:       [[GATHER_0:%.+]] = VPU.GatherND([[INPUT_0]], [[SLICE_0]]) {
+    // CHECK-SAME:               batch_dims = 1 : i64
+    // CHECK-SAME:             : tensor<1x9x16x8xf16>, tensor<1x52290x2xsi32> -> tensor<1x52290x8xf16>
+
+    // CHECK:       [[SLICE_1:%.+]] = VPU.Slice [[INPUT_1]] [0, 52290, 0] [1, 52290, 2] : tensor<1x104580x2xsi32> to tensor<1x52290x2xsi32>
+    // CHECK:       [[GATHER_1:%.+]] = VPU.GatherND([[INPUT_0]], [[SLICE_1]]) {
+    // CHECK-SAME:               batch_dims = 1 : i64
+    // CHECK-SAME:             : tensor<1x9x16x8xf16>, tensor<1x52290x2xsi32> -> tensor<1x52290x8xf16>
+
+    // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[GATHER_0]], [[GATHER_1]]) {
+    // CHECK-SAME{LITERAL}:               static_offsets = [[0, 0, 0], [0, 52290, 0]]
+    // CHECK-SAME:             : tensor<1x52290x8xf16>, tensor<1x52290x8xf16> -> tensor<1x104580x8xf16>
+
+    // CHECK: return [[CONCAT]] : tensor<1x104580x8xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @GatherNDSplitAtIndicesWithOriginalShape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x1x144x8xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x1x104580x2xsi32>
+func.func @GatherNDSplitAtIndicesWithOriginalShape(%arg0: tensor<1x1x144x8xf16>, %arg1: tensor<1x1x104580x2xsi32>) -> tensor<1x1x104580x8xf16> {
+    %0 = VPU.GatherND(%arg0, %arg1) {batch_dims = 2 : i64, original_shape = [1, 1, 9, 16, 8]
+                    } : tensor<1x1x144x8xf16>, tensor<1x1x104580x2xsi32> -> tensor<1x1x104580x8xf16>
+
+    return %0 : tensor<1x1x104580x8xf16>
+
+    // CHECK:       [[SLICE_0:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 0, 0] [1, 1, 52290, 2] : tensor<1x1x104580x2xsi32> to tensor<1x1x52290x2xsi32>
+    // CHECK:       [[GATHER_0:%.+]] = VPU.GatherND([[INPUT_0]], [[SLICE_0]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64
+    // CHECK-SAME:               original_shape = [1, 1, 9, 16, 8]
+    // CHECK-SAME:             : tensor<1x1x144x8xf16>, tensor<1x1x52290x2xsi32> -> tensor<1x1x52290x8xf16>
+
+    // CHECK:       [[SLICE_1:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 52290, 0] [1, 1, 52290, 2] : tensor<1x1x104580x2xsi32> to tensor<1x1x52290x2xsi32>
+    // CHECK:       [[GATHER_1:%.+]] = VPU.GatherND([[INPUT_0]], [[SLICE_1]]) {
+    // CHECK-SAME:               batch_dims = 2 : i64
+    // CHECK-SAME:               original_shape = [1, 1, 9, 16, 8]
+    // CHECK-SAME:             : tensor<1x1x144x8xf16>, tensor<1x1x52290x2xsi32> -> tensor<1x1x52290x8xf16>
+
+    // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[GATHER_0]], [[GATHER_1]]) {
+    // CHECK-SAME{LITERAL}:               static_offsets = [[0, 0, 0, 0], [0, 0, 52290, 0]]
+    // CHECK-SAME:             : tensor<1x1x52290x8xf16>, tensor<1x1x52290x8xf16> -> tensor<1x1x104580x8xf16>
+
+    // CHECK: return [[CONCAT]] : tensor<1x1x104580x8xf16>
 }

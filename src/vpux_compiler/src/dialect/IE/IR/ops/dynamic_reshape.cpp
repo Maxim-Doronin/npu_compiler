@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -29,11 +29,11 @@ mlir::LogicalResult vpux::IE::DynamicReshapeOp::inferReturnTypeComponents(
     }
 
     const auto outShape = parseIntArrayAttr<int64_t>(reshape.getOutputShape());
-    const auto outBounds = reshape.getOutputBoundsAttr();
-    const auto inType = reshape.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto outBounds = parseIntArrayAttr<int64_t>(reshape.getOutputBoundsAttr());
+    const auto inType = mlir::cast<mlir::RankedTensorType>(reshape.getInput().getType());
 
-    const auto outDesc =
-            vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape.size()), vpux::getMemorySpace(inType), outBounds);
+    const auto outDesc = vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape.size()), vpux::getMemorySpace(inType),
+                                             Bounds(outBounds));
 
     inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
     return mlir::success();

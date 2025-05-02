@@ -102,10 +102,21 @@ std::optional<size_t> vpux::BarrierInfo::getPrevTaskOnFifo(size_t taskInd) const
     const auto taskBitVec = _taskQueueTypeMap.at(taskQueueType);
 
     auto prevTaskInd = taskBitVec.find_prev(taskInd);
-    if (prevTaskInd < 0) {
-        return std::nullopt;
-    }
-    return static_cast<size_t>(prevTaskInd);
+    return (prevTaskInd == -1) ? std::nullopt : std::optional<size_t>{prevTaskInd};
+}
+
+std::optional<size_t> vpux::BarrierInfo::getNextTaskOnFifo(size_t taskInd) const {
+    VPUX_THROW_UNLESS(getNumOfTasks() > taskInd, "Task index '{0}' out of range", taskInd);
+    VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "Task queue map not initialized");
+
+    const auto taskQueueType = getTaskQueueType(taskInd);
+    VPUX_THROW_WHEN(_taskQueueTypeMap.find(taskQueueType) == _taskQueueTypeMap.end(),
+                    "Task queue map not initialized for executor of task {0}", taskInd);
+
+    const auto taskBitVec = _taskQueueTypeMap.at(taskQueueType);
+
+    auto nextTaskInd = taskBitVec.find_next(taskInd);
+    return (nextTaskInd == -1) ? std::nullopt : std::optional<size_t>{nextTaskInd};
 }
 
 // Return the closest previous task on the same queue that has a wait barrier
@@ -183,9 +194,17 @@ void vpux::BarrierInfo::dumpBarrierDependencies(const SmallVector<BarrierInfo::T
     std::ofstream ofs(fileName);
     VPUX_THROW_UNLESS(ofs.is_open(), "Cannot open output file {0}", fileName);
 
+    auto getTasksVec = [&](const BarrierInfo::TaskSet& deps) {
+        SmallVector<size_t> v(deps.begin(), deps.end());
+        llvm::sort(v.begin(), v.end());
+        return v;
+    };
+
+    // SmallSet gives ordered iteration but the order is not specified - it can be either increasing or decreasing.
+    // Make the order always increasing.
     for (const auto& [i, deps] : enumerate(depsMap)) {
         ofs << i << " ";
-        for (auto& dep : deps) {
+        for (auto& dep : getTasksVec(deps)) {
             ofs << dep << " ";
         }
         ofs << std::endl;
@@ -237,7 +256,7 @@ BarrierInfo::TaskSet& vpux::BarrierInfo::getUpdateBarriers(size_t taskInd) {
 //
 
 BarrierInfo::TaskSet& vpux::BarrierInfo::getBarrierProducers(size_t barrierInd) {
-    VPUX_THROW_UNLESS(barrierInd <= _barrierProducerMap.size(), "Barrier not found in _barrierProducerMap, '{0}'",
+    VPUX_THROW_UNLESS(barrierInd < _barrierProducerMap.size(), "Barrier not found in _barrierProducerMap, '{0}'",
                       barrierInd);
     return _barrierProducerMap[barrierInd];
 }
@@ -247,7 +266,7 @@ BarrierInfo::TaskSet& vpux::BarrierInfo::getBarrierProducers(size_t barrierInd) 
 //
 
 BarrierInfo::TaskSet& vpux::BarrierInfo::getBarrierConsumers(size_t barrierInd) {
-    VPUX_THROW_UNLESS(barrierInd <= _barrierConsumerMap.size(), "Barrier not found in _barrierConsumerMap, '{0}'",
+    VPUX_THROW_UNLESS(barrierInd < _barrierConsumerMap.size(), "Barrier not found in _barrierConsumerMap, '{0}'",
                       barrierInd);
     return _barrierConsumerMap[barrierInd];
 }
@@ -289,6 +308,10 @@ size_t vpux::BarrierInfo::getNumOfSlotsUsed(VPURT::TaskOp op) {
     // An NCE task may have multiple workloads descriptors (which are generated in the NCE DPU workloads pass).
     // Therefore, the number of variants must be verified as they will all update a barrier and
     // contribute to the architecture specific MAX VARIANT COUNT that a barrier has.
+    // Until NPU4 each variant updates the barrier to signal that it is complete but starting with NPU4 (with single DPU
+    // per tile), only first/last variant of any given invariant will consume/produce a barrier in which case the
+    // required slot count will be 1 as all variants of the invariant use the same FIFO. A DMA does not have variants,
+    // therefore they always just require 1 producer slot to a barrier.
 
     if (op.getExecutorKind() == VPU::ExecutorKind::DPU) {
         const auto module = op->getParentOfType<mlir::ModuleOp>();
@@ -420,7 +443,12 @@ SmallVector<size_t> vpux::BarrierInfo::getBarriersForTaskBlock(size_t blockInd, 
 }
 
 size_t vpux::BarrierInfo::getControlGraphBlockIndex(size_t taskInd) const {
-    return _syncTasksIds.empty() ? 0 : _taskToBlockMap[taskInd];
+    if (_syncTasksIds.empty()) {
+        return 0;
+    }
+    VPUX_THROW_UNLESS(taskInd < _taskToBlockMap.size(), "Task index '{0}' out of range. Needs to be < '{1}", taskInd,
+                      _taskToBlockMap.size());
+    return _taskToBlockMap[taskInd];
 }
 
 size_t vpux::BarrierInfo::getBarrierBlockIndex(size_t barInd) {
@@ -2457,8 +2485,15 @@ size_t vpux::BarrierInfo::getBarrierLatestProducer(size_t barInd) {
     if (barProducers.empty()) {
         VPUX_THROW("Barrier {0} does not have any producers.", barInd);
     }
-    std::set<size_t> barProducersOrd(barProducers.begin(), barProducers.end());
-    return *barProducersOrd.rbegin();
+    return *std::max_element(barProducers.begin(), barProducers.end());
+}
+
+size_t vpux::BarrierInfo::getBarrierEarliestConsumer(size_t barInd) {
+    auto barConsumers = getBarrierConsumers(barInd);
+    if (barConsumers.empty()) {
+        VPUX_THROW("Barrier {0} does not have any consumers.", barInd);
+    }
+    return *std::min_element(barConsumers.begin(), barConsumers.end());
 }
 
 unsigned vpux::BarrierInfo::createBarrierDependenciesImpliedByFIFO(
@@ -2739,7 +2774,10 @@ void vpux::BarrierInfo::buildTaskQueueTypeMap() {
 //
 // buildTaskControlMap
 //
-
+// Generate a map of task-to-task dependencies for a given block index.
+// Dependencies between tasks are represented through barriers and task order on given HW FIFO
+// Resulting map for a given task will contain all tasks that are reachable from the given task
+// directly or through other tasks and barriers.
 std::pair<SmallVector<llvm::BitVector>, size_t> vpux::BarrierInfo::buildTaskControlMap(
         size_t blockIdx, bool considerTaskFifoDependency, bool ignoreOutOfBlockDependencies) {
     SmallVector<llvm::BitVector> taskControlMap;
@@ -2776,6 +2814,14 @@ std::pair<SmallVector<llvm::BitVector>, size_t> vpux::BarrierInfo::buildTaskCont
         }
     }
 
+    // In case task[i] has dep to task[j] and j < i then store index i to reiterate over this index later
+    // Without that control map would not contain complete data on dependencies and to overcome this
+    // IR would need to be reordered and BarrierInfo recreated
+    // TODO: Analyze if this approach could be improved. For example by first generating order
+    // of tasks and then iterating over this order (from last to first) instead of iterating through
+    // task indexes directly in case task index no longer is aligned with order of execution.
+    SmallVector<size_t> tasksWithDepsToSmallerIndexes;
+
     for (auto taskInd = blockEndInd + 1; taskInd-- > blockStartInd;) {
         if (taskInd == blockEndInd && isSyncPoint(taskInd)) {
             continue;
@@ -2783,13 +2829,48 @@ std::pair<SmallVector<llvm::BitVector>, size_t> vpux::BarrierInfo::buildTaskCont
         for (auto updateBarrierInd : _taskUpdateBarriers[taskInd]) {
             for (auto childTaskInd : _barrierConsumerMap[static_cast<size_t>(updateBarrierInd)]) {
                 if (inRange(blockStartInd, blockEndInd, childTaskInd)) {
+                    if (childTaskInd < taskInd) {
+                        tasksWithDepsToSmallerIndexes.push_back(taskInd);
+                    }
                     taskControlMap[taskInd - blockStartInd] |=
                             taskControlMap[static_cast<size_t>(childTaskInd - blockStartInd)];
                 } else {
-                    VPUX_THROW_UNLESS(ignoreOutOfBlockDependencies,
-                                      "Task {0} has update barriers with a consumer ({1}) from outside of the current "
-                                      "range [{2}, {3}].",
-                                      taskInd, childTaskInd, blockStartInd, blockEndInd);
+                    VPUX_THROW_UNLESS(
+                            ignoreOutOfBlockDependencies,
+                            "Task {0} has update barrier {1} with a consumer ({2}) from outside of the current "
+                            "range [{3}, {4}].",
+                            taskInd, updateBarrierInd, childTaskInd, blockStartInd, blockEndInd);
+                }
+            }
+        }
+    }
+
+    if (!tasksWithDepsToSmallerIndexes.empty()) {
+        // Order tasks based on smaller index and update taskControlMap
+        llvm::sort(tasksWithDepsToSmallerIndexes);
+        auto highestTaskInd = tasksWithDepsToSmallerIndexes.back();
+        // First process tasks with dependencies to smaller indexes to update their deps
+        for (auto taskInd : tasksWithDepsToSmallerIndexes) {
+            for (auto updateBarrierInd : _taskUpdateBarriers[taskInd]) {
+                for (auto childTaskInd : _barrierConsumerMap[static_cast<size_t>(updateBarrierInd)]) {
+                    if (inRange(blockStartInd, blockEndInd, childTaskInd)) {
+                        taskControlMap[taskInd - blockStartInd] |=
+                                taskControlMap[static_cast<size_t>(childTaskInd - blockStartInd)];
+                    }
+                }
+            }
+        }
+        // Reiterate all tasks again to update other tasks that would be affected by the
+        // previous step
+        // For example in first step it was update that task C has control path to task B
+        // and in this step it could be update that task A that has path to task C should also have path to task B
+        for (auto taskInd = highestTaskInd; taskInd-- > blockStartInd;) {
+            for (auto updateBarrierInd : _taskUpdateBarriers[taskInd]) {
+                for (auto childTaskInd : _barrierConsumerMap[static_cast<size_t>(updateBarrierInd)]) {
+                    if (inRange(blockStartInd, blockEndInd, childTaskInd)) {
+                        taskControlMap[taskInd - blockStartInd] |=
+                                taskControlMap[static_cast<size_t>(childTaskInd - blockStartInd)];
+                    }
                 }
             }
         }

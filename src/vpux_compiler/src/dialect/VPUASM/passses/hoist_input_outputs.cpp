@@ -1,16 +1,17 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include <mlir/Transforms/DialectConversion.h>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/dialect.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
 #include "vpux/compiler/dialect/VPUASM/types.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/dialect.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 namespace vpux::VPUASM {
@@ -30,22 +31,22 @@ public:
     }
 
 private:
-    std::string symbolizeIO(IE::DataInfoOp di);
+    std::string symbolizeIO(net::DataInfoOp di);
     void safeRunOnModule() final;
 };
 
-std::string HoistInputOutputsPass::symbolizeIO(IE::DataInfoOp di) {
+std::string HoistInputOutputsPass::symbolizeIO(net::DataInfoOp di) {
     auto name = di.getName() + "_buffDecl";
     return name.str();
 }
 
 void HoistInputOutputsPass::safeRunOnModule() {
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
     auto moduleOp = getOperation();
     auto ctx = moduleOp.getContext();
 
-    IE::CNNNetworkOp::getFromModule(moduleOp, netOp, netFunc);
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
     // Build the initial IOBinder container OP
     auto moduleBuilder = mlir::OpBuilder(netFunc.getOperation());
     auto ioBindingsOp = moduleBuilder.create<VPUASM::IOBindingsOp>(netFunc.getLoc());
@@ -56,8 +57,8 @@ void HoistInputOutputsPass::safeRunOnModule() {
     auto netProfOutputBuilder = mlir::OpBuilder::atBlockBegin(&ioBindingsOp.getProfilingBuffDeclarations().front());
     auto funcBuilder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front());
 
-    auto inputCount = netOp.getNetInputsCount();
-    auto outputsCount = netOp.getNetOutputsCount();
+    auto inputCount = netInfo.getNetInputsCount();
+    auto outputsCount = netInfo.getNetOutputsCount();
 
     for (auto arg : llvm::enumerate(netFunc.getArguments())) {
         auto argIdx = arg.index();
@@ -83,18 +84,18 @@ void HoistInputOutputsPass::safeRunOnModule() {
 
         // FuncArgs always declare at "offset 0" and no swizzling
         auto memLocation = VPUASM::MemLocationType::get(ctx, ioSec, ioIdx, 0);
-        auto memref = argVal.getType().cast<mlir::MemRefType>();
+        auto memref = mlir::cast<mlir::MemRefType>(argVal.getType());
         auto traits = VPUASM::BufferTraitsType::get(ctx, 0);
 
         auto buffType = VPUASM::BufferType::get(ctx, memLocation, memref, traits);
 
-        llvm::SmallVector<vpux::IE::DataInfoOp> diVec;
+        llvm::SmallVector<net::DataInfoOp> diVec;
         if (isInput) {
-            diVec = netOp.getInputsDataInfo();
+            diVec = netInfo.getInputsDataInfo();
         } else if (isOutput) {
-            diVec = netOp.getOutputsDataInfo();
+            diVec = netInfo.getOutputsDataInfo();
         } else if (isProfOutput) {
-            diVec = netOp.getProfilingOutputsDataInfo();
+            diVec = netInfo.getProfilingOutputsDataInfo();
         }
         auto io_name = symbolizeIO(diVec[ioIdx]);
 

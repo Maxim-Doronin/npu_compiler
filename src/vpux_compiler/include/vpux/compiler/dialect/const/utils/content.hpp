@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -188,7 +188,7 @@ public:
 public:
     template <typename OutT>
     details::ContentRange<OutT> getValues() const& {
-        auto cvtOp = dispatchByElemType<details::ConvertCb<OutT>>(getStorageElemType(), [](auto dummy) {
+        auto cvtOp = dispatchByElemType({getStorageElemType()}, [](auto dummy) {
             using InT = std::decay_t<decltype(dummy)>;
             return details::makeConvertCb<InT, OutT>();
         });
@@ -234,11 +234,83 @@ public:
 
     template <typename Caller>
     void mutate(Caller&& caller) & {
-        dispatchByElemType<void>(getStorageElemType(), [this, caller](auto dummy) {
+        dispatchByElemType({getStorageElemType()}, [this, caller](auto dummy) {
             using ElemT = std::decay_t<decltype(dummy)>;
             caller(this->getTempBuf<ElemT>());
         });
     }
+
+    /** @brief Provides read access to the underlying data.
+
+        Provides storage buffer of the specific type to the callable. The buffer
+        type is determined based on the internal details and is guaranteed to
+        match real underlying data type.
+
+        @note The buffer type may not be equal to Content::getType().
+     */
+    template <typename Caller>
+    auto read(Caller&& caller) const& {
+        return dispatchByElemType({getStorageElemType()}, [this, caller](auto dummy) {
+            using ElemT = std::decay_t<decltype(dummy)>;
+            return caller(this->getStorageBuf<ElemT>());
+        });
+    }
+
+    template <typename Caller>
+    auto read(Caller&&) && = delete;
+
+    /** @brief Provides read access to the underlying data.
+
+        Provides storage buffer of the specific type to the callable as well as
+        a default-constructed value associated with some other specified type.
+        The buffer type is determined based on the internal details and is
+        guaranteed to match real underlying data type.
+
+        This is an overload of another Content::read() that allows one to
+        combine direct data access with an additional type-dispatch. For
+        instance, one can use this in contexts where storage buffer values must
+        be converted to some other type and thus one needs:
+        * data buffer of a runtime-defined type - ArrayRef<T>
+        * other runtime-defined type - U
+
+        resulting in: `auto operator()(ArrayRef<T> rawData, U dummy)`.
+
+        A pseudo-example of such a situation is the following:
+        ```cpp
+        // Convert constant to a new element type
+        auto newElemType = getNewElemType(...);
+        auto outputs = allocateOutputs(...);
+
+        constant.read(newElemType, [&outputs](auto rawValues, auto dummy) {
+            // rawValues is an ArrayRef<T>, where T is deduced from the internal
+            // type of the constant.
+
+            using NewType = decltype(dummy);
+            // NewType is a static type deduced from MLIR type `newElemType`:
+            // * if newElemType is 'f16' in MLIR, NewType is vpux::type::float16
+            // * if newElemType is 'ui8' in MLIR, NewType is uint8_t
+            // ...
+
+            for (size_t i = 0; i < rawValues.size(); ++i) {
+                // access raw data by index and then cast it to `newElemType`
+                // store result into the output
+                outputs[i] = checked_cast<NewType>(rawValues[i]);
+            }
+        });
+        ```
+
+        @note The buffer type may not be equal to Content::getType().
+     */
+    template <typename Caller>
+    auto read(mlir::Type otherType, Caller&& caller) const& {
+        return dispatchByElemType({getStorageElemType(), otherType}, [this, caller](auto dummy, auto otherTypeDummy) {
+            using ElemT = std::decay_t<decltype(dummy)>;
+            return caller(this->getStorageBuf<ElemT>(), otherTypeDummy);
+        });
+    }
+
+    template <typename Caller>
+    auto read(mlir::Type, Caller&&) && = delete;
 
 public:
     template <typename OutT>
@@ -282,60 +354,89 @@ public:
     MutableArrayRef<char> getRawTempBuf() && = delete;
 
 private:
-    template <typename RetT, class Caller>
-    static RetT dispatchByElemType(mlir::Type elemType, Caller&& caller) {
-        if (elemType.isUnsignedInteger(8) || elemType.isSignlessInteger(8)) {
-            return caller(uint8_t(0));
-        } else if (elemType.isUnsignedInteger(4) || elemType.isSignlessInteger(4)) {
-            return caller(uint8_t(0));
-        } else if (elemType.isUnsignedInteger(16) || elemType.isSignlessInteger(16)) {
-            return caller(uint16_t(0));
-        } else if (elemType.isUnsignedInteger(32) || elemType.isSignlessInteger(32)) {
-            return caller(uint32_t(0));
-        } else if (elemType.isUnsignedInteger(64) || elemType.isSignlessInteger(64)) {
-            return caller(uint64_t(0));
-        } else if (elemType.isSignedInteger(8)) {
-            return caller(int8_t(0));
-        } else if (elemType.isSignedInteger(4)) {
-            return caller(int8_t(0));
-        } else if (elemType.isSignedInteger(16)) {
-            return caller(int16_t(0));
-        } else if (elemType.isSignedInteger(32)) {
-            return caller(int32_t(0));
-        } else if (elemType.isSignedInteger(64)) {
-            return caller(int64_t(0));
-        } else if (elemType.isF32()) {
-            return caller(float(0));
-        } else if (elemType.isF64()) {
-            return caller(double(0));
-        } else if (elemType.isF16()) {
-            return caller(vpux::type::float16(0.0f));
-        } else if (elemType.isBF16()) {
-            return caller(vpux::type::bfloat16(0.0f));
-        } else if (elemType.isFloat8E4M3FN()) {
-            return caller(vpux::type::float8_e4m3(0.0f));
-        } else if (elemType.isFloat8E5M2()) {
-            return caller(vpux::type::float8_e5m2(0.0f));
-        } else if (const auto qType = elemType.dyn_cast<mlir::quant::QuantizedType>()) {
-            const auto quantStorageType = getNormalizedQuantStorageType(qType);
-            if (quantStorageType.isSignedInteger(8)) {
-                return caller(int8_t(0));
-            } else if (quantStorageType.isUnsignedInteger(8)) {
-                return caller(uint8_t(0));
-            } else if (quantStorageType.isSignedInteger(4)) {
-                return caller(int8_t(0));
-            } else if (quantStorageType.isUnsignedInteger(4)) {
-                return caller(uint8_t(0));
-            } else if (quantStorageType.isFloat8E4M3FN()) {
-                return caller(vpux::type::float8_e4m3(0.0f));
-            } else if (quantStorageType.isFloat8E5M2()) {
-                return caller(vpux::type::float8_e5m2(0.0f));
-            } else {
-                VPUX_THROW("Unsupported quantized storage type '{0}'", quantStorageType);
-            }
+    /// Implements multi-type dispatch.
+    template <size_t I, size_t N, class Caller, typename... Types>
+    static auto dispatchByElemTypeImpl(const mlir::Type (&types)[N], Caller&& caller) {
+        constexpr bool allTypesDispatched = (I == N);
+        if constexpr (allTypesDispatched) {
+            // Note: base case - call the callable for the sequence of types
+            return std::forward<Caller>(caller)(Types()...);
         } else {
-            VPUX_THROW("Unsupported element type '{0}'", elemType);
+            // Note: recursive step - takes I-th runtime type and converts it to
+            // static type, then calls dispatch for I + 1
+            auto elemType = types[I];
+            if (elemType.isUnsignedInteger(8) || elemType.isSignlessInteger(8)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint8_t>(types, std::forward<Caller>(caller));
+            } else if (elemType.isUnsignedInteger(4) || elemType.isSignlessInteger(4)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint8_t>(types, std::forward<Caller>(caller));
+            } else if (elemType.isUnsignedInteger(16) || elemType.isSignlessInteger(16)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint16_t>(types,
+                                                                                    std::forward<Caller>(caller));
+            } else if (elemType.isUnsignedInteger(32) || elemType.isSignlessInteger(32)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint32_t>(types,
+                                                                                    std::forward<Caller>(caller));
+            } else if (elemType.isUnsignedInteger(64) || elemType.isSignlessInteger(64)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint64_t>(types,
+                                                                                    std::forward<Caller>(caller));
+            } else if (elemType.isSignedInteger(8)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int8_t>(types, std::forward<Caller>(caller));
+            } else if (elemType.isSignedInteger(4)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int8_t>(types, std::forward<Caller>(caller));
+            } else if (elemType.isSignedInteger(16)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int16_t>(types, std::forward<Caller>(caller));
+            } else if (elemType.isSignedInteger(32)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int32_t>(types, std::forward<Caller>(caller));
+            } else if (elemType.isSignedInteger(64)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int64_t>(types, std::forward<Caller>(caller));
+            } else if (elemType.isF32()) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., float>(types, std::forward<Caller>(caller));
+            } else if (elemType.isF64()) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., double>(types, std::forward<Caller>(caller));
+            } else if (elemType.isF16()) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float16>(
+                        types, std::forward<Caller>(caller));
+            } else if (elemType.isBF16()) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::bfloat16>(
+                        types, std::forward<Caller>(caller));
+            } else if (elemType.isFloat8E4M3FN()) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float8_e4m3>(
+                        types, std::forward<Caller>(caller));
+            } else if (elemType.isFloat8E5M2()) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float8_e5m2>(
+                        types, std::forward<Caller>(caller));
+            } else if (const auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
+                const auto quantStorageType = getNormalizedQuantStorageType(qType);
+                if (quantStorageType.isSignedInteger(8)) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int8_t>(types,
+                                                                                      std::forward<Caller>(caller));
+                } else if (quantStorageType.isUnsignedInteger(8)) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint8_t>(types,
+                                                                                       std::forward<Caller>(caller));
+                } else if (quantStorageType.isSignedInteger(4)) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int8_t>(types,
+                                                                                      std::forward<Caller>(caller));
+                } else if (quantStorageType.isUnsignedInteger(4)) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint8_t>(types,
+                                                                                       std::forward<Caller>(caller));
+                } else if (quantStorageType.isFloat8E4M3FN()) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float8_e4m3>(
+                            types, std::forward<Caller>(caller));
+                } else if (quantStorageType.isFloat8E5M2()) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float8_e5m2>(
+                            types, std::forward<Caller>(caller));
+                } else {
+                    VPUX_THROW("Unsupported quantized storage type '{0}'", quantStorageType);
+                }
+            } else {
+                VPUX_THROW("Unsupported element type '{0}'", elemType);
+            }
         }
+    }
+
+    template <size_t N, typename Caller>
+    static auto dispatchByElemType(const mlir::Type (&types)[N], Caller&& caller) {
+        // Note: impl is recursive and walks through N types, starting from 0
+        return dispatchByElemTypeImpl<0>(types, std::forward<Caller>(caller));
     }
 
 private:

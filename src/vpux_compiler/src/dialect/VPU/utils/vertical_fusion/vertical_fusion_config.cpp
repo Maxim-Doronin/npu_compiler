@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -62,7 +62,7 @@ mlir::Operation* VFConfig::getLargestOp() {
         auto operations = _subgraph.getBody()->without_terminator();
 
         const auto sumTypes = [&](const Byte& sum, mlir::Value value) {
-            return sum + value.getType().cast<vpux::NDTypeInterface>().getTotalAllocSize();
+            return sum + mlir::cast<vpux::NDTypeInterface>(value.getType()).getTotalAllocSize();
         };
 
         const auto getAllocationSize = [&](auto valueList) -> Byte {
@@ -87,7 +87,7 @@ const SmallVector<mlir::Operation*>& VFConfig::getInputs() {
     if (_inputOps.empty()) {
         const auto allOperandsInputs = [](auto* current) -> bool {
             return llvm::all_of(current->getOperands(), [](mlir::Value operand) {
-                return operand.dyn_cast<mlir::BlockArgument>() != nullptr;
+                return mlir::dyn_cast<mlir::BlockArgument>(operand) != nullptr;
             });
         };
         auto operations = getVFOperations();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -62,11 +62,17 @@ void vpux::transitivelyCloneFunctions(mlir::ModuleOp dstModuleOp, mlir::ModuleOp
             mlir::LLVM::LLVMFuncOp callee = nullptr;
             auto callOp = mlir::dyn_cast<mlir::LLVM::CallOp>(&sOp);
             if (callOp != nullptr && callOp->getCallee()) {
-                callee = srcModuleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(*callOp->getCallee());
+                auto sym = llvm::dyn_cast<mlir::SymbolRefAttr>(callOp->getCallableForCallee());
+                if (sym != nullptr) {
+                    callee = mlir::dyn_cast_or_null<mlir::LLVM::LLVMFuncOp>(
+                            mlir::SymbolTable::lookupNearestSymbolFrom(*callOp, sym));
+                }
             }
 
             if (auto addrOfOp = mlir::dyn_cast<mlir::LLVM::AddressOfOp>(&sOp)) {
-                callee = srcModuleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(addrOfOp->getGlobalName());
+                auto symNameAttr = mlir::StringAttr::get(dstModuleOp.getContext(), addrOfOp->getGlobalName());
+                callee = mlir::dyn_cast_or_null<mlir::LLVM::LLVMFuncOp>(
+                        mlir::SymbolTable::lookupNearestSymbolFrom(*addrOfOp, symNameAttr));
             }
 
             if (callee && seen.insert(callee)) {
@@ -109,6 +115,41 @@ void vpux::translateToLLVMIR(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKern
     std::error_code llFileEC;
     llvm::raw_fd_ostream llFile("sw_layer.ll", llFileEC);
     llFile << *llvmModule;
+
+    // We write the linker script to file shave_kernel.ld in order to be
+    // available at runtime and avoid relying on eviroment variable.
+    std::ofstream shaveKernelFile("shave_kernel.ld");
+    if (!shaveKernelFile) {
+        throw std::runtime_error("Error: Could not open file 'shave_kernel.ld'.");
+    }
+    const std::string linkerStr = R"(
+        OUTPUT_FORMAT("elf32-sparc")
+        OUTPUT_ARCH(sparc)
+
+        SECTIONS
+        {  
+            . = 0x1e000000;
+            .arg.data : {
+                KEEP(*(.arg.data))
+                *(.arg.data)
+                . = ALIGN(16);
+                *(.data*)
+            }
+
+            . = 0x1d000000;      
+            .text : {               
+                *(.text*)
+                . = ALIGN(16);
+                *(.gnu.linkonce.text.*)
+                . = ALIGN(16);
+                *(.rodata*)
+                . = ALIGN(16);
+                KEEP(*(.uuid.rodata*))           
+                *(.uuid.rodata*)
+            }
+        }
+    )";
+    shaveKernelFile << linkerStr;
 }
 
 void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKernelSymbol) {
@@ -131,17 +172,21 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKern
     std::string errMsg;
 
     // We compile with moviCompile the sw_layer.ll to sw_layer.s (SHAVE assembly).
-    auto mvCompileEnvVar = std::getenv("MV_COMPILE_DIR");
     auto mvToolsEnvVar = std::getenv("MV_TOOLS_DIR");
     auto mvToolsVersionEnvVar = std::getenv("MV_TOOLS_VERSION");
 
-    auto mvToolsDirStrWoNull = std::string(mvToolsEnvVar == NULL ? "" : mvToolsEnvVar);
-    auto mvToolsVersionStrWoNull = std::string(mvToolsVersionEnvVar == NULL ? "" : mvToolsVersionEnvVar);
+    VPUX_THROW_UNLESS(mvToolsEnvVar && mvToolsVersionEnvVar,
+                      "Error: Environment variable 'MV_TOOLS_DIR' or 'MV_TOOLS_VERSION' is not set.");
+
+    auto mvToolsDirStrWoNull = std::string(mvToolsEnvVar);
+    auto mvToolsVersionStrWoNull = std::string(mvToolsVersionEnvVar);
+
+    VPUX_THROW_UNLESS(!mvToolsDirStrWoNull.empty() && !mvToolsVersionStrWoNull.empty(),
+                      "Error: Environment variable 'MV_TOOLS_DIR' or 'MV_TOOLS_VERSION' are empty.");
+
     auto mvToolsPathCompleteStr = mvToolsDirStrWoNull + "/" + mvToolsVersionStrWoNull;
 
-    // if MV_COMPILE_DIR is not defined, fallback to mvToolsDir composed by MV_TOOLS_DIR + MV_TOOLS_VERSION
-    auto prgMCStr = std::string(mvCompileEnvVar == NULL ? mvToolsPathCompleteStr : mvCompileEnvVar) +
-                    "/linux64/bin/moviCompile";
+    auto prgMCStr = std::string(mvToolsPathCompleteStr) + "/linux64/bin/moviCompile";
     llvm::StringRef prgMC = prgMCStr;
     std::string mcpuStr = std::string("-mcpu=") + archArgument;
     llvm::SmallVector<llvm::StringRef> runArgsMC = {prgMC,           // Movicompile tool
@@ -187,9 +232,11 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKern
     std::string mLibCLGPLStr = mvToolsPathCompleteStr + "/common/moviCompile/lib/" + moviLibArchPath + "/mlibc_lgpl.a";
     std::string mLibCStr = mvToolsPathCompleteStr + "/common/moviCompile/lib/" + moviLibArchPath + "/mlibc.a";
     llvm::StringRef prgLd = prgLdStr;
-    auto envVar = std::getenv("VPUX_PLUGIN_DIR");
-    std::string scriptStr = std::string("--script=") + std::string(envVar == NULL ? "" : envVar) +
-                            "/sw_runtime_kernels/kernels/prebuild/shave_kernel.ld";
+    std::ifstream kernelPathFile("shave_kernel.ld");
+    if (!kernelPathFile) {
+        throw std::runtime_error("Error: Could not open file 'shave_kernel.ld'.");
+    }
+    std::string scriptStr = std::string("--script=shave_kernel.ld");
 
     llvm::SmallVector<llvm::StringRef> runArgsLd = {prgLd,
                                                     llvm::StringRef(scriptStr),

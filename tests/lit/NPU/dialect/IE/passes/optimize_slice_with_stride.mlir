@@ -50,6 +50,72 @@ func.func @ConvertSliceToConvFromConvert(%arg0: tensor<1x3x1088x1920xf32, {order
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ConvertSliceWithSmallChannel
+// CHECK-SAME:  [[INPUT0:%arg[0-9]]]: tensor<1x2x272x480xf32, {order = #NHWC}>
+func.func @ConvertSliceWithSmallChannel(%arg0: tensor<1x2x272x480xf32, {order = #NHWC}>)
+    -> tensor<1x1x272x480xf16, {order = #NHWC}> {
+    %CONVERT = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x2x272x480xf32, {order = #NHWC}> -> tensor<1x2x272x480xf16, {order = #NHWC}>
+    %SLICE = IE.Slice %CONVERT [0, 1, 0, 0] [1, 1, 272, 480] : tensor<1x2x272x480xf16, {order = #NHWC}> to tensor<1x1x272x480xf16, {order = #NHWC}>
+
+    return %SLICE : tensor<1x1x272x480xf16, {order = #NHWC}>
+
+    // CHECK:   [[WEIGHTS:%.+]] = const.Declare tensor<16x32x1x1xf16, {order = #NHWC}> = dense<"0x
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C{{([0]{128})}}
+    // CHECK-SAME:      0000003C"> : tensor<16x32x1x1xf16>, [#const.Reorder<#NHWC>]
+
+    // CHECK:   [[CONVERT_INPUT:%.+]] = IE.Convert([[INPUT0]]) {dstElemType = f16} : tensor<1x2x272x480xf32, {order = #NHWC}> -> tensor<1x2x272x480xf16, {order = #NHWC}>
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.ShapeCast {shape = [1, 32, 272, 30]} inputs([[CONVERT_INPUT]] : tensor<1x2x272x480xf16, {order = #NHWC}>) -> tensor<1x32x272x30xf16, {order = #NHWC}>
+    // CHECK:   [[CONV:%.+]] = IE.Convolution([[RESHAPE_INPUT]], [[WEIGHTS]]) {
+    // CHECK-SAME:      dilations = [1, 1],
+    // CHECK-SAME:      pads_begin = [0, 0],
+    // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      strides = [1, 1]
+    // CHECK-SAME:      } : tensor<1x32x272x30xf16, {order = #NHWC}>,
+    // CHECK-SAME:      tensor<16x32x1x1xf16, {order = #NHWC}>
+    // CHECK-SAME:      -> tensor<1x16x272x30xf16, {order = #NHWC}>
+
+    // CHECK:   [[RESHAPE_OUTPUT:%.+]] = IE.ShapeCast {shape = [1, 1, 272, 480]} inputs([[CONV]] : tensor<1x16x272x30xf16, {order = #NHWC}>) -> tensor<1x1x272x480xf16, {order = #NHWC}>
+
+    // CHECK:   return [[RESHAPE_OUTPUT]] : tensor<1x1x272x480xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotConvertSliceIfChannelNotMeetRequirement
+// CHECK-SAME:  [[INPUT0:%arg[0-9]]]: tensor<1x2x80x80xf32, {order = #NHWC}>
+func.func @NotConvertSliceIfChannelNotMeetRequirement(%arg0: tensor<1x2x80x80xf32, {order = #NHWC}>)
+    -> tensor<1x1x80x80xf16, {order = #NHWC}> {
+    %CONVERT = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x2x80x80xf32, {order = #NHWC}> -> tensor<1x2x80x80xf16, {order = #NHWC}>
+    %SLICE = IE.Slice %CONVERT [0, 1, 0, 0] [1, 1, 80, 80] : tensor<1x2x80x80xf16, {order = #NHWC}> to tensor<1x1x80x80xf16, {order = #NHWC}>
+
+    return %SLICE : tensor<1x1x80x80xf16, {order = #NHWC}>
+
+    // CHECK:   [[CONVERT_INPUT:%.+]] = IE.Convert([[INPUT0]]) {dstElemType = f16} : tensor<1x2x80x80xf32, {order = #NHWC}> -> tensor<1x2x80x80xf16, {order = #NHWC}>
+    // CHECK:   [[SLICE:%.+]]  = IE.Slice [[CONVERT_INPUT]] [0, 1, 0, 0] [1, 1, 80, 80] : tensor<1x2x80x80xf16, {order = #NHWC}> to tensor<1x1x80x80xf16, {order = #NHWC}>
+
+    // CHECK:   return [[SLICE]] : tensor<1x1x80x80xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @ConvertSliceToConvFromPermuteCast

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -40,7 +40,7 @@ mlir::LogicalResult buildODUHaloRegionOp(mlir::OpBuilder& builder, const mlir::L
         }
     }
     for (const auto& attr : haloRegions) {
-        auto haloRegion = attr.dyn_cast<VPUIP::DPUHaloRegionAttr>();
+        auto haloRegion = mlir::dyn_cast<vpux::VPUIP::DPUHaloRegionAttr>(attr);
         if (!haloRegion) {
             log.error("Got non DPUHaloRegion attribute '{0}' in array", haloRegion);
             return mlir::failure();

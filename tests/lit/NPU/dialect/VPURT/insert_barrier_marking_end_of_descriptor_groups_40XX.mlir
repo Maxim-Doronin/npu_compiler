@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt  --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --insert-barrier-to-mark-end-of-descriptor-group="workload-management-mode=PWLM_V0_LCA" --canonicalize %s | FileCheck %s
+// RUN: vpux-opt  --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --insert-barrier-to-mark-end-of-descriptor-group --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
@@ -31,7 +31,7 @@
 //            b3
 //            |
 //          DPU2_0 (Group 2)
-//            |              
+//            |
 //            b4
 //            |
 //          DPU3_0 (Group 3)
@@ -57,7 +57,7 @@ module @NoInsertionNeeded attributes {VPU.compilationMode = #VPU.compilation_mod
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
     DataInfo "Multiply_5095/fq_input_0" : tensor<1x64x56x56xf16>
@@ -177,7 +177,7 @@ module @NoInsertionNeeded attributes {VPU.compilationMode = #VPU.compilation_mod
 //            b3
 //            /\
 //      DPU2_0  DPU2_1 (Group2)
-//            \/              
+//            \/
 //            b4
 //            /\
 //     DPU3_0   DPU3_1 (Group3)
@@ -203,7 +203,7 @@ module @NoInsertionNeededMultiTile attributes {VPU.compilationMode = #VPU.compil
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
     DataInfo "Multiply_5095/fq_input_0" : tensor<1x64x56x56xf16>
@@ -339,9 +339,9 @@ module @NoInsertionNeededMultiTile attributes {VPU.compilationMode = #VPU.compil
 //            b0
 //            |
 //          DPU1_0
-//           
+//
 //          DPU2_0
-//            
+//
 //          DPU3_0
 //            |
 //            b1
@@ -386,7 +386,7 @@ module @InsertBarriersWhereNeeded attributes {VPU.compilationMode = #VPU.compila
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
     DataInfo "Multiply_5095/fq_input_0" : tensor<1x64x56x56xf16>
@@ -518,9 +518,9 @@ module @InsertBarriersWhereNeeded attributes {VPU.compilationMode = #VPU.compila
 //        DPU4_0  |      DPU4_1
 //        DPU5_0  |      DPU5_1
 //                |
-//               /  \ 
-//              /    \ 
-//             /      \ 
+//               /  \
+//              /    \
+//             /      \
 //        DPU6_0        DPU6_1
 //              \    /
 //                b4
@@ -702,23 +702,26 @@ func.func @main(%arg0: memref<1x3x224x224xf16, @DDR>, %arg1: memref<1x64x112x112
     }
     return %arg1 : memref<1x64x112x112xf16, @DDR>
   }
+
   // CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
   // CHECK: [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
   // CHECK: [[BAR2:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
   // CHECK: [[BAR3:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
   // CHECK: [[BAR4:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-  
+  // CHECK: [[BAR5:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+
   // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) {
   // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
   // CHECK: VPURT.Task updates([[BAR1]] : !VPURT.Barrier) {
   // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
-  // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
+  // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) {
+  // CHECK: VPURT.Task {
+  // CHECK: VPURT.Task updates([[BAR3]] : !VPURT.Barrier) {
   // CHECK: VPURT.Task {
   // CHECK: VPURT.Task {
   // CHECK: VPURT.Task {
-  // CHECK: VPURT.Task {
-  // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
-  // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
-  // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
-  // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
+  // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
+  // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
+  // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
+  // CHECK: VPURT.Task waits([[BAR5]] : !VPURT.Barrier) {
 }

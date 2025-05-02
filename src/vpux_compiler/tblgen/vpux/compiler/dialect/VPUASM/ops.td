@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -84,8 +84,10 @@ class VPUASM_Memory<string mnemonic, list<Trait> traits = []> :
 def VPUASM_ConstBufferOp :
         VPUASM_Memory<"ConstBuffer",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getMemorySection", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
+                DeclareOpInterfaceMethods<ELF_BufferLocationInterface>
             ]
         > {
     let summary = "Constant R/O buffer symbolic declaration";
@@ -119,8 +121,9 @@ def VPUASM_ConstBufferOp :
 def VPUASM_DeclareBufferOp :
         VPUASM_Memory<"DeclareBuffer",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getBinarySize", "getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
+                DeclareOpInterfaceMethods<ELF_BufferLocationInterface>
             ]
         > {
     let summary = "RunTime dynamic R/W buffer symbolic declaration";
@@ -140,13 +143,14 @@ def VPUASM_DeclareBufferOp :
 def VPUASM_DeclareTaskBufferOp :
         VPUASM_Memory<"DeclareTaskBuffer",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getBinarySize", "getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
+                DeclareOpInterfaceMethods<ELF_BufferLocationInterface>,
                 VPUASM_IndexedTaskInterface
             ]
         > {
 
-    let summary = "Buffer Op representing a discrete location of a task in runtime metadataBuffer";
+    let summary = "Buffer Op representing a discrete location of a task in runtime metadata Buffer";
 
     let arguments = (ins
         SymbolNameAttr:$sym_name,
@@ -166,58 +170,6 @@ def VPUASM_DeclareTaskBufferOp :
 //
 // Ops
 //
-
-//
-// TaskAddrBufferOp
-//
-
-def VPUASM_DeclareTaskAddrBufOp :
-    VPUASM_Memory<"DeclareTaskAddrBuffer",
-        [
-            DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
-            DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-            DeclareOpInterfaceMethods<ELF_PredefinedPurposeMemoryOpInterface>
-        ]> {
-
-    let summary = "Symbolic representation of DeclareTaskAddrBuffOp";
-
-    let arguments = (ins
-        SymbolNameAttr:$sym_name,
-        SymbolRefAttr:$first,
-        SymbolRefAttr:$last,
-        VPUASM_BufferTypeAttr:$buffer_type,
-        VPURegMapped_TaskTypeAttr:$task_type
-    );
-
-    let assemblyFormat = [{
-        $sym_name `(` $first `->` $last `)` $buffer_type $task_type attr-dict
-    }];
-}
-
-//
-// TaskSinkOp
-//
-
-def VPUASM_TaskSinkOp :
-    VPUASM_Memory<"TaskSink",
-        [
-            DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
-            DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-            DeclareOpInterfaceMethods<ELF_PredefinedPurposeMemoryOpInterface>
-        ]> {
-
-    let summary = "Symbolic representation of DeclareTaskAddrBuffOp";
-
-    let arguments = (ins
-        SymbolNameAttr:$sym_name,
-        UI8Attr:$tile,
-        VPURegMapped_TaskTypeAttr:$taskType
-    );
-
-    let assemblyFormat = [{
-        $sym_name $tile $taskType attr-dict
-    }];
-}
 
 //
 // IOBindings
@@ -283,7 +235,7 @@ def VPUASM_IOBindingsOp:
 def VPUASM_MappedInferenceOp_37XX :
         VPUASM_Instruction<"MappedInference_37XX",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getBinarySize", "getAlignmentRequirements"]>
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>
             ]
         > {
     let summary = "Task representing the MappedInference structure on 37XX";
@@ -447,7 +399,9 @@ def VPUASM_ManagedMappedInferenceOp :
         UI8Attr:$media_used,
         UI8Attr:$dma_from_ddr_used,
         UI8Attr:$dma_from_cmx_used,
-        SymbolRefAttr:$mappedInferenceVersion
+        SymbolRefAttr:$mappedInferenceVersion,
+        VPURegMapped_WorkloadManagementBarrierProgrammingModeAttr:$workloadManagementBarrierProgrammingMode,
+        BoolAttr:$disableDmaSwFifo
         );
 
     let assemblyFormat = [{
@@ -508,7 +462,8 @@ def VPUASM_ConfigureBarrierOp :
 def VPUASM_BootstrapOp :
         VPUASM_Instruction<"Bootstrap",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 VPUASM_IndexedTaskInterface
             ]
         > {
@@ -715,7 +670,8 @@ def VPUASM_ActShaveRtOp :
 def VPUASM_DeclareKernelTextOp :
         VPUASM_Instruction<"DeclareKernelText",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>
             ]
         > {
     let summary = "Declaration of Software Kernel .text ";
@@ -739,7 +695,8 @@ def VPUASM_DeclareKernelTextOp :
 def VPUASM_DeclareKernelDataOp :
         VPUASM_Instruction<"DeclareKernelData",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>
             ]
         > {
     let summary = "Declaration of Software Kernel .data";
@@ -762,7 +719,7 @@ def VPUASM_ShaveStackFrameOp :
         VPUASM_Memory<"ActShaveRtStack",
             [
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getBinarySizeCached", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySizeCached", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_PredefinedPurposeMemoryOpInterface>,
             ]
         > {
@@ -814,7 +771,8 @@ def VPUASM_KernelParamsOp :
         VPUASM_Instruction<"KernelParams",
             [
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serializeCached", "getBinarySizeCached", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serializeCached"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySizeCached", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_DDRMemoryAccessingOpInterface>
             ]
         > {
@@ -1138,7 +1096,7 @@ def VPUASM_DPUInvariantOp :
 def VPUASM_DPUVariantOp_37XX :
         VPUASM_Instruction<"DPUVariant_37XX",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 VPUASM_IndexedTaskInterface
             ]
         > {
@@ -1174,7 +1132,7 @@ def VPUASM_DPUVariantOp_37XX :
 def VPUASM_DPUInvariantOp_37XX :
         VPUASM_Instruction<"DPUInvariant_37XX",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 VPUASM_IndexedTaskInterface
             ]
             # GraphRegionNoTerminator.traits
@@ -1297,7 +1255,7 @@ def VPUASM_SymbolizeValueOp :
 def VPUASM_NetworkMetadataOp :
         VPUASM_Op<"NetworkMetadata",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
                 VPUASM_IndexedTaskInterface,
                 IsolatedFromAbove,
@@ -1327,7 +1285,8 @@ def VPUASM_NetworkMetadataOp :
 def VPUASM_ProfilingMetadataOp :
         VPUASM_Op<"ProfilingMetadata",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
                 IsolatedFromAbove,
                 Symbol
@@ -1442,7 +1401,8 @@ def MappedInferenceVersionOp :
 def PlatformInfoOp :
         VPUASM_Op<"PlatformInfo",
             [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize", "getBinarySize", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
                 Symbol
             ]

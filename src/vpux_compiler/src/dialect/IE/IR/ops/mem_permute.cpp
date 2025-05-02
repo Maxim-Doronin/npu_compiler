@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,10 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -86,6 +89,10 @@ mlir::LogicalResult FuseMemPermuteThroughConcat::matchAndRewrite(IE::MemPermuteO
                                                                  mlir::PatternRewriter& rewriter) const {
     auto concatOp = memPermuteOp.getInput().getDefiningOp<IE::ConcatOp>();
     if (concatOp == nullptr) {
+        return mlir::failure();
+    }
+
+    if (!concatOp->hasOneUse()) {
         return mlir::failure();
     }
 
@@ -208,7 +215,7 @@ mlir::LogicalResult FuseMemPermuteThroughExpand::matchAndRewrite(IE::MemPermuteO
     const auto newPadsBeginAttr = getNewPaddingAttr(getContext(), padsBegin, targetOrder, topMemPermuteOutOrder);
     const auto newPadsEndAttr = getNewPaddingAttr(getContext(), padsEnd, targetOrder, topMemPermuteOutOrder);
 
-    auto outputType = memPermuteOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getOutput().getType());
     auto outputOrder = outputType.getDimsOrder();
 
     auto newExpandOp = rewriter.create<IE::ExpandOp>(expandOp.getLoc(), topMemPermuteOp.getInput(), newPadsBeginAttr,
@@ -266,8 +273,8 @@ mlir::LogicalResult FuseMemPermuteAndPermuteQuantize::matchAndRewrite(IE::MemPer
     // Can fuse MemPermute with PermuteQuantization in case only permutation (no quantization) is performed by this
     // PermuteQuantization Op.
     const auto permuteQuantizeOutElemType =
-            permuteQuantizeOp.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (permuteQuantizeOutElemType.isa<mlir::quant::QuantizedType>()) {
+            mlir::cast<vpux::NDTypeInterface>(permuteQuantizeOp.getOutput().getType()).getElementType();
+    if (mlir::isa<mlir::quant::QuantizedType>(permuteQuantizeOutElemType)) {
         return mlir::failure();
     }
 

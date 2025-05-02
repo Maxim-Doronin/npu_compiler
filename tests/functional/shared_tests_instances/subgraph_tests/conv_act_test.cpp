@@ -3,10 +3,6 @@
 //
 
 #include "shared_test_classes/subgraph/conv_act_base.hpp"
-
-#include <vector>
-
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov {

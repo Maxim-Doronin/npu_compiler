@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU40XX
 
 module @permuteDMA {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_0" : tensor<16x256xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<16x256xf16>
@@ -64,7 +64,7 @@ module @permuteDMA {
 // -----
 
 module @permuteDMA {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_0" : tensor<16x256xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<16x256xf16>
@@ -123,7 +123,7 @@ module @permuteDMA {
 
 #NC = affine_map<(d0, d1) -> (d0, d1)>
 module @permuteDMA {
-IE.CNNNetwork entryPoint : @UnrollDistributedPermuteDMAOutput inputsInfo : {
+net.NetworkInfo entryPoint : @UnrollDistributedPermuteDMAOutput inputsInfo : {
   DataInfo "input_0" : tensor<1x16x16x16xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<64x32x1x1xf16>

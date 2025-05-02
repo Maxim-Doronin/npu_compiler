@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -59,9 +59,9 @@ mlir::LogicalResult AdjustLSTMCellInputs::matchAndRewrite(VPU::LSTMCellOp lstmCe
     const auto recurrenceWeightsShape = getShape(recurrenceWeights).raw();
     const auto biasesShape = getShape(biases).raw();
 
-    const auto weightsOrder = weights.getType().cast<NDTypeInterface>().getDimsOrder();
-    const auto recurrenceWeightsOrder = recurrenceWeights.getType().cast<NDTypeInterface>().getDimsOrder();
-    const auto biasesOrder = biases.getType().cast<NDTypeInterface>().getDimsOrder();
+    const auto weightsOrder = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getDimsOrder();
+    const auto recurrenceWeightsOrder = mlir::cast<vpux::NDTypeInterface>(recurrenceWeights.getType()).getDimsOrder();
+    const auto biasesOrder = mlir::cast<vpux::NDTypeInterface>(biases.getType()).getDimsOrder();
 
     const auto newWeightsOrder = DimsOrder::NWHC;
     const auto newBiasesOrder = DimsOrder::NCWH;

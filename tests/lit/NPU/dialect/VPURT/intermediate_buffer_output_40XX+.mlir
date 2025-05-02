@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,7 +26,7 @@ module @testsubgraph attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compila
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
   IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
     DataInfo "Multiply_5095/fq_input_0" : tensor<1x64x56x56xf16>

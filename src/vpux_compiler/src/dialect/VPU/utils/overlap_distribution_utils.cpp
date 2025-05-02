@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -69,7 +69,8 @@ bool isValidCandidateForCMXConcat(mlir::Operation* maybeConcat) {
                 return false;
             }
 
-            auto distributedTensorType = clusterTilingNCE.getResult(0).getType().dyn_cast<VPU::DistributedTensorType>();
+            auto distributedTensorType =
+                    mlir::dyn_cast<vpux::VPU::DistributedTensorType>(clusterTilingNCE.getResult(0).getType());
             if (distributedTensorType == nullptr) {
                 return false;
             }
@@ -110,7 +111,7 @@ bool isValidCandidateForCMXConcat(mlir::Operation* maybeConcat) {
             }
 
             auto distributedTensorType =
-                    clusterTilingCopy.getResult(0).getType().dyn_cast<VPU::DistributedTensorType>();
+                    mlir::dyn_cast<vpux::VPU::DistributedTensorType>(clusterTilingCopy.getResult(0).getType());
             if (distributedTensorType == nullptr) {
                 return false;
             }
@@ -343,7 +344,7 @@ OverlapDistributionParams vpux::VPU::getOverlappedDistributionParameters(
 
     // TODO: E#112803 Add support for extended memory view for sparse types with SETable; remove throw after
     // implementation is done.
-    const auto sparseTensor = tensorType.dyn_cast<VPU::SparseTensorType>();
+    const auto sparseTensor = mlir::dyn_cast<vpux::VPU::SparseTensorType>(tensorType);
     const bool origTensorHasSETable = (sparseTensor != nullptr) && (sparseTensor.getSeAttr() != nullptr);
     VPUX_THROW_WHEN(origTensorHasSETable && nceOpCandidates.size() != 1,
                     "Equalizing memory view between a SEP op and another NCE op is not supported, yet.");
@@ -370,7 +371,7 @@ OverlapDistributionParams vpux::VPU::getOverlappedDistributionParameters(
 
         auto tensorShape = shape.toValues();
 
-        const auto sparseNceOpInputType = nceOp->getOperand(0).getType().dyn_cast<VPU::SparseTensorType>();
+        const auto sparseNceOpInputType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceOp->getOperand(0).getType());
         const bool currentNceOpHasSETable =
                 sparseNceOpInputType != nullptr && sparseNceOpInputType.getSeAttr() != nullptr;
 
@@ -629,9 +630,8 @@ std::set<VPU::ClusteredOpInterface> vpux::VPU::getSiblingOps(mlir::Operation* op
     return siblingSubgraph;
 }
 
-bool vpux::VPU::outputOverlappedParamsIsHaloSupported(VPU::ClusteredOpInterface clusteredOp) {
-    auto archKind = getArch(clusteredOp.getOperation());
-    return archKind >= VPU::ArchKind::NPU40XX;
+bool vpux::VPU::outputOverlappedParamsIsHaloSupported(mlir::Operation* op) {
+    return getArch(op) >= VPU::ArchKind::NPU40XX;
 }
 
 OverlapDistributionParams vpux::VPU::getActivationOverlappedParams(VPU::ClusteredOpInterface clusteredOp,
@@ -644,14 +644,14 @@ OverlapDistributionParams vpux::VPU::getActivationOverlappedParams(VPU::Clustere
     // OVERLAPPED should only represent the current op's input needs w/o
     // the sibling requirements
     // E#106872 to remove arch check
-    if (!outputOverlappedParamsIsHaloSupported(clusteredOp)) {
+    if (!outputOverlappedParamsIsHaloSupported(clusteredOp.getOperation())) {
         const auto kernelTileAxis = extractKernelTileAxis(activationTensorNumTiles);
         return getOverlappedDistributionParameters(SmallVector<VPU::ClusteredOpInterface>({clusteredOp}),
                                                    kernelTileAxis);
     }
 
     // TODO: E#112803 Add support for extended memory view for sparse types with SETable
-    auto sparseType = clusteredOp->getOperand(0).getType().dyn_cast<VPU::SparseTensorType>();
+    auto sparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(clusteredOp->getOperand(0).getType());
     const bool isSparseTypeInputWithSeTable = (sparseType != nullptr) && (sparseType.getSeAttr() != nullptr);
     SmallVector<VPU::ClusteredOpInterface> siblingSubgraph{};
     if (isSparseTypeInputWithSeTable) {
@@ -663,7 +663,8 @@ OverlapDistributionParams vpux::VPU::getActivationOverlappedParams(VPU::Clustere
 
     const auto clusteringAxis = VPU::getDistributedTilingAxis(activationTensorNumTiles);
     return getOverlappedDistributionParameters(
-            (inputType != nullptr) ? inputType : clusteredOp->getOperand(0).getType().cast<NDTypeInterface>(),
+            (inputType != nullptr) ? inputType
+                                   : mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType()),
             siblingSubgraph, activationTensorNumTiles[clusteringAxis], activationTensorNumTiles,
             uniformDistributedSegments, tileInfo);
 }
@@ -677,14 +678,14 @@ OverlapDistributionParams vpux::VPU::getActivationOverlappedParams(VPU::Clustere
     // OVERLAPPED should only represent the current op's input needs w/o
     // the sibling requirements
     // E#106872 to remove arch check
-    if (!outputOverlappedParamsIsHaloSupported(clusteredOp)) {
+    if (!outputOverlappedParamsIsHaloSupported(clusteredOp.getOperation())) {
         const auto kernelTileAxis = extractKernelTileAxis(activationTensorNumTiles);
         return getOverlappedDistributionParameters(SmallVector<VPU::ClusteredOpInterface>({clusteredOp}),
                                                    kernelTileAxis);
     }
 
     // TODO: E#112803 Add support for extended memory view for sparse types with SETable
-    auto sparseType = clusteredOp->getOperand(0).getType().dyn_cast<VPU::SparseTensorType>();
+    auto sparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(clusteredOp->getOperand(0).getType());
     const bool isSparseTypeInputWithSeTable = (sparseType != nullptr) && (sparseType.getSeAttr() != nullptr);
     std::set<VPU::ClusteredOpInterface> siblingSubgraph = isSparseTypeInputWithSeTable
                                                                   ? std::set<VPU::ClusteredOpInterface>{clusteredOp}
@@ -692,7 +693,8 @@ OverlapDistributionParams vpux::VPU::getActivationOverlappedParams(VPU::Clustere
 
     const auto clusteringAxis = VPU::getDistributedTilingAxis(activationTensorNumTiles);
     return getOverlappedDistributionParameters(
-            (inputType != nullptr) ? inputType : clusteredOp->getOperand(0).getType().cast<NDTypeInterface>(),
+            (inputType != nullptr) ? inputType
+                                   : mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType()),
             SmallVector<VPU::ClusteredOpInterface>(siblingSubgraph.begin(), siblingSubgraph.end()),
             activationTensorNumTiles[clusteringAxis], activationTensorNumTiles, uniformDistributedSegments, tileInfo);
 }
@@ -867,14 +869,15 @@ OverlapDistributionParams vpux::VPU::getOutputOverlappedParams(VPU::ClusteredOpI
                                                                SiblingOpsAnalysis& siblingsAnalysis) {
     // For arch w/o halo support
     // E#106872 to remove arch check
-    if (!outputOverlappedParamsIsHaloSupported(clusteredOp)) {
+    if (!outputOverlappedParamsIsHaloSupported(clusteredOp.getOperation())) {
         return getOutputOverlappedParamsNoHalo(clusteredOp, outputTensorNumTiles);
     }
 
     auto consumers = siblingsAnalysis.getConsumers(clusteredOp);
     const auto clusteringAxis = VPU::getDistributedTilingAxis(outputTensorNumTiles);
     return getOverlappedDistributionParameters(
-            (outputType != nullptr) ? outputType : clusteredOp->getResult(0).getType().cast<NDTypeInterface>(),
+            (outputType != nullptr) ? outputType
+                                    : mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType()),
             SmallVector<VPU::ClusteredOpInterface>(consumers.begin(), consumers.end()),
             outputTensorNumTiles[clusteringAxis], outputTensorNumTiles, uniformDistributedSegments, tileInfo);
 }
@@ -886,7 +889,7 @@ OverlapDistributionParams vpux::VPU::getOutputOverlappedParams(VPU::ClusteredOpI
                                                                const vpux::TileInfo& tileInfo) {
     // For arch w/o halo support
     // E#106872 to remove arch check
-    if (!outputOverlappedParamsIsHaloSupported(clusteredOp)) {
+    if (!outputOverlappedParamsIsHaloSupported(clusteredOp.getOperation())) {
         return getOutputOverlappedParamsNoHalo(clusteredOp, outputTensorNumTiles);
     }
 

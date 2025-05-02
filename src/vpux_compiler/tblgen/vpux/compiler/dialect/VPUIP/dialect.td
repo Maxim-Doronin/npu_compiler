@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -33,6 +33,8 @@ It handles such VPU-specifics as:
 
     let dependentDialects = [
         "vpux::Const::ConstDialect",
+        "vpux::Core::CoreDialect",
+        "vpux::net::NetDialect",
         "vpux::IE::IEDialect",
         "vpux::VPU::VPUDialect",
         "vpux::IERT::IERTDialect",

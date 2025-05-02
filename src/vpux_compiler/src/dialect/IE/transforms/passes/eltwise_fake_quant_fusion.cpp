@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -124,6 +126,12 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
         return mlir::failure();
     }
 
+    // Subtract/Divide Op can only be fused if constant is on the 2nd input
+    if (mlir::isa<IE::SubtractOp, IE::DivideOp>(concreteParentOp.getOperation()) && !lhsIsActivation) {
+        _log.nest().trace("The SubtractOp/DivideOp activation needs to be LHS");
+        return mlir::failure();
+    }
+
     auto concreteScalarInputFqOp = lhsIsActivation
                                            ? concreteParentOp.getInput2().template getDefiningOp<IE::FakeQuantizeOp>()
                                            : concreteParentOp.getInput1().template getDefiningOp<IE::FakeQuantizeOp>();
@@ -170,10 +178,14 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
         auto concreteInHighValue = concreteFQInHighContentAttr.fold().template getSplatValue<float>();
         auto concreteOutLowValue = concreteFQOutLowContentAttr.fold().template getSplatValue<float>();
         auto concreteOutHighValue = concreteFQOutHighContentAttr.fold().template getSplatValue<float>();
-        auto levels = concreteScalarInputFqOp.getLevels();
-        float fLevels = checked_cast<float>(levels.value());
-        concreteScalarInputValue = fakeQuantize(concreteScalarInputValue, concreteInLowValue, concreteInHighValue,
-                                                concreteOutLowValue, concreteOutHighValue, fLevels);
+
+        if (const auto levels = concreteScalarInputFqOp.getLevels()) {
+            concreteScalarInputValue = fakeQuantize(concreteScalarInputValue, concreteInLowValue, concreteInHighValue,
+                                                    concreteOutLowValue, concreteOutHighValue, *levels);
+        } else {
+            _log.nest().trace("FakeQuantize without levels at '{0}'", concreteScalarInputFqOp->getLoc());
+            return mlir::failure();
+        }
     }
 
     // TODO(E#129083): Remove this condition and _adaptiveStrippingEnabled
@@ -195,10 +207,11 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
     auto oldInHighValue = inHighContentAttr.fold().getSplatValue<float>();
     auto newInLowValue = _compute(oldInLowValue, concreteScalarInputValue);
     auto newInHighValue = _compute(oldInHighValue, concreteScalarInputValue);
-    auto newInLowConst = Const::createFloatConst(rewriter, fakeQuantizeOp.getLoc(),
-                                                 inLowConst.getType().cast<mlir::RankedTensorType>(), newInLowValue);
-    auto newInHighConst = Const::createFloatConst(rewriter, fakeQuantizeOp.getLoc(),
-                                                  inHighConst.getType().cast<mlir::RankedTensorType>(), newInHighValue);
+    auto newInLowConst = Const::createFloatConst(
+            rewriter, fakeQuantizeOp.getLoc(), mlir::cast<mlir::RankedTensorType>(inLowConst.getType()), newInLowValue);
+    auto newInHighConst =
+            Const::createFloatConst(rewriter, fakeQuantizeOp.getLoc(),
+                                    mlir::cast<mlir::RankedTensorType>(inHighConst.getType()), newInHighValue);
 
     auto concreteActivationInputOp = lhsIsActivation ? concreteParentOp.getInput1() : concreteParentOp.getInput2();
     rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(

@@ -153,7 +153,7 @@ func.func @DoNotUpstreamSliceFakeQuantizeSameAxis(%arg0: tensor<1x16x5x5xf16>) -
 func.func @DoNotUpstreamDynamicSlices(
         %DATA: tensor<32xf16>,
         %SHAPE: tensor<1xsi32>
-) -> tensor<?xf16, {bounds = [32], order = #C}> {
+) -> tensor<?xf16, {bounds = #const.OpaqueI64Elements<[32]> : tensor<1xsi64>, order = #C}> {
     // CHECK:   [[DATA:%.+]]: tensor<32xf16>, [[SHAPE:%.+]]: tensor<1xsi32>
     %GELU = IE.Gelu(%DATA) : tensor<32xf16> -> tensor<32xf16>
     // CHECK:   [[GELU:%.+]] = IE.Gelu([[DATA]]) : tensor<32xf16> -> tensor<32xf16>
@@ -167,9 +167,9 @@ func.func @DoNotUpstreamDynamicSlices(
         operandSegmentSizes = array<i32: 1, 0, 1, 0>,
         shrink_axis_mask = [],
         strides_attr = [1]
-    } : tensor<32xf16>, tensor<1xsi32> -> tensor<?xf16, {bounds = [32], order = #C}>
+    } : tensor<32xf16>, tensor<1xsi32> -> tensor<?xf16, {bounds = #const.OpaqueI64Elements<[32]> : tensor<1xsi64>, order = #C}>
     // CHECK:   [[SLICE:%.+]] = IE.StridedSlice([[GELU]], [[SHAPE]])
 
-    return %SLICE : tensor<?xf16, {bounds = [32], order = #C}>
-    // CHECK:   return [[SLICE]] : tensor<?xf16, {bounds = [32], order = #C}>
+    return %SLICE : tensor<?xf16, {bounds = #const.OpaqueI64Elements<[32]> : tensor<1xsi64>, order = #C}>
+    // CHECK:   return [[SLICE]] : tensor<?xf16, {bounds = #const.OpaqueI64Elements<[32]> : tensor<1xsi64>, order = #C}>
 }

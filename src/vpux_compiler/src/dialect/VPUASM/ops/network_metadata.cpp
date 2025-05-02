@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,24 +22,11 @@ void vpux::VPUASM::NetworkMetadataOp::serialize(elf::writer::BinaryDataSection<u
     metadata.mResourceRequirements.nn_barriers_ = nBarrs;
     metadata.mResourceRequirements.nn_slice_count_ = VPUIP::getNumTilesUsed(mainModule);
 
-    metadata.mResourceRequirements.ddr_scratch_length_ =
-            checked_cast<uint32_t>(IE::getAvailableMemory(mainModule, vpux::VPU::MemoryKind::DDR).getByteSize());
     metadata.mResourceRequirements.nn_slice_length_ =
             checked_cast<uint32_t>(IE::getAvailableMemory(mainModule, vpux::VPU::MemoryKind::CMX_NN).getByteSize());
 
     auto serializedMetadata = elf::MetadataSerialization::serialize(metadata);
     binDataSection.appendData(&serializedMetadata[0], serializedMetadata.size());
-}
-
-void vpux::VPUASM::NetworkMetadataOp::serialize(elf::writer::BinaryDataSection<uint8_t>&) {
-    // The NetworkMetadataOp has binaryOpInterface, this binaryOpInterface serialize need to be
-    // implemented otherwise the build will failed due to the extra definition for the serialize.
-    // TODO: E#153150
-    VPUX_THROW("NetworkMetadataOp BinaryOpInterface method serialize should not be called! E#153150");
-#ifdef VPUX_DEVELOPER_BUILD
-    auto logger = Logger::global();
-    logger.warning("Serializing {0} op, which may mean invalid usage");
-#endif
 }
 
 size_t vpux::VPUASM::NetworkMetadataOp::getBinarySize(VPU::ArchKind) {

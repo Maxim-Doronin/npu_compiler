@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,21 +26,30 @@ namespace {
 
 bool isEligiblePermute(mlir::Operation* op, Logger log) {
     const auto permuteInterface = getFusableLayerWithPermuteInterface(op);
+    auto input = op->getOperand(0);
     if (permuteInterface != nullptr && permuteInterface->getResult(0).hasOneUse()) {
         log.trace("A permutation at {0} has already got a suitable producer", op->getLoc());
         return false;
     }
     const auto expectedLayout = DimsOrder::NHWC;
-    const auto inputLayout = DimsOrder::fromValue(op->getOperand(0));
+    const auto inputLayout = DimsOrder::fromValue(input);
     if (inputLayout != expectedLayout) {
         log.trace("A permutation at {0} has got an unsupported input layout {1}, expected {2}", op->getLoc(),
                   inputLayout, expectedLayout);
         return false;
     }
-    const auto shapeRef = getShape(op->getOperand(0));
+    const auto shapeRef = getShape(input);
     const auto batchSize = shapeRef[Dims4D::Act::N];
     if (batchSize != 1) {
         log.trace("A permutation at {0} has an unsupported batch size {1}", op->getLoc(), batchSize);
+        return false;
+    }
+
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
+    auto isQuantizedInput = mlir::isa<mlir::quant::QuantizedType>(inputType);
+
+    if (!inputType.isF16() && !inputType.isBF16() && !isQuantizedInput) {
+        log.trace("A permutation at {0} has an unsupported data type {1}", op->getLoc(), inputType);
         return false;
     }
 
@@ -72,7 +81,7 @@ bool checkPooling(mlir::Operation* op, mlir::Operation* maybePermute) {
     if (!permuteInterface.isSupportedPermutation(maybePermute)) {
         return false;
     }
-    const auto outputType = op->getResult(0).getType().template cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
     if (mlir::isa<mlir::IntegerType>(outputType.getElementType())) {
         return false;
     }

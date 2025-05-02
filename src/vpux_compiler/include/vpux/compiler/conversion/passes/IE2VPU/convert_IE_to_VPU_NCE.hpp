@@ -38,11 +38,11 @@ mlir::LogicalResult EltwiseToNCE<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
 
     auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
 
-    auto nceOp = rewriter.create<VPU::NCEEltwiseOp>(origOp->getLoc(), origOp.getType(), origOp.getInput1(),
-                                                    origOp.getInput2(),
-                                                    VPU::EltwiseTypeAttr::get(this->getContext(), _opType), ppeAttr,
-                                                    /*multi_cluster_strategyAttr=*/nullptr,
-                                                    /*is_inplace=*/nullptr, origOp.getOutputChannelsAttr());
+    auto nceOp = rewriter.create<VPU::NCEEltwiseOp>(
+            origOp->getLoc(), origOp.getType(), origOp.getInput1(), origOp.getInput2(),
+            VPU::EltwiseTypeAttr::get(this->getContext(), _opType), ppeAttr,
+            /*multi_cluster_strategyAttr=*/nullptr,
+            /*is_inplace=*/nullptr, origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     rewriter.replaceOp(origOp, nceOp.getOutput());
     return mlir::success();
 }

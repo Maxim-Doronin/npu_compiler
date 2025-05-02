@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,8 +26,8 @@ mlir::LogicalResult vpux::VPU::DistributedCastOp::verify() {
         std::ignore = errorAt(op, "{0}", msg.str());
     };
 
-    const auto inDistributedTypeInterface = getInput().getType().cast<VPU::DistributedTypeInterface>();
-    const auto outDistributedTypeInterface = getOutput().getType().cast<VPU::DistributedTypeInterface>();
+    const auto inDistributedTypeInterface = mlir::cast<vpux::VPU::DistributedTypeInterface>(getInput().getType());
+    const auto outDistributedTypeInterface = mlir::cast<vpux::VPU::DistributedTypeInterface>(getOutput().getType());
 
     auto inDistributedTypes = inDistributedTypeInterface.getDistributedTypes();
     auto outDistributedTypes = outDistributedTypeInterface.getDistributedTypes();
@@ -35,8 +35,8 @@ mlir::LogicalResult vpux::VPU::DistributedCastOp::verify() {
         return mlir::failure();
     }
     auto isCompatible = [&logCb](mlir::Type type1, mlir::Type type2) -> bool {
-        return isDistributedCastCompatible(type1.cast<VPU::DistributedTensorType>(),
-                                           type2.cast<VPU::DistributedTensorType>(), logCb)
+        return isDistributedCastCompatible(mlir::cast<vpux::VPU::DistributedTensorType>(type1),
+                                           mlir::cast<vpux::VPU::DistributedTensorType>(type2), logCb)
                 .succeeded();
     };
 

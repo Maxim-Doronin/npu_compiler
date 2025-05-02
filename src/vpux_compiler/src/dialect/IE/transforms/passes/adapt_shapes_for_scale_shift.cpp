@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <vpux/compiler/utils/rewriter.hpp>
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADAPTSHAPESFORSCALESHIFTPASS
@@ -54,7 +57,7 @@ mlir::LogicalResult BroadcastEltwiseRewriter<EltwiseOp>::matchAndTranspose(Eltwi
     const auto origOpLoc = origOp.getLoc();
 
     // Reshape NxM input to 1xNxMx1
-    const auto lhsType = origOp.getInput1().getType().template cast<vpux::NDTypeInterface>();
+    const auto lhsType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput1().getType());
     const auto lhsShape = lhsType.getShape();
     auto newChannelSize = lhsShape[Dim(broadcastAxis - 1)];
     if (broadcastAxis == 2) {
@@ -76,7 +79,7 @@ mlir::LogicalResult BroadcastEltwiseRewriter<EltwiseOp>::matchAndTranspose(Eltwi
     _log.trace("[{0}]: transposed LHS: {1}", this->getDebugName(), transposeLhsLoc);
 
     // Reshape 1xM input to 1xMx1x1
-    const auto rhsType = origOp.getInput2().getType().template cast<vpux::NDTypeInterface>();
+    const auto rhsType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput2().getType());
     const auto rhsShape = rhsType.getShape();
     const std::array<int64_t, 4> rhs4D = {1, rhsShape[Dim(broadcastAxis)], 1, 1};
     const auto reshapedRhsType = rhsType.changeShape(ShapeRef(rhs4D));
@@ -88,7 +91,7 @@ mlir::LogicalResult BroadcastEltwiseRewriter<EltwiseOp>::matchAndTranspose(Eltwi
     // Create new IE.Add operation
     auto newOp = rewriter.create<EltwiseOp>(origOp->getLoc(), transposedLhs, reshapedRhs, origOp.getAutoBroadcast(),
                                             origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     _log.trace("[{0}]: new element-wise: {1}", this->getDebugName(), newOp);
 
     // Transpose the 1xMxNx1 output to 1xNxMx1
@@ -99,7 +102,7 @@ mlir::LogicalResult BroadcastEltwiseRewriter<EltwiseOp>::matchAndTranspose(Eltwi
     _log.trace("[{0}]: transposed output: {1}", this->getDebugName(), transposedOut);
 
     // Reshape 1xNxMx1 output to NxM
-    const auto reshapedOutType = origOp.getOutput().getType().template cast<vpux::NDTypeInterface>();
+    const auto reshapedOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShape = reshapedOutType.getShape();
     const auto reshapedOutLoc = appendLoc(origOpLoc, "reshape_out");
     auto reshapedOut = rewriter.create<IE::ReshapeOp>(reshapedOutLoc, reshapedOutType, transposedOut.getOutput(),
@@ -239,8 +242,8 @@ bool areMatchedOpInputs(mlir::Operation* op, std::function<bool(ShapeRef, ShapeR
     const auto lhsInput = actInputs[0];
     const auto rhsInput = constInputs.empty() ? actInputs[1] : constInputs[0];
 
-    const auto lhsInputShape = lhsInput.getType().template cast<vpux::NDTypeInterface>().getShape();
-    const auto rhsInputShape = rhsInput.getType().template cast<vpux::NDTypeInterface>().getShape();
+    const auto lhsInputShape = mlir::cast<vpux::NDTypeInterface>(lhsInput.getType()).getShape();
+    const auto rhsInputShape = mlir::cast<vpux::NDTypeInterface>(rhsInput.getType()).getShape();
     if (lhsInputShape.size() != 4 || rhsInputShape.size() != 4) {
         return false;
     }
@@ -280,8 +283,8 @@ bool isPotentialScaleShift(mlir::Operation* op) {
     }
     auto actInput = actInputs[0];
     auto constInput = constInputs[0];
-    auto actInputShape = actInput.getType().cast<vpux::NDTypeInterface>().getShape();
-    auto constInputShape = constInput.getType().cast<vpux::NDTypeInterface>().getShape();
+    auto actInputShape = mlir::cast<vpux::NDTypeInterface>(actInput.getType()).getShape();
+    auto constInputShape = mlir::cast<vpux::NDTypeInterface>(constInput.getType()).getShape();
     if (actInputShape.size() != 4 || constInputShape.size() != 4) {
         return false;
     }
@@ -325,9 +328,9 @@ mlir::LogicalResult MultiNonTrivialDimEltwiseRewriter<EltwiseOp>::matchAndRewrit
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
     const auto origOpLoc = origOp.getLoc();
 
-    const auto lhsType = origOp.getInput1().getType().template cast<vpux::NDTypeInterface>();
+    const auto lhsType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput1().getType());
     const auto lhsShape = lhsType.getShape();
-    const auto rhsType = origOp.getInput2().getType().template cast<vpux::NDTypeInterface>();
+    const auto rhsType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput2().getType());
     const auto rhsShape = rhsType.getShape();
     // Check if the new IC exceeds the dimension limit 8192
     if (lhsShape[Dim(2)] * lhsShape[Dim(3)] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT ||
@@ -357,7 +360,7 @@ mlir::LogicalResult MultiNonTrivialDimEltwiseRewriter<EltwiseOp>::matchAndRewrit
     // Create new EltwiseOp operation
     auto newOp = rewriter.create<EltwiseOp>(origOp->getLoc(), transposedLhs, reshapedRhs, origOp.getAutoBroadcast(),
                                             origOp.getPostOpAttr(), origOp.getClampAttr(),
-                                            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     // output: 1x(HxW)xNxC -> 1xNxCx(HxW) -> NxCxHxW
     const auto transposeOutOrder =
@@ -365,7 +368,7 @@ mlir::LogicalResult MultiNonTrivialDimEltwiseRewriter<EltwiseOp>::matchAndRewrit
     const auto transposeOutLoc = appendLoc(origOpLoc, "transpose_out");
     auto transposedOut = rewriter.create<IE::TransposeOp>(transposeOutLoc, newOp, nullptr, transposeOutOrder);
 
-    const auto reshapedOutType = origOp.getOutput().getType().template cast<vpux::NDTypeInterface>();
+    const auto reshapedOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShape = reshapedOutType.getShape();
     const auto reshapedOutLoc = appendLoc(origOpLoc, "reshape_out");
     auto reshapedOut = rewriter.create<IE::ReshapeOp>(reshapedOutLoc, reshapedOutType, transposedOut.getOutput(),
@@ -389,11 +392,11 @@ mlir::LogicalResult TransposeEltwiseRewriter<EltwiseOp>::matchAndRewrite(Eltwise
 
     auto actInput = getActInputs(origOp.getOperation())[0];
     auto constInput = getConstInputs(origOp.getOperation())[0];
-    auto actInputType = actInput.getType().template cast<vpux::NDTypeInterface>();
+    auto actInputType = mlir::cast<vpux::NDTypeInterface>(actInput.getType());
     auto actInputShape = actInputType.getShape();
-    auto constInputType = constInput.getType().template cast<vpux::NDTypeInterface>();
+    auto constInputType = mlir::cast<vpux::NDTypeInterface>(constInput.getType());
     auto constInputShape = constInputType.getShape();
-    auto outputType = origOp->getResult(0).getType().template cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
 
     Dim dimToMove = *getNonOneDim(constInputShape).begin();
     auto newInputOrder =

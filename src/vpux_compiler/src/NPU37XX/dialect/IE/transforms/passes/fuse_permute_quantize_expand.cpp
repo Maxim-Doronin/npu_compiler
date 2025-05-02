@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -63,15 +63,15 @@ mlir::LogicalResult FusePermuteQuantizeExpandBase::matchAndRewrite(IE::ReorderOp
     }
 
     auto opNce = *origOp.getOutput().getUsers().begin();
-    const auto inType = opNce->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto outType = opNce->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (!(inType.isF16() && outType.isa<mlir::quant::QuantizedType>())) {
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(opNce->getOperand(0).getType()).getElementType();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(opNce->getResult(0).getType()).getElementType();
+    if (!(inType.isF16() && mlir::isa<mlir::quant::QuantizedType>(outType))) {
         return mlir::failure();
     }
 
     // check uniform quantize
-    const auto qType = outType.cast<mlir::quant::QuantizedType>();
-    if (!qType.isa<mlir::quant::UniformQuantizedType>()) {
+    const auto qType = mlir::cast<mlir::quant::QuantizedType>(outType);
+    if (!mlir::isa<mlir::quant::UniformQuantizedType>(qType)) {
         return mlir::failure();
     }
 
@@ -86,8 +86,8 @@ mlir::LogicalResult FusePermuteQuantizeExpandBase::matchAndRewrite(IE::ReorderOp
         return mlir::failure();
     }
     // allow expand just on C dim, that will be last after reorder.
-    const auto iExpType = opExpand.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto oExpType = opExpand.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto iExpType = mlir::cast<vpux::NDTypeInterface>(opExpand.getInput().getType());
+    const auto oExpType = mlir::cast<vpux::NDTypeInterface>(opExpand.getOutput().getType());
     if (iExpType.getShape()[Dims4D::Act::N] != oExpType.getShape()[Dims4D::Act::N]) {
         return mlir::failure();
     }
@@ -110,7 +110,7 @@ mlir::LogicalResult FusePermuteQuantizeExpandBase::matchAndRewrite(IE::ReorderOp
     // first patern when no reshape involve, just fuse ConvertOp
     if (opConvert != nullptr) {
         if (opConvert.getResult().hasOneUse() &&
-            opConvert.getInput().getType().cast<vpux::NDTypeInterface>().getElementType().isF32()) {
+            mlir::cast<vpux::NDTypeInterface>(opConvert.getInput().getType()).getElementType().isF32()) {
             paternInput = opConvert.getInput();
         }
     }
@@ -120,7 +120,7 @@ mlir::LogicalResult FusePermuteQuantizeExpandBase::matchAndRewrite(IE::ReorderOp
         opConvert = opReshape.getInput().getDefiningOp<IE::ConvertOp>();
         if (opConvert != nullptr) {
             if (opReshape.getResult().hasOneUse() && opConvert.getResult().hasOneUse() &&
-                opConvert.getInput().getType().cast<vpux::NDTypeInterface>().getElementType().isF32()) {
+                mlir::cast<vpux::NDTypeInterface>(opConvert.getInput().getType()).getElementType().isF32()) {
                 const auto newReshapeOpLoc = appendLoc(origOp->getLoc(), "AffineReshape");
                 auto newReshapeOp = rewriter.create<IE::AffineReshapeOp>(newReshapeOpLoc, opConvert.getInput(),
                                                                          opReshape.getDimMappingAttr(),
@@ -132,7 +132,7 @@ mlir::LogicalResult FusePermuteQuantizeExpandBase::matchAndRewrite(IE::ReorderOp
 
     auto memPermAttr = mlir::AffineMapAttr::get(getPermutationFromOrders(inOrder, outOrder, origOp->getContext()));
     auto permQuantOutType = getNceOutType(opNce);
-    const auto permQuantElemType = permQuantOutType.cast<vpux::NDTypeInterface>().getElementType();
+    const auto permQuantElemType = mlir::cast<vpux::NDTypeInterface>(permQuantOutType).getElementType();
     const auto dstElemTypeAttr = mlir::TypeAttr::get(permQuantElemType);
     const auto permQuantLoc = appendLoc(origOp->getLoc(), "PermuteQuantizeExpand");
     auto permuteQuantizeOp = rewriter.create<IE::PermuteQuantizeOp>(
@@ -236,8 +236,8 @@ mlir::LogicalResult FuseExpandIntoPermuteQuantizeRewrite::matchAndRewrite(IE::Ex
     }
 
     // alow expand just on C dim, that will be last after reoreder.
-    const auto iExpType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto oExpType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto iExpType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto oExpType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     if (!((4 == iExpType.getRank()) && (4 == oExpType.getRank()))) {
         return mlir::failure();
     }
@@ -299,8 +299,8 @@ mlir::LogicalResult FuseQuantizeCastExpandIntoPermuteQuantizeQuantizeCastRewrite
     }
 
     // alow expand just on C dim, that will be last after reoreder.
-    const auto iExpType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto oExpType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto iExpType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto oExpType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     if (!((4 == iExpType.getRank()) && (4 == oExpType.getRank()))) {
         return mlir::failure();
     }

@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -33,6 +34,13 @@ private:
     void safeRunOnFunc() final;
 };
 
+mlir::Operation* getSliceOrStridedSliceOp(mlir::Operation* op) {
+    if (mlir::isa_and_nonnull<IE::SliceOp, IE::StridedSliceOp>(op)) {
+        return op;
+    }
+    return nullptr;
+}
+
 //
 // safeRunOnFunc
 //
@@ -46,12 +54,32 @@ private:
 //   |                                                                                    |
 //   |                                                                                    |
 //    -------------------------------------------------------------------------------------
+// Or
+// Input --------> IE.Multiply ---------------IE.AffineReshape-----------------------------------------
+//       |                                                                                            |
+//       |                    |--> IE.StridedSlice -> IE.Multiply                                     |   -> IE.Add
+//       IE.AffineReshape ----|                                  | ---> IE.Concat ---> IE.Multiply ----
+//                            |--> IE.StridedSlice ---------------                                              ^
+//   |                                                                                                          |
+//   |                                                                                                          |
+//    -----------------------------------------------------------------------------------------------------------
 
 void FuseRoPEPass::safeRunOnFunc() {
     auto func = getOperation();
     func->walk([&](IE::AddOp addOp) {
-        auto mulOp1 = addOp.getOperand(0).getDefiningOp<IE::MultiplyOp>();
-        auto mulOp2 = addOp.getOperand(1).getDefiningOp<IE::MultiplyOp>();
+        auto skipReshapeIfPresent = [](mlir::Operation* op) -> mlir::Operation* {
+            if (!mlir::isa_and_nonnull<IE::AffineReshapeOp>(op)) {
+                return op;
+            }
+            if (!op->hasOneUse()) {
+                return nullptr;
+            }
+            return op->getOperand(0).getDefiningOp();
+        };
+
+        auto mulOp1 =
+                mlir::dyn_cast_or_null<IE::MultiplyOp>(skipReshapeIfPresent(addOp->getOperand(0).getDefiningOp()));
+        auto mulOp2 = mlir::dyn_cast_or_null<IE::MultiplyOp>(addOp.getOperand(1).getDefiningOp());
         if (!mulOp1 || !mulOp2) {
             return;
         }
@@ -63,24 +91,42 @@ void FuseRoPEPass::safeRunOnFunc() {
             return;
         }
         auto mulOp3 = concatOp.getOperand(0).getDefiningOp<IE::MultiplyOp>();
-        auto stridedSliceOp2 = concatOp.getOperand(1).getDefiningOp<IE::StridedSliceOp>();
+        auto stridedSliceOp2 = getSliceOrStridedSliceOp(concatOp.getOperand(1).getDefiningOp());
         if (!mulOp3 || !stridedSliceOp2) {
             return;
         }
-        auto stridedSliceOp1 = mulOp3.getOperand(0).getDefiningOp<IE::StridedSliceOp>();
+        auto stridedSliceOp1 = getSliceOrStridedSliceOp(mulOp3.getOperand(0).getDefiningOp());
         if (!stridedSliceOp1) {
             return;
         }
-        auto tensorType = stridedSliceOp1->getOperand(0).getType().dyn_cast<mlir::RankedTensorType>();
+        auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(stridedSliceOp1->getOperand(0).getType());
         if (!tensorType || tensorType.getRank() != 4) {
             return;
         }
+
+        // For avoiding performance decrese for certain networks, we limit the cases in which H = 1 only to
+        // dimensions {N, 1, 1, 64} and {N, 64, 1, 64}
+        // Follow next ticket for updates on generalizing the pass: E#162922
+        const int unsupportedH = 1;
+        const int supportedC1 = 1;
+        const int supportedC2 = 64;
+        const int supportedW = 64;
         auto shape = tensorType.getShape();
-        if (shape[2] == 1) {
+
+        if (shape[2] == unsupportedH && !(shape[1] == supportedC1 && shape[3] == supportedW) &&
+            !(shape[1] == supportedC2 && shape[3] == supportedW)) {
             return;
         }
+
         _log.trace("RoPE pattern matched for operation {0} at {1}", addOp->getName(), addOp->getLoc());
         auto builder = mlir::OpBuilder(addOp);
+        auto cosShape = mlir::cast<mlir::RankedTensorType>(input_cos.getType()).getShape();
+        auto sinShape = mlir::cast<mlir::RankedTensorType>(input_sin.getType()).getShape();
+        if (cosShape != sinShape) {
+            input_cos = builder.create<IE::ReshapeOp>(appendLoc(addOp->getLoc(), "_cos_reshape"), input_cos, nullptr,
+                                                      false, getIntArrayAttr(builder, sinShape));
+            _log.trace("Reshaped input_cos to match input_sin shape");
+        }
         auto ropeOp = builder.create<IE::RoPEOp>(appendLoc(addOp->getLoc(), "rope"), stridedSliceOp1->getOperand(0),
                                                  input_cos, input_sin);
         addOp->replaceAllUsesWith(ropeOp);

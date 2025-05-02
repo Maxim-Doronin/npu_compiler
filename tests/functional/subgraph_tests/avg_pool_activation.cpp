@@ -1,11 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-
 #include <common_test_utils/node_builders/activation.hpp>
 #include <vpu_ov2_layer_test.hpp>
-#include "private_properties.hpp"
 
 namespace ov::test {
 
@@ -31,8 +29,14 @@ class AvgPoolWithActivationTest :
         auto inputData = inputTensor.data<ov::element_type_traits<ov::element::f16>::value_type>();
 
         // Testing the whole fp16 range
+        constexpr uint16_t fp16Exponent = 0x7C00;
         for (size_t i = 0; i < totalSize; i++) {
-            inputData[i] = ov::float16::from_bits(static_cast<uint16_t>(i));
+            auto ui = static_cast<uint16_t>(i);
+            if ((ui & fp16Exponent) == fp16Exponent) {  // Skip infinity/nans
+                inputData[i] = 0.f;
+            } else {
+                inputData[i] = ov::float16::from_bits(ui);
+            }
         }
 
         VpuOv2LayerTest::inputs.insert({funcInputs[0].get_node_shared_ptr(), inputTensor});
@@ -50,7 +54,10 @@ class AvgPoolWithActivationTest :
 
         auto avgPool = std::make_shared<ov::op::v1::AvgPool>(params.at(0), ov::Strides{1, 1}, ov::Shape{0, 0},
                                                              ov::Shape{0, 0}, ov::Shape{1, 1}, true);
-        const auto activation = utils::make_activation(avgPool->output(0), ov::element::f16, activationType);
+        const auto activation = activationType == utils::Swish
+                                        ? utils::make_activation(avgPool->output(0), ov::element::f16, activationType,
+                                                                 ov::Shape{}, {1.f})
+                                        : utils::make_activation(avgPool->output(0), ov::element::f16, activationType);
 
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(activation)};
 
@@ -67,7 +74,9 @@ public:
     }
 };
 
-const std::vector<AvgPoolWithActivationTestParams> activations = {{utils::Tanh, 0.0001f}, {utils::Sigmoid, 0.0001f}};
+const std::vector<AvgPoolWithActivationTestParams> activations = {
+
+        {utils::Tanh, 0.0001f}, {utils::Sigmoid, 0.0001f}, {utils::Swish, 0.00014f}, {utils::Gelu, 0.00013f}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_AvgPoolWithActivation, AvgPoolWithActivationTest, ::testing::ValuesIn(activations),
                          AvgPoolWithActivationTest::getTestCaseName);

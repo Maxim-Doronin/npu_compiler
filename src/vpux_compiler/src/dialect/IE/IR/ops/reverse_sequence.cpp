@@ -1,11 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -20,7 +24,7 @@ mlir::LogicalResult vpux::IE::ReverseSequenceOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto dataType = rev.getData().getType().cast<mlir::ShapedType>();
+    const auto dataType = mlir::cast<mlir::ShapedType>(rev.getData().getType());
     const auto dataShape = dataType.getShape();
 
     if (dataShape.size() < 2) {
@@ -96,7 +100,7 @@ public:
 
 mlir::LogicalResult ConvertU8ToFP16::matchAndRewrite(IE::ReverseSequenceOp rsOp,
                                                      mlir::PatternRewriter& rewriter) const {
-    const auto dataType = rsOp.getData().getType().cast<mlir::ShapedType>();
+    const auto dataType = mlir::cast<mlir::ShapedType>(rsOp.getData().getType());
 
     if (dataType.getElementType().isUnsignedInteger(8)) {
         auto convertOpBefore = rewriter.create<IE::ConvertOp>(appendLoc(rsOp.getLoc(), "cvt_in"), rsOp.getData(),

@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/utils/core/custom_float.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -13,8 +16,8 @@ using namespace vpux;
 //
 
 mlir::LogicalResult vpux::IE::ClampOp::verify() {
-    auto inElemType = getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (inElemType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    auto inElemType = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getElementType();
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inElemType)) {
         return errorAt(*this, "Per-axis quantized type is not supported. Got: {0}", inElemType);
     }
 
@@ -36,7 +39,7 @@ mlir::LogicalResult vpux::IE::ClampOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = clamp.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(clamp.getInput().getType());
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 
     return mlir::success();

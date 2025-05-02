@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::MVNOp::inferReturnTypes(mlir::MLIRContext* ctx, s
         return mlir::failure();
     }
 
-    const auto inType = mvn.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(mvn.getInput().getType());
     const auto inShape = inType.getShape();
     if (inShape.size() != 4 && inShape.size() != 5) {
         return errorAt(loc, "First input tensor should have 4 or 5 dimensions");
@@ -35,7 +35,7 @@ mlir::LogicalResult vpux::VPU::MVNOp::inferReturnTypes(mlir::MLIRContext* ctx, s
 
 // Return a list with all dims that are not normalized
 DimArr vpux::VPU::MVNOp::getNonNormDims() {
-    const auto rank = getInput().getType().cast<vpux::NDTypeInterface>().getRank();
+    const auto rank = mlir::cast<vpux::NDTypeInterface>(getInput().getType()).getRank();
     VPUX_THROW_UNLESS(rank == 4, "Function valid only for 4D shape, got {0}D", rank);
     DimArr dims = {Dims4D::Act::N};
     if (!getAcrossChannels()) {

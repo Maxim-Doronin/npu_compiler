@@ -6,9 +6,11 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -66,8 +68,8 @@ bool isLegalCopyOpWithConcatOp(VPUIP::CopyOp copyOp) {
         return true;
     }
 
-    const auto concatInputType = copyOp.getOutput().getType().cast<vpux::NDTypeInterface>();
-    const auto concatOutputType = childConcatOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto concatInputType = mlir::cast<vpux::NDTypeInterface>(copyOp.getOutput().getType());
+    const auto concatOutputType = mlir::cast<vpux::NDTypeInterface>(childConcatOp.getOutput().getType());
     const auto concatInShape = concatInputType.getShape();
     const auto concatOutShape = concatOutputType.getShape();
     SmallVector<Dim> concatDims;

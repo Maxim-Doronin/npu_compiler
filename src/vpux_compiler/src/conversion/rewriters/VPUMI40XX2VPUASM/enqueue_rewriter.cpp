@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -34,8 +34,8 @@ mlir::FailureOr<SymbolizationResult> EnqueueRewriter::symbolize(VPURegMapped::En
     auto firstTask = mlir::cast<VPURegMapped::TaskOpInterface>(op.getStart().getDefiningOp());
     auto firstTaskSym =
             firstTask.getTaskLocation() ? findSym(firstTask.getTaskLocation()) : findSym(firstTask.getResult());
-    auto count = op.getEnd().getType().cast<VPURegMapped::IndexType>().getValue() -
-                 op.getStart().getType().cast<VPURegMapped::IndexType>().getValue() + 1;
+    auto count = mlir::cast<vpux::VPURegMapped::IndexType>(op.getEnd().getType()).getValue() -
+                 mlir::cast<vpux::VPURegMapped::IndexType>(op.getStart().getType()).getValue() + 1;
 
     auto realTaskIdx = mlir::TypeAttr::get(op.getStart().getType());
 

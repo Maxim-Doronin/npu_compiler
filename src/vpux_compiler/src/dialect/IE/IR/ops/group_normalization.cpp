@@ -1,14 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 using namespace vpux;
-
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -26,7 +23,7 @@ mlir::LogicalResult vpux::IE::GroupNormalizationOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto dataType = groupNorm.getInput().getType().cast<mlir::ShapedType>();
+    const auto dataType = mlir::cast<mlir::ShapedType>(groupNorm.getInput().getType());
     inferredReturnShapes.emplace_back(dataType.getShape(), dataType.getElementType());
 
     return mlir::success();

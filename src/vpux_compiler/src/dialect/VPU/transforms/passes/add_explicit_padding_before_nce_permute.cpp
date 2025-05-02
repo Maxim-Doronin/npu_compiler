@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,7 +24,7 @@ bool isSliceOnChannels(mlir::Operation* userOp) {
     if (sliceOp == nullptr) {
         return false;
     }
-    const auto inputShape = sliceOp.getSource().getType().cast<NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(sliceOp.getSource().getType()).getShape();
     const auto offsets = Shape(parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsetsAttr()));
     const auto sizes = Shape(parseIntArrayAttr<int64_t>(sliceOp.getStaticSizesAttr()));
     if (offsets[Dims4D::Act::C] + sizes[Dims4D::Act::C] < inputShape[Dims4D::Act::C]) {
@@ -47,7 +47,7 @@ bool userNeedsExplicitPad(mlir::Operation* userOp) {
     // If NCE operation has weights sparsity, expanded activation won't be used in actual compute
     auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(userOp);
     if (nceOp != nullptr && nceOp.getWeightsOperand() != nullptr &&
-        nceOp.getWeightsOperand().getType().isa<VPU::SparseTensorType>()) {
+        mlir::isa<vpux::VPU::SparseTensorType>(nceOp.getWeightsOperand().getType())) {
         return false;
     }
 
@@ -68,10 +68,10 @@ bool userNeedsExplicitPad(mlir::Operation* userOp) {
 // Method used to find cases where expand done with NCEPermute
 // can propagate NaN values and affect accuracy.
 bool isExplicitPadNeeded(VPU::NCEPermuteOp origOp) {
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto dstElemAttr = outputType.getElementType();
     const auto expandedChannels = origOp.getExpandedChannels();
-    auto inputType = origOp.getInput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
 
     // Explicit Padding must be introduced only if output element type of NCE Permute is FP16
     // and output channels are greater than input channels.
@@ -89,7 +89,7 @@ bool isExplicitPadNeeded(VPU::NCEPermuteOp origOp) {
 
 void insertExplicitPad(Logger& log, VPU::NCEPermuteOp origOp) {
     const auto expandedChannels = origOp.getExpandedChannels();
-    auto inputType = origOp.getInput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
 
     log.trace("Insert explicit padding for operation '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 

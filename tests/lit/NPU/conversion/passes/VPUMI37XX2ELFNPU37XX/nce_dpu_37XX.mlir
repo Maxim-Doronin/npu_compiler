@@ -8,7 +8,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
-  IE.CNNNetwork entryPoint : @multiple_clusters_dpu_soh_f16_f16_f16 inputsInfo : {
+  net.NetworkInfo entryPoint : @multiple_clusters_dpu_soh_f16_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x32x32x32xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x64x16x32xf16>

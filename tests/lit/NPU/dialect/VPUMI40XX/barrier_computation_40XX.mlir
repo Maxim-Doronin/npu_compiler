@@ -9,7 +9,7 @@
 module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 6 of @NCE at 6.000000e+02 MHz
-IE.CNNNetwork entryPoint : @main inputsInfo :  {
+net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "inputCNN" : tensor<1x1x2x1000xf16>
 } outputsInfo :  {
     DataInfo "outputCNN" : tensor<1x1x2x1000xf16>
@@ -491,7 +491,7 @@ func.func @main(%arg0: memref<1x1x2x1000xf16>, %arg1: memref<1x1x2x1000xf16>) ->
 module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 6 of @NCE at 6.000000e+02 MHz
-IE.CNNNetwork entryPoint : @main inputsInfo :  {
+net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "inputCNN" : tensor<1x1x2x1000xf16>
 } outputsInfo :  {
     DataInfo "outputCNN" : tensor<1x1x2x1000xf16>

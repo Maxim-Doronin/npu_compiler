@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -53,5 +53,5 @@ mlir::LogicalResult fusePermutations(PermOp permuteOp, mlir::PatternRewriter& re
     return mlir::success();
 }
 
-mlir::ArrayAttr permuteBounds(mlir::MLIRContext* ctx, vpux::BoundedTypeInterface boundedTensor, DimsOrder srcOrder,
-                              DimsOrder dstOrder, mlir::AffineMap memPerm);
+SmallVector<int64_t> permuteDynamicAttribute(const mlir::Type type, const DimsOrder srcOrder, const DimsOrder dstOrder,
+                                             const mlir::AffineMap memPerm);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 
 #include "vpux/compiler/utils/passes.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace arch37xx {

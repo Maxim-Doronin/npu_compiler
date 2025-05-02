@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -34,7 +35,7 @@ bool isIdentityMapBetweenInputAndUpdates(Const::details::ContentRange<int64_t>& 
                }) != 0;
     };
 
-    const auto updatesType = updates.getType().cast<vpux::NDTypeInterface>();
+    const auto updatesType = mlir::cast<vpux::NDTypeInterface>(updates.getType());
     const auto elemSize = updatesType.getElemTypeSize().count();
     const auto updateStride = to_small_vector(getStrides(updates) | transformed([&](Bit stride) {
                                                   return stride.count() / elemSize;
@@ -165,7 +166,7 @@ mlir::LogicalResult ConvertScatterNDUpdateToStridedConcatPass::ConvertToStridedC
         IE::ScatterNDUpdateOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp.getLoc());
 
-    const auto origInType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto origInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inputShape = origInType.getShape();
     const auto origInRank = origInType.getRank();
     const auto indices = origOp.getIndices();
@@ -257,7 +258,7 @@ mlir::LogicalResult ConvertScatterNDUpdateToStridedConcatPass::ConvertToStridedC
         const auto upsamplingFactorAttr = getIntArrayAttr(ctx, upsamplingFactor);
         return rewriter
                 .create<IE::UpsamplingOp>(takeOpLoc(origOp, "upsample"), origOp.getUpdates(), upsamplingFactorAttr,
-                                          padAttr, nullptr)
+                                          padAttr, nullptr, nullptr)
                 .getOutput();
     };
 

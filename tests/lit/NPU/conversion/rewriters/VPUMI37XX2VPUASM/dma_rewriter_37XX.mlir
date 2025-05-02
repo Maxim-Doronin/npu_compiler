@@ -1,19 +1,19 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --convert-VPUMI37XX-to-VPUASM %s | FileCheck %s
 // REQUIRES: arch-NPU37XX
 
-IE.CNNNetwork entryPoint : @oneDma inputsInfo : {
+net.NetworkInfo entryPoint : @oneDma inputsInfo : {
     DataInfo "input" : tensor<1x2x3x4xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x2x3x4xf16>
 }
 
 func.func @oneDma() {
-    %0 = VPURegMapped.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %0 = VPUMI37XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
     %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x2x3x4xf16, @DDR>
     %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x2x3x4xf16, @DDR>
     %3 = VPUMI37XX.NNDMA {port = 0 : i64} taskLocation(%0 : !VPURegMapped.Index<0:0:0>) inputs(%1 : memref<1x2x3x4xf16, @DDR>) outputs(%2 : memref<1x2x3x4xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>

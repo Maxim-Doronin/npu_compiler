@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ mlir::LogicalResult vpux::VPU::AdaptiveMaxPoolOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inputType = adaptiveMaxPool.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(adaptiveMaxPool.getInput().getType());
     const auto inputShape = inputType.getShape();
 
     if (inputShape.size() != 3 && inputShape.size() != 4 && inputShape.size() != 5) {

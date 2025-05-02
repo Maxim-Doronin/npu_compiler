@@ -1,15 +1,16 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Pass/AnalysisManager.h>
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_UNROLLDMAANALYSIS

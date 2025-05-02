@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // CHECK-LABEL: @GroupProfilingBuffers
 module @GroupProfilingBuffers {
-    IE.CNNNetwork entryPoint : @main inputsInfo :  {
+    net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "in" : tensor<1x48x30x30xf16>
     } outputsInfo :  {
         DataInfo "out" : tensor<1x48x30x30xf32>

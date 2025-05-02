@@ -1,27 +1,25 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/utils/locations_verifier.hpp"
-
 #include "vpux/compiler/core/developer_build_utils.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IERT/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/dialect.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/strings.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
-
 #include "vpux/utils/core/type_traits.hpp"
 #include "vpux/utils/profiling/common.hpp"
 
@@ -55,8 +53,8 @@ bool isOpFromAnyDialect(mlir::Operation* op) {
 bool isOpFromIgnoredDialect(mlir::Operation* op) {
     // ELF dialects are ignored because locations are serialized before.
     return !isOpFromAnyDialect<Const::ConstDialect, IE::IEDialect, VPU::VPUDialect, IERT::IERTDialect,
-                               VPUIP::VPUIPDialect, VPURT::VPURTDialect, mlir::BuiltinDialect, mlir::func::FuncDialect>(
-            op);
+                               VPUIP::VPUIPDialect, VPURT::VPURTDialect, mlir::BuiltinDialect, mlir::func::FuncDialect,
+                               net::NetDialect>(op);
 }
 
 bool isIgnoredOpType(mlir::Operation* op) {
@@ -76,7 +74,7 @@ bool isIgnoredOpType(mlir::Operation* op) {
     // Other locations. NCEClusterTilingOp is just wrapper, usually have same loc as inner. SparseBuffer[Un]Group is
     // just change of type representation, so no need to verify it
     bool isIgnoredOp = mlir::isa<VPUIP::NCEClusterTilingOp, VPUIP::GroupSparseBufferOp, VPUIP::UngroupSparseBufferOp,
-                                 IE::DataInfoOp, mlir::UnrealizedConversionCastOp>(op);
+                                 net::DataInfoOp, mlir::UnrealizedConversionCastOp>(op);
     return isViewLikeOp || isControlFlowOp || isMemoryAllocOp || isSetupOp || isIgnoredOp;
 }
 
@@ -104,7 +102,7 @@ bool hasExcludedPatterns(mlir::Operation* op) {
 }
 
 bool isIgnoredOp(mlir::Operation* op) {
-    const bool hasUnknownLoc = op->getLoc().isa<mlir::UnknownLoc>();
+    const bool hasUnknownLoc = mlir::isa<mlir::UnknownLoc>(op->getLoc());
     const bool isIgnored = hasUnknownLoc || isIgnoredOpType(op) || hasExcludedPatterns(op);
     return isIgnored;
 }
@@ -204,14 +202,14 @@ mlir::LogicalResult verifyLocationsUniquenessImpl(mlir::Operation* op, StringRef
 
         const auto loc = nestedOp->getLoc();
         // Skip file location from LIT tests
-        if (loc.isa<mlir::FileLineColLoc>()) {
+        if (mlir::isa<mlir::FileLineColLoc>(loc)) {
             return mlir::WalkResult::advance();
         }
 
         if (isIgnoredOp(nestedOp)) {
             return mlir::WalkResult::advance();
         }
-        VPUX_THROW_UNLESS(loc.isa<mlir::FusedLoc>() || loc.isa<mlir::CallSiteLoc>(),
+        VPUX_THROW_UNLESS(mlir::isa<mlir::FusedLoc>(loc) || mlir::isa<mlir::CallSiteLoc>(loc),
                           "Location '{0}' isn't FusedLoc after '{1}'", loc, passName);
 
         ++totalNamedOps;
@@ -259,7 +257,7 @@ LocationsVerificationMode vpux::getLocationsVerificationMode(mlir::ModuleOp modu
     if (!moduleOp->hasAttr(LOCATIONS_VERIFICATION_MODE_ATTR_NAME)) {
         return LocationsVerificationMode::OFF;
     }
-    auto attr = moduleOp->getAttr(LOCATIONS_VERIFICATION_MODE_ATTR_NAME).dyn_cast<mlir::StringAttr>();
+    auto attr = mlir::dyn_cast<mlir::StringAttr>(moduleOp->getAttr(LOCATIONS_VERIFICATION_MODE_ATTR_NAME));
     VPUX_THROW_WHEN(attr == nullptr, "LocationsVerificationModeAttr has wrong type.");
     return symbolizeLocationsVerificationMode(attr.str());
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -35,12 +35,12 @@ mlir::LogicalResult vpux::Const::PadWithZeroAttr::verify(FuncRef<mlir::InFlightD
     }
 
     for (const auto dimAttr : padBefore.getValue()) {
-        if (!dimAttr.isa<mlir::IntegerAttr>()) {
+        if (!mlir::isa<mlir::IntegerAttr>(dimAttr)) {
             return printTo(emitError(), "Got non-integer value in 'padBefore' for 'PadWithZeroAttr'");
         }
     }
     for (const auto dimAttr : padAfter.getValue()) {
-        if (!dimAttr.isa<mlir::IntegerAttr>()) {
+        if (!mlir::isa<mlir::IntegerAttr>(dimAttr)) {
             return printTo(emitError(), "Got non-integer value in 'padAfter' for 'PadWithZeroAttr'");
         }
     }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -39,14 +39,14 @@ func.func @MergeParallelFCWithReshapeTransposeOrderInput(%arg0: tensor<1x6xf32>)
     // CHECK-DAG:   [[CST_INLOW:%.+]]  = const.Declare tensor<1x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1xf32>
     // CHECK-DAG:   [[CST_INHIGH:%.+]]  = const.Declare tensor<1x1x1xf32> = dense<1.500000e+01> : tensor<1x1x1xf32>
     // CHECK-DAG:   [[CST_IN:%.+]]  = const.Declare tensor<2x3x5xf32> =
-    // CHECK-SAME{LITERAL}          dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00], [1.000000e+00, 2.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00], [2.000000e+00, 3.000000e+00, 2.000000e+00, 2.000000e+00, 3.000000e+00]], [[3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [1.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00, 3.000000e+00], [2.000000e+00, 3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00]]]> : tensor<2x3x5xf32>
+    // CHECK-SAME{LITERAL}:         dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00], [1.000000e+00, 2.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00], [2.000000e+00, 3.000000e+00, 2.000000e+00, 2.000000e+00, 3.000000e+00]], [[3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [1.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00, 3.000000e+00], [2.000000e+00, 3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00]]]> : tensor<2x3x5xf32>
     // CHECK-DAG:   [[CST_OUTLOW:%.+]]  = const.Declare tensor<2x1x5xf32> =
-    // CHECK-SAME{LITERAL}          dense<[[[-1.000000e+00, -2.000000e+00, -3.000000e+00, -1.000000e+00, -2.000000e+00]], [[-3.000000e+00, -4.000000e+00, -1.000000e+00, -3.000000e+00, -4.000000e+00]]]> : tensor<2x1x5xf32>
+    // CHECK-SAME{LITERAL}:         dense<[[[-1.000000e+00, -2.000000e+00, -3.000000e+00, -1.000000e+00, -2.000000e+00]], [[-3.000000e+00, -4.000000e+00, -1.000000e+00, -3.000000e+00, -4.000000e+00]]]> : tensor<2x1x5xf32>
     // CHECK-DAG:   [[CST_OUTHIGH:%.+]]  = const.Declare tensor<2x1x5xf32> =
-    // CHECK-SAME{LITERAL}          dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00]], [[3.000000e+00, 4.000000e+00, 1.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x5xf32>
+    // CHECK-SAME{LITERAL}:         dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00]], [[3.000000e+00, 4.000000e+00, 1.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x5xf32>
     // CHECK-DAG:   [[FQ:%.+]]  = IE.FakeQuantize([[CST_IN:%.+]], [[CST_INLOW:%.+]], [[CST_INHIGH:%.+]], [[CST_OUTLOW:%.+]], [[CST_OUTHIGH:%.+]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 16 : i64} : tensor<2x3x5xf32>, tensor<1x1x1xf32>, tensor<1x1x1xf32>, tensor<2x1x5xf32>, tensor<2x1x5xf32> -> tensor<2x3x5xf32>
     // CHECK:       [[AFFINERESHAPE:%.+]]  = IE.AffineReshape([[FQ]])
-    // CHECK-SAME{LITERAL}          {dim_mapping = [[0], [0], [1]], shape_value = [6, 5]} : tensor<2x3x5xf32> -> tensor<6x5xf32>
+    // CHECK-SAME{LITERAL}:         {dim_mapping = [[0], [0], [1]], shape_value = [6, 5]} : tensor<2x3x5xf32> -> tensor<6x5xf32>
     // CHECK:       [[TRANSPOSE:%.+]] = IE.Transpose([[AFFINERESHAPE]]) {order_value = #CN} : tensor<6x5xf32> -> tensor<5x6xf32>
     // CHECK:       [[FULLYCONNECTED:%.+]] = IE.FullyConnected([[INPUT0]], [[TRANSPOSE]]) : tensor<1x6xf32>, tensor<5x6xf32> -> tensor<1x5xf32>
     // CHECK:       [[SLICE0:%.+]] = IE.Slice [[FULLYCONNECTED]] [0, 0] [1, 3] : tensor<1x5xf32> to tensor<1x3xf32>
@@ -90,15 +90,15 @@ func.func @MergeParallelFCWithTransposeReshapeOrderInput(%arg0: tensor<1x6xf32>)
     // CHECK-DAG:   [[CST_INLOW:%.+]]  = const.Declare tensor<1x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1xf32>
     // CHECK-DAG:   [[CST_INHIGH:%.+]]  = const.Declare tensor<1x1x1xf32> = dense<1.500000e+01> : tensor<1x1x1xf32>
     // CHECK-DAG:   [[CST_IN:%.+]]  = const.Declare tensor<2x3x5xf32> =
-    // CHECK-SAME{LITERAL}          dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00], [1.000000e+00, 2.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00], [2.000000e+00, 3.000000e+00, 2.000000e+00, 2.000000e+00, 3.000000e+00]], [[3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [1.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00, 3.000000e+00], [2.000000e+00, 3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00]]]> : tensor<2x3x5xf32>
+    // CHECK-SAME{LITERAL}:         dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00], [1.000000e+00, 2.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00], [2.000000e+00, 3.000000e+00, 2.000000e+00, 2.000000e+00, 3.000000e+00]], [[3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [1.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00, 3.000000e+00], [2.000000e+00, 3.000000e+00, 4.000000e+00, 2.000000e+00, 3.000000e+00]]]> : tensor<2x3x5xf32>
     // CHECK-DAG:   [[CST_OUTLOW:%.+]]  = const.Declare tensor<2x1x5xf32> =
-    // CHECK-SAME{LITERAL}          dense<[[[-1.000000e+00, -2.000000e+00, -3.000000e+00, -1.000000e+00, -2.000000e+00]], [[-3.000000e+00, -4.000000e+00, -1.000000e+00, -3.000000e+00, -4.000000e+00]]]> : tensor<2x1x5xf32>
+    // CHECK-SAME{LITERAL}:         dense<[[[-1.000000e+00, -2.000000e+00, -3.000000e+00, -1.000000e+00, -2.000000e+00]], [[-3.000000e+00, -4.000000e+00, -1.000000e+00, -3.000000e+00, -4.000000e+00]]]> : tensor<2x1x5xf32>
     // CHECK-DAG:   [[CST_OUTHIGH:%.+]]  = const.Declare tensor<2x1x5xf32> =
-    // CHECK-SAME{LITERAL}          dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00]], [[3.000000e+00, 4.000000e+00, 1.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x5xf32>
+    // CHECK-SAME{LITERAL}:         dense<[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 1.000000e+00, 2.000000e+00]], [[3.000000e+00, 4.000000e+00, 1.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x5xf32>
     // CHECK-DAG:   [[FQ:%.+]]  = IE.FakeQuantize([[CST_IN:%.+]], [[CST_INLOW:%.+]], [[CST_INHIGH:%.+]], [[CST_OUTLOW:%.+]], [[CST_OUTHIGH:%.+]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 16 : i64} : tensor<2x3x5xf32>, tensor<1x1x1xf32>, tensor<1x1x1xf32>, tensor<2x1x5xf32>, tensor<2x1x5xf32> -> tensor<2x3x5xf32>
     // CHECK:       [[TRANSPOSE:%.+]] = IE.Transpose([[FQ]]) {order_value = #map} : tensor<2x3x5xf32> -> tensor<5x2x3xf32>
     // CHECK:       [[AFFINERESHAPE:%.+]]  = IE.AffineReshape([[TRANSPOSE]])
-    // CHECK-SAME{LITERAL}          {dim_mapping = [[0], [1], [1]], shape_value = [5, 6]} : tensor<5x2x3xf32> -> tensor<5x6xf32>
+    // CHECK-SAME{LITERAL}:         {dim_mapping = [[0], [1], [1]], shape_value = [5, 6]} : tensor<5x2x3xf32> -> tensor<5x6xf32>
     // CHECK:       [[FULLYCONNECTED:%.+]] = IE.FullyConnected([[INPUT0]], [[AFFINERESHAPE]]) : tensor<1x6xf32>, tensor<5x6xf32> -> tensor<1x5xf32>
     // CHECK:       [[SLICE0:%.+]] = IE.Slice [[FULLYCONNECTED]] [0, 0] [1, 3] : tensor<1x5xf32> to tensor<1x3xf32>
     // CHECK:       [[SLICE1:%.+]] = IE.Slice [[FULLYCONNECTED]] [0, 3] [1, 2] : tensor<1x5xf32> to tensor<1x2xf32>

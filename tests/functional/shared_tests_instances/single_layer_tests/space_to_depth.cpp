@@ -3,11 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
-#include <common_test_utils/ov_tensor_utils.hpp>
-#include "common_test_utils/test_constants.hpp"
 #include "single_op_tests/space_to_depth.hpp"
+#include <common_test_utils/ov_tensor_utils.hpp>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;

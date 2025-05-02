@@ -57,7 +57,7 @@ def ConstantDpuProfHwpBase : PassBase<"constant-dpu-prof-hwp-base", "vpux::Funct
     let summary = "Sets single NCE HWP CMX base address";
 
     let description = [{
-        In NPU40XX NCE HWP CMX base address must remain the same for all DPU tasks since
+        In VPU4 NCE HWP CMX base address must remain the same for all DPU tasks since
         HW may capture the address from a subsequent descriptor before storing the profiling
         record for the task just completed. To prevent from such race condition NCE HWP CMX
         base address for each NCE task will be 0 and profiling slot addressing will be
@@ -232,18 +232,6 @@ def LegalizeScheduleForWlmFetchDmas : PassBase<"legalize-schedule-for-wlm", "vpu
         This pass understands how WLM creates execution groups and attaches fetch task. It emulates and tries to fit the
         dummy DMAs such we would always find DMAs during fetch task insertion while maintaining a valid schedule
     }];
-
-    let options = [
-        Option<
-            "workloadManagementModeOpt", "workload-management-mode",
-            "vpux::WorkloadManagementMode", "",
-            "Setting which controls mode of WLM",
-            [{::llvm::cl::values(
-            clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "Legacy WLM"),
-            clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM with Barrier FIFO enabled")
-          )}]
-        >
-    ];
 
     let constructor = "vpux::VPUIP::arch40xx::createLegalizeScheduleForWlmFetchDmasPass()";
 }

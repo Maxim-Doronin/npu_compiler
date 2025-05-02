@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
@@ -28,12 +29,12 @@ bool hasOnlyChannelPadding(ArrayRef<int64_t> pads) {
 }
 
 bool checkSupportedOutputDataType(const mlir::Type outputType) {
-    const auto ndType = outputType.cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::cast<vpux::NDTypeInterface>(outputType);
     if (ndType == nullptr) {
         return false;
     }
     const auto elemType = ndType.getElementType();
-    return elemType.isa<mlir::quant::UniformQuantizedType>() || elemType.isF16() || elemType.isF32();
+    return mlir::isa<mlir::quant::UniformQuantizedType>(elemType) || elemType.isF16() || elemType.isF32();
 }
 
 std::vector<int64_t> expandShape(const ShapeRef shape, const int64_t expandedChannels) {
@@ -105,7 +106,7 @@ bool vpux::VPU::NCEPermuteOp::isSupported(IE::PermuteQuantizeOp op, LogCb logCb,
         }
     }
 
-    const auto outElemType = op.getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getElementType();
     const auto inputShape = getShape(op.getInput());
     const auto outputShape = getShape(op.getOutput());
 
@@ -123,12 +124,12 @@ bool vpux::VPU::NCEPermuteOp::isSupported(IE::PermuteQuantizeOp op, LogCb logCb,
     }
 
     const auto superdense = VPU::NCESparsity::isSuperdenseRequired(outputOrder, outputShape, outElemType);
-    if (superdense && op.getOutput().getType().isa<VPU::SparseTensorType>()) {
+    if (superdense && mlir::isa<vpux::VPU::SparseTensorType>(op.getOutput().getType())) {
         logCb(formatv("Super-dense mode cannot have sparse output."));
         return false;
     }
 
-    if (!op.getInput().getType().cast<vpux::NDTypeInterface>().getElementType().isF16()) {
+    if (!mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getElementType().isF16()) {
         logCb(formatv("Only F16 input is supported."));
         return false;
     }
@@ -153,7 +154,7 @@ mlir::LogicalResult vpux::VPU::NCEPermuteOp::verify() {
         return mlir::failure();
     }
 
-    const auto outElemType = getOutput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType()).getElementType();
     const auto alignment = VPU::NCEInvariant::getAlignment(outElemType);
     const auto inputShape = getShape(getInput());
     if (inputShape[Dims4D::Act::W] % alignment != 0) {
@@ -182,7 +183,7 @@ mlir::LogicalResult vpux::VPU::NCEPermuteOp::verify() {
     }
 
     const auto superdense = VPU::NCESparsity::isSuperdenseRequired(outputOrder, outputShape, outElemType);
-    if (superdense && getOutput().getType().isa<VPU::SparseTensorType>()) {
+    if (superdense && mlir::isa<vpux::VPU::SparseTensorType>(getOutput().getType())) {
         return errorAt(op, "Super-dense mode cannot have sparse output.");
     }
 
@@ -214,12 +215,10 @@ mlir::LogicalResult vpux::VPU::NCEPermuteOp::inferReturnTypes(mlir::MLIRContext*
     VPUX_THROW_WHEN(moduleOp == nullptr, "NCEPermuteOp::inferReturnTypes region parent is not a ModuleOp");
 
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    const auto bounds = mlir::isa<BoundedTypeInterface>(inputType)
-                                ? mlir::cast<BoundedTypeInterface>(inputType).getBounds()
-                                : nullptr;
-    // Create tensor attr manually to be able to set dims order
-    auto outTensorAttr = vpux::getTensorAttr(order.toAffineMap(ctx), inputType.getMemSpace(), bounds);
-    auto outputType = mlir::RankedTensorType::get(targetShape, elemType, outTensorAttr);
+    const auto tensorAttr =
+            vpux::getTensorAttr(ctx, order.toAffineMap(ctx), inputType.getMemSpace(), getBounds(inputType));
+
+    auto outputType = mlir::RankedTensorType::get(targetShape, elemType, tensorAttr);
 
     inferredReturnTypes.push_back(outputType);
     return mlir::success();
@@ -272,7 +271,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEPermuteOp::getTilingStrategy(TilingM
 
 bool vpux::VPU::NCEPermuteOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
     const auto arch = getArch(getOperation());
-    // SOK is only enabled on 40XX, but 37XX also supports it, need to enable and refactor.
+    // SOK is only enabled on 40XX+, but 37XX also supports it, need to enable and refactor.
     // Tracked by: E116491
     const auto origInputShape = getShape(this->getInput());
     const auto expandedChannels = this->getExpandedChannels();
@@ -314,7 +313,7 @@ vpux::NDTypeInterface vpux::VPU::NCEPermuteOp::getDistributedTypeForOpOperand(ml
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
     auto origOp = mlir::cast<NCEPermuteOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
     auto* ctx = clusteredOp->getContext();
     if (operand.get() == origOp.getInput()) {
@@ -342,7 +341,7 @@ vpux::NDTypeInterface vpux::VPU::NCEPermuteOp::getDistributedTypeForOpOperand(ml
 
 vpux::VPU::SparsitySupport vpux::VPU::NCEPermuteOp::sparsitySupport() {
     // Super-dense mode does not support ODU sparsity
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     auto excludeMode = VPU::NCESparsity::bitwiseNot(VPU::SparsitySupport::NONE);
     if (VPU::NCESparsity::isSuperdenseRequired(outputType.getDimsOrder(), outputType.getShape(),
                                                outputType.getElementType())) {

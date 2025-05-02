@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -282,7 +282,7 @@ TEST_F(MLIR_GetExplicitDistributionInfoAttrTest, SparseHWSOKOp) {
                             lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
                             fp_prelu_alpha = 1.000000e+00 : f64>,
                             rawFilterShape = [256, 512, 1, 1], strides = [1, 1]
-                    } -> !SparseOutputType
+                    } : tensor<1x512x28x28xf16, {order = #NHWC}>, tensor<256x512x1x1xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> !SparseOutputType
                 return %0 : !SparseOutputType
             }
         }

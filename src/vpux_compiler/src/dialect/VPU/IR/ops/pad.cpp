@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,7 +26,7 @@ mlir::LogicalResult vpux::VPU::PadOp::inferReturnTypes(mlir::MLIRContext* ctx, s
         return mlir::failure();
     }
 
-    const auto inType = pad.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(pad.getInput().getType());
     const auto inputShape = inType.getShape();
 
     auto padBegin = IE::extractPads(loc, pad.getPadsBegin(), pad.getPadsBeginAttr(), inputShape);
@@ -40,11 +40,11 @@ mlir::LogicalResult vpux::VPU::PadOp::inferReturnTypes(mlir::MLIRContext* ctx, s
     if (pad.getMode() == IE::PadMode::CONSTANT && pad.getPadValue() == nullptr && !pad.getPadValueAttr().has_value()) {
         return errorAt(loc, "pad_mode is CONSTANT but pad_value hasn't provided");
     }
-    auto outputType = pad.getInput().getType().cast<vpux::NDTypeInterface>();
-    if (auto distributedType = outputType.dyn_cast<DistributedTensorType>()) {
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(pad.getInput().getType());
+    if (auto distributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(outputType)) {
         outputType = mlir::cast<NDTypeInterface>(distributedType.getCompactType())
                              .pad(ShapeRef(padBegin.value()), ShapeRef(padEnd.value()));
-    } else if (outputType.isa<mlir::RankedTensorType>()) {
+    } else if (mlir::isa<mlir::RankedTensorType>(outputType)) {
         outputType = outputType.pad(ShapeRef(padBegin.value()), ShapeRef(padEnd.value()));
     } else {
         return errorAt(loc, "Unexpected input type: {0}", outputType);
@@ -101,18 +101,18 @@ void vpux::VPU::PadOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState&
                              ::mlir::Value pads_begin, ::mlir::Value pads_end, ::mlir::Value pad_value,
                              ::mlir::ArrayAttr pads_begin_attr, ::mlir::ArrayAttr pads_end_attr,
                              ::mlir::FloatAttr pad_value_attr, vpux::IE::PadModeAttr mode,
-                             ::mlir::IntegerAttr output_channels) {
+                             ::mlir::ArrayAttr outputPadding, ::mlir::ArrayAttr inputPadding) {
     build(builder, state, input, pads_begin, pads_end, pad_value, pads_begin_attr, pads_end_attr, pad_value_attr, mode,
-          nullptr, output_channels);
+          nullptr, outputPadding, inputPadding);
 }
 
 void vpux::VPU::PadOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state,
                              vpux::NDTypeInterface& input_type, ::mlir::Value input, ::mlir::Value pads_begin,
                              ::mlir::Value pads_end, ::mlir::Value pad_value, ::mlir::ArrayAttr pads_begin_attr,
                              ::mlir::ArrayAttr pads_end_attr, ::mlir::FloatAttr pad_value_attr, vpux::IE::PadMode mode,
-                             ::mlir::IntegerAttr output_channels) {
+                             ::mlir::ArrayAttr outputPadding, ::mlir::ArrayAttr inputPadding) {
     build(builder, state, input_type, input, pads_begin, pads_end, pad_value, pads_begin_attr, pads_end_attr,
-          pad_value_attr, mode, {}, output_channels);
+          pad_value_attr, mode, {}, outputPadding, inputPadding);
 }
 
 //

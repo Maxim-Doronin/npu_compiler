@@ -1,3 +1,8 @@
+#
+# Copyright (C) 2025 Intel Corporation.
+# SPDX-License-Identifier: Apache 2.0
+#
+
 function(add_fuzz_test TEST_NAME TEST_SOURCES)
     add_executable(${TEST_NAME} ${TEST_SOURCES})
     target_link_libraries(${TEST_NAME} PUBLIC npu_mlir_compiler_static)

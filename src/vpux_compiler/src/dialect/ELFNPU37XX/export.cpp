@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstring>
 #include "vpux/compiler/dialect/ELFNPU37XX/metadata.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 namespace vpux::ELFNPU37XX {
 
@@ -106,7 +107,7 @@ void serializeTo(uint8_t* storage, mlir::func::FuncOp main, Logger log, elf::Wri
 std::vector<uint8_t> exportToELF(mlir::ModuleOp module, Logger log) {
     log.setName("ELF Backend - Export");
 
-    log.trace("Extract '{0}' from Module (ELF File)", IE::CNNNetworkOp::getOperationName());
+    log.trace("Extract '{0}' from Module (ELF File)", net::NetworkInfoOp::getOperationName());
 
     // Associate the respective mlir::Operation* of
     //   CreateSectionOp/CreateLogicalSectionOp/CreateSymbolSectionOp/CreateRelocationSectionOp
@@ -116,9 +117,9 @@ std::vector<uint8_t> exportToELF(mlir::ModuleOp module, Logger log) {
     //   elf::writer::Symbol* for it.
     SymbolMapType symbolMap;
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp main;
-    IE::CNNNetworkOp::getFromModule(module, netOp, main);
+    net::NetworkInfoOp::getFromModule(module, netInfo, main);
 
     auto elfWriter = calculateBlobSize(main, log, sectionMap, symbolMap);
     elfWriter.prepareWriter();
@@ -132,7 +133,7 @@ std::vector<uint8_t> exportToELF(mlir::ModuleOp module, Logger log) {
 BlobView exportToELF(mlir::ModuleOp module, BlobAllocator& allocator, Logger log) {
     log.setName("ELFNPU37XX BackEnd");
 
-    log.trace("Extract '{0}' from Module (ELF File)", IE::CNNNetworkOp::getOperationName());
+    log.trace("Extract '{0}' from Module (ELF File)", net::NetworkInfoOp::getOperationName());
 
     // Associate the respective mlir::Operation* of
     //   CreateSectionOp/CreateLogicalSectionOp/CreateSymbolSectionOp/CreateRelocationSectionOp
@@ -142,9 +143,9 @@ BlobView exportToELF(mlir::ModuleOp module, BlobAllocator& allocator, Logger log
     //   elf::writer::Symbol* for it.
     SymbolMapType symbolMap;
 
-    IE::CNNNetworkOp netOp;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp main;
-    IE::CNNNetworkOp::getFromModule(module, netOp, main);
+    net::NetworkInfoOp::getFromModule(module, netInfo, main);
 
     auto elfWriter = calculateBlobSize(main, log, sectionMap, symbolMap);
     elfWriter.prepareWriter();

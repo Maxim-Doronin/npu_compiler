@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,19 +19,6 @@ namespace vpux::VPURT::arch40xx {
 using namespace vpux;
 
 namespace {
-
-VPURT::TaskOp createSyncDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value outputBuf,
-                            mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers) {
-    auto ctx = builder.getContext();
-    auto syncDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, "sync_dma"));
-    auto zeroAttr = vpux::getIntAttr(ctx, 0);
-
-    auto syncDMATask = VPURT::wrapIntoTaskOp<VPUIP::SyncDMAOp>(
-            builder, waitBarriers, updateBarriers, syncDmaLoc, input, outputBuf, /*port*/ zeroAttr,
-            /*isOutOfOrder*/ nullptr, /*isCritical*/ nullptr, /*dmaHwpId*/ nullptr,
-            /*dmaProfilingMetaData*/ nullptr);
-    return syncDMATask->getParentOfType<VPURT::TaskOp>();
-}
 
 // Insert sync task that mark start and end of each FuncOp.
 // Example:
@@ -124,11 +111,11 @@ void InsertSyncTasksPass::safeRunOnFunc() {
 
     // Create start sync task which will produce start barrier
     builder.setInsertionPoint(startSyncTaskInsertionPoint);
-    createSyncDMA(builder, inBuffer, outBuffer, {}, {newStartBarrier});
+    VPUIP::createSyncDMA(builder, inBuffer, outBuffer, 0, {}, {newStartBarrier}, "func_start_sync_dma");
 
     // Create end sync task which will consume end barrier
     builder.setInsertionPointAfter(lastSyncTaskInsertionPoint);
-    createSyncDMA(builder, inBuffer, outBuffer, {newEndBarrier}, {});
+    VPUIP::createSyncDMA(builder, inBuffer, outBuffer, 0, {newEndBarrier}, {}, "func_end_sync_dma");
 }
 }  // namespace
 

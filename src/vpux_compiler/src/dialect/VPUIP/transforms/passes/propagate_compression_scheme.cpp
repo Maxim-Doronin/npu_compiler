@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -34,8 +36,6 @@ private:
     void safeRunOnFunc() final;
 
     void reinferOutputType(mlir::Operation* op);
-    void reinferInnerBlockTypes(VPUIP::NCEClusterTilingOp clusterTilingOp,
-                                VPUIP::SparsityCompressionAttr sparsityCompressionAttr);
     void propagateUpSparsityCompression(mlir::Value operand, VPUIP::SparsityCompressionAttr sparsityCompressionAttr);
     void propagateDownSparsityCompression(mlir::Operation* op, VPUIP::SparsityCompressionAttr sparsityCompressionAttr);
 };
@@ -51,65 +51,6 @@ void PropagateSparsityCompression::reinferOutputType(mlir::Operation* op) {
             result.setType(outputOperand.getType());
         }
     }
-}
-
-// Reinfers the types inside the inner block of a cluster tiling operation so that the compact types
-// contain the compression scheme of the outer operands
-void PropagateSparsityCompression::reinferInnerBlockTypes(VPUIP::NCEClusterTilingOp clusterTilingOp,
-                                                          VPUIP::SparsityCompressionAttr sparsityCompressionAttr) {
-    // Find the compact types for the new arguments and their locations
-    SmallVector<mlir::Type> newArgTypes;
-    SmallVector<mlir::Location> newArgLocations;
-    auto& block = clusterTilingOp.getBody().front();
-    const auto operandTypes = clusterTilingOp.getOperandTypes();
-    const auto blockArgs = block.getArguments();
-    for (auto p : zip(operandTypes, blockArgs)) {
-        const auto operandType = std::get<0>(p);
-        const auto arg = std::get<1>(p);
-        newArgLocations.push_back(arg.getLoc());
-
-        mlir::Type newArgType = operandType;
-        if (auto distType = operandType.dyn_cast<VPUIP::DistributedBufferType>()) {
-            newArgType = distType.getCompactType();
-        } else if (auto sparseType = operandType.dyn_cast<VPUIP::SparseBufferType>()) {
-            if (auto distDataType = sparseType.getData().dyn_cast<VPUIP::DistributedBufferType>()) {
-                mlir::MemRefType dataType = distDataType.getCompactType();
-                mlir::MemRefType smType = nullptr;
-                if (sparseType.getSparsityMap() != nullptr &&
-                    sparseType.getSparsityMap().isa<VPUIP::DistributedBufferType>()) {
-                    smType = sparseType.getSparsityMap().cast<VPUIP::DistributedBufferType>().getCompactType();
-                }
-                mlir::MemRefType seType = nullptr;
-                if (sparseType.getStorageElementTable() != nullptr &&
-                    sparseType.getStorageElementTable().isa<VPUIP::DistributedBufferType>()) {
-                    seType = sparseType.getStorageElementTable().cast<VPUIP::DistributedBufferType>().getCompactType();
-                }
-                newArgType = VPUIP::SparseBufferType::get(dataType, smType, seType, sparseType.getIsWeights(),
-                                                          sparseType.getSparsityCompression());
-            }
-        }
-        newArgTypes.push_back(newArgType);
-    }
-
-    auto origArgCount = block.getArguments().size();
-
-    // Add the new arguments and replace the uses of the original ones
-    for (auto p : zip(newArgTypes, newArgLocations) | indexed) {
-        auto type = std::get<0>(p.value());
-        auto loc = std::get<1>(p.value());
-        auto newArg = block.addArgument(type, loc);
-        block.getArgument(checked_cast<unsigned int>(p.index())).replaceAllUsesWith(newArg);
-    }
-
-    // Erase the original arguments
-    while (origArgCount > 0) {
-        block.eraseArgument(0);
-        origArgCount--;
-    }
-
-    // Propagate the compression scheme inside the block of the cluster tiling operation
-    auto firstOp = &block.front();
-    propagateDownSparsityCompression(firstOp, sparsityCompressionAttr);
 }
 
 // Propagates the compression scheme attribute upwards, until an operation without operands is reached (e.g. allocation)
@@ -141,21 +82,11 @@ void PropagateSparsityCompression::propagateDownSparsityCompression(
         return;
     }
 
-    auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(op);
-    if (clusterTilingOp != nullptr && mlir::isa<VPUIP::NCEClusterTaskOp>(clusterTilingOp.getInnerTaskOp())) {
-        reinferInnerBlockTypes(clusterTilingOp, sparsityCompressionAttr);
-        return;
-    }
-
     if (mlir::isa<VPUIP::LayerOpInterface>(op)) {
         for (auto resultIdx : irange(op->getResults().size())) {
             auto outputOperand = VPUIP::getLayerViewSource(op, resultIdx);
             propagateUpSparsityCompression(outputOperand, sparsityCompressionAttr);
         }
-    }
-
-    if (clusterTilingOp != nullptr) {
-        reinferInnerBlockTypes(clusterTilingOp, sparsityCompressionAttr);
     }
 
     reinferOutputType(op);
@@ -177,7 +108,7 @@ void PropagateSparsityCompression::safeRunOnFunc() {
 
         auto sparsifyTransformationIt =
                 std::find_if(transformations.rbegin(), transformations.rend(), [](Const::TransformAttrInterface tr) {
-                    return tr.isa<Const::SparsifyAttr>();
+                    return mlir::isa<vpux::Const::SparsifyAttr>(tr);
                 });
         if (sparsifyTransformationIt == transformations.rend()) {
             return;
@@ -189,7 +120,7 @@ void PropagateSparsityCompression::safeRunOnFunc() {
                           userOp);
         auto sparsityCompressionAttr = userGroupOp.getSparsityCompressionAttr();
 
-        const auto outputType = constOp.getType().cast<vpux::NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(constOp.getType());
         const auto newOutputType = getMemRefType(
                 outputType.getShape(), outputType.getElementType(), outputType.getDimsOrder(), outputType.getMemSpace(),
                 outputType.getStrides(), vpux::getSwizzlingSchemeAttr(outputType), sparsityCompressionAttr);

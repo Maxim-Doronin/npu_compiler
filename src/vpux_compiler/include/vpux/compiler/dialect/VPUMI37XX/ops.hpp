@@ -1,26 +1,19 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPUMI37XX/attributes.hpp"
-#include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
+#include <vpux_headers/metadata.hpp>
+#include "vpux/compiler/dialect/ELFNPU37XX/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPUMI37XX/types.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/types.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/attributes.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
-#include <mlir/IR/SymbolTable.h>
-#include <mlir/Interfaces/CopyOpInterface.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 //
 // Generated

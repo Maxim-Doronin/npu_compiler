@@ -3,8 +3,6 @@
 //
 
 #include "single_op_tests/range.hpp"
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "shared_test_classes/base/utils/generate_inputs.hpp"
 #include "vpu_ov2_layer_test.hpp"
 

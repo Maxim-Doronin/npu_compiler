@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -51,7 +51,7 @@ mlir::LogicalResult VirtualBarrierRewrite::matchAndRewrite(VPURT::DeclareVirtual
     _log.nest().trace("Use physical barrier ID '{0}'", conf.realId);
 
     rewriter.replaceOpWithNewOp<VPURT::ConfigureBarrierOp>(origOp, conf.realId, origOp.getIsFinalBarrier(),
-                                                           origOp.getIsStartBarrier());
+                                                           origOp.getIsStartBarrier(), origOp.getWlmPageAttr());
     return mlir::success();
 }
 
@@ -98,14 +98,18 @@ mlir::LogicalResult BarrierColorBinVirtualBarrierRewrite::matchAndRewrite(VPURT:
 class AssignPhysicalBarriersPass final : public VPURT::impl::AssignPhysicalBarriersBase<AssignPhysicalBarriersPass> {
 public:
     explicit AssignPhysicalBarriersPass(const bool barrierColorBinFlag,
+                                        std::optional<WorkloadManagementMode> workloadManagementMode,
                                         std::optional<int> virtualBarrierThresholdForWlm, Logger log)
-            : _barrierColorBinFlag(barrierColorBinFlag), _virtualBarrierThresholdForWlm(virtualBarrierThresholdForWlm) {
+            : _barrierColorBinFlag(barrierColorBinFlag),
+              _workloadManagementMode(workloadManagementMode),
+              _virtualBarrierThresholdForWlm(virtualBarrierThresholdForWlm) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     void safeRunOnFunc() final;
     bool _barrierColorBinFlag;
+    std::optional<WorkloadManagementMode> _workloadManagementMode = std::nullopt;
     std::optional<int> _virtualBarrierThresholdForWlm = std::nullopt;
 };
 
@@ -129,6 +133,9 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
 
     auto virtualBarrierThresholdForWlm = virtualBarrierThresholdForWlmOpt.hasValue() ? virtualBarrierThresholdForWlmOpt
                                                                                      : _virtualBarrierThresholdForWlm;
+    if (workloadManagementModeOpt.hasValue()) {
+        _workloadManagementMode = workloadManagementModeOpt;
+    }
 
     if (wlmFlag && virtualBarrierThresholdForWlm.has_value() &&
         numVirtualBarriers > virtualBarrierThresholdForWlm.value()) {
@@ -169,10 +176,14 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
         // Apply color binning algorithm for physical barrier assignment
         VPUX_THROW_UNLESS(BarrierColorBinAssignment.calculateBinSize(barrierGraphInfo),
                           "BarrierColorBin failed during bin size calulation");
-        VPUX_THROW_UNLESS(BarrierColorBinAssignment.assignPhysicalBarrier(barrierGraphInfo, barrierSim),
-                          "BarrierColorBin failed during barrier assignment");
 
-        BarrierColorBinAssignment.reorderBarriers(barrierGraphInfo, func);
+        if (mlir::failed(BarrierColorBinAssignment.assignPhysicalBarrier(barrierGraphInfo, barrierSim))) {
+            _log.error("Barrier simulation for color binning failed with {0} barriers", numBarriers);
+            signalPassFailure();
+            return;
+        }
+        barrierSim.updateBarrierOrderInIr();
+
         patterns.add<BarrierColorBinVirtualBarrierRewrite>(&ctx, barrierGraphInfo, BarrierColorBinAssignment, _log);
 
         if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
@@ -181,16 +192,28 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
         barrierGraphInfo.clearAttributes();
 
     } else {
-        // Use old round-robin method of assigining physical barriers
+        // Use old round-robin method of assigning physical barriers
         if (wlmFlag) {
-            auto barrierInfo = vpux::BarrierInfo{func};
-            barrierSim.configureForWlm(barrierInfo);
-            if (mlir::failed(barrierSim.simulateBarriers(_log.nest(), numBarriers))) {
-                _log.error("Barrier simulation (with WLM restrictions) failed with {0} barriers", numBarriers);
-                signalPassFailure();
-                return;
+            if (_workloadManagementMode.has_value() &&
+                _workloadManagementMode.value() == WorkloadManagementMode::PWLM_V2_PAGES) {
+                _log.trace("Assign barriers using WLM page approach");
+                if (mlir::failed(barrierSim.simulateBarriersForWlmPageApproach(_log.nest(), numBarriers))) {
+                    _log.error("Barrier simulation (with WLM page) failed with {0} barriers", numBarriers);
+                    signalPassFailure();
+                    return;
+                }
+                barrierSim.updateBarrierOrderInIr();
+            } else {
+                auto barrierInfo = vpux::BarrierInfo{func};
+                barrierSim.configureForWlm(barrierInfo);
+                _log.trace("Assign barriers with WLM restrictions");
+                if (mlir::failed(barrierSim.simulateBarriers(_log.nest(), numBarriers))) {
+                    _log.error("Barrier simulation (with WLM restrictions) failed with {0} barriers", numBarriers);
+                    signalPassFailure();
+                    return;
+                }
+                barrierInfo.clearAttributes();
             }
-            barrierInfo.clearAttributes();
         } else {
             if (mlir::failed(barrierSim.simulateBarriers(_log.nest(), numBarriers))) {
                 _log.error("Barrier simulation failed with {0} barriers", numBarriers);
@@ -212,6 +235,8 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPURT::createAssignPhysicalBarriersPass(
-        const bool barrierColorBinFlag, std::optional<int> virtualBarrierThresholdForWlm, Logger log) {
-    return std::make_unique<AssignPhysicalBarriersPass>(barrierColorBinFlag, virtualBarrierThresholdForWlm, log);
+        const bool barrierColorBinFlag, std::optional<WorkloadManagementMode> workloadManagementMode,
+        std::optional<int> virtualBarrierThresholdForWlm, Logger log) {
+    return std::make_unique<AssignPhysicalBarriersPass>(barrierColorBinFlag, workloadManagementMode,
+                                                        virtualBarrierThresholdForWlm, log);
 }

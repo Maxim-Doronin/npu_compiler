@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -46,7 +47,7 @@ mlir::Value createSubAvgPool(IE::AvgPoolOp origOp, mlir::PatternRewriter& rewrit
                                                     avgPoolOpKernelAttr, avgPoolOpStridesAttr, zeroPadAttr, zeroPadAttr,
                                                     origOp.getRoundingTypeAttr(), nullptr, origOp.getPostOpAttr(),
                                                     origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-                                                    origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                                                    origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     return avgPoolOp.getOutput();
 }
 
@@ -244,7 +245,7 @@ void HandleExcludePadForAvgPoolPass::safeRunOnFunc() {
 
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<IE::AvgPoolOp>([&](IE::AvgPoolOp op) {
-        const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
         // Only suport input Rank == 4.
         if (inputType.getRank() != 4) {
             return true;

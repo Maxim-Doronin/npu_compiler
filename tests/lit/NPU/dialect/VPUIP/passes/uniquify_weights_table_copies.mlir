@@ -45,7 +45,7 @@
 // CHECK-SAME:      [[WEIGHTS1:%.+]]: memref<1152x128x1x1xf16, #NHWC>, [[WEIGHTS2:%.+]]: memref<1152x128x1x1xf16, #NHWC>)
 func.func @UniquifyWeightsTableCopies(%input1: memref<1x128x1x1xf16, #NHWC>, %input2: memref<1x128x1x1xf16, #NHWC>,
                             %weights1: memref<1152x128x1x1xf16, #NHWC>, %weights2: memref<1152x128x1x1xf16, #NHWC>) -> !OutDistType {
-    
+
     %wt = const.Declare memref<1152x1x1x4xsi32> = dense<1> : tensor<1152x1x1x4xsi32>
     %in1_alloc = VPURT.AllocDistributed -> !InDistType
     %in1_cmx = VPUIP.Copy inputs(%input1 : memref<1x128x1x1xf16, #NHWC>) outputs(%in1_alloc : !InDistType) -> !InDistType
@@ -170,7 +170,7 @@ func.func @UniquifyWeightsTableCopies(%input1: memref<1x128x1x1xf16, #NHWC>, %in
 // CHECK-SAME:      [[WEIGHTS1:%.+]]: memref<1152x128x1x1xf16, #NHWC>, [[WEIGHTS2:%.+]]: memref<1152x128x1x1xf16, #NHWC>)
 func.func @DoNotUniquifyWhenSiblingViewOp(%input1: memref<1x128x1x1xf16, #NHWC>, %input2: memref<1x128x1x1xf16, #NHWC>,
                             %weights1: memref<1152x128x1x1xf16, #NHWC>, %weights2: memref<1152x128x1x1xf16, #NHWC>) -> !OutDistType {
-    
+
     %wt = const.Declare memref<1152x1x1x4xsi32> = dense<1> : tensor<1152x1x1x4xsi32>
     %in1_alloc = memref.alloc() : !InDistType
     %in1_cmx = VPUIP.Copy inputs(%input1 : memref<1x128x1x1xf16, #NHWC>) outputs(%in1_alloc : !InDistType) -> !InDistType

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/sparsity_strategy.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
 #include "vpux/compiler/utils/analysis.hpp"
@@ -18,6 +19,7 @@
 #include "vpux/compiler/utils/sparsity.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 #include <llvm/Support/ThreadPool.h>
 
@@ -71,7 +73,7 @@ private:
 
 int64_t getSizeInfo(Const::DeclareOp& origOp) {
     const auto& contentAttr = origOp.getContentAttr();
-    auto inputType = contentAttr.getBaseContent().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(contentAttr.getBaseContent().getType());
     auto maximumSize = inputType.getTotalAllocSize().count();
     auto transformations = contentAttr.getTransformations();
     for (auto transformation : transformations) {
@@ -154,7 +156,7 @@ void SparsifyWeightsPass::safeRunOnFunc() {
         if (weights == nullptr || mlir::isa<mlir::BlockArgument>(weights)) {
             return;
         }
-        auto weightsType = weights.getType().cast<vpux::NDTypeInterface>();
+        auto weightsType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
         if (weightsType.getElemTypeSize().count() < CHAR_BIT) {
             _log.trace("Op '{0}' at '{1}' is not supporting sparsity for sub 8-bit weights", sparsifiableOp->getName(),
                        sparsifiableOp->getLoc());
@@ -164,7 +166,7 @@ void SparsifyWeightsPass::safeRunOnFunc() {
         _log.trace("Op '{0}' at '{1}' is a candidate for sparsifying its weights", sparsifiableOp->getName(),
                    sparsifiableOp->getLoc());
 
-        if (weights.getType().isa<VPU::SparseTensorType>()) {
+        if (mlir::isa<vpux::VPU::SparseTensorType>(weights.getType())) {
             innerLog.trace("Weights are already sparse");
             return;
         }
@@ -232,11 +234,11 @@ void SparsifyWeightsPass::safeRunOnFunc() {
                                    const Const::Content& foldedContent) {
         auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(sparsifiableOp.getOperation());
         const auto weights = nceOp.getWeightsOperand();
-        auto weightsType = weights.getType().cast<vpux::NDTypeInterface>();
+        auto weightsType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
 
         const auto foldedElemType = foldedContent.getType().getElementType();
-        const auto inputType = sparsifiableOp->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-        const auto hasFloatInput = inputType.getElementType().isa<mlir::FloatType>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(sparsifiableOp->getOperand(0).getType());
+        const auto hasFloatInput = mlir::isa<mlir::FloatType>(inputType.getElementType());
         const auto numNonSparseElemsPerOC = vpux::countNonSparseElementsPerOC(foldedContent, foldedElemType);
         if (!enablementStrategy->shouldSparsifyWeights(innerLog, weightsType, numNonSparseElemsPerOC, hasFloatInput)) {
             innerLog.trace("Weights will not be sparsified", sparsifiableOp->getName(), sparsifiableOp->getLoc());
@@ -255,7 +257,7 @@ void SparsifyWeightsPass::safeRunOnFunc() {
         // Fold the original constant to drop the original transformations
         // This is done in order to avoid repeating the folding that was done in this pass later in the compilation
         auto foldedContentType = foldedContent.getType();
-        if (auto qType = foldedElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+        if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(foldedElemType)) {
             foldedContentType = foldedContentType.changeElemType(normalizeQuantStorageType(qType));
         }
         // It is necessary to copy the contents of the folded constant into a new buffer since the data conversion
@@ -270,7 +272,7 @@ void SparsifyWeightsPass::safeRunOnFunc() {
         Const::ContentSetup newContentAttrSetup(foldedContentType);
         // Folded constants with INT8 element types have to be cast to quantized types for the correct type to be
         // inferred from the new Const::ContentAttr
-        if (auto qType = foldedElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+        if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(foldedElemType)) {
             newContentAttrSetup = newContentAttrSetup.castElemType(qType);
         }
 

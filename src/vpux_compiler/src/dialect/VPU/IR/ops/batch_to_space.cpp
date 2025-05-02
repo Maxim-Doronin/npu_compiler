@@ -1,17 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-
-#include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/error.hpp"
-
 #include "vpux/utils/core/small_vector.hpp"
 
 using namespace vpux;
@@ -29,7 +22,7 @@ mlir::LogicalResult vpux::VPU::BatchToSpace::inferReturnTypes(mlir::MLIRContext*
         return mlir::failure();
     }
 
-    const auto inputType = bts.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(bts.getInput().getType());
     const auto inputShape = inputType.getShape().raw();
 
     const auto blockShape = parseIntArrayAttr<int64_t>(bts.getBlockShapeValueAttr());

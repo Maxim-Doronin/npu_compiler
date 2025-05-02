@@ -4,10 +4,7 @@
 //
 
 #include "single_op_tests/grid_sample.hpp"
-#include <common/functions.h>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -24,12 +21,8 @@ class GridSampleLayerTestCommon : public GridSampleLayerTest, virtual public Vpu
             const auto& funcInput = funcInputs[i];
             ov::Tensor tensor;
 
-            if (i > 0) {
-                tensor = create_and_fill_tensor_normal_distribution(funcInput.get_element_type(), *itTargetShape, 0,
-                                                                    0.5);
-            } else {
-                tensor = create_and_fill_tensor(funcInput.get_element_type(), *itTargetShape, 10, 0);
-            }
+            tensor = create_and_fill_tensor(funcInput.get_element_type(), *itTargetShape, 0, 0.5);
+
             VpuOv2LayerTest::inputs.insert({funcInput.get_node_shared_ptr(), tensor});
             itTargetShape++;
         }
@@ -47,7 +40,7 @@ class GridSampleLayerTestCommon : public GridSampleLayerTest, virtual public Vpu
         VpuOv2LayerTest::init_input_shapes(static_shapes_to_test_representation({dataShape, gridShape}));
 
         auto data = std::make_shared<ov::op::v0::Parameter>(modelType, VpuOv2LayerTest::inputDynamicShapes[0]);
-        // C-133057
+        // C#133057
         // `grid` element type should not be hardcoded to `f32`
         auto grid = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, VpuOv2LayerTest::inputDynamicShapes[1]);
         auto gridSample = std::make_shared<ov::op::v9::GridSample>(

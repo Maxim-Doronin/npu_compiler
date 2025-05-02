@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,9 +15,9 @@ namespace vpux::VPUIPDPU::arch40xx::IDU {
 mlir::LogicalResult verifyInQuantConfig(const Logger& log, mlir::Type inType) {
     SmallVector<uint8_t> inQuantZero;
 
-    if (const auto uniformQuantType = inType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inType)) {
         inQuantZero.push_back(checked_cast<uint8_t>(uniformQuantType.getZeroPoint()));
-    } else if (const auto uniformQuantPerAxisType = inType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (const auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inType)) {
         auto zp = uniformQuantPerAxisType.getZeroPoints();
         inQuantZero.resize(zp.size());
         std::transform(zp.begin(), zp.end(), inQuantZero.begin(), [](int64_t a) {
@@ -302,8 +302,8 @@ mlir::LogicalResult configureEltwiseCfg(const Logger& log, IDUConfig::EltWiseCfg
 
         auto inType = getBaseType(inActType);
         auto wtType = getBaseType(weightsType);
-        if (inType.isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type>() ||
-            wtType.isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type>()) {
+        if (mlir::isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type>(inType) ||
+            mlir::isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type>(wtType)) {
             config.elopScapeFp = true;
         }
 
@@ -377,7 +377,7 @@ mlir::LogicalResult configureIDU(const Logger& log, IDUConfig& config, const vpu
     }
 
     // IDUWeights
-    auto inActElementType = inActType.cast<mlir::MemRefType>().getElementType();
+    auto inActElementType = mlir::cast<mlir::MemRefType>(inActType).getElementType();
     if (configurePalletization(log, config.weights, weightsElementType).failed()) {
         return mlir::failure();
     }
@@ -486,7 +486,7 @@ mlir::LogicalResult vpux::VPUIPDPU::arch40xx::buildDPUInvariantIDU(
     auto inAct = getInvBlockArg(BlockArg::ACT_IN, invBlock, invBlockArgsPos);
     mlir::Type weightsType;
     if (auto weights = getInvBlockArg(BlockArg::WEIGHTS, invBlock, invBlockArgsPos)) {
-        weightsType = weights.getType().cast<mlir::MemRefType>().getElementType();
+        weightsType = mlir::cast<mlir::MemRefType>(weights.getType()).getElementType();
     }
 
     auto ppeTask = IDU::evalPPETasks(origInvOp.getPpe(), /*taskType*/ {});

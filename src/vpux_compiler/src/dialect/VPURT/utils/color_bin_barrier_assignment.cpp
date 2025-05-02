@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -209,7 +209,8 @@ bool VPURT::BarrierColorBin::findPhysicalBarrierInBin(BarrierGraphInfo& BarrierG
     return true;
 }
 
-bool VPURT::BarrierColorBin::assignPhysicalBarrier(BarrierGraphInfo& BarrierGraphInfo, BarrierSimulator& simulator) {
+mlir::LogicalResult VPURT::BarrierColorBin::assignPhysicalBarrier(BarrierGraphInfo& BarrierGraphInfo,
+                                                                  BarrierSimulator& simulator) {
     _barrierVirtualToPhysicalMapping.resize(_barrierBinType.size(), INVALID_BARRIER_PID);
     getBarrierExecutionStepInfo(BarrierGraphInfo);
 
@@ -238,54 +239,21 @@ bool VPURT::BarrierColorBin::assignPhysicalBarrier(BarrierGraphInfo& BarrierGrap
         // Step 3. Get physical barrier for the barriers
         for (auto& barrierInd : waitBarriersInCurrentBatch) {
             if (!findPhysicalBarrierInBin(BarrierGraphInfo, barrierInd)) {
-                return false;
+                return mlir::failure();
             };
         }
         for (auto& barrierInd : updateBarriersInCurrentBatch) {
             if (!findPhysicalBarrierInBin(BarrierGraphInfo, barrierInd)) {
-                return false;
+                return mlir::failure();
             }
         }
     }
 
-    _barrierOrder = simulator.generateBarrierOrderWithSimulation(_log, _numBarriers, _barrierVirtualToPhysicalMapping);
-    if (_barrierOrder.empty()) {
-        _log.error("Can not assign physical barrier using color bin due to simulation error!");
-        return false;
-    }
-
-    return true;
+    return simulator.generateBarrierOrderWithSimulation(_log, _numBarriers, _barrierVirtualToPhysicalMapping);
 }
 
 size_t VPURT::BarrierColorBin::getPhysicalBarrier(size_t virtualBarrierInd) {
     return _barrierVirtualToPhysicalMapping[virtualBarrierInd];
-}
-
-// Reorder barrier ops according to its physical barrier id to avoid hang in runtime.
-// For the first N barrier op, in which N is the physical barrier account, the physical barrier id should be 0 to N-1
-// with ascending order
-void VPURT::BarrierColorBin::reorderBarriers(BarrierGraphInfo& BarrierGraphInfo, mlir::func::FuncOp funcOp) {
-    VPUX_THROW_WHEN(_barrierOrder.empty(), "Barrier order data is empty");
-
-    auto insertPoint = &funcOp.getBody().front().front();
-    auto& barrierInfo = BarrierGraphInfo.getBarrierInfo();
-    VPURT::BarrierOpInterface finalBarOp = nullptr;
-    for (auto bar : _barrierOrder) {
-        auto barOp = barrierInfo.getBarrierOpAtIndex(bar);
-        barOp->moveAfter(insertPoint);
-        insertPoint = barOp;
-
-        if (barOp.getIsFinalBarrier()) {
-            VPUX_THROW_UNLESS(finalBarOp == nullptr, "More then one final barrier: {0} and {1}", finalBarOp, barOp);
-            finalBarOp = barOp;
-        }
-    }
-
-    // Other passes expect final barrierto be at the end of IR
-    // even if it is not the last in terms of barrier reprogramming order
-    if (finalBarOp != nullptr && insertPoint != finalBarOp) {
-        finalBarOp->moveAfter(insertPoint);
-    }
 }
 
 size_t VPURT::BarrierColorBin::getMinBinSize(const std::map<BinType, size_t>& barrierCounts, const BinType& binType) {

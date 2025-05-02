@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
 #include "vpux/compiler/core/cycle_cost_info.hpp"
@@ -201,12 +202,13 @@ void InferenceExecutionAnalysisPass::safeRunOnFunc() {
             _log.info("[Energy] compiled Activity Factor - {0}", activityFactor);
         }
 
-        // Set inferenceTiming attribute to CNNNetworkOp for NPU Energy feature
-        auto netOps = to_small_vector(moduleOp.getOps<vpux::IE::CNNNetworkOp>());
-        VPUX_THROW_UNLESS(netOps.size() == 1,
-                          "Can't have more than one 'IE::CNNNetworkOp' Operation in Module, got '{0}'", netOps.size());
-        auto netOp = netOps.front();
-        netOp.setInferenceTiming(std::optional<int64_t>(totalCycles));
+        // Set inferenceTiming attribute to NetworkInfoOp for NPU Energy feature
+        auto netInfoOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
+        VPUX_THROW_UNLESS(netInfoOps.size() == 1,
+                          "Can't have more than one 'net::NetworkInfoOp' Operation in Module, got '{0}'",
+                          netInfoOps.size());
+        auto netInfo = netInfoOps.front();
+        netInfo.setInferenceTiming(std::optional<int64_t>(totalCycles));
         _log.info("[Energy] inferenceTiming {0} cycles by DPU freq {1} MHz", totalCycles, freqInMHz);
     }
 

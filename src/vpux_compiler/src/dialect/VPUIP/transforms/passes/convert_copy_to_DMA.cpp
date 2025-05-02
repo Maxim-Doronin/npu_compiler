@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 
@@ -40,7 +41,7 @@ mlir::LogicalResult TimestampRewrite::matchAndRewrite(VPUIP::TimestampOp origOp,
                                                       mlir::PatternRewriter& rewriter) const {
     _log.trace("Found Timestamp Operation '{0}'", origOp->getLoc());
 
-    auto origType = origOp.getType().cast<vpux::NDTypeInterface>();
+    auto origType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
     VPUX_THROW_UNLESS(origType.getNumElements() == 1, "Got wrong elements number for TimestampOp");
 
     const auto timerType = origType.changeMemSpace(VPU::MemoryKind::Register);

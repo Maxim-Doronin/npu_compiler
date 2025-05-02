@@ -58,8 +58,8 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>) -> (ten
     // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
     // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[ADDSLICE0]], [[ADDSLICE1]])
-    // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]} :
-    // CHECK-SAME:            tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<2x4x6x10xf32>
+    // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+    // CHECK-SAME:            : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<2x4x6x10xf32>
 
     // CHECK:       return [[CONCAT0]], [[ADD1]] : tensor<2x4x6x10xf32>, tensor<2x3x4x5xf32>
 }
@@ -174,8 +174,8 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>) -> (ten
     // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
     // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[ADDSLICE0]], [[ADDSLICE1]], [[ADDSLICE2]])
-    // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]]} :
-    // CHECK-SAME:            tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
+    // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+    // CHECK-SAME:            : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
 
     // CHECK:       return [[CONCAT0]], [[ADD2]] : tensor<3x4x6x10xf32>, tensor<2x3x4x5xf32>
 }
@@ -251,8 +251,8 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>, %arg2: 
   // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
   // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[ADDSLICE0]], [[ADDSLICE1]], [[ADDSLICE2]])
-  // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]]} :
-  // CHECK-SAME:            tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
+  // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+  // CHECK-SAME:            : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
 
   // CHECK:       return [[CONCAT0]], [[ADD8]], [[ADD7]] : tensor<3x4x6x10xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>
 
@@ -325,14 +325,14 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>, %arg2: 
   // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
   // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[ADDSLICE0]], [[ADDSLICE1]], [[ADDSLICE2]])
-  // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]]} :
-  // CHECK-SAME:            tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
+  // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+  // CHECK-SAME:            : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
   // CHECK:       [[CONCAT1:%.+]] = IE.Concat([[ARG1]], [[ADD5]], [[ADD8]])
-  // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [2, 0, 0, 0], [4, 0, 0, 0]]} :
-  // CHECK-SAME:            tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<6x3x4x5xf32>
+  // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+  // CHECK-SAME:            : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<6x3x4x5xf32>
   // CHECK:       [[CONCAT2:%.+]] = IE.Concat([[ARG2]], [[ADD4]], [[ADD7]])
-  // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0, 0], [2, 0, 0, 0], [4, 0, 0, 0]]} :
-  // CHECK-SAME:            tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<6x3x4x5xf32>
+  // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+  // CHECK-SAME:            : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<6x3x4x5xf32>
 
   // CHECK:       return [[CONCAT0]], [[CONCAT1]], [[CONCAT2]] : tensor<3x4x6x10xf32>, tensor<6x3x4x5xf32>, tensor<6x3x4x5xf32>
 
@@ -374,7 +374,7 @@ func.func @main(%arg0: tensor<1x5x3xsi32>) -> tensor<1x5x3xsi32> {
   // CHECK-DAG:       [[CST2:%.+]] = const.Declare tensor<1xsi32> = dense<4> : tensor<1xsi32>
   // CHECK-DAG:       [[CST3:%.+]] = const.Declare tensor<1xsi8> = dense<1> : tensor<1xsi8>
   // CHECK-DAG:       [[CST4:%.+]] = const.Declare tensor<1xsi32> = dense<0.000000e+00> : tensor<1xf32>, [#const.CastElemType<si32>]
-  
+
   // CHECK:           [[LESS0:%.+]] = IE.Less([[CST4]], [[CST2]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
   // CHECK-SAME:      tensor<1xsi32>, tensor<1xsi32> -> tensor<1xi8>
@@ -397,15 +397,15 @@ func.func @main(%arg0: tensor<1x5x3xsi32>) -> tensor<1x5x3xsi32> {
   // CHECK-SAME:      tensor<1x5x3xsi32>, tensor<1x1x1xsi32> -> tensor<1x5x3xsi32>
 
   // CHECK:           [[CONCAT0:%.+]] = IE.Concat([[LESS0]], [[LESS1]], [[LESS2]])
-  // CHECK-SAME{LITERAL}    {static_offsets = [[0], [1], [2]]} :
-  // CHECK-SAME:            tensor<1xi8>, tensor<1xi8>, tensor<1xi8> -> tensor<3xi8>
+  // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+  // CHECK-SAME:            : tensor<1xi8>, tensor<1xi8>, tensor<1xi8> -> tensor<3xi8>
 
   // CHECK:           [[CONCAT1:%.+]] = IE.Concat([[ADD0]], [[ADD1]], [[ADD2]])
-  // CHECK-SAME{LITERAL}    {static_offsets = [[0, 0, 0], [1, 0, 0], [2, 0, 0]]} :
-  // CHECK-SAME:            tensor<1x5x3xsi32>, tensor<1x5x3xsi32>, tensor<1x5x3xsi32> -> tensor<3x5x3xsi32>
+  // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
+  // CHECK-SAME:            : tensor<1x5x3xsi32>, tensor<1x5x3xsi32>, tensor<1x5x3xsi32> -> tensor<3x5x3xsi32>
 
   // CHECK:           [[LOOPSELECT:%.+]] = IE.LoopSelect([[CST3]], [[CONCAT0]], [[CONCAT1]])
-  // CHECK-SAME{LITERAL}    {axis = 0 : i64, do_concat = false, stride = 1 : i64} :
+  // CHECK-SAME{LITERAL}:   {axis = 0 : i64, do_concat = false, stride = 1 : i64} :
   // CHECK-SAME:            tensor<1xsi8>, tensor<3xi8>, tensor<3x5x3xsi32> -> tensor<1x5x3xsi32>
 
   // CHECK:           return [[LOOPSELECT]] : tensor<1x5x3xsi32>
@@ -421,7 +421,7 @@ func.func @main(%arg0: tensor<1x5x3xsi32>) -> tensor<1x5x3xsi32> {
 module @UnrollLoopWithOutliner {
 // CHECK-LABEL: @UnrollLoopWithOutliner
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_3" tensorNames = ["Parameter_3"] : tensor<1x1x2x3xf32>
   } outputsInfo : {
     DataInfo "Loop_17" friendlyName = "Result_18" : tensor<1x1x2x3xf32>

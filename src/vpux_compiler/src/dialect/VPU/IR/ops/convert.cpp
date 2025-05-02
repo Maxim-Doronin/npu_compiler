@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,17 @@
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 
 using namespace vpux;
+
+mlir::OpFoldResult vpux::VPU::ConvertOp::fold(FoldAdaptor adaptor) {
+    auto operands = adaptor.getOperands();
+    VPUX_THROW_UNLESS(operands.size() == 1, "Expected exactly one operand, but got {0}", operands.size());
+
+    if (auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
+        return attr.transform().castElemType(getDstElemType()).get();
+    }
+
+    return nullptr;
+}
 
 mlir::LogicalResult vpux::VPU::ConvertOp::inferReturnTypes(mlir::MLIRContext* ctx, std::optional<mlir::Location> optLoc,
                                                            mlir::ValueRange operands, mlir::DictionaryAttr attrs,
@@ -20,7 +31,7 @@ mlir::LogicalResult vpux::VPU::ConvertOp::inferReturnTypes(mlir::MLIRContext* ct
         return mlir::failure();
     }
 
-    const auto inType = cvt.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(cvt.getInput().getType());
     const auto dstElemType = cvt.getDstElemType();
 
     const auto outType = inType.changeElemType(dstElemType);
@@ -34,8 +45,8 @@ bool vpux::VPU::ConvertOp::areCastCompatible(mlir::TypeRange inputs, mlir::TypeR
         return false;
     }
 
-    const auto input = inputs.front().dyn_cast<vpux::NDTypeInterface>();
-    const auto output = outputs.front().dyn_cast<vpux::NDTypeInterface>();
+    const auto input = mlir::dyn_cast<vpux::NDTypeInterface>(inputs.front());
+    const auto output = mlir::dyn_cast<vpux::NDTypeInterface>(outputs.front());
 
     if (!input || !output || input.getShape() != output.getShape()) {
         return false;

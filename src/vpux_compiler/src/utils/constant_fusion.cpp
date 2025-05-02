@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/utils/core/custom_float.hpp"
+
+#include <mlir/Dialect/Async/IR/Async.h>
 
 using namespace vpux;
 
@@ -33,7 +35,7 @@ Const::DeclareOp getConstAndDmaRecImpl(mlir::BlockArgument arg, mlir::async::Exe
         }
 
         auto type = op.getResult(0).getType();
-        if (auto ndType = type.cast<vpux::NDTypeInterface>()) {
+        if (auto ndType = mlir::cast<vpux::NDTypeInterface>(type)) {
             // For constant fusion this should always be U8 or F16
             if (!ndType.getElementType().isUnsignedInteger(8) && !ndType.getElementType().isF16()) {
                 continue;
@@ -69,7 +71,7 @@ Const::DeclareOp getConstAndDmaRecImpl(mlir::BlockArgument arg, mlir::async::Exe
 
             // Op wrapped in async.execute has input but not found in this block
             // continue traversing by checking producer/parent of this argument
-            arg = mlir::dyn_cast<VPUIP::LayerOpInterface>(op).getInputs()[0].dyn_cast<mlir::BlockArgument>();
+            arg = mlir::dyn_cast<mlir::BlockArgument>(mlir::dyn_cast<VPUIP::LayerOpInterface>(op).getInputs()[0]);
             execParentOp = op.getParentOfType<mlir::async::ExecuteOp>();
             return getConstAndDmaRecImpl(arg, execParentOp, constOp);
         }
@@ -94,7 +96,7 @@ Const::DeclareOp ConstantFusing::getConstAndDma(mlir::Value constant, mlir::Oper
     VPUX_THROW_UNLESS(subViewOp != nullptr, "SubViewOp expected as source for ViewOp for tensor fusion");
     mlir::Value source = subViewOp.getSource();
 
-    if (mlir::BlockArgument arg = source.dyn_cast<mlir::BlockArgument>()) {
+    if (mlir::BlockArgument arg = mlir::dyn_cast<mlir::BlockArgument>(source)) {
         // Op wrapped in async.execute has input continue traversing by checking producer of this argument
         auto execParentOp = subViewOp->getParentOfType<mlir::async::ExecuteOp>();
         return getConstAndDmaRecImpl(arg, execParentOp, constOp);
@@ -148,7 +150,7 @@ int32_t ConstantFusing::getOffsetForConstant(VPUIP::NCEClusterTaskOp& nceOp, mli
         return offset;
     }
 
-    auto arg = constant.dyn_cast<mlir::BlockArgument>();
+    auto arg = mlir::dyn_cast<mlir::BlockArgument>(constant);
     if (arg != nullptr) {
         auto execParentOp = nceOp->getParentOfType<VPUIP::NCEClusterTilingOp>();
         viewOp = execParentOp->getOperand(arg.getArgNumber()).getDefiningOp<VPUIP::ViewOp>();
@@ -168,7 +170,7 @@ int32_t ConstantFusing::getOffsetForConstant(VPUIP::NCEClusterTaskOp& nceOp, mli
 VPUIP::DistributedBufferType ConstantFusing::getDistributedBufferType(VPUIP::DistributedBufferType origDistType,
                                                                       Const::DeclareOp declOp,
                                                                       mlir::PatternRewriter& rewriter) {
-    auto typeInterface = declOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto typeInterface = mlir::cast<vpux::NDTypeInterface>(declOp.getOutput().getType());
 
     const auto ctx = typeInterface.getContext();
     const auto order = typeInterface.getDimsOrder();
@@ -227,7 +229,7 @@ void ConstantFusing::getCopyAndDeclareOpForFusion(mlir::Value nceOperand, VPUIP:
     if (nceOperand.getDefiningOp<VPUIP::ShapeCastOp>() != nullptr || copyOp == nullptr) {
         return;
     }
-    auto constantTypeDistributed = nceOperand.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto constantTypeDistributed = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(nceOperand.getType());
     // Op is Tiled
     if (constantTypeDistributed != nullptr) {
         // Only Fuse if the constants are broadcasted/duplicated

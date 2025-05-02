@@ -8,7 +8,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
-IE.CNNNetwork entryPoint : @maxpool_f16_f16 inputsInfo : {
+net.NetworkInfo entryPoint : @maxpool_f16_f16 inputsInfo : {
 DataInfo "input_0" : tensor<1x64x16x16xf16>
 } outputsInfo : {
 DataInfo "output_0" : tensor<1x64x8x8xf16>
@@ -54,37 +54,30 @@ func.func private @maxpool_f16_f16(%arg0: memref<1x64x16x16xf16, #NHWC, @DDR>, %
 
 //CHECK-LABEL: @maxpool_f16_f16
 
-//CHECK: %[[VAL0:.*]] = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 3 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
-//CHECK: %[[VAL1:.*]] = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
+//CHECK: [[BARRIER0:%.*]] = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 3 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
+//CHECK: [[BARRIER1:%.*]] = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
 
-//CHECK: %[[VALcst:.*]] = const.Declare [[TYPE_CST:.*]] = dense
-//CHECK: %[[VALcst_0:.*]] = const.Declare [[TYPE_CST0:.*]] = dense
+//CHECK: [[CST_WEIGHT_TABLE:%.*]] = const.Declare [[TYPE_CST_WEIGHT_TABLE:.*]] = dense
 
-//CHECK: %[[VAL2:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE2:.*]]
-//CHECK: %[[VAL3:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE3:.*]]
-//CHECK: %[[VAL4:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE4:.*]]
-//CHECK: %[[VAL5:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE5:.*]]
-//CHECK: %[[VAL6:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <40960> -> [[TYPE6:.*]]
-//CHECK: %[[VAL7:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> [[TYPE7:.*]]
-
+//CHECK: [[INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE_INPUT:.*]]
+//CHECK: [[OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE_OUTPUT:.*]]
+//CHECK: [[WEIGHT_TABLE:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> [[TYPE_WEIGHT_TABLE:.*]]
 
 //CHECK-NOT: VPURT.Task
-//CHECK: VPUMI40XX.NNDMA{{.*}}inputs(%arg0 : memref<1x64x16x16xf16, #NHWC, @DDR>) outputs(%[[VAL2]] : [[TYPE2]]) updates(%[[VAL0]] : !VPURegMapped.Index<0:0:0>)
+//CHECK: VPUMI40XX.NNDMA{{.*}}inputs(%arg0 : memref<1x64x16x16xf16, #NHWC, @DDR>) outputs([[INPUT]] : [[TYPE_INPUT]]) updates([[BARRIER0]] : !VPURegMapped.Index<0:0:0>)
 
 //CHECK-NOT: VPURT.Task
-//CHECK: VPUMI40XX.NNDMA{{.*}}inputs(%[[VALcst]] : [[TYPE_CST]]) outputs(%[[VAL7]] : [[TYPE7]])
+//CHECK: VPUMI40XX.NNDMA{{.*}}inputs([[CST_WEIGHT_TABLE]] : [[TYPE_CST_WEIGHT_TABLE]]) outputs([[WEIGHT_TABLE]] : [[TYPE_WEIGHT_TABLE]])
 //CHECK-SAME: VPURegMapped.Index<0:0:2>
 
 //CHECK-NOT: VPURT.Task
 //CHECK: DPUInvariant
-    //CHECK-SAME task_type = #VPUIP.nce_task_type<MAXPOOL>
-    //CHECK-SAME input(%[[VAL2]] : [[TYPE2]])
-    //CHECK-SAME weight_table(%[[VAL7]] : [[TYPE7]])
-    //CHECK-SAME parent_input(%[[VAL4]] : [[TYPE4]])
-    //CHECK-SAME parent_output(%[[VAL5]] : [[TYPE5]])
-    //CHECK-SAME outputs(%[[VAL3]] : [[TYPE3]])
-    //CHECK-SAME waits(%[[VAL0]]
-    //CHECK-SAME updates(%[[VAL1]])
+//CHECK-SAME: task_type = #VPUIP.nce_task_type<MAXPOOL>
+//CHECK-SAME: input([[INPUT]] : [[TYPE_INPUT]])
+//CHECK-SAME: weight_table([[WEIGHT_TABLE]] : [[TYPE_WEIGHT_TABLE]])
+//CHECK-SAME: outputs([[OUTPUT]] : [[TYPE_OUTPUT]])
+//CHECK-SAME: waits([[BARRIER0]]
+//CHECK-SAME: updates([[BARRIER1]]
 //CHECK-NOT: DPUTask
 //CHECK-NEXT: VPUMI40XX.PPETask
 

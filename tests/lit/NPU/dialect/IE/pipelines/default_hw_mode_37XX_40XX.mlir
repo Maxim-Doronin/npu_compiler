@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@
 // It can convert TransposedConv with large kernel to Upsampling and Convolution
 // CHECK-LABEL: @HandleTransposedConvWithLargeKernels
 module @HandleTransposedConvWithLargeKernels {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x64x1x256xf16>
     } outputsInfo : {
@@ -25,7 +25,7 @@ module @HandleTransposedConvWithLargeKernels {
         %trans_conv = IE.TransposedConvolution(%arg0, %weights) {
                         dilations = [1, 1],
                         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-                        output_padding = [0, 0],
+                        spatial_output_padding = [0, 0],
                         pads_begin = [0, 0],
                         pads_end = [0, 0],
                         strides = [1, 4]
@@ -74,7 +74,7 @@ module @HandleTransposedConvWithLargeKernels {
 // It can convert GroupConv with large kernel to NCEConvolution
 // CHECK-LABEL: @HandleGroupConvWithLargeKernels
 module @HandleGroupConvWithLargeKernels {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x128x1x112xf16>
         DataInfo "input1" : tensor<128x64x1x22xf16>
@@ -127,7 +127,7 @@ module @HandleGroupConvWithLargeKernels {
 
 // CHECK-LABEL: @MultiNonTrivialDimMultiplyToConv
 module @MultiNonTrivialDimMultiplyToConv {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x19x80x80xf16>
     } outputsInfo : {
@@ -144,7 +144,7 @@ module @MultiNonTrivialDimMultiplyToConv {
         return %MUL : tensor<1x19x80x80xf16>
 
         // CHECK-DAG:       [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1600x1x1x1xf16, {order = #NHWC}> = dense<2.000000e+00>
-        // CHECK-SAME           : tensor<1x1x80x80xf16>, [#const.Reshape<[1, 6400, 1, 1]>, #const.Reshape<[6400, 1, 1, 1]>, #const.SubView<[0, 0, 0, 0], [1600, 1, 1, 1]>, #const.Reorder<#NHWC>]
+        // CHECK-SAME:          : tensor<1x1x80x80xf16>, [#const.Reshape<[6400, 1, 1, 1]>, #const.SubView<[0, 0, 0, 0], [1600, 1, 1, 1]>, #const.Reorder<#NHWC>]
 
         // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
         // CHECK-SAME:      shape_value = [1, 1, 19, 6400]
@@ -178,7 +178,7 @@ module @MultiNonTrivialDimMultiplyToConv {
 
 // CHECK-LABEL: @HandleFirstPermuteOnNCE
 module @HandleFirstPermuteOnNCE {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x3x384x384xui8>
     } outputsInfo : {
@@ -212,20 +212,20 @@ module @HandleFirstPermuteOnNCE {
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #WNCH = affine_map<(d0, d1, d2, d3) -> (d3, d0, d1, d2)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-!BoundedInType = tensor<1x512x4x?xf32, {bounds = [1, 512, 4, 320], order = #NCHW}>
-!BoundedOutType = tensor<1x16x4x?xf32, {bounds = [1, 16, 4, 320], order = #NCHW}>
-!BoundedTransposeType = tensor<?x1x16x4xf32, {bounds = [320, 1, 16, 4], order = #NCHW}>
+!BoundedInType = tensor<1x512x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}>
+!BoundedOutType = tensor<1x16x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 4, 320]> : tensor<4xsi64>, order = #NCHW}>
+!BoundedTransposeType = tensor<?x1x16x4xf32, {bounds = #const.OpaqueI64Elements<[320, 1, 16, 4]> : tensor<4xsi64>, order = #NCHW}>
 
 // CHECK-LABEL: @DynamicConvAddTranpose
 module @DynamicConvAddTranpose {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x512x4x320xf32>
     } outputsInfo : {
         DataInfo "output" : tensor<320x1x16x4xf32>
     }
 
-    // CHECK: func.func @main([[IN:%.+]]: tensor<1x512x4x?xf32, {bounds = [1, 512, 4, 320], order = #NCHW}>)
+    // CHECK: func.func @main([[IN:%.+]]: tensor<1x512x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}>)
     func.func @main(%arg0: !BoundedInType) -> !BoundedTransposeType {
         %weights = const.Declare tensor<16x512x1x1xf32> = dense<1.000000e+00> : tensor<16x512x1x1xf32>
         %bias = const.Declare tensor<1x16x1x1xf32> = dense<1.000000e+00> : tensor<1x16x1x1xf32>
@@ -248,11 +248,11 @@ module @DynamicConvAddTranpose {
         // CHECK-DAG:   [[DIM_4:%.+]] = const.Declare tensor<1x1x1x1xsi32> = dense<4>
 
         // CHECK:       [[CONVERT:%.+]] = IE.Convert([[IN]])
-        // CHECK-SAME:       : tensor<1x512x4x?xf32, {bounds = [1, 512, 4, 320], order = #NCHW}>
-        // CHECK-SAME:       -> tensor<1x512x4x?xf16, {bounds = [1, 512, 4, 320], order = #NCHW}>
+        // CHECK-SAME:       : tensor<1x512x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}>
+        // CHECK-SAME:       -> tensor<1x512x4x?xf16, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}>
 
         // CHECK:       [[DYN_EXPAND:%.+]] = IE.DynamicExpand([[CONVERT]])
-        // CHECK-SAME:       : tensor<1x512x4x?xf16, {bounds = [1, 512, 4, 320], order = #NCHW}> -> tensor<1x512x4x320xf16>
+        // CHECK-SAME:       : tensor<1x512x4x?xf16, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x512x4x320xf16>
 
         // CHECK:       [[PERMUTE:%.+]] = IE.PermuteQuantize([[DYN_EXPAND]])
         // CHECK-SAME:    {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]}
@@ -276,12 +276,58 @@ module @DynamicConvAddTranpose {
         // CHECK-SAME:      : tensor<1x1x4x1xsi32> -> tensor<4xsi32>
         // CHECK:       [[DYN_RESHAPE:%.+]] = IE.DynamicReshape([[PERMUTE_CAST]], [[POST_RESHAPE]])
         // CHECK-SAME:    {output_bounds = [320, 1, 16, 4], output_shape = [-9223372036854775808, 1, 16, 4]}
-        // CHECK-SAME:       : tensor<320x1x16x4xf16>, tensor<4xsi32> -> tensor<?x1x16x4xf16, {bounds = [320, 1, 16, 4], order = #NCHW}>
+        // CHECK-SAME:       : tensor<320x1x16x4xf16>, tensor<4xsi32> -> tensor<?x1x16x4xf16, {bounds = #const.OpaqueI64Elements<[320, 1, 16, 4]> : tensor<4xsi64>, order = #NCHW}>
 
         // CHECK:       [[END_CONVERT:%.+]] = IE.Convert([[DYN_RESHAPE]])
-        // CHECK-SAME:       : tensor<?x1x16x4xf16, {bounds = [320, 1, 16, 4], order = #NCHW}>
-        // CHECK-SAME:       -> tensor<?x1x16x4xf32, {bounds = [320, 1, 16, 4], order = #NCHW}>
+        // CHECK-SAME:       : tensor<?x1x16x4xf16, {bounds = #const.OpaqueI64Elements<[320, 1, 16, 4]> : tensor<4xsi64>, order = #NCHW}>
+        // CHECK-SAME:       -> tensor<?x1x16x4xf32, {bounds = #const.OpaqueI64Elements<[320, 1, 16, 4]> : tensor<4xsi64>, order = #NCHW}>
 
         // CHECK:       return [[END_CONVERT]]
+    }
+}
+
+// -----
+
+// E#129083
+// CHECK-LABEL: @NoMultiplyFQFusion
+module @NoMultiplyFQFusion {
+    net.NetworkInfo entryPoint : @main
+    inputsInfo : {
+        DataInfo "input" : tensor<1x64x250x256xf32>
+    } outputsInfo : {
+        DataInfo "output" : tensor<1x64x250x256xf32>
+    }
+
+    // CHECK-LABEL: func.func @main
+    // CHECK-SAME: [[ARG0:%.+]]: tensor<1x64x250x256xf32>
+    func.func @main(%arg0: tensor<1x64x250x256xf32>) -> tensor<1x64x250x256xf32> {
+        %low = const.Declare tensor<1x1x1x1xf32> = dense<-10.0> : tensor<1x1x1x1xf32>
+        %high = const.Declare tensor<1x1x1x1xf32> = dense<10.0> : tensor<1x1x1x1xf32>
+
+        %bias = const.Declare tensor<1x64x250x256xf32> = dense<2.0> : tensor<1x64x250x256xf32>
+        %biasfq = IE.FakeQuantize(%bias, %low, %high, %low, %high) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x64x250x256xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x64x250x256xf32>
+        %scale = const.Declare tensor<1x1x1x1xf32> = dense<3.0> : tensor<1x1x1x1xf32>
+        %scalefq = IE.FakeQuantize(%scale, %low, %high, %low, %high) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1x1xf32>
+
+        %add1 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x250x256xf32>, tensor<1x64x250x256xf32> -> tensor<1x64x250x256xf32>
+        %add1fq = IE.FakeQuantize(%add1, %low, %high, %low, %high) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x64x250x256xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x64x250x256xf32>
+        %mul = IE.Multiply(%add1fq, %scalefq) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x250x256xf32>, tensor<1x1x1x1xf32> -> tensor<1x64x250x256xf32>
+        %mulfq = IE.FakeQuantize(%mul, %low, %high, %low, %high) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x64x250x256xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x64x250x256xf32>
+        %add2 = IE.Add(%mulfq, %biasfq) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x250x256xf32>, tensor<1x64x250x256xf32> -> tensor<1x64x250x256xf32>
+
+        return %add2 : tensor<1x64x250x256xf32>
+
+        // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x64x250x256x{{[^:]+}}, {order = #NHWC}> = dense<2.000000e+00>
+        // CHECK-DAG:   [[SCALE:%.+]] = const.Declare tensor<64x1x1x1x{{[^:]+}}, {order = #NHWC}> = dense<3.000000e+00>
+        // CHECK:       [[CONVERT1:%.+]] = IE.Convert([[ARG0]])
+        // CHECK-NEXT:  [[PERMUTE_QUANT:%.+]] = IE.PermuteQuantize([[CONVERT1]])
+
+        // CHECK-NEXT:  [[ADD1:%.+]] = IE.Add([[PERMUTE_QUANT]], [[PERMUTE_QUANT]])
+        // CHECK-NEXT:  [[GROUP_CONV:%.+]] = IE.GroupConvolution([[ADD1]], [[SCALE]])
+        // CHECK-NOT:   IE.AvgPool
+        // CHECK-NOT:   IE.QuantizeCast
+        // CHECK-NEXT:  [[ADD2:%.+]] = IE.Add([[GROUP_CONV]], [[BIAS]])
+        // CHECK-NEXT:  [[CONVERT2:%.+]] = IE.Convert([[ADD2]])
+        // CHECK-NEXT:  return [[CONVERT2]]
     }
 }

@@ -60,9 +60,10 @@ func.func @DequantizeStaticScaleToFP16(%arg0: tensor<28x512x128xi4>) -> tensor<2
     %0 = IE.QuantizeCast(%arg0) {dstElemType = !qElemType} : tensor<28x512x128xi4> -> tensor<28x512x128x!qElemType>
     %1 = IE.Dequantize(%0) {dstElemType = f32} : tensor<28x512x128x!qElemType> -> tensor<28x512x128xf32>
     return %1 : tensor<28x512x128xf32>
-
+    
     // CHECK:       [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[INPUT0]]) {dstElemType = !qElemType} : tensor<28x512x128xi4> -> tensor<28x512x128x!qElemType>
     // CHECK-NEXT:  [[DEQUANT:%.+]] = IE.Dequantize([[QUANTIZE_CAST]]) {dstElemType = f16} : tensor<28x512x128x!qElemType> -> tensor<28x512x128xf16>
     // CHECK-NEXT:  [[CONVERT_OUT:%.+]] = IE.Convert([[DEQUANT]]) {dstElemType = f32} : tensor<28x512x128xf16> -> tensor<28x512x128xf32>
     // CHECK-NEXT:  return [[CONVERT_OUT]] : tensor<28x512x128xf32>
 }
+

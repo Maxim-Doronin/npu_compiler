@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -177,23 +177,21 @@ def ELF_RelocationObjectInterface : OpInterface<"ElfRelocationObjectInterface"> 
 }
 
 //
-// BinaryOpInterface
+// BinarySizeOpInterface
 //
 
-def ELF_BinaryOpInterface : OpInterface<"BinaryOpInterface"> {
-    let description = "Interface for the ELF binary serialization of operations";
+def ELF_BinarySizeOpInterface : OpInterface<"BinarySizeOpInterface"> {
+    let description = [{
+        Base interface for operations in the ELF section. All operations in the ELF section suppose to have this interface, either directly or indirectly.
+
+        For getBinarySize/getBinarySizeCached, the operation should always override one of these two methods to calculate the size before serialization.
+        For getAlignmentRequirements, the operation should implement this method except the ELF::PadOp, because it is created based on the alignment requirements
+        of the previous operations.
+        For setMemoryOffset/getMemoryOffset, the operation can override the default implementation if it differs from the default one.
+    }];
     let cppNamespace = "vpux::ELF";
 
     let methods = [
-        InterfaceMethod<
-            "Serialize the Op to the BLOB format",
-            "void",
-            "serialize", (ins "elf::writer::BinaryDataSection<uint8_t>&":$binDataSection), [{}],
-            /*defaultImplementation*/ [{
-                VPUX_THROW("Unexpected call to interface implementation.");
-            }]
-        >,
-
         InterfaceMethod<
             // E#136377
             "Get the size in bytes of the serialized form of this object; it maybe not the same as sizeof for non-POD types",
@@ -204,14 +202,6 @@ def ELF_BinaryOpInterface : OpInterface<"BinaryOpInterface"> {
             }]
         >,
 
-        InterfaceMethod<
-            "Serialize the Op to the BLOB format, using a symbol reference map for faster look-up",
-            "void",
-            "serializeCached", (ins "elf::writer::BinaryDataSection<uint8_t>&":$binDataSection, "ELF::SymbolReferenceMap&":$symRefMap), [{}],
-            /*defaultImplementation*/ [{
-                $_op.serialize(binDataSection);
-            }]
-        >,
         InterfaceMethod<
             "Get the size in bytes of the serialized form of this object, using a symbol reference map for faster look-up",
             "size_t",
@@ -235,7 +225,7 @@ def ELF_BinaryOpInterface : OpInterface<"BinaryOpInterface"> {
             "void",
             "setMemoryOffset", (ins "mlir::IntegerAttr":$offset), [{}],
             /*defaultImplementation*/ [{
-                this->getOperation()->setAttr(BinaryOpInterface::elfMemOffsetAttrName(), offset);
+                $_op->setAttr(BinarySizeOpInterface::elfMemOffsetAttrName(), offset);
             }]
         >,
 
@@ -244,9 +234,8 @@ def ELF_BinaryOpInterface : OpInterface<"BinaryOpInterface"> {
             "uint64_t",
             "getMemoryOffset", (ins), [{}],
             /*defaultImplementation*/ [{
-                auto op = this->getOperation();
-                if(op->hasAttr(BinaryOpInterface::elfMemOffsetAttrName())) {
-                    auto attr = op->template getAttrOfType<mlir::IntegerAttr>(BinaryOpInterface::elfMemOffsetAttrName());
+                if($_op->hasAttr(BinarySizeOpInterface::elfMemOffsetAttrName())) {
+                    auto attr = $_op->template getAttrOfType<mlir::IntegerAttr>(BinarySizeOpInterface::elfMemOffsetAttrName());
                     return attr.getUInt();
                 }
                 else {
@@ -261,6 +250,79 @@ def ELF_BinaryOpInterface : OpInterface<"BinaryOpInterface"> {
             return "elfMemOffsetAttrKey";
         }
     }];
+}
+
+//
+// BufferLocation
+//
+
+def ELF_BufferLocationInterface : OpInterface<"BufferLocationInterface"> {
+    let description = [{
+        Return buffer location.
+    }];
+    let cppNamespace = "vpux::ELF";
+
+    let methods = [
+        InterfaceMethod<
+            "Get Op memory location",
+            "vpux::VPURT::BufferSection",
+            "getMemorySection", (ins)
+        >
+    ];
+}
+
+
+//
+// BinaryOpInterface
+//
+
+def ELF_BinaryOpInterface : OpInterface<"BinaryOpInterface", [ELF_BinarySizeOpInterface]> {
+    let description = [{
+        Interface for operations that need to be serialized into ELF binary format.
+
+        This interface inherits from the BinarySizeOpInterface, meaning it will implicitly inherit
+        any base classes defined on the BinarySizeOpInterface.
+
+        During the serialization process, the serializeCached method is called for all operations.
+        The default implementation of serializeCached redirects to the serialize method, so each operation
+        have to choose which method to override.
+
+        Example of declaring the interface for an operation:
+        ```
+        def ExampleOp :
+        ExampleDialect_Op<"ExampleOp",
+            [
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
+            ]
+        > {...}
+        ```
+
+        Even though the BinaryOpInterface inherits from BinarySizeOpInterface, the operation should explicitly
+        declare the BinarySizeOpInterface to specify which methods to override.
+    }];
+
+    let cppNamespace = "vpux::ELF";
+
+    let methods = [
+        InterfaceMethod<
+            "Serialize the Op to the BLOB format",
+            "void",
+            "serialize", (ins "elf::writer::BinaryDataSection<uint8_t>&":$binDataSection), [{}],
+            /*defaultImplementation*/ [{
+                VPUX_THROW("Unexpected call to interface implementation.");
+            }]
+        >,
+
+        InterfaceMethod<
+            "Serialize the Op to the BLOB format, using a symbol reference map for faster look-up",
+            "void",
+            "serializeCached", (ins "elf::writer::BinaryDataSection<uint8_t>&":$binDataSection, "ELF::SymbolReferenceMap&":$symRefMap), [{}],
+            /*defaultImplementation*/ [{
+                $_op.serialize(binDataSection);
+            }]
+        >,
+    ];
 }
 
 //

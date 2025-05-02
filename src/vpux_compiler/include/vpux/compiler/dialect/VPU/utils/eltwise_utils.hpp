@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,8 +19,8 @@ bool isNCEEltwiseSupported(mlir::Operation* op, vpux::NDTypeInterface input1Type
 
 template <class ConcreteOp>
 bool isEltwiseLhsActivation(ConcreteOp op) {
-    const auto lhsType = op.getInput1().getType().template cast<mlir::ShapedType>();
-    const auto outShapeRes = op.getOutput().getType().template cast<mlir::ShapedType>();
+    const auto lhsType = mlir::cast<mlir::ShapedType>(op.getInput1().getType());
+    const auto outShapeRes = mlir::cast<mlir::ShapedType>(op.getOutput().getType());
 
     return (lhsType == outShapeRes);
 }

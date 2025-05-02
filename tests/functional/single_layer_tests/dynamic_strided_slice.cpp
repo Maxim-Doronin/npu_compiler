@@ -1,22 +1,47 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "shared_test_classes/base/ov_subgraph.hpp"
 #include "vpu_ov2_layer_test.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <common/print_test_case_name.hpp>
+#include <openvino/core/type/element_type.hpp>
 #include <pretty_test_arguments.hpp>
 
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include <openvino/opsets/opset3.hpp>
 #include <random>
+#include <vector>
 
-using namespace ov::test;
+namespace ov::test {
 
-namespace {
+PRETTY_PARAM(InputType, ov::element::Type);
 
 using BeginAndInputShape = std::pair<ov::test::InputShape, std::vector<int32_t>>;
-using DynamicStridedSliceTestParams = std::tuple<BeginAndInputShape, ov::element::Type, int64_t>;
+using DynamicStridedSliceTestParams = std::tuple<BeginAndInputShape, InputType, int64_t>;
+
+std::vector<int64_t> generateConst(const ov::Shape& shape) {
+    size_t totalElements = 1;
+    for (size_t dim : shape) {
+        totalElements *= dim;
+    }
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int64_t> dis(0, 100);
+
+    std::vector<int64_t> randomNumbers(totalElements);
+    for (size_t i = 0; i < totalElements; ++i) {
+        randomNumbers[i] = dis(gen);
+    }
+
+    return randomNumbers;
+}
+
+//
+// DynamicStridedSliceLayerTest
+//
 
 class DynamicStridedSliceLayerTest :
         public testing::WithParamInterface<DynamicStridedSliceTestParams>,
@@ -43,23 +68,6 @@ public:
                                                                         targetInputStaticShapes[i], range, startFrom);
             inputs.insert({funcInput.get_node_shared_ptr(), tensor});
         }
-    }
-
-    std::vector<int64_t> generateConst(const ov::Shape& shape) {
-        size_t totalElements = 1;
-        for (size_t dim : shape) {
-            totalElements *= dim;
-        }
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<int64_t> dis(0, 100);
-
-        std::vector<int64_t> randomNumbers(totalElements);
-        for (size_t i = 0; i < totalElements; ++i) {
-            randomNumbers[i] = dis(gen);
-        }
-
-        return randomNumbers;
     }
 
 protected:
@@ -107,7 +115,7 @@ TEST_P(DynamicStridedSliceLayerTest, NPU4000_HW) {
     run(Platform::NPU4000);
 }
 
-const std::vector<ov::element::Type> inputPrecision = {ov::element::i32};
+const std::vector<InputType> inputPrecision = {ov::element::i32};
 const std::vector<int64_t> sliceSize = {150};
 const std::vector<BeginAndInputShape> inShapes = {
         {staticShape(1), {12}},
@@ -120,6 +128,110 @@ INSTANTIATE_TEST_SUITE_P(smoke_DynamicStridedSlice, DynamicStridedSliceLayerTest
                          ::testing::Combine(::testing::ValuesIn(inShapes), ::testing::ValuesIn(inputPrecision),
                                             ::testing::ValuesIn(sliceSize)),
                          DynamicStridedSliceLayerTest::getTestCaseName);
+
+//
+// DynamicStridedSliceDynamicEndsLayerTest
+//
+
+PRETTY_PARAM(Input, ov::test::InputShape);
+PRETTY_PARAM(EndsValues, std::vector<int64_t>);
+using DynamicStridedSliceDynamicEndsParams = std::tuple<Input, EndsValues, InputType>;
+
+class DynamicStridedSliceDynamicEndsLayerTest :
+        public testing::WithParamInterface<DynamicStridedSliceDynamicEndsParams>,
+        public VpuOv2LayerTest {
+public:
+    void generate_inputs(const std::vector<ov::Shape>& staticShapes) override {
+        inputs.clear();
+        const auto& funcInputs = function->inputs();
+
+        auto type = std::get<InputType>(GetParam());
+        auto& dataStaticShape = staticShapes[0];
+        auto dataTensor = utils::create_and_fill_tensor(type, dataStaticShape);
+
+        inputs.insert({funcInputs[0].get_node_shared_ptr(), dataTensor});
+
+        auto endsValues = static_cast<std::vector<int64_t>>(std::get<EndsValues>(GetParam()));
+        // Clamp ends values by data static shape
+        for (auto i = 0; i < static_cast<int64_t>(endsValues.size()); i++) {
+            endsValues[i] = std::min(endsValues[i], static_cast<int64_t>(dataStaticShape[i]));
+        }
+
+        auto endsSize = endsValues.size();
+        auto endsTensor = ov::Tensor(ov::element::i64, ov::Shape{endsSize});
+        std::copy_n(endsValues.begin(), endsSize, endsTensor.data<int64_t>());
+
+        inputs.insert({funcInputs[1].get_node_shared_ptr(), endsTensor});
+    }
+
+protected:
+    void SetUp() override {
+        auto dataTestShape = ov::test::InputShape{};
+        auto endsValues = std::vector<int64_t>{};
+        auto type = ov::element::Type{};
+        std::tie(dataTestShape, endsValues, type) = this->GetParam();
+
+        auto endsShape = ov::Shape{endsValues.size()};
+        init_input_shapes({dataTestShape, staticShape(endsShape)});
+
+        VPUX_THROW_UNLESS(inputDynamicShapes.size() == 2, "Expected to have 2 input shapes, got {0}",
+                          inputDynamicShapes.size());
+
+        auto inputParams = ov::ParameterVector{
+                std::make_shared<ov::op::v0::Parameter>(type, inputDynamicShapes.at(0)),
+                std::make_shared<ov::op::v0::Parameter>(ov::element::i64, inputDynamicShapes.at(1))};
+
+        inputParams[0]->set_friendly_name("data");
+        inputParams[1]->set_friendly_name("ends");
+
+        const auto dataShape = dataTestShape.first.get_max_shape();
+        const auto dataRank = dataShape.size();
+        VPUX_THROW_UNLESS(dataRank == endsValues.size(),
+                          "Input shape rank '{0}' and the size of 'ends' input '{1}' must be equal", dataRank,
+                          endsValues.size());
+
+        const auto begins = std::vector<int64_t>(dataRank, 0);
+        const auto strides = std::vector<int64_t>(dataRank, 1);
+        const auto attrShape = ov::Shape{dataRank};
+
+        auto beginsParam = ov::op::v0::Constant::create(ov::element::i64, attrShape, begins);
+        auto stridesParam = ov::op::v0::Constant::create(ov::element::i64, attrShape, strides);
+
+        auto stridedSlice = std::make_shared<ov::op::v1::StridedSlice>(
+                inputParams[0], beginsParam, inputParams[1], stridesParam, std::vector<std::int64_t>{},
+                std::vector<std::int64_t>{}, std::vector<std::int64_t>{}, std::vector<std::int64_t>{});
+
+        function = std::make_shared<ov::Model>(stridedSlice, inputParams, "DynamicStridedSlice");
+    }
+};
+
+TEST_P(DynamicStridedSliceDynamicEndsLayerTest, NPU3720_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU3720);
+}
+
+TEST_P(DynamicStridedSliceDynamicEndsLayerTest, NPU4000_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
+// dynamic shape inputs will cause the test to fail because a strided slice layer
+// works with strides of the input buffer. But the input data is packed and does
+// not respect the strides of an upper-bounded buffer.
+// Need to have a full support of strided data for dynamic tensors by the NPU plugin.
+auto in = std::vector<Input>{staticShape(1, 2, 35, 512)};
+auto ends = std::vector<EndsValues>{{1, 2, 35, 512}, {1, 2, 10, 512}, {1, 2, 1, 512}, {1, 1, 10, 512}};
+
+INSTANTIATE_TEST_SUITE_P(smoke_DynamicStridedSlice_DynamicEnds, DynamicStridedSliceDynamicEndsLayerTest,
+                         ::testing::Combine(::testing::ValuesIn(in), ::testing::ValuesIn(ends),
+                                            ::testing::Values(ov::element::i32)),
+                         PrintTestCaseName());
+
+//
+// StridedSliceWithDynamicInputLayerTest
+//
 
 class StridedSliceWithDynamicInputLayerTest : public VpuOv2LayerTest {
 public:
@@ -150,4 +262,11 @@ TEST_F(StridedSliceWithDynamicInputLayerTest, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
-}  // namespace
+
+TEST_F(StridedSliceWithDynamicInputLayerTest, NPU4000_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
+}  // namespace ov::test

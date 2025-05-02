@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,6 +18,7 @@ namespace vpux::ELF::arch40xx {
 using namespace vpux;
 
 namespace {
+constexpr auto VPUX_SHAVE_KERNEL_PREFETCH_PAD = static_cast<size_t>((128_Byte).count());
 
 class HandleAlignmentRequirementsPass :
         public ELF::arch40xx::impl::HandleAlignmentRequirementsBase<HandleAlignmentRequirementsPass> {
@@ -50,13 +51,13 @@ void HandleAlignmentRequirementsPass::safeRunOnFunc() {
         if (block->empty()) {
             continue;
         }
-        const auto binaryOps = block->getOps<ELF::BinaryOpInterface>();
-        if (binaryOps.empty()) {
+        const auto binarySizeOps = block->getOps<ELF::BinarySizeOpInterface>();
+        if (binarySizeOps.empty()) {
             continue;
         }
 
         // Update the section alignment information based on the first binary op
-        auto firstBodyOp = *binaryOps.begin();
+        auto firstBodyOp = *binarySizeOps.begin();
         const auto alignmentRequirement = firstBodyOp.getAlignmentRequirements(arch);
         // Only enforce LCM alignment in case of sections that get allocated
         auto secAlignReq = ELF::bitEnumContainsAll(section.getSectionFlags(), ELF::SectionFlagsAttr::SHF_ALLOC)
@@ -65,20 +66,29 @@ void HandleAlignmentRequirementsPass::safeRunOnFunc() {
         auto alignmentAttr = mlir::IntegerAttr::get(u64Type, mlir::APInt(64, secAlignReq, false));
         section.updateSectionAddressAlignment(alignmentAttr);
 
+        auto requiresEndPadding =
+                ELF::bitEnumContainsAll(section.getSectionFlags(), ELF::SectionFlagsAttr::VPU_SHF_PROC_SHAVE);
+
         // Add inner section padding ops
         auto builder = mlir::OpBuilder::atBlockEnd(block);
         size_t offsetTracker = 0;
-        for (auto binaryOp : binaryOps) {
-            const auto binaryOperation = binaryOp.getOperation();
-            const auto alignmentRequirement = binaryOp.getAlignmentRequirements(arch);
+        for (auto binarySizeOp : binarySizeOps) {
+            const auto binarySizeOperation = binarySizeOp.getOperation();
+            const auto alignmentRequirement = binarySizeOp.getAlignmentRequirements(arch);
             size_t paddingRequired = offsetTracker % alignmentRequirement;
             if (paddingRequired) {
-                builder.setInsertionPoint(binaryOperation);
+                builder.setInsertionPoint(binarySizeOperation);
                 auto paddingSize = alignmentRequirement - paddingRequired;
                 builder.template create<ELF::PadOp>(builder.getUnknownLoc(), paddingSize, nullptr);
                 offsetTracker += paddingSize;
             }
-            offsetTracker += binaryOp.getBinarySizeCached(symRefMap, arch);
+            offsetTracker += binarySizeOp.getBinarySizeCached(symRefMap, arch);
+        }
+
+        if (requiresEndPadding && section.getSectionType() != ELF::SectionTypeAttr::SHT_NOBITS) {
+            builder.setInsertionPointToEnd(block);
+            builder.template create<ELF::PadOp>(builder.getUnknownLoc(), VPUX_SHAVE_KERNEL_PREFETCH_PAD, nullptr);
+            offsetTracker += VPUX_SHAVE_KERNEL_PREFETCH_PAD;
         }
     }
 }

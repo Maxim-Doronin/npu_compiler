@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 
 // CHECK-LABEL: @ConcatsRepeatingInputBranches
 module @ConcatsRepeatingInputBranches {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -63,7 +63,7 @@ module @ConcatsRepeatingInputBranches {
 
 // CHECK-LABEL: @DoNotOutlineConcatsSameRepeatingInputBranch
 module @DoNotOutlineConcatsSameRepeatingInputBranch {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -96,7 +96,7 @@ module @DoNotOutlineConcatsSameRepeatingInputBranch {
 
 // CHECK-LABEL: @DoNotOutlineConcatsWithoutRepeatingInputBranches
 module @DoNotOutlineConcatsWithoutRepeatingInputBranches {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -136,7 +136,7 @@ module @DoNotOutlineConcatsWithoutRepeatingInputBranches {
 // Outlining the concat would result in main containing a single call operation followed by return
 
 module @DoNotOutlineSingleConcat {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -165,7 +165,7 @@ module @DoNotOutlineSingleConcat {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 module @OutlineConcatsWithConstants {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x32x32xf16>
     } outputsInfo : {
@@ -277,7 +277,7 @@ module @OutlineConcatsWithConstants {
 //                | | |
 //               Concat
 module @ComplexPattern {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x320x64x64xf16>
     } outputsInfo : {
@@ -291,9 +291,9 @@ module @ComplexPattern {
         %weights_table1 = const.Declare tensor<64x1x1x4xsi32>   = dense<2> : tensor<64x1x1x4xsi32>
         %weights_table2 = const.Declare tensor<4096x1x1x4xsi32> = dense<2> : tensor<4096x1x1x4xsi32>
 
-        %branch1_conv1 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} -> tensor<1x64x64x64xf16, {order = #NHWC}>
+        %branch1_conv1 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} : tensor<1x320x64x64xf16, {order = #NHWC}>, tensor<64x320x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x64x64xf16, {order = #NHWC}>
         %branch1_permcast1 = VPU.PermuteCast(%branch1_conv1) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x64x64x64xf16, {order = #NHWC}> -> tensor<1x64x64x64xf16>
-        %branch1_conv2 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [0.12656249105930328], fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} -> tensor<1x64x64x64xf16, {order = #NHWC}>
+        %branch1_conv2 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [0.12656249105930328], fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} : tensor<1x320x64x64xf16, {order = #NHWC}>, tensor<64x320x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x64x64xf16, {order = #NHWC}>
         %branch1_reshape1 = VPU.AffineReshape(%branch1_conv2) {dim_mapping = [[0, 1], [2], [3], [3]], shape_value = [1, 1, 64, 4096]} : tensor<1x64x64x64xf16, {order = #NHWC}> -> tensor<1x1x64x4096xf16, {order = #NCWH}>
         %branch1_permcast2 = VPU.PermuteCast(%branch1_reshape1) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x1x64x4096xf16, {order = #NCWH}> -> tensor<1x1x4096x64xf16>
         %branch1_reshape2 = VPU.AffineReshape(%branch1_permcast1) {dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [4096, 64, 1, 1]} : tensor<1x64x64x64xf16> -> tensor<4096x64x1x1xf16>
@@ -301,16 +301,16 @@ module @ComplexPattern {
         %branch1_permcast3 = VPU.PermuteCast(%branch1_reshape2) {dst_order = #NHWC, mem_perm = #map} : tensor<4096x64x1x1xf16> -> tensor<1x64x4096x1xf16, {order = #NHWC}>
         %branch1_permcast4 = VPU.PermuteCast(%branch1_reshape3) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<4096x64x1x1xf16> -> tensor<4096x64x1x1xf16, {order = #NHWC}>
         %branch1_reshape4 = VPU.AffineReshape(%branch1_permcast3) {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 64, 1024, 4]} : tensor<1x64x4096x1xf16, {order = #NHWC}> -> tensor<1x64x1024x4xf16, {order = #NHWC}>
-        %branch1_conv3 = VPU.NCE.Convolution(%branch1_reshape4, %branch1_permcast4, %weights_table2) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [4096, 64, 1, 1], strides = [1, 1]} -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
+        %branch1_conv3 = VPU.NCE.Convolution(%branch1_reshape4, %branch1_permcast4, %weights_table2) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [4096, 64, 1, 1], strides = [1, 1]} : tensor<1x64x1024x4xf16, {order = #NHWC}>, tensor<4096x64x1x1xf16, {order = #NHWC}>, tensor<4096x1x1x4xsi32> -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
         %branch1_softmax = VPU.SoftMax(%branch1_conv3) {axisInd = 1 : i64} : tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
-        %branch1_conv4 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} -> tensor<1x64x64x64xf16>
+        %branch1_conv4 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} : tensor<1x320x64x64xf16, {order = #NHWC}>, tensor<64x320x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x64x64xf16>
         %branch1_reshape5 = VPU.AffineReshape(%branch1_conv4) {dim_mapping = [[0], [0], [1], [1, 2, 3]], shape_value = [64, 4096, 1, 1]} : tensor<1x64x64x64xf16> -> tensor<64x4096x1x1xf16>
         %branch1_permcast5 = VPU.PermuteCast(%branch1_reshape5) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<64x4096x1x1xf16> -> tensor<64x4096x1x1xf16, {order = #NHWC}>
-        %branch1_conv5 = VPU.NCE.Convolution(%branch1_softmax, %branch1_permcast5, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 4096, 1, 1], strides = [1, 1]} -> tensor<1x64x1024x4xf16, {order = #NHWC}>
+        %branch1_conv5 = VPU.NCE.Convolution(%branch1_softmax, %branch1_permcast5, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 4096, 1, 1], strides = [1, 1]} : tensor<1x4096x1024x4xf16, {order = #NHWC}>, tensor<64x4096x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x1024x4xf16, {order = #NHWC}>
 
-        %branch2_conv1 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} -> tensor<1x64x64x64xf16, {order = #NHWC}>
+        %branch2_conv1 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} : tensor<1x320x64x64xf16, {order = #NHWC}>, tensor<64x320x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x64x64xf16, {order = #NHWC}>
         %branch2_permcast1 = VPU.PermuteCast(%branch2_conv1) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x64x64x64xf16, {order = #NHWC}> -> tensor<1x64x64x64xf16>
-        %branch2_conv2 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [0.12656249105930328], fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} -> tensor<1x64x64x64xf16, {order = #NHWC}>
+        %branch2_conv2 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [0.12656249105930328], fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} : tensor<1x320x64x64xf16, {order = #NHWC}>, tensor<64x320x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x64x64xf16, {order = #NHWC}>
         %branch2_reshape1 = VPU.AffineReshape(%branch2_conv2) {dim_mapping = [[0, 1], [2], [3], [3]], shape_value = [1, 1, 64, 4096]} : tensor<1x64x64x64xf16, {order = #NHWC}> -> tensor<1x1x64x4096xf16, {order = #NCWH}>
         %branch2_permcast2 = VPU.PermuteCast(%branch2_reshape1) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x1x64x4096xf16, {order = #NCWH}> -> tensor<1x1x4096x64xf16>
         %branch2_reshape2 = VPU.AffineReshape(%branch2_permcast1) {dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [4096, 64, 1, 1]} : tensor<1x64x64x64xf16> -> tensor<4096x64x1x1xf16>
@@ -318,12 +318,12 @@ module @ComplexPattern {
         %branch2_permcast3 = VPU.PermuteCast(%branch2_reshape2) {dst_order = #NHWC, mem_perm = #map} : tensor<4096x64x1x1xf16> -> tensor<1x64x4096x1xf16, {order = #NHWC}>
         %branch2_permcast4 = VPU.PermuteCast(%branch2_reshape3) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<4096x64x1x1xf16> -> tensor<4096x64x1x1xf16, {order = #NHWC}>
         %branch2_reshape4 = VPU.AffineReshape(%branch2_permcast3) {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 64, 1024, 4]} : tensor<1x64x4096x1xf16, {order = #NHWC}> -> tensor<1x64x1024x4xf16, {order = #NHWC}>
-        %branch2_conv3 = VPU.NCE.Convolution(%branch2_reshape4, %branch2_permcast4, %weights_table2) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [4096, 64, 1, 1], strides = [1, 1]} -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
+        %branch2_conv3 = VPU.NCE.Convolution(%branch2_reshape4, %branch2_permcast4, %weights_table2) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [4096, 64, 1, 1], strides = [1, 1]} : tensor<1x64x1024x4xf16, {order = #NHWC}>, tensor<4096x64x1x1xf16, {order = #NHWC}>, tensor<4096x1x1x4xsi32> -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
         %branch2_softmax = VPU.SoftMax(%branch2_conv3) {axisInd = 1 : i64} : tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
-        %branch2_conv4 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} -> tensor<1x64x64x64xf16>
+        %branch2_conv4 = VPU.NCE.Convolution(%input_softmax, %weights, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 320, 1, 1], strides = [1, 1]} : tensor<1x320x64x64xf16, {order = #NHWC}>, tensor<64x320x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x64x64xf16>
         %branch2_reshape5 = VPU.AffineReshape(%branch2_conv4) {dim_mapping = [[0], [0], [1], [1, 2, 3]], shape_value = [64, 4096, 1, 1]} : tensor<1x64x64x64xf16> -> tensor<64x4096x1x1xf16>
         %branch2_permcast5 = VPU.PermuteCast(%branch2_reshape5) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<64x4096x1x1xf16> -> tensor<64x4096x1x1xf16, {order = #NHWC}>
-        %branch2_conv5 = VPU.NCE.Convolution(%branch2_softmax, %branch2_permcast5, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 4096, 1, 1], strides = [1, 1]} -> tensor<1x64x1024x4xf16, {order = #NHWC}>
+        %branch2_conv5 = VPU.NCE.Convolution(%branch2_softmax, %branch2_permcast5, %weights_table1) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [64, 4096, 1, 1], strides = [1, 1]} : tensor<1x4096x1024x4xf16, {order = #NHWC}>, tensor<64x4096x1x1xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x1024x4xf16, {order = #NHWC}>
 
         %concat = VPU.Concat(%branch1_conv5, %branch2_conv5) {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]} : tensor<1x64x1024x4xf16, {order = #NHWC}>, tensor<1x64x1024x4xf16, {order = #NHWC}> -> tensor<1x128x1024x4xf16, {order = #NHWC}>
 

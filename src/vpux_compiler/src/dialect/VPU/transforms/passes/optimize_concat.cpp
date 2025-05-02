@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -145,21 +147,13 @@ mlir::LogicalResult EliminateSameSiblingConcat::matchAndRewrite(VPU::ConcatOp or
                                                                 mlir::PatternRewriter& rewriter) const {
     _log.trace("Got ConcatOp at loc '{0}'", origOp.getLoc());
 
-    auto getSplatValue = [](Const::DeclareOp constOp) -> std::optional<int64_t> {
-        auto content = constOp.getContent();
-        if (!content.isSplat()) {
-            return std::nullopt;
-        }
-        return content.getSplatValue<int64_t>();
-    };
-
     SmallVector<std::pair<int64_t, mlir::Value>> concatInputs;
     int64_t numActInput = 0;
     for (const auto& p : origOp.getInputs() | indexed) {
         const auto indexInputPair = std::make_pair(p.index(), p.value());
         const auto inputOp = p.value().getDefiningOp();
         if (auto constOp = mlir::dyn_cast_or_null<Const::DeclareOp>(inputOp)) {
-            if (!getSplatValue(constOp).has_value()) {
+            if (!constOp.getContentAttr().isSplat()) {
                 _log.trace("Constant input is not splat value");
                 return mlir::failure();
             }
@@ -205,12 +199,12 @@ mlir::LogicalResult EliminateSameSiblingConcat::matchAndRewrite(VPU::ConcatOp or
                 continue;
             }
 
-            auto splatValue = getSplatValue(userInputOp);
-            if (!splatValue.has_value()) {
+            auto splatValue = Const::getSplatValue<int64_t>(userInputOp);
+            if (mlir::failed(splatValue)) {
                 return false;
             }
 
-            if (splatValue.value() != getSplatValue(origInputOp).value()) {
+            if (splatValue.value() != Const::getSplatValue<int64_t>(origInputOp).value()) {
                 _log.trace("Splat value is not the same as sibling op");
                 return false;
             }

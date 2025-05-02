@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -334,7 +334,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [256, 32, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x256x64x48xf16, {order = #NHWC}>
+        } : tensor<1x32x64x48xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x64x48xf16, {order = #NHWC}>
 
         return %0 : tensor<1x256x64x48xf16, {order = #NHWC}>
 
@@ -378,7 +378,7 @@ module @executors {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [6320, 128, 1, 1], strides = [1, 1]
-        } -> tensor<1x6320x256x4xf16, {order = #NHWC}>
+        } : tensor<1x128x256x4xf16, {order = #NHWC}>, tensor<6320x128x1x1x!qElemType, {order = #NHWC}>, tensor<6320x1x1x4xsi32, {order = #NCHW}> -> tensor<1x6320x256x4xf16, {order = #NHWC}>
 
         return %0 : tensor<1x6320x256x4xf16, {order = #NHWC}>
 
@@ -425,7 +425,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [8016, 1024, 1, 1],
             strides = [1, 1]
-        } -> tensor<1x8016x4x4xf16, {order = #NHWC}>
+        } : tensor<1x1024x4x4xf16, {order = #NHWC}>, tensor<8016x1024x1x1xf16, {order = #NHWC}>, tensor<8016x1x1x4xsi32> -> tensor<1x8016x4x4xf16, {order = #NHWC}>
 
         return %0 : tensor<1x8016x4x4xf16, {order = #NHWC}>
 
@@ -501,7 +501,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [128, 32, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x128x100x100xf16, {order = #NHWC}>
+        } : tensor<1x32x100x100xf16, {order = #NHWC}>, tensor<128x32x3x3xf16, {order = #NHWC}>, tensor<128x1x1x4xsi32> -> tensor<1x128x100x100xf16, {order = #NHWC}>
 
         return %0 : tensor<1x128x100x100xf16, {order = #NHWC}>
 
@@ -546,7 +546,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [32, 16, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x32x210x512xf16, {order = #NHWC}>
+        } : tensor<1x16x210x512xf16, {order = #NHWC}>, tensor<32x16x3x3xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x210x512xf16, {order = #NHWC}>
 
         return %0 : tensor<1x32x210x512xf16, {order = #NHWC}>
 
@@ -589,7 +589,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [240, 32, 7, 7],
             strides = [1, 1]
-        } -> tensor<1x240x10x10xf16, {order = #NHWC}>
+        } : tensor<1x32x10x10xf16, {order = #NHWC}>, tensor<240x32x7x7xf16, {order = #NHWC}>, tensor<240x1x1x4xsi32> -> tensor<1x240x10x10xf16, {order = #NHWC}>
 
         return %0 : tensor<1x240x10x10xf16, {order = #NHWC}>
 
@@ -634,7 +634,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [768, 32, 7, 7],
             strides = [1, 1]
-        } -> tensor<1x768x30x30xf16, {order = #NHWC}>
+        } : tensor<1x32x30x30xf16, {order = #NHWC}>, tensor<768x32x7x7xf16, {order = #NHWC}>, tensor<768x1x1x4xsi32> -> tensor<1x768x30x30xf16, {order = #NHWC}>
 
         return %0 : tensor<1x768x30x30xf16, {order = #NHWC}>
 
@@ -681,7 +681,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [512, 256, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x512x14x14xf16, {order = #NHWC}>
+        } : tensor<1x256x14x14xf16, {order = #NHWC}>, tensor<512x256x3x3xf16, {order = #NHWC}>, tensor<512x1x1x4xsi32> -> tensor<1x512x14x14xf16, {order = #NHWC}>
 
         return %0 : tensor<1x512x14x14xf16, {order = #NHWC}>
 
@@ -758,7 +758,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [64, 32, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x64x70x50xf16, {order = #NHWC}>
+        } : tensor<1x32x70x50xf16, {order = #NHWC}>, tensor<64x32x3x3xf16, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x70x50xf16, {order = #NHWC}>
 
         %1 = VPU.NCE.Eltwise(%0, %arg1) {
             ppe = #VPU.PPEStub<>,
@@ -783,10 +783,11 @@ module @executors {
     }
 
 }
-    // -----
 
-    #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-    #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
@@ -808,7 +809,7 @@ module @executors {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [160, 32, 3, 3],
             strides = [1, 1]
-        } -> tensor<1x160x80x60xf16, {order = #NHWC}>
+        } : tensor<1x32x80x60xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<160x32x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<160x1x1x384xi1>, is_weights>, tensor<160x1x1x4xsi32, {order = #NCHW}> -> tensor<1x160x80x60xf16, {order = #NHWC}>
 
         return %0 : tensor<1x160x80x60xf16, {order = #NHWC}>
 
@@ -1632,12 +1633,12 @@ module @executors {
             pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [512, 512, 3, 3], strides = [2, 2]}
-                -> tensor<1x512x7x7x!qElemType, {order = #NHWC}>
+                : tensor<1x512x14x14x!qElemType, {order = #NHWC}>, tensor<512x512x3x3x!qElemType, {order = #NHWC}>, tensor<512x1x1x4xsi32, {order = #NHWC}> -> tensor<1x512x7x7x!qElemType, {order = #NHWC}>
         %1 = VPU.NCE.Convolution(%0, %weights2, %weights_table2) {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [2048, 512, 1, 1], strides = [1, 1]}
-                -> tensor<1x2048x7x7x!qElemType, {order = #NHWC}>
+                : tensor<1x512x7x7x!qElemType, {order = #NHWC}>, tensor<2048x512x1x1x!qElemType, {order = #NHWC}>, tensor<2048x1x1x4xsi32, {order = #NHWC}> -> tensor<1x2048x7x7x!qElemType, {order = #NHWC}>
         return %1 : tensor<1x2048x7x7x!qElemType, {order = #NHWC}>
 
         // Prefetching mode is triggered for the child conv
@@ -1679,13 +1680,13 @@ module @executors {
             pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [512, 512, 3, 3], strides = [2, 2]}
-                -> tensor<1x512x7x7x!qElemType, {order = #NHWC}>
+                : tensor<1x512x14x14x!qElemType, {order = #NHWC}>, tensor<512x512x3x3x!qElemType, {order = #NHWC}>, tensor<512x1x1x4xsi32, {order = #NHWC}> -> tensor<1x512x7x7x!qElemType, {order = #NHWC}>
         %1 = VPU.NCE.Convolution(%0, %weights2, %weights_table2) {
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [2048, 512, 1, 1], strides = [1, 1]}
-                -> tensor<1x2048x7x7x!qElemType, {order = #NHWC}>
+                : tensor<1x512x7x7x!qElemType, {order = #NHWC}>, tensor<2048x512x1x1x!qElemType, {order = #NHWC}>, tensor<2048x1x1x4xsi32, {order = #NHWC}> -> tensor<1x2048x7x7x!qElemType, {order = #NHWC}>
         return %1 : tensor<1x2048x7x7x!qElemType, {order = #NHWC}>
 
         // Prefetching mode is triggered for the child conv
@@ -1787,4 +1788,50 @@ module @executors {
     // CHECK:         VPU.NCE.MatMul
     // CHECK-SAME:    tilingStrategy = [8, 1, 1, 1, 1]
   }
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+    !quantileFloatType = !QuantileFloat.quantileFloat<4, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+    !qElemType = !quant.quantile<u4:f16:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}:1.000000e+00>
+
+module @executors {
+    IE.TileResource 4 of @NCE at 1.700000e+03 MHz {
+        IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
+        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    }
+
+    // CHECK-LABEL: func.func @SplitConvWithLargeFilter
+    func.func @SplitConvWithLargeFilter(%arg0: tensor<1x3840x1x1xf16, {order = #NHWC}>, %arg1: tensor<1536x3840x!quantileFloatType>) -> tensor<1x1536x1x1xf16, {order = #NHWC}> {
+        %cst = const.Declare tensor<1536x1x1x4xsi32> = dense<0> : tensor<1536x1x1x4xsi32>
+        %0 = VPU.QuantizeCast(%arg1) {dstElemType = !qElemType} : tensor<1536x3840x!quantileFloatType> -> tensor<1536x3840x!qElemType>
+        %1 = VPU.AffineReshape(%0) {dim_mapping = [[0], [1, 2, 3]], shape_value = [1536, 3840, 1, 1]} : tensor<1536x3840x!qElemType> -> tensor<1536x3840x1x1x!qElemType>
+        %2 = VPU.PermuteCast(%1) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1536x3840x1x1x!qElemType> -> tensor<1536x3840x1x1x!qElemType, {order = #NHWC}>
+        %3 = VPU.NCE.Convolution(%arg0, %2, %cst) {
+            mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
+            multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+            pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+            ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
+            rawFilterShape = [1536, 3840, 1, 1],
+            strides = [1, 1]
+        } : tensor<1x3840x1x1xf16, {order = #NHWC}>, tensor<1536x3840x1x1x!qElemType, {order = #NHWC}>, tensor<1536x1x1x4xsi32> -> tensor<1x1536x1x1xf16, {order = #NHWC}>
+
+        return %3 : tensor<1x1536x1x1xf16, {order = #NHWC}>
+
+        // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.Convolution
+        // CHECK-SAME:      mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
+        // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+        // CHECK-SAME:      pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        // CHECK-SAME:      ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
+        // CHECK-SAME:      rawFilterShape = [1536, 3840, 1, 1],
+        // CHECK-SAME:      strides = [1, 1],
+        // CHECK-SAME:      tilingStrategy = [1, 2, 1, 1]
+        // CHECK-SAME:  }
+        // CHECK-SAME:  -> tensor<1x1536x1x1xf16, {order = #NHWC}>
+
+        // CHECK:       return [[OUTPUT]] : tensor<1x1536x1x1xf16, {order = #NHWC}>
+    }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -56,7 +56,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Weights) {
     const auto sparseBufferType =
             VPUIP::SparseBufferType::get(data, sparsityMap, nullptr, isWeights, sparsityCompression);
 
-    const auto ndType = sparseBufferType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(sparseBufferType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(shape));
@@ -66,7 +66,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Weights) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), std::accumulate(numElems.begin(), numElems.end(), static_cast<int64_t>(0)));
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), order);
 
@@ -93,64 +93,68 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Weights) {
     const auto changedShape2 = ndType.changeTypeComponents(TypeComponents().setShape(ShapeRef(newShape)));
     EXPECT_EQ(changedShape2.getShape(), ShapeRef(newShape));
 
-    const auto sparseChangedShape = changedShape.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedShape = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShape);
     ASSERT_TRUE(sparseChangedShape != nullptr);
-    EXPECT_EQ(sparseChangedShape.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newShape));
-    EXPECT_EQ(sparseChangedShape.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newSMShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getData()).getShape(), ShapeRef(newShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getSparsityMap()).getShape(), ShapeRef(newSMShape));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
-    const auto sparseChangedElemType = changedElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
+    const auto sparseChangedElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedElemType);
     ASSERT_TRUE(sparseChangedElemType != nullptr);
-    EXPECT_TRUE(sparseChangedElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float32Type>());
-    EXPECT_TRUE(
-            sparseChangedElemType.getSparsityMap().cast<NDTypeInterface>().getElementType().isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getSparsityMap()).getElementType()));
 
     const SmallVector<int64_t> newShape2({32, 16, 5, 5});
     const SmallVector<int64_t> newSMShape2({32, 1, 1, 512});
     const auto changedShapeElemType = ndType.changeShapeElemType(ShapeRef(newShape2), mlir::Float64Type::get(&ctx));
     EXPECT_EQ(changedShapeElemType.getShape(), ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::Float64Type>());
-    const auto sparseChangedShapeElemType = changedShapeElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(changedShapeElemType.getElementType()));
+    const auto sparseChangedShapeElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShapeElemType);
     ASSERT_TRUE(sparseChangedShapeElemType != nullptr);
-    EXPECT_EQ(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newShape2));
-    EXPECT_EQ(sparseChangedShapeElemType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newSMShape2));
-    EXPECT_TRUE(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float64Type>());
-    EXPECT_TRUE(sparseChangedShapeElemType.getSparsityMap()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getShape(), ShapeRef(newShape2));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getShape(),
+              ShapeRef(newSMShape2));
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getElementType()));
 
     const auto dimsOrder = DimsOrder::NHWC;
     const auto changedDimsOrder = ndType.changeDimsOrder(dimsOrder);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), dimsOrder);
-    const auto sparseChangedDimsOrder = changedDimsOrder.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedDimsOrder = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedDimsOrder);
     ASSERT_TRUE(sparseChangedDimsOrder != nullptr);
-    EXPECT_EQ(sparseChangedDimsOrder.getData().cast<NDTypeInterface>().getDimsOrder(), dimsOrder);
-    EXPECT_EQ(sparseChangedDimsOrder.getSparsityMap().cast<NDTypeInterface>().getDimsOrder(), sparsityMapOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getData()).getDimsOrder(), dimsOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getSparsityMap()).getDimsOrder(),
+              sparsityMapOrder);
 
     auto changedMemSpace = ndType.changeMemSpace(IndexedSymbolAttr::get(&ctx, CMX_NAME));
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    auto sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    auto sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
 
     changedMemSpace = ndType.changeMemSpace(VPU::MemoryKind::CMX_NN);
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
 
     const SmallVector<Bit> newStrides({4608_Bit, 144_Bit, 48_Bit, 16_Bit});
     const SmallVector<Bit> sparsityMapStrides({256_Bit, 256_Bit, 256_Bit, 1_Bit});
     const auto changedStrides = ndType.changeStrides(StridesRef(newStrides));
     EXPECT_EQ(changedStrides.getStrides(), StridesRef(newStrides));
-    const auto sparseChangedStrides = changedStrides.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedStrides = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedStrides);
     ASSERT_TRUE(sparseChangedStrides != nullptr);
-    EXPECT_EQ(sparseChangedStrides.getData().cast<NDTypeInterface>().getStrides(), StridesRef(newStrides));
-    EXPECT_EQ(sparseChangedStrides.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getData()).getStrides(), StridesRef(newStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getSparsityMap()).getStrides(),
               StridesRef(sparsityMapStrides));
 
     const SmallVector<int64_t> tileOffsets({0, 8, 0, 0});
@@ -160,24 +164,26 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Weights) {
     const SmallVector<Bit> smTileStrides({128_Bit, 128_Bit, 128_Bit, 1_Bit});
     const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
-    const auto sparseTiledType = tiledType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseTiledType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(tiledType);
     ASSERT_TRUE(sparseTiledType != nullptr);
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getStrides(), StridesRef(tileStrides));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(smTileShape));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getStrides(), StridesRef(smTileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getStrides(), StridesRef(tileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getShape(), ShapeRef(smTileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getStrides(),
+              StridesRef(smTileStrides));
     auto tiledNumElems = sparseTiledType.getSparsityCompression().getNumElems().getValues<int64_t>();
     EXPECT_EQ(tiledNumElems.size(), tileShape[compressionAxis]);
 
     const SmallVector<int64_t> tileElemStrides({1, 1, 1, 1});
     const auto viewTile = ndType.extractViewTile(ShapeRef(tileOffsets), ShapeRef(tileShape), ShapeRef(tileElemStrides));
     EXPECT_EQ(viewTile.getShape(), ShapeRef(tileShape));
-    const auto sparseViewTile = viewTile.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseViewTile = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(viewTile);
     ASSERT_TRUE(sparseViewTile != nullptr);
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getStrides(), StridesRef(strides));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(smTileShape));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getStrides(), StridesRef(smTileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getStrides(), StridesRef(strides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getShape(), ShapeRef(smTileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getStrides(),
+              StridesRef(smTileStrides));
 
     EXPECT_EQ(ndType.eraseTiledInfo(), ndType);
 
@@ -187,10 +193,10 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Weights) {
     const SmallVector<int64_t> paddedSMShape({64, 1, 1, 512});
     const auto paddedType = ndType.pad(ShapeRef(padBefore), ShapeRef(padAfter));
     EXPECT_EQ(paddedType.getShape(), ShapeRef(paddedShape));
-    const auto sparsePaddedType = paddedType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparsePaddedType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(paddedType);
     ASSERT_TRUE(sparsePaddedType != nullptr);
-    EXPECT_EQ(sparsePaddedType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(paddedShape));
-    EXPECT_EQ(sparsePaddedType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(paddedSMShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getData()).getShape(), ShapeRef(paddedShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getSparsityMap()).getShape(), ShapeRef(paddedSMShape));
 }
 
 TEST_F(MLIR_NDTypeInterface, SparseBufferType_Activation) {
@@ -208,7 +214,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Activation) {
             mlir::MemRefType::get(seTableShape.raw(), mlir::IntegerType::get(&ctx, 32), layout, memSpace);
     const auto sparseBufferType = VPUIP::SparseBufferType::get(data, sparsityMap, storageElementTable);
 
-    const auto ndType = sparseBufferType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(sparseBufferType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(shape));
@@ -218,7 +224,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Activation) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 32 * 32);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), order);
 
@@ -240,71 +246,75 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Activation) {
     const auto changedShape2 = ndType.changeTypeComponents(TypeComponents().setShape(ShapeRef(newShape)));
     EXPECT_EQ(changedShape2.getShape(), ShapeRef(newShape));
 
-    const auto sparseChangedShape = changedShape.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedShape = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShape);
     ASSERT_TRUE(sparseChangedShape != nullptr);
-    EXPECT_EQ(sparseChangedShape.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newShape));
-    EXPECT_EQ(sparseChangedShape.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newShape));
-    EXPECT_EQ(sparseChangedShape.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getData()).getShape(), ShapeRef(newShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getSparsityMap()).getShape(), ShapeRef(newShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getStorageElementTable()).getShape(),
               ShapeRef(newSETableShape));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
-    const auto sparseChangedElemType = changedElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
+    const auto sparseChangedElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedElemType);
     ASSERT_TRUE(sparseChangedElemType != nullptr);
-    EXPECT_TRUE(sparseChangedElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float32Type>());
-    EXPECT_TRUE(
-            sparseChangedElemType.getSparsityMap().cast<NDTypeInterface>().getElementType().isa<mlir::IntegerType>());
-    EXPECT_TRUE(sparseChangedElemType.getStorageElementTable()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getSparsityMap()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getStorageElementTable()).getElementType()));
 
     const SmallVector<int64_t> newShape2({1, 32, 32, 32});
     const SmallVector<int64_t> newSETableShape2({1, 1, 32, 32});
     const auto changedShapeElemType = ndType.changeShapeElemType(ShapeRef(newShape2), mlir::Float64Type::get(&ctx));
     EXPECT_EQ(changedShapeElemType.getShape(), ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::Float64Type>());
-    const auto sparseChangedShapeElemType = changedShapeElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(changedShapeElemType.getElementType()));
+    const auto sparseChangedShapeElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShapeElemType);
     ASSERT_TRUE(sparseChangedShapeElemType != nullptr);
-    EXPECT_EQ(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newShape2));
-    EXPECT_EQ(sparseChangedShapeElemType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newShape2));
-    EXPECT_EQ(sparseChangedShapeElemType.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getShape(), ShapeRef(newShape2));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getShape(),
+              ShapeRef(newShape2));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getStorageElementTable()).getShape(),
               ShapeRef(newSETableShape2));
-    EXPECT_TRUE(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float64Type>());
-    EXPECT_TRUE(sparseChangedShapeElemType.getSparsityMap()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
-    EXPECT_TRUE(sparseChangedShapeElemType.getStorageElementTable()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getStorageElementTable()).getElementType()));
 
     const auto dimsOrder = DimsOrder::NHWC;
     const auto changedDimsOrder = ndType.changeDimsOrder(dimsOrder);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), dimsOrder);
-    const auto sparseChangedDimsOrder = changedDimsOrder.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedDimsOrder = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedDimsOrder);
     ASSERT_TRUE(sparseChangedDimsOrder != nullptr);
-    EXPECT_EQ(sparseChangedDimsOrder.getData().cast<NDTypeInterface>().getDimsOrder(), dimsOrder);
-    EXPECT_EQ(sparseChangedDimsOrder.getSparsityMap().cast<NDTypeInterface>().getDimsOrder(), dimsOrder);
-    EXPECT_EQ(sparseChangedDimsOrder.getStorageElementTable().cast<NDTypeInterface>().getDimsOrder(), DimsOrder::NCHW);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getData()).getDimsOrder(), dimsOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getSparsityMap()).getDimsOrder(), dimsOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getStorageElementTable()).getDimsOrder(),
+              DimsOrder::NCHW);
 
     auto changedMemSpace = ndType.changeMemSpace(IndexedSymbolAttr::get(&ctx, CMX_NAME));
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    auto sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    auto sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getStorageElementTable().cast<NDTypeInterface>().getMemSpace().getLeafName(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getStorageElementTable())
+                      .getMemSpace()
+                      .getLeafName(),
               CMX_NAME);
 
     changedMemSpace = ndType.changeMemSpace(VPU::MemoryKind::CMX_NN);
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getStorageElementTable().cast<NDTypeInterface>().getMemSpace().getLeafName(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getStorageElementTable())
+                      .getMemSpace()
+                      .getLeafName(),
               CMX_NAME);
 
     const SmallVector<Bit> newStrides({2097152_Bit, 16384_Bit, 512_Bit, 16_Bit});
@@ -312,12 +322,12 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Activation) {
     const SmallVector<Bit> seTableStrides({32768_Bit, 32768_Bit, 1024_Bit, 32_Bit});
     const auto changedStrides = ndType.changeStrides(StridesRef(newStrides));
     EXPECT_EQ(changedStrides.getStrides(), StridesRef(newStrides));
-    const auto sparseChangedStrides = changedStrides.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedStrides = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedStrides);
     ASSERT_TRUE(sparseChangedStrides != nullptr);
-    EXPECT_EQ(sparseChangedStrides.getData().cast<NDTypeInterface>().getStrides(), StridesRef(newStrides));
-    EXPECT_EQ(sparseChangedStrides.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getData()).getStrides(), StridesRef(newStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getSparsityMap()).getStrides(),
               StridesRef(sparsityMapStrides));
-    EXPECT_EQ(sparseChangedStrides.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getStorageElementTable()).getStrides(),
               StridesRef(seTableStrides));
 
     const SmallVector<int64_t> tileOffsets({0, 0, 0, 0});
@@ -328,30 +338,32 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Activation) {
     const SmallVector<Bit> tileSETableStrides({16384_Bit, 16384_Bit, 1024_Bit, 32_Bit});
     const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
-    const auto sparseTiledType = tiledType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseTiledType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(tiledType);
     ASSERT_TRUE(sparseTiledType != nullptr);
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getStrides(), StridesRef(tileStrides));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getStrides(), StridesRef(tileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getStrides(),
               StridesRef(tileSparsityMapStrides));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getShape(), ShapeRef(tileSETableShape));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+              ShapeRef(tileSETableShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
               StridesRef(tileSETableStrides));
 
     const SmallVector<int64_t> tileElemStrides({1, 1, 1, 1});
     const SmallVector<Bit> viewTileSparsityMapStrides({65536_Bit, 1024_Bit, 32_Bit, 1_Bit});
     const auto viewTile = ndType.extractViewTile(ShapeRef(tileOffsets), ShapeRef(tileShape), ShapeRef(tileElemStrides));
     EXPECT_EQ(viewTile.getShape(), ShapeRef(tileShape));
-    const auto sparseViewTile = viewTile.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseViewTile = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(viewTile);
     ASSERT_TRUE(sparseViewTile != nullptr);
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getStrides(), StridesRef(strides));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getStrides(), StridesRef(strides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getStrides(),
               StridesRef(viewTileSparsityMapStrides));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getShape(), ShapeRef(tileSETableShape));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+              ShapeRef(tileSETableShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
               StridesRef(tileSETableStrides));
 
     EXPECT_EQ(ndType.eraseTiledInfo(), ndType);
@@ -362,11 +374,11 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType_Activation) {
     const SmallVector<int64_t> paddedSETableShape({1, 1, 34, 34});
     const auto paddedType = ndType.pad(ShapeRef(padBefore), ShapeRef(padAfter));
     EXPECT_EQ(paddedType.getShape(), ShapeRef(paddedShape));
-    const auto sparsePaddedType = paddedType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparsePaddedType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(paddedType);
     ASSERT_TRUE(sparsePaddedType != nullptr);
-    EXPECT_EQ(sparsePaddedType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(paddedShape));
-    EXPECT_EQ(sparsePaddedType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(paddedShape));
-    EXPECT_EQ(sparsePaddedType.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getData()).getShape(), ShapeRef(paddedShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getSparsityMap()).getShape(), ShapeRef(paddedShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getStorageElementTable()).getShape(),
               ShapeRef(paddedSETableShape));
 }
 
@@ -404,7 +416,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_NEAREST) {
     const auto sparseBufferType =
             VPUIP::SparseBufferType::get(data, sparsityMap, storageElementTable, nullptr, nullptr, SEInterpolateAttr);
 
-    const auto ndType = sparseBufferType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(sparseBufferType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(interpolatedShape));
@@ -414,7 +426,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_NEAREST) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 64 * 64);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), order);
 
@@ -437,72 +449,77 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_NEAREST) {
     const auto changedShape2 = ndType.changeTypeComponents(TypeComponents().setShape(ShapeRef(newShape)));
     EXPECT_EQ(changedShape2.getShape(), ShapeRef(newShape));
 
-    const auto sparseChangedShape = changedShape.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedShape = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShape);
     ASSERT_TRUE(sparseChangedShape != nullptr);
-    EXPECT_EQ(sparseChangedShape.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newInShape));
-    EXPECT_EQ(sparseChangedShape.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newShape));
-    EXPECT_EQ(sparseChangedShape.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getData()).getShape(), ShapeRef(newInShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getSparsityMap()).getShape(), ShapeRef(newShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getStorageElementTable()).getShape(),
               ShapeRef(newSETableShape));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
-    const auto sparseChangedElemType = changedElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
+    const auto sparseChangedElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedElemType);
     ASSERT_TRUE(sparseChangedElemType != nullptr);
-    EXPECT_TRUE(sparseChangedElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float32Type>());
-    EXPECT_TRUE(
-            sparseChangedElemType.getSparsityMap().cast<NDTypeInterface>().getElementType().isa<mlir::IntegerType>());
-    EXPECT_TRUE(sparseChangedElemType.getStorageElementTable()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getSparsityMap()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getStorageElementTable()).getElementType()));
 
     const SmallVector<int64_t> newShape2({1, 32, 32, 32});
     const SmallVector<int64_t> newInShape2({1, 32, 16, 16});
     const SmallVector<int64_t> newSETableShape2({1, 1, 32, 32});
     const auto changedShapeElemType = ndType.changeShapeElemType(ShapeRef(newShape2), mlir::Float64Type::get(&ctx));
     EXPECT_EQ(changedShapeElemType.getShape(), ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::Float64Type>());
-    const auto sparseChangedShapeElemType = changedShapeElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(changedShapeElemType.getElementType()));
+    const auto sparseChangedShapeElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShapeElemType);
     ASSERT_TRUE(sparseChangedShapeElemType != nullptr);
-    EXPECT_EQ(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newInShape2));
-    EXPECT_EQ(sparseChangedShapeElemType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newShape2));
-    EXPECT_EQ(sparseChangedShapeElemType.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getShape(),
+              ShapeRef(newInShape2));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getShape(),
+              ShapeRef(newShape2));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getStorageElementTable()).getShape(),
               ShapeRef(newSETableShape2));
-    EXPECT_TRUE(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float64Type>());
-    EXPECT_TRUE(sparseChangedShapeElemType.getSparsityMap()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
-    EXPECT_TRUE(sparseChangedShapeElemType.getStorageElementTable()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getStorageElementTable()).getElementType()));
 
     const auto dimsOrder = DimsOrder::NHWC;
     const auto changedDimsOrder = ndType.changeDimsOrder(dimsOrder);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), dimsOrder);
-    const auto sparseChangedDimsOrder = changedDimsOrder.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedDimsOrder = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedDimsOrder);
     ASSERT_TRUE(sparseChangedDimsOrder != nullptr);
-    EXPECT_EQ(sparseChangedDimsOrder.getData().cast<NDTypeInterface>().getDimsOrder(), dimsOrder);
-    EXPECT_EQ(sparseChangedDimsOrder.getSparsityMap().cast<NDTypeInterface>().getDimsOrder(), dimsOrder);
-    EXPECT_EQ(sparseChangedDimsOrder.getStorageElementTable().cast<NDTypeInterface>().getDimsOrder(), DimsOrder::NCHW);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getData()).getDimsOrder(), dimsOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getSparsityMap()).getDimsOrder(), dimsOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getStorageElementTable()).getDimsOrder(),
+              DimsOrder::NCHW);
 
     auto changedMemSpace = ndType.changeMemSpace(IndexedSymbolAttr::get(&ctx, CMX_NAME));
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    auto sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    auto sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getStorageElementTable().cast<NDTypeInterface>().getMemSpace().getLeafName(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getStorageElementTable())
+                      .getMemSpace()
+                      .getLeafName(),
               CMX_NAME);
 
     changedMemSpace = ndType.changeMemSpace(VPU::MemoryKind::CMX_NN);
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getStorageElementTable().cast<NDTypeInterface>().getMemSpace().getLeafName(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getStorageElementTable())
+                      .getMemSpace()
+                      .getLeafName(),
               CMX_NAME);
 
     // Trivial case, compact strides
@@ -512,12 +529,12 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_NEAREST) {
     const SmallVector<Bit> seTableStrides({131072_Bit, 131072_Bit, 2048_Bit, 32_Bit});
     const auto changedStrides = ndType.changeStrides(StridesRef(newStrides));
     EXPECT_EQ(changedStrides.getStrides(), StridesRef(newStrides));
-    const auto sparseChangedStrides = changedStrides.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedStrides = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedStrides);
     ASSERT_TRUE(sparseChangedStrides != nullptr);
-    EXPECT_EQ(sparseChangedStrides.getData().cast<NDTypeInterface>().getStrides(), StridesRef(newInStrides));
-    EXPECT_EQ(sparseChangedStrides.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getData()).getStrides(), StridesRef(newInStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getSparsityMap()).getStrides(),
               StridesRef(sparsityMapStrides));
-    EXPECT_EQ(sparseChangedStrides.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getStorageElementTable()).getStrides(),
               StridesRef(seTableStrides));
 
     // Extract dense tile
@@ -531,15 +548,16 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_NEAREST) {
     const SmallVector<Bit> tileSETableStrides({16384_Bit, 16384_Bit, 1024_Bit, 32_Bit});
     const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
-    const auto sparseTiledType = tiledType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseTiledType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(tiledType);
     ASSERT_TRUE(sparseTiledType != nullptr);
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(inTileShape));
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getStrides(), StridesRef(inTileStrides));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getShape(), ShapeRef(inTileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getStrides(), StridesRef(inTileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getStrides(),
               StridesRef(tileSparsityMapStrides));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getShape(), ShapeRef(tileSETableShape));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+              ShapeRef(tileSETableShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
               StridesRef(tileSETableStrides));
 
     const SmallVector<int64_t> tileElemStrides({1, 1, 1, 1});
@@ -547,15 +565,16 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_NEAREST) {
     const SmallVector<Bit> inViewTileStrides({1048576_Bit, 16384_Bit, 512_Bit, 16_Bit});
     const auto viewTile = ndType.extractViewTile(ShapeRef(tileOffsets), ShapeRef(tileShape), ShapeRef(tileElemStrides));
     EXPECT_EQ(viewTile.getShape(), ShapeRef(tileShape));
-    const auto sparseViewTile = viewTile.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseViewTile = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(viewTile);
     ASSERT_TRUE(sparseViewTile != nullptr);
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getShape(), ShapeRef(inTileShape));
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getStrides(), StridesRef(inViewTileStrides));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getShape(), ShapeRef(inTileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getStrides(), StridesRef(inViewTileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getStrides(),
               StridesRef(viewTileSparsityMapStrides));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getShape(), ShapeRef(tileSETableShape));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+              ShapeRef(tileSETableShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
               StridesRef(tileSETableStrides));
 
     EXPECT_EQ(ndType.eraseTiledInfo(), ndType);
@@ -567,11 +586,11 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_NEAREST) {
     const SmallVector<int64_t> paddedSETableShape({1, 1, 66, 66});
     const auto paddedType = ndType.pad(ShapeRef(padBefore), ShapeRef(padAfter));
     EXPECT_EQ(paddedType.getShape(), ShapeRef(paddedShape));
-    const auto sparsePaddedType = paddedType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparsePaddedType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(paddedType);
     ASSERT_TRUE(sparsePaddedType != nullptr);
-    EXPECT_EQ(sparsePaddedType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(paddedInShape));
-    EXPECT_EQ(sparsePaddedType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(paddedShape));
-    EXPECT_EQ(sparsePaddedType.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getData()).getShape(), ShapeRef(paddedInShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getSparsityMap()).getShape(), ShapeRef(paddedShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getStorageElementTable()).getShape(),
               ShapeRef(paddedSETableShape));
 }
 
@@ -609,7 +628,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR) {
     const auto sparseBufferType =
             VPUIP::SparseBufferType::get(data, sparsityMap, storageElementTable, nullptr, nullptr, SEInterpolateAttr);
 
-    const auto ndType = sparseBufferType.dyn_cast<vpux::NDTypeInterface>();
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(sparseBufferType);
     ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
 
     EXPECT_EQ(ndType.getShape(), ShapeRef(interpolatedShape));
@@ -619,7 +638,7 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR) {
     EXPECT_EQ(ndType.getRank(), 4);
     EXPECT_EQ(ndType.getNumElements(), 64 * 65 * 65);
 
-    EXPECT_TRUE(ndType.getElementType().isa<mlir::Float16Type>());
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
 
     EXPECT_EQ(ndType.getDimsOrder(), order);
 
@@ -642,72 +661,77 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR) {
     const auto changedShape2 = ndType.changeTypeComponents(TypeComponents().setShape(ShapeRef(newShape)));
     EXPECT_EQ(changedShape2.getShape(), ShapeRef(newShape));
 
-    const auto sparseChangedShape = changedShape.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedShape = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShape);
     ASSERT_TRUE(sparseChangedShape != nullptr);
-    EXPECT_EQ(sparseChangedShape.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newInShape));
-    EXPECT_EQ(sparseChangedShape.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newShape));
-    EXPECT_EQ(sparseChangedShape.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getData()).getShape(), ShapeRef(newInShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getSparsityMap()).getShape(), ShapeRef(newShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getStorageElementTable()).getShape(),
               ShapeRef(newSETableShape));
 
     const auto changedElemType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
-    EXPECT_TRUE(changedElemType.getElementType().isa<mlir::Float32Type>());
-    const auto sparseChangedElemType = changedElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElemType.getElementType()));
+    const auto sparseChangedElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedElemType);
     ASSERT_TRUE(sparseChangedElemType != nullptr);
-    EXPECT_TRUE(sparseChangedElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float32Type>());
-    EXPECT_TRUE(
-            sparseChangedElemType.getSparsityMap().cast<NDTypeInterface>().getElementType().isa<mlir::IntegerType>());
-    EXPECT_TRUE(sparseChangedElemType.getStorageElementTable()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getSparsityMap()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedElemType.getStorageElementTable()).getElementType()));
 
     const SmallVector<int64_t> newInShape2({1, 32, 16, 16});
     const SmallVector<int64_t> newShape2({1, 32, 33, 33});
     const SmallVector<int64_t> newSETableShape2({1, 1, 33, 33});
     const auto changedShapeElemType = ndType.changeShapeElemType(ShapeRef(newShape2), mlir::Float64Type::get(&ctx));
     EXPECT_EQ(changedShapeElemType.getShape(), ShapeRef(newShape2));
-    EXPECT_TRUE(changedShapeElemType.getElementType().isa<mlir::Float64Type>());
-    const auto sparseChangedShapeElemType = changedShapeElemType.dyn_cast<VPUIP::SparseBufferType>();
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(changedShapeElemType.getElementType()));
+    const auto sparseChangedShapeElemType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShapeElemType);
     ASSERT_TRUE(sparseChangedShapeElemType != nullptr);
-    EXPECT_EQ(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(newInShape2));
-    EXPECT_EQ(sparseChangedShapeElemType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(newShape2));
-    EXPECT_EQ(sparseChangedShapeElemType.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getShape(),
+              ShapeRef(newInShape2));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getShape(),
+              ShapeRef(newShape2));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getStorageElementTable()).getShape(),
               ShapeRef(newSETableShape2));
-    EXPECT_TRUE(sparseChangedShapeElemType.getData().cast<NDTypeInterface>().getElementType().isa<mlir::Float64Type>());
-    EXPECT_TRUE(sparseChangedShapeElemType.getSparsityMap()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
-    EXPECT_TRUE(sparseChangedShapeElemType.getStorageElementTable()
-                        .cast<NDTypeInterface>()
-                        .getElementType()
-                        .isa<mlir::IntegerType>());
+    EXPECT_TRUE(mlir::isa<mlir::Float64Type>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getData()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getSparsityMap()).getElementType()));
+    EXPECT_TRUE(mlir::isa<mlir::IntegerType>(
+            mlir::cast<vpux::NDTypeInterface>(sparseChangedShapeElemType.getStorageElementTable()).getElementType()));
 
     const auto dimsOrder = DimsOrder::NHWC;
     const auto changedDimsOrder = ndType.changeDimsOrder(dimsOrder);
     EXPECT_EQ(changedDimsOrder.getDimsOrder(), dimsOrder);
-    const auto sparseChangedDimsOrder = changedDimsOrder.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedDimsOrder = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedDimsOrder);
     ASSERT_TRUE(sparseChangedDimsOrder != nullptr);
-    EXPECT_EQ(sparseChangedDimsOrder.getData().cast<NDTypeInterface>().getDimsOrder(), dimsOrder);
-    EXPECT_EQ(sparseChangedDimsOrder.getSparsityMap().cast<NDTypeInterface>().getDimsOrder(), dimsOrder);
-    EXPECT_EQ(sparseChangedDimsOrder.getStorageElementTable().cast<NDTypeInterface>().getDimsOrder(), DimsOrder::NCHW);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getData()).getDimsOrder(), dimsOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getSparsityMap()).getDimsOrder(), dimsOrder);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedDimsOrder.getStorageElementTable()).getDimsOrder(),
+              DimsOrder::NCHW);
 
     auto changedMemSpace = ndType.changeMemSpace(IndexedSymbolAttr::get(&ctx, CMX_NAME));
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    auto sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    auto sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getStorageElementTable().cast<NDTypeInterface>().getMemSpace().getLeafName(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getStorageElementTable())
+                      .getMemSpace()
+                      .getLeafName(),
               CMX_NAME);
 
     changedMemSpace = ndType.changeMemSpace(VPU::MemoryKind::CMX_NN);
     EXPECT_EQ(changedMemSpace.getMemSpace().getLeafName(), CMX_NAME);
-    sparseChangedMemSpace = changedMemSpace.dyn_cast<VPUIP::SparseBufferType>();
+    sparseChangedMemSpace = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedMemSpace);
     ASSERT_TRUE(sparseChangedMemSpace != nullptr);
-    EXPECT_EQ(sparseChangedMemSpace.getData().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getSparsityMap().cast<NDTypeInterface>().getMemSpace().getLeafName(), CMX_NAME);
-    EXPECT_EQ(sparseChangedMemSpace.getStorageElementTable().cast<NDTypeInterface>().getMemSpace().getLeafName(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getData()).getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getSparsityMap()).getMemSpace().getLeafName(),
+              CMX_NAME);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedMemSpace.getStorageElementTable())
+                      .getMemSpace()
+                      .getLeafName(),
               CMX_NAME);
 
     // Only trivial case
@@ -717,12 +741,12 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR) {
     const SmallVector<Bit> seTableStrides({135200_Bit, 135200_Bit, 2080_Bit, 32_Bit});
     const auto changedStrides = ndType.changeStrides(StridesRef(newStrides));
     EXPECT_EQ(changedStrides.getStrides(), StridesRef(newStrides));
-    const auto sparseChangedStrides = changedStrides.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseChangedStrides = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedStrides);
     ASSERT_TRUE(sparseChangedStrides != nullptr);
-    EXPECT_EQ(sparseChangedStrides.getData().cast<NDTypeInterface>().getStrides(), StridesRef(newInStrides));
-    EXPECT_EQ(sparseChangedStrides.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getData()).getStrides(), StridesRef(newInStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getSparsityMap()).getStrides(),
               StridesRef(sparsityMapStrides));
-    EXPECT_EQ(sparseChangedStrides.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedStrides.getStorageElementTable()).getStrides(),
               StridesRef(seTableStrides));
 
     // Check that only compact strides are accepted
@@ -739,15 +763,16 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR) {
     const SmallVector<Bit> tileSETableStrides({17952_Bit, 17952_Bit, 1056_Bit, 32_Bit});
     const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
-    const auto sparseTiledType = tiledType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseTiledType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(tiledType);
     ASSERT_TRUE(sparseTiledType != nullptr);
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(inTileShape));
-    EXPECT_EQ(sparseTiledType.getData().cast<NDTypeInterface>().getStrides(), StridesRef(inTileStrides));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseTiledType.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getShape(), ShapeRef(inTileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getStrides(), StridesRef(inTileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getStrides(),
               StridesRef(tileSparsityMapStrides));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getShape(), ShapeRef(tileSETableShape));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+              ShapeRef(tileSETableShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
               StridesRef(tileSETableStrides));
 
     // Only dense strides are supported
@@ -756,15 +781,16 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR) {
     const SmallVector<Bit> viewInTileStrides({1048576_Bit, 16384_Bit, 512_Bit, 16_Bit});
     const auto viewTile = ndType.extractViewTile(ShapeRef(tileOffsets), ShapeRef(tileShape), ShapeRef(tileElemStrides));
     EXPECT_EQ(viewTile.getShape(), ShapeRef(tileShape));
-    const auto sparseViewTile = viewTile.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparseViewTile = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(viewTile);
     ASSERT_TRUE(sparseViewTile != nullptr);
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getShape(), ShapeRef(inTileShape));
-    EXPECT_EQ(sparseViewTile.getData().cast<NDTypeInterface>().getStrides(), StridesRef(viewInTileStrides));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(tileShape));
-    EXPECT_EQ(sparseViewTile.getSparsityMap().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getShape(), ShapeRef(inTileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getData()).getStrides(), StridesRef(viewInTileStrides));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getShape(), ShapeRef(tileShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseViewTile.getSparsityMap()).getStrides(),
               StridesRef(viewTileSparsityMapStrides));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getShape(), ShapeRef(tileSETableShape));
-    EXPECT_EQ(sparseTiledType.getStorageElementTable().cast<NDTypeInterface>().getStrides(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+              ShapeRef(tileSETableShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
               StridesRef(tileSETableStrides));
 
     EXPECT_EQ(ndType.eraseTiledInfo(), ndType);
@@ -776,10 +802,110 @@ TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR) {
     const SmallVector<int64_t> paddedSETableShape({1, 1, 67, 67});
     const auto paddedType = ndType.pad(ShapeRef(padBefore), ShapeRef(padAfter));
     EXPECT_EQ(paddedType.getShape(), ShapeRef(paddedShape));
-    const auto sparsePaddedType = paddedType.dyn_cast<VPUIP::SparseBufferType>();
+    const auto sparsePaddedType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(paddedType);
     ASSERT_TRUE(sparsePaddedType != nullptr);
-    EXPECT_EQ(sparsePaddedType.getData().cast<NDTypeInterface>().getShape(), ShapeRef(paddedInShape));
-    EXPECT_EQ(sparsePaddedType.getSparsityMap().cast<NDTypeInterface>().getShape(), ShapeRef(paddedShape));
-    EXPECT_EQ(sparsePaddedType.getStorageElementTable().cast<NDTypeInterface>().getShape(),
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getData()).getShape(), ShapeRef(paddedInShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getSparsityMap()).getShape(), ShapeRef(paddedShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparsePaddedType.getStorageElementTable()).getShape(),
               ShapeRef(paddedSETableShape));
+}
+
+TEST_F(MLIR_NDTypeInterface, SparseBufferType__SETable_Interp_BILINEAR_Depth2_Tiling) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPUIP::VPUIPDialect>();
+
+    const Shape shape{1, 64, 32, 32};
+    const Shape interpolatedShape{1, 64, 65, 65};
+    const Shape seTableShape{1, 2, 65, 65};
+
+    const SmallVector<float> scale({1, 1, 2, 2});
+    const auto scaleAttr = getFPArrayAttr(&ctx, scale);
+    const SmallVector<int64_t> offsets({0, 0, 0, 0});
+    const auto offsetsAttr = getIntArrayAttr(&ctx, offsets);
+    const SmallVector<int64_t> sizes({1, 64, 65, 65});
+    const auto sizesAttr = getIntArrayAttr(&ctx, sizes);
+
+    const DimsOrder order = DimsOrder::NCHW;
+    const mlir::AffineMapAttr layout = mlir::AffineMapAttr::get(order.toAffineMap(&ctx));
+    const IndexedSymbolAttr memSpace = IndexedSymbolAttr::get(&ctx, DDR_NAME);
+    const auto data = mlir::MemRefType::get(shape.raw(), mlir::Float16Type::get(&ctx), layout, memSpace);
+    const auto sparsityMap =
+            mlir::MemRefType::get(interpolatedShape.raw(), mlir::IntegerType::get(&ctx, 1), layout, memSpace);
+    const auto storageElementTable =
+            mlir::MemRefType::get(seTableShape.raw(), mlir::IntegerType::get(&ctx, 32), layout, memSpace);
+
+    const auto modeAttr = VPU::NCEInterpolateModeAttr::get(&ctx, VPU::NCEInterpolateMode::BILINEAR);
+    const auto coordTransformModeAttr = IE::InterpolateCoordModeAttr::get(&ctx, IE::InterpolateCoordMode::ASYMMETRIC);
+    const auto SEInterpolateAttr =
+            VPU::SEInterpolateAttr::get(&ctx, modeAttr, coordTransformModeAttr, scaleAttr,
+                                        /*nearestModeAttr=*/nullptr, offsetsAttr, sizesAttr,
+                                        /*initialInputShapeAttr=*/nullptr, /*initialOutputShapeAttr=*/nullptr);
+
+    const auto sparseBufferType =
+            VPUIP::SparseBufferType::get(data, sparsityMap, storageElementTable, nullptr, nullptr, SEInterpolateAttr);
+
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(sparseBufferType);
+    ASSERT_TRUE(ndType != nullptr) << "Type cannot be cast to vpux::NDTypeInterface";
+
+    const SmallVector<int64_t> newShape({1, 64, 33, 17});
+    const SmallVector<int64_t> newInShape({1, 64, 16, 8});
+    const SmallVector<int64_t> newSETableShape({1, 2, 33, 17});
+    const auto changedShape = ndType.changeShape(ShapeRef(newShape));
+    EXPECT_EQ(changedShape.getShape(), ShapeRef(newShape));
+    const auto changedShape2 = ndType.changeTypeComponents(TypeComponents().setShape(ShapeRef(newShape)));
+    EXPECT_EQ(changedShape2.getShape(), ShapeRef(newShape));
+
+    const auto sparseChangedShape = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(changedShape);
+    ASSERT_TRUE(sparseChangedShape != nullptr);
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getData()).getShape(), ShapeRef(newInShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getSparsityMap()).getShape(), ShapeRef(newShape));
+    EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseChangedShape.getStorageElementTable()).getShape(),
+              ShapeRef(newSETableShape));
+
+    {  // Tiling on spatial dims
+        const SmallVector<int64_t> tileOffsets({0, 0, 0, 0});
+        const SmallVector<int64_t> inTileShape({1, 64, 9, 17});
+        const SmallVector<int64_t> tileShape({1, 64, 17, 33});
+        const SmallVector<int64_t> tileSETableShape({1, 2, 17, 33});
+        const SmallVector<Bit> inTileStrides({156672_Bit, 2448_Bit, 272_Bit, 16_Bit});
+        const SmallVector<Bit> tileStrides({524288_Bit, 8192_Bit, 512_Bit, 16_Bit});
+        const SmallVector<Bit> tileSparsityMapStrides({35904_Bit, 561_Bit, 33_Bit, 1_Bit});
+        const SmallVector<Bit> tileSETableStrides({35904_Bit, 17952_Bit, 1056_Bit, 32_Bit});
+        const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
+        EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
+        const auto sparseTiledType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(tiledType);
+        ASSERT_TRUE(sparseTiledType != nullptr);
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getShape(), ShapeRef(inTileShape));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getStrides(), StridesRef(inTileStrides));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getShape(), ShapeRef(tileShape));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getStrides(),
+                  StridesRef(tileSparsityMapStrides));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+                  ShapeRef(tileSETableShape));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
+                  StridesRef(tileSETableStrides));
+    }
+
+    {  // Tiling on channels
+        const SmallVector<int64_t> tileOffsets({0, 32, 0, 0});
+        const SmallVector<int64_t> inTileShape({1, 32, 32, 32});
+        const SmallVector<int64_t> tileShape({1, 32, 65, 65});
+        const SmallVector<int64_t> tileSETableShape({1, 1, 65, 65});
+        const SmallVector<Bit> inTileStrides({524288_Bit, 16384_Bit, 512_Bit, 16_Bit});
+        const SmallVector<Bit> tileSparsityMapStrides({135200_Bit, 4225_Bit, 65_Bit, 1_Bit});
+        const SmallVector<Bit> tileSETableStrides({135200_Bit, 135200_Bit, 2080_Bit, 32_Bit});
+        const auto tiledType = ndType.extractDenseTile(ShapeRef(tileOffsets), ShapeRef(tileShape));
+        EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
+        const auto sparseTiledType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(tiledType);
+        ASSERT_TRUE(sparseTiledType != nullptr);
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getShape(), ShapeRef(inTileShape));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getData()).getStrides(), StridesRef(inTileStrides));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getShape(), ShapeRef(tileShape));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getSparsityMap()).getStrides(),
+                  StridesRef(tileSparsityMapStrides));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getShape(),
+                  ShapeRef(tileSETableShape));
+        EXPECT_EQ(mlir::cast<vpux::NDTypeInterface>(sparseTiledType.getStorageElementTable()).getStrides(),
+                  StridesRef(tileSETableStrides));
+    }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -35,10 +35,10 @@ mlir::LogicalResult vpux::VPUIP::DistributedCastOp::verify() {
         std::ignore = errorAt(op, "{0}", msg.str());
     };
 
-    if (auto sparseBufferInput = getInput().getType().dyn_cast<VPUIP::SparseBufferType>()) {
-        if (auto sparseBufferOutput = getOutput().getType().dyn_cast<VPUIP::SparseBufferType>()) {
-            const auto inputData = sparseBufferInput.getData().cast<VPUIP::DistributedBufferType>();
-            const auto outputData = sparseBufferOutput.getData().cast<VPUIP::DistributedBufferType>();
+    if (auto sparseBufferInput = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(getInput().getType())) {
+        if (auto sparseBufferOutput = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(getOutput().getType())) {
+            const auto inputData = mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseBufferInput.getData());
+            const auto outputData = mlir::cast<vpux::VPUIP::DistributedBufferType>(sparseBufferOutput.getData());
             return VPU::isDistributedCastCompatible(inputData, outputData, logCb);
         }
 
@@ -54,8 +54,8 @@ mlir::LogicalResult vpux::VPUIP::DistributedCastOp::verify() {
         return mlir::failure();
     }
 
-    const auto inDistributedType = getInput().getType().cast<VPUIP::DistributedBufferType>();
-    const auto outDistributedType = getOutput().getType().cast<VPUIP::DistributedBufferType>();
+    const auto inDistributedType = mlir::cast<vpux::VPUIP::DistributedBufferType>(getInput().getType());
+    const auto outDistributedType = mlir::cast<vpux::VPUIP::DistributedBufferType>(getOutput().getType());
 
     return VPU::isDistributedCastCompatible(inDistributedType, outDistributedType, logCb);
 }

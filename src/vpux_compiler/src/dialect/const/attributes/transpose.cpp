@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -77,7 +77,7 @@ vpux::NDTypeInterface vpux::Const::TransposeAttr::inferOutputType(vpux::NDTypeIn
     }
 
     auto elemType = input.getElementType();
-    if (auto perAxisType = elemType.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         auto inQuantizeDim = perAxisType.getQuantizedDimension();
         auto outQuantizeDim = order.dimAt(inQuantizeDim).ind();
         elemType = changeAxis(perAxisType, outQuantizeDim);

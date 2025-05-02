@@ -39,9 +39,7 @@ std::unique_ptr<mlir::Pass> createDetectDMASplitCandidatePass(Logger log = Logge
 std::unique_ptr<mlir::Pass> createSplitDMAToBalanceLoadPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseSegmentedDmaPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLegalizeScheduleForWlmFetchDmasPass(
-        const int virtualBarrierThreshold = VIRTUAL_BARRIER_THRESHOLD_WLM,
-        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
-        Logger log = Logger::global());
+        const int virtualBarrierThreshold = VIRTUAL_BARRIER_THRESHOLD_WLM, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollDepthToSpaceDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollSpaceToDepthDMAPass(Logger log = Logger::global());
 

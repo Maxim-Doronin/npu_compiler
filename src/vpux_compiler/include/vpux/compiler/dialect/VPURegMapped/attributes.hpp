@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,10 +7,7 @@
 
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/optional.hpp"
-#include "vpux/utils/core/string_ref.hpp"
-
+#include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
 
 mlir::Attribute getVPURegMapped_RegisterFieldAttr(::mlir::MLIRContext* context, vpux::VPURegMapped::RegFieldType value);

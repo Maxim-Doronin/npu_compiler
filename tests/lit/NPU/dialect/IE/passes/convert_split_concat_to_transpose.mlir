@@ -391,7 +391,7 @@ func.func @ComposeSplitAffineReshapeTransConv(%arg0: tensor<1x1x8x2xf16>) -> ten
     %2 = IE.TransposedConvolution(%1, %cst_1) {
             dilations = [1, 1],
             operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-            output_padding = [0, 0],
+            spatial_output_padding = [0, 0],
             pads_begin = [0, 0],
             pads_end = [0, -1],
             strides = [1, 2]
@@ -402,7 +402,7 @@ func.func @ComposeSplitAffineReshapeTransConv(%arg0: tensor<1x1x8x2xf16>) -> ten
     %4 = IE.TransposedConvolution(%3, %cst_0) {
             dilations = [1, 1],
             operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-            output_padding = [0, 0],
+            spatial_output_padding = [0, 0],
             pads_begin = [0, 0],
             pads_end = [0, -1],
             strides = [1, 2]
@@ -421,9 +421,9 @@ func.func @ComposeSplitAffineReshapeTransConv(%arg0: tensor<1x1x8x2xf16>) -> ten
     // CHECK:       [[CONV:%.+]] = IE.TransposedConvolution([[TRANSPOSE_IN]], [[CONCAT_1]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:      output_padding = [0, 0],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, -1],
+    // CHECK-SAME:      spatial_output_padding = [0, 0],
     // CHECK-SAME:      strides = [1, 2]} : tensor<1x2x1x8xf16>, tensor<2x2x1x3xf16> -> tensor<1x2x1x18xf16>
 
     // CHECK:       return [[CONV]] : tensor<1x2x1x18xf16>
@@ -446,7 +446,7 @@ func.func @ComposeSplitAffineReshapeTransConvWithBias(%arg0: tensor<1x1x8x2xf16>
     %2 = IE.TransposedConvolution(%1, %cst_1, %bias_1) {
             dilations = [1, 1],
             operandSegmentSizes = array<i32: 1, 1, 0, 1>,
-            output_padding = [0, 0],
+            spatial_output_padding = [0, 0],
             pads_begin = [0, 0],
             pads_end = [0, -1],
             strides = [1, 2]
@@ -457,7 +457,7 @@ func.func @ComposeSplitAffineReshapeTransConvWithBias(%arg0: tensor<1x1x8x2xf16>
     %4 = IE.TransposedConvolution(%3, %cst_0, %bias_0) {
             dilations = [1, 1],
             operandSegmentSizes = array<i32: 1, 1, 0, 1>,
-            output_padding = [0, 0],
+            spatial_output_padding = [0, 0],
             pads_begin = [0, 0],
             pads_end = [0, -1],
             strides = [1, 2]
@@ -479,9 +479,9 @@ func.func @ComposeSplitAffineReshapeTransConvWithBias(%arg0: tensor<1x1x8x2xf16>
     // CHECK:       [[CONV:%.+]] = IE.TransposedConvolution([[TRANSPOSE_IN]], [[CONCAT_1]], [[CONCAT_2]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 1>,
-    // CHECK-SAME:      output_padding = [0, 0],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, -1],
+    // CHECK-SAME:      spatial_output_padding = [0, 0],
     // CHECK-SAME:      strides = [1, 2]} : tensor<1x2x1x8xf16>, tensor<2x2x1x3xf16>, tensor<1x2x1x1xf16> -> tensor<1x2x1x18xf16>
 
     // CHECK:       return [[CONV]] : tensor<1x2x1x18xf16>

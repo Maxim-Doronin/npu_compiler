@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 // CHECK-LABEL: @DoNotDuplicateUnusedFQ
 module @DoNotDuplicateUnusedFQ {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -50,7 +50,7 @@ module @DoNotDuplicateUnusedFQ {
 
 // CHECK-LABEL: @DoNotDuplicateUnusedFQBetweenCallOps
 module @DoNotDuplicateUnusedFQBetweenCallOps {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -94,7 +94,7 @@ module @DoNotDuplicateUnusedFQBetweenCallOps {
 
 // CHECK-LABEL: @DuplicateOutside
 module @DuplicateOutside {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -145,7 +145,7 @@ module @DuplicateOutside {
 
 // CHECK-LABEL: @DuplicateOutsideWithReshapes
 module @DuplicateOutsideWithReshapes {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -215,7 +215,7 @@ module @DuplicateOutsideWithReshapes {
 
 // CHECK-LABEL: @DuplicateInside
 module @DuplicateInside {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -256,7 +256,7 @@ module @DuplicateInside {
 
 // CHECK-LABEL: @DuplicateInsideWithReshapes
 module @DuplicateInsideWithReshapes {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
@@ -315,7 +315,7 @@ module @DuplicateInsideWithReshapes {
 
 // CHECK-LABEL: @DuplicateFQInsideBetweenCalls
 module @DuplicateFQInsideBetweenCalls {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {

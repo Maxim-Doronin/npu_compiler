@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -170,7 +171,8 @@ mlir::LogicalResult AvoidConcatExtraChannel::checkConcatInputs(mlir::ValueRange 
 
         // DistributionCopy is the output of the NCE task
         // If NCE task uses the SplitOverKernel strategy, it is illegal to optimize the channel
-        if (auto distributedCopyType = tilingCopy.getInput().getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto distributedCopyType =
+                    mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(tilingCopy.getInput().getType())) {
             const auto distributionInfo = distributedCopyType.getDistribution();
             if (distributionInfo.getMode().getValue() == VPU::DistributionMode::SEGMENTED) {
                 const auto numTiles = parseIntArrayAttr<int64_t>(distributionInfo.getNumTiles());
@@ -252,12 +254,12 @@ mlir::LogicalResult AvoidConcatExtraChannel::checkConcatInputs(mlir::ValueRange 
         }
 
         auto copyOpInput = tilingCopy.getInputs()[0];
-        if (auto distributedType = copyOpInput.getType().dyn_cast<VPUIP::DistributedBufferType>()) {
+        if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(copyOpInput.getType())) {
             const auto tileIndex = VPUIP::getTilingDimIndex(distributedType);
             if (tileIndex.has_value()) {
                 auto tileIndexVal = tileIndex.value();
-                if (!VPUIP::isChannelOffsetsAndTileDimCompatibleWithClusterCopy(to_small_vector(copyInOffsets),
-                                                                                tileIndexVal, distributedType)) {
+                if (!VPUIP::isChannelOffsetsAndTileDimCompatibleWithDistributedCopy(to_small_vector(copyInOffsets),
+                                                                                    tileIndexVal, distributedType)) {
                     return mlir::failure();
                 }
             }
@@ -276,7 +278,7 @@ mlir::Operation* AvoidConcatExtraChannel::createOutputBuffer(mlir::PatternRewrit
 
     auto subview = copyOpOutput.getDefiningOp<VPUIP::SubViewOp>();
 
-    auto opOutputType = subview.getSource().getType().cast<vpux::NDTypeInterface>();
+    auto opOutputType = mlir::cast<vpux::NDTypeInterface>(subview.getSource().getType());
     auto sourceShape = opOutputType.getShape().toValues();
     sourceShape[Dims4D::Act::C] = channels;
     auto newOpOutputType = opOutputType.changeShape(ShapeRef(sourceShape));
@@ -794,7 +796,7 @@ bool ReuseConcatViewAsInput::isIdentityPool(VPUIP::NCEClusterTaskOp avgPoolOp) c
     }
 
     const auto ppeOpaqueAttr = VPU::PpeVersionConfig::retrievePPEAttribute(avgPoolOp);
-    const auto intPpeAttr = ppeOpaqueAttr.dyn_cast<vpux::VPU::PPEIntAttr>();
+    const auto intPpeAttr = mlir::dyn_cast<vpux::VPU::PPEIntAttr>(ppeOpaqueAttr);
     if (intPpeAttr != nullptr && intPpeAttr.getMode().getValue() != VPU::PPEMode::NOOP) {
         return false;
     }
@@ -1073,7 +1075,7 @@ mlir::LogicalResult RemoveDDRToDDRCopyAfterConcatView::matchAndRewrite(VPUIP::Co
     }
 
     // Check if the CopyOp copies to output
-    if (targetCopyOp.getOutputBuff().isa<mlir::BlockArgument>()) {
+    if (mlir::isa<mlir::BlockArgument>(targetCopyOp.getOutputBuff())) {
         _log.trace("RemoveDDRToDDRCopyAfterConcatView: Cannot rewrite because it is last copy");
         return mlir::failure();
     }
@@ -1670,15 +1672,16 @@ void OptimizeDDR2DDRCopyInputsOfConcatView::convertDistributedCopyInputAndStore(
         // CMX to DDR
         auto inputCopyType = inputDistributedCopyOp.getInput().getType();
 
-        auto inputType = inputCopyType.isa<VPUIP::DistributedBufferType>()
-                                 ? inputCopyType.cast<VPUIP::DistributedBufferType>()
-                                           .getCompactType()
-                                           .dyn_cast<vpux::NDTypeInterface>()
-                                 : inputCopyType.dyn_cast<vpux::NDTypeInterface>();
+        auto inputType =
+                mlir::isa<vpux::VPUIP::DistributedBufferType>(inputCopyType)
+                        ? mlir::dyn_cast<vpux::NDTypeInterface>(
+                                  mlir::cast<vpux::VPUIP::DistributedBufferType>(inputCopyType).getCompactType())
+                        : mlir::dyn_cast<vpux::NDTypeInterface>(inputCopyType);
 
         auto newDDRType = inputType.changeMemSpace(VPU::MemoryKind::DDR);
-        auto newAllocDDROp = rewriter.create<mlir::memref::AllocOp>(
-                appendLoc(inputDistributedCopyOp->getLoc(), "_new_DDR_buffer"), newDDRType.cast<mlir::MemRefType>());
+        auto newAllocDDROp =
+                rewriter.create<mlir::memref::AllocOp>(appendLoc(inputDistributedCopyOp->getLoc(), "_new_DDR_buffer"),
+                                                       mlir::cast<mlir::MemRefType>(newDDRType));
 
         auto cmxToDDRDistributedCopyOp = rewriter.create<VPUIP::CopyOp>(
                 appendLoc(inputDistributedCopyOp->getLoc(), "_CMX_to_DDR_Copy"), inputDistributedCopyOp.getInput(),
@@ -2284,13 +2287,13 @@ mlir::LogicalResult OptimizeConcatSubviewPattern::matchAndRewrite(VPUIP::ConcatV
     };
     auto isSameDistributedTypeCopy = [](VPUIP::CopyOp inCopy, VPUIP::CopyOp outCopy) {
         auto inputValue = inCopy.getInputs()[0];
-        auto inputDistributedType = inputValue.getType().dyn_cast<VPUIP::DistributedBufferType>();
+        auto inputDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputValue.getType());
         if (inputDistributedType == nullptr) {
             return false;
         }
 
         auto outputValue = outCopy->getResult(0);
-        auto outputDistributedType = outputValue.getType().dyn_cast<VPUIP::DistributedBufferType>();
+        auto outputDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputValue.getType());
         if (outputDistributedType == nullptr) {
             return false;
         }
@@ -2424,9 +2427,9 @@ protected:
     mlir::Value propagateReshapeCast(mlir::PatternRewriter& rewriter, mlir::Value branchInput,
                                      VPUIP::PermuteCastOp permuteCastOp, mlir::Location loc,
                                      StringRef locSuffix) const {
-        auto inputType = branchInput.getType().cast<vpux::NDTypeInterface>();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(branchInput.getType());
         auto origShape = inputType.getShape();
-        auto permuteCastInputType = permuteCastOp.getSource().getType().cast<NDTypeInterface>();
+        auto permuteCastInputType = mlir::cast<vpux::NDTypeInterface>(permuteCastOp.getSource().getType());
         auto fourDim = permuteCastInputType.getRank() == 4;
 
         Shape newShape = fourDim ? origShape.toValues() : permuteCastInputType.getShape().toValues();
@@ -2478,7 +2481,7 @@ protected:
         auto newReshapeOp = rewriter.createOrFold<VPUIP::GenericReshapeOp>(appendLoc(loc, "greshape_{0}", locSuffix),
                                                                            afterReshapeType, branchInput);
 
-        auto permCastDimsOrder = permuteCastOp->getResultTypes()[0].cast<vpux::NDTypeInterface>().getDimsOrder();
+        auto permCastDimsOrder = mlir::cast<vpux::NDTypeInterface>(permuteCastOp->getResultTypes()[0]).getDimsOrder();
         auto afterPermCastType = afterReshapeType.changeDimsOrder(permCastDimsOrder);
         return rewriter.create<VPUIP::PermuteCastOp>(appendLoc(loc, "permcast_{0}", locSuffix), afterPermCastType,
                                                      newReshapeOp, permuteCastOp.getDstOrderAttr(),
@@ -2548,13 +2551,12 @@ protected:
             if (mlir::isa<VPUIP::DistributedBufferType>(srcView.getType()) &&
                 mlir::isa<VPUIP::DistributedBufferType>(dstView.getType())) {
                 // Dst.size is usually less than src.size, due to the conversion fp32->fp16/bf16
-                auto newDDRType = dstView.getType()
-                                          .cast<VPUIP::DistributedBufferType>()
-                                          .getCompactType()
-                                          .dyn_cast<vpux::NDTypeInterface>()
-                                          .changeMemSpace(VPU::MemoryKind::DDR);
+                auto newDDRType =
+                        mlir::dyn_cast<vpux::NDTypeInterface>(
+                                mlir::cast<vpux::VPUIP::DistributedBufferType>(dstView.getType()).getCompactType())
+                                .changeMemSpace(VPU::MemoryKind::DDR);
                 auto newAllocDDROp = rewriter.create<mlir::memref::AllocOp>(appendLoc(baseLoc, "_new_DDR_buffer"),
-                                                                            newDDRType.cast<mlir::MemRefType>());
+                                                                            mlir::cast<mlir::MemRefType>(newDDRType));
                 auto convertDMAOp = rewriter.create<VPUIP::ConvertDMAOp>(
                         appendLoc(baseLoc, "{0}_convert_dma_{1}", locSuffix, opId), srcView, newAllocDDROp);
                 return rewriter.create<VPUIP::CopyOp>(appendLoc(baseLoc, "{0}_copy_{1}", locSuffix, opId),
@@ -2567,13 +2569,12 @@ protected:
             // Can't transfer data CMX2CMX directly
             if (mlir::isa<VPUIP::DistributedBufferType>(srcView.getType()) &&
                 mlir::isa<VPUIP::DistributedBufferType>(dstView.getType())) {
-                auto newDDRType = srcView.getType()
-                                          .cast<VPUIP::DistributedBufferType>()
-                                          .getCompactType()
-                                          .dyn_cast<vpux::NDTypeInterface>()
-                                          .changeMemSpace(VPU::MemoryKind::DDR);
+                auto newDDRType =
+                        mlir::dyn_cast<vpux::NDTypeInterface>(
+                                mlir::cast<vpux::VPUIP::DistributedBufferType>(srcView.getType()).getCompactType())
+                                .changeMemSpace(VPU::MemoryKind::DDR);
                 auto newAllocDDROp = rewriter.create<mlir::memref::AllocOp>(appendLoc(baseLoc, "_new_DDR_buffer"),
-                                                                            newDDRType.cast<mlir::MemRefType>());
+                                                                            mlir::cast<mlir::MemRefType>(newDDRType));
                 auto firstCopyOp = rewriter.create<VPUIP::CopyOp>(appendLoc(baseLoc, "{0}_copy_{1}", locSuffix, opId),
                                                                   srcView, newAllocDDROp);
                 auto secondCopyOp = rewriter.create<VPUIP::CopyOp>(appendLoc(baseLoc, "{0}_copy_{1}", locSuffix, opId),
@@ -2892,8 +2893,8 @@ public:
                                  permuteCastOp};
 
         const auto isOverlappedOrNone = [](mlir::Value branchInput) {
-            auto inputType = branchInput.getType().cast<vpux::NDTypeInterface>();
-            auto distributedBufferType = inputType.dyn_cast<VPUIP::DistributedBufferType>();
+            auto inputType = mlir::cast<vpux::NDTypeInterface>(branchInput.getType());
+            auto distributedBufferType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType);
             if (distributedBufferType == nullptr) {
                 return false;
             }
@@ -2919,14 +2920,13 @@ public:
                 prepareLeftBranch(rewriter, leftBranchInput, genReshapeOp, permuteCastOp, concatOp->getLoc());
         mlir::Value newRightBranch;
         if (rightBranchTilingAndSubviewOnSameAxis) {
-            auto newDDRType = rightBranchInput.getType()
-                                      .cast<VPUIP::DistributedBufferType>()
-                                      .getCompactType()
-                                      .dyn_cast<vpux::NDTypeInterface>()
-                                      .changeMemSpace(VPU::MemoryKind::DDR);
+            auto newDDRType =
+                    mlir::dyn_cast<vpux::NDTypeInterface>(
+                            mlir::cast<vpux::VPUIP::DistributedBufferType>(rightBranchInput.getType()).getCompactType())
+                            .changeMemSpace(VPU::MemoryKind::DDR);
             auto baseLoc = concatOp.getLoc();
             auto newAllocDDROp = rewriter.create<mlir::memref::AllocOp>(appendLoc(baseLoc, "_new_DDR_buffer"),
-                                                                        newDDRType.cast<mlir::MemRefType>());
+                                                                        mlir::cast<mlir::MemRefType>(newDDRType));
             auto firstCopyOp = rewriter.create<VPUIP::CopyOp>(appendLoc(baseLoc, "{0}_copy0_{1}"), rightBranchInput,
                                                               newAllocDDROp);
             newRightBranch = firstCopyOp;
@@ -3225,7 +3225,8 @@ private:
         // in rewriter Longest possible chain is NCECompute -> f32->f16 Copy, CMX->DDR, DDR->Strided DDR
         int depth = 3;
         SmallVector<mlir::Operation*> copies;
-        while (patternInput != nullptr && !patternInput.getType().isa<VPUIP::DistributedBufferType>() && depth > 0) {
+        while (patternInput != nullptr && !mlir::isa<vpux::VPUIP::DistributedBufferType>(patternInput.getType()) &&
+               depth > 0) {
             if (mlir::isa<mlir::BlockArgument>(patternInput) || patternInput.getDefiningOp() == nullptr) {
                 patternInput = nullptr;
                 break;
@@ -3384,7 +3385,7 @@ private:
     mlir::Value createNewConcatBuffer(mlir::PatternRewriter& rewriter, VPUIP::SubViewOp viewOp, VPUIP::CopyOp,
                                       mlir::Location bufferLoc) const override {
         auto srcBufferType = viewOp.getType();
-        return rewriter.create<mlir::memref::AllocOp>(bufferLoc, srcBufferType.cast<mlir::MemRefType>());
+        return rewriter.create<mlir::memref::AllocOp>(bufferLoc, mlir::cast<mlir::MemRefType>(srcBufferType));
     }
 
     void rewriteSubview(mlir::PatternRewriter& rewriter, VPUIP::ConcatViewOp origConcatOp, VPUIP::SubViewOp subViewOp,

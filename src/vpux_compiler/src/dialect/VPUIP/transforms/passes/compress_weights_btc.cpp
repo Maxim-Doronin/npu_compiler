@@ -5,9 +5,11 @@
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/codec_factory.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
@@ -66,7 +68,7 @@ ICodec::CompressionMode NNDMAOpConverter::getCompressionMode(Const::DeclareOp co
         return ICodec::CompressionMode::UINT8;
     }
 
-    const auto inputElementType = constOp.getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto inputElementType = mlir::cast<vpux::NDTypeInterface>(constOp.getType()).getElementType();
     return inputElementType.isF16() ? ICodec::CompressionMode::FP16 : ICodec::CompressionMode::UINT8;
 }
 
@@ -84,8 +86,8 @@ mlir::LogicalResult NNDMAOpConverter::matchAndRewrite(VPUIP::NNDMAOp origOp, mli
     const auto loc = origOp->getLoc();
     auto input = origOp.getInput();
     auto output = origOp.getOutputBuff();
-    const auto inputType = input.getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = output.getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
 
     auto inConstOp = input.getDefiningOp<Const::DeclareOp>();
     if (inConstOp == nullptr) {
@@ -115,8 +117,8 @@ mlir::LogicalResult NNDMAOpConverter::matchAndRewrite(VPUIP::NNDMAOp origOp, mli
         return mlir::failure();
     }
 
-    if (outputType.isa<VPUIP::DistributedBufferType>()) {
-        const auto distributedType = outputType.dyn_cast<VPUIP::DistributedBufferType>();
+    if (mlir::isa<vpux::VPUIP::DistributedBufferType>(outputType)) {
+        const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
         const auto distributionAttr = distributedType.getDistribution();
         const auto distributionMode = distributionAttr.getMode().getValue();
         if (distributionMode != VPU::DistributionMode::DUPLICATED) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,7 +11,7 @@
 using namespace vpux;
 
 VPU::NCESparsity::PPEConverterCb VPU::NCESparsity::getPPEConverterCb(VPU::ArchKind arch,
-                                                                     [[maybe_unused]] bool isFloatType) {
+                                                                     [[maybe_unused]] bool isNewWeightTableFormat) {
     switch (arch) {
     case VPU::ArchKind::NPU37XX:
     case VPU::ArchKind::NPU40XX: {
@@ -25,7 +25,7 @@ VPU::NCESparsity::PPEConverterCb VPU::NCESparsity::getPPEConverterCb(VPU::ArchKi
 }
 
 VPU::NCESparsity::BiasConverterCb VPU::NCESparsity::getBiasConverterCb(VPU::ArchKind arch,
-                                                                       [[maybe_unused]] bool isFloatType) {
+                                                                       [[maybe_unused]] bool isNewWeightTableFormat) {
     switch (arch) {
     case VPU::ArchKind::NPU37XX:
     case VPU::ArchKind::NPU40XX:

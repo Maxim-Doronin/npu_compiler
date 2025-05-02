@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -355,6 +355,7 @@ private:
 
     // scheduling type utils
     bool isDataOp(operationIdxType opIdx);
+    bool isNoInputDepComputeOp(operationIdxType opIdx);
 
     // cycle and executor utils
     VPU::ExecutorKind getExecutorType(operationIdxType opIdx);

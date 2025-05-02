@@ -18,7 +18,7 @@ func.func @RecomputePtrsForSparseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x4x4xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK:                [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<16x1x1x4xsi32> =
@@ -26,7 +26,8 @@ func.func @RecomputePtrsForSparseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
     // CHECK-SAME{LITERAL}:     [[[1, 128, 1, 1]]], [[[1, 160, 1, 1]]], [[[1, 192, 1, 1]]], [[[1, 224, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 256, 1, 1]]], [[[1, 288, 1, 1]]], [[[1, 320, 1, 1]]], [[[1, 352, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 384, 1, 1]]], [[[1, 416, 1, 1]]], [[[1, 448, 1, 1]]], [[[1, 480, 1, 1]]]]>
-    // CHECK:                 %{{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]]) {{{.+}}} -> tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK:                 %{{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
+    // CHECK-SAME:                 -> tensor<1x16x16x16xf16, {order = #NHWC}>
 }
 
 // -----
@@ -42,11 +43,12 @@ func.func @DontChangePtrsForDenseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x4x4xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK-DAG:       [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
-    // CHECK:       %{{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]]) {{{.+}}} -> tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK:       %{{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
+    // CHECK-SAME:       -> tensor<1x16x16x16xf16, {order = #NHWC}>
 }
 
 // -----
@@ -67,14 +69,14 @@ func.func @SharedWeights(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x4x4xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     %2 = VPU.NCE.Convolution(%arg0, %sparse_weights_cst, %weights_table_cst2) {
             ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x4x4xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1, %2 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK: [[WT1:%.+]] = const.Declare tensor<16x1x1x4xsi32> =
@@ -117,14 +119,14 @@ func.func @SharedWeightsTable(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x4x4xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     %2 = VPU.NCE.Convolution(%arg0, %sparse_weights_cst2, %weights_table_cst) {
             ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x4x4xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1, %2 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
     // Note: since we rely on the
@@ -159,14 +161,14 @@ func.func @SharedWeightsAndWeightsTable(%arg0: tensor<1x16x16x16xf16, {order = #
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x4x4xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     %2 = VPU.NCE.Convolution(%arg0, %sparse_weights_cst, %weights_table_cst) {
             ppe = #VPU.PPEStub<>,
             pad = #VPU.Padding<left = 2 : i64, right = 1 : i64, top = 2 : i64, bottom = 1 : i64>,
             rawFilterShape = [16, 16, 4, 4],
             strides = [1, 1]
-        } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+        } : tensor<1x16x16x16xf16, {order = #NHWC}>, !VPU.SparseTensor<data=tensor<16x16x4x4xf16, {order = #NHWC}>, sparsity_map=tensor<16x1x1x256xi1>, is_weights>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     return %1, %2 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK: [[WT_SHARED:%.+]] = const.Declare tensor<16x1x1x4xsi32> =

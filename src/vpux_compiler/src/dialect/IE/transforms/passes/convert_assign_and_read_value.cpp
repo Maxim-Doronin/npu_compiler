@@ -3,11 +3,15 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 #include <intel_npu/prefix.hpp>
 
@@ -42,9 +46,9 @@ private:
 mlir::LogicalResult AssignRewriter::matchAndRewrite(IE::AssignOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Assign layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    IE::CNNNetworkOp netInfo;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp mainFunc;
-    IE::CNNNetworkOp::getFromModule(_topModule, netInfo, mainFunc);
+    net::NetworkInfoOp::getFromModule(_topModule, netInfo, mainFunc);
 
     const auto mainFuncType = mainFunc.getFunctionType();
     const auto assignInputType = origOp.getInput().getType();
@@ -60,13 +64,13 @@ mlir::LogicalResult AssignRewriter::matchAndRewrite(IE::AssignOp origOp, mlir::P
     auto* ctx = builder.getContext();
     const auto outputTypeAttr = mlir::TypeAttr::get(assignInputType);
     const auto outputNameAttr = mlir::StringAttr::get(ctx, std::string(intel_npu::ASSIGN_PREFIX) + origOp.getName());
-    outputsInfoBuilder.create<IE::DataInfoOp>(takeOpLoc(origOp, llvm::StringLiteral("assign_{0}"), origOp.getName()),
-                                              outputNameAttr, outputTypeAttr,
-                                              /*OptionalAttr originalShape*/ nullptr,
-                                              /*OptionalAttr friendlyName*/ nullptr,
-                                              /*OptionalAttr inputName*/ nullptr,
-                                              /*OptionalAttr tensorNames*/ nullptr,
-                                              /*profilingSectionsCount=*/0);
+    outputsInfoBuilder.create<net::DataInfoOp>(takeOpLoc(origOp, llvm::StringLiteral("assign_{0}"), origOp.getName()),
+                                               outputNameAttr, outputTypeAttr,
+                                               /*OptionalAttr originalShape*/ nullptr,
+                                               /*OptionalAttr friendlyName*/ nullptr,
+                                               /*OptionalAttr inputName*/ nullptr,
+                                               /*OptionalAttr tensorNames*/ nullptr,
+                                               /*profilingSectionsCount=*/0);
 
     rewriter.replaceOp(origOp, origOp.getInput());
 
@@ -101,9 +105,9 @@ private:
 mlir::LogicalResult ReadValueRewriter::matchAndRewrite(IE::ReadValueOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got ReadValue layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    IE::CNNNetworkOp netInfo;
+    net::NetworkInfoOp netInfo;
     mlir::func::FuncOp mainFunc;
-    IE::CNNNetworkOp::getFromModule(_topModule, netInfo, mainFunc);
+    net::NetworkInfoOp::getFromModule(_topModule, netInfo, mainFunc);
 
     const auto mainFuncType = mainFunc.getFunctionType();
     const auto readValueInputType = origOp.getInput().getType();
@@ -121,13 +125,13 @@ mlir::LogicalResult ReadValueRewriter::matchAndRewrite(IE::ReadValueOp origOp, m
     auto* ctx = builder.getContext();
     const auto inputTypeAttr = mlir::TypeAttr::get(readValueInputType);
     const auto inputNameAttr = mlir::StringAttr::get(ctx, std::string(intel_npu::READVALUE_PREFIX) + origOp.getName());
-    inputsInfoBuilder.create<IE::DataInfoOp>(takeOpLoc(origOp, llvm::StringLiteral("read_{0}"), origOp.getName()),
-                                             inputNameAttr, inputTypeAttr,
-                                             /*OptionalAttr originalShape*/ nullptr,
-                                             /*OptionalAttr friendlyName*/ nullptr,
-                                             /*OptionalAttr inputName*/ nullptr,
-                                             /*OptionalAttr tensorNames*/ nullptr,
-                                             /*profilingSectionsCount=*/0);
+    inputsInfoBuilder.create<net::DataInfoOp>(takeOpLoc(origOp, llvm::StringLiteral("read_{0}"), origOp.getName()),
+                                              inputNameAttr, inputTypeAttr,
+                                              /*OptionalAttr originalShape*/ nullptr,
+                                              /*OptionalAttr friendlyName*/ nullptr,
+                                              /*OptionalAttr inputName*/ nullptr,
+                                              /*OptionalAttr tensorNames*/ nullptr,
+                                              /*profilingSectionsCount=*/0);
 
     rewriter.replaceOp(origOp, mainFunc.getArgument(newInputIndex));
 

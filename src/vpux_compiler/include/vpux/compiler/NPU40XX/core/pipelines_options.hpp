@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,7 +17,9 @@ namespace arch40xx {
 // to avoid confusion when we have the same option for IE and the VPU dialect, but with a different value
 //
 
-struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
+struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, public vpux::BatchCompileOptionsAdapter {
+    DefaultHWOptionsDeviceBase(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
+    }
     StrOption enableActivationSparsity{*this, "enable-activation-sparsity",
                                        llvm::cl::desc("Enable activation sparsity"), llvm::cl::init("auto")};
 
@@ -58,11 +60,25 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
             ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_LCA),
-            ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
+            ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
+                                          "WLM with split into subgraphs (pages)"),
+                               clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
                                           "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                                clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                           "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                           "enqueue algorithm at VPUMI"))};
+
+    mlir::detail::PassOptions::Option<DMAFifoType> workloadManagementDmaFifoType{
+            *this, "workload-management-dma-fifo-type",
+            ::llvm::cl::desc("Option to switch behaviour between software and hardware DMA FIFO types"),
+            ::llvm::cl::init(DMAFifoType::SW),
+            ::llvm::cl::values(clEnumValN(DMAFifoType::SW, "SW", "Enable SW DMA FIFO upfront HW DMA FIFO type"),
+                               clEnumValN(DMAFifoType::HW, "HW", "Use HW DMA FIFO directly"))};
+
+    BoolOption wlmRollback{
+            *this, "wlm-rollback",
+            llvm::cl::desc("When compilation with WLM fails, automatically switch to WLM-disabled pipeline"),
+            llvm::cl::init(true)};
 
     BoolOption enableGroupedMatMul{*this, "enable-grouped-matmul",
                                    llvm::cl::desc("Enable execution of grouped MatMul as a single operation."),
@@ -79,6 +95,23 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
     // VPUIP option shared with VPU pass
     BoolOption enableWeightsSwizzling{*this, "enable-weights-swizzling", ::llvm::cl::desc("Enable weights swizzling"),
                                       ::llvm::cl::init(true)};
+
+    mlir::detail::PassOptions::Option<WorkloadManagementBarrierProgrammingMode>
+            workloadManagementBarrierProgrammingMode{
+                    *this, "workload-management-barrier-programming-mode",
+                    ::llvm::cl::desc(
+                            "Option for enabling different barrier programming algorithms. To be used only for "
+                            "experiments."),
+                    ::llvm::cl::values(
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::LEGACY, "LEGACY", "Legacy Mode"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED,
+                                       "NO_BARRIER_DMAS_SCHEDULED", "RT handles barrier programming"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED,
+                                       "INITIAL_BARRIER_DMAS_SCHEDULED",
+                                       "Compiler generates DMA to program initial barriers"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
+                                       "ALL_BARRIER_DMAS_SCHEDULED",
+                                       "Compiler generates DMA to program initial barriers"))};
 };
 
 //

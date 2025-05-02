@@ -1,9 +1,8 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <ov_ops/rms.hpp>
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset6.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -97,6 +96,8 @@ TEST_P(FuseRMSTestCommon, NPU3720_HW) {
 TEST_P(FuseRMSTestCommon, NPU4000_HW) {
     abs_threshold = 0.11f;
     setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 namespace {

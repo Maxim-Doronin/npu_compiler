@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -39,7 +39,7 @@ bool IE::arch37xx::isMixPrecisionSupported(mlir::Operation* origOp, const bool i
         return true;
     }
 
-    // HW limitations below do not apply to NPU37XX
+    // HW limitations below do not apply to VPUX37XX
     // However, leaky ReLU does not work accurately in quant in / float out mode.
     // In quant in / float out flow, PReLU alpha coefficient can only be represented as prelu_mult.
     // prelu_shift is not available in such configuration.
@@ -54,24 +54,24 @@ bool IE::arch37xx::isMixPrecisionSupported(mlir::Operation* origOp, const bool i
 }
 
 bool IE::arch37xx::checkPostOp(IE::LayerWithPostOpInterface layerWithPostOp, bool isPerAxisQuantizedOutput,
-                               bool isFloatInput, mlir::Location loc) {
-    auto postOpName = layerWithPostOp.getPostOp().value().getStringRef();
-    auto postOpDictAttr = layerWithPostOp.getPostOpAttrs();
-    if (postOpDictAttr != nullptr) {
-        // On NPU37XX, NPU40XX, the prelu alpha multiplier used for integer input is unsigned, on
-        // floating input it is signed. If input is floating, output is integer, quantize output need to be per tensor,
-        // this will check in mix-precision pass
-        if (!isFloatInput && postOpName == IE::LeakyReluOp::getOperationName()) {
-            IE::LeakyReluOp::Adaptor leakyRelu(std::nullopt, nullptr, toProperties<IE::LeakyReluOp>(postOpDictAttr));
-            if (leakyRelu.verify(loc).succeeded()) {
-                const auto alpha = leakyRelu.getNegativeSlope().convertToDouble();
-                if (alpha < 0.0) {
-                    return false;
-                }
-            }
-        } else if (isPerAxisQuantizedOutput && postOpName != IE::ReLUOp::getOperationName()) {
+                               bool isFloatInput) {
+    const auto postOp = layerWithPostOp.getPostOp();
+    if (postOp == nullptr) {
+        return true;
+    }
+
+    if (!isFloatInput && mlir::isa<IE::LeakyReluAttr>(postOp)) {
+        // The PPE prelu alpha multiplier is unsigned for integer input and signed for float input.
+        const auto alpha = mlir::cast<IE::LeakyReluAttr>(postOp).getNegativeSlope().getValueAsDouble();
+        if (alpha < 0.0) {
             return false;
         }
+    } else if (isPerAxisQuantizedOutput && !mlir::isa<IE::ReluAttr>(postOp)) {
+        // Because in the PPE pipeline the quantization scale happens before post-op effects are applied, the following
+        // limitation occurs: If we have per axis quantization at output this would produce per axis Clamp intervals and
+        // LeakyReLU alphas which would not be supported.
+        return false;
     }
+
     return true;
 }

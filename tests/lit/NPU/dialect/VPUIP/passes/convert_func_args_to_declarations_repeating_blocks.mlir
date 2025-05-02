@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,7 +12,7 @@ module @RepeatingBlocks {
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x4x5x5xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x4x5x5xf16>
@@ -108,7 +108,7 @@ module @RepeatingBlocksWithViewOps {
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
 
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x8x5x5xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x8x5x5xf16>

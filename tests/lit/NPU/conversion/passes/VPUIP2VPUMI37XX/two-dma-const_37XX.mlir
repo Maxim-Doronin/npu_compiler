@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 module @Convert {
-  IE.CNNNetwork entryPoint : @main inputsInfo :  {
+  net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "Parameter_6" : tensor<1x100xui32>
   } outputsInfo :  {
     DataInfo "Convert_7" : tensor<1x100xui32>

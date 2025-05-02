@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/const/attributes/content.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/attr_interfaces.hpp"
+#include "vpux/compiler/dialect/const/constant_transformations_control.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/MLIRContext.h>
@@ -15,12 +15,6 @@
 namespace vpux {
 namespace Const {
 namespace details {
-
-namespace optimization {
-
-using TransformAttrPos = SmallVector<Const::TransformAttrInterface>::iterator;
-
-}  // namespace optimization
 
 /**
  *

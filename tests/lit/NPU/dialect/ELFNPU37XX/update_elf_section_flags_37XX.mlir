@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 module @Test {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x1000xf16>
   } outputsInfo : {
     DataInfo "softmax" : tensor<1x1000xf16>
@@ -167,7 +167,7 @@ module @Test {
 // -----
 
 module @Test {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter" : tensor<1x100xui32>
   } outputsInfo : {
     DataInfo "Convert" : tensor<1x100xui32>

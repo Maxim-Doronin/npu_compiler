@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,6 @@
 #include "vpux/compiler/utils/allocate_buffers.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/custom_pwl_table.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
@@ -150,7 +149,7 @@ mlir::Value createNCEClusterTask(mlir::OpBuilder& rewriter, mlir::Location loc, 
         mlir::Value data = value;
         mlir::Value sparsityMap = nullptr;
         mlir::Value seTable = nullptr;
-        if (value != nullptr && value.getType().isa<VPUIP::SparseBufferType>()) {
+        if (value != nullptr && mlir::isa<vpux::VPUIP::SparseBufferType>(value.getType())) {
             auto ungroupedOp = rewriter.create<VPUIP::UngroupSparseBufferOp>(loc, value);
             data = ungroupedOp.getData();
             sparsityMap = ungroupedOp.getSparsityMap();
@@ -200,16 +199,13 @@ mlir::Value createNCEClusterTask(mlir::OpBuilder& rewriter, mlir::Location loc, 
 }
 
 bool isSuperdenseOp(mlir::Operation* nceOp) {
-    auto outType = nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
-    if (auto parentOp = nceOp->getParentOfType<VPU::NCEClusterTilingOp>()) {
-        outType = parentOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
-    }
+    auto outType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     const auto outputOrder = outType.getDimsOrder();
     const auto outputShape = outType.getShape();
     const auto outElemType = outType.getElementType();
 
     // Check output shape for each cluster
-    if (auto distributedTensorType = outType.dyn_cast<VPU::DistributedTensorType>()) {
+    if (auto distributedTensorType = mlir::dyn_cast<VPU::DistributedTensorType>(outType)) {
         auto tiledComputeShapes = distributedTensorType.getPerClusterComputeShapes();
         for (auto& computeShape : tiledComputeShapes) {
             if (VPU::NCESparsity::isSuperdenseRequired(outputOrder, computeShape, outElemType)) {
@@ -297,7 +293,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEConvolutio
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -341,7 +337,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEMaxPoolOp 
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -386,7 +382,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEAveragePoo
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -448,7 +444,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEDepthConvo
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -504,7 +500,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEInterpolat
 
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -558,7 +554,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEEltwiseOp 
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -606,7 +602,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEReduceOp o
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -649,7 +645,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCECompressCo
     const auto KX = filterShape[Dims4D::Filter::KX];
 
     const auto channelAlignValue = VPU::NCEInvariant::getAlignment(
-            newArgs.getFilter().getType().cast<vpux::NDTypeInterface>().getElementType());
+            mlir::cast<vpux::NDTypeInterface>(newArgs.getFilter().getType()).getElementType());
 
     const auto finalShape = SmallVector<int64_t>({filterShape[Dims4D::Filter::OC], channelAlignValue, KY, KX});
     auto shapeCastWeightsOp = rewriter.create<VPUIP::ShapeCastOp>(origOp->getLoc(), newArgs.getFilter(),
@@ -665,7 +661,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCECompressCo
     // Create NCE per-cluster Operation
     //
     auto inputType = newArgs.getInput().getType();
-    const auto inputShape = inputType.cast<vpux::NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(inputType).getShape();
     const auto finalInputShape = vpux::Shape(
             {inputShape[Dims4D::Act::N], channelAlignValue, inputShape[Dims4D::Act::H], inputShape[Dims4D::Act::W]});
     auto finalInputShapeAttr = getIntArrayAttr(origOp.getContext(), finalInputShape);
@@ -677,7 +673,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCECompressCo
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -699,6 +695,11 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCECompressCo
     return mlir::success();
 }
 
+VPU::DistributedTensorType createCustomDistributedTensorType(VPU::ClusteredOpInterface clusteredOp,
+                                                             NDTypeInterface targetType,
+                                                             VPU::DistributionInfoAttr origDistTensorAttr,
+                                                             mlir::UnitAttr equalMemoryAndComputeView, ShapeRef shape);
+
 //
 // bufferize VPU::NCEPermuteOp
 //
@@ -707,10 +708,88 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEPermuteOp 
                                       VPU::NCEPermuteOp::Adaptor newArgs, mlir::RewriterBase& rewriter) {
     auto log = Logger::global().nest("one-shot-bufferize-NCEPermuteOp", 0);
 
-    auto clusterTilingOp = origOp->getParentOfType<VPU::NCEClusterTilingOp>();
-    if (clusterTilingOp != nullptr) {
-        return mlir::failure();
+    auto copyDistTensorType = mlir::dyn_cast<VPU::DistributedTensorType>(origOp->getOperand(0).getType());
+    if (copyDistTensorType != nullptr) {
+        log.trace("Got '{0}' Multi Tile at '{1}'", origOp->getName(), origOp->getLoc());
+        auto ctx = origOp->getContext();
+
+        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+        VPUX_THROW_UNLESS(clusteredOp != nullptr, "Operation '{0}' cannot be converted to VPU::ClusteredOpInterface",
+                          origOp);
+
+        const auto loc = origOp.getLoc();
+        const auto copyDistTensorAttr = copyDistTensorType.getDistribution();
+        auto targetType = mlir::cast<NDTypeInterface>(origOp.getOperand().getType());
+        targetType = targetType.changeDimsOrder(DimsOrder::NHWC);
+
+        auto castToDistType = createCustomDistributedTensorType(clusteredOp, targetType, copyDistTensorAttr,
+                                                                copyDistTensorAttr.getEqualMemoryAndComputeView(),
+                                                                targetType.getShape());
+
+        auto outBufferTypeInViewOp = vpux::getBufferType(castToDistType);
+        const auto castLoc = appendLoc(loc, "cast number of input tiles");
+        // ViewOp Input
+        // Reshape to NxWxCxH
+        // Layout change to NHWC
+        auto inputViewOp = rewriter.create<VPUIP::ViewOp>(castLoc, outBufferTypeInViewOp, newArgs.getInput());
+
+        // Manual update output type
+        auto outType = mlir::cast<NDTypeInterface>(origOp.getOutput().getType());
+        auto outTypeShape = outType.getShape();
+        targetType = targetType.changeElemType(outType.getElementType());
+        auto origOutDistribution = mlir::cast<VPU::DistributedTensorType>(outType).getDistribution();
+        auto newDistType =
+                createCustomDistributedTensorType(clusteredOp, targetType, origOutDistribution,
+                                                  origOutDistribution.getEqualMemoryAndComputeView(), outTypeShape);
+        auto newOutputType = newDistType.changeDimsOrder(DimsOrder::NWCH);
+
+        //
+        // Prepare output buffer for DPU
+        //
+        auto bufferType = vpux::getBufferType(newOutputType);
+
+        // Add PPE task to rescale output.
+        auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+        auto composedppeAttr = composePpeAttr(ppeAttr);
+
+        mlir::UnitAttr isSuperdenseAttr = nullptr;
+        if (isSuperdenseOp(origOp)) {
+            VPUX_THROW_WHEN(mlir::isa<VPU::SparseTensorType>(origOp->getResult(0).getType()),
+                            "Output cannot be sparse and super-dense at the same time");
+            isSuperdenseAttr = mlir::UnitAttr::get(ctx);
+        }
+
+        const auto dpuCostAttr = origOp->hasAttr(DPUCost) ? origOp->getAttr(DPUCost) : nullptr;
+        const auto isPermuteQuantizeAttr = mlir::UnitAttr::get(ctx);
+        const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, VPU::getArch(origOp));
+
+        log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
+        const auto outputBuffers =
+                allocateBuffersOfType(log.nest(), loc, rewriter, bufferType, /*individualBuffers=*/true);
+
+        auto nceOpResult = createNCEClusterTask(
+                rewriter, origOp->getLoc(), inputViewOp.getResult(), inputViewOp.getResult(),
+                /*weightsTable=*/nullptr, outputBuffers, VPUIP::NCETaskType::ELTWISE,
+                /*kernel_size=*/nullptr,
+                /*kernel_strides=*/nullptr,
+                /*kernel_padding=*/nullptr, origOp.getWorkloads(), isSuperdenseAttr, composedppeAttr, dpuCostAttr,
+                /*isInplace=*/nullptr, isPermuteQuantizeAttr, /*cmSpPattern=*/nullptr,
+                /*inputChannelsCompression=*/nullptr, /*isNCEPermute*/ true,
+                /*smallKernelOptimization=*/nullptr, mpeEngineAttr, log);
+
+        // ViewOp Output
+        // Reshape to NxCxHxW
+        // Layout change to NHWC
+
+        auto outputViewOp = rewriter.create<VPUIP::ViewOp>(
+                origOp.getLoc(), vpux::getBufferType(origOp.getResult().getType()), nceOpResult);
+
+        mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, outputViewOp.getResult());
+
+        return mlir::success();
     }
+
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
 
     log.trace("Got '{0}' Single Tile '{1}'", origOp->getName(), origOp->getLoc());
 
@@ -720,14 +799,13 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEPermuteOp 
     const auto inputShape = getShape(newArgs.getInput());
     const auto targetShape = calculateWCHShape(inputShape.raw());
 
-    auto inType = newArgs.getInput().getType().cast<NDTypeInterface>();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(newArgs.getInput().getType());
     const auto targetInOutOrder = DimsOrder::NHWC;
     inType = inType.changeShape(ShapeRef(targetShape));
     inType = inType.changeDimsOrder(targetInOutOrder);
     auto viewOpIn = rewriter.create<VPUIP::ViewOp>(origOp.getLoc(), inType, newArgs.getInput());
 
     // Manual update output type
-    auto outType = origOp.getOutput().getType().cast<NDTypeInterface>();
     const auto outNCEPermuteShape = calculateWCHShape(outType.getShape().raw());
     outType = outType.changeShape(ShapeRef(outNCEPermuteShape));
     outType = outType.changeDimsOrder(DimsOrder::NWCH);
@@ -746,7 +824,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEPermuteOp 
 
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -771,7 +849,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEPermuteOp 
     // ViewOp Output
     // Reshape to NxCxHxW
     // Layout change to NHWC
-    auto viewOpOutType = nceOp.getType().cast<NDTypeInterface>().changeDimsOrder(targetInOutOrder);
+    auto viewOpOutType = mlir::cast<vpux::NDTypeInterface>(nceOp.getType()).changeDimsOrder(targetInOutOrder);
     viewOpOutType = viewOpOutType.changeShape(getShape(origOp.getOutput()));
     auto viewOpOut = rewriter.create<VPUIP::ViewOp>(origOp.getLoc(), viewOpOutType, nceOp);
     mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, viewOpOut.getResult());
@@ -810,7 +888,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEMatMulOp o
     log.nest().trace("Creating VPUIP::NCEClusterTaskOp");
     mlir::UnitAttr isSuperdenseAttr = nullptr;
     if (isSuperdenseOp(origOp)) {
-        VPUX_THROW_WHEN(origOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
+        VPUX_THROW_WHEN(mlir::isa<vpux::VPU::SparseTensorType>(origOp->getResult(0).getType()),
                         "Output cannot be sparse and super-dense at the same time");
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
@@ -827,26 +905,6 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEMatMulOp o
 
     return mlir::success();
 }
-
-namespace {
-
-//
-// bufferize MultiTile VPU::NCEPermuteOp
-//
-
-class NCEPermuteMultiTileRewriter final : public mlir::OpConversionPattern<VPU::NCEClusterTilingOp> {
-public:
-    NCEPermuteMultiTileRewriter(mlir::TypeConverter& converter, mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpConversionPattern<VPU::NCEClusterTilingOp>(converter, ctx), _log(log) {
-    }
-
-public:
-    mlir::LogicalResult matchAndRewrite(VPU::NCEClusterTilingOp origOp, OpAdaptor newArgs,
-                                        mlir::ConversionPatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
 
 VPU::DistributedTensorType createCustomDistributedTensorType(VPU::ClusteredOpInterface clusteredOp,
                                                              NDTypeInterface targetType,
@@ -871,10 +929,10 @@ VPU::DistributedTensorType createCustomDistributedTensorType(VPU::ClusteredOpInt
     // Padding adaptions
     auto newPadAttr = origDistTensorAttr.getPads();
     if (newPadAttr != nullptr) {
-        const auto fullInputChannels =
-                clusteredOp.getOperation()->getOperand(0).getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::C];
-        const auto fullOutputChannels =
-                clusteredOp.getOperation()->getResult(0).getType().cast<NDTypeInterface>().getShape()[Dims4D::Act::C];
+        const auto fullInputChannels = mlir::cast<NDTypeInterface>(clusteredOp.getOperation()->getOperand(0).getType())
+                                               .getShape()[Dims4D::Act::C];
+        const auto fullOutputChannels = mlir::cast<NDTypeInterface>(clusteredOp.getOperation()->getResult(0).getType())
+                                                .getShape()[Dims4D::Act::C];
 
         newPadAttr = VPU::getPaddingAttr(origDistTensorCtx, PadInfo(origDistTensorAttr.getPads().getTop().getInt(),
                                                                     origDistTensorAttr.getPads().getBottom().getInt(),
@@ -919,156 +977,6 @@ VPU::DistributedTensorType createCustomDistributedTensorType(VPU::ClusteredOpInt
 
     return VPU::DistributedTensorType::get(ctx, ArrayRef(calculateWCHShape(shape.raw())), elemType, order, memSpace,
                                            distributedTensorAttr);
-}
-
-mlir::LogicalResult NCEPermuteMultiTileRewriter::matchAndRewrite(VPU::NCEClusterTilingOp origOp, OpAdaptor newArgs,
-                                                                 mlir::ConversionPatternRewriter& rewriter) const {
-    auto permuteOp = origOp.getInnerTaskOpOfType<VPU::NCEPermuteOp>();
-    if (permuteOp == nullptr) {
-        return mlir::failure();
-    }
-
-    _log.trace("Got '{0}' Multi Tile at '{1}'", origOp->getName(), origOp->getLoc());
-
-    auto ctx = this->getContext();
-    const auto* typeConverter = getTypeConverter();
-    VPUX_THROW_UNLESS(typeConverter != nullptr, "TypeConverter is not set");
-
-    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(permuteOp.getOperation());
-    VPUX_THROW_UNLESS(clusteredOp != nullptr, "Operation '{0}' cannot be converted to VPU::ClusteredOpInterface",
-                      permuteOp);
-    VPUX_THROW_WHEN(origOp.getNumOperands() != 1,
-                    "Unexpected number of operands in multi-tile NCE permute: {0}, expected 1",
-                    origOp.getNumOperands());
-    const auto loc = origOp.getLoc();
-    const auto copyDistTensorType = origOp.getOperand(0).getType().cast<VPU::DistributedTensorType>();
-    const auto copyDistTensorAttr = copyDistTensorType.getDistribution();
-
-    auto targetType = origOp.getOperand(0).getType().cast<NDTypeInterface>();
-    targetType = targetType.changeDimsOrder(DimsOrder::NHWC);
-
-    auto castToDistType =
-            createCustomDistributedTensorType(clusteredOp, targetType, copyDistTensorAttr,
-                                              copyDistTensorAttr.getEqualMemoryAndComputeView(), targetType.getShape());
-
-    auto outBufferTypeInViewOp = typeConverter->convertType(castToDistType);
-    const auto castLoc = appendLoc(loc, "cast number of input tiles");
-
-    // ViewOp Input
-    // Reshape to NxWxCxH
-    // Layout change to NHWC
-    auto inputViewOp = rewriter.create<VPUIP::ViewOp>(castLoc, outBufferTypeInViewOp, newArgs.getOperands());
-
-    auto outValueCastInput =
-            rewriter.create<mlir::bufferization::ToTensorOp>(loc, castToDistType, inputViewOp.getResult(),
-                                                             /*restrict=*/nullptr, /*writable=*/nullptr);
-
-    // Manual update output type
-    auto outType = permuteOp.getOutput().getType().cast<NDTypeInterface>();
-    auto outTypeShape = outType.getShape();
-    const auto outNCEPermuteShape = calculateWCHShape(outTypeShape.raw());
-    outType = outType.changeShape(ShapeRef(outNCEPermuteShape));
-    outType = outType.changeDimsOrder(DimsOrder::NWCH);
-    targetType = targetType.changeElemType(outType.getElementType());
-    auto origOutDistribution = origOp.getResult(0).getType().cast<VPU::DistributedTensorType>().getDistribution();
-    auto newOutputDistType =
-            createCustomDistributedTensorType(clusteredOp, targetType, origOutDistribution,
-                                              origOutDistribution.getEqualMemoryAndComputeView(), outTypeShape);
-    auto newClusterTilingDistType = newOutputDistType.changeDimsOrder(DimsOrder::NWCH);
-
-    //
-    // Prepare output buffer for DPU
-    //
-    auto bufferType = typeConverter->convertType(outType);
-
-    // Add PPE task to rescale output.
-    auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
-    auto composedppeAttr = composePpeAttr(ppeAttr);
-
-    mlir::UnitAttr isSuperdenseAttr = nullptr;
-    if (isSuperdenseOp(permuteOp)) {
-        VPUX_THROW_WHEN(permuteOp->getResult(0).getType().isa<VPU::SparseTensorType>(),
-                        "Output cannot be sparse and super-dense at the same time");
-        isSuperdenseAttr = mlir::UnitAttr::get(ctx);
-    }
-
-    const auto dpuCostAttr = permuteOp->hasAttr(DPUCost) ? permuteOp->getAttr(DPUCost) : nullptr;
-    const auto isPermuteQuantizeAttr = mlir::UnitAttr::get(ctx);
-
-    const auto bodyBuilder = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange newOperands) {
-        // Note: preserve unrealized_conversion_cast inside VPU.NCEClusterTiling
-        // body because this is the expectation.
-        auto valueCastInput = builder.create<mlir::UnrealizedConversionCastOp>(
-                loc, mlir::TypeRange{typeConverter->convertType(newOperands.front().getType())},
-                mlir::ValueRange{newOperands.front()});
-        _log.nest().trace("Allocating result buffer of type '{0}' for value type '{1}'", bufferType, outType);
-        const auto outputBuffers =
-                allocateBuffersOfType(_log.nest(), loc, builder, bufferType, /*individualBuffers=*/true);
-
-        const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, VPU::getArch(origOp));
-
-        auto nceOp = createNCEClusterTask(builder, loc, valueCastInput.getResult(0), valueCastInput.getResult(0),
-                                          /*weightsTable=*/nullptr, outputBuffers, VPUIP::NCETaskType::ELTWISE,
-                                          /*kernel_size=*/nullptr,
-                                          /*kernel_strides=*/nullptr,
-                                          /*kernel_padding=*/nullptr, permuteOp.getWorkloads(), isSuperdenseAttr,
-                                          composedppeAttr, dpuCostAttr,
-                                          /*isInplace=*/nullptr, isPermuteQuantizeAttr, /*cmSpPattern=*/nullptr,
-                                          /*inputChannelsCompression=*/nullptr, /*isNCEPermute=*/true,
-                                          /*smallKernelOptimization=*/nullptr, mpeEngineAttr, _log);
-        const auto nceOpOutType = nceOp.getType().cast<NDTypeInterface>();
-
-        auto valueCastOutput = builder.create<mlir::UnrealizedConversionCastOp>(
-                loc,
-                mlir::TypeRange{getTensorType(nceOpOutType.getShape(), nceOpOutType.getElementType(),
-                                              nceOpOutType.getDimsOrder(), nceOpOutType.getMemSpace())},
-                mlir::ValueRange{nceOp});
-        builder.create<VPU::YieldOp>(loc, valueCastOutput->getResult(0));
-    };
-
-    auto newClusterTilingOp = rewriter.create<VPU::NCEClusterTilingOp>(
-            loc, newClusterTilingDistType, mlir::ValueRange{outValueCastInput->getResult(0)}, bodyBuilder);
-
-    // ViewOp Output
-    // Reshape to NxCxHxW
-    // Layout change to NHWC
-    auto inValueCastOutput = rewriter.create<mlir::bufferization::ToMemrefOp>(
-            loc, typeConverter->convertType(newClusterTilingDistType), newClusterTilingOp.getResult(0),
-            /*read_only=*/nullptr);
-
-    auto outputViewOp = rewriter.create<VPUIP::ViewOp>(newClusterTilingOp.getLoc(),
-                                                       typeConverter->convertType(origOp.getResult(0).getType()),
-                                                       inValueCastOutput->getResult(0));
-
-    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, outputViewOp.getResult());
-
-    return mlir::success();
-}
-}  // namespace
-
-mlir::LogicalResult vpux::lowerMultiTileVpuNcePermuteOneShot(mlir::MLIRContext* ctx, mlir::Operation* func,
-                                                             vpux::Logger& log) {
-    mlir::ConversionTarget target(*ctx);
-
-    // normal NCEClusterTiling will be handled separately
-    target.addDynamicallyLegalOp<VPU::NCEClusterTilingOp>([&](VPU::NCEClusterTilingOp op) {
-        return op.getInnerTaskOpOfType<VPU::NCEPermuteOp>() == nullptr;
-    });
-
-    target.addLegalDialect<VPUIP::VPUIPDialect>();
-    target.addLegalOp<VPU::YieldOp>();
-    target.addLegalOp<mlir::memref::AllocOp>();
-    vpux::populateBufferizeMaterializationLegality(target);
-    // allow to_tensor/to_memref in multi-tile permute, these are going to
-    // appear in case of one-shot bufferization.
-    target.addLegalOp<mlir::bufferization::ToTensorOp>();
-    target.addLegalOp<mlir::bufferization::ToMemrefOp>();
-
-    vpux::BufferizeOneShotTypeConverter typeConverter;
-    mlir::RewritePatternSet patterns(ctx);
-    patterns.add<NCEPermuteMultiTileRewriter>(typeConverter, ctx, log);
-
-    return mlir::applyPartialConversion(func, target, std::move(patterns));
 }
 
 //

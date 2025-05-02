@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -73,12 +76,12 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::EyeOp eyeOp, mlir::P
         return mlir::failure();
     }
 
-    const auto numRows = getConstValue(eyeOp.getNumRows());
+    const auto numRows = Const::getSplatValue<int64_t>(eyeOp.getNumRows());
     if (mlir::failed(numRows)) {
         return mlir::failure();
     }
 
-    const auto numColumns = getConstValue(eyeOp.getNumColumns());
+    const auto numColumns = Const::getSplatValue<int64_t>(eyeOp.getNumColumns());
     if (mlir::failed(numColumns)) {
         return mlir::failure();
     }

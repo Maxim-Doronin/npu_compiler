@@ -1,11 +1,10 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
@@ -60,7 +59,7 @@ mlir::FailureOr<SmallVector<int64_t>> getOutShape(VPU::ReshapeOpAdaptor reshape,
         return shapeVec;
     } else {
         const auto inShape =
-                to_small_vector(reshape.getInput().getType().cast<vpux::NDTypeInterface>().getShape().raw());
+                to_small_vector(mlir::cast<vpux::NDTypeInterface>(reshape.getInput().getType()).getShape().raw());
 
         auto dividend = std::accumulate(inShape.begin(), inShape.end(), int64_t(1), std::multiplies<int64_t>());
 
@@ -113,7 +112,7 @@ mlir::LogicalResult vpux::VPU::ReshapeOp::inferReturnTypes(mlir::MLIRContext* ct
         return mlir::failure();
     }
 
-    const auto inType = reshape.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(reshape.getInput().getType());
 
     const auto typeComponents =
             TypeComponents().setShape(Shape(outShape.value())).setDimsOrder(DimsOrder::fromNumDims(outShape->size()));
@@ -139,8 +138,8 @@ public:
 };
 
 mlir::LogicalResult ConvertToShapeCast::matchAndRewrite(VPU::ReshapeOp origOp, mlir::PatternRewriter& rewriter) const {
-    auto inputType = origOp.getInput().getType().cast<NDTypeInterface>();
-    auto outputType = origOp.getOutput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     if (!inputType.getDimsOrder().isIdentity() || inputType.getRank() != outputType.getRank()) {
         return mlir::failure();
     }

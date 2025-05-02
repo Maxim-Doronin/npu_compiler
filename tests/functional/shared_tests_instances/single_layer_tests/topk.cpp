@@ -4,8 +4,6 @@
 //
 
 #include "single_op_tests/topk.hpp"
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov {
@@ -112,13 +110,6 @@ const auto paramsConfig = ::testing::Combine(
                 ov::test::static_shapes_to_test_representation(std::vector<std::vector<ov::Shape>>({{{5, 5, 5}}}))),
         ::testing::Values(ov::test::utils::DEVICE_NPU));
 
-const auto paramsConfigPrecommit = ::testing::Combine(
-        ::testing::ValuesIn(std::vector<int64_t>{5}), ::testing::ValuesIn(std::vector<int64_t>{2}),
-        ::testing::ValuesIn(modes), ::testing::ValuesIn(sortTypes), ::testing::ValuesIn(modelTypeFP16),
-        ::testing::ValuesIn(
-                ov::test::static_shapes_to_test_representation(std::vector<std::vector<ov::Shape>>({{{5, 5, 5}}}))),
-        ::testing::Values(ov::test::utils::DEVICE_NPU));
-
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_TopK, TopKLayerTestCommon, paramsConfig, TopKLayerTestCommon::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_TopK1, TopK1LayerTest, paramsConfig, TopK1LayerTest::getTestCaseName);
 
@@ -147,6 +138,19 @@ INSTANTIATE_TEST_SUITE_P(smoke_TopK_Tilling, TopKLayerTestCommon,
                                             ::testing::ValuesIn(modelTypes_Tilling),
                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
                                                     std::vector<std::vector<ov::Shape>>({{{1, 5, 512, 512}}}))),
+                                            ::testing::Values(ov::test::utils::DEVICE_NPU)),
+                         TopKLayerTestCommon::getTestCaseName);
+
+// K=1 asm optimization tests
+INSTANTIATE_TEST_SUITE_P(smoke_TopK_K1, TopKLayerTestCommon,
+                         ::testing::Combine(::testing::ValuesIn(k_Tilling),
+                                            ::testing::ValuesIn(std::vector<int64_t>{2}),
+                                            ::testing::ValuesIn(modes_Tilling),
+                                            ::testing::ValuesIn(std::vector<ov::op::v3::TopK::SortType>{
+                                                    ov::op::v3::TopK::SortType::NONE}),
+                                            ::testing::ValuesIn(modelTypes_Tilling),
+                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
+                                                    std::vector<std::vector<ov::Shape>>({{{1, 42840, 13}}}))),
                                             ::testing::Values(ov::test::utils::DEVICE_NPU)),
                          TopKLayerTestCommon::getTestCaseName);
 

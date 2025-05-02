@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -35,7 +35,7 @@ func.func @ConvAssignedSOH(%arg0 : tensor<1x64x28x28xf16, {order = #NHWC}>)->ten
         ppe = #VPU.PPEStub<>,
         pad = #VPU.Padding< left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64 >,
         rawFilterShape = [ 80, 64, 3, 3 ], strides = [ 1, 1 ]
-    } ->tensor<1x80x28x28xf16, {order = #NHWC}>
+    } : tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<80x64x3x3xf16, {order = #NHWC}>, tensor<80x1x1x4xsi32> ->tensor<1x80x28x28xf16, {order = #NHWC}>
 
     return %0 : tensor<1x80x28x28xf16, {order = #NHWC}>
 
@@ -61,7 +61,7 @@ func.func @ConvAssignedSOK(%arg0 : tensor<1x64x1x1xf16, {order = #NHWC}>)->tenso
         ppe = #VPU.PPEStub<>,
         pad = #VPU.Padding< left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64 >,
         rawFilterShape = [ 48, 64, 3, 3 ], strides = [ 1, 1 ]
-    } -> tensor<1x48x1x1xf16, {order = #NHWC}>
+    } : tensor<1x64x1x1xf16, {order = #NHWC}>, tensor<48x64x3x3xf16, {order = #NHWC}>, tensor<48x1x1x4xsi32> -> tensor<1x48x1x1xf16, {order = #NHWC}>
 
     return %0 : tensor<1x48x1x1xf16, {order = #NHWC}>
 
@@ -505,7 +505,7 @@ func.func @AssignSOHForLayerWithTopK(%arg0: tensor<1x151x513x513xf16>) -> tensor
     // CHECK-SAME:        axis = 1 : i64, element_type = si32, k_value = 1 : i64, mode = #IE.topk_mode<MAX>,
     // CHECK-SAME:        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, operandSegmentSizes = array<i32: 1, 0, 1>, sort = #IE.topk_sort_type<SORT_INDICES>
     // CHECK-SAME:        tilingStrategy = [1, 1, 43, 1]
-    // CHECK-SAME:        : tensor<1x151x513x513xf16>, tensor<1x1x1x16xui8> -> tensor<1x1x513x513xf16>, tensor<1x1x513x513xsi32> 
+    // CHECK-SAME:        : tensor<1x151x513x513xf16>, tensor<1x1x1x16xui8> -> tensor<1x1x513x513xf16>, tensor<1x1x513x513xsi32>
     // CHECK:        return [[TARGET_SHAPE]] : tensor<1x1x513x513xsi32>
 }
 
@@ -524,7 +524,7 @@ func.func @TileWithSOKTiling(%arg0 : tensor<1x32x30x30xf16, {order = #NHWC}>)->t
         ppe = #VPU.PPEStub<>,
         pad = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>,
         rawFilterShape = [ 768, 32, 7, 7 ], strides = [ 1, 1 ]
-    } ->tensor<1x768x30x30xf16, {order = #NHWC}>
+    } : tensor<1x32x30x30xf16, {order = #NHWC}>, tensor<768x32x7x7xf16, {order = #NHWC}>, tensor<768x1x1x4xsi32> ->tensor<1x768x30x30xf16, {order = #NHWC}>
 
     return %0 : tensor<1x768x30x30xf16, {order = #NHWC}>
 
@@ -567,10 +567,10 @@ func.func @LastOpExceptionCase(%arg0: tensor<1x32x60x60x!qElemType, {order = #NH
     %cst_5 = const.Declare tensor<64x1x1x4xsi32> = dense<10> : tensor<64x1x1x4xsi32>
     %cst_6 = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
 
-    %0 = VPU.NCE.Convolution(%arg0, %cst, %cst_6) {pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [16, 32, 3, 3], strides = [2, 2]} -> tensor<1x16x30x30x!qElemType, {order = #NHWC}>
-    %1 = VPU.NCE.Convolution(%0, %cst_0, %cst_5) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [64, 16, 3, 3], strides = [1, 1]} -> tensor<1x64x30x30xf16, {order = #NHWC}>
+    %0 = VPU.NCE.Convolution(%arg0, %cst, %cst_6) {pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [16, 32, 3, 3], strides = [2, 2]} : tensor<1x32x60x60x!qElemType, {order = #NHWC}>, tensor<16x32x3x3x!qElemType, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x30x30x!qElemType, {order = #NHWC}>
+    %1 = VPU.NCE.Convolution(%0, %cst_0, %cst_5) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [64, 16, 3, 3], strides = [1, 1]} : tensor<1x16x30x30x!qElemType, {order = #NHWC}>, tensor<64x16x3x3x!qElemType, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x30x30xf16, {order = #NHWC}>
     %2 = VPU.NCE.DepthConvolution(%1, %cst_4, %cst_3) {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [64, 1, 1, 1], strides = [1, 1]} -> tensor<1x64x30x30x!qElemType, {order = #NHWC}>
-    %3 = VPU.NCE.Convolution(%2, %cst_1, %cst_2) {pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [32, 64, 3, 3], strides = [2, 2]} -> tensor<1x32x15x15x!qElemType, {order = #NHWC}>
+    %3 = VPU.NCE.Convolution(%2, %cst_1, %cst_2) {pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [32, 64, 3, 3], strides = [2, 2]} : tensor<1x64x30x30x!qElemType, {order = #NHWC}>, tensor<32x64x3x3x!qElemType, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x15x15x!qElemType, {order = #NHWC}>
 
     return %3 : tensor<1x32x15x15x!qElemType, {order = #NHWC}>
     // CHECK-COUNT-7:    const.Declare

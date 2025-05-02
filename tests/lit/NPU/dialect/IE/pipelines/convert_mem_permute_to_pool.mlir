@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -870,4 +870,59 @@ func.func @AdjustMemPermuteForPerAxisQuantize(%arg0: tensor<1x12800x1x32x!qElemT
     // CHECK-SAME:                  -> tensor<1x32x12800x1x!qElemType2, {order = #NCWH}>
     // CHECK:       [[PERMUTE_CAST_OUT:%.+]] = IE.PermuteCast([[MAX_POOL]]) {dst_order = #NHWC, mem_perm = #map} : tensor<1x32x12800x1x!qElemType2, {order = #NCWH}> -> tensor<32x12800x1x1x!qElemType1, {order = #NHWC}>
     // CHECK:       return [[PERMUTE_CAST_OUT]] : tensor<32x12800x1x1x!qElemType1, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#HNWC = affine_map<(d0, d1, d2, d3) -> (d2, d0, d3, d1)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+// CHECK-LABEL: @BigMemPermute
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x4x16x19320xf16>
+func.func @BigMemPermute(%arg0: tensor<1x4x16x19320xf16>) -> tensor<1x16x4x19320xf16, {order = #NHWC}> {
+    %MEM_PERMUTE = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NCWH } : 
+    tensor<1x4x16x19320xf16> -> tensor<1x16x4x19320xf16, {order = #NHWC}>
+        
+
+    return %MEM_PERMUTE : tensor<1x16x4x19320xf16, {order = #NHWC}>
+
+    // CHECK-NOT:   IE.LayoutCast
+    // CHECK-NOT:   IE.ShapeCast
+    // CHECK-NOT:   IE.MaxPool
+    // CHECK:       [[MEM_PERMUTE:%.+]] = IE.MemPermute([[INPUT]]) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x4x16x19320xf16> -> tensor<1x16x4x19320xf16, {order = #NHWC}>
+
+    // CHECK:       return [[MEM_PERMUTE]] : tensor<1x16x4x19320xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<i4:f16:1, {
+    0.0090698242187499996,0.0081949869791666674,0.0094848632812500003,0.0088582356770833329,
+    0.0012343245435345496,0.0065432542565655245,0.0036563635634563234,0.0026546757583627375,
+    0.0053674764737747778,0.0026426537476477476,0.0086378436757362766,0.0034536471222546565,
+    0.0012365436457242523,0.0053259162542665254,0.0093246453600034325,0.0083662676547733329,
+    0.0090698242187499996,0.0081949869791666674,0.0094848632812500003,0.0088582356770833329,
+    0.0012343245435345496,0.0065432542565655245,0.0036563635634563234,0.0026546757583627375,
+    0.0053674764737747778,0.0026426537476477476,0.0086378436757362766,0.0034536471222546565,
+    0.0012365436457242523,0.0053259162542665254}>
+
+// CHECK-LABEL: @NotConvertPerAxisQuantTypeMemPermute
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x30x4x128x!qElemType, {order = #NHWC}>
+func.func @NotConvertPerAxisQuantTypeMemPermute(%arg0: tensor<1x30x4x128x!qElemType, {order = #NHWC}>) -> tensor<1x30x4x128x!qElemType> {
+    %MEM_PERMUTE = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x30x4x128x!qElemType, {order = #NHWC}> -> tensor<1x30x4x128x!qElemType>
+
+    return %MEM_PERMUTE : tensor<1x30x4x128x!qElemType>
+
+    // CHECK:       [[MEM_PERMUTE:%.+]] = IE.MemPermute([[INPUT]]) {
+    // CHECK-SAME:      dst_order = #NCHW, mem_perm = #NWCH
+    // CHECK-SAME:  } : tensor<1x30x4x128x!qElemType, {order = #NHWC}>
+    // CHECK-SAME:      -> tensor<1x30x4x128x!qElemType>
+
+    // CHECK:       return [[MEM_PERMUTE]] : tensor<1x30x4x128x!qElemType>
 }

@@ -1,16 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #pragma once
 
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/optional.hpp"
-#include "vpux/utils/core/string_ref.hpp"
-
-#include <mlir/IR/BuiltinAttributes.h>
-#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/Attributes.h>
 
 //
 // Generated

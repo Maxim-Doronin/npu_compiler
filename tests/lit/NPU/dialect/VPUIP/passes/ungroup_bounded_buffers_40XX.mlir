@@ -1,10 +1,10 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --ungroup-bounded-buffers
-// --canonicalize %s | FileCheck %s REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --ungroup-bounded-buffers %s
+//  | FileCheck %s REQUIRES: arch-NPU40XX
 
 // CHECK-LABEL: UngroupBoundedBuffersforConvertDMA
 func.func @UngroupBoundedBuffersforConvertDMA(%arg0: memref<1x18x15xf32, @DDR>, %arg1: memref<3xsi32, @DDR>, %arg2: memref<1x18x15xf16, @DDR>, %arg3: memref<3xsi32, @DDR>)->(!VPUIP.BoundedBuffer<data = memref<1x18x15xf16, @DDR>, dynamic_shape = memref<3xsi32, @DDR>>) {
@@ -29,6 +29,11 @@ func.func @UngroupBoundedBuffersforConvertDMA(%arg0: memref<1x18x15xf32, @DDR>, 
 // -----
 
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
+
+module @VPU.SW {
+  func.func private @builtin_LSTMSequence(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64, i64, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
+  func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+}
 
 func.func @ProcessBuffers(%arg0: !VPUIP.BoundedBuffer<data=memref<1x1x35x512xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, %arg1: memref<1x1x1x128xf16, @DDR>, %arg2: memref<1x1x1x128xf16, @DDR>, %arg3: memref<1x4x128x128xf16, #NWHC>, %arg4: memref<1x1x1x2xsi32>) -> (!VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>) {
     %alloc_0 = memref.alloc() : memref<1x1x35x512xf16, @DDR>

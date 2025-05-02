@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,7 +70,7 @@ mlir::LogicalResult DistributedInputTypeRewriter::matchAndRewrite(VPU::NCEOpInte
     }
 
     auto input = origOp->getOperand(0);
-    auto distributedInType = input.getType().dyn_cast<VPU::DistributedTensorType>();
+    auto distributedInType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(input.getType());
     if (distributedInType == nullptr) {
         return matchFailed(_log, rewriter, origOp, "Input is not distributed tensor type at '{0}'", origOp->getLoc());
     }
@@ -91,7 +91,7 @@ mlir::LogicalResult DistributedInputTypeRewriter::matchAndRewrite(VPU::NCEOpInte
     if (parentCopy == nullptr) {
         return matchFailed(_log, rewriter, inCopy, "parent is not copy op at '{0}'", inCopy->getLoc());
     }
-    auto parentDistributedInType = parentCopy.getInput().getType().dyn_cast<VPU::DistributedTensorType>();
+    auto parentDistributedInType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(parentCopy.getInput().getType());
     if (parentDistributedInType == nullptr) {
         return matchFailed(_log, rewriter, parentCopy,
                            "Input type of parent copy op is not distributed tensor type at '{0}'",

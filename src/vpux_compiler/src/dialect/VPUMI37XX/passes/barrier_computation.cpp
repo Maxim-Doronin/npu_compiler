@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -291,7 +291,7 @@ private:
         std::vector<VPUMI37XX::ConfigureBarrierOp> lastAssignedBarrier(MAX_PID);
 
         for (auto op : funcOp.getOps<VPUMI37XX::ConfigureBarrierOp>()) {
-            auto vid = op.getOperation()->getResult(0).getType().cast<VPURegMapped::IndexType>().getValue();
+            auto vid = mlir::cast<vpux::VPURegMapped::IndexType>(op.getOperation()->getResult(0).getType()).getValue();
             auto pid = op.getId();
 
             auto& lastBarrier = lastAssignedBarrier[pid];

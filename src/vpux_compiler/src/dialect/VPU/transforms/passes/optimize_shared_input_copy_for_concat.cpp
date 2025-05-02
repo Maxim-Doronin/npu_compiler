@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -28,7 +29,7 @@ using namespace VPU;
 namespace {
 
 bool checkMemoryKind(mlir::Value value, VPU::MemoryKind kind) {
-    return value.getType().cast<vpux::NDTypeInterface>().getMemoryKind() == kind;
+    return mlir::cast<vpux::NDTypeInterface>(value.getType()).getMemoryKind() == kind;
 }
 
 bool isCopyCMX2DDR(mlir::Operation* op) {
@@ -55,22 +56,22 @@ SmallVector<int64_t> getOffsetsFromConcat(int64_t inputIdx, VPU::ConcatOp concat
 }
 
 NDTypeInterface getConcatDistributedType(VPU::DistributedTypeInterface origType, ShapeRef shape) {
-    auto distributedDataType = origType.getDistributedTypes().front().cast<VPU::DistributedTensorType>();
+    auto distributedDataType = mlir::cast<vpux::VPU::DistributedTensorType>(origType.getDistributedTypes().front());
     const auto typeComponents = TypeComponents().setShape(shape).setElementType(distributedDataType.getElementType());
 
     if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(distributedDataType.getDistribution())) {
         auto distribution = distributedDataType.getDistribution();
-        if (auto sparseType = origType.dyn_cast<VPU::SparseTensorType>()) {
+        if (auto sparseType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(origType)) {
             distribution = VPU::getExplicitDistrAttrForActualDataFromSparseType(sparseType);
         }
 
         auto newDistributedAttr =
                 getConcatExplicitDistributedAttrForNewShape(distribution, shape, origType.getContext());
-        return origType.changeTypeComponentsForExplicitDistribution(typeComponents, newDistributedAttr)
-                .cast<NDTypeInterface>();
+        return mlir::cast<vpux::NDTypeInterface>(
+                origType.changeTypeComponentsForExplicitDistribution(typeComponents, newDistributedAttr));
     }
 
-    return origType.cast<NDTypeInterface>().changeTypeComponents(typeComponents);
+    return mlir::cast<vpux::NDTypeInterface>(origType).changeTypeComponents(typeComponents);
 }
 
 int64_t getSliceDimSize(VPU::SliceOp sliceOp) {
@@ -277,14 +278,14 @@ std::optional<mlir::Value> SharedCopyInputRewriter::createNewBranchInput(mlir::V
     auto newSlice = rewriter.create<VPU::SliceOp>(sliceUser.getLoc(), concatInput, newSliceOffset, newSliceSize);
 
     auto userCopyOp = *sliceUser->getUsers().begin();
-    auto copyOutType = userCopyOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto copyOutType = mlir::cast<vpux::NDTypeInterface>(userCopyOp->getResult(0).getType());
 
     if (!mlir::isa<VPU::DistributedTensorType>(copyOutType)) {
         return rewriter.create<VPU::CopyOp>(userCopyOp->getLoc(), newSlice, copyOutType.getMemSpace());
     }
 
     auto newShape = getShape(newSlice.getResult());
-    auto newOutType = getConcatDistributedType(copyOutType.cast<VPU::DistributedTensorType>(), newShape);
+    auto newOutType = getConcatDistributedType(mlir::cast<vpux::VPU::DistributedTensorType>(copyOutType), newShape);
     auto newCopyOp =
             rewriter.create<VPU::CopyOp>(userCopyOp->getLoc(), newOutType, newSlice, copyOutType.getMemSpace());
 

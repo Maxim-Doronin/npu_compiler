@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ func.func @DontLegalizeDilatedGroupConvolution(%arg0: tensor<1x3x30x30xf16>) -> 
 
     // CHECK:       [[FILTERS:%.+]] = const.Declare tensor<3x1x3x3xf16>
     // CHECK:       [[CONV:%.+]] = IE.GroupConvolution([[ARG0]], [[FILTERS]])  {dilations = [2, 2], groups = 3 : i64, pads_begin = [2, 2],
-    // CHECK-SAME   pads_end = [2, 2], strides = [1, 1]} : tensor<1x3x30x30xf16>, tensor<3x1x3x3xf16> -> tensor<1x3x30x30xf16>
+    // CHECK-SAME:  pads_end = [2, 2], strides = [1, 1]} : tensor<1x3x30x30xf16>, tensor<3x1x3x3xf16> -> tensor<1x3x30x30xf16>
 
     // CHECK: return [[CONV]]
 }

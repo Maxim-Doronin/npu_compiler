@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -31,15 +31,17 @@ struct TypeComponents {
     std::optional<mlir::Type> elementType = std::nullopt;
     std::optional<DimsOrder> dimsOrder = std::nullopt;
     std::optional<IndexedSymbolAttr> memSpace = std::nullopt;
-    std::optional<mlir::ArrayAttr> bounds = std::nullopt;
     std::optional<Strides> strides = std::nullopt;
+    std::optional<Bounds> bounds = std::nullopt;
+    std::optional<DynamicDimsMask> dynamicDimsMask = std::nullopt;
 
     TypeComponents& setShape(ShapeRef newShape);
     TypeComponents& setElementType(mlir::Type newElementType);
     TypeComponents& setDimsOrder(DimsOrder newDimsOrder);
     TypeComponents& setMemSpace(IndexedSymbolAttr newMemSpace);
-    TypeComponents& setBounds(mlir::ArrayAttr newBounds);
     TypeComponents& setStrides(StridesRef newStrides);
+    TypeComponents& setBounds(const Bounds& newBounds);
+    TypeComponents& setDynamicDimsMask(const DynamicDimsMask& newDynamicDimsMask);
 };
 
 }  // namespace vpux
@@ -110,12 +112,6 @@ public:
                                           vpux::ShapeRef tileElemStrides) const;
     vpux::NDTypeInterface eraseTiledInfo(mlir::Type type) const;
     vpux::NDTypeInterface pad(mlir::Type type, vpux::ShapeRef padBefore, vpux::ShapeRef padAfter) const;
-};
-
-class TensorBoundedTypeInterface : public BoundedTypeInterface::FallbackModel<TensorBoundedTypeInterface> {
-public:
-    mlir::ArrayAttr getBounds(mlir::Type type) const;
-    vpux::BoundedTypeInterface changeBounds(mlir::Type type, mlir::ArrayAttr bounds) const;
 };
 
 }  // namespace vpux

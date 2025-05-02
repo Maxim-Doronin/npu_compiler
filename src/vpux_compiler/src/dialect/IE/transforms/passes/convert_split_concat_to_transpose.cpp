@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -363,7 +365,7 @@ mlir::Value composeNewBias(IE::ConcatOp concatOp, mlir::PatternRewriter& rewrite
             const DimsOrder biasOrder = DimsOrder::NCHW;
             const auto biasType = mlir::RankedTensorType::get(
                     biasShape.raw(), mlir::cast<NDTypeInterface>(input.getType()).getElementType(),
-                    getTensorAttr(rewriter.getContext(), biasOrder, nullptr, nullptr));
+                    getTensorAttr(rewriter.getContext(), biasOrder, nullptr));
 
             auto newLoc = appendLoc(inConvOp->getLoc(), "_{0}", idx);
 

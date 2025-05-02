@@ -54,14 +54,14 @@ mlir::LogicalResult ConvertM2iResizeToTask::matchAndRewrite(VPU::M2IResizeOp ori
                                                             mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
-    const auto elType = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto elType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getElementType();
     M2iColorFmt fmt;
 
     if (elType.isUnsignedInteger(8)) {
         // If last axes value is the last shape dim => planar
         const auto axes = parseIntArrayAttr<int64_t>(origOp.getAxes());
         const auto axesSize = axes.size();
-        const auto outType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
         if (axes[axesSize - 1] == outType.getRank() - 1) {
             fmt = M2iColorFmt::PL_RGB24;
         } else {

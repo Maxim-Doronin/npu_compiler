@@ -1,9 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+
+#include <mlir/IR/PatternMatch.h>
+
 namespace vpux {
 namespace IE {
 

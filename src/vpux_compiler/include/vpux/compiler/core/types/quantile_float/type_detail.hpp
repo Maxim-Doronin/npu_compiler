@@ -1,10 +1,10 @@
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/TypeSupport.h>
 #include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 using namespace mlir;
 
@@ -15,7 +15,7 @@ namespace detail {
 struct QuantileFloatTypeStorage : public mlir::TypeStorage {
     unsigned width;
     const double* quantilesElements;
-    unsigned quantilesParamsSize;
+    size_t quantilesParamsSize;
 
     struct KeyTy {
         KeyTy(unsigned width, ArrayRef<double> quantiles): width(width), quantiles(quantiles) {
@@ -42,8 +42,8 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
         unsigned getHashValue() const {
             int64_t* quantilesCast = llvm::bit_cast<int64_t*>(quantiles.data());
             ArrayRef<int64_t> quantilesBits(quantilesCast, quantiles.size());
-            return llvm::hash_combine(llvm::hash_combine_range(quantilesBits.begin(), quantilesBits.end()),
-                                      static_cast<int64_t>(width));
+            return static_cast<unsigned>(llvm::hash_combine(
+                    llvm::hash_combine_range(quantilesBits.begin(), quantilesBits.end()), static_cast<int64_t>(width)));
         }
     };
 

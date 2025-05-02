@@ -10,7 +10,7 @@
 
 // CHECK-LABEL: @TwoFunctions
 module @TwoFunctions {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xui8>
     } outputsInfo : {
         DataInfo "output" : tensor<1x48x60x60xf16>
@@ -71,7 +71,7 @@ module @TwoFunctions {
 
 // CHECK-LABEL: @RepeatingBlocks
 module @RepeatingBlocks  {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x48x60x60xf32>
     } outputsInfo : {
         DataInfo "output" : tensor<1x48x60x60xf16>
@@ -83,7 +83,7 @@ module @RepeatingBlocks  {
         %shape_cast1 = IE.ShapeCast {shape = [1, 48, 225, 16]} inputs(%arg0 : tensor<1x48x60x60xf16>) -> tensor<1x48x225x16xf16>
         %permute_quantize = IE.PermuteQuantize(%shape_cast1) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x48x225x16xf16> -> tensor<1x48x225x16xf16, {order = #NHWC}>
         %shape_cast2 = IE.ShapeCast {shape = [1, 48, 60, 60]} inputs(%permute_quantize : tensor<1x48x225x16xf16, {order = #NHWC}>) -> tensor<1x48x60x60xf16, {order = #NHWC}>
-        %conv = IE.Convolution(%shape_cast2, %cst) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, strides = [1, 1]} : tensor<1x48x60x60xf16, {order = #NHWC}>, tensor<48x48x3x3xf16, {order = #NHWC}> -> tensor<1x48x60x60xf16>
+        %conv = IE.Convolution(%shape_cast2, %cst) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x48x60x60xf16, {order = #NHWC}>, tensor<48x48x3x3xf16, {order = #NHWC}> -> tensor<1x48x60x60xf16>
         return %conv : tensor<1x48x60x60xf16>
 
         // CHECK-DAG:   [[CST_WEIGHTS_TABLE:%.+]] = const.Declare tensor<48x1x1x4xsi32>
@@ -99,7 +99,8 @@ module @RepeatingBlocks  {
         // CHECK-DAG:       ppe = #VPU.PPEInt<mode = <LRELU>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
         // CHECK-SAME:      rawFilterShape = [48, 48, 3, 3],
         // CHECK-SAME:      strides = [1, 1]
-        // CHECK-SAME:  } -> tensor<1x48x60x60xf16>
+        // CHECK-SAME:  }
+        // CHECK-SAME:  -> tensor<1x48x60x60xf16>
         // CHECK:       return [[CONV]]
     }
 

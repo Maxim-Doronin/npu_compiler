@@ -5,8 +5,6 @@
 //
 
 #include "single_op_tests/embedding_bag_offsets_sum.hpp"
-#include <vector>
-#include "common_test_utils/test_constants.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -54,11 +52,11 @@ const auto EmbeddingBagOffsetsSumParams1 = ::testing::Combine(
         ::testing::ValuesIn(indices), ::testing::ValuesIn(offsets), ::testing::ValuesIn(default_index),
         ::testing::ValuesIn(with_weights), ::testing::ValuesIn(with_default_index));
 
-INSTANTIATE_TEST_CASE_P(smoke_EmbeddingBagOffsetsSum, EmbeddingBagOffsetsSumLayerTestCommon,
-                        ::testing::Combine(EmbeddingBagOffsetsSumParams1,
-                                           ::testing::ValuesIn(static_shapes_to_test_representation(emb_table_shape)),
-                                           ::testing::ValuesIn(netPrecisions), ::testing::ValuesIn(indPrecisions),
-                                           ::testing::Values(DEVICE_NPU)),
-                        EmbeddingBagOffsetsSumLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_EmbeddingBagOffsetsSum, EmbeddingBagOffsetsSumLayerTestCommon,
+                         ::testing::Combine(EmbeddingBagOffsetsSumParams1,
+                                            ::testing::ValuesIn(static_shapes_to_test_representation(emb_table_shape)),
+                                            ::testing::ValuesIn(netPrecisions), ::testing::ValuesIn(indPrecisions),
+                                            ::testing::Values(DEVICE_NPU)),
+                         EmbeddingBagOffsetsSumLayerTestCommon::getTestCaseName);
 
 }  // namespace

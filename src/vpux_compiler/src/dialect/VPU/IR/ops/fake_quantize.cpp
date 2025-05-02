@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::FakeQuantizeOp::verify() {
         if (!lowFpType.has_value()) {
             return errorAt(*this, "Missing both levels and low precision floating type");
         }
-        if (!lowFpType->isa<mlir::Float8E4M3FNType>() && !lowFpType->isa<mlir::Float8E5M2Type>()) {
+        if (!mlir::isa<mlir::Float8E4M3FNType>(*lowFpType) && !mlir::isa<mlir::Float8E5M2Type>(*lowFpType)) {
             return errorAt(*this, "Unsupported low floating point type {0}", *lowFpType);
         }
     } else {
@@ -46,11 +46,11 @@ mlir::LogicalResult vpux::VPU::FakeQuantizeOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inputType = quantize.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto inputLowType = quantize.getInputLow().getType().cast<vpux::NDTypeInterface>();
-    const auto inputHighType = quantize.getInputHigh().getType().cast<vpux::NDTypeInterface>();
-    const auto outputLowType = quantize.getOutputLow().getType().cast<vpux::NDTypeInterface>();
-    const auto outputHighType = quantize.getOutputHigh().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(quantize.getInput().getType());
+    const auto inputLowType = mlir::cast<vpux::NDTypeInterface>(quantize.getInputLow().getType());
+    const auto inputHighType = mlir::cast<vpux::NDTypeInterface>(quantize.getInputHigh().getType());
+    const auto outputLowType = mlir::cast<vpux::NDTypeInterface>(quantize.getOutputLow().getType());
+    const auto outputHighType = mlir::cast<vpux::NDTypeInterface>(quantize.getOutputHigh().getType());
     const auto autob = quantize.getAutoBroadcast();
 
     const auto outShapeOrResult = IE::broadcastEltwiseShape(

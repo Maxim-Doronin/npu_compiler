@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ using namespace vpux;
 //
 
 void vpux::VPUMI37XX::ProfilingMetadataOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto denseMetaAttr = getMetadata().dyn_cast<mlir::DenseElementsAttr>();
+    auto denseMetaAttr = mlir::dyn_cast<mlir::DenseElementsAttr>(getMetadata());
     VPUX_THROW_UNLESS(denseMetaAttr != nullptr, "ProfilingMetadata's data is NULL");
 
     auto buf = denseMetaAttr.getRawData();
@@ -31,7 +31,7 @@ size_t vpux::VPUMI37XX::ProfilingMetadataOp::getBinarySize() {
     // serialization uses metadata that also gets stored in the blob and must be accounted for
     // also for non-POD types (e.g. have vector as member) account for all data to be serialized
     // (data owned by vector, instead of just pointer)
-    auto denseMetaAttr = getMetadata().dyn_cast<mlir::DenseElementsAttr>();
+    auto denseMetaAttr = mlir::dyn_cast<mlir::DenseElementsAttr>(getMetadata());
     VPUX_THROW_UNLESS(denseMetaAttr != nullptr, "ProfilingMetadata's data is NULL");
     return denseMetaAttr.getRawData().size();
 }

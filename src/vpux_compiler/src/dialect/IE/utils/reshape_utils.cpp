@@ -1,9 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 namespace {
 struct MinDimension {
@@ -184,7 +186,7 @@ bool isNotDimShrinkReshape(ShapeRef origShape, ShapeRef reshapeShape) {
 IE::ShapeCastOp buildShapeCast(mlir::Location loc, mlir::Value input, ArrayRef<int64_t> targetShape,
                                mlir::PatternRewriter& rewriter) {
     const auto ctx = rewriter.getContext();
-    const auto srcType = input.getType().cast<vpux::NDTypeInterface>();
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto dstType = srcType.changeShape(ShapeRef(targetShape));
     const auto targetShapeAttr = getIntArrayAttr(ctx, targetShape);
     return rewriter.create<IE::ShapeCastOp>(loc, dstType, input, targetShapeAttr);

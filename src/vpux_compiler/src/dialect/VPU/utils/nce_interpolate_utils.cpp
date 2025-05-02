@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/nce_interpolate_utils.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <algorithm>
@@ -247,4 +248,42 @@ SmallVector<int64_t> VPU::getNCEInterpolateStrides(ArrayRef<double> scales, VPU:
         }
     }
     VPUX_THROW("Get unsupported NCEInterpolate Mode '{0}'", mode);
+}
+
+SmallVector<float> VPU::getNCEInterpolateKernelContent(ArrayRef<int64_t> kernelSize,
+                                                       const VPU::NCEInterpolateMode& mode,
+                                                       const IE::InterpolateCoordMode& coordMode,
+                                                       ArrayRef<double> scales) {
+    const auto scaleH = static_cast<int64_t>(scales[Dims4D::Act::H.ind()]);
+    const auto scaleW = static_cast<int64_t>(scales[Dims4D::Act::W.ind()]);
+
+    const auto kernelNumElems = kernelSize[Dims4D::Kernel::Y.ind()] * kernelSize[Dims4D::Kernel::X.ind()];
+
+    const bool isHalfPixelCoordMode = coordMode == IE::InterpolateCoordMode::HALF_PIXEL ||
+                                      coordMode == IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL;
+    const bool areBothScalesOdd = (scaleH % 2 == 1) && (scaleW % 2 == 1);
+
+    if (mode != VPU::NCEInterpolateMode::BILINEAR || !isHalfPixelCoordMode || areBothScalesOdd) {
+        const auto weightsValue = 1.0f / checked_cast<float>(kernelNumElems);
+
+        return SmallVector<float>(kernelNumElems, weightsValue);
+    }
+
+    auto kernel = SmallVector<float>(
+            kernelNumElems, static_cast<float>(1.0f / (scales[Dims4D::Act::H.ind()] * scales[Dims4D::Act::W.ind()])));
+
+    for (int64_t khIdx = 0; khIdx < kernelSize[Dims4D::Kernel::Y.ind()]; khIdx++) {
+        for (int64_t kwIdx = 0; kwIdx < kernelSize[Dims4D::Kernel::X.ind()]; kwIdx++) {
+            const auto offset = kwIdx + khIdx * kernelSize[Dims4D::Kernel::X.ind()];
+            if (scaleH % 2 == 0 && (khIdx == 0 || khIdx == kernelSize[Dims4D::Kernel::Y.ind()] - 1)) {
+                kernel[offset] /= 2;
+            }
+
+            if (scaleW % 2 == 0 && (kwIdx == 0 || kwIdx == kernelSize[Dims4D::Kernel::X.ind()] - 1)) {
+                kernel[offset] /= 2;
+            }
+        }
+    }
+
+    return kernel;
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -95,7 +95,7 @@ mlir::LogicalResult ConvertSubGRUSequenceToConvPass::GRUSequenceOpConverter::mat
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     auto ctx = rewriter.getContext();
-    const auto inputType = origOp.getInputData().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputData().getType());
     const auto inputShape = inputType.getShape().raw();
     const auto inputShapeDim = inputShape.size();
     if (inputShapeDim != 3) {
@@ -107,7 +107,7 @@ mlir::LogicalResult ConvertSubGRUSequenceToConvPass::GRUSequenceOpConverter::mat
 
     const auto seqLength = origOp.getSeqLength();
 
-    const auto weightsType = origOp.getWeights().getType().cast<vpux::NDTypeInterface>();
+    const auto weightsType = mlir::cast<vpux::NDTypeInterface>(origOp.getWeights().getType());
     const auto weightsShape = weightsType.getShape().raw();
 
     auto newInputShape = getIntArrayAttr(ctx, SmallVector<int64_t>({batchSize * seqLength, 1, 1, inputSize}));
@@ -158,7 +158,7 @@ void ConvertSubGRUSequenceToConvPass::safeRunOnFunc() {
     mlir::ConversionTarget target(ctx);
 
     target.addDynamicallyLegalOp<IE::GRUSequenceOp>([&](IE::GRUSequenceOp origOp) {
-        const auto inputType = origOp.getInputData().getType().cast<vpux::NDTypeInterface>();
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputData().getType());
         const auto inputShape = inputType.getShape().raw();
         auto inputSize = static_cast<float>(inputShape[2]);
         auto batchSize = static_cast<float>(inputShape[0]);

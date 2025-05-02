@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,8 +19,8 @@ mlir::LogicalResult vpux::IE::AccumulateOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto lhsType = accumulate.getLhs().getType().cast<mlir::ShapedType>();
-    const auto rhsType = accumulate.getRhs().getType().cast<mlir::ShapedType>();
+    const auto lhsType = mlir::cast<mlir::ShapedType>(accumulate.getLhs().getType());
+    const auto rhsType = mlir::cast<mlir::ShapedType>(accumulate.getRhs().getType());
     VPUX_THROW_UNLESS(lhsType == rhsType, "Types of IE.Accumulate operands must match: lhs = {0}, rhs = {1}", lhsType,
                       rhsType);
 

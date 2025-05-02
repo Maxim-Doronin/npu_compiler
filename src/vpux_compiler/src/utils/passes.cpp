@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -32,6 +32,32 @@ std::optional<std::string> vpux::convertToOptional(const StrOption& strOption) {
 
 bool vpux::isOptionEnabled(const BoolOption& option) {
     return option.getValue();
+}
+
+StringLiteral vpux::stringifyEnum(WorkloadManagementBarrierProgrammingMode val) {
+    switch (val) {
+    case WorkloadManagementBarrierProgrammingMode::LEGACY:
+        return "LEGACY";
+    case WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED:
+        return "NO_BARRIER_DMAS_SCHEDULED";
+    case WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED:
+        return "INITIAL_BARRIER_DMAS_SCHEDULED";
+    case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED:
+        return "ALL_BARRIER_DMAS_SCHEDULED";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+StringLiteral vpux::stringifyEnum(DMAFifoType val) {
+    switch (val) {
+    case DMAFifoType::SW:
+        return "SW";
+    case DMAFifoType::HW:
+        return "HW";
+    default:
+        return "UNKNOWN";
+    }
 }
 
 //

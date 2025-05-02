@@ -1,14 +1,14 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -61,7 +61,7 @@ mlir::FailureOr<SmallVector<int64_t>> getOutShape(IE::ReshapeOpAdaptor reshape, 
     if (!(zeroDims != 0 && specialZero) && negativeDims == 0) {
         return shapeVec;
     } else {
-        const auto inShape = to_small_vector(reshape.getInput().getType().cast<mlir::ShapedType>().getShape());
+        const auto inShape = to_small_vector(mlir::cast<mlir::ShapedType>(reshape.getInput().getType()).getShape());
 
         auto dividend = std::accumulate(inShape.begin(), inShape.end(), int64_t(1), std::multiplies<int64_t>());
 
@@ -118,8 +118,10 @@ mlir::LogicalResult vpux::IE::ReshapeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = reshape.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(reshape.getInput().getType());
 
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
+                      IE::ReshapeOp::getOperationName());
     const auto outDesc =
             vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape->size()), vpux::getMemorySpace(inType));
 
@@ -240,7 +242,7 @@ mlir::LogicalResult ConvertToAffineReshape::matchAndRewrite(IE::ReshapeOp origOp
     const auto outputShape = origOp.getType().getShape();
     const auto outShapeAttr = getIntArrayAttr(getContext(), outputShape);
 
-    const auto inShape = origOp.getInput().getType().cast<mlir::ShapedType>().getShape();
+    const auto inShape = mlir::cast<mlir::ShapedType>(origOp.getInput().getType()).getShape();
     const auto reassociationMap = vpux::IE::getReassociationMap(inShape, outputShape);
     if (mlir::failed(reassociationMap)) {
         return mlir::failure();

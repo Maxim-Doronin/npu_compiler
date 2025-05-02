@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
@@ -28,7 +29,7 @@ using namespace vpux;
 //
 
 bool vpux::VPU::NCEMaxPoolOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::NDTypeInterface output, Byte reservedMem) {
-    // TODO: NPU37XX hw doesn't require weights table and activation window for max/average pool ops
+    // TODO: VPUX37XX hw doesn't require weights table and activation window for max/average pool ops
     const auto outputShape = output.getShape();
     const auto outputChannels = outputShape[Dims4D::Act::C];
 
@@ -79,8 +80,8 @@ bool vpux::VPU::NCEMaxPoolOp::isSupported(IE::MaxPoolOp op, LogCb logCb, bool ch
         return false;
     }
 
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     if (inputType.getElementType().isSignedInteger() || outputType.getElementType().isSignedInteger() ||
         inputType.getElementType().isUnsignedInteger() || outputType.getElementType().isUnsignedInteger()) {
@@ -144,7 +145,7 @@ mlir::LogicalResult vpux::VPU::NCEMaxPoolOp::verify() {
     }
 
     if (getWeightsTable() != nullptr) {
-        const auto outputType = getOutput().getType().cast<NDTypeInterface>();
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
         auto OC = outputType.getShape()[Dims4D::Act::C];
 
         if (VPU::canAutopadOutput(op)) {
@@ -191,17 +192,21 @@ mlir::LogicalResult vpux::VPU::NCEMaxPoolOp::inferReturnTypes(mlir::MLIRContext*
     const auto dataPaddingBelow = SmallVector<int64_t>({padTop, padLeft});
     const auto dataPaddingAbove = SmallVector<int64_t>({padBottom, padRight});
     const auto inType = mlir::cast<NDTypeInterface>(op.getInput().getType());
-    const auto inShapeInfo = ShapeInfo::fromNDType(inType);
+    auto inShapeInfo = ShapeInfo::fromNDType(inType);
+
+    if (mlir::failed(IE::unpadInputShape(inShapeInfo.shape, op.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
 
     const auto outShapeInfo =
             inferMaxPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape);
 
-    auto outputShape = outShapeInfo.shape;
-    if (op.getOutputChannels().has_value()) {
-        outputShape[Dims4D::Act::C.ind()] = op.getOutputChannels().value();
+    auto outShape = outShapeInfo.shape;
+    if (mlir::failed(IE::padOutputShape(outShape, op.getOutputPaddingAttr(), loc))) {
+        return mlir::failure();
     }
 
-    auto outType = mlir::RankedTensorType::get(outputShape, inType.getElementType(), createTensorAttrFromType(inType));
+    auto outType = mlir::RankedTensorType::get(outShape, inType.getElementType(), createTensorAttrFromType(inType));
 
     inferredReturnTypes.push_back(outType);
 
@@ -243,7 +248,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEMaxPoolOp::getTilingStrategy(TilingM
 
 bool vpux::VPU::NCEMaxPoolOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
     const auto arch = VPU::getArch(getOperation());
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
     if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
@@ -282,7 +287,7 @@ bool VPU::NCEMaxPoolOp::isOperationSplitOverHeightCompatible(const vpux::TileInf
 
     auto nceOp = mlir::cast<NCEMaxPoolOp>(getOperation());
     Shape inputShape = getShape(nceOp.getInput()).toValues();
-    auto inputType = nceOp.getInput().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
     // If has custom output shape, infer the input shape
     if (outputShape != getShape(nceOp->getResult(0))) {
         VPUX_THROW_UNLESS(offset != ShapeRef() && axis != ShapeRef(),
@@ -316,9 +321,9 @@ bool VPU::NCEMaxPoolOp::isOperationSplitOverBatchCompatible(vpux::ShapeRef outpu
 bool VPU::NCEMaxPoolOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, SiblingOpsAnalysis& siblingsAnalysis,
                                             Byte reservedMem) {
     auto nceOp = mlir::cast<VPU::NCEMaxPoolOp>(getOperation());
-    const auto outputType = nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     auto numClusters = VPU::getOptimalNumClusters(nceOp, outputType.getShape(), strategy);
-    auto output = nceOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto output = mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType());
 
     const auto outputShape = output.getShape();
     const auto outputChannels = outputShape[Dims4D::Act::C];
@@ -347,7 +352,7 @@ bool VPU::NCEMaxPoolOp::doesLayerChangeOutputAlignmentFitIntoCMX(
         VPU::MultiClusterStrategy strategy, VPU::DistributedTypeInterface newDistributedTensorType) {
     auto nceOp = mlir::cast<NCEMaxPoolOp>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
-            nceOp, nceOp.getOutput().getType().cast<vpux::NDTypeInterface>().getShape(), strategy);
+            nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
     auto distributedInputType =
             getDistributedActivationTypeFromOp(nceOp, nceOp.getInput().getType(), numClusters, strategy);
     return fitIntoCMX(distributedInputType, newDistributedTensorType);
@@ -359,7 +364,7 @@ vpux::NDTypeInterface vpux::VPU::NCEMaxPoolOp::getDistributedTypeForOpOperand(ml
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
     auto origOp = mlir::cast<NCEMaxPoolOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
     auto* ctx = clusteredOp->getContext();
 
@@ -377,7 +382,7 @@ vpux::NDTypeInterface vpux::VPU::NCEMaxPoolOp::getDistributedTypeForOpOperand(ml
                                            activationTensorNumTiles, activationAlignmentAttr, strategy,
                                            hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getWeightsTable()) {
-        auto outputType = origOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
         mlir::ArrayAttr weightAlignmentAttr = nullptr;
 
         const auto weightAlignment = getWeightsTensorAlignment(strategy);
@@ -401,7 +406,7 @@ vpux::NDTypeInterface vpux::VPU::NCEMaxPoolOp::getDistributedTypeForOpOperand(ml
 
 vpux::VPU::SparsitySupport vpux::VPU::NCEMaxPoolOp::sparsitySupport() {
     // Super-dense mode does not support ODU sparsity
-    const auto outputType = getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     auto excludeMode = VPU::NCESparsity::bitwiseNot(VPU::SparsitySupport::NONE);
     if (VPU::NCESparsity::isSuperdenseRequired(outputType.getDimsOrder(), outputType.getShape(),
                                                outputType.getElementType())) {
@@ -414,7 +419,7 @@ vpux::VPU::SparsitySupport vpux::VPU::NCEMaxPoolOp::sparsitySupport() {
 mlir::LogicalResult vpux::VPU::NCEMaxPoolOp::verifyKernel(IE::MaxPoolOp origOp, Logger log) {
     log.setName("NCEInvariant");
 
-    if (origOp.getInput().getType().cast<vpux::NDTypeInterface>().getRank() != 4) {
+    if (mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getRank() != 4) {
         return mlir::failure();
     }
 

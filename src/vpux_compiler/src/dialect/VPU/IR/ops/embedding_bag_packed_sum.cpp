@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,9 +17,9 @@ mlir::LogicalResult vpux::VPU::EmbeddingBagPackedSumOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto embTableType = embeddingBag.getEmbTable().getType().cast<vpux::NDTypeInterface>();
+    const auto embTableType = mlir::cast<vpux::NDTypeInterface>(embeddingBag.getEmbTable().getType());
     const auto embTableShape = embTableType.getShape().raw();
-    const auto indicesType = embeddingBag.getIndices().getType().cast<vpux::NDTypeInterface>();
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(embeddingBag.getIndices().getType());
     const auto indicesShape = indicesType.getShape().raw();
     int64_t batchSize = indicesShape[0];
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,8 +10,11 @@
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -58,10 +61,10 @@ public:
 
 private:
     void safeRunOnModule() final {
-        IE::CNNNetworkOp netInfo;
+        net::NetworkInfoOp netInfo;
         mlir::func::FuncOp mainFuncOp;
         auto moduleOp = getOperation();
-        IE::CNNNetworkOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
 
         bool containsCallOps = false;
         bool containsNonCallOps = false;

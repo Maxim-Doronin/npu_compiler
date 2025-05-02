@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,7 +18,7 @@ mlir::LogicalResult vpux::IE::AssignOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto rankedInType = assign.getInput().getType().cast<mlir::RankedTensorType>();
+    const auto rankedInType = mlir::cast<mlir::RankedTensorType>(assign.getInput().getType());
     const auto outDesc = vpux::getTensorAttr(rankedInType);
     inferredReturnShapes.emplace_back(rankedInType.getShape(), rankedInType.getElementType(), outDesc);
 

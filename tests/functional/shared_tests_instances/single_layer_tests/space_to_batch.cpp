@@ -3,10 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <openvino/opsets/opset2.hpp>
-#include <vector>
-
-#include "common_test_utils/test_constants.hpp"
 #include "single_op_tests/space_to_batch.hpp"
 #include "vpu_ov2_layer_test.hpp"
 

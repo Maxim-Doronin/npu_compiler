@@ -9,7 +9,7 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
  module @compressedDMA {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_143" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "Convolution_145" : tensor<8x1x1x1xui8>
@@ -47,7 +47,7 @@ func.func @main(%arg0: memref<1x16x16x16xf16, @DDR>, %arg1: memref<8x1x1x1xui8, 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @compressedDMA_2 {
-IE.CNNNetwork entryPoint : @UnrollDistributedCompressedDMAOutput inputsInfo : {
+net.NetworkInfo entryPoint : @UnrollDistributedCompressedDMAOutput inputsInfo : {
   DataInfo "input_0" : tensor<1x16x16x16xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<64x32x1x1xf16>
@@ -74,7 +74,7 @@ func.func @UnrollDistributedCompressedDMAOutput(%arg0: memref<1x16x16x16xf16, @D
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @compressedDecompressedDMA {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x64x56x56xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x64x56x56xf16>

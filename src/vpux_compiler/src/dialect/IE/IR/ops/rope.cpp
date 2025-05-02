@@ -4,20 +4,6 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/utils/error.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
-#include "vpux/utils/core/checked_cast.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
-#include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/permute_utils.hpp"
 
 #include "vpux/utils/core/small_vector.hpp"
 

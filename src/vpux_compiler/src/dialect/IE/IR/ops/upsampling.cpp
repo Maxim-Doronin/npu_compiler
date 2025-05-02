@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,7 +25,7 @@ mlir::LogicalResult vpux::IE::UpsamplingOp::inferReturnTypeComponents(
     auto padWidthVector = parseIntArrayAttr<int32_t>(upsampling.getPadAttr().getPadsWidth());
     auto upsamplingFactorVector = parseIntArrayAttr<int32_t>(upsampling.getUpsamplingFactor());
 
-    const auto inType = upsampling.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(upsampling.getInput().getType());
     const auto inShape = inType.getShape();
 
     VPUX_THROW_UNLESS(inShape.size() == 4, "Upsampling supports only 4D input tensor");

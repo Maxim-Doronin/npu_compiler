@@ -1,12 +1,15 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include <mlir/Support/LogicalResult.h>
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/empty_node.hpp"
 
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/range.hpp"
 
@@ -31,17 +34,20 @@ mlir::LogicalResult vpux::IE::AvgPoolOp::inferReturnTypeComponents(
     const auto windowStrides = parseIntArrayAttr<int64_t>(avgPool.getStrides());
     const auto roundingType = avgPool.getRoundingType();
 
-    const auto inType = avgPool.getInput().getType().cast<mlir::ShapedType>().getElementType();
-    const auto inShape = avgPool.getInput().getType().cast<mlir::ShapedType>().getShape();
-
-    auto shapeI64 = inferAvgPoolOutputShape(inShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape,
-                                            roundingType);
-
-    if (avgPool.getOutputChannels().has_value()) {
-        shapeI64[Dims4D::Act::C.ind()] = avgPool.getOutputChannels().value();
+    const auto inType = mlir::cast<mlir::ShapedType>(avgPool.getInput().getType()).getElementType();
+    auto inShape = SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(avgPool.getInput().getType()).getShape());
+    if (mlir::failed(IE::unpadInputShape(inShape, avgPool.getInputPaddingAttr(), loc))) {
+        return mlir::failure();
     }
 
-    inferredReturnShapes.emplace_back(shapeI64, inType);
+    auto outShape = inferAvgPoolOutputShape(inShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape,
+                                            roundingType);
+
+    if (mlir::failed(IE::padOutputShape(outShape, avgPool.getOutputPaddingAttr(), loc))) {
+        return mlir::failure();
+    }
+
+    inferredReturnShapes.emplace_back(outShape, inType);
 
     return mlir::success();
 }

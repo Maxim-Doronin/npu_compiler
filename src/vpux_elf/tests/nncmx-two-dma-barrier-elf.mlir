@@ -12,7 +12,7 @@ module @Test attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode
     IE.ExecutorResource 1 of @DPU
   }
 
-IE.CNNNetwork entryPoint : @main inputsInfo :  {
+net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "inputCNN" : tensor<1x1x2x1000xf16>
 } outputsInfo :  {
     DataInfo "outputCNN" : tensor<1x1x2x1000xf16>

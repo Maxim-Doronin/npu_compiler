@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,6 +14,8 @@ def NPUReg40XX_Dialect : Dialect {
     let description = [{
         The **40XX** encapsulates VPU4/40XX specific information.
 
+        The NPUReg40XX dialect is the final dialect for NPUReg40XX ops
+        before serialization. Ops in this dialect also use symbolic representation.
     }];
 
     let name = "NPUReg40XX";

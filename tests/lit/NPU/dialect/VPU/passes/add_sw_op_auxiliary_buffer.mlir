@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -66,4 +66,17 @@ func.func @ExperimentalDetectronROIFeatureExtractor(%arg0: tensor<100x4xf32>, %a
     // CHECK:     [[AUX_LEVELS:%.+]] = const.Declare tensor<100xui32> = dense<0> : tensor<100xui32>
     // CHECK:     [[OUTPUT_FEATURES:%.+]], [[OUTPUT_ROIS:%.+]] = VPU.ExperimentalDetectronROIFeatureExtractor([[INPUT_ROIS:%.+]], [[INPUT_FEATURE0:%.+]], [[INPUT_FEATURE1:%.+]], [[INPUT_FEATURE2:%.+]], [[AUX_REORD:%.+]], [[AUX_ORIG_MAP:%.+]], [[AUX_OUTPUT_TEMP:%.+]], [[AUX_LEVELS:%.+]]) {attr = #IE.ExperimentalDetectronROIFeatureExtractor<output_size = 14 : i64, sampling_ratio = 2 : i64, aligned = false, pyramid_scales = [4, 8, 16]>, operandSegmentSizes = array<i32: 4, 1, 1, 1, 1>} : tensor<100x4xf32>, tensor<1x64x192x320xf32>, tensor<1x64x96x160xf32>, tensor<1x64x48x80xf32>, tensor<400xf32>, tensor<100xui32>, tensor<1254400xf32>, tensor<100xui32> -> tensor<100x64x14x14xf32>, tensor<100x4xf32>
     // CHECK:     return [[OUTPUT_FEATURES:%.+]], [[OUTPUT_ROIS:%.+]] : tensor<100x64x14x14xf32>, tensor<100x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @SDPA
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x32x1x96xf16>, [[ARG1:%.+]]: tensor<1x32x1024x96xf16>, [[ARG2:%.+]]: tensor<1x32x96x1024xf16>, [[ARG3:%.+]]: tensor<1x1x1x1024xf16>)
+func.func @SDPA(%arg0: tensor<1x32x1x96xf16>, %arg1: tensor<1x32x1024x96xf16>, %arg2: tensor<1x32x96x1024xf16>, %arg3: tensor<1x1x1x1024xf16>) -> (tensor<1x32x1x96xf16>){
+    %0 = VPU.SDPA(%arg0, %arg1, %arg2, %arg3) : tensor<1x32x1x96xf16>, tensor<1x32x1024x96xf16>, tensor<1x32x96x1024xf16>, tensor<1x1x1x1024xf16> -> tensor<1x32x1x96xf16>
+    return %0 : tensor<1x32x1x96xf16>
+
+    // CHECK:     [[CST:%.+]] = const.Declare tensor<1x32x1x4096xui8> = dense<0> : tensor<1x32x1x4096xui8>
+    // CHECK:     [[SDPA:%.+]] = VPU.SDPA([[ARG0]], [[ARG1]], [[ARG2]], [[ARG3]], [[CST]]) : tensor<1x32x1x96xf16>, tensor<1x32x1024x96xf16>, tensor<1x32x96x1024xf16>, tensor<1x1x1x1024xf16>, tensor<1x32x1x4096xui8> -> tensor<1x32x1x96xf16>
+    // CHECK:     return [[SDPA]] : tensor<1x32x1x96xf16>
 }

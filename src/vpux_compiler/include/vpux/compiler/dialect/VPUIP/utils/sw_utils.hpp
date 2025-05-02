@@ -6,8 +6,9 @@
 #pragma once
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/utils/core/small_string.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace VPUIP {
@@ -29,6 +30,7 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "activation_tanh",
                                                                  "topk",
                                                                  "gather",
+                                                                 "gatherND",
                                                                  "gather_elements",
                                                                  "activation_sigmoid",
                                                                  "depth_to_space",
@@ -77,8 +79,12 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "dequantize",
                                                                  "activation_mish",
                                                                  "dynamic_dequantize",
+                                                                 "reverse",
                                                                  "rms_norm",
-                                                                 "rope"};
+                                                                 "rope",
+                                                                 "sdpa",
+                                                                 "random_uniform",
+                                                                 "grid_sample"};
 
 const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {"mvn1", "lstm_cell", "lstm_sequence"};
 
@@ -140,6 +146,8 @@ const SmallVector<StringLiteral> SW_KERNELS_NEED_TILING_ALIGNMENT = {"mvn1",
                                                                      "lstm_cell",
                                                                      "activation_mish"};
 
+const SmallVector<StringLiteral> SW_KERNELS_USE_DPU = {"lstm_dpu"};
+
 SmallVector<mlir::Attribute> kernelArgsRange(VPUIP::SwKernelOp swKernelOp);
 
 mlir::SymbolRefAttr createBuiltInFunction(mlir::ModuleOp module, mlir::StringRef builtInFunctionName,
@@ -163,6 +171,8 @@ SmallString getSwKernelEntryName(VPUIP::SwKernelOp swKernelOp);
 mlir::ModuleOp getVPUSWModule(mlir::ModuleOp module, const Logger& log);
 bool isActivationSwKernelOp(VPUIP::SwKernelOp swKernelOp);
 bool isSwKernelTilingSupported(VPUIP::SwKernelOp swKernelOp);
+bool isSwKernelUseDpu(VPUIP::SwKernelOp swKernelOp);
+bool isDpuShaveKernelType(VPURT::TaskOp taskOp);
 bool isStridedDataAccessSupported(VPUIP::SwKernelOp swKernelOp);
 
 InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const SmallVector<vpux::TileInfo>& outputTiles,

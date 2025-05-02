@@ -14,7 +14,7 @@ func.func @SwapTransposeConcatWithOffsets(%arg0: tensor<1x76x4x1xf16>, %arg1: te
     return %2: tensor<1x8x76x1xf16>
 
     // CHECK:                IE.Concat(%arg0, %arg1)
-    // CHECK-SAME{LITERAL} : {static_offsets = [[0, 0, 0, 0], [0, 0, 4, 0]]} : tensor<1x76x4x1xf16>, tensor<1x76x4x1xf16> -> tensor<1x76x8x1xf16>
+    // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 0, 4, 0]]} : tensor<1x76x4x1xf16>, tensor<1x76x4x1xf16> -> tensor<1x76x8x1xf16>
     // CHECK:                IE.Transpose
     // CHECK-SAME:           {order_value = #NHCW} : tensor<1x76x8x1xf16> -> tensor<1x8x76x1xf16>
 }
@@ -30,7 +30,7 @@ func.func @SwapTransposeConcatWithAxis(%arg0: tensor<1x76x4x1xf16>, %arg1: tenso
     return %2: tensor<1x8x76x1xf16>
 
     // CHECK:                IE.Concat(%arg0, %arg1)
-    // CHECK-SAME{LITERAL} : {per_axis = #IE.Concat<axis = 2>} : tensor<1x76x4x1xf16>, tensor<1x76x4x1xf16> -> tensor<1x76x8x1xf16>
+    // CHECK-SAME{LITERAL}:     {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x76x4x1xf16>, tensor<1x76x4x1xf16> -> tensor<1x76x8x1xf16>
     // CHECK:                IE.Transpose
-    // CHECK-SAME:           {order_value = #NHCW} : tensor<1x76x8x1xf16> -> tensor<1x8x76x1xf16>
+    // CHECK-SAME:              {order_value = #NHCW} : tensor<1x76x8x1xf16> -> tensor<1x8x76x1xf16>
 }

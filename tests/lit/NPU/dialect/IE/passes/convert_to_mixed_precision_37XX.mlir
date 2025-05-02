@@ -16,12 +16,7 @@ func.func @Conv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x
         dilations = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
-        post_op = #IE.PostOp<
-            name = "IE.LeakyRelu",
-            attrs = {
-                negative_slope = 2.500000e-01 : f64
-            }
-        >,
+        post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>,
         strides = [1, 1]
     } : tensor<1x16x3x3xf16>, tensor<3x16x1x1xf16> -> tensor<1x3x3x3xf16>
 
@@ -38,12 +33,7 @@ func.func @Conv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
-    // CHECK-SAME:      post_op = #IE.PostOp<
-    // CHECK-SAME:          name = "IE.LeakyRelu",
-    // CHECK-SAME:          attrs = {
-    // CHECK-SAME:              negative_slope = 2.500000e-01 : f64
-    // CHECK-SAME:          }
-    // CHECK-SAME:      >,
+    // CHECK-SAME:      post_op = #IE.LeakyRelu<negative_slope = 2.500000e-01 : f64>,
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME: } : tensor<1x16x3x3xf16>, tensor<3x16x1x1xf16> -> tensor<1x3x3x3x!qElemType>
 

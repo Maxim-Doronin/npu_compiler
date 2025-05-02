@@ -1,13 +1,11 @@
-// Copyright (C) Intel Corporation
+//
+// Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cstddef>
-#include <openvino/opsets/opset14.hpp>
 #include <vpu_ov2_layer_test.hpp>
 #include "openvino/opsets/opset1.hpp"
 
-#include "common_test_utils/node_builders/constant.hpp"
 #include "common_test_utils/node_builders/fake_quantize.hpp"
 
 using namespace ov::test;
@@ -112,14 +110,13 @@ class QuantizedDilatedConvSubGraphTest_NPU4000 : public QuantizedDilatedConvSubG
 TEST_P(QuantizedDilatedConvSubGraphTest_NPU4000, HW) {
     setDefaultHardwareMode();
     configuration["NPU_COMPILATION_MODE_PARAMS"] = "enable-experimental-se-ptrs-operations=true";
-    // E148533 - Dilated Conv is not accurate on multiple clusters when quantized
-    configuration[ov::intel_npu::tiles.name()] = 1;
+    configuration[ov::intel_npu::tiles.name()] = 2;
     run(Platform::NPU4000);
 }
 
 std::vector<std::vector<float>> fqRangesM = {{0.0f, 255.0f, 0.0f, 255.0f}};
 
-std::vector<ov::Shape> inputSizesM = {{1, 64, 16, 16}, {1, 64, 32, 32}};
+std::vector<ov::Shape> inputSizesM = {{1, 64, 16, 16}, {1, 64, 32, 32}, {1, 960, 32, 32}};
 
 const auto basicCasesM = ::testing::Combine(::testing::ValuesIn(inputSizesM), ::testing::ValuesIn(fqRangesM));
 

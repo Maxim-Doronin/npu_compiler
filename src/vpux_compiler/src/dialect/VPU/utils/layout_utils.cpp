@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -397,7 +397,7 @@ mlir::LogicalResult vpux::VPU::verifyAffineReshapeLayoutInfo(mlir::Operation* op
 //
 
 void vpux::VPU::inferInterpolateLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& info) {
-    auto inputShape = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    auto inputShape = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape().raw();
     VPUX_THROW_UNLESS(inputShape.size() == 4, "Interpolate input shape expected to have 4 dimensions, but has {0}",
                       inputShape.size());
 
@@ -414,7 +414,7 @@ void vpux::VPU::inferInterpolateLayoutInfo(mlir::Operation* op, IE::LayerLayoutI
 }
 
 mlir::LogicalResult vpux::VPU::verifyInterpolateLayoutInfo(mlir::Operation* op) {
-    auto inputShape = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    auto inputShape = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape().raw();
     VPUX_THROW_UNLESS(inputShape.size() == 4, "Interpolate input shape expected to have 4 dimensions, but has {0}",
                       inputShape.size());
 
@@ -499,11 +499,11 @@ mlir::LogicalResult vpux::VPU::verifyLSTMSequenceLayoutInfo(mlir::Operation* op)
 }
 
 void vpux::VPU::inferDequantizeLayoutInfo(mlir::Operation* origOp, IE::LayerLayoutInfo& info) {
-    const auto inType = origOp->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType()).getElementType();
 
-    const auto qType = inType.cast<mlir::quant::QuantizedType>();
+    const auto qType = mlir::cast<mlir::quant::QuantizedType>(inType);
 
-    if (qType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
         const auto numDims = info.getInput(0).numDims();
         if (numDims == 3) {
             info.fill(DimsOrder::HWC);
@@ -519,11 +519,11 @@ void vpux::VPU::inferDequantizeLayoutInfo(mlir::Operation* origOp, IE::LayerLayo
 }
 
 mlir::LogicalResult vpux::VPU::verifyDequantizeLayoutInfo(mlir::Operation* op) {
-    const auto inType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
 
-    const auto qType = inType.getElementType().cast<mlir::quant::QuantizedType>();
+    const auto qType = mlir::cast<mlir::quant::QuantizedType>(inType.getElementType());
 
-    if (qType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
         const auto numDims = inType.getShape().raw().size();
         if (numDims == 3) {
             return VPU::verifySameInOutSpecificDimsOrder(op, {DimsOrder::HWC});
@@ -539,11 +539,11 @@ mlir::LogicalResult vpux::VPU::verifyDequantizeLayoutInfo(mlir::Operation* op) {
 }
 
 void vpux::VPU::inferQuantizeLayoutInfo(mlir::Operation* origOp, IE::LayerLayoutInfo& info) {
-    const auto outType = origOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getElementType();
 
-    const auto qType = outType.cast<mlir::quant::QuantizedType>();
+    const auto qType = mlir::cast<mlir::quant::QuantizedType>(outType);
 
-    if (qType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
         const auto numDims = info.getInput(0).numDims();
         if (numDims == 3) {
             info.fill(DimsOrder::HWC);
@@ -559,11 +559,11 @@ void vpux::VPU::inferQuantizeLayoutInfo(mlir::Operation* origOp, IE::LayerLayout
 }
 
 mlir::LogicalResult vpux::VPU::verifyQuantizeLayoutInfo(mlir::Operation* op) {
-    const auto outType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
 
-    const auto qType = outType.getElementType().cast<mlir::quant::QuantizedType>();
+    const auto qType = mlir::cast<mlir::quant::QuantizedType>(outType.getElementType());
 
-    if (qType.isa<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
         const auto numDims = outType.getShape().raw().size();
         if (numDims == 3) {
             return VPU::verifySameInOutSpecificDimsOrder(op, {DimsOrder::HWC});
@@ -666,7 +666,7 @@ void vpux::VPU::inferSqueezeUnsqueezeLayoutInfo(mlir::Operation* op, IE::LayerLa
     const auto axes =
             axesValueAttr != nullptr ? parseIntArrayAttr<int64_t>(axesValueAttr) : mlir::SmallVector<int64_t>{};
     const auto inOrder = info.getInput(0);
-    const auto inShape = op->getOperand(0).getType().cast<NDTypeInterface>().getShape().raw();
+    const auto inShape = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape().raw();
     const auto inPermutation = inOrder.toPermutation();
 
     info.setInput(0, inOrder);

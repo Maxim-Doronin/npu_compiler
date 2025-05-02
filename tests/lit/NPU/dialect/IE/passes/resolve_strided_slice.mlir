@@ -182,13 +182,13 @@ func.func @AdjustStridedSliceAttrsRank(%arg0: tensor<157x1x2048xf16>) -> tensor<
 // -----
 
 // CHECK-LABEL: @StridedSliceWith0dOutput
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<4xsi32>
 func.func @StridedSliceWith0dOutput(%arg0: tensor<4xsi32>) -> tensor<1xsi32> {
     %0 = IE.StridedSlice(%arg0) {begin_mask = [0], begins_attr = [3], ellipsis_mask = [0], end_mask = [0], ends_attr = [4], new_axis_mask = [0], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [1], strides_attr = [1]} : tensor<4xsi32> -> tensor<1xsi32>
     return %0 : tensor<1xsi32>
 
-    // CHECK:       [[VAL0:%.*]] = IE.Slice %arg0 [3] [1] : tensor<4xsi32> to tensor<1xsi32>
-    // CHECK:       [[VAL1:%.*]] = IE.Reshape([[VAL0]]) {shape_value = [1]} : tensor<1xsi32> -> tensor<1xsi32>
-    // CHECK:       return [[VAL1]]  : tensor<1xsi32>
+    // CHECK:       [[VAL:%.+]] = IE.Slice [[INPUT]] [3] [1] : tensor<4xsi32> to tensor<1xsi32>
+    // CHECK:       return [[VAL]]  : tensor<1xsi32>
 }
 
 // -----
@@ -213,9 +213,8 @@ func.func @StridedSliceWithEllipsisAttr(%arg0: tensor<1x1x10x2xf16>) -> tensor<1
     // CHECK:       [[SLICE1:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 1] [1, 1, 10, 1] : tensor<1x1x10x2xf16> to tensor<1x1x10x1xf16>
     // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[SLICE1]], [[SLICE0]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x1x10x1xf16>, tensor<1x1x10x1xf16> -> tensor<1x1x10x2xf16>
     // CHECK:       [[SLICE2:%.+]] = IE.Slice [[CONCAT0]] [0, 0, 0, 0] [1, 1, 10, 2] : tensor<1x1x10x2xf16> to tensor<1x1x10x2xf16>
-    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[SLICE2]]) {shape_value = [1, 1, 10, 2]} : tensor<1x1x10x2xf16> -> tensor<1x1x10x2xf16>
 
-    // CHECK:       return [[RESHAPE]]  : tensor<1x1x10x2xf16>
+    // CHECK:       return [[SLICE2]] : tensor<1x1x10x2xf16>
 }
 
 // -----
@@ -223,8 +222,8 @@ func.func @StridedSliceWithEllipsisAttr(%arg0: tensor<1x1x10x2xf16>) -> tensor<1
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @SkipDynamicStridedSlice
-func.func @SkipDynamicStridedSlice(%IN: tensor<1x3x16x?xf16, {bounds = [1, 3, 16, 32], order = #NCHW}>)
-    -> tensor<1x3x16x?xf16, {bounds = [1, 3, 16, 29], order = #NCHW}> {
+func.func @SkipDynamicStridedSlice(%IN: tensor<1x3x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>)
+    -> tensor<1x3x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 29]> : tensor<4xsi64>, order = #NCHW}> {
     // CHECK:   [[IN:%.+]]: tensor<1x3x16x?xf16
     %SLICE = IE.StridedSlice(%IN) {
         begin_mask = [],
@@ -236,10 +235,10 @@ func.func @SkipDynamicStridedSlice(%IN: tensor<1x3x16x?xf16, {bounds = [1, 3, 16
         operandSegmentSizes = array<i32: 1, 0, 0, 0>,
         shrink_axis_mask = [],
         strides_attr = [1, 1, 1, 1]
-    } : tensor<1x3x16x?xf16, {bounds = [1, 3, 16, 32], order = #NCHW}>
-        -> tensor<1x3x16x?xf16, {bounds = [1, 3, 16, 29], order = #NCHW}>
+    } : tensor<1x3x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>, order = #NCHW}>
+        -> tensor<1x3x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 29]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:   [[SLICE:%.+]] = IE.StridedSlice([[IN]])
 
-    return %SLICE : tensor<1x3x16x?xf16, {bounds = [1, 3, 16, 29], order = #NCHW}>
+    return %SLICE : tensor<1x3x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 29]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:   [[SLICE]]
 }

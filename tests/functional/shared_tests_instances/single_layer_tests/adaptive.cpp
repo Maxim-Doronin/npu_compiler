@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
-#include <common/functions.h>
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include "single_op_tests/adaptive_pooling.hpp"
 #include "vpu_ov2_layer_test.hpp"
@@ -46,10 +43,6 @@ const std::vector<ov::element::Type> netPrecisions = {
         ov::element::f32,
 
 };
-
-std::vector<std::vector<ov::Shape>> inShape3DCases = {{{2, 3, 7}}, {{1, 1, 3}}};
-std::vector<std::vector<ov::Shape>> inShape4DCases = {{{1, 3, 32, 32}}, {{1, 1, 3, 2}}};
-std::vector<std::vector<ov::Shape>> inShape5DCases = {{{1, 17, 4, 5, 4}}, {{1, 1, 3, 2, 3}}};
 
 /* ============= 3D/4D AdaptivePool ============= */
 

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
 #include "vpux/compiler/core/async_deps_info.hpp"
@@ -24,7 +25,7 @@ void moveWaitResults(mlir::async::AwaitOp waitOp, Logger log) {
     auto producerExecOp = mlir::dyn_cast_or_null<mlir::async::ExecuteOp>(futureVal.getDefiningOp());
     VPUX_THROW_UNLESS(producerExecOp != nullptr, "'async.await' operand is produced by unsupported operation");
 
-    const auto futureType = futureVal.getType().dyn_cast<mlir::async::ValueType>();
+    const auto futureType = mlir::dyn_cast<mlir::async::ValueType>(futureVal.getType());
     VPUX_THROW_UNLESS(futureType != nullptr, "'async.await' operand has unexpected type : '{0}'", futureVal.getType());
 
     log.trace("Collect all uses inside 'async.execute' regions");

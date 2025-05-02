@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -22,11 +22,11 @@ mlir::LogicalResult vpux::Const::ChangeShapeAndElemTypeAttr::verify(FuncRef<mlir
 
     const auto shapeValues = shape.getValue();
     for (const auto& dimAttr : shapeValues) {
-        if (!dimAttr.isa<mlir::IntegerAttr>()) {
+        if (!mlir::isa<mlir::IntegerAttr>(dimAttr)) {
             return printTo(emitError(), "Got non-integer value '{0}' in 'shape' for 'ChangeShapeAndElemTypeAttr'",
                            dimAttr);
         }
-        if (dimAttr.cast<mlir::IntegerAttr>().getInt() <= 0) {
+        if (mlir::cast<mlir::IntegerAttr>(dimAttr).getInt() <= 0) {
             return printTo(emitError(),
                            "Got unsupported dimension value '{0}' in 'shape' for 'ChangeShapeAndElemTypeAttr'",
                            dimAttr);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,7 @@ mlir::LogicalResult vpux::IE::ShapeOfOp::inferReturnTypeComponents(
     // Number of elements is equal to input tensor rank.
     // Can be empty 1D tensor if input tensor is a scalar, that means 0-dimensional tensor.
 
-    const auto inType = shapeOf.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(shapeOf.getInput().getType());
     const auto inRank = inType.getRank();
     const SmallVector<int64_t> outShape = {inRank};
     const auto outElemType = shapeOf.getDstElemType();

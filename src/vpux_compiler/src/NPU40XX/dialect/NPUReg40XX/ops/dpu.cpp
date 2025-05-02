@@ -154,7 +154,7 @@ std::vector<ELF::RelocationInfo> DPUInvariantOp::getRelocationInfo(ELF::SymbolRe
     //
     // no output in case of continued conv
     if (!getIsContinued() && getOutput().has_value()) {
-        auto outputSymRef = getOutput().value().cast<mlir::SymbolRefAttr>();
+        auto outputSymRef = mlir::cast<mlir::SymbolRefAttr>(getOutput().value());
         auto addend = ELF::getOffsetOfSymRef(symRefMap, outputSymRef);
         relocs.emplace_back(outputSymRef, targetSection,
                             regsOffset + offsetof(nn_public::VpuDPUInvariantRegisters, odu_ac_base),

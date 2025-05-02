@@ -6,7 +6,7 @@
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dma-task-profiling-reserve-mem="dma-profiling=true" %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 module @SimpleGraph {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x16x4x4xf16>

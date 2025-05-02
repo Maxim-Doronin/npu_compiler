@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -155,8 +155,7 @@ TEST_P(MatMulWithFQTestCommon, NPU4000_TestKindSubgraph) {
 
 class MatMulWithFQTestEnableU16FqScaleShiftConversion : public MatMulWithFQTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "enable-u16-fake-quantize-to-scale-shift-conversion=true";
+        configuration[ov::intel_npu::qdq_optimization.name()] = "YES";
     }
 };
 

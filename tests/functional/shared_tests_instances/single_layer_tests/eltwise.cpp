@@ -4,8 +4,6 @@
 //
 
 #include "single_op_tests/eltwise.hpp"
-#include <common_test_utils/ov_tensor_utils.hpp>
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using ov::test::utils::EltwiseTypes;
@@ -343,6 +341,22 @@ const auto bitwiseParams =
 INSTANTIATE_TEST_SUITE_P(precommit_Bitwise, EltwiseLayerTestCommon, bitwiseParams,
                          EltwiseLayerTestCommon::getTestCaseName);
 
+std::vector<std::vector<ov::Shape>> bitwiseInputi8 = {{{1, 1, 256, 56}, {1, 1, 256, 1}}};
+
+std::vector<ov::test::ElementType> bitwiseNetPrecisionsi8 = {ov::element::i8};
+
+std::set<EltwiseTypes> bitwiseTypesi8 = {EltwiseTypes::BITWISE_OR};
+
+const auto bitwiseParamsi8 =
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwiseInputi8)),
+                           ::testing::ValuesIn(bitwiseTypesi8), ::testing::ValuesIn(secondaryInputTypes),
+                           ::testing::ValuesIn(opTypes), ::testing::ValuesIn(bitwiseNetPrecisionsi8),
+                           ::testing::Values(ov::element::undefined), ::testing::Values(ov::element::undefined),
+                           ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(precommit_Bitwisei8, EltwiseLayerTestCommon, bitwiseParamsi8,
+                         EltwiseLayerTestCommon::getTestCaseName);
+
 std::vector<std::vector<ov::Shape>> bitwiseNotInput = {{{1, 1, 256, 56}, {}}};
 
 const auto bitwiseNotParams =
@@ -396,4 +410,159 @@ const auto typesParamsInteger = ::testing::Combine(
 INSTANTIATE_TEST_SUITE_P(smoke_Eltwise_Signed, EltwiseIntegerLayerTest, typesParamsInteger,
                          EltwiseIntegerLayerTest::getTestCaseName);
 
+}  // namespace
+
+// ShaveCodeGen tests
+
+namespace ov {
+namespace test {
+
+class ShaveCodeGenEltwiseLayerTestCommon : public EltwiseLayerTest, virtual public VpuOv2LayerTest {};
+
+class ShaveCodeGenEltwiseLayerTestF32Common : public ShaveCodeGenEltwiseLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+    }
+};
+
+class ShaveCodeGenEltwiseIntegerLayerTest : public EltwiseLayerTest, virtual public VpuOv2LayerTest {};
+
+TEST_P(ShaveCodeGenEltwiseLayerTestCommon, NPU4000_SW) {
+    abs_threshold = 0.6;
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ShaveCodeGenEltwiseLayerTestF32Common, NPU4000_SW) {
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ShaveCodeGenEltwiseIntegerLayerTest, NPU4000_SW) {
+    abs_threshold = 0.6;
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
+
+}  // namespace test
+}  // namespace ov
+
+namespace {
+
+using namespace ov::test;
+
+//
+// Test supported Eltwise types
+//
+std::set<EltwiseTypes> scgEltwiseTypes = {EltwiseTypes::DIVIDE};
+
+//
+// Scalar mode
+//
+
+const auto scgScalarParams =
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapesScalar)),
+                           ::testing::ValuesIn(scgEltwiseTypes), ::testing::ValuesIn(secondaryInputTypes),
+                           ::testing::Values(ov::test::utils::OpType::SCALAR), ::testing::ValuesIn(netPrecisions),
+                           ::testing::Values(ov::element::undefined), ::testing::Values(ov::element::undefined),
+                           ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_ScalarShapesND, ShaveCodeGenEltwiseLayerTestCommon, scgScalarParams,
+                         ShaveCodeGenEltwiseLayerTestCommon::getTestCaseName);
+
+const auto scgScalarParamsF32 =
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapesScalar)),
+                           ::testing::ValuesIn(scgEltwiseTypes), ::testing::ValuesIn(secondaryInputTypes),
+                           ::testing::Values(ov::test::utils::OpType::SCALAR), ::testing::ValuesIn(netPrecisionsF32),
+                           ::testing::Values(ov::element::f32), ::testing::Values(ov::element::f32),
+                           ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_ScalarShapesNDF32, ShaveCodeGenEltwiseLayerTestF32Common, scgScalarParamsF32,
+                         ShaveCodeGenEltwiseLayerTestF32Common::getTestCaseName);
+
+//
+// Vector mode
+//
+
+std::vector<std::vector<ov::Shape>> scgInShapesVector = {
+        {{24}, {24}},                      // 1D
+        {{1, 9}, {1, 1}},                  // NC + scalar
+        {{1, 128, 32}, {1, 128, 32}},      // CHW, eltwise
+        {{1, 128, 32}, {1, 128, 1}},       // CHW, input1 != input2, broadcast over W
+        {{1, 128, 32}, {1, 1, 32}},        // CHW, input1 != input2, broadcast over H
+        {{1, 128, 32}, {1, 1, 1}},         // CHW + scalar
+        {{1, 3, 16, 16}, {1, 3, 16, 16}},  // NCHW, eltwise
+        {{1, 3, 16, 16}, {1, 1, 1, 1}},    // NCHW + scalar
+        {{1, 3, 16, 16}, {1, 3, 1, 1}},    // NCHW, broadcast over HW
+                                           // E-152367: ShaveCodeGen Tiling support
+                                           // Fails in unroll_cluster_tiling:
+                                           // {{2, 1, 8, 16}, {1, 1, 1, 16}},        // NCHW, N != 1, broadcast over NCH
+};
+
+const auto scgVectorParams =
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(scgInShapesVector)),
+                           ::testing::ValuesIn(scgEltwiseTypes), ::testing::ValuesIn(secondaryInputTypes),
+                           ::testing::Values(ov::test::utils::OpType::VECTOR), ::testing::ValuesIn(netPrecisions),
+                           ::testing::Values(ov::element::undefined), ::testing::Values(ov::element::undefined),
+                           ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_VectorShapesND, ShaveCodeGenEltwiseLayerTestCommon, scgVectorParams,
+                         ShaveCodeGenEltwiseLayerTestCommon::getTestCaseName);
+
+const auto scgVectorParamsF32 =
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(scgInShapesVector)),
+                           ::testing::ValuesIn(scgEltwiseTypes), ::testing::ValuesIn(secondaryInputTypes),
+                           ::testing::Values(ov::test::utils::OpType::VECTOR), ::testing::ValuesIn(netPrecisionsF32),
+                           ::testing::Values(ov::element::f32), ::testing::Values(ov::element::f32),
+                           ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_VectorShapesNDF32, ShaveCodeGenEltwiseLayerTestF32Common, scgVectorParamsF32,
+                         ShaveCodeGenEltwiseLayerTestF32Common::getTestCaseName);
+
+//
+// Test Unsigned Integer data types
+//
+
+std::set<EltwiseTypes> scgEltwiseTypesUnsigned = {EltwiseTypes::DIVIDE};
+
+const auto scgTypesParamsUnsigned = ::testing::Combine(
+        ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShape)),
+        ::testing::ValuesIn(scgEltwiseTypesUnsigned), ::testing::Values(InputLayerType::PARAMETER),
+        ::testing::Values(ov::test::utils::OpType::VECTOR), ::testing::ValuesIn(netPrecisionsUnsigned),
+        ::testing::Values(ov::element::undefined), ::testing::Values(ov::element::undefined),
+        ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_Eltwise_Unsigned, ShaveCodeGenEltwiseIntegerLayerTest, scgTypesParamsUnsigned,
+                         ShaveCodeGenEltwiseIntegerLayerTest::getTestCaseName);
+
+//
+// Test Integer data types
+//
+
+std::vector<ov::test::ElementType> scgNetPrecisionsInteger = {ov::element::i32, ov::element::i64};
+std::set<EltwiseTypes> scgEltwiseTypesInteger = {EltwiseTypes::DIVIDE};
+
+const auto scgTypesParamsInteger = ::testing::Combine(
+        ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShape)),
+        ::testing::ValuesIn(scgEltwiseTypesInteger), ::testing::Values(InputLayerType::PARAMETER),
+        ::testing::Values(ov::test::utils::OpType::VECTOR), ::testing::ValuesIn(scgNetPrecisionsInteger),
+        ::testing::Values(ov::element::undefined), ::testing::Values(ov::element::undefined),
+        ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_Eltwise_Signed, ShaveCodeGenEltwiseIntegerLayerTest, scgTypesParamsInteger,
+                         ShaveCodeGenEltwiseIntegerLayerTest::getTestCaseName);
+
+//
+// Bitwise
+//
+
+INSTANTIATE_TEST_SUITE_P(precommit_Bitwise, ShaveCodeGenEltwiseLayerTestCommon, bitwiseParams,
+                         ShaveCodeGenEltwiseLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(precommit_Bitwisei8, ShaveCodeGenEltwiseLayerTestCommon, bitwiseParamsi8,
+                         ShaveCodeGenEltwiseLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(precommit_BitwiseNot, ShaveCodeGenEltwiseLayerTestCommon, bitwiseNotParams,
+                         ShaveCodeGenEltwiseLayerTestCommon::getTestCaseName);
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -304,7 +304,7 @@ mlir::AffineMap vpux::DimsOrder::toAffineMap(mlir::MLIRContext* ctx) const {
 }
 
 DimsOrder vpux::DimsOrder::fromValue(mlir::Value val) {
-    const auto type = val.getType().dyn_cast<vpux::NDTypeInterface>();
+    const auto type = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType());
     VPUX_THROW_UNLESS(type != nullptr, "Value '{0}' has non vpux::NDTypeInterface '{1}'", val, val.getType());
     return type.getDimsOrder();
 }
@@ -314,7 +314,7 @@ bool vpux::DimsOrder::isCompatibleLayout(mlir::MemRefType type) const {
         return false;
     }
 
-    const auto logicalStrides = type.cast<vpux::NDTypeInterface>().getStrides();
+    const auto logicalStrides = mlir::cast<vpux::NDTypeInterface>(type).getStrides();
     const auto currPerm = toPermutation();
 
     if (currPerm.size() <= 1) {
@@ -331,7 +331,7 @@ bool vpux::DimsOrder::isCompatibleLayout(mlir::MemRefType type) const {
 }
 
 bool vpux::DimsOrder::isCompatibleLayout(mlir::Value val) const {
-    const auto type = val.getType().dyn_cast<mlir::MemRefType>();
+    const auto type = mlir::dyn_cast<mlir::MemRefType>(val.getType());
     VPUX_THROW_UNLESS(type != nullptr, "Can't get DimsOrder from Type '{0}'", val.getType());
     return isCompatibleLayout(type);
 }

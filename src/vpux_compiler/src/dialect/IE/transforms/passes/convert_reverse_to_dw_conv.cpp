@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
@@ -200,7 +201,7 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
     const SmallVector<int64_t> weightsShape = {OC, 1, kernelY, kernelX};
     const DimsOrder weightsOrder = DimsOrder::OIYX;
     const auto weightsType =
-            mlir::RankedTensorType::get(weightsShape, elemType, getTensorAttr(ctx, weightsOrder, nullptr, nullptr));
+            mlir::RankedTensorType::get(weightsShape, elemType, getTensorAttr(ctx, weightsOrder, nullptr));
     std::vector<std::vector<float>> weightsArray(weightsNum,
                                                  std::vector<float>(OC * kernelSize, checked_cast<float>(0.f)));
     std::vector<mlir::Value> declareWeights;
@@ -228,7 +229,7 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
                 appendLoc(location, "_dwConv_{0}", i), inShapeCast, declareWeights[i],
                 /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, groupAttr,
                 /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr,
-                /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+                /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 
         dwConvs.push_back(dwConv);
     }

@@ -10,7 +10,7 @@
 #include <optional>
 #include <shared_test_classes/base/ov_subgraph.hpp>
 #include <sstream>
-#include <vpux/utils/core/logger.hpp>
+#include <vpux/utils/logger/logger.hpp>
 #include "common/npu_test_env_cfg.hpp"
 #include "common/utils.hpp"
 #include "vpu_test_tool.hpp"
@@ -59,10 +59,13 @@ public:
     void setReferenceSoftwareMode();
     void setDefaultHardwareMode();
     void setMLIRCompilerType();
+    void setBatchCompilerMode(const std::string& mode);
 
     void setSingleClusterMode();
     void setPerformanceHintLatency();
     void setShaveCodeGenMode();
+
+    void enableProfiling();
 
     bool isReferenceSoftwareMode() const;
     bool isDefaultHardwareMode() const;

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -43,7 +44,7 @@ bool isLegalConvAttr(ConvType convOp, Logger log) {
         });
     };
 
-    auto inputType = convOp.getInput().getType().template cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(convOp.getInput().getType());
     if (inputType.getRank() != 4) {
         log.trace("'{0}' input rank should equal 4, but got '{1}'", convOp->getName(), inputType.getRank());
         return false;
@@ -137,7 +138,7 @@ mlir::Value createDilatedConvOp(mlir::PatternRewriter& rewriter, IE::Convolution
             .create<IE::ConvolutionOp>(convOp.getLoc(), input, convOp.getFilter(), convOp.getBias(),
                                        convOp.getStridesAttr(), padsBeginAttr, padsEndAttr, dilationsAttr,
                                        convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getStaticScaleAttr(),
-                                       convOp.getOutputChannelsAttr(), convOp.getInputChannelsAttr())
+                                       convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr())
             .getResult();
 }
 
@@ -148,8 +149,8 @@ mlir::Value createDilatedConvOp(mlir::PatternRewriter& rewriter, IE::GroupConvol
             .create<IE::GroupConvolutionOp>(groupConvOp.getLoc(), input, groupConvOp.getFilter(), groupConvOp.getBias(),
                                             groupConvOp.getStridesAttr(), padsBeginAttr, padsEndAttr, dilationsAttr,
                                             groupConvOp.getGroupsAttr(), groupConvOp.getPostOpAttr(),
-                                            groupConvOp.getClampAttr(), groupConvOp.getOutputChannelsAttr(),
-                                            groupConvOp.getInputChannelsAttr())
+                                            groupConvOp.getClampAttr(), groupConvOp.getOutputPaddingAttr(),
+                                            groupConvOp.getInputPaddingAttr())
             .getResult();
 }
 

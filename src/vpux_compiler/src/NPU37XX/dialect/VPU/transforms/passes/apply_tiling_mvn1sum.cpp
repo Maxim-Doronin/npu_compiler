@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -34,7 +34,7 @@ const uint32_t levelCount = 2;
 SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(levelCount);
 
 uint32_t getMVN1SumOutputHeight(VPU::MVN1SumOp op) {
-    const auto inType = op.getInput().getType().cast<NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     const auto inH = inType.getShape()[Dims4D::Act::H];
 
     auto module = op.getOperation()->getParentOfType<mlir::ModuleOp>();
@@ -70,8 +70,8 @@ uint32_t getMVN1SumOutputHeight(VPU::MVN1SumOp op) {
 }
 
 mlir::FailureOr<OutputTiling> findNumOfTiles(VPU::MVN1SumOp op, bool enablePrefetchTiling, Logger log) {
-    const auto inType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outType = op.getSum().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(op.getSum().getType());
     auto inShape = inType.getShape();
 
     auto module = op.getOperation()->getParentOfType<mlir::ModuleOp>();
@@ -234,8 +234,8 @@ mlir::LogicalResult ApplyTilingMVN1Sum::MVN1SumTiling::matchAndRewrite(VPU::MVN1
         return matchFailed(rewriter, origOp, "Op already tiled.");
     }
 
-    const auto inputType = origOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = origOp.getSum().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getSum().getType());
     if (origOp.fitIntoCMX(SmallVector<vpux::NDTypeInterface>{inputType, outputType})) {
         return matchFailed(rewriter, origOp, "Op fits into CMX");
     }
@@ -284,7 +284,7 @@ mlir::LogicalResult ApplyTilingMVN1Sum::MVN1SumCorrectHeight::matchAndRewrite(VP
 
     auto correctHeightValue = getMVN1SumOutputHeight(origOp);
 
-    const auto output = origOp.getSum().getType().cast<vpux::NDTypeInterface>();
+    const auto output = mlir::cast<vpux::NDTypeInterface>(origOp.getSum().getType());
 
     const auto newOutputShape = to_small_vector(output.getShape());
     if (newOutputShape[Dims4D::Act::H.ind()] == correctHeightValue) {

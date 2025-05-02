@@ -8,7 +8,7 @@
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 module @compressedDMA {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_143" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "Convolution_145" : tensor<8x1x1x1xui8>

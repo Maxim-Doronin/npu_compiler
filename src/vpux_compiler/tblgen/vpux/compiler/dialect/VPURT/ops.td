@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -134,9 +134,10 @@ def VPURT_DeclareVirtualBarrierOp :
             ]
         > {
     let arguments = (ins
-                      UnitAttr:$isFinalBarrier,
-                      UnitAttr:$isStartBarrier
-                    );
+        UnitAttr:$isFinalBarrier,
+        UnitAttr:$isStartBarrier,
+        OptionalAttr<IntAttr>:$wlmPage
+    );
 
     let summary = "VPURT virtual Barrier declaration";
 
@@ -147,6 +148,18 @@ def VPURT_DeclareVirtualBarrierOp :
     let assemblyFormat = [{
         attr-dict `->` type(results)
     }];
+
+    let builders = [
+        OpBuilder<(ins), [{
+            build($_builder, $_state, nullptr, nullptr, nullptr);
+        }]>,
+        OpBuilder<(ins "mlir::UnitAttr":$isFinalBarrier), [{
+            build($_builder, $_state, isFinalBarrier, nullptr, nullptr);
+        }]>,
+        OpBuilder<(ins "bool":$isFinalBarrier), [{
+            build($_builder, $_state, ((isFinalBarrier) ? $_builder.getUnitAttr() : nullptr), nullptr, nullptr);
+        }]>
+    ];
 }
 
 //
@@ -167,7 +180,8 @@ def VPURT_ConfigureBarrierOp :
     let arguments = (ins
         IntAttr:$id,
         UnitAttr:$isFinalBarrier,
-        UnitAttr:$isStartBarrier
+        UnitAttr:$isStartBarrier,
+        OptionalAttr<IntAttr>:$wlmPage
     );
 
     let results = (outs
@@ -188,6 +202,15 @@ def VPURT_ConfigureBarrierOp :
     let assemblyFormat = [{
         `<` $id `>` attr-dict `->` type(results)
     }];
+
+    let builders = [
+        OpBuilder<(ins "int64_t":$id), [{
+            build($_builder, $_state, id, false, false, nullptr);
+        }]>,
+        OpBuilder<(ins "int64_t":$id, "bool":$isFinalBarrier), [{
+            build($_builder, $_state, id, isFinalBarrier, false, nullptr);
+        }]>
+    ];
 
     let hasVerifier = 1;
 }
@@ -215,7 +238,8 @@ def VPURT_TaskOp :
         Variadic<VPURT_Barrier>:$waitBarriers,
         Variadic<VPURT_Barrier>:$updateBarriers,
         Optional<VPURT_Barrier>:$enqueueBarrier,
-        DefaultValuedAttr<BoolAttr, "false">:$isTrailingSWLayer
+        DefaultValuedAttr<BoolAttr, "false">:$isTrailingSWLayer,
+        OptionalAttr<IntAttr>:$wlmPage
     );
 
     let regions = (region
@@ -251,6 +275,7 @@ def VPURT_TaskOp :
         (`waits` `(` $waitBarriers^ `:` type($waitBarriers) `)`)?
         (`updates` `(` $updateBarriers^ `:` type($updateBarriers) `)`)?
         (`enqueueTarget` `(` $enqueueBarrier^ `:` type($enqueueBarrier) `)`)?
+        (`wlmPage` `(` $wlmPage^ `)`)?
         attr-dict-with-keyword
         $body
     }];

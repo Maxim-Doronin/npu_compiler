@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
+#include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -20,12 +21,15 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/dialect.hpp"
+#include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
+#include "vpux/compiler/dialect/net/IR/dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include "vpux/compiler/core/types/quantile_float/dialect.hpp"
@@ -43,6 +47,7 @@
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/BuiltinDialect.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -73,6 +78,7 @@ struct CustomBuiltinBufferizerInterface : mlir::DialectBufferizerInterface {
 void registerDialects(mlir::DialectRegistry& registry) {
     registry.insert<vpux::Const::ConstDialect,                //
                     vpux::Core::CoreDialect,                  //
+                    vpux::net::NetDialect,                    //
                     vpux::IE::IEDialect,                      //
                     vpux::VPU::VPUDialect,                    //
                     vpux::IERT::IERTDialect,                  //
@@ -106,7 +112,7 @@ void registerDialects(mlir::DialectRegistry& registry) {
 
 }  // namespace
 
-mlir::DialectRegistry vpux::createDialectRegistry(DummyOpMode dummyOpMode, const bool enableExtraShapeBoundOps) {
+mlir::DialectRegistry vpux::createDialectRegistry(DummyOpMode dummyOpMode) {
     mlir::DialectRegistry registry;
     registerDialects(registry);
 
@@ -124,6 +130,7 @@ mlir::DialectRegistry vpux::createDialectRegistry(DummyOpMode dummyOpMode, const
     });
 
     Const::ConstDialect::setupExtraInterfaces(registry);
+    Core::CoreDialect::setupExtraInterfaces(registry);
     IERT::IERTDialect::setupExtraInterfaces(registry);
     VPUIP::VPUIPDialect::setupExtraInterfaces(registry);
     VPU::registerAlignedChannelsOpInterfacesVPU(registry);
@@ -134,10 +141,6 @@ mlir::DialectRegistry vpux::createDialectRegistry(DummyOpMode dummyOpMode, const
 
     if (dummyOpMode == DummyOpMode::ENABLED) {
         VPUIP::VPUIPDialect::setupExtraInterfacesAdditional(registry);
-    }
-
-    if (enableExtraShapeBoundOps) {
-        IE::IEDialect::setupExtraInterfaces(registry);
     }
 
     registry.addExtension(+[](mlir::MLIRContext*, mlir::BuiltinDialect* dialect) {

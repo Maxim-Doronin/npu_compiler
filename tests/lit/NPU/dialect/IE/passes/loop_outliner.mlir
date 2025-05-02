@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 module @LoopOutlinerWith1Loop {
 // CHECK-LABEL: @LoopOutlinerWith1Loop
 
-IE.CNNNetwork entryPoint : @main inputsInfo : {
+net.NetworkInfo entryPoint : @main inputsInfo : {
   DataInfo "Parameter_2" tensorNames = ["Parameter_2"] : tensor<1xsi64>
   DataInfo "Parameter_5" tensorNames = ["Parameter_5"] : tensor<3x5xf32>
   DataInfo "Parameter_6" tensorNames = ["Parameter_6"] : tensor<2x5xf32>
@@ -93,7 +93,7 @@ func.func @main(%arg0: tensor<1xsi64>, %arg1: tensor<3x5xf32>, %arg2: tensor<2x5
 module @LoopOutlinerWith2Loop {
 // CHECK-LABEL: @LoopOutlinerWith2Loop
 
-IE.CNNNetwork entryPoint : @main inputsInfo : {
+net.NetworkInfo entryPoint : @main inputsInfo : {
   DataInfo "Parameter_2" tensorNames = ["Parameter_2"] : tensor<1xsi64>
   DataInfo "Parameter_5" tensorNames = ["Parameter_5"] : tensor<3x5xf32>
   DataInfo "Parameter_6" tensorNames = ["Parameter_6"] : tensor<2x5xf32>

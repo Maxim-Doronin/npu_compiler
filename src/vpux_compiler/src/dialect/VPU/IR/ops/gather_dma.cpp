@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,9 +7,6 @@
 
 #include "vpux/compiler/dialect/VPU/utils/gather_dma_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/error.hpp"
-
-#include "vpux/utils/core/checked_cast.hpp"
 
 using namespace vpux;
 
@@ -18,7 +15,7 @@ mlir::LogicalResult vpux::VPU::GatherDMAOp::inferReturnTypes(mlir::MLIRContext*,
                                                              mlir::OpaqueProperties prop, mlir::RegionRange /*regions*/,
                                                              mlir::SmallVectorImpl<mlir::Type>& inferredReturnTypes) {
     VPU::GatherDMAOpAdaptor gatherDMAOp(operands, attrs, prop);
-    const auto indicesType = gatherDMAOp.getIndices().getType().cast<vpux::NDTypeInterface>();
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(gatherDMAOp.getIndices().getType());
     const auto indicesShape = indicesType.getShape();
 
     if (!gatherDMAOp.getAxisValue().has_value()) {
@@ -26,7 +23,7 @@ mlir::LogicalResult vpux::VPU::GatherDMAOp::inferReturnTypes(mlir::MLIRContext*,
     }
     const auto axis = gatherDMAOp.getAxisValue().value();
 
-    const auto inputType = gatherDMAOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(gatherDMAOp.getInput().getType());
     const auto inputShape = inputType.getShape();
     auto outputShape = inputShape.toValues();
     outputShape[Dim(axis)] = indicesShape[Dim(axis)];
@@ -49,7 +46,7 @@ vpux::InputTiling vpux::VPU::GatherDMAOp::backInferTileInfo(const vpux::TileInfo
     int64_t axisValue = 0;
 
     if (getAxisValueAttr() != nullptr) {
-        axisValue = getAxisValueAttr().cast<mlir::IntegerAttr>().getValue().getSExtValue();
+        axisValue = mlir::cast<mlir::IntegerAttr>(getAxisValueAttr()).getValue().getSExtValue();
     }
     if (getAxis() != nullptr) {
         auto axisConst = getAxis().getDefiningOp<Const::DeclareOp>();
@@ -76,12 +73,12 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherDMAOp::getTilingStrategy(TilingMo
 
     auto axisValue = getAxisValueAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
 
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
 
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inputSize = inputType.getCompactAllocSize();
-    const auto indicesType = getIndices().getType().cast<vpux::NDTypeInterface>();
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(getIndices().getType());
     const auto indicesSize = indicesType.getCompactAllocSize();
     const auto outputRank = static_cast<int64_t>(outputShape.size());
 

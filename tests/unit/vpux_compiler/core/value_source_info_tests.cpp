@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
@@ -100,6 +100,7 @@ TEST_F(MLIR_ValueSourceInfo, RegionBranch) {
             _log.trace("returnRes's source : {0} ", *returnSourcesExpected.begin());
 
             const auto returnRootsActual = valueInfo.getRoots(returnRes);
+            ASSERT_FALSE(returnRootsActual.empty()) << "returnRootsActual is uninitialized or empty";
             EXPECT_TRUE(*returnRootsExpected.begin() == *returnRootsActual.begin());
             _log.trace("returnRes's root : {0} ", *returnRootsExpected.begin());
         }

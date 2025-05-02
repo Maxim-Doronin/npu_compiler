@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -68,7 +68,7 @@ LogicalResult vpux::IE::TensorIteratorOp::inferReturnTypeComponents(
                 toConcatOutputPortIdMap.count(exId) ? toConcatOutputPortIdMap[exId] : invariantOutputPortIdMap[exId];
         auto operand = loopTerminator.getOperands()[inId];
 
-        auto inType = operand.getType().cast<RankedTensorType>();
+        auto inType = mlir::cast<mlir::RankedTensorType>(operand.getType());
         const auto outDesc = vpux::getTensorAttr(inType);
 
         // deal with concating along axis cases

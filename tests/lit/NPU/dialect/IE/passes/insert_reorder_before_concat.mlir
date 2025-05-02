@@ -34,7 +34,7 @@ func.func @InsertReorderBeforeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1: tenso
     // CHECK-SAME:  : tensor<64x2x1x1xf32>, [#const.CastElemType<f16>]
 
     // CHECK:   %[[TRANSPOSE:.*]] = IE.Transpose(%arg0) {order_value = #NWCH}
-    // CHECK-SAME   : tensor<1x8x512x64xf16> -> tensor<1x64x8x512xf16>
+    // CHECK-SAME:  : tensor<1x8x512x64xf16> -> tensor<1x64x8x512xf16>
 
     // CHECK:   %[[CONV2D:.*]] = IE.Convolution(%arg1, %[[CONSTANT_1]]) {
     // CHECK-SAME:      dilations = [1, 1],
@@ -88,7 +88,7 @@ func.func @InsertReorderBeforeReshapeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1
     // CHECK-SAME:  : tensor<64x2x1x1xf32>, [#const.CastElemType<f16>]
 
     // CHECK:   %[[RESHAPE:.*]] = IE.AffineReshape(%arg0)
-    // CHECK-SAME   : tensor<1x8x512x64xf16> -> tensor<1x64x8x512xf16>
+    // CHECK-SAME:  : tensor<1x8x512x64xf16> -> tensor<1x64x8x512xf16>
 
     // CHECK:   %[[CONV2D:.*]] = IE.Convolution(%arg1, %[[CONSTANT_1]]) {
     // CHECK-SAME:      dilations = [1, 1],
@@ -110,4 +110,41 @@ func.func @InsertReorderBeforeReshapeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1
     // CHECK-SAME:  : tensor<1x64x9x512xf16, {order = #NHWC}> -> tensor<1x64x9x512xf16>
 
     // CHECK:   return %[[REORDER]] : tensor<1x64x9x512xf16>
+}
+
+// -----
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @InsertReorderBeforeConcatOnDimW
+// CHECK-SAME:        [[INPUT0:%arg[0-9]]]: tensor<1x240x1x432xf16>
+func.func @InsertReorderBeforeConcatOnDimW(%arg0: tensor<1x240x1x432xf16>) -> tensor<1x240x432x2xf16> {
+    %6 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 240, 432, 1]}
+            : tensor<1x240x1x432xf16> -> tensor<1x240x432x1xf16>
+    %10 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 240, 432, 1]}
+            : tensor<1x240x1x432xf16> -> tensor<1x240x432x1xf16>
+    %13 = IE.Concat(%6, %10) {
+            static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]
+            } : tensor<1x240x432x1xf16>, tensor<1x240x432x1xf16> -> tensor<1x240x432x2xf16>
+    return %13 : tensor<1x240x432x2xf16>
+
+    // CHECK:   [[RESHAPE_0:%.+]] = IE.AffineReshape([[INPUT0]])
+    // CHECK-SAME:  : tensor<1x240x1x432xf16> -> tensor<1x240x432x1xf16>
+
+    // CHECK:   [[RESHAPE_1:%.+]] = IE.AffineReshape([[INPUT0]])
+    // CHECK-SAME:  : tensor<1x240x1x432xf16> -> tensor<1x240x432x1xf16>
+
+    // CHECK:   [[REORDER_2:%.+]] = IE.Reorder([[RESHAPE_0]]) {dstOrder = #NHWC}
+    // CHECK-SAME:  : tensor<1x240x432x1xf16> -> tensor<1x240x432x1xf16, {order = #NHWC}>
+
+    // CHECK:   [[REORDER_3:%.+]] = IE.Reorder([[RESHAPE_1]]) {dstOrder = #NHWC}
+    // CHECK-SAME:  : tensor<1x240x432x1xf16> -> tensor<1x240x432x1xf16, {order = #NHWC}>
+
+    // CHECK:   [[CONCAT:%.+]] = IE.Concat([[REORDER_2]], [[REORDER_3]]) {
+    // CHECK-SAME{LITERAL}:     static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]
+    // CHECK-SAME:  } : tensor<1x240x432x1xf16, {order = #NHWC}>, tensor<1x240x432x1xf16, {order = #NHWC}> -> tensor<1x240x432x2xf16, {order = #NHWC}>
+
+    // CHECK:   [[REORDER_OUT:%.+]] = IE.Reorder([[CONCAT]]) {dstOrder = #NCHW}
+    // CHECK-SAME:  : tensor<1x240x432x2xf16, {order = #NHWC}> -> tensor<1x240x432x2xf16>
+
+    // CHECK:   return [[REORDER_OUT]] : tensor<1x240x432x2xf16>
 }

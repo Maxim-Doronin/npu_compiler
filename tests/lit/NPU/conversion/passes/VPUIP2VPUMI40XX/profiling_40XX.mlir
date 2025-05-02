@@ -14,7 +14,7 @@ module @mainModule {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_0" : tensor<1x16x16x16xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x16x16x16xf16>

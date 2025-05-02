@@ -634,7 +634,7 @@ func.func @ParallelDDR2DDRCopyOutputNoChangeToFixAccuracy(%in0 : !VPUIP.Distribu
     // CHECK:       [[BUFF_0:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x80x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
     // CHECK:       [[NCETASK_0:%.*]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 16540 : i64, task_type = #VPUIP.nce_task_type<DWCONV>}
     // CHECK-SAME:          input(%arg0 : !VPUIP.DistributedBuffer<1x80x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-    // CHECK-SAME           weights(%arg1 : !VPUIP.DistributedBuffer<80x16x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:          weights(%arg1 : !VPUIP.DistributedBuffer<80x16x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     // CHECK-SAME:          weight_table(%arg2 : !VPUIP.DistributedBuffer<80x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     // CHECK-SAME:          parent_input(%arg0 : !VPUIP.DistributedBuffer<1x80x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
     // CHECK-SAME:          parent_output([[BUFF_0]] : !VPUIP.DistributedBuffer<1x80x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
@@ -5852,15 +5852,15 @@ func.func @SkipSubViewWithTilingCopyDueToSubViewUserWithExplcitOutputShape(
     %1 = VPUIP.SubView %input [0, 0, 0, 0] [2, 1, 1, 160] : memref<8x1x1x160xf16, @DDR> to memref<2x1x1x160xf16, @DDR>
 
     %2 = VPURT.AllocDistributed -> !OutDistBufferType
-    %3 = VPUIP.NCEClusterTiling inputs(%1 as %arg8: memref<2x1x1x160xf16>) outputs(%2 as %arg9: memref<2x1x1x160xf16, @CMX_NN>) -> !OutDistBufferType {
-        %inner_copy = VPUIP.Copy inputs(%arg8 : memref<2x1x1x160xf16>) outputs(%arg9 : memref<2x1x1x160xf16, @CMX_NN>) -> memref<2x1x1x160xf16, @CMX_NN>
-    }
+    %3 = VPUIP.Copy
+        inputs(%1 : memref<2x1x1x160xf16, @DDR>)
+        outputs(%2 : !OutDistBufferType)  ->  !OutDistBufferType
     %4 = VPUIP.SubView %3 [0, 0, 0, 0] [2, 1, 1, 160] {explicit_output_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]]} : !OutDistBufferType to !SubViewOutDistBufferType
 
     %5 = VPURT.AllocDistributed -> !OutDistBufferType
-    %6 = VPUIP.NCEClusterTiling inputs(%0 as %arg8: memref<2x1x1x160xf16>) outputs(%5 as %arg9: memref<2x1x1x160xf16, @CMX_NN>) -> !OutDistBufferType {
-        %inner_copy = VPUIP.Copy inputs(%arg8 : memref<2x1x1x160xf16>) outputs(%arg9 : memref<2x1x1x160xf16, @CMX_NN>) -> memref<2x1x1x160xf16, @CMX_NN>
-    }
+    %6 = VPUIP.Copy
+        inputs(%0 : memref<2x1x1x160xf16, @DDR>)
+        outputs(%5 : !OutDistBufferType)  ->  !OutDistBufferType
 
     %7 = VPUIP.SubView %6 [0, 0, 0, 0] [2, 1, 1, 160] {explicit_output_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]]} : !OutDistBufferType to !SubViewOutDistBufferType
 
@@ -5875,16 +5875,13 @@ func.func @SkipSubViewWithTilingCopyDueToSubViewUserWithExplcitOutputShape(
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]}>
 
-    // CHECK: [[COPY_0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK:  inputs([[SUBVIEW_1]] as [[INNER_ARG0:[^:]+]]: memref<2x1x1x160xf16>)
-    // CHECK:  outputs([[ALLOC_0]] as [[INNER_ARG1:[^:]+]]: memref<2x1x1x160xf16, @CMX_NN>)
+    // CHECK: [[COPY_0:%.+]] = VPUIP.Copy
+    // CHECK:  inputs([[SUBVIEW_1]]
+    // CHECK:  outputs([[ALLOC_0]]
     // CHECK:  -> !VPUIP.DistributedBuffer<2x1x1x160xf16, #NCHW, @CMX_NN
     // CHECK:      mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]}>
-    // CHECK:  VPUIP.Copy
-    // CHECK:     inputs([[INNER_ARG0]] : memref<2x1x1x160xf16>)
-    // CHECK:     outputs([[INNER_ARG1]] : memref<2x1x1x160xf16, @CMX_NN>) -> memref<2x1x1x160xf16, @CMX_NN>
 
     // CHECK: [[SUBVIEW_USER_0:%.+]] = VPUIP.SubView [[COPY_0]] [0, 0, 0, 0] [2, 1, 1, 160]
     // CHECK-SAME{LITERAL}:  explicit_output_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]]
@@ -5900,16 +5897,13 @@ func.func @SkipSubViewWithTilingCopyDueToSubViewUserWithExplcitOutputShape(
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]}>
 
-    // CHECK: [[COPY_1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK:  inputs([[SUBVIEW_0]] as [[INNER_ARG0:[^:]+]]: memref<2x1x1x160xf16>)
-    // CHECK:  outputs([[ALLOC_1]] as [[INNER_ARG1:[^:]+]]: memref<2x1x1x160xf16, @CMX_NN>)
+    // CHECK: [[COPY_1:%.+]] = VPUIP.Copy
+    // CHECK:  inputs([[SUBVIEW_0]] : memref<2x1x1x160xf16, @DDR>
+    // CHECK:  outputs([[ALLOC_1]] : !VPUIP.DistributedBuffer<2x1x1x160xf16, #NCHW, @CMX_NN
     // CHECK:  -> !VPUIP.DistributedBuffer<2x1x1x160xf16, #NCHW, @CMX_NN
     // CHECK:      mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]], memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]}>
-    // CHECK:  VPUIP.Copy
-    // CHECK:     inputs([[INNER_ARG0]] : memref<2x1x1x160xf16>)
-    // CHECK:     outputs([[INNER_ARG1]] : memref<2x1x1x160xf16, @CMX_NN>) -> memref<2x1x1x160xf16, @CMX_NN>
 
     // CHECK: [[SUBVIEW_USER_1:%.+]] = VPUIP.SubView [[COPY_1]] [0, 0, 0, 0] [2, 1, 1, 160]
     // CHECK-SAME{LITERAL}:  explicit_output_shapes = [[1, 1, 1, 160], [1, 1, 1, 160]]
@@ -5950,13 +5944,9 @@ func.func @NotFuseCopiesThroughReshapeWith3DInputAndOverlappedUser(%input : memr
                        -> memref<8x256x336xf16, @DDR>
     %reshape = VPUIP.GenericReshape inputs(%copy : memref<8x256x336xf16, @DDR>) -> memref<1x8x256x336xf16, @DDR>
     %alloc_dist = VPURT.AllocDistributed -> !OutputBufferType
-    %cluster_copy = VPUIP.NCEClusterTiling inputs(%reshape as %arg0: memref<1x8x256x336xf16>)
-                                           outputs(%alloc_dist as %arg1: memref<1x8x256x336xf16, @CMX_NN>)
-                                           -> !OutputBufferType {
-      %0 = VPUIP.Copy inputs(%arg0: memref<1x8x256x336xf16>)
-                      outputs (%arg1: memref<1x8x256x336xf16, @CMX_NN>)
-                      -> memref<1x8x256x336xf16, @CMX_NN>
-    }
+    %cluster_copy = VPUIP.Copy
+        inputs(%reshape : memref<1x8x256x336xf16, @DDR>)
+        outputs(%alloc_dist : !OutputBufferType)  ->  !OutputBufferType
 
     return %cluster_copy : !OutputBufferType
 
@@ -5969,13 +5959,12 @@ func.func @NotFuseCopiesThroughReshapeWith3DInputAndOverlappedUser(%input : memr
     // CHECK: [[ALLOC_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x8x256x336xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 8, 128, 336], [1, 8, 128, 336]], compute_offsets = [[0, 0, 0, 0], [0, 0, 128, 0]]
     // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 8, 130, 336], [1, 8, 130, 336]], memory_offsets = [[0, 0, 0, 0], [0, 0, 126, 0]]}>
-    // CHECK: [[CLUSTER_TILING:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:     inputs([[RESHAPE]] as [[INNER_ARG0:[^:]+]]: memref<1x8x256x336xf16>)
-    // CHECK-SAME:     outputs([[ALLOC_CMX]] as [[INNER_ARG1:[^:]+]]: memref<1x8x256x336xf16, @CMX_NN>)
+    // CHECK: [[CLUSTER_TILING:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[RESHAPE]] : memref<1x8x256x336xf16, @DDR>)
+    // CHECK-SAME:     outputs([[ALLOC_CMX]] : !VPUIP.DistributedBuffer<1x8x256x336xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x8x256x336xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 8, 128, 336], [1, 8, 128, 336]], compute_offsets = [[0, 0, 0, 0], [0, 0, 128, 0]]
-    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 8, 130, 336], [1, 8, 130, 336]], memory_offsets = [[0, 0, 0, 0], [0, 0, 126, 0]]}> {
-    // CHECK: [[COPY_INNER:%.+]] = VPUIP.Copy inputs([[INNER_ARG0]] : memref<1x8x256x336xf16>) outputs([[INNER_ARG1]] : memref<1x8x256x336xf16, @CMX_NN>) -> memref<1x8x256x336xf16, @CMX_NN>
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 8, 130, 336], [1, 8, 130, 336]], memory_offsets = [[0, 0, 0, 0], [0, 0, 126, 0]]}>
 
     // CHECK: return [[CLUSTER_TILING]] : !VPUIP.DistributedBuffer<1x8x256x336xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 8, 128, 336], [1, 8, 128, 336]], compute_offsets = [[0, 0, 0, 0], [0, 0, 128, 0]]

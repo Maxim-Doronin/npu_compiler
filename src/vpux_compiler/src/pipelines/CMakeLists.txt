@@ -1,0 +1,18 @@
+#
+# Copyright (C) 2025 Intel Corporation.
+# SPDX-License-Identifier: Apache 2.0
+#
+
+set(TARGET_NAME "npu_compiler_pipelines")
+
+file(GLOB_RECURSE SRC_FILES *.cpp)
+add_npu_library(${TARGET_NAME}
+    ${SRC_FILES}
+    LINK_LIBS PRIVATE
+        npu_core_utils
+        npu_llvm_utils
+        # TODO: see discussion 16934
+        npu_compiler_dialect_vpu
+    PUBLIC
+        mlir-dependencies
+    )

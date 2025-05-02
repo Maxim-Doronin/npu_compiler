@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -131,7 +131,7 @@ func.func @swapSliceWithClamp(%arg0: tensor<1x16x80x80x!qElemType>) -> tensor<1x
 // CHECK-LABEL: @notSwapWithNCEAlreadyHasPostOp
 // CHECK-SAME:    [[INPUT:%.*]]: tensor<1x16x80x80x!qElemType>
 func.func @notSwapWithNCEAlreadyHasPostOp(%arg0: tensor<1x16x80x80x!qElemType>) -> tensor<1x8x80x80x!qElemType1> {
-    %0 = IE.AvgPool(%arg0) { kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.ReLU", attrs = {}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1] }
+    %0 = IE.AvgPool(%arg0) { kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1] }
             : tensor<1x16x80x80x!qElemType> -> tensor<1x16x80x80x!qElemType1>
     %1 = IE.Slice %0 [0, 0, 0, 0] [1, 8, 80, 80] : tensor<1x16x80x80x!qElemType1> to tensor<1x8x80x80x!qElemType1>
     %2 = IE.Clamp(%1) {max = 4.000000e+00 : f64, min = -1.500000e+00 : f64} : tensor<1x8x80x80x!qElemType1> -> tensor<1x8x80x80x!qElemType1>

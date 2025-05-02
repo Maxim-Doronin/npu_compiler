@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -29,7 +29,7 @@ mlir::LogicalResult vpux::Const::SparsifyAttr::verify(FuncRef<mlir::InFlightDiag
             return printTo(emitError(), "Got unsupported 'numActualElements' in 'SparsifyAttr' : '{0}'",
                            numActualElements.getShapedType().getElementType());
         }
-        if (!numActualElements.isa<mlir::DenseElementsAttr>()) {
+        if (!mlir::isa<mlir::DenseElementsAttr>(numActualElements)) {
             return printTo(emitError(), "Got unsupported 'numActualElements' in 'SparsifyAttr'");
         }
         auto values = numActualElements.getValues<int64_t>();

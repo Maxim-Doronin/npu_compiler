@@ -31,8 +31,8 @@ mlir::LogicalResult verifyTensorSize(VPU::ArchKind arch, mlir::Location loc, mli
 }
 
 mlir::LogicalResult verifyInOutElementType(mlir::Location loc, mlir::Value inTensor, mlir::Value outTensor) {
-    const auto inType = inTensor.getType().cast<vpux::NDTypeInterface>();
-    const auto outType = outTensor.getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(inTensor.getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(outTensor.getType());
 
     if (inType.getElementType() != outType.getElementType()) {
         return errorAt(loc, "Input element type '{0}' doesn't match output element type '{1}'", inType.getElementType(),
@@ -44,13 +44,13 @@ mlir::LogicalResult verifyInOutElementType(mlir::Location loc, mlir::Value inTen
 
 mlir::LogicalResult verifyCompressedBufferAllocSize(mlir::Location loc, mlir::Value origTensor,
                                                     mlir::Value compressedTensor, mlir::Value sparsityMapBuffer) {
-    const auto origType = origTensor.getType().cast<vpux::NDTypeInterface>();
-    const auto compressedType = compressedTensor.getType().cast<vpux::NDTypeInterface>();
+    const auto origType = mlir::cast<vpux::NDTypeInterface>(origTensor.getType());
+    const auto compressedType = mlir::cast<vpux::NDTypeInterface>(compressedTensor.getType());
     const auto origShape = origType.getShape();
     int64_t bitmapsize = 0;
 
     if (sparsityMapBuffer != nullptr) {
-        const auto bitmapType = sparsityMapBuffer.getType().cast<vpux::NDTypeInterface>();
+        const auto bitmapType = mlir::cast<vpux::NDTypeInterface>(sparsityMapBuffer.getType());
         bitmapsize = bitmapType.getTotalAllocSize().count();
     }
 
@@ -145,8 +145,8 @@ mlir::LogicalResult vpux::VPUIP::NNDMAOp::verify() {
     auto loc = getLoc();
 
     if (getCompressCandidateAttr() != nullptr) {
-        auto inType = getInput().getType().cast<vpux::NDTypeInterface>();
-        auto outType = getOutput().getType().cast<vpux::NDTypeInterface>();
+        auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+        auto outType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
         if (inType.getMemoryKind() == VPU::MemoryKind::CMX_NN && outType.getMemoryKind() == VPU::MemoryKind::DDR) {
             auto compressionState = getCompressionState(getOutput().getType());
             if (compressionState != VPUIP::CompressionState::CompressionCandidate) {
@@ -245,10 +245,10 @@ mlir::LogicalResult vpux::VPUIP::GatherDMAOp::verify() {
 
     // TODO: E#-86281 move to 40xx
     if (arch < VPU::ArchKind::NPU40XX) {
-        return errorAt(loc, "Operation {0} is only supported for NPU40XX but got {1}.", getOperationName(), arch);
+        return errorAt(loc, "Operation {0} is only supported for NPU40XX+ but got {1}.", getOperationName(), arch);
     }
 
-    auto indicesType = getIndices().getType().cast<vpux::NDTypeInterface>();
+    auto indicesType = mlir::cast<vpux::NDTypeInterface>(getIndices().getType());
 
     auto indicesMemKind = indicesType.getMemoryKind();
     size_t indicesLength = indicesType.getNumElements();
@@ -306,15 +306,15 @@ mlir::LogicalResult vpux::VPUIP::ConvertDMAOp::verify() {
         return mlir::success();
     }
 
-    auto outputType = getOutputBuff().getType().cast<vpux::NDTypeInterface>();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutputBuff().getType());
     const auto outputElementType = outputType.getElementType();
-    auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inputElementType = inputType.getElementType();
 
     if ((arch < VPU::ArchKind::NPU40XX) || !inputElementType.isF32() ||
         (!outputElementType.isF16() && !outputElementType.isBF16())) {
         return errorAt(loc,
-                       "Operation {0} is only supported for NPU arch for F32 to F16/BF16 "
+                       "Operation {0} is only supported for NPU40XX+ arch for F32 to F16/BF16 "
                        "conversion. "
                        "Got arch {1} "
                        "and conversion from {2} to {3}",
@@ -729,4 +729,24 @@ mlir::LogicalResult vpux::VPUIP::SyncDMAOp::verify() {
 
 size_t vpux::VPUIP::SyncDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>&) {
     return 0;
+}
+
+mlir::LogicalResult vpux::VPUIP::ReadOnlyDMAOp::verify() {
+    auto loc = getLoc();
+    if (!getResult().use_empty()) {
+        return errorAt(loc, "ReadOnlyDMAOp result should have no users, but it does.");
+    }
+    return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+}
+
+size_t vpux::VPUIP::ReadOnlyDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>&) {
+    return 0;
+}
+
+mlir::Value vpux::VPUIP::ReadOnlyDMAOp::getOutputBuff() {
+    return nullptr;
+}
+
+mlir::Value vpux::VPUIP::ReadOnlyDMAOp::getOutput() {
+    return nullptr;
 }

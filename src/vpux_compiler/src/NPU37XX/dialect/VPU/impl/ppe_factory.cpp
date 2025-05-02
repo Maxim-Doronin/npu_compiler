@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/utils/core/custom_float.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/impl/ppe_factory.hpp"
@@ -62,11 +64,11 @@ void PpeFactory::configureAttrForAvgPool(mlir::Operation* op, AttrBuilder& build
     }
 
     auto kernelSize = vpux::parseIntArrayAttr<int64_t>(avgPoolOp.getKernelSizeAttr());
-    auto inputElemType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    auto outputElemType = op->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto inputElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+    auto outputElemType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
     auto staticScale =
             avgPoolOp.getStaticScaleAttr() != nullptr ? avgPoolOp.getStaticScaleAttr().getValueAsDouble() : 1.0;
-    if (!inputElemType.isa<mlir::quant::QuantizedType>()) {
+    if (!mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
         builder.quantScale = mlir::SmallVector<double>{
                 (computeAvgPoolQuantScale(nullptr, outputElemType, kernelSize) * staticScale)};
         return;
@@ -81,12 +83,12 @@ void PpeFactory::configureAttrForAvgPool(mlir::Operation* op, AttrBuilder& build
 }
 
 void PpeFactory::calculateFpPReluAlpha(mlir::Operation* operation, PpeFactory::AttrBuilder& builder) const {
-    const auto outputElemType = operation->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    const auto inputElemType = operation->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (!inputElemType.isa<mlir::quant::QuantizedType>()) {
+    const auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
+    const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType()).getElementType();
+    if (!mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
         // Mixed mode with float input and quant output requires negative slope rescaling.
-        if (outputElemType.isa<mlir::quant::UniformQuantizedType>()) {
-            const auto perTensor = outputElemType.cast<mlir::quant::UniformQuantizedType>();
+        if (mlir::isa<mlir::quant::UniformQuantizedType>(outputElemType)) {
+            const auto perTensor = mlir::cast<mlir::quant::UniformQuantizedType>(outputElemType);
             builder.fpPReluAlpha /= static_cast<float>(perTensor.getScale());
         }
 
@@ -95,21 +97,20 @@ void PpeFactory::calculateFpPReluAlpha(mlir::Operation* operation, PpeFactory::A
                 llvm::TypeSwitch<mlir::Operation*, mlir::Type>(operation)
                         .Case<NCEOpInterface>([](auto op) {
                             const auto weights = op.getWeightsOperand();
-                            return weights != nullptr ? weights.getType()
-                                                                .template dyn_cast<vpux::NDTypeInterface>()
-                                                                .getElementType()
-                                                      : nullptr;
+                            return weights != nullptr
+                                           ? mlir::dyn_cast<vpux::NDTypeInterface>(weights.getType()).getElementType()
+                                           : nullptr;
                         })
                         // This method may also be called before NCEOpInterface is attached, so case-by-case checks are
                         // needed (until a WeightedOpInterface is devised):
                         .Case<IE::ConvolutionOp>([](auto op) {
-                            return op.getFilter().getType().template dyn_cast<vpux::NDTypeInterface>().getElementType();
+                            return mlir::dyn_cast<vpux::NDTypeInterface>(op.getFilter().getType()).getElementType();
                         })
                         .Case<IE::GroupConvolutionOp>([](auto op) {
-                            return op.getFilter().getType().template dyn_cast<vpux::NDTypeInterface>().getElementType();
+                            return mlir::dyn_cast<vpux::NDTypeInterface>(op.getFilter().getType()).getElementType();
                         })
                         .Case<IE::TransposedConvolutionOp>([](auto op) {
-                            return op.getFilter().getType().template dyn_cast<vpux::NDTypeInterface>().getElementType();
+                            return mlir::dyn_cast<vpux::NDTypeInterface>(op.getFilter().getType()).getElementType();
                         })
                         .Default([](auto) {
                             return mlir::Type(nullptr);
@@ -121,14 +122,13 @@ void PpeFactory::calculateFpPReluAlpha(mlir::Operation* operation, PpeFactory::A
     }
 }
 
-PpeFactory::AttrBuilder PpeFactory::callbackReluOp(vpux::IE::LayerWithPostOpInterface operation) const {
-    VPUX_THROW_UNLESS(operation.getPostOpAttrs().empty(), "'{0}' PostOp should not have any attributes",
-                      operation.getPostOp());
-
+template <>
+PpeFactory::AttrBuilder PpeFactory::callback<IE::ReluAttr>(vpux::IE::LayerWithPostOpInterface operation,
+                                                           IE::ReluAttr) const {
     PpeFactory::AttrBuilder builder(operation.getContext());
 
-    auto outputElemType = operation->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (auto outElemQType = outputElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
+    if (auto outElemQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
         VPUX_THROW_WHEN(mlir::failed(vpux::extractScalarOrUniformZP(outElemQType)),
                         "Currently not supporting non-symmetric quantized per-axis types for PPE clamping");
         builder.clampLow = vpux::extractScalesAndZeroPoints(outputElemType).second.front();
@@ -143,13 +143,13 @@ PpeFactory::AttrBuilder PpeFactory::callbackReluOp(vpux::IE::LayerWithPostOpInte
     return builder;
 }
 
-PpeFactory::AttrBuilder PpeFactory::callbackClampOp(vpux::IE::LayerWithPostOpInterface operation) const {
-    auto clamp = getPostOpAdaptor<vpux::IE::ClampOp>(operation);
-
+template <>
+PpeFactory::AttrBuilder PpeFactory::callback<IE::ClampAttr>(vpux::IE::LayerWithPostOpInterface operation,
+                                                            IE::ClampAttr clamp) const {
     PpeFactory::AttrBuilder builder(operation.getContext());
 
-    auto outputElemType = operation->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (auto outElemQType = outputElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
+    if (auto outElemQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
         const auto scalesAndZp = extractScalesAndZeroPoints(outElemQType);
         const auto scale = scalesAndZp.first.front();
         const auto zp = scalesAndZp.second.front();
@@ -157,8 +157,8 @@ PpeFactory::AttrBuilder PpeFactory::callbackClampOp(vpux::IE::LayerWithPostOpInt
         auto clampLowStorageMin = outElemQType.getStorageTypeMin();
         auto clampHighStorageMax = outElemQType.getStorageTypeMax();
 
-        auto qMin = checked_cast<int64_t>(std::round(clamp.getMin().convertToDouble() / scale)) + zp;
-        auto qMax = checked_cast<int64_t>(std::round(clamp.getMax().convertToDouble() / scale)) + zp;
+        auto qMin = checked_cast<int64_t>(std::round(clamp.getMin().getValueAsDouble() / scale)) + zp;
+        auto qMax = checked_cast<int64_t>(std::round(clamp.getMax().getValueAsDouble() / scale)) + zp;
 
         auto clampLow = std::max(clampLowStorageMin, qMin);
         auto clampHigh = std::min(clampHighStorageMax, qMax);
@@ -171,17 +171,17 @@ PpeFactory::AttrBuilder PpeFactory::callbackClampOp(vpux::IE::LayerWithPostOpInt
         }
 
     } else if (outputElemType.isF16()) {
-        auto clampMax = clamp.getMax().convertToDouble();
+        auto clampMax = clamp.getMax().getValueAsDouble();
         if (clampMax < checked_cast<double>(std::numeric_limits<vpux::type::float16>::max())) {
-            builder.clampHigh = packClamp<type::float16>(clamp.getMin().convertToDouble(), clampMax);
+            builder.clampHigh = packClamp<type::float16>(clamp.getMin().getValueAsDouble(), clampMax);
             builder.mode = VPU::PPEMode::LRELUX;
         } else {
             builder.mode = VPU::PPEMode::LRELU;
         }
     } else if (outputElemType.isBF16()) {  // bf16 is supported by the FuseClampPass
-        auto clampMax = clamp.getMax().convertToDouble();
-        if (clampMax < checked_cast<double>(std::numeric_limits<vpux::type::float16>::max())) {
-            builder.clampHigh = packClamp<type::bfloat16>(clamp.getMin().convertToDouble(), clampMax);
+        auto clampMax = clamp.getMax().getValueAsDouble();
+        if (clampMax < checked_cast<double>(std::numeric_limits<vpux::type::bfloat16>::max())) {
+            builder.clampHigh = packClamp<type::bfloat16>(clamp.getMin().getValueAsDouble(), clampMax);
             builder.mode = VPU::PPEMode::LRELUX;
         } else {
             builder.mode = VPU::PPEMode::LRELU;
@@ -195,22 +195,22 @@ PpeFactory::AttrBuilder PpeFactory::callbackClampOp(vpux::IE::LayerWithPostOpInt
     return builder;
 }
 
-PpeFactory::AttrBuilder PpeFactory::callbackLeakyReluOp(vpux::IE::LayerWithPostOpInterface operation) const {
-    auto leakyRelu = getPostOpAdaptor<vpux::IE::LeakyReluOp>(operation);
-
+template <>
+PpeFactory::AttrBuilder PpeFactory::callback<IE::LeakyReluAttr>(vpux::IE::LayerWithPostOpInterface operation,
+                                                                IE::LeakyReluAttr leakyRelu) const {
     PpeFactory::AttrBuilder builder(operation.getContext());
     builder.mode = PPEMode::LPRELU;
 
-    auto outputElemType = operation->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
 
-    if (auto outElemQType = outputElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    if (auto outElemQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
         VPUX_THROW_WHEN(mlir::failed(vpux::extractScalarOrUniformZP(outElemQType)),
                         "Currently not supporting non-symmetric quantized per-axis types for PPE clamping");
         builder.clampLow = outElemQType.getStorageTypeMin();
         builder.clampHigh = outElemQType.getStorageTypeMax();
     }
 
-    builder.fpPReluAlpha = leakyRelu.getNegativeSlope().convertToDouble();
+    builder.fpPReluAlpha = leakyRelu.getNegativeSlope().getValueAsDouble();
     if (isFloatEqual(builder.fpPReluAlpha, 0.0f)) {
         builder.lReluMult = 0;
     } else if (!isFloatEqual(builder.fpPReluAlpha, 1.0f)) {
@@ -228,9 +228,9 @@ PpeFactory::AttrBuilder PpeFactory::retrieveNonEltwisePPEAttribute(mlir::Operati
     PpeFactory::AttrBuilder builder(operation->getContext());
 
     auto layerWithPostOpIfc = mlir::dyn_cast<vpux::IE::LayerWithPostOpInterface>(operation);
-    if (layerWithPostOpIfc == nullptr || layerWithPostOpIfc.getPostOpAttrs() == nullptr) {
-        auto outputElemType = operation->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-        if (auto outElemQType = outputElemType.dyn_cast<mlir::quant::QuantizedType>()) {
+    if (layerWithPostOpIfc == nullptr || layerWithPostOpIfc.getPostOp() == nullptr) {
+        auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
+        if (auto outElemQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
             VPUX_THROW_WHEN(mlir::failed(vpux::extractScalarOrUniformZP(outElemQType)),
                             "Currently not supporting non-symmetric quantized per-axis types for PPE clamping");
 
@@ -242,37 +242,33 @@ PpeFactory::AttrBuilder PpeFactory::retrieveNonEltwisePPEAttribute(mlir::Operati
         return builder;
     }
 
-    const auto postOp = layerWithPostOpIfc.getPostOp();
-    VPUX_THROW_UNLESS(postOp.has_value(), "Missing PostOp on LayerWithPostOp");
-
-    if (postOp->getStringRef() == IE::ReLUOp::getOperationName()) {
-        return callbackReluOp(layerWithPostOpIfc);
-    }
-    if (postOp->getStringRef() == IE::ClampOp::getOperationName()) {
-        return callbackClampOp(layerWithPostOpIfc);
-    }
-    if (postOp->getStringRef() == IE::LeakyReluOp::getOperationName()) {
-        return callbackLeakyReluOp(layerWithPostOpIfc);
-    }
-    VPUX_THROW("Received unknown PPE PostOp: {0}", postOp->getStringRef());
+    return llvm::TypeSwitch<IE::PostOpAttr, AttrBuilder>(layerWithPostOpIfc.getPostOp())
+            .Case<IE::ReluAttr, IE::ClampAttr, IE::LeakyReluAttr>([&](const auto postOp) {
+                return this->callback(layerWithPostOpIfc, postOp);
+            })
+            .Default([](const auto postOp) {
+                VPUX_THROW("Received unknown PPE post-op: {0}", postOp.getName());
+                return nullptr;
+            });
 }
 
 PpeFactory::AttrBuilder PpeFactory::retrieveEltwisePPEAttribute(mlir::Operation* operation) const {
     VPUX_THROW_WHEN(!mlir::isa_and_nonnull<IE::AddOp>(operation), "Unsupported PPE eltwise operation: {0}",
                     operation->getName());
 
-    auto inputVal1 = operation->getOperand(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    auto inputVal2 = operation->getOperand(1).getType().cast<vpux::NDTypeInterface>().getElementType();
+    auto inputVal1 = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType()).getElementType();
+    auto inputVal2 = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(1).getType()).getElementType();
 
-    VPUX_THROW_UNLESS(inputVal1.isa<mlir::quant::QuantizedType>() == inputVal2.isa<mlir::quant::QuantizedType>(),
-                      "Not supporting mixed precision on the inputs of eltwise!");
-    auto outputElemType = operation->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    VPUX_THROW_UNLESS(
+            mlir::isa<mlir::quant::QuantizedType>(inputVal1) == mlir::isa<mlir::quant::QuantizedType>(inputVal2),
+            "Not supporting mixed precision on the inputs of eltwise!");
+    auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
 
     auto layerWithPostOp = mlir::dyn_cast<vpux::IE::LayerWithPostOpInterface>(operation);
     auto builder = layerWithPostOp != nullptr ? PpeFactory::AttrBuilder(retrieveNonEltwisePPEAttribute(layerWithPostOp))
                                               : PpeFactory::AttrBuilder(operation->getContext());
 
-    const auto outElemQType = outputElemType.dyn_cast<mlir::quant::QuantizedType>();
+    const auto outElemQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType);
     if (layerWithPostOp == nullptr && outElemQType != nullptr) {
         VPUX_THROW_WHEN(mlir::failed(vpux::extractScalarOrUniformZP(outElemQType)),
                         "Currently not supporting non-symmetric quantized per-axis types for PPE clamping");
@@ -281,21 +277,21 @@ PpeFactory::AttrBuilder PpeFactory::retrieveEltwisePPEAttribute(mlir::Operation*
         builder.clampHigh = outElemQType.getStorageTypeMax();
     }
 
-    if (!inputVal1.isa<mlir::quant::QuantizedType>()) {
-        VPUX_THROW_WHEN(inputVal2.isa<mlir::quant::QuantizedType>(),
+    if (!mlir::isa<mlir::quant::QuantizedType>(inputVal1)) {
+        VPUX_THROW_WHEN(mlir::isa<mlir::quant::QuantizedType>(inputVal2),
                         "Currently not supporting both quantized and non-quantized inputs on the same op");
 
         builder.quantScale = mlir::SmallVector<double>{(computeQuantScale(nullptr, outputElemType))};
         return builder;
     }
 
-    VPUX_THROW_WHEN(inputVal1.isa<mlir::quant::UniformQuantizedPerAxisType>() ||
-                            inputVal2.isa<mlir::quant::UniformQuantizedPerAxisType>(),
+    VPUX_THROW_WHEN(mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inputVal1) ||
+                            mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inputVal2),
                     "Currently not supporting quantized per-axis types as PPE input");
 
     auto input1QuantScale = vpux::extractScalesAndZeroPoints(inputVal1).first.front();
     auto input2QuantScale = vpux::extractScalesAndZeroPoints(inputVal2).first.front();
-    auto outputQuantScale = outputElemType.isa<mlir::quant::QuantizedType>()
+    auto outputQuantScale = mlir::isa<mlir::quant::QuantizedType>(outputElemType)
                                     ? vpux::extractScalesAndZeroPoints(outputElemType).first.front()
                                     : 1.0;
 
@@ -319,7 +315,7 @@ PPEAttr PpeFactory::retrievePPEAttribute(mlir::Operation* operation) const {
 }
 
 vpux::VPU::PPEIntAttr PpeFactory::castToConcreteAttr(PPEAttr ppeAttr) const {
-    const auto intPpeAttr = ppeAttr.dyn_cast<PPEIntAttr>();
+    const auto intPpeAttr = mlir::dyn_cast<vpux::VPU::PPEIntAttr>(ppeAttr);
     VPUX_THROW_WHEN(intPpeAttr == nullptr,
                     "Expected PPEIntAttr type but got {0}, make sure to use the right factory version", ppeAttr);
     return intPpeAttr;
@@ -355,7 +351,7 @@ vpux::VPU::PPEAttr PpeFactory::intersectClamps(vpux::VPU::PPEAttr orig, double n
     auto targetLow = currentLow;
     auto targetHigh = currentHigh;
 
-    if (const auto quantizedType = outputElemType.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    if (const auto quantizedType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(outputElemType)) {
         const auto scale = quantizedType.getScale();
         const auto zp = quantizedType.getZeroPoint();
 

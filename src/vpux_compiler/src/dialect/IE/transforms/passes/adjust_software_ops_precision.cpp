@@ -1,14 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTSOFTWAREOPSPRECISION
@@ -104,7 +106,7 @@ private:
 mlir::LogicalResult TopKConverter::matchAndRewrite(IE::TopKOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Found '{0}' Operation at '{1}'", origOp->getName(), origOp->getLoc());
 
-    const auto inputElemType = origOp.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getElementType();
     const auto elemTypeFP16 = mlir::Float16Type::get(inputElemType.getContext());
     const auto inputCvtToFP16 = rewriter.createOrFold<IE::ConvertOp>(
             takeOpLoc(origOp, "cvt_in_fp16"), origOp.getInput(), mlir::TypeAttr::get(elemTypeFP16));
@@ -142,7 +144,7 @@ void AdjustSoftwareOpsPrecisionPass::safeRunOnModule() {
     auto& ctx = getContext();
 
     const auto isLegalTopKOp = [](IE::TopKOp op) {
-        const auto inputElemType = op.getInput().getType().cast<vpux::NDTypeInterface>().getElementType();
+        const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getElementType();
         return inputElemType.isF16() || inputElemType.isF32() || inputElemType.isInteger(32);
     };
 

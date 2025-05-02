@@ -5,11 +5,9 @@
 
 #pragma once
 
-#include <vpux/utils/core/format.hpp>
-
-#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Bytecode/BytecodeOpInterface.h>
 #include <mlir/IR/Builders.h>
-#include <mlir/IR/BuiltinOps.h>
+#include <mlir/Interfaces/CallInterfaces.h>
 
 //
 // Generated

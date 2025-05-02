@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -18,12 +18,14 @@ namespace VPURT {
 class EnqueueBarrierHandler {
 public:
     EnqueueBarrierHandler() = delete;
-    EnqueueBarrierHandler(mlir::func::FuncOp func, BarrierInfo& barrierInfo, Logger log = Logger::global());
+    EnqueueBarrierHandler(mlir::func::FuncOp func, BarrierInfo& barrierInfo, bool disableDmaSwFifo,
+                          Logger log = Logger::global());
     // Below constructor is meant to be used only for testing purpose
     EnqueueBarrierHandler(BarrierInfoTest& barrierInfoTest,
                           std::map<VPURT::TaskQueueType, SmallVector<uint32_t>>& taskQueueTypeMap,
                           SmallVector<size_t>& barrierToPidVec, size_t _barrierFifoDepth = 1, size_t dmaFifoDepth = 64,
-                          bool optimizeAndMergeEnqFlag = true, Logger log = Logger::global());
+                          bool optimizeAndMergeEnqFlag = true, const SmallVector<size_t>& shvTasksWithDpu = {},
+                          Logger log = Logger::global());
 
     mlir::LogicalResult calculateEnqueueBarriers();
     std::optional<size_t> getEnqueueBarrier(size_t taskInd);
@@ -32,13 +34,16 @@ public:
 private:
     void initPrevPhysBarrierData(mlir::func::FuncOp func);
     void initPrevPhysBarrierData(SmallVector<size_t>& barrierToPidVec, size_t nPhysBars);
+    void findShvTasksWithDpu();
     std::optional<size_t> getStartBarrierIndex(mlir::func::FuncOp func);
     std::optional<size_t> getInitialEnqueueBarrier(size_t taskInd);
 
     bool isBarrierAConsumedBeforeBarrierB(size_t barrierA, size_t barrierB);
+    bool isDependencyFromTaskAToTaskB(size_t taskA, size_t taskB);
     bool areTasksABeforeTasksB(const BarrierInfo::TaskSet& tasksA, const BarrierInfo::TaskSet& tasksB);
     bool isBarrierConsumedBeforeTask(size_t bar, size_t taskInd);
-    bool isBarrierConsumptionDependantOnTask(size_t bar, size_t taskInd);
+    bool isBarrierConsumptionDependantOnTaskStart(size_t bar, size_t taskInd);
+    bool isBarrierConsumptionAfterTaskCompletion(size_t bar, size_t taskInd);
     void delayEnqIfNeededBasedOnPrevEnq(std::optional<size_t>& enqBarOpt, std::optional<size_t> previousEnqBarOpt);
 
     void optimizeEnqueueIfPossible(std::optional<size_t>& enqBarOpt, BarrierInfo::TaskSet& waitBarriers,
@@ -83,14 +88,20 @@ private:
     SmallVector<std::optional<size_t>> _barrierPidPrevUsageVec;
 
     // Default size of DMA FIFO handling outstanding independent DMA enqueues
-    static constexpr int64_t DMA_OUTSTANDING_TRANSACTIONS = 64;
+    static constexpr int64_t DMA_SW_FIFO_SIZE = 64;
+
+    // Size of DMA HW FIFO handling outstanding independent DMA enqueues
+    static constexpr int64_t DMA_HW_FIFO_SIZE = 8;
+
     // Configured DMA FIFO size. For testing purpose it might be lower
     size_t _dmaFifoDepth;
 
-    // Flag indicating if optimization for merging conecutive enqueues should be performed
+    // Flag indicating if optimization for merging consecutive enqueues should be performed
     bool _optimizeAndMergeEnqFlag;
 
     Logger _log;
+
+    mlir::DenseMap<size_t, SmallVector<size_t>> _shvTasksWithDpuPerTile;
 
     // For each task index store index of barrier at which it should be enqueued
     // If not barrier is set it means task can be enqueued at bootstrap

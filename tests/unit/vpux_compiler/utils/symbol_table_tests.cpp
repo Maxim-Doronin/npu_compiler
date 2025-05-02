@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/dialect.hpp"
 
 #include "common/utils.hpp"
 
@@ -18,7 +19,7 @@
 namespace mlir {
 /// Generates a new symbol reference attribute with a new leaf reference.
 static SymbolRefAttr generateNewRefAttr(SymbolRefAttr oldAttr, SymbolRefAttr newLeafAttr) {
-    if (oldAttr.isa<FlatSymbolRefAttr>()) {
+    if (mlir::isa<mlir::FlatSymbolRefAttr>(oldAttr)) {
         return newLeafAttr;
     }
     auto nestedRefs = llvm::to_vector<2>(oldAttr.getNestedReferences());
@@ -71,15 +72,16 @@ TEST_F(MLIR_SymbolTable, CheckGenerateNewRefAttr) {
 TEST_F(MLIR_SymbolTable, ReplaceAllSymbolUses) {
     auto registry = vpux::createDialectRegistry();
     mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPURT::VPURTDialect>();
 
     constexpr llvm::StringLiteral inputIR = R"(
         module @test {
         ELF.Main @ELFMain {
 
-        ELF.CreateSection @taskBuff aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) {
+        ELF.CreateSection @taskBuff aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>) {
         }
 
-        ELF.CreateSection @buffers aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) {
+        ELF.CreateSection @buffers aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>) {
         }
 
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0 idx(!VPURegMapped.Index<0:0:0>) <DMA>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,13 +15,15 @@ mlir::LogicalResult BarrierRewriter::matchAndRewrite(VPURT::ConfigureBarrierOp o
                                                      mlir::ConversionPatternRewriter& rewriter) const {
     auto ctx = origOp.getContext();
     auto zeroByteAttr = mlir::IntegerAttr::get(getUInt8Type(ctx), 0);
+
     rewriter.replaceOpWithNewOp<VPUMI40XX::ConfigureBarrierOp>(
             origOp, VPURegMapped::IndexType::get(ctx, 0),  // setup all barriers with the trivial index (0)
             checked_cast<uint8_t>(origOp.getId()),         // realId
             -1,                                            // nextSameId
             zeroByteAttr,                                  // producerCount,
             zeroByteAttr,                                  // consumerCount,
-            origOp.getIsFinalBarrier(), origOp.getIsStartBarrier());
+            origOp.getIsFinalBarrier(), origOp.getIsStartBarrier(), origOp.getWlmPageAttr());
+
     return mlir::success();
 }
 

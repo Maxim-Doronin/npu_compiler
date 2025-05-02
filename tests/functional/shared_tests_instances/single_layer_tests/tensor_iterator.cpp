@@ -1,10 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation
+// Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/tensor_iterator.hpp"
-#include <vector>
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov;
@@ -28,7 +27,6 @@ const std::vector<ov::op::RecurrentSequenceDirection> directions = {ov::op::Recu
 
 const std::vector<ov::test::utils::TensorIteratorBody> tiBodyTypes = {ov::test::utils::TensorIteratorBody::GRU};
 
-// RNN Op is not supported. Tracked By Issue: [E#-117139]
 const std::vector<ov::test::utils::TensorIteratorBody> tiBodyTypes_RNN = {ov::test::utils::TensorIteratorBody::RNN};
 
 const auto tensorIteratorPrecommitParams_RNN =
@@ -67,6 +65,7 @@ const auto tensorIteratorPrecommitParamsAll_2 =
                            testing::ValuesIn(modelTypes),                  // netPrecision
                            testing::Values(ov::test::utils::DEVICE_NPU));  // targetDevice
 
+// RNN Op is not supported. Tracked By Issue: [E#-117139]
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_precommit_TensorIterator, TensorIteratorLayerTest_NPU3720,
                          tensorIteratorPrecommitParams_RNN, TensorIteratorLayerTestCommon ::getTestCaseName);
 

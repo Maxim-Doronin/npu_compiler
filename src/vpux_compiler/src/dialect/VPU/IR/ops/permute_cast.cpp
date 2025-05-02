@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -51,8 +51,8 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::Permute
         distribution.getDistributionMode() == DistributionMode::NONE) {
         return mlir::failure();
     }
-    const auto srcType = getInput().getType().cast<NDTypeInterface>();
-    const auto dstType = getOutput().getType().cast<NDTypeInterface>();
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     auto castedOutputDistribution =
             applyPermutationOnDistributionInfo(inType, distribution, getMemPerm(), srcType.getDimsOrder(),

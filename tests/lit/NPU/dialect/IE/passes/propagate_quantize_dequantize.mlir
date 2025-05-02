@@ -1741,13 +1741,13 @@ func.func @DontPropagateQuantizeThroughPostOp(%arg0: tensor<1x3x16x16xf16>) -> t
     kernel_size = [2, 2],
     pads_begin = [0, 0],
     pads_end = [0, 0],
-    post_op = #IE.PostOp<name = "IE.Tanh", attrs = {}>,
+    post_op = #IE.Tanh<>,
     rounding_type = #IE.rounding_type<FLOOR>,
     strides = [2, 2]} : tensor<1x3x16x16xf16> -> tensor<1x3x8x8xf16>
   %1 = IE.Quantize(%0) {dstElemType = !qElemType} : tensor<1x3x8x8xf16> -> tensor<1x3x8x8x!qElemType>
   return %1 : tensor<1x3x8x8x!qElemType>
 
-  //CHECK: [[MAXPOOL:%.+]] = IE.MaxPool([[INPUT]]) {kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.Tanh", attrs = {}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x3x16x16xf16> -> tensor<1x3x8x8xf16>
+  //CHECK: [[MAXPOOL:%.+]] = IE.MaxPool([[INPUT]]) {kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Tanh<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x3x16x16xf16> -> tensor<1x3x8x8xf16>
   //CHECK: [[QUANTIZE:%.+]] = IE.Quantize([[MAXPOOL]]) {dstElemType = !qElemType} : tensor<1x3x8x8xf16> -> tensor<1x3x8x8x!qElemType>
   //CHECK: return [[QUANTIZE]] : tensor<1x3x8x8x!qElemType>
 }
@@ -1764,12 +1764,12 @@ func.func @DontPropagateDequantizeThroughPostOp(%arg0: tensor<1x3x16x16x!qElemTy
     kernel_size = [2, 2],
     pads_begin = [0, 0],
     pads_end = [0, 0],
-    post_op = #IE.PostOp<name = "IE.Tanh", attrs = {}>,
+    post_op = #IE.Tanh<>,
     rounding_type = #IE.rounding_type<FLOOR>,
     strides = [2, 2]} : tensor<1x3x16x16xf16> -> tensor<1x3x8x8xf16>
   return %1 : tensor<1x3x8x8xf16>
 
   //CHECK: [[DEQUANTIZE:%.+]] = IE.Dequantize([[INPUT]]) {dstElemType = f16} : tensor<1x3x16x16x!qElemType> -> tensor<1x3x16x16xf16>
-  //CHECK: [[MAXPOOL:%.+]] = IE.MaxPool([[DEQUANTIZE]]) {kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PostOp<name = "IE.Tanh", attrs = {}>, rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x3x16x16xf16> -> tensor<1x3x8x8xf16>
+  //CHECK: [[MAXPOOL:%.+]] = IE.MaxPool([[DEQUANTIZE]]) {kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Tanh<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x3x16x16xf16> -> tensor<1x3x8x8xf16>
   //CHECK: return [[MAXPOOL]] : tensor<1x3x8x8xf16>
 }

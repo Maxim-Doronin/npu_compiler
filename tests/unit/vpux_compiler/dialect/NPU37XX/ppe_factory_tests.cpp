@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -207,7 +207,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_U8_NOOP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_F16_RELU) {
-    auto op = createAdd(getF16Type(), getF16Type(), getF16Type(), createRelu());
+    auto op = createAdd(getF16Type(), getF16Type(), getF16Type(), create<IE::ReluAttr>());
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -229,7 +229,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_F16_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_U8_RELU) {
-    auto op = createAdd(getF16Type(), getF16Type(), getU8Type(), createRelu());
+    auto op = createAdd(getF16Type(), getF16Type(), getU8Type(), create<IE::ReluAttr>());
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -251,7 +251,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_U8_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_F16_RELU) {
-    auto op = createAdd(getU8Type(), getU8Type(), getF16Type(), createRelu());
+    auto op = createAdd(getU8Type(), getU8Type(), getF16Type(), create<IE::ReluAttr>());
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -273,7 +273,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_F16_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_U8_RELU) {
-    auto op = createAdd(getU8Type(), getU8Type(), getU8Type(), createRelu());
+    auto op = createAdd(getU8Type(), getU8Type(), getU8Type(), create<IE::ReluAttr>());
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -295,7 +295,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_U8_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_F16_LEAKY_RELU) {
-    auto op = createAdd(getF16Type(), getF16Type(), getF16Type(), createLeakyRelu(0.1));
+    auto op = createAdd(getF16Type(), getF16Type(), getF16Type(), create<IE::LeakyReluAttr>(0.1));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -317,7 +317,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_F16_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_U8_LEAKY_RELU) {
-    auto op = createAdd(getF16Type(), getF16Type(), getU8Type(), createLeakyRelu(0.1));
+    auto op = createAdd(getF16Type(), getF16Type(), getU8Type(), create<IE::LeakyReluAttr>(0.1));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -339,7 +339,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_U8_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_F16_LEAKY_RELU) {
-    auto op = createAdd(getU8Type(), getU8Type(), getF16Type(), createLeakyRelu(0.1));
+    auto op = createAdd(getU8Type(), getU8Type(), getF16Type(), create<IE::LeakyReluAttr>(0.1));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -361,7 +361,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_F16_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_U8_LEAKY_RELU) {
-    auto op = createAdd(getU8Type(), getU8Type(), getU8Type(), createLeakyRelu(0.1));
+    auto op = createAdd(getU8Type(), getU8Type(), getU8Type(), create<IE::LeakyReluAttr>(0.1));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -383,7 +383,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_U8_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_F16_CLAMP) {
-    auto op = createAdd(getF16Type(), getF16Type(), getF16Type(), createClamp(20.0, 300.0));
+    auto op = createAdd(getF16Type(), getF16Type(), getF16Type(), create<IE::ClampAttr>(20.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -405,7 +405,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_F16_CLAMP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_U8_CLAMP) {
-    auto op = createAdd(getF16Type(), getF16Type(), getU8Type(), createClamp(20.0, 300.0));
+    auto op = createAdd(getF16Type(), getF16Type(), getU8Type(), create<IE::ClampAttr>(20.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -427,7 +427,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_F16_F16_U8_CLAMP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_F16_CLAMP) {
-    auto op = createAdd(getU8Type(), getU8Type(), getF16Type(), createClamp(20.0, 300.0));
+    auto op = createAdd(getU8Type(), getU8Type(), getF16Type(), create<IE::ClampAttr>(20.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -449,7 +449,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_F16_CLAMP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Add_U8_U8_U8_CLAMP) {
-    auto op = createAdd(getU8Type(), getU8Type(), getU8Type(), createClamp(20.0, 300.0));
+    auto op = createAdd(getU8Type(), getU8Type(), getU8Type(), create<IE::ClampAttr>(20.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -559,7 +559,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_U8_NOOP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_F16_RELU) {
-    auto op = createConvolution(getF16Type(), getF16Type(), getF16Type(), 0.5, createRelu(), nullptr);
+    auto op = createConvolution(getF16Type(), getF16Type(), getF16Type(), 0.5, create<IE::ReluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -581,7 +581,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_F16_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_U8_RELU) {
-    auto op = createConvolution(getF16Type(), getF16Type(), getU8Type(), 0.5, createRelu(), nullptr);
+    auto op = createConvolution(getF16Type(), getF16Type(), getU8Type(), 0.5, create<IE::ReluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -603,7 +603,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_U8_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_F16_RELU) {
-    auto op = createConvolution(getU8Type(), getU8Type(), getF16Type(), 0.5, createRelu(), nullptr);
+    auto op = createConvolution(getU8Type(), getU8Type(), getF16Type(), 0.5, create<IE::ReluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -625,7 +625,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_F16_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_U8_RELU) {
-    auto op = createConvolution(getU8Type(), getU8Type(), getU8Type(), 0.5, createRelu(), nullptr);
+    auto op = createConvolution(getU8Type(), getU8Type(), getU8Type(), 0.5, create<IE::ReluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -647,7 +647,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_U8_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_F16_LEAKY_RELU) {
-    auto op = createConvolution(getF16Type(), getF16Type(), getF16Type(), 0.5, createLeakyRelu(0.1), nullptr);
+    auto op = createConvolution(getF16Type(), getF16Type(), getF16Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -669,7 +669,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_F16_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_U8_LEAKY_RELU) {
-    auto op = createConvolution(getF16Type(), getF16Type(), getU8Type(), 0.5, createLeakyRelu(0.1), nullptr);
+    auto op = createConvolution(getF16Type(), getF16Type(), getU8Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -691,7 +691,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_U8_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_F16_LEAKY_RELU) {
-    auto op = createConvolution(getU8Type(), getU8Type(), getF16Type(), 0.5, createLeakyRelu(0.1), nullptr);
+    auto op = createConvolution(getU8Type(), getU8Type(), getF16Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -713,7 +713,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_F16_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_U8_LEAKY_RELU) {
-    auto op = createConvolution(getU8Type(), getU8Type(), getU8Type(), 0.5, createLeakyRelu(0.1), nullptr);
+    auto op = createConvolution(getU8Type(), getU8Type(), getU8Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -735,7 +735,8 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_U8_LEAKY_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_F16_CLAMP) {
-    auto op = createConvolution(getF16Type(), getF16Type(), getF16Type(), 0.5, createClamp(20.0, 300.0), nullptr);
+    auto op = createConvolution(getF16Type(), getF16Type(), getF16Type(), 0.5, create<IE::ClampAttr>(20.0, 300.0),
+                                nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -757,7 +758,8 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_F16_CLAMP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_U8_CLAMP) {
-    auto op = createConvolution(getF16Type(), getF16Type(), getU8Type(), 0.5, createClamp(20.0, 300.0), nullptr);
+    auto op = createConvolution(getF16Type(), getF16Type(), getU8Type(), 0.5, create<IE::ClampAttr>(20.0, 300.0),
+                                nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -779,7 +781,8 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_F16_F16_U8_CLAMP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_F16_CLAMP) {
-    auto op = createConvolution(getU8Type(), getU8Type(), getF16Type(), 0.5, createClamp(20.0, 300.0), nullptr);
+    auto op =
+            createConvolution(getU8Type(), getU8Type(), getF16Type(), 0.5, create<IE::ClampAttr>(20.0, 300.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -801,7 +804,8 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_F16_CLAMP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_Conv_U8_U8_U8_CLAMP) {
-    auto op = createConvolution(getU8Type(), getU8Type(), getU8Type(), 0.5, createClamp(20.0, 300.0), nullptr);
+    auto op =
+            createConvolution(getU8Type(), getU8Type(), getU8Type(), 0.5, create<IE::ClampAttr>(20.0, 300.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -845,7 +849,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_MatMul_U8_U8_U8_NOOP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_AvgPool_F16_U8_RELU) {
-    auto op = createAvgPool(getF16Type(), getU8Type(), {2, 2}, 0.5, createLeakyRelu(0.1));
+    auto op = createAvgPool(getF16Type(), getU8Type(), {2, 2}, 0.5, create<IE::LeakyReluAttr>(0.1));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -867,7 +871,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_AvgPool_F16_U8_RELU) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_MaxPool_F16_U8_CLAMP) {
-    auto op = createMaxPool(getF16Type(), getU8Type(), createClamp(20.0, 300.0));
+    auto op = createMaxPool(getF16Type(), getU8Type(), create<IE::ClampAttr>(20.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);

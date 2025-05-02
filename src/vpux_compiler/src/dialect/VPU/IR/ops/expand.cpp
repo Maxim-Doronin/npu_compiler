@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::VPU::ExpandOp::inferReturnTypes(mlir::MLIRContext* ctx
     const auto padBegin = parseIntArrayAttr<int64_t>(expand.getPadsBegin());
     const auto padEnd = parseIntArrayAttr<int64_t>(expand.getPadsEnd());
 
-    const auto inType = expand.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(expand.getInput().getType());
 
     const auto newType = inType.pad(ShapeRef(padBegin), ShapeRef(padEnd));
     inferredReturnTypes.push_back(newType);

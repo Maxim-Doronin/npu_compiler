@@ -37,7 +37,7 @@ SmallVector<unsigned> correctPermutation(ArrayRef<unsigned> revPerm) {
 // 2) DPU: It is not feasible for the hardware to handle block sizes > 2, see E#83455.
 
 // Optimized DepthToSpace SW kernel has below restrictions:
-// 1. SW optimizations limited to NPU37XX, as NPU40XX SW-kernels performance is currently severely degraded (see
+// 1. SW optimizations limited to NPU37XX, as VPU40XX SW-kernels performance is currently severely degraded (see
 // E#71378)
 // 2. Layout must be NHWC
 // 3. Data type must be 16-bits
@@ -50,7 +50,7 @@ bool isBeneficialForUsingSWDepthToSpace(VPUIP::SwKernelOp swKernelOp, VPU::ArchK
     VPUX_THROW_UNLESS(VPUIP::isDepthToSpaceSwKernel(swKernelOp), "SwKernelOp {0} is not DepthToSpace",
                       swKernelOp->getLoc());
 
-    const auto inType = swKernelOp.getInputs()[0].getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType());
     const auto inC = inType.getShape()[Dims4D::Act::C];
     const auto d2sAttr = VPUIP::getDepthToSpaceSwKernelAttr(swKernelOp);
     const auto mode = std::get<0>(d2sAttr.value()).getValue();
@@ -479,8 +479,8 @@ bool vpux::VPUIP::doesSWLayerFitIntoCMX(mlir::Operation* op, vpux::Logger log) {
         // SwKernelOp should be tiled to fit CMX
         return true;
     }
-    const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
 
     Byte requiredCMX(0);
     requiredCMX += inputType.getTotalAllocSize();
@@ -493,7 +493,7 @@ bool vpux::VPUIP::doesSWLayerFitIntoCMX(mlir::Operation* op, vpux::Logger log) {
 }
 
 bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, bool checkCMXSize) {
-    if (VPU::getCompilationMode(op) != VPU::CompilationMode::DefaultHW) {
+    if (VPU::getCompilationMode(op) == VPU::CompilationMode::ReferenceSW) {
         return false;
     }
     const auto arch = VPU::getArch(op);
@@ -508,8 +508,8 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                     // TODO(E#105847): MemPermute with the dynamic shape ops cannot be converted to DMA
                     return false;
                 }
-                const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-                const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+                const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+                const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
 
                 mlir::AffineMap memPerm;
                 if (auto memPermuteOp = mlir::dyn_cast<VPU::MemPermuteOp>(op)) {
@@ -545,7 +545,7 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                 log.trace("Got SpaceToDepthOp at {0}.", op->getLoc());
 
                 if (op->hasAttr("mode") && op->hasAttr("block_size")) {
-                    const auto blockSize = op->getAttr("block_size").cast<mlir::IntegerAttr>().getInt();
+                    const auto blockSize = mlir::cast<mlir::IntegerAttr>(op->getAttr("block_size")).getInt();
                     return blockSize <= dmaMaxNumPlanes;
                 }
 
@@ -556,10 +556,10 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                 log.trace("Got SpaceToDepthOp at {0}.", op->getLoc());
 
                 if (op->hasAttr("mode") && op->hasAttr("block_size")) {
-                    const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-                    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
-                    const auto mode = op->getAttr("mode").cast<IE::SpaceToDepthModeAttr>().getValue();
-                    const auto blockSize = op->getAttr("block_size").cast<mlir::IntegerAttr>().getInt();
+                    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+                    const auto mode = mlir::cast<vpux::IE::SpaceToDepthModeAttr>(op->getAttr("mode")).getValue();
+                    const auto blockSize = mlir::cast<mlir::IntegerAttr>(op->getAttr("block_size")).getInt();
                     auto dmaDescriptorGenerator = VPUIP::SpaceToDepthDmaDescriptorGenerator(op->getContext(), log);
                     auto dmaDescriptor = dmaDescriptorGenerator.generate(inputType, outputType, mode, blockSize);
                     auto numPlanes = dmaDescriptor.getNumPlanes().getInt();
@@ -575,12 +575,12 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                     return false;
                 }
                 if (auto memPerm = getMemPermFromSwKernel(swKernelOp)) {
-                    // At NPU37XX: VPU::MemPermute -> VPUIP::SwKernelOp -> VPUIP::PermuteDMA
+                    // At VPUX37XX: VPU::MemPermute -> VPUIP::SwKernelOp -> VPUIP::PermuteDMA
                     VPUX_THROW_UNLESS(swKernelOp->getNumOperands() == 2,
                                       "Unexpected operand number {0} for VPUIP.SwKernelOp at '{1}'",
                                       swKernelOp->getNumOperands(), swKernelOp);
-                    const auto inputType = swKernelOp.getOperand(0).getType().cast<vpux::NDTypeInterface>();
-                    const auto outputType = swKernelOp.getOperand(1).getType().cast<vpux::NDTypeInterface>();
+                    const auto inputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOperand(0).getType());
+                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOperand(1).getType());
                     auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
                     const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
@@ -593,7 +593,7 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                     log.trace("SwKernelOp at {0} can convert to PermuteDMAOp.", op->getLoc());
                     return true;
                 } else if (getDepthToSpaceSwKernelAttr(swKernelOp).has_value()) {
-                    // At NPU37XX: VPU::DepthToSpace -> VPUIP::SwKernelOp -> VPUIP::DepthToSpaceDMA
+                    // At VPUX37XX: VPU::DepthToSpace -> VPUIP::SwKernelOp -> VPUIP::DepthToSpaceDMA
 
                     // In general, DepthToSpace has 2 operands - inputs and outputs
                     // But if a DepthToSpace SW Kernel Op has been tiled into N tiles by tile-act-shave-kernel-task
@@ -605,12 +605,12 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                     log.trace("SwKernelOp at {0} can convert to DepthToSpaceDMA.", op->getLoc());
                     return true;
                 } else if (getSpaceToDepthSwKernelAttr(swKernelOp).has_value()) {
-                    // At NPU37XX: VPU::DepthToSpace -> VPUIP::SwKernelOp -> VPUIP::DepthToSpaceDMA
+                    // At VPUX37XX: VPU::DepthToSpace -> VPUIP::SwKernelOp -> VPUIP::DepthToSpaceDMA
                     VPUX_THROW_UNLESS(swKernelOp->getNumOperands() == 2,
                                       "Unexpected operand number for VPUIP.SwKernelOp at '{0}'", swKernelOp);
 
-                    const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-                    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+                    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
 
                     auto spaceToDepthAttrs = VPUIP::getSpaceToDepthSwKernelAttr(swKernelOp);
                     VPUX_THROW_UNLESS(spaceToDepthAttrs.has_value(),
@@ -632,9 +632,9 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                     log.trace("SwKernelOp at {0} can convert to DMA.", op->getLoc());
                     return true;
                 } else if (isTileSwKernel(swKernelOp)) {
-                    // At NPU37XX: VPU::Tile -> VPUIP::SwKernelOp -> VPUIP::PerAxisTileDMA
-                    const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-                    const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+                    // At VPUX37XX: VPU::Tile -> VPUIP::SwKernelOp -> VPUIP::PerAxisTileDMA
+                    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
 
                     if (inputType.getRank() != outputType.getRank()) {
                         log.trace("{0} at {1} cannot convert to DMA due to different in/out shape rank.", op->getName(),
@@ -650,7 +650,7 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                 return false;
             })
             .Case<VPUIP::UpsamplingOp>([&](VPUIP::UpsamplingOp op) {
-                const auto inType = op.getInput().getType().cast<NDTypeInterface>();
+                const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
                 if (inType.getDimsOrder() != DimsOrder::NCHW && inType.getDimsOrder() != DimsOrder::NHWC) {
                     return false;
                 }
@@ -686,8 +686,8 @@ bool vpux::VPUIP::isLegalAndBeneficialConvertToDMA(mlir::Operation* op, vpux::Lo
             VPUX_THROW_UNLESS(memPerm.has_value(), "Cannot extract mem_perm attribute from permute SwKernel '{0}'.",
                               swKernelOp.getLoc());
 
-            const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-            const auto outputType = op->getResult(0).getType().cast<vpux::NDTypeInterface>();
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+            const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
             return isBeneficialForUsingPermuteDMA(VPU::getArch(op), inputType, outputType, memPerm.value(), dmaPortNum,
                                                   log);
         }
@@ -734,7 +734,7 @@ std::optional<mlir::AffineMap> vpux::VPUIP::getMemPermFromSwKernel(VPUIP::SwKern
     // get reversed permute value
     const mlir::ArrayAttr arrayAttrs = kernelRun.getAttrs().value();
     VPUX_THROW_WHEN(arrayAttrs.empty(), "Empty attribute at '{0}'", kernelRun->getLoc());
-    auto reversedPermute = parseIntArrayAttr<unsigned>(arrayAttrs.getValue()[0].dyn_cast<mlir::ArrayAttr>());
+    auto reversedPermute = parseIntArrayAttr<unsigned>(mlir::dyn_cast<mlir::ArrayAttr>(arrayAttrs.getValue()[0]));
     auto permute = correctPermutation(reversedPermute);
     return mlir::AffineMap::getPermutationMap(permute, swKernelTask->getContext());
 }
@@ -758,15 +758,14 @@ bool isDistributedOutputTypeIncompatibleOverlapped(VPU::ClusteredOpInterface pre
     if (prevOp == nullptr || curOp == nullptr) {
         return false;
     }
-    auto resultType = prevOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    auto resultType = mlir::cast<vpux::NDTypeInterface>(prevOp->getResult(0).getType());
     auto outputDistributedType = getDistributedOutputTypeFromOp(prevOp, resultType, numClusters);
-    if (auto distributedTensor = outputDistributedType.dyn_cast<VPU::DistributedTensorType>()) {
+    if (auto distributedTensor = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(outputDistributedType)) {
         auto mode = distributedTensor.getDistribution().getMode().getValue();
         if (mode == VPU::DistributionMode::OVERLAPPED) {
             // check if the overlapped mode is compatible with the curOp
-            auto curOpInputDistributedType =
-                    getDistributedActivationTypeFromOp(curOp, curOp->getOperand(0).getType(), numClusters)
-                            .dyn_cast<VPU::DistributedTensorType>();
+            auto curOpInputDistributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(
+                    getDistributedActivationTypeFromOp(curOp, curOp->getOperand(0).getType(), numClusters));
             if (curOpInputDistributedType == nullptr) {
                 return false;
             }
@@ -783,8 +782,8 @@ bool vpux::VPUIP::isCompatibleWithMultiClusterNNDMA(VPU::DepthToSpaceOp op, vpux
     if (op.getMode() != IE::DepthToSpaceMode::BLOCKS_FIRST) {
         return false;
     }
-    const auto inputType = op.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputType = op.getOutput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     const auto inOrder = inputType.getDimsOrder();
     const auto outOrder = outputType.getDimsOrder();
     if (inOrder != DimsOrder::NHWC || outOrder != DimsOrder::NHWC) {
@@ -827,7 +826,7 @@ bool vpux::VPUIP::isCompatibleWithMultiClusterNNDMA(VPU::DepthToSpaceOp op, vpux
     auto tileOp = IE::getTileExecutor(module);
     auto numClusters = tileOp.getCount();
 
-    // For NPU40XX all SOH are SOH-overlapped tile them now
+    // For VPUX40XX all SOH are SOH-overlapped tile them now
     // Support for overlapped buffers will be added with E#86818
     // With intermediate sliceOp there will be a spill
     if (!intermediateSliceOp &&
@@ -921,8 +920,8 @@ bool vpux::VPUIP::isPerAxisTileSwKernel(VPUIP::SwKernelOp swKernelTask) {
     }
 
     // Only support TileOp with one Axis expansion
-    const auto inType = swKernelTask->getOperand(0).getType().cast<vpux::NDTypeInterface>();
-    const auto outType = swKernelTask->getOperand(1).getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(swKernelTask->getOperand(0).getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(swKernelTask->getOperand(1).getType());
     VPUX_THROW_UNLESS(inType.getRank() == outType.getRank(),
                       "Tile Op with different inShape '{0}' outShape '{1}' rank.", inType.getRank(), outType.getRank());
 
@@ -952,13 +951,13 @@ std::optional<VPUIP::DepthToSpaceReturnType> vpux::VPUIP::getDepthToSpaceSwKerne
     const mlir::ArrayAttr arrayAttrs = kernelRun.getAttrs().value();
     VPUX_THROW_WHEN(arrayAttrs.empty(), "Empty attribute at '{0}'", kernelRun->getLoc());
 
-    auto blockSizeAttr = arrayAttrs.getValue()[0].dyn_cast<mlir::IntegerAttr>();
-    auto mode = IE::DepthToSpaceMode(arrayAttrs.getValue()[1].dyn_cast<mlir::IntegerAttr>().getInt());
+    auto blockSizeAttr = mlir::dyn_cast<mlir::IntegerAttr>(arrayAttrs.getValue()[0]);
+    auto mode = IE::DepthToSpaceMode(mlir::dyn_cast<mlir::IntegerAttr>(arrayAttrs.getValue()[1]).getInt());
     auto modeAttr = IE::DepthToSpaceModeAttr::get(swKernelTask.getContext(), mode);
     auto paddedInChannels =
-            arrayAttrs.getValue().size() > 2 ? arrayAttrs.getValue()[2].dyn_cast<mlir::IntegerAttr>() : nullptr;
+            arrayAttrs.getValue().size() > 2 ? mlir::dyn_cast<mlir::IntegerAttr>(arrayAttrs.getValue()[2]) : nullptr;
     auto paddedOutChannels =
-            arrayAttrs.getValue().size() > 3 ? arrayAttrs.getValue()[3].dyn_cast<mlir::IntegerAttr>() : nullptr;
+            arrayAttrs.getValue().size() > 3 ? mlir::dyn_cast<mlir::IntegerAttr>(arrayAttrs.getValue()[3]) : nullptr;
     VPUX_THROW_WHEN(blockSizeAttr == nullptr || modeAttr == nullptr, "Empty DepthToSpace attribute at '{0}'",
                     kernelRun->getLoc());
 
@@ -987,8 +986,8 @@ std::optional<std::pair<IE::SpaceToDepthModeAttr, mlir::IntegerAttr>> vpux::VPUI
     VPUX_THROW_UNLESS(arrayAttrs.size() == 2, "Wrong numbers of attribute at '{0}', expected 2 but got '{1}'",
                       kernelRun->getLoc(), arrayAttrs.size());
 
-    auto blockSizeAttr = arrayAttrs.getValue()[0].dyn_cast<mlir::IntegerAttr>();
-    auto modeIntAttr = arrayAttrs.getValue()[1].dyn_cast<mlir::IntegerAttr>();
+    auto blockSizeAttr = mlir::dyn_cast<mlir::IntegerAttr>(arrayAttrs.getValue()[0]);
+    auto modeIntAttr = mlir::dyn_cast<mlir::IntegerAttr>(arrayAttrs.getValue()[1]);
     VPUX_THROW_UNLESS(blockSizeAttr != nullptr && modeIntAttr != nullptr,
                       "Failed to extract block size and mode at '{0}'", kernelRun->getLoc());
 
@@ -1016,7 +1015,7 @@ std::optional<VPUIP::PerAxisTileAttr> vpux::VPUIP::getPerAxisTileSwKernelAttr(VP
     VPUX_THROW_UNLESS(arrayAttrs.size() == 2, "Wrong numbers of attribute at '{0}', expected 2 but got '{1}'",
                       kernelRun->getLoc(), arrayAttrs.size());
 
-    auto repeatsAttr = arrayAttrs.getValue()[1].dyn_cast<mlir::ArrayAttr>();
+    auto repeatsAttr = mlir::dyn_cast<mlir::ArrayAttr>(arrayAttrs.getValue()[1]);
     VPUX_THROW_UNLESS(repeatsAttr != nullptr, "Failed to extract repeatsAttr at '{0}'", kernelRun->getLoc());
 
     const auto greaterThanOne = [](auto dim) {

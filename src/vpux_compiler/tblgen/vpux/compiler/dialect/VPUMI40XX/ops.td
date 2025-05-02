@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -74,9 +74,9 @@ def VPUMI40XX_ConfigureBarrierOp :
         OptionalAttr<UI8Attr>:$producer_count,
         OptionalAttr<UI8Attr>:$consumer_count,
         UnitAttr:$isFinalBarrier,
-        UnitAttr:$isStartBarrier
+        UnitAttr:$isStartBarrier,
+        OptionalAttr<IntAttr>:$wlmPage
     );
-
 
     let builders = [
         OpBuilder<
@@ -84,15 +84,8 @@ def VPUMI40XX_ConfigureBarrierOp :
                     "int64_t":$id,
                     "int64_t":$next_same_id,
                     "mlir::IntegerAttr":$producer_count,
-                    "mlir::IntegerAttr":$consumer_count)
-        >,
-        OpBuilder<
-            (ins "VPURegMapped::IndexType":$index,
-                    "int64_t":$id,
-                    "int64_t":$next_same_id,
-                    "mlir::IntegerAttr":$producer_count,
                     "mlir::IntegerAttr":$consumer_count,
-                    "bool":$isFinalBarrier)
+                    "mlir::IntegerAttr":$wlmPage)
         >,
         OpBuilder<
             (ins "VPURegMapped::IndexType":$index,
@@ -101,7 +94,17 @@ def VPUMI40XX_ConfigureBarrierOp :
                     "mlir::IntegerAttr":$producer_count,
                     "mlir::IntegerAttr":$consumer_count,
                     "bool":$isFinalBarrier,
-                    "bool":$isStartBarrier)
+                    "mlir::IntegerAttr":$wlmPage)
+        >,
+        OpBuilder<
+            (ins "VPURegMapped::IndexType":$index,
+                    "int64_t":$id,
+                    "int64_t":$next_same_id,
+                    "mlir::IntegerAttr":$producer_count,
+                    "mlir::IntegerAttr":$consumer_count,
+                    "bool":$isFinalBarrier,
+                    "bool":$isStartBarrier,
+                    "mlir::IntegerAttr":$wlmPage)
         >
     ];
 
@@ -163,7 +166,8 @@ def VPUMI40XX_MappedInferenceOp :
         Optional<AnyMemRef>:$barrierConfigurationTasks,
         OptionalAttr<I64Attr>:$barrierConfigurationTasksCount,
         Optional<AnyMemRef>:$numOfBarrierReprogrammings,
-        Optional<VPURegMapped_IndexType>:$mappedInferenceVersion
+        Optional<VPURegMapped_IndexType>:$mappedInferenceVersion,
+        OptionalAttr<VPURegMapped_WorkloadManagementBarrierProgrammingModeAttr>:$workloadManagementBarrierProgrammingMode
     );
 
     let results = (outs
@@ -222,6 +226,7 @@ def VPUMI40XX_NNDMAOp :
         VPUMI40XX_ExecutableTaskOp<"NNDMA",
             [
                 DeclareOpInterfaceMethods<VPUMI40XX_ExecutableTaskOpInterface>,
+                VPURegMapped_DMATypeOpInterface,
                 AttrSizedOperandSegments
             ]
         > {
@@ -249,7 +254,10 @@ def VPUMI40XX_NNDMAOp :
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
         UnitAttr:$allow_different_in_out_shapes,
         Optional<AnyMemRef>:$indices,
-        Optional<VPURegMapped_IndexType>:$enqueueBarrier
+        Optional<VPURegMapped_IndexType>:$enqueueBarrier,
+        OptionalAttr<IntAttr>:$bar_prog_dma_at_page,
+         OptionalAttr<IntAttr>:$wlmPage
+        
     );
 
     let results = (outs
@@ -524,7 +532,8 @@ def VPUMI40XX_ActKernelRangeOp : VPUMI40XX_ExecutableTaskOp<"ActKernelRange",
         Optional<VPURegMapped_IndexType>:$kernel_text_index,
         Optional<VPURegMapped_IndexType>:$kernel_args_index,
         Optional<VPURegMapped_IndexType>:$kernel_entry_index,
-        SymbolRefAttr:$kernelTaskType
+        SymbolRefAttr:$kernelTaskType,
+        OptionalAttr<IntAttr>:$wlmPage
     );
 
     let results = (outs
@@ -574,7 +583,8 @@ def VPUMI40XX_ActKernelInvocationOp :
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
         OptionalAttr<VPUIP_SwProfilingMetadataAttr>:$profilingMetadata,
-        Optional<VPURegMapped_IndexType>:$enqueueBarrier
+        Optional<VPURegMapped_IndexType>:$enqueueBarrier,
+        OptionalAttr<IntAttr>:$wlmPage
     );
 
     let results = (outs
@@ -648,7 +658,8 @@ def VPUMI40XX_DPUVariantOp :
         OptionalAttr<IntAttr>:$workload_id,
         UnitAttr:$spr_lut_read,
         UnitAttr:$pallet_lut_read,
-        UnitAttr:$force_inv_read
+        UnitAttr:$force_inv_read,
+        OptionalAttr<IntAttr>:$wlmPage
     );
 
     let extraClassDefinition = [{
@@ -746,7 +757,8 @@ def VPUMI40XX_DPUInvariantOp :
         Variadic<VPURegMapped_IndexType>:$updateBarriers,
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
-        Optional<VPURegMapped_IndexType>:$enqueueBarrier
+        Optional<VPURegMapped_IndexType>:$enqueueBarrier,
+        OptionalAttr<IntAttr>:$wlmPage
     );
 
     let results = (outs
@@ -881,7 +893,8 @@ def VPUMI40XX_M2IOp :
         Variadic<VPURegMapped_IndexType>:$updateBarriers,
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
-        Optional<VPURegMapped_IndexType>:$enqueueBarrier
+        Optional<VPURegMapped_IndexType>:$enqueueBarrier,
+        OptionalAttr<IntAttr>:$wlmPage
     );
 
     let results = (outs
@@ -1044,6 +1057,41 @@ def VPUMI40XX_MappedInferenceVersionOp :
         attr-dict
         `->` type(results)
         }];
+}
+
+
+//
+// DeclareTaskBufferOp
+//
+
+def VPUMI40XX_DeclareTaskBufferOp :
+        VPUMI40XX_Op<"DeclareTaskBuffer", [
+        ]> {
+    let summary = "Buffer Op representing a discrete location of a task in runtime metadataBuffer";
+
+    let arguments = (ins
+        VPURegMapped_TaskTypeAttr:$task_type,
+        OptionalAttr<UI64Attr>:$offset
+    );
+
+    let results = (outs
+        VPURegMapped_IndexType:$index
+    );
+
+    let assemblyFormat = [{
+        attr-dict
+        $task_type `->` type(results)
+    }];
+
+    let extraClassDeclaration = [{
+        uint64_t getMemoryOffset() {
+            return getOffset().value_or(0);
+        }
+
+        void setMemoryOffset(mlir::IntegerAttr offset) {
+            setOffsetAttr(offset);
+        }
+    }];
 }
 
 #endif

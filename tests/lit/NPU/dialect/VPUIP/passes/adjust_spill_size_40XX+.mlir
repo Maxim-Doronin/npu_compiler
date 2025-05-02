@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,7 +17,7 @@ module @DmaSpillSingleClusterNoCompressionCandSmallBuf {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x1x1x1xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x1x1x1xf16>
@@ -110,7 +110,7 @@ module @DmaSpillSingleCluster {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x256x56x56xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x256x56x56xf16>
@@ -200,7 +200,7 @@ module @DmaSpillMultiClusterNoCompressionCandSmallBuf {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x1x16x16xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x1x16x16xf16>
@@ -290,7 +290,7 @@ module @DmaSpillMultiCluster {
     }
   }
 
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x256x56x56xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x256x56x56xf16>

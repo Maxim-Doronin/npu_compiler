@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -26,7 +27,7 @@ namespace {
 
 int64_t getMaxIntermediateSize(Const::DeclareOp& origOp) {
     const auto& contentAttr = origOp.getContentAttr();
-    auto inputType = contentAttr.getBaseContent().getType().cast<NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(contentAttr.getBaseContent().getType());
     auto maximumSize = inputType.getTotalAllocSize().count();
     auto transformations = contentAttr.getTransformations();
     for (auto transformation : transformations) {

@@ -1,16 +1,18 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPU_TYPES
 #define VPUX_COMPILER_DIALECT_VPU_TYPES
 
+
 include "vpux/compiler/dialect/core/type_interfaces.td"
 include "vpux/compiler/dialect/VPU/dialect.td"
 include "vpux/compiler/dialect/VPU/attributes.td"
 include "vpux/compiler/dialect/VPU/type_interfaces.td"
 include "vpux/compiler/dialect/core/type_interfaces.td"
+include "vpux/compiler/dialect/const/attributes.td"
 
 include "mlir/IR/BuiltinTypeInterfaces.td"
 
@@ -42,7 +44,8 @@ def VPU_DistributedTensor :
         "mlir::Type":$elementType,
         "mlir::AffineMapAttr":$order,
         "vpux::IndexedSymbolAttr":$memSpace,
-        "DistributionInfoAttr":$distribution
+        "DistributionInfoAttr":$distribution,
+        "vpux::Const::OpaqueI64ElementsAttr": $dynamicDimsMask
     );
 
     let genAccessors = 0;
@@ -52,7 +55,16 @@ def VPU_DistributedTensor :
 
         mlir::AffineMapAttr getOrder() const;
         DistributionInfoAttr getDistribution() const;
+        vpux::Const::OpaqueI64ElementsAttr getDynamicDimsMask() const;
+
         DistributedTensorType cloneWith(std::optional<mlir::ArrayRef<int64_t>> shape, mlir::Type elementType) const;
+
+        static DistributedTensorType get(::mlir::MLIRContext *context, ::llvm::ArrayRef<int64_t> shape,
+            mlir::Type elementType, mlir::AffineMapAttr order, vpux::IndexedSymbolAttr memSpace,
+            DistributionInfoAttr distribution) {
+            return DistributedTensorType::get(context, shape, elementType, order,
+                                              memSpace, distribution, /*dynamicDimsMask*/ {});
+        }
     }];
 
     let genVerifyDecl = 1;

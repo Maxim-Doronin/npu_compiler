@@ -634,7 +634,7 @@ enum VpuODUNthw {
 };
 
 enum VpuMPEGrid { MPE_GRID_4x4, MPE_GRID_16x1 };
-
+        
 } // namespace nn_public
 
 #endif

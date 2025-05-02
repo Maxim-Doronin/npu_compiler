@@ -9,13 +9,13 @@
 
 module @Test {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
-        IE.DataInfo "input" : tensor<1x1000xf16>
+        DataInfo "input" : tensor<1x1000xf16>
     }
     outputsInfo : {
-        IE.DataInfo "sigmoid" : tensor<1x1000xf16>
+        DataInfo "sigmoid" : tensor<1x1000xf16>
     }
 
 VPURT.SW.Runtime

@@ -1,9 +1,12 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
+
+#include <mlir/IR/PatternMatch.h>
+
 using namespace vpux;
 
 //
@@ -48,9 +51,10 @@ bool IE::isQuantizedPurposeAvgPool(IE::AvgPoolOp avgPool) {
         return false;
     }
 
-    auto inputType = avgPool.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = avgPool.getOutput().getType().cast<vpux::NDTypeInterface>();
-    if (!inputType.getElementType().isF16() || !outputType.getElementType().isa<mlir::quant::UniformQuantizedType>()) {
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(avgPool.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(avgPool.getOutput().getType());
+    if (!inputType.getElementType().isF16() ||
+        !mlir::isa<mlir::quant::UniformQuantizedType>(outputType.getElementType())) {
         return false;
     }
 
@@ -65,20 +69,22 @@ bool IE::isQuantizedAvgPoolPermutation(IE::AvgPoolOp avgPool) {
         return false;
     }
 
-    auto inputType = avgPool.getInput().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = avgPool.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(avgPool.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(avgPool.getOutput().getType());
 
     // do not check order, cause the pool might be used for permutation as well
-    return inputType.getElementType().isF16() && outputType.getElementType().isa<mlir::quant::UniformQuantizedType>();
+    return inputType.getElementType().isF16() &&
+           mlir::isa<mlir::quant::UniformQuantizedType>(outputType.getElementType());
 }
 
 //
 // isAddOutputQuantized
 //
 bool IE::isAddOutputQuantized(IE::AddOp add) {
-    auto inputType = add.getInput1().getType().cast<vpux::NDTypeInterface>();
-    auto outputType = add.getOutput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(add.getInput1().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(add.getOutput().getType());
 
     // do not check order, cause the pool might be used for permutation as well
-    return inputType.getElementType().isF16() && outputType.getElementType().isa<mlir::quant::UniformQuantizedType>();
+    return inputType.getElementType().isF16() &&
+           mlir::isa<mlir::quant::UniformQuantizedType>(outputType.getElementType());
 }

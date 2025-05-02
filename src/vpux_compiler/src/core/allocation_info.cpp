@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -12,6 +12,7 @@
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
 #include "vpux/utils/core/error.hpp"
 
@@ -31,6 +32,10 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
     const uint64_t memDefaultAlignment = 64;  // TODO: extract from run-time resources information?
 
     LinearScanImpl scan(maxMemSize.count(), vec, memDefaultAlignment);
+
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+    auto memoryUsageLog = log.nest("memory-usage-info");
+#endif
 
     const auto getBuffersToAllocate = [&](const ValueOrderedSet& usedBufs) {
         log.trace("Locate new buffers");
@@ -60,8 +65,48 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
             return;
         }
         log.trace("Allocate memory for the new buffers");
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+        uint64_t sizeToAllocate = 0;
+        for (auto val : buffers) {
+            auto bufferSize = scan.handler().getSize(val);
+            memoryUsageLog.trace("Buffer size to allocate      {0} B", bufferSize);
+            sizeToAllocate += bufferSize;
+        }
+        auto totalSize = scan.totalSize();
+        auto prevMaxAllocatedSize = scan.handler().maxAllocatedSize().count();
+        auto prevTotalFreeSize = scan.totalFreeSize();
+        auto prevTotalUsedSize = totalSize - prevTotalFreeSize;
+        auto prevMaxAllocatedFreeSize = prevMaxAllocatedSize - prevTotalUsedSize;
+        memoryUsageLog.trace("{0} free memory before alloc {1} B", memKind, prevMaxAllocatedFreeSize);
+#endif
+
         VPUX_THROW_UNLESS(scan.alloc(buffers, /*allowSpills*/ false), "Failed to statically allocate '{0}' memory",
                           memKind);
+
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+        auto newMaxAllocatedSize = scan.handler().maxAllocatedSize().count();
+        for (auto val : buffers) {
+            auto addr = scan.handler().getAddress(val);
+            auto bufferSize = scan.handler().getSize(val);
+            auto allocatedSize = static_cast<int64_t>(addr + bufferSize);
+            if (newMaxAllocatedSize > prevMaxAllocatedSize) {
+                memoryUsageLog.trace("New max allocated size for buffer '{0}'", val);
+            } else {
+                memoryUsageLog.trace("Allocated size {0} B", allocatedSize);
+            }
+        }
+        if (sizeToAllocate < prevMaxAllocatedFreeSize && newMaxAllocatedSize > prevMaxAllocatedSize) {
+            memoryUsageLog.trace("Increased allocation size due to fragmentation!");
+        }
+        auto newTotalFreeSize = scan.totalFreeSize();
+        auto newTotalUsedSize = totalSize - newTotalFreeSize;
+        auto newMaxAllocatedFreeSize = newMaxAllocatedSize - newTotalUsedSize;
+        memoryUsageLog.trace("Max allocated size {0} B", newMaxAllocatedSize);
+        auto usedMemory = static_cast<double>(newTotalUsedSize) / static_cast<double>(newMaxAllocatedSize) * 100;
+        memoryUsageLog.trace("{0} used memory    {1} {2}%", memKind, newTotalUsedSize, usedMemory);
+        auto freeMemory = static_cast<double>(newMaxAllocatedFreeSize) / static_cast<double>(newMaxAllocatedSize) * 100;
+        memoryUsageLog.trace("{0} free memory    {1} {2}%", memKind, newMaxAllocatedFreeSize, freeMemory);
+#endif
     };
 
     const auto freeDeadBuffers = [&](const ValueOrderedSet& usedBufs) {
@@ -69,6 +114,10 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
         log = log.nest();
 
         for (auto val : usedBufs) {
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+            auto bufferSize = scan.handler().getSize(val);
+            memoryUsageLog.trace("Free buffer of size {0} B", bufferSize);
+#endif
             log.trace("Mark as dead buffer '{0}'", val);
             scan.handler().markAsDead(val);
         }

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
@@ -83,7 +84,7 @@ void computeNewOutwardInwardHalos(mlir::OpBuilder builder, SubstituteHalos& newH
 
     SmallVector<mlir::Attribute> newInwardHalosForOutwardHalo = {};
     for (auto inwardHalo : outwardHalo.getInwardHaloRegions()) {
-        auto inwardHaloAttr = inwardHalo.cast<HaloRegionAttr>();
+        auto inwardHaloAttr = mlir::cast<vpux::VPUIP::HaloRegionAttr>(inwardHalo);
         auto inwardHaloOffset = parseIntArrayAttr<int64_t>(inwardHaloAttr.getOffset());
 
         for (size_t dim = 0; dim < inwardHaloOffset.size(); dim++) {
@@ -95,7 +96,7 @@ void computeNewOutwardInwardHalos(mlir::OpBuilder builder, SubstituteHalos& newH
                 HaloRegionAttr::get(ctx, haloShapeAttr, inwardHaloOffsetAttr, inwardHaloAttr.getClusterId());
         ;
 
-        newInwardHalosForOutwardHalo.push_back(newInwardHalo.cast<mlir::Attribute>());
+        newInwardHalosForOutwardHalo.push_back(mlir::cast<mlir::Attribute>(newInwardHalo));
         if (newHalos._inwardHalos.count(inwardHalo) == 0) {
             newHalos._inwardHalos[inwardHalo] = SmallVector<HaloRegionAttr>{newInwardHalo};
         } else {
@@ -113,7 +114,7 @@ void computeNewOutwardInwardHalos(mlir::OpBuilder builder, SubstituteHalos& newH
 
 SubstituteHalos segmentHalos(NCEClusterTaskOp nceOp, Logger log) {
     auto dpuTaskOps = nceOp.getVariants().getOps<DPUTaskOp>();
-    auto outputType = nceOp.getOutputBuff().getType().cast<ITIBufferType>();
+    auto outputType = mlir::cast<vpux::VPUIP::ITIBufferType>(nceOp.getOutputBuff().getType());
 
     mlir::OpBuilder builder(nceOp);
 
@@ -172,7 +173,7 @@ SmallVector<NCEClusterTaskOp> getTargetNCEOps(mlir::OperandRange outputItiBuffs)
 VPURT::DeclareBufferOp createBuffer(mlir::MLIRContext* ctx, ITIBufferType outputType, mlir::Value bufferOutput,
                                     ArrayRef<HaloRegionAttr> inwardHaloRegions,
                                     ArrayRef<OutwardHaloRegionAttr> outwardHaloRegions, Logger log) {
-    auto outNdType = outputType.cast<NDTypeInterface>();
+    auto outNdType = mlir::cast<vpux::NDTypeInterface>(outputType);
     auto bufferOp = bufferOutput.getDefiningOp<VPURT::DeclareBufferOp>();
     VPUX_THROW_UNLESS(bufferOp != nullptr, "Defining op of buffer {0} is not a DeclareBufferOp: {1}", bufferOutput,
                       bufferOp);
@@ -217,8 +218,8 @@ void updateNceOps(NCEClusterTaskOp nceOp, DenseMap<NCEClusterTaskOp, NceOpOutput
             builder, taskOp.getWaitBarriers(), taskOp.getUpdateBarriers(), nceOp.getLoc(), output.getType(),
             outSparsityMapType, profilingOutputType, nceOp.getInput(), nceOp.getInputSparsityMap(),
             nceOp.getInputStorageElementTable(), nceOp.getWeights(), nceOp.getWeightsSparsityMap(),
-            nceOp.getWeightTable(), /*weight_table_data_ptr=*/nullptr, /*weight_table_sp_ptr=*/nullptr,
-            /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr, /*weight_zero_points=*/nullptr,
+            nceOp.getWeightTable(), nceOp.getWeightTableDataPtr(), nceOp.getWeightTableSpPtr(),
+            nceOp.getWeightTableScale(), nceOp.getWeightTableBias(), nceOp.getWeightZeroPoints(),
             nceOp.getSprLookupTable(), nceOp.getPalletLookupTable(), nceOp.getParentInput(),
             nceOp.getParentInputSparsityMap(), nceOp.getParentInputStorageElementTable(), output, outSparsityMap,
             mlir::ValueRange(newOutputItis), output, outSparsityMap, nceOp.getProfilingData(), nceOp.getMaxPerXy(),
@@ -289,7 +290,7 @@ void SegmentHalosPass::safeRunOnFunc() {
 
     // Pre-compute the new inward/outward halos for each NCEOp.
     func.walk([&](NCEClusterTaskOp nceOp) {
-        auto outputType = nceOp.getOutput().getType().dyn_cast<ITIBufferType>();
+        auto outputType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(nceOp.getOutput().getType());
         if (outputType == nullptr) {
             return;
         }
@@ -312,14 +313,15 @@ void SegmentHalosPass::safeRunOnFunc() {
         // For ops that consume the newly segmented halo, ensure that the inward halos are updated
         for (auto& dstNceOp : dstNCEOps) {
             auto dstOutputBuff = dstNceOp.getOutputBuff();
-            auto dstOutputType = dstOutputBuff.getType().cast<ITIBufferType>();
+            auto dstOutputType = mlir::cast<vpux::VPUIP::ITIBufferType>(dstOutputBuff.getType());
 
             const auto dstInwardRegions = dstOutputType.getInwardHaloRegions();
             InwardHaloSubstitutesType newInwardHalos{};
 
             // Iterate over the NCE consumer and check if it has an inward halo that was segmented
             for (auto dstInwardRegion : dstInwardRegions) {
-                auto substituteInwardHalos = substituteHalos._inwardHalos.find(dstInwardRegion.cast<mlir::Attribute>());
+                auto substituteInwardHalos =
+                        substituteHalos._inwardHalos.find(mlir::cast<mlir::Attribute>(dstInwardRegion));
                 if (substituteInwardHalos != substituteHalos._inwardHalos.end()) {
                     newInwardHalos.insert(*substituteInwardHalos);
                 }
@@ -341,7 +343,7 @@ void SegmentHalosPass::safeRunOnFunc() {
         auto nceOp = opHalos.first;
         const auto& newHalos = opHalos.second;
 
-        auto outputType = nceOp.getOutput().getType().cast<ITIBufferType>();
+        auto outputType = mlir::cast<vpux::VPUIP::ITIBufferType>(nceOp.getOutput().getType());
         SmallVector<HaloRegionAttr> newInwardHalos = {};
 
         for (auto oldInwardHalo : outputType.getInwardHaloRegions()) {
@@ -358,7 +360,7 @@ void SegmentHalosPass::safeRunOnFunc() {
 
         mlir::Value newSparseMap = nullptr;
         if (auto outSparsityMap = nceOp.getOutputSparsityMapBuff()) {
-            auto oldSparseMapItiType = outSparsityMap.getType().cast<ITIBufferType>();
+            auto oldSparseMapItiType = mlir::cast<vpux::VPUIP::ITIBufferType>(outSparsityMap.getType());
             auto newSparseBufferOp = createBuffer(ctx, oldSparseMapItiType, outSparsityMap, newInwardHalos,
                                                   newHalos._outwardHalos, _log);
 

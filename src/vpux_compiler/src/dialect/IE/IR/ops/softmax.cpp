@@ -1,13 +1,16 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -30,7 +33,7 @@ mlir::LogicalResult vpux::IE::SoftMaxOp::inferReturnTypeComponents(
 }
 
 mlir::OpFoldResult vpux::IE::SoftMaxOp::fold(FoldAdaptor) {
-    const auto inType = getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(getInput().getType());
     const auto inShape = inType.getShape();
     const auto inRank = inType.getRank();
 
@@ -54,7 +57,7 @@ mlir::OpFoldResult vpux::IE::SoftMaxOp::fold(FoldAdaptor) {
     const auto valueType = mlir::RankedTensorType::get(inShape, mlir::Float32Type::get(getContext()));
     return Const::ContentAttr::get(mlir::DenseElementsAttr::get(valueType, 1.0f),
                                    Const::ContentSetup(valueType).castElemType(
-                                           getOutput().getType().cast<mlir::ShapedType>().getElementType()));
+                                           mlir::cast<mlir::ShapedType>(getOutput().getType()).getElementType()));
 }
 
 mlir::LogicalResult vpux::IE::SoftMaxOp::reifyResultShapes(mlir::OpBuilder& builder,
@@ -88,7 +91,7 @@ public:
 };
 
 mlir::LogicalResult LegalizeAxisInd::matchAndRewrite(IE::SoftMaxOp softmaxOp, mlir::PatternRewriter& rewriter) const {
-    auto inputType = softmaxOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(softmaxOp.getInput().getType());
     int64_t axis = softmaxOp.getAxisInd();
 
     if (axis >= 0) {

@@ -9,6 +9,8 @@
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
+#include <mlir/Transforms/DialectConversion.h>
+
 namespace vpux::VPU {
 #define GEN_PASS_DECL_FUSECLAMPPASS
 #define GEN_PASS_DEF_FUSECLAMPPASS
@@ -40,7 +42,7 @@ mlir::LogicalResult ClampConverter::matchAndRewrite(VPU::ClampOp clampOp, mlir::
     auto nceOp = mlir::cast<VPU::NCEOpInterface>(clampOp.getInput().getDefiningOp());
     const auto clampMin = clampOp.getMin().convertToDouble();
     const auto clampMax = clampOp.getMax().convertToDouble();
-    const auto outElemType = nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType()).getElementType();
 
     // Update PPE attribute clamps
     auto ppeAttr = nceOp.getPPE();
@@ -67,9 +69,9 @@ bool isLegalClamp(VPU::ClampOp clampOp) {
     // If the operation is quantized, only per-tensor quantization is supported.
     // If the operation is has float16 or bfloat16 precision, the lower bound of the clamp must be zero.
     // Other data types are not supported.
-    const auto outElemType = nceOp->getResult(0).getType().cast<vpux::NDTypeInterface>().getElementType();
-    if (outElemType.isa<mlir::quant::QuantizedType>()) {
-        return outElemType.isa<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto outElemType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType()).getElementType();
+    if (mlir::isa<mlir::quant::QuantizedType>(outElemType)) {
+        return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outElemType);
     } else if (outElemType.isF16() || outElemType.isBF16()) {
         const auto clampMin = clampOp.getMin().convertToDouble();
         return !isDoubleEqual(clampMin, 0.0);

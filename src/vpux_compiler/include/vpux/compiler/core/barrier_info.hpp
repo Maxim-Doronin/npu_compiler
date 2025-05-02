@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,8 +9,8 @@
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/logger.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -63,6 +63,7 @@ public:
     virtual VPURT::TaskOp getTaskOpAtIndex(size_t opIdx) const;
     VPURT::TaskQueueType getTaskQueueType(size_t taskInd) const;
     std::optional<size_t> getPrevTaskOnFifo(size_t taskInd) const;
+    std::optional<size_t> getNextTaskOnFifo(size_t taskInd) const;
     // Return the closest previous task on the same queue that has a wait barrier
     std::optional<size_t> getPrevTaskOnFifoWithWaitBar(size_t taskInd) const;
     VPURT::BarrierOpInterface getBarrierOpAtIndex(size_t opIdx) const;
@@ -113,15 +114,12 @@ private:
     void linkTasksToBarriers(const TaskSet& tasksToAdd, const TaskSet& newBarriers, bool waitBarriers,
                              size_t availableSlots);
 
-    /**
-     * @brief Get index of barrier's latest producer
-     *
-     * @param barInd - barrier index
-     * @return size_t - largest index of among barrier producers
-     */
-    size_t getBarrierLatestProducer(size_t barInd);
-
 public:
+    // Get index of barrier's latest producer - largest index among barrier producers
+    size_t getBarrierLatestProducer(size_t barInd);
+    // Get index of barrier's earliest consumer - smallest index among barrier consumers
+    size_t getBarrierEarliestConsumer(size_t barInd);
+
     void logBarrierInfo();
     void optimizeBarriers(bool checkValidSlotCount = true, bool considerTaskFifoDependency = false);
 
@@ -243,6 +241,34 @@ public:
      * constrains of existing control graph split.
      * @param tasks - list of tasks whose connections via update and wait barriers be checked and corrected, if needed.
      * For the below examples the graph would be corrected if task 7 is provided in the argument.
+     *
+     * Example:
+     *
+     * If tasks 6 and 7 wait for barrier b0 across multiple task blocks, such a dependence will be removed
+     * and replaced using sync points, if there's no existing dependence.
+     *
+     * In this example tasks 6 and 7 will have dependence on b0 removed, but only task 7 will have
+     * a connection to the preceding sync-task update barrier added.
+     *                    /-------------------------------------------------------------\
+     *                    /-----------------------------------------------------------------------\
+     *               0 - b0 - 1 - b1 - 2 (sync) - b2 - 3 - b3 - 4 - b4 - 5 (sync) - b5 - 6        7
+     *
+     *               0 - b0 - 1 - b1 - 2 (sync) - b2 - 3 - b3 - 4 - b4 - 5 (sync) - b5 - 6        7
+     *                                                                              \-------------/
+     *               |_______________________________||________________________________||__________|
+     *                         task block 0                       task block 1          task block 2
+     *
+     *
+     * Similarly out-of-block connection from a producer (0)
+     *
+     *               /----------------------------------------------------------------------\
+     *               0 - b0 - 1 - b1 - 2 (sync) - b2 - 3 - b3 - 4 - b4 - 5 (sync) - b5 - 6 - b6 - 7
+     *
+     * will be removed as it is redundant due to existing graph split dependencies.
+     *               0 - b0 - 1 - b1 - 2 (sync) - b2 - 3 - b3 - 4 - b4 - 5 (sync) - b5 - 6 - b6 - 7
+     *
+     *               |_______________________________||___________________________||_______________|
+     *                         task block 0                       task block 1          task block 2
      */
     bool adjustTasksDependenciesToGraphSplitConstraints(const TaskSet& producers);
 

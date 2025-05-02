@@ -1,16 +1,18 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -157,7 +159,7 @@ void PatchPopulateWeightTableWithShavePass::patchShaveForPopulateWeightTable(VPU
             const auto offsetsAttr = subView.getStaticOffsets();
             auto offsets = parseIntArrayAttr<int32_t>(offsetsAttr);
             _log.trace("offset {0}", offsets);
-            swKernelRunOffsets.push_back(offsets[0] * weightAddressOffset);
+            swKernelRunOffsets.push_back(static_cast<int64_t>(offsets[0]) * static_cast<int64_t>(weightAddressOffset));
         } else {
             swKernelRunOffsets.push_back(0);
         }
@@ -168,7 +170,7 @@ void PatchPopulateWeightTableWithShavePass::patchShaveForPopulateWeightTable(VPU
             checked_cast<size_t>(std::distance(swKernelRun.begin(), swKernelRun.end())) == swKernelRunOffsets.size(),
             "Failed to generate offset for every SwKernelRun");
 
-    auto distributedType = wtDecBuf.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(wtDecBuf.getType());
     int64_t numClusters = 1;
     if (distributedType != nullptr) {
         const auto distributionAttr = distributedType.getDistribution();
@@ -222,10 +224,10 @@ SmallVector<int32_t> PatchPopulateWeightTableWithShavePass::getWeightsPerCluster
     auto weights = VPUIP::getTopBufferOfNCEClusterTiling(nceOp, nceOp.getWeights());
     uint64_t weightsBasePointer = getPointer(weights, 0);
 
-    if (weights == nullptr || !weights.getType().isa<VPUIP::DistributedBufferType>()) {
+    if (weights == nullptr || !mlir::isa<vpux::VPUIP::DistributedBufferType>(weights.getType())) {
         return SmallVector<int32_t>(numCluster, static_cast<int32_t>(weightsBasePointer));
     }
-    auto distributedType = weights.getType().dyn_cast<VPUIP::DistributedBufferType>();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(weights.getType());
     auto distributionAttr = distributedType.getDistribution();
     auto mode = distributionAttr.getMode().getValue();
     if (mode != (VPU::DistributionMode::DUPLICATED | VPU::DistributionMode::SEGMENTED)) {
@@ -255,11 +257,11 @@ int32_t PatchPopulateWeightTableWithShavePass::getWeightsAddressOffsetForSubView
     auto weights = VPUIP::getTopBufferOfNCEClusterTiling(nceOp, nceOp.getWeights());
     VPUX_THROW_UNLESS(weights != nullptr, "Failed to find weights");
 
-    auto weightsType = weights.getType().dyn_cast<NDTypeInterface>();
+    auto weightsType = mlir::dyn_cast<vpux::NDTypeInterface>(weights.getType());
     auto totalAllocSize = weightsType.getTotalAllocSize().count();
     auto outputChannels = weightsType.getShape()[Dims4D::Filter::OC];
 
-    if (auto distWeightsType = weightsType.dyn_cast<VPUIP::DistributedBufferType>()) {
+    if (auto distWeightsType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(weightsType)) {
         outputChannels = distWeightsType.getPerClusterComputeShapes()[0][Dims4D::Filter::OC];
     }
     VPUX_THROW_UNLESS(totalAllocSize % outputChannels == 0, "Unequal division");

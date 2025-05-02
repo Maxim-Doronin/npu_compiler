@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
@@ -48,7 +49,7 @@ mlir::LogicalResult MergeQuantDequant::matchAndRewrite(IE::DequantizeOp dequanti
 
     _log.trace("Got Quantize ('{0}') -> Dequantize ('{1}') pair", quantizeOp.getLoc(), dequantizeOp.getLoc());
 
-    const auto quantizeType = dequantizeOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto quantizeType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
 
     int64_t levels = 0;
     mlir::RankedTensorType attrType;
@@ -59,8 +60,9 @@ mlir::LogicalResult MergeQuantDequant::matchAndRewrite(IE::DequantizeOp dequanti
     mlir::TypeAttr lowFpTypeAttr = nullptr;
 
     if (const auto quantizeStorageType =
-                quantizeType.getElementType().dyn_cast<mlir::quant::QuantizedType>().getStorageType();
-        quantizeStorageType.isa<mlir::Float8E4M3FNType>() || quantizeStorageType.isa<mlir::Float8E5M2Type>()) {
+                mlir::dyn_cast<mlir::quant::QuantizedType>(quantizeType.getElementType()).getStorageType();
+        mlir::isa<mlir::Float8E4M3FNType>(quantizeStorageType) ||
+        mlir::isa<mlir::Float8E5M2Type>(quantizeStorageType)) {
         lowFpTypeAttr = mlir::TypeAttr::get(quantizeStorageType);
     } else {
         levelsAttr = getIntAttr(dequantizeOp.getContext(), levels);
@@ -108,8 +110,8 @@ mlir::LogicalResult MergeQuantCastDequant::matchAndRewrite(IE::DequantizeOp dequ
     _log.trace("Got Quantize ('{0}') -> QuantizeCast ('{1}') -> Dequantize ('{2}') ops", quantizeOp.getLoc(),
                quantizeCastOp.getLoc(), dequantizeOp.getLoc());
 
-    const auto inputQuantizeType = quantizeCastOp.getInput().getType().cast<vpux::NDTypeInterface>();
-    const auto outputQuantizeCastType = dequantizeOp.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputQuantizeType = mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getInput().getType());
+    const auto outputQuantizeCastType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
 
     int64_t inLevels = 0, outLevels = 0;
     mlir::RankedTensorType inAttrType, outAttrType;
@@ -121,8 +123,9 @@ mlir::LogicalResult MergeQuantCastDequant::matchAndRewrite(IE::DequantizeOp dequ
     mlir::TypeAttr lowFpTypeAttr = nullptr;
 
     if (const auto quantizeStorageType =
-                outputQuantizeCastType.getElementType().dyn_cast<mlir::quant::QuantizedType>().getStorageType();
-        quantizeStorageType.isa<mlir::Float8E4M3FNType>() || quantizeStorageType.isa<mlir::Float8E5M2Type>()) {
+                mlir::dyn_cast<mlir::quant::QuantizedType>(outputQuantizeCastType.getElementType()).getStorageType();
+        mlir::isa<mlir::Float8E4M3FNType>(quantizeStorageType) ||
+        mlir::isa<mlir::Float8E5M2Type>(quantizeStorageType)) {
         lowFpTypeAttr = mlir::TypeAttr::get(quantizeStorageType);
     } else {
         if (inLevels != outLevels) {

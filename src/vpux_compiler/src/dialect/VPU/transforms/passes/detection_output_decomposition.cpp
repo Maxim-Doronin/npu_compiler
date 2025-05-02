@@ -232,7 +232,7 @@ mlir::LogicalResult DetectionOutputDecomposition::matchAndRewrite(VPU::Detection
             appendLoc(loc, "nmsCaffe"), confidenceSlice, decodeBoxes.getOutDecodedBoxes(), indicesSlice, reshapedSizes,
             detectionsPerClassAttr, nmsThreshold, backgroundId);
 
-    const auto keepTopKValue = origOp.getAttr().getKeepTopK()[0].cast<mlir::IntegerAttr>().getInt();
+    const auto keepTopKValue = mlir::cast<mlir::IntegerAttr>(origOp.getAttr().getKeepTopK()[0]).getInt();
     const auto keepTopK = getIntAttr(rewriter.getContext(), keepTopKValue);
     const auto clipAfterNms = origOp.getAttr().getClipAfterNms();
     rewriter.replaceOpWithNewOp<VPU::DetectionOutputCollectResultsOp>(origOp, nmsCaffe.getOutConfidence(),

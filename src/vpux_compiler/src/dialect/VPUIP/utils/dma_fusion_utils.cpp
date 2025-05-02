@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/dialect/VPUIP/utils/dma_fusion_utils.hpp"
@@ -92,7 +92,7 @@ vpux::NDTypeInterface createNewType(NDTypeInterface srcType, size_t newLeadingDi
 }
 
 mlir::Value tryCreateConst(Const::DeclareOp cstOp, SmallVector<VPURT::TaskOp> tasks, vpux::Logger log) {
-    auto srcType = cstOp.getType().dyn_cast<NDTypeInterface>();
+    auto srcType = mlir::dyn_cast<vpux::NDTypeInterface>(cstOp.getType());
     auto newInType =
             createNewType(srcType, /*newDim=*/tasks.size(), /*info=*/{});  // StridesInfo isn't required for constants
     if (newInType == nullptr) {
@@ -132,7 +132,7 @@ mlir::Value createBufferDeclaration(SmallVector<VPURT::TaskOp> tasks, vpux::Logg
         return nullptr;
     }
 
-    auto valType = bufOp.getType().dyn_cast<NDTypeInterface>();
+    auto valType = mlir::dyn_cast<vpux::NDTypeInterface>(bufOp.getType());
     auto newType = createNewType(valType, /*newDim=*/tasks.size(), strideInfo);
     if (newType == nullptr) {
         log.trace("Can't infer buffer type, check StridesReq");

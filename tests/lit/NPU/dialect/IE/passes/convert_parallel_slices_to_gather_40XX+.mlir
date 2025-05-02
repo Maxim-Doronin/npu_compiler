@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -220,7 +220,7 @@ func.func @ConvertParallelSliceBranchesToGatherLessBranches(
 
     // CHECK:           [[CONCAT:%.+]] = IE.Concat([[GATHER_RESHAPE_0]], [[GATHER_RESHAPE_1]], [[GATHER_RESHAPE_2]], [[GATHER_RESHAPE_3]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<2x1536xf16>, tensor<2x1536xf16>, tensor<2x1536xf16>, tensor<2x1536xf16> -> tensor<8x1536xf16>
     // CHECK:           [[OUT_RESHAPE:%.+]] = IE.AffineReshape([[CONCAT]])
-    // CHECK-SAME{LITERAL}      {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 8, 1, 1536]} : tensor<8x1536xf16> -> tensor<1x8x1x1536xf16>
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 8, 1, 1536]} : tensor<8x1536xf16> -> tensor<1x8x1x1536xf16>
 
     // CHECK:           return [[OUT_RESHAPE]] : tensor<1x8x1x1536xf16>
 }
@@ -297,7 +297,7 @@ func.func @ConvertParallelSliceBranchesToGatherWithSingleSliceOpInGroup(
 
     // CHECK:           [[CONCAT:%.+]] = IE.Concat([[GATHER_RESHAPE_0]], [[GATHER_RESHAPE_1]], [[GATHER_RESHAPE_2]], [[SLICE]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<2x1536xf16>, tensor<2x1536xf16>, tensor<2x1536xf16>, tensor<1x1536xf16> -> tensor<7x1536xf16>
     // CHECK:           [[OUT_RESHAPE:%.+]] = IE.AffineReshape([[CONCAT]])
-    // CHECK-SAME{LITERAL}      {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 8, 1, 1536]} : tensor<7x1536xf16> -> tensor<1x7x1x1536xf16>
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 7, 1, 1536]} : tensor<7x1536xf16> -> tensor<1x7x1x1536xf16>
 
     // CHECK:           return [[OUT_RESHAPE]] : tensor<1x7x1x1536xf16>
 }

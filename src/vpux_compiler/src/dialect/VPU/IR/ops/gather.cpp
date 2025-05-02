@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/gather_dma_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -33,7 +32,7 @@ mlir::FailureOr<int64_t> extractAxis(mlir::Location loc, VPU::GatherOpAdaptor ga
         int64_t axisInd = axisContent.getSplatValue<int64_t>();
 
         if (axisInd < 0) {
-            const auto inType = gather.getInput().getType().cast<vpux::NDTypeInterface>();
+            const auto inType = mlir::cast<vpux::NDTypeInterface>(gather.getInput().getType());
             const auto inRank = inType.getRank();
             axisInd += inRank;
             VPUX_THROW_UNLESS(axisInd >= 0 && axisInd < inRank, "Wrong Gather axis {0}", axisInd);
@@ -60,9 +59,9 @@ mlir::LogicalResult vpux::VPU::GatherOp::inferReturnTypes(mlir::MLIRContext* ctx
         return mlir::failure();
     }
 
-    const auto inType = gather.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(gather.getInput().getType());
     const auto inputShape = inType.getShape().raw();
-    const auto indicesShape = gather.getIndices().getType().cast<vpux::NDTypeInterface>().getShape().raw();
+    const auto indicesShape = mlir::cast<vpux::NDTypeInterface>(gather.getIndices().getType()).getShape().raw();
 
     const auto axis = extractAxis(loc, gather);
     if (mlir::failed(axis)) {
@@ -152,7 +151,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherOp::getTilingStrategy(TilingMode 
         axisValue = axisContent.getSplatValue<int64_t>();
     }
 
-    const auto outputType = baseOp->getResult(0).getType().cast<vpux::NDTypeInterface>();
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();
 
     int64_t batchDims = 0;
@@ -160,9 +159,9 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherOp::getTilingStrategy(TilingMode 
         batchDims = getBatchDimsAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
     }
 
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inputSize = inputType.getCompactAllocSize();
-    const auto indicesType = getIndices().getType().cast<vpux::NDTypeInterface>();
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(getIndices().getType());
 
     const auto indicesSize = indicesType.getCompactAllocSize();
     const auto indicesRank = getIndicesRank().value_or(indicesType.getRank());

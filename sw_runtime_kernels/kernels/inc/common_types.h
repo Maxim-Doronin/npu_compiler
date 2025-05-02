@@ -42,6 +42,7 @@ enum DataType : uint32_t {
     NN_BF16,
     NN_UNDEFINED,
     NN_U4,
+    NN_NF4,
 };
 
 typedef uint64_t NDOrder;

@@ -19,7 +19,7 @@ module @DmaSpillSingleClusterNoCompressionCandSmallBuf {
       }
     }
   }
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x1x1x1xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x1x1x1xf16>
@@ -97,7 +97,7 @@ module @DmaSpillSingleCluster {
       }
     }
   }
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x64x56x56xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x64x56x56xf16>
@@ -211,7 +211,7 @@ module @DmaSpillSingleClusterWithParallelDecompressAndCompressTasks {
       }
     }
   }
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x64x56x56xf16>
   } outputsInfo : {
     DataInfo "prob" : tensor<1x64x56x56xf16>

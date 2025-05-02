@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -96,7 +96,11 @@ void WrapOpsInSparsifyDesparsifyPairsPass::safeRunOnFunc() {
         builder.setInsertionPointAfter(producerOp);
 
         auto result = producerOp->getResult(0);
-        const auto shape = result.getType().cast<vpux::NDTypeInterface>().getShape();
+        if (mlir::cast<vpux::NDTypeInterface>(result.getType()).getElementType().isF32()) {
+            return;
+        }
+
+        const auto shape = mlir::cast<vpux::NDTypeInterface>(result.getType()).getShape();
         const auto channels = shape[Dims4D::Act::C];
         if (!constraint.areChannelsFitForSESize(channels)) {
             return;
@@ -115,7 +119,11 @@ void WrapOpsInSparsifyDesparsifyPairsPass::safeRunOnFunc() {
         }
 
         const auto producer = consumerOp->getOperand(operandId);
-        const auto shape = producer.getType().cast<vpux::NDTypeInterface>().getShape();
+        if (mlir::cast<vpux::NDTypeInterface>(producer.getType()).getElementType().isF32()) {
+            return;
+        }
+
+        const auto shape = mlir::cast<vpux::NDTypeInterface>(producer.getType()).getShape();
         const auto channels = shape[Dims4D::Act::C];
         if (!constraint.areChannelsFitForSESize(producer.getType(), channels)) {
             return;
@@ -134,11 +142,11 @@ void WrapOpsInSparsifyDesparsifyPairsPass::safeRunOnFunc() {
 
     func->walk([&](VPU::SparseOpInterface sparsifiableOp) {
         const auto loc = sparsifiableOp->getLoc();
-        if (!sparsifiableOp->getResult(0).getType().isa<VPU::SparseTensorType>() &&
+        if (!mlir::isa<vpux::VPU::SparseTensorType>(sparsifiableOp->getResult(0).getType()) &&
             supportsSparseOutputs(sparsifiableOp)) {
             outputWrapper(sparsifiableOp, loc);
         }
-        if (!sparsifiableOp->getOperand(0).getType().isa<VPU::SparseTensorType>() &&
+        if (!mlir::isa<vpux::VPU::SparseTensorType>(sparsifiableOp->getOperand(0).getType()) &&
             supportsSparseInputs(sparsifiableOp)) {
             inputWrapper(sparsifiableOp, DEFAULT_SPARSIFIABLE_INPUT_OPERAND_ID, loc);
             if (mlir::isa<VPU::NCEEltwiseOp>(sparsifiableOp)) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --shift-dpu-workloads-start %s | FileCheck %s
@@ -69,7 +69,7 @@ func.func @ConvSOHOverlapped(%arg0: !Input_DDR) -> !Output_DDR {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> !OutputDistributed {
+            } : !InputDistributed, !WeightsDistributed, !WeightsTableDistributed -> !OutputDistributed {
                 VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
@@ -83,7 +83,8 @@ func.func @ConvSOHOverlapped(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK:       [[RES4:%.*]] = VPU.NCE.Convolution
     // CHECK-SAME:                   pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                   strides = [1, 1]
-    // CHECK-SAME:    } -> !VPU.DistributedTensor<
+    // CHECK-SAME:    }
+    // CHECK-SAME:    -> !VPU.DistributedTensor<
     // CHECK-SAME:          1x16x30x33xf16, #NHWC, @CMX_NN, {
     // CHECK-SAME:          mode = "OVERLAPPED",
     // CHECK-SAME:          num_tiles = [1, 1, 4, 1],
@@ -199,7 +200,7 @@ func.func @SparseConvSOHOverlapped(%arg0: !InputDataDistributed, %arg1: !InputSM
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> !Output_CMX {
+            } : !Input_CMX, !WeightsDistributed, !WeightsTableDistributed -> !Output_CMX {
                 VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
@@ -294,7 +295,7 @@ func.func @ConvSOHOverlappedMultipleWorkloads(%arg0: !Input_DDR) -> !Output_DDR 
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
-            } -> !OutputDistributed {
+            } : !InputDistributed, !WeightsDistributed, !WeightsTableDistributed -> !OutputDistributed {
                 VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 15, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
@@ -308,7 +309,8 @@ func.func @ConvSOHOverlappedMultipleWorkloads(%arg0: !Input_DDR) -> !Output_DDR 
     // CHECK:      [[RES4:%.*]] = VPU.NCE.Convolution
     // CHECK-SAME:                  pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                  strides = [1, 1]
-    // CHECK-SAME:   } -> !VPU.DistributedTensor<1x16x30x33xf16, #NHWC, @CMX_NN, {
+    // CHECK-SAME:   }
+    // CHECK-SAME:   -> !VPU.DistributedTensor<1x16x30x33xf16, #NHWC, @CMX_NN, {
     // CHECK-SAME:     mode = "OVERLAPPED",
     // CHECK-SAME:     num_tiles = [1, 1, 2, 1],
     // CHECK-SAME:     kernel = [3, 3],
@@ -390,7 +392,7 @@ func.func @ConvSOHOverlappedNoOverlapAtStart(%arg0: !Input_DDR) -> !Output_DDR {
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]
-            } -> !OutputDistributed {
+            } : !InputDistributed, !WeightsDistributed, !WeightsTableDistributed -> !OutputDistributed {
                 VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 11, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
                 VPU.DPU.Workload outOffsets [0, 0, 22, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
@@ -403,7 +405,8 @@ func.func @ConvSOHOverlappedNoOverlapAtStart(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK:      [[RES4:%.*]] = VPU.NCE.Convolution
     // CHECK-SAME:                  pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
     // CHECK-SAME:                  strides = [1, 1]
-    // CHECK-SAME:   } -> !VPU.DistributedTensor<
+    // CHECK-SAME:   }
+    // CHECK-SAME:   -> !VPU.DistributedTensor<
     // CHECK-SAME:        1x16x33x33xf16, #NHWC, @CMX_NN, {
     // CHECK-SAME:        mode = "OVERLAPPED",
     // CHECK-SAME:        num_tiles = [1, 1, 3, 1],
@@ -479,7 +482,7 @@ func.func @ConvSOKNoChange(%arg0: !Input_DDR) -> !Output_DDR {
                 pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 rawFilterShape = [32, 16, 1, 1],
                 strides = [1, 1]
-            } -> !OutputDistributed {
+            } : !InputDistributed, !WeightsDistributed, !WeightsTableDistributed -> !OutputDistributed {
                 VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 30, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
                 VPU.DPU.Workload outOffsets [0, 16, 0, 0] outSizes [1, 16, 30, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
             }
@@ -490,7 +493,8 @@ func.func @ConvSOKNoChange(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK:      [[RES4:%.*]] = VPU.NCE.Convolution
     // CHECK-SAME:                  pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                  strides = [1, 1]
-    // CHECK-SAME:   } -> !VPU.DistributedTensor<
+    // CHECK-SAME:   }
+    // CHECK-SAME:   -> !VPU.DistributedTensor<
     // CHECK-SAME:         1x32x30x33xf16, #NHWC, @CMX_NN, {
     // CHECK-SAME:         mode = "DUPLICATED|SEGMENTED",
     // CHECK-SAME:         num_tiles = [1, 2, 1, 1],

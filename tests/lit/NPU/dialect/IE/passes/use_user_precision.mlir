@@ -8,7 +8,7 @@
 // CHECK-LABEL: @U8toFP32
 module @U8toFP32 {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x1000xui8>
@@ -45,7 +45,7 @@ func.func @main(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
 // CHECK-LABEL: @SameTypes
 module @SameTypes {
 
-IE.CNNNetwork
+net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
         // CHECK: DataInfo "data" : tensor<1x1000xf16>

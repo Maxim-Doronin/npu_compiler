@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
@@ -22,16 +22,16 @@ mlir::IntegerAttr vpux::getAllocSizeAttr(mlir::Type type) {
 
     mlir::MemRefLayoutAttrInterface layout;
 
-    if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+    if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
         layout = memref.getLayout();
-    } else if (auto distributedBuffer = type.dyn_cast<VPUIP::DistributedBufferType>()) {
+    } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
         layout = distributedBuffer.getLayout();
-    } else if (auto itiBuffer = type.dyn_cast<VPUIP::ITIBufferType>()) {
+    } else if (auto itiBuffer = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(type)) {
         layout = itiBuffer.getLayout();
     }
 
     if (layout) {
-        if (const auto memRefAttr = layout.dyn_cast<vpux::MemRefAttr>()) {
+        if (const auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
             allocSizeAttr = memRefAttr.allocSize();
         }
     }
@@ -50,22 +50,22 @@ vpux::NDTypeInterface vpux::setAllocSizeAttr(vpux::NDTypeInterface type, int64_t
 
     mlir::IntegerAttr allocSizeAttr = getIntAttr(ctx, allocSize);
 
-    if (type.isa<mlir::MemRefType>()) {
+    if (mlir::isa<mlir::MemRefType>(type)) {
         return vpux::getMemRefType(shape, elemType, order, memSpace, strides, getSwizzlingSchemeAttr(type),
                                    VPUIP::getSparsityCompressionAttr(type), allocSizeAttr);
-    } else if (type.isa<VPUIP::DistributedBufferType>() || type.isa<VPUIP::ITIBufferType>()) {
+    } else if (mlir::isa<vpux::VPUIP::DistributedBufferType>(type) || mlir::isa<vpux::VPUIP::ITIBufferType>(type)) {
         vpux::MemRefAttr memRefAttr;
         const auto orderAttr = mlir::AffineMapAttr::get(order.toAffineMap(ctx));
         mlir::ArrayAttr stridesAttr = nullptr;
         vpux::MemRefAttr::HwFields hwSpecificFields{};
 
-        auto itiBufferType = type.dyn_cast<VPUIP::ITIBufferType>();
-        auto distBufferType = type.dyn_cast<VPUIP::DistributedBufferType>();
+        auto itiBufferType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(type);
+        auto distBufferType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type);
 
         if (itiBufferType) {
-            memRefAttr = itiBufferType.getLayout().dyn_cast<vpux::MemRefAttr>();
+            memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(itiBufferType.getLayout());
         } else if (distBufferType) {
-            memRefAttr = distBufferType.getLayout().dyn_cast<vpux::MemRefAttr>();
+            memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(distBufferType.getLayout());
         }
         if (memRefAttr) {
             stridesAttr = memRefAttr.strides();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -19,7 +19,7 @@ mlir::Value extractValueForTile(mlir::ValueRange values, uint32_t tileIdx) {
                 continue;
             }
         }
-        if (value.getType().cast<NDTypeInterface>().getMemSpace().getIndex().value_or(0) == tileIdx) {
+        if (mlir::cast<vpux::NDTypeInterface>(value.getType()).getMemSpace().getIndex().value_or(0) == tileIdx) {
             return value;
         }
     }
@@ -58,7 +58,7 @@ mlir::FailureOr<SymbolizationResult> DPUInvariantRewriter::symbolize(VPUMI40XX::
     auto sprLookupTableSym = optionalSym(op.getSprLookupTable());
     auto palletLookupTableSym = optionalSym(op.getPalletLookupTable());
 
-    auto tileIdx = op.getIndex().getType().cast<VPURegMapped::IndexType>().getTileIdx();
+    auto tileIdx = mlir::cast<vpux::VPURegMapped::IndexType>(op.getIndex().getType()).getTileIdx();
 
     auto output = extractValueForTile(op.getOutputBuffs(), tileIdx);
     auto outputSym = optionalSym(output);
@@ -135,11 +135,11 @@ mlir::FailureOr<SymbolizationResult> DPUInvariantRewriter::symbolize(VPUMI40XX::
         auto section = registerBuffer.getSection();
         auto sectionIndexAttr = registerBuffer.getSectionIndex();
         auto sectionIndex =
-                sectionIndexAttr.has_value() ? sectionIndexAttr.value()[0].cast<mlir::IntegerAttr>().getInt() : 0;
+                sectionIndexAttr.has_value() ? mlir::cast<mlir::IntegerAttr>(sectionIndexAttr.value()[0]).getInt() : 0;
         auto byteOffset = registerBuffer.getByteOffset();
 
         auto location = VPUASM::MemLocationType::get(ctx, section, sectionIndex, byteOffset);
-        auto memref = registerBuffer.getType().cast<mlir::MemRefType>();
+        auto memref = mlir::cast<mlir::MemRefType>(registerBuffer.getType());
         auto traits = VPUASM::BufferTraitsType::get(ctx, registerBuffer.getSwizzlingKey().value_or(0));
 
         auto buffType = VPUASM::BufferType::get(ctx, location, memref, traits);

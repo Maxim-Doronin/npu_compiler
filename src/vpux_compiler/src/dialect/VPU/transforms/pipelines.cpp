@@ -66,9 +66,9 @@ std::optional<double> getWeightsSparsityThreshold(const DoubleOption& weightsSpa
 void vpux::VPU::buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::InitCompilerOptions& options,
                                           Logger log) {
     log.info("InitCompilerOptions:\n arch = {0}\n DPU groups = {1}\n DMA ports = {2}\n"
-             " compilation mode = {3}\n WLM rollback = {4}\n PPE version = {5}",
+             " compilation mode = {3}\n WLM rollback = {4}\n PPE version = {5}\n adaptive stripping = {6}",
              options.arch, options.numberOfDPUGroups, options.numberOfDMAPorts, options.compilationMode,
-             options.wlmRollback, options.ppeVersion);
+             options.wlmRollback, options.ppeVersion, options.enableAdaptiveStripping);
 
     pm.addPass(VPU::createInitResourcesPass(options, log));
     pm.addPass(VPU::createSetupPipelineOptionsPass(options, log));
@@ -79,6 +79,7 @@ void vpux::VPU::buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::In
     pm.addPass(VPU::createSetupEnableFP16CompressedConvPass(options, log));
     pm.addPass(VPU::createSetupEnableSEPtrsOperationsPass(options, log));
     pm.addPass(VPU::createSetupEnableAdaptiveStrippingPass(options, log));
+    pm.addPass(VPU::createSetupEnableExtraStaticShapeOpsPass(options, log));
 }
 
 //
@@ -155,8 +156,7 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
     // We call this as part of VF Pipeline, no need to call it here in such case
     if (!options.enableVerticalFusion) {
         pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                      options.readStrategyFromJson, readStrategyFileLocation,
-                                                      /*enableMCSideLoadDump*/ false, options.modelHash, log));
+                                                      options.readStrategyFromJson, readStrategyFileLocation, log));
     }
     pm.addPass(VPU::createEfficientIROrderPass(log));
     if (options.enableVerticalFusion) {
@@ -165,14 +165,15 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
 
     if (options.enableOutputPipelining) {
         pm.addPass(VPU::createOutputPipelineTilingPass(options.enablePrefetchTiling, log));
+        // manual strategy debug configuration
         pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
                                                       options.readStrategyFromJson, readStrategyFileLocation,
-                                                      /*updateStrategyForOutputPipelining*/ true,
-                                                      /*enableMCSideLoadDump*/ false, options.modelHash, log));
+                                                      /*updateStrategyForOutputPipelining*/ true, log));
     }
-    // manual strategy debug configuration
-    pm.addPass(VPU::createApplyTilingPass(log));
+
+    pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(VPU::createCorrectStorageElementTableSeSizeForSEPDWConvPass(log));
 }
 
 //
@@ -187,10 +188,9 @@ void vpux::VPU::buildVFPipeline(mlir::OpPassManager& pm, const VPU::TilingOption
     pm.addPass(VPU::createEfficientIROrderPass(log));
     pm.addPass(VPU::createUnrollUnusedVerticalFusionRegionPass(log));
     pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                  options.readStrategyFromJson, readStrategyFileLocation,
-                                                  /*enableMCSideLoadDump*/ false, options.modelHash, log));
+                                                  options.readStrategyFromJson, readStrategyFileLocation, log));
     // TODO: E#140041 enable profiling with function outlining
-    if (options.enableVerticalFusionOutlining && !options.enableProfiling) {
+    if (options.enableVerticalFusionOutlining && (!options.enableProfiling || options.enableProfilingWithOutlining)) {
         pm.addPass(VPU::createVerticalFusionOutliningPass(options, log));
         const auto grc = getDefaultGreedyRewriteConfig();
         pm.addPass(mlir::createCanonicalizerPass(grc));
@@ -201,6 +201,7 @@ void vpux::VPU::buildVFPipeline(mlir::OpPassManager& pm, const VPU::TilingOption
 void vpux::VPU::buildSMPipeline(mlir::OpPassManager& pm, const vpux::MCAndTilingOptionsBase& options, Logger log) {
     // TO DO - SM Assignment Optimization Pass
     // Keep enableSMpipleline Option - false till SM pipeline is built
+    const auto grc = getDefaultGreedyRewriteConfig();
 
     pm.addPass(VPU::createStrategyManagerImplPass(options.enablePrefetching, log));
     pm.addPass(VPU::createEfficientIROrderPass(log));
@@ -211,10 +212,11 @@ void vpux::VPU::buildSMPipeline(mlir::OpPassManager& pm, const vpux::MCAndTiling
     // We have already dumped the strategies in above pipeline
     if (!options.enableVerticalFusion) {
         pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                      options.readStrategyFromJson, readStrategyFileLocation,
-                                                      /*enableMCSideLoadDump*/ false, options.modelHash, log));
+                                                      options.readStrategyFromJson, readStrategyFileLocation, log));
     }
-    pm.addPass(VPU::createApplyTilingPass(log));
+    pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, log));
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(VPU::createCorrectStorageElementTableSeSizeForSEPDWConvPass(log));
     pm.addPass(VPU::createMakeOpsWithDistributedTensorPass(options.enableExplicitDistributionInfoAttr, log));
     pm.addPass(VPU::createMakeDistributedCopiesPass(log));
     pm.addPass(VPU::createAdjustDistributedTensorAroundOpsPass(log));

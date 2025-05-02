@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -46,7 +46,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::SoftMaxOp::getTilingStrategy(TilingMode
 //
 
 bool vpux::VPU::SoftMaxOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto inputType = getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inShape = inputType.getShape();
 
     if (strategy == VPU::MultiClusterStrategy::Clustering) {

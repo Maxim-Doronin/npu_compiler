@@ -5,16 +5,21 @@
 
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/setup_pipeline_options_utils.hpp"
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/types.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/ErrorHandling.h>
+
+#include <limits>
 
 using namespace vpux;
 
@@ -282,13 +287,13 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
 
                 return builder.create<IE::AddOp>(loc, input, bias, IE::AutoBroadcastType::NUMPY,
                                                  /*postOp=*/nullptr, /*clamp=*/nullptr,
-                                                 /*outputChannels=*/nullptr,
-                                                 /*inputChannels=*/nullptr);
+                                                 /*outputPadding=*/nullptr,
+                                                 /*inputPadding=*/nullptr);
             })
             .Case<Const::BroadcastAttr>([&](Const::BroadcastAttr broadcast) {
                 const auto axis = broadcast.getAxis().getInt();
                 const auto dimValue = broadcast.getValue().getInt();
-                auto shape = SmallVector<int64_t>(input.getType().cast<NDTypeInterface>().getShape().raw());
+                auto shape = SmallVector<int64_t>(mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape().raw());
                 shape[axis] = dimValue;
 
                 const auto targetShapeLoc = appendLoc(loc, "_shape");
@@ -311,8 +316,8 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
                 VPUX_THROW_UNLESS(specialCaseOfAffineReshapeFolding, "Unsupported affine-reshape operation");
 
                 const auto outputShape = parseIntArrayAttr<int64_t>(changeShapeAndElemType.getShape());
-                const auto reassociationMap =
-                        IE::getReassociationMap(input.getType().cast<NDTypeInterface>().getShape().raw(), outputShape);
+                const auto reassociationMap = IE::getReassociationMap(
+                        mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape().raw(), outputShape);
                 const auto dimMapping =
                         getIntArrayOfArray(changeShapeAndElemType.getContext(), reassociationMap.value());
                 return builder.create<IE::AffineReshapeOp>(loc, input, dimMapping, changeShapeAndElemType.getShape());
@@ -341,8 +346,8 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
                 return builder.create<IE::ConvertOp>(loc, input, convert.getElemType());
             })
             .Case<Const::DequantizeAttr>([&](Const::DequantizeAttr /*dequantize*/) {
-                const auto qElemType =
-                        input.getType().cast<NDTypeInterface>().getElementType().cast<mlir::quant::QuantizedType>();
+                const auto qElemType = mlir::cast<mlir::quant::QuantizedType>(
+                        mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType());
                 return builder.create<IE::DequantizeOp>(loc, input, qElemType.getExpressedType());
             })
             .Case<Const::QuantizeAttr>([&](Const::QuantizeAttr quantizeAttr) {
@@ -372,10 +377,11 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
 
                 const auto inType = mlir::cast<NDTypeInterface>(input.getType());
                 const auto outElemType = padWithZero.inferOutputType(inType).getElementType();
-                return builder.create<IE::PadOp>(
-                        loc, input, /*padsBegin=*/nullptr, /*padsEnd=*/nullptr,
-                        /*padValue=*/nullptr, padWithZero.getPadBefore(), padWithZero.getPadAfter(),
-                        getFPAttr(builder.getContext(), extractPadValue(outElemType)), IE::PadMode::CONSTANT, nullptr);
+                return builder.create<IE::PadOp>(loc, input, /*padsBegin=*/nullptr, /*padsEnd=*/nullptr,
+                                                 /*padValue=*/nullptr, padWithZero.getPadBefore(),
+                                                 padWithZero.getPadAfter(),
+                                                 getFPAttr(builder.getContext(), extractPadValue(outElemType)),
+                                                 IE::PadMode::CONSTANT, nullptr, nullptr);
             })
             .Case<Const::ReorderAttr>([&](Const::ReorderAttr reorder) {
                 return builder.create<IE::ReorderOp>(loc, input, reorder.getOrder());
@@ -393,7 +399,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
 
                 return builder.create<IE::MultiplyOp>(loc, input, scale, IE::AutoBroadcastType::NUMPY,
                                                       /*postOp=*/nullptr, /*clamp=*/nullptr,
-                                                      /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
+                                                      /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
             })
             .Case<Const::ReshapeAttr>([&](Const::ReshapeAttr reshape) -> mlir::Value {
                 if (mlir::cast<NDTypeInterface>(input.getType()).getDimsOrder().isIdentity()) {
@@ -405,7 +411,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
             .Case<Const::ScalarMultInverseAttr>([&](Const::ScalarMultInverseAttr /*scalarMultInverse*/) -> mlir::Value {
                 const auto inverseLoc = appendLoc(loc, "_inverse");
                 SmallVector<int64_t> shapeRank = {1};
-                const auto inputElemType = input.getType().cast<NDTypeInterface>().getElementType();
+                const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
                 auto inverseType = mlir::RankedTensorType::get({shapeRank}, inputElemType);
 
                 const auto data = [&]() -> mlir::DenseElementsAttr {
@@ -474,7 +480,195 @@ mlir::Value createMatchingOperation(WeightsSeparationSchedule scheduleKind, mlir
 }
 }  // namespace conversions
 
+std::vector<VPU::CallChainData> collectCallChains(mlir::func::FuncOp funcOp) {
+    std::vector<VPU::CallChainData> functions;
+    funcOp.walk([&](mlir::func::CallOp callOp) {
+        functions.push_back({callOp, getCalledFunction(callOp)});
+    });
+    return functions;
+}
+
+std::vector<VPU::CallChainData> findChildren(const VPU::CallChainTree::Node& node) {
+    auto funcOp = node.data().second;
+    auto chains = collectCallChains(funcOp);
+    // Note: sort call-chains lexicographically (using function names) to ensure
+    // outlining-independent processing. while this disregards the call
+    // sequence, this allows to avoid differences in schedule generation when
+    // independent calls get reordered in IR:
+    // ```cpp
+    //  %call1 = call @foo1(...)
+    //  %call2 = call @foo2(...)
+    //  // vs:
+    //  %call2 = call @foo2(...)
+    //  %call1 = call @foo1(...)
+    //
+    //  // independent usage of calls:
+    //  %op1 = VPU.Convolution(%call1)
+    //  %ops2 = VPU.Convolution(%call2)
+    // ```
+    std::sort(chains.begin(), chains.end(), [](const VPU::CallChainData& x, const VPU::CallChainData& y) {
+        auto xFunc = x.second;
+        auto yFunc = y.second;
+        // lexicographical comparison
+        return xFunc.getSymName() < yFunc.getSymName();
+    });
+
+    return chains;
+}
+
+SmallVector<TransformationsSplit> collectMoveWorthySplitsUnstable(const Logger& log, mlir::func::FuncOp mainFunc,
+                                                                  VPU::LocalSortingFunc sort) {
+    SmallVector<TransformationsSplit> splits;
+    mainFunc.walk([&](Const::DeclareOp constOp) {
+        if (!shouldProcessThisConstant(constOp)) {
+            return;
+        }
+        splits.emplace_back(constOp);
+    });
+
+    sort(splits);
+
+    if (log.isActive(LogLevel::Trace)) {
+        log.trace("Found the following constants in {0}:", mainFunc.getSymName());
+        for (const auto& [index, split] : splits | indexed) {
+            log.trace("  {0}: {1}", index, split.declareOp());
+        }
+    }
+
+    return splits;
+}
+
+template <typename Iterator>
+vpux::Byte getResultBufferSizeForInit(Iterator first, Iterator last) {
+    vpux::Byte res(0);
+    for (; first != last; ++first) {
+        res += detail::getResultBufferSizeForInit(*first);
+    }
+    return res;
+}
+
+template <typename Iterator>
+struct GroupedTransformationSplits {
+    Iterator first;
+    Iterator last;
+    vpux::Byte totalBufferSize;  // Note: cached to reduce algorithmic complexity
+
+    GroupedTransformationSplits(Iterator f, Iterator l, mlir::ElementsAttr baseContent)
+            : first(f),
+              last(l),
+              totalBufferSize(getExpectedBufferSize(baseContent.getType()) + getResultBufferSizeForInit(f, l)) {
+    }
+
+    Iterator begin() const {
+        return first;
+    }
+    Iterator end() const {
+        return last;
+    }
+};
+
+using SplitPosition = SmallVector<TransformationsSplit>::const_iterator;
+/// Groups transformation splits by dense_resource<>. Requires sorted
+/// transformations splits.
+SmallVector<GroupedTransformationSplits<SplitPosition>> groupTransformationSplitsByName(
+        ArrayRef<TransformationsSplit> splits) {
+    assert(std::is_sorted(splits.begin(), splits.end()) && "Requires transformation splits to be globally sorted");
+
+    SmallVector<GroupedTransformationSplits<SplitPosition>> groupedByName;
+
+    assert(!splits.empty());
+    auto prev = splits.begin();
+    auto prevResource = prev->declareOp().getContentAttr().getBaseContent();
+
+    // Note: since splits are sorted, we're guaranteed to have
+    // same-resource-name constants to be together in sequence
+    for (auto first = std::next(prev); first != splits.end(); ++first) {
+        const auto& split = *first;
+        const auto currResource = split.declareOp().getContentAttr().getBaseContent();
+        if (bool newConstant = (prevResource != currResource); newConstant) {
+            groupedByName.emplace_back(prev, first, prevResource);
+            prevResource = currResource;
+            prev = first;
+        }
+    }
+    groupedByName.emplace_back(prev, splits.end(), prevResource);
+
+    return groupedByName;
+}
+
+/// A heuristic that places "small" constants closer together. Thus, in theory
+/// reducing the amount of init schedules vs "no shuffle" for a simple
+/// adjacent_find-like merging algorithm.
+///
+/// Consider:
+/// ```
+///     %big0 = dense_resource<ov_0> : tensor<large> // 250 MiB
+///     %small0 = dense_resource<ov_1> : tensor<small> // 49 MiB
+///     %big1 = dense_resource<ov_2> : tensor<large> // 330 MiB
+///     %small1 = dense_resource<ov_3> : tensor<small> // 10 MiB
+/// ```
+/// given memory threshold = 200 MiB, the result is:
+/// * init #0 takes %big0: sizeof(%big0) = 250 > 200 - exceeding already
+/// * init #1 takes *only* %small0: sizeof(%small0) < 200
+///   * but: sizeof(%small0 + %big1) = 49 + 330 > 200 - exceeds!
+/// * init #2 takes %big1
+/// * init #3 takes *only* %small1
+///
+/// yet when sorted, %small0 and %small1 are together in the sequence which
+/// allows to reduce the number of inits to 3
+void shuffleGroupedTransformationSplitsForBetterInitSchedule(
+        SmallVector<GroupedTransformationSplits<SplitPosition>>& groupedSplits) {
+    const auto lessByMemory = [&](const auto& x, const auto& y) {
+        return x.totalBufferSize < y.totalBufferSize;
+    };
+
+    // Note: this sort should be stable to avoid same-size elements to be
+    // reordered during sorting. this is important since this directly affects
+    // the "order" of init schedules across different compilation calls
+    // (potential to have different blobs across runs otherwise?)
+    std::stable_sort(groupedSplits.begin(), groupedSplits.end(), lessByMemory);
+}
+
+/// Linearly traverses the specified groups of transformations splits, merging
+/// neighbouring groups if the threshold allows.
+SmallVector<SmallVector<TransformationsSplit>> getConstantsForInitSchedules(
+        const SmallVector<GroupedTransformationSplits<SplitPosition>>& groupedSplits, vpux::Byte threshold) {
+    // Note: instead of doing a greedy merging here, it may make sense to
+    // implement something a bit more advanced such as FFD (see
+    // https://en.wikipedia.org/wiki/First-fit-decreasing_bin_packing).
+
+    assert(!groupedSplits.empty());
+    SmallVector<SmallVector<TransformationsSplit>> slices;
+
+    auto currGroupPosition = groupedSplits.begin();
+    slices.emplace_back(std::make_move_iterator(currGroupPosition->begin()),
+                        std::make_move_iterator(currGroupPosition->end()));
+
+    auto accumulatedMemoryUsage = currGroupPosition->totalBufferSize;
+    for (++currGroupPosition; currGroupPosition != groupedSplits.end(); ++currGroupPosition) {
+        const auto currMemoryUsage = currGroupPosition->totalBufferSize;
+        const bool canAddConstantToCurrentInit = (accumulatedMemoryUsage + currMemoryUsage) <= threshold;
+        if (canAddConstantToCurrentInit) {
+            accumulatedMemoryUsage += currMemoryUsage;
+            slices.back().append(std::make_move_iterator(currGroupPosition->begin()),
+                                 std::make_move_iterator(currGroupPosition->end()));
+            continue;
+        }
+        // create new init
+        slices.emplace_back(std::make_move_iterator(currGroupPosition->begin()),
+                            std::make_move_iterator(currGroupPosition->end()));
+        accumulatedMemoryUsage = currMemoryUsage;
+    }
+
+    return slices;
+}
+
 }  // namespace
+
+CallChainTree getOutliningRepresentation(mlir::func::FuncOp startFunc) {
+    VPU::CallChainTree tree({VPU::CallChainTree::Node(VPU::CallChainData{nullptr, startFunc}, {})}, findChildren);
+    return tree;
+}
 
 TransformationsSplit::TransformationsSplit(Const::DeclareOp declareOp): _declareOp(declareOp) {
     const auto contentAttr = declareOp.getContentAttr();
@@ -524,39 +718,116 @@ TransformationsSplit::Projection TransformationsSplit::take(WeightsSeparationSch
     return Projection{_declareOp, argType, precedingTransformations, transformations, _ioTypeInfo};
 }
 
-SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(mlir::func::FuncOp mainFunc) {
+namespace detail {
+vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x) {
+    // Note: main's input is init's result, thus:
+    // sizeof(init result) == sizeof(main arg)
+    auto proj = x.take(WeightsSeparationSchedule::Main);
+    return getExpectedBufferSize(proj.argType);
+}
+}  // namespace detail
+
+bool operator<(const TransformationsSplit& x, const TransformationsSplit& y) {
+    const auto& xContent = x.declareOp().getContentAttr();
+    const auto& yContent = y.declareOp().getContentAttr();
+
+    const auto xName = getResourceName(xContent.getBaseContent());
+    const auto yName = getResourceName(yContent.getBaseContent());
+    assert((!xName.empty() && !yName.empty()) && "Only dense_resource<> constants should be collected");
+    // sort by resource name, then by transformations
+    if (xName < yName) {
+        return true;
+    }
+    if (xName == yName) {
+        auto xHash = xContent.getTransformationHash();
+        auto yHash = yContent.getTransformationHash();
+        // Note: since we expect these hashes to be stable across
+        // compilations, we could also rely on them to sort the constants.
+        return xHash < yHash;
+    }
+    return false;  // xName > yName
+}
+
+SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log,
+                                                                        mlir::func::FuncOp mainFunc) {
+    // sort the found constants. this ensures that the schedule stays the same
+    // even when constant operation order changes.
+    const auto sortSplits = [](SmallVector<TransformationsSplit>& splits) {
+        llvm::sort(splits);
+    };
+    return collectMoveWorthySplitsUnstable(log, mainFunc, sortSplits);
+}
+
+SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log, const CallChainTree& tree,
+                                                                        LocalSortingFunc sort) {
     SmallVector<TransformationsSplit> splits;
-    mainFunc.walk([&](Const::DeclareOp constOp) {
-        if (!shouldProcessThisConstant(constOp)) {
-            return;
-        }
-        splits.emplace_back(constOp);
-    });
 
-    // sort the found constants in a stable way. this ensures that the schedule
-    // stays the same even when constant operation order changes.
-    std::sort(splits.begin(), splits.end(), [](const TransformationsSplit& x, const TransformationsSplit& y) {
-        const auto& xContent = x.declareOp().getContentAttr();
-        const auto& yContent = y.declareOp().getContentAttr();
+    FuncOpVisitor hasSeenThisFunction;
+    utils::CallbackVisitor<CallChainData> splitCollector(
+            [&](const CallChainTree::Node& node) {
+                auto currOp = node.data().second;
+                if (hasSeenThisFunction(currOp)) {
+                    return false;
+                }
 
-        const auto xName = getResourceName(xContent.getBaseContent());
-        const auto yName = getResourceName(yContent.getBaseContent());
-        assert((!xName.empty() && !yName.empty()) && "Non dense_resource<> constants must not be collected");
-        // sort by resource name, then by transformations
-        if (xName < yName) {
-            return true;
-        }
-        if (xName == yName) {
-            auto xHash = xContent.getTransformationHash();
-            auto yHash = yContent.getTransformationHash();
-            // Note: since we expect these hashes to be stable across
-            // compilations, we could also rely on them to sort the constants.
-            return xHash < yHash;
-        }
-        return false;  // xName > yName
-    });
+                splits.append(collectMoveWorthySplitsUnstable(log, currOp, sort));
+                return true;
+            },
+            nullptr);
+    tree.apply(splitCollector);
 
     return splits;
+}
+
+SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const Logger& log,
+                                                                           ArrayRef<TransformationsSplit> splits,
+                                                                           vpux::Byte memoryLimit) {
+    // Note: by default, splits are sorted "locally" to the function that uses
+    // the associated constants. that is:
+    // * main_part1() uses dense_resource<ov_1> && dense_resource<ov_2>
+    // * main_part2() uses dense_resource<ov_1>
+    // * the splits are: [dense_resource<ov_1>, dense_resource<ov_2>,
+    //   dense_resource<ov_1>]
+    //
+    // What this algorithm requires are "globally" sorted splits:
+    assert(llvm::is_sorted(splits) && "Requires transformation splits to be globally sorted");
+    if (log.isActive(LogLevel::Trace)) {
+        log.trace("Slicing the following constants:");
+        for (const auto& split : splits) {
+            log.nest().trace("{0}", split.declareOp());
+        }
+    }
+
+    // step 1: group all transformation splits by resource name. every group is
+    // an "atomic element" that maps to an isolated init
+    auto groupedByName = groupTransformationSplitsByName(splits);
+
+    // step 2: mutually arrange groups in an "optimal" way
+    shuffleGroupedTransformationSplitsForBetterInitSchedule(groupedByName);
+
+    if (log.isActive(LogLevel::Trace)) {
+        log.trace("Constants grouped by names:");
+        for (const auto& [index, range] : groupedByName | indexed) {
+            for (const auto& split : range) {
+                log.nest().trace("group #{0}: {1}", index, split.declareOp());
+            }
+        }
+    }
+
+    // step 3: construct constants for init schedule(s) based on the memory
+    // limit threshold
+    auto constantsForInits = getConstantsForInitSchedules(groupedByName, memoryLimit);
+
+    if (log.isActive(LogLevel::Trace)) {
+        log.trace("Constants merged together:");
+        for (const auto& [index, slice] : constantsForInits | indexed) {
+            for (const auto& split : slice) {
+                log.nest().trace("init #{0}: {1}", index, split.declareOp());
+            }
+        }
+    }
+
+    return constantsForInits;
 }
 
 // We want to cache the results of mapping a list of transformations to operations to avoid the call of a
@@ -665,9 +936,6 @@ mlir::Value ConstOpConverter::convertToIrForm(mlir::Location baseLoc,
         _operationCache->cacheResult({value, {}}, newValue);
         value = newValue;
     }
-
-    // Note: do not store the operation anywhere as it is going to be deleted.
-    _convertedConsts.emplace_back(value, declareOp.getContentAttr());
 
     return value;
 }

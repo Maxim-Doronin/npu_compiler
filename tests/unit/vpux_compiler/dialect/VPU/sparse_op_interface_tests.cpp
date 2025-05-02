@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -61,7 +61,7 @@ TEST(MLIR_VPU_Sparsity, NCEZMajorConvSparsitySupport) {
                         pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                         rawFilterShape = [16, 16, 1, 1],
                         strides = [1, 1]
-                    } -> tensor<1x16x16x16xf16, {order = #NHWC}>
+                    } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
                 return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
             }

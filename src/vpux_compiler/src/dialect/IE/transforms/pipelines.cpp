@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -68,8 +68,10 @@ void vpux::IE::buildAdjustForVPUPipeline(mlir::OpPassManager& pm, const AdjustFo
     pm.addPass(IE::createConvertLargeConvToMultiConvWithAddPass(log));
     pm.addPass(IE::createConvertUpsamplingToStridedConcatPass(log));
     pm.addPass(IE::createMergeWeightsSharedConvPass(log));
-    pm.addPass(IE::createConvertNonConstantPadToSliceAndConcatPass(
-            /*enableSEPPad=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    if (options.enableConvertNonConstantPadToSliceAndConcat) {
+        pm.addPass(IE::createConvertNonConstantPadToSliceAndConcatPass(
+                /*enableSEPPad=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    }
     pm.addPass(IE::createFusePadOpsPass(log));
     pm.addPass(IE::createConvertPadToConcatPass(log));
     pm.addPass(IE::createConvertDepth2SpaceLayerPass(log));

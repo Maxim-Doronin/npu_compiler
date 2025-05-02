@@ -75,7 +75,7 @@ mlir::LogicalResult MemRefAllocRewrite::matchAndRewrite(mlir::memref::AllocOp or
     const auto offset = checked_cast<int64_t>(_allocInfo.getAddress(val));
     _log.trace("Replace with statically allocated VPURT.DeclareBufferOp (offset = {0})", offset);
 
-    auto valType = val.getType().cast<vpux::NDTypeInterface>();
+    auto valType = mlir::cast<vpux::NDTypeInterface>(val.getType());
     auto section = VPURT::getBufferSection(valType.getMemoryKind());
     auto sectionIndex = valType.getMemSpace().getIndex();
 
@@ -124,7 +124,7 @@ mlir::LogicalResult AllocRewrite::matchAndRewrite(VPURT::Alloc origOp, mlir::Pat
     const auto offset = checked_cast<int64_t>(_allocInfo.getAddress(val));
     _log.trace("Replace with statically allocated VPURT.DeclareBufferOp (offset = {0})", offset);
 
-    auto valType = val.getType().cast<vpux::NDTypeInterface>();
+    auto valType = mlir::cast<vpux::NDTypeInterface>(val.getType());
     auto section = VPURT::getBufferSection(valType.getMemoryKind());
     auto sectionIndex = valType.getMemSpace().getIndex();
 
@@ -177,7 +177,7 @@ mlir::LogicalResult AllocDistributedRewrite::matchAndRewrite(VPURT::AllocDistrib
     const auto offset = checked_cast<int64_t>(_allocInfo.getAddress(val));
     _log.trace("Replace with statically allocated VPURT.DeclareBufferOp (offset = {0})", offset);
 
-    auto section = VPURT::getBufferSection(val.getType().cast<vpux::NDTypeInterface>().getMemoryKind());
+    auto section = VPURT::getBufferSection(mlir::cast<vpux::NDTypeInterface>(val.getType()).getMemoryKind());
 
     auto swizzlingKey = origOp.getSwizzlingKeyAttr();
 
@@ -768,15 +768,15 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     target.addLegalDialect<VPUIP::VPUIPDialect>();
     target.addLegalDialect<VPURT::VPURTDialect>();
     target.addDynamicallyLegalOp<mlir::memref::AllocOp>([&](mlir::memref::AllocOp op) {
-        const auto type = op.getMemref().getType().cast<vpux::NDTypeInterface>();
+        const auto type = mlir::cast<vpux::NDTypeInterface>(op.getMemref().getType());
         return type == nullptr || type.getMemoryKind() != _memKind;
     });
     target.addDynamicallyLegalOp<VPURT::Alloc>([&](VPURT::Alloc op) {
-        const auto type = op.getBuffer().getType().cast<vpux::NDTypeInterface>();
+        const auto type = mlir::cast<vpux::NDTypeInterface>(op.getBuffer().getType());
         return type == nullptr || type.getMemoryKind() != _memKind;
     });
     target.addDynamicallyLegalOp<VPURT::AllocDistributed>([&](VPURT::AllocDistributed op) {
-        const auto type = op.getBuffer().getType().cast<vpux::NDTypeInterface>();
+        const auto type = mlir::cast<vpux::NDTypeInterface>(op.getBuffer().getType());
         return type == nullptr || type.getMemoryKind() != _memKind;
     });
 

@@ -1,12 +1,15 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 using namespace mlir;
@@ -78,7 +81,7 @@ LogicalResult vpux::IE::LoopOp::inferReturnTypeComponents(MLIRContext* ctx, std:
                 toConcatOutputPortIdMap.count(exId) ? toConcatOutputPortIdMap[exId] : invariantOutputPortIdMap[exId];
         auto operand = loopTerminator.getOperands()[inId];
 
-        auto inType = operand.getType().cast<RankedTensorType>();
+        auto inType = mlir::cast<mlir::RankedTensorType>(operand.getType());
         const auto outDesc = vpux::getTensorAttr(inType);
 
         // deal with concating along axis cases

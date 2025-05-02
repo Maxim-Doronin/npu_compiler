@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="extraction-mode=gen-init" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 {-#
     dialect_resources: {
@@ -15,7 +15,7 @@
 
 // CHECK: module @CastRegular
 module @CastRegular {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xf16>
     }
@@ -46,7 +46,7 @@ module @CastRegular {
 
 // CHECK: module @CastToQuantizedType
 module @CastToQuantizedType {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xi8>
     }
@@ -85,7 +85,7 @@ module @CastToQuantizedType {
 
 // CHECK: module @CastFromQuantizedType
 module @CastFromQuantizedType {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x2xf32>
     }
@@ -125,7 +125,7 @@ module @CastFromQuantizedType {
 
 // CHECK: module @PositiveZeroPointDelta
 module @PositiveZeroPointDelta {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<10x1x1x1xi8>
     }
@@ -168,7 +168,7 @@ module @PositiveZeroPointDelta {
 
 // CHECK: module @NegativeZeroPointDelta
 module @NegativeZeroPointDelta {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<10x1x1x1xi8>
     }
@@ -207,7 +207,7 @@ module @NegativeZeroPointDelta {
 
 // CHECK: module @QuantizedPadValuePerAxis
 module @QuantizedPadValuePerAxis {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output_0" : tensor<4x1x2x1xsi8>
     }
@@ -241,7 +241,7 @@ module @QuantizedPadValuePerAxis {
 
 // CHECK: module @QuantizedPadValue
 module @QuantizedPadValue {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output_0" : tensor<1x5x1x1xsi8>
     }
@@ -278,7 +278,7 @@ module @QuantizedPadValue {
 // CHECK: [[QTYPE2:!.+]] = !quant.uniform<i8:f16, 0.478921568627451:127>
 
 module @QuantizedToQuantizedCast {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<10x1x1x1xi8>
     }
@@ -315,7 +315,7 @@ module @QuantizedToQuantizedCast {
 
 // CHECK: module @QuantizedToQuantizedConversion_1D
 module @QuantizedToQuantizedConversion_1D {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<10xui8>
     }
@@ -357,7 +357,7 @@ module @QuantizedToQuantizedConversion_1D {
 
 // CHECK: module @QuantizedToQuantizedConversion_5D
 module @QuantizedToQuantizedConversion_5D {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<5x1x1x1x2xui8>
     }
@@ -399,7 +399,7 @@ module @QuantizedToQuantizedConversion_5D {
 
 // CHECK: module @QuantizedToQuantizedConversionPerAxis_2D
 module @QuantizedToQuantizedConversionPerAxis_2D {
-    IE.CNNNetwork entryPoint : @main inputsInfo : {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
     } outputsInfo : {
         DataInfo "output1" : tensor<2x5xui8>
     }

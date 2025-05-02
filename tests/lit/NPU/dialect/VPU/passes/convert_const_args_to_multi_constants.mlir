@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,7 +8,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @MultipleFunctionsMultipleConstants
 module @MultipleFunctionsMultipleConstants {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<48x48x3x3xf32>
     } outputsInfo : {
@@ -82,7 +82,7 @@ module @MultipleFunctionsMultipleConstants {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // expected-error@+1 {{IR contains unexpected op 'const.Data'}}
 module @ContainsDataOp {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<4xf32>
     } outputsInfo : {
@@ -102,7 +102,7 @@ module @ContainsDataOp {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // expected-error@+1 {{IR contains unexpected op 'const.BundleData'}}
 module @ContainsBundleDataOp {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<4xf32>
     } outputsInfo : {
@@ -121,7 +121,7 @@ module @ContainsBundleDataOp {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @NestedCalls {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<4xf32>
     } outputsInfo : {
@@ -150,7 +150,7 @@ module @NestedCalls {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // expected-error@+1 {{A possible bundle would contain 'const.Declare' ops with differing base content types or transformations for 'func.Func' main_fn1. This is unexpected and might indicate a problem with outlining!}}
 module @DifferingTransformations {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<4xf32>
     } outputsInfo : {
@@ -175,7 +175,7 @@ module @DifferingTransformations {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @CandidateSharedWithNonConstant
 module @CandidateSharedWithNonConstant {
-    IE.CNNNetwork entryPoint : @main
+    net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<48x48x3x3xf32>
     } outputsInfo : {

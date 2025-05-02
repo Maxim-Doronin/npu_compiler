@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/utils/core/logger.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include "vpux/compiler/core/async_deps_info.hpp"
 #include "vpux/compiler/core/control_edge_generator.hpp"

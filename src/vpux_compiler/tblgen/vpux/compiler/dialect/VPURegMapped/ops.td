@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -83,6 +83,7 @@ def VPURegMapped_FetchTaskOp:
         VPURegMapped_Op<"FetchTask", [
             DeclareOpInterfaceMethods<DotInterface, ["getNodeColor", "printAttributes", "getEdgeDirection"]>,
             DeclareOpInterfaceMethods<VPURegMapped_TaskOpInterface, ["setTaskLocation", "getTaskLocation"]>,
+            VPURegMapped_DMATypeOpInterface,
             AttrSizedOperandSegments
         ]> {
 
@@ -96,7 +97,8 @@ def VPURegMapped_FetchTaskOp:
         Optional<VPURegMapped_IndexType>:$secondary_end,
         OptionalAttr<VPURegMapped_TaskTypeAttr>:$associated_task_type,
         OptionalAttr<UI64Attr>:$associated_tile_index,
-        OptionalAttr<UI64Attr>:$associated_execution_group_index
+        OptionalAttr<UI64Attr>:$associated_execution_group_index,
+        OptionalAttr<IntAttr>:$wlmPage
 
     );
 
@@ -210,40 +212,6 @@ def VPURegMapped_GroupYieldOp :
     let hasVerifier = 1;
 }
 
-//
-// DeclareTaskBufferOp
-//
-
-def DeclareTaskBufferOp :
-        VPURegMapped_Op<"DeclareTaskBuffer", [
-        ]> {
-    let summary = "Buffer Op representing a discrete location of a task in runtime metadataBuffer";
-
-    let arguments = (ins
-        VPURegMapped_TaskTypeAttr:$task_type,
-        OptionalAttr<UI64Attr>:$offset
-
-    );
-
-    let results = (outs
-        VPURegMapped_IndexType:$index
-    );
-
-    let assemblyFormat = [{
-        attr-dict
-        $task_type `->` type(results)
-    }];
-
-    let extraClassDeclaration = [{
-        uint64_t getMemoryOffset() {
-            return getOffset().value_or(0);
-        }
-
-        void setMemoryOffset(mlir::IntegerAttr offset) {
-            setOffsetAttr(offset);
-        }
-    }];
-}
 
 //
 // ViewTaskRangeOp
@@ -269,54 +237,6 @@ def ViewTaskRangeOp : VPURegMapped_Op<"ViewTaskRange", [
     }];
 }
 
-//
-// DeclareTaskAddrBufferOp
-//
-
-def DeclareTaskAddrBufferOp : VPURegMapped_Op<"DeclareTaskAddrBuffer", [
-                                NoMemoryEffect
-                            ]> {
-    let summary = "Declare the buffer that would contain actual addresses of metadata elems";
-
-    let arguments = (ins
-        VPURegMapped_IndexType:$first,
-        VPURegMapped_IndexType:$last,
-        OptionalAttr<UI64Attr>:$offset
-    );
-
-    let results = (outs
-        MemRefRankOf<[UI32], [1]>:$output
-    );
-
-    let assemblyFormat = [{
-        `(` $first `->` $last `:` type($first) `->` type($last) `)` `->` type($output)
-        attr-dict
-    }];
-}
-
-//
-// TaskSinkOp
-//
-
-def TaskSinkOp : VPURegMapped_Op<"TaskSink", [
-                    NoMemoryEffect
-                ]> {
-    let summary = "Declare the sink where the task ptr will actually be copied";
-
-    let arguments = (ins
-        UI8Attr:$tile,
-        VPURegMapped_TaskTypeAttr:$taskType
-    );
-
-    let results = (outs
-        MemRefRankOf<[UI32], [1]>:$output
-    );
-
-    let assemblyFormat = [{
-        attr-dict
-        `tile` `(` $tile `)` `->` type($output)
-    }];
-}
 
 //
 // TaskBufferLayoutOp

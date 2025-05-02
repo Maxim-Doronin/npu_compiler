@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2023 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -60,8 +62,8 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
 
     const auto input = origOp.getInput();
     const auto weights = origOp.getFilter();
-    const auto inputShape = input.getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto weightsShape = weights.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
+    const auto weightsShape = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getShape();
     if (inputShape.size() != 4 || weightsShape.size() != 5) {
         return matchFailed(rewriter, origOp,
                            "Only 4D inputs and 5D weights are supported, got {0}D inputs and {1}D weights",
@@ -98,7 +100,7 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
         const auto weightsOffsetsAttr = getIntArrayAttr(getContext(), weightsOffsets);
         if (auto fqOp = weights.getDefiningOp<IE::FakeQuantizeOp>()) {
             const auto sliceFqConstInput = [&](mlir::Value fqInput, StringRef locSuffix) {
-                auto fqInputType = fqInput.getType().cast<NDTypeInterface>();
+                auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
                 const auto fqInputShape = fqInputType.getShape();
                 Shape newFqInputShape(fqInputShape.raw());
                 newFqInputShape[Dim(IE::GROUP_TRANSPOSED_CONV_GROUPS_DIM_INDEX)] = 1;
@@ -152,8 +154,8 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
         auto transposedConvOp = rewriter.create<IE::TransposedConvolutionOp>(
                 newTransposedConvLoc, inputSlice, weightsSlice, origOp.getOutputShape(), /*bias*/ nullptr,
                 origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-                origOp.getOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+                origOp.getSpatialOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
+                origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
         slices.push_back(transposedConvOp);
     }
@@ -195,7 +197,7 @@ Const::DeclareOp DepthwiseGroupTransposedConvConverter::findWeightsConstant(mlir
 
 mlir::Value DepthwiseGroupTransposedConvConverter::createNewWeightsConst(mlir::PatternRewriter& rewriter,
                                                                          Const::DeclareOp weightsOp) const {
-    const auto weightsType = weightsOp.getType().cast<NDTypeInterface>();
+    const auto weightsType = mlir::cast<vpux::NDTypeInterface>(weightsOp.getType());
     const auto weightsShape = weightsType.getShape().raw();
     const int64_t newIC = weightsShape[IE::GROUP_TRANSPOSED_CONV_GROUPS_DIM_INDEX];
     const int64_t newOC = weightsShape[IE::GROUP_TRANSPOSED_CONV_GROUPS_DIM_INDEX];
@@ -238,8 +240,8 @@ mlir::LogicalResult DepthwiseGroupTransposedConvConverter::matchAndRewrite(IE::G
 
     const auto input = origOp.getInput();
     const auto weights = origOp.getFilter();
-    const auto inputShape = input.getType().cast<vpux::NDTypeInterface>().getShape();
-    const auto weightsShape = weights.getType().cast<vpux::NDTypeInterface>().getShape();
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
+    const auto weightsShape = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getShape();
     if (inputShape.size() != 4 || weightsShape.size() != 5) {
         return matchFailed(rewriter, origOp,
                            "Only 4D inputs and 5D weights are supported, got {0}D inputs and {1}D weights",
@@ -265,7 +267,7 @@ mlir::LogicalResult DepthwiseGroupTransposedConvConverter::matchAndRewrite(IE::G
         auto outputLow = fqOp.getOutputLow();
         auto outputHigh = fqOp.getOutputHigh();
 
-        const auto fqParamShape = inputLow.getType().cast<NDTypeInterface>().getShape().raw();
+        const auto fqParamShape = mlir::cast<vpux::NDTypeInterface>(inputLow.getType()).getShape().raw();
         const Shape newFQParamShapeSqueezed = Shape({fqParamShape[IE::GROUP_TRANSPOSED_CONV_GROUPS_DIM_INDEX],
                                                      fqParamShape[IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX],
                                                      fqParamShape[IE::GROUP_TRANSPOSED_CONV_KY_DIM_INDEX],
@@ -288,8 +290,8 @@ mlir::LogicalResult DepthwiseGroupTransposedConvConverter::matchAndRewrite(IE::G
     rewriter.replaceOpWithNewOp<IE::TransposedConvolutionOp>(
             origOp, input, newWeights, origOp.getOutputShape(), nullptr, origOp.getStridesAttr(),
             origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-            origOp.getOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getOutputChannelsAttr(), origOp.getInputChannelsAttr());
+            origOp.getSpatialOutputPaddingAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }

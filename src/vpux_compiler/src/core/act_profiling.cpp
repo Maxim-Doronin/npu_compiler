@@ -325,7 +325,7 @@ mlir::Value NCETiledActShaveProfiler::copyToDdr(ProfilingResults profilingResult
 
         totalNumElements += profRes.second;
 
-        if (profResult.getType().isa<mlir::MemRefType>()) {
+        if (mlir::isa<mlir::MemRefType>(profResult.getType())) {
             // Result is a plain memref, need to cast back to DistributedBuffer
             auto distType = getDistributedBufferType(profRes.second * _profilingElementSize);
             auto viewLoc = appendLoc(profResult.getLoc(), "_view_cast_to_distributed");

@@ -1,6 +1,6 @@
 #loc = loc(unknown)
 module @dumpsubgraph {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_214" : tensor<1x768xf32> loc(#loc)
   } outputsInfo : {
     DataInfo "inner_h2" : tensor<1x768xf32> loc(#loc)

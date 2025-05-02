@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -24,8 +24,8 @@ mlir::LogicalResult vpux::VPU::AccumulateOp::inferReturnTypes(mlir::MLIRContext*
         return mlir::failure();
     }
 
-    const auto in1Type = accumulate.getLhs().getType().cast<vpux::NDTypeInterface>();
-    const auto in2Type = accumulate.getRhs().getType().cast<vpux::NDTypeInterface>();
+    const auto in1Type = mlir::cast<vpux::NDTypeInterface>(accumulate.getLhs().getType());
+    const auto in2Type = mlir::cast<vpux::NDTypeInterface>(accumulate.getRhs().getType());
     VPUX_THROW_UNLESS(in1Type == in2Type, "Types of operands of VPU.Accumulate don't match: {0} vs {1}", in1Type,
                       in2Type);
     const auto outType = in1Type;

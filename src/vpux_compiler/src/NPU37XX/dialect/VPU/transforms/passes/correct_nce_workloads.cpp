@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -40,7 +40,7 @@ SmallVector<Shape> vpux::VPU::WorkloadSplitter37XX::getPerClusterOffsetsCorrecti
 bool vpux::VPU::WorkloadSplitter37XX::isNCEPermuteOffsetsCorrectionNeeded(VPU::NCEOpInterface nceOp) {
     auto outputType = nceOp->getResult(0).getType();
 
-    return outputType.isa<VPU::DistributedTensorType>();
+    return mlir::isa<vpux::VPU::DistributedTensorType>(outputType);
 }
 
 namespace {

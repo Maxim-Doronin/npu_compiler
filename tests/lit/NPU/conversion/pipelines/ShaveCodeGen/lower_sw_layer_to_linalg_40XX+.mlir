@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU40XX
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 module @SingleCosLayer {
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
   } outputsInfo : {
     DataInfo "cos" : tensor<1x1x1x1000xf16>
@@ -29,6 +29,66 @@ module @SingleCosLayer {
 // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16)
 // CHECK: [[COS_RES:%.+]] = math.cos [[IN]] : f16
 // CHECK: linalg.yield [[COS_RES]] : f16
-// CHEKC: } -> tensor<1x1x1x1000xf16>
+// CHECK: } -> tensor<1x1x1x1000xf16>
+
+// CHECK: return [[LINALG_GENERIC]] : tensor<1x1x1x1000xf16>
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+module @SingleLogLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "log" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %log_res = IE.Log(%arg0) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    return %log_res : tensor<1x1x1x1000xf16>
+  }
+}
+
+// CHECK: func.func @main([[ARG0:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+// CHECK: [[LINALG_GENERIC:%.+]] = linalg.generic
+// CHECK-SAME: indexing_maps = [#NCHW, #NCHW]
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
+// CHECK-SAME: ins([[ARG0]] : tensor<1x1x1x1000xf16>)
+// CHECK-SAME: outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+
+// CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16)
+// CHECK: [[LOG_RES:%.+]] = math.log [[IN]] fastmath<afn> : f16
+// CHECK: linalg.yield [[LOG_RES]] : f16
+// CHECK: } -> tensor<1x1x1x1000xf16>
+
+// CHECK: return [[LINALG_GENERIC]] : tensor<1x1x1x1000xf16>
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+module @SingleExpLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "exp" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %exp_res = IE.Exp(%arg0) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    return %exp_res : tensor<1x1x1x1000xf16>
+  }
+}
+
+// CHECK: func.func @main([[ARG0:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+// CHECK: [[LINALG_GENERIC:%.+]] = linalg.generic
+// CHECK-SAME: indexing_maps = [#NCHW, #NCHW]
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
+// CHECK-SAME: ins([[ARG0]] : tensor<1x1x1x1000xf16>)
+// CHECK-SAME: outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+
+// CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16)
+// CHECK: [[EXP_RES:%.+]] = math.exp [[IN]] fastmath<afn> : f16
+// CHECK: linalg.yield [[EXP_RES]] : f16
+// CHECK: } -> tensor<1x1x1x1000xf16>
 
 // CHECK: return [[LINALG_GENERIC]] : tensor<1x1x1x1000xf16>

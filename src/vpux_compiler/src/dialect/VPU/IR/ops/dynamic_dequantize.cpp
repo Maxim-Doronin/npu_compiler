@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,8 +11,8 @@
 using namespace vpux;
 
 mlir::LogicalResult vpux::VPU::DynamicDequantizeOp::verify() {
-    const auto inputShape = to_small_vector(getInput().getType().cast<mlir::ShapedType>().getShape());
-    const auto scaleShape = to_small_vector(getScale().getType().cast<mlir::ShapedType>().getShape());
+    const auto inputShape = to_small_vector(mlir::cast<mlir::ShapedType>(getInput().getType()).getShape());
+    const auto scaleShape = to_small_vector(mlir::cast<mlir::ShapedType>(getScale().getType()).getShape());
     if (inputShape.size() != scaleShape.size()) {
         return errorAt(*this, "Scale doesn't have same rank as input tensor.");
     }
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::VPU::DynamicDequantizeOp::verify() {
     }
     auto zp = getZp();
     if (zp != nullptr) {
-        const auto zpShape = to_small_vector(zp.getType().cast<mlir::ShapedType>().getShape());
+        const auto zpShape = to_small_vector(mlir::cast<mlir::ShapedType>(zp.getType()).getShape());
         if (inputShape.size() != zpShape.size()) {
             return errorAt(*this, "ZeroPoint doesn't have same rank as input tensor.");
         }
@@ -48,7 +48,7 @@ mlir::LogicalResult vpux::VPU::DynamicDequantizeOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    const auto inType = dynamicDequantize.getInput().getType().cast<vpux::NDTypeInterface>();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(dynamicDequantize.getInput().getType());
     const auto dstElemType = dynamicDequantize.getDstElemType();
 
     const auto outType = inType.changeElemType(dstElemType);

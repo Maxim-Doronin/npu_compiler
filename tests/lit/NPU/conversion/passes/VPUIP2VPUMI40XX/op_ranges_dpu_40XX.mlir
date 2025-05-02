@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @SingleDPUTile0 {
 
-IE.CNNNetwork entryPoint : @main inputsInfo : {
+net.NetworkInfo entryPoint : @main inputsInfo : {
   DataInfo "input_0" : tensor<1x2x3x4xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -49,7 +49,7 @@ func.func private @main() {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @SingleDPUTile0 {
 
-IE.CNNNetwork entryPoint : @main inputsInfo : {
+net.NetworkInfo entryPoint : @main inputsInfo : {
   DataInfo "input_0" : tensor<1x2x3x4xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -101,7 +101,7 @@ func.func private @main() {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @SingleDPUTile2 {
 
-IE.CNNNetwork entryPoint : @main inputsInfo : {
+net.NetworkInfo entryPoint : @main inputsInfo : {
   DataInfo "input_0" : tensor<1x2x3x4xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x2x3x4xf16>
@@ -141,7 +141,7 @@ func.func private @main() {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @SingleDPUTile2 {
 
-IE.CNNNetwork entryPoint : @main inputsInfo : {
+net.NetworkInfo entryPoint : @main inputsInfo : {
   DataInfo "input_0" : tensor<1x2x3x4xf16>
 } outputsInfo : {
   DataInfo "output_0" : tensor<1x2x3x4xf16>

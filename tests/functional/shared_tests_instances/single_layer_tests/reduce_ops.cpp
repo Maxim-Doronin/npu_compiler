@@ -4,14 +4,8 @@
 //
 
 #include "single_op_tests/reduce_ops.hpp"
-
-#include <vector>
-
-#include <common/functions.h>
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include "common_test_utils/node_builders/reduce.hpp"
-#include "common_test_utils/test_constants.hpp"
-#include "intel_npu/npu_private_properties.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -140,11 +134,6 @@ const std::vector<bool> keepDims = {
         false,
 };
 
-const std::vector<std::vector<size_t>> inputShapes = {
-        std::vector<size_t>{10, 20, 30, 40},
-        std::vector<size_t>{3, 5, 7, 9},
-};
-
 const std::vector<std::vector<int>> axes = {{1}, {2}, {1, 3}, {2, 3}, {1, -1}};
 
 const std::vector<ReductionType> reduceOperations = {
@@ -212,9 +201,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Reduce, ReduceLayerTest_HW_FP16, params
 //
 // FP16 SW
 
-// Passing on master branch. Please reenable when backmerge
-INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_Reduce, ReduceLayerTest_SW_FP16, paramsSWFP16,
-                         ReduceLayerTest_SW_FP16::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Reduce, ReduceLayerTest_SW_FP16, paramsSWFP16, ReduceLayerTest_SW_FP16::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_Reduce_tiling, ReduceLayerTest_SW_FP16, paramsTiling,
                          ReduceLayerTest_SW_FP16::getTestCaseName);

@@ -524,7 +524,7 @@ func.func @TransposedConvWithMemPermuteNWHC(%arg0: tensor<1x16x32x64xf16, {order
     %0 = IE.TransposedConvolution(%arg0, %cst) {
         dilations = [1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [1, 1],
+        spatial_output_padding = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
         strides = [2, 2]
@@ -543,9 +543,9 @@ func.func @TransposedConvWithMemPermuteNWHC(%arg0: tensor<1x16x32x64xf16, {order
     // CHECK:   [[TransposedConv:%.*]] = IE.TransposedConvolution(%arg0, [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:      output_padding = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      spatial_output_padding = [1, 1],
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x16x32x64xf16, {order = #NHWC}>, tensor<16x16x2x2xf16, {order = #NHWC}>
     // CHECK-SAME:      -> tensor<1x16x65x129xf16, {order = #NCWH}>
@@ -572,7 +572,7 @@ func.func @TransposedConvWithMemPermuteNWCH(%arg0: tensor<1x16x32x64xf16, {order
     %0 = IE.TransposedConvolution(%arg0, %cst) {
         dilations = [1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [1, 1],
+        spatial_output_padding = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
         strides = [2, 2]
@@ -591,9 +591,9 @@ func.func @TransposedConvWithMemPermuteNWCH(%arg0: tensor<1x16x32x64xf16, {order
     // CHECK:   [[TransposedConv:%.*]] = IE.TransposedConvolution(%arg0, [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:      output_padding = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      spatial_output_padding = [1, 1],
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x16x32x64xf16, {order = #NHWC}>, tensor<16x16x2x2xf16, {order = #NHWC}>
     // CHECK-SAME:      -> tensor<1x16x65x129xf16>
@@ -615,7 +615,7 @@ func.func @TransposedConvWithMemPermuteNHCW(%arg0: tensor<1x16x32x64xf16, {order
     %0 = IE.TransposedConvolution(%arg0, %cst) {
         dilations = [1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [1, 1],
+        spatial_output_padding = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
         strides = [2, 2]
@@ -634,9 +634,9 @@ func.func @TransposedConvWithMemPermuteNHCW(%arg0: tensor<1x16x32x64xf16, {order
     // CHECK:   [[TransposedConv:%.*]] = IE.TransposedConvolution(%arg0, [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:      output_padding = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      spatial_output_padding = [1, 1],
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x16x32x64xf16, {order = #NHWC}>, tensor<16x16x2x2xf16, {order = #NHWC}>
     // CHECK-SAME:      -> tensor<1x16x65x129xf16, {order = #NWHC}>
@@ -662,7 +662,7 @@ func.func @TransposedConvWithMemPermuteNHWC(%arg0: tensor<1x16x32x64xf16, {order
     %0 = IE.TransposedConvolution(%arg0, %cst) {
         dilations = [1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [1, 1],
+        spatial_output_padding = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
         strides = [2, 2]
@@ -681,9 +681,9 @@ func.func @TransposedConvWithMemPermuteNHWC(%arg0: tensor<1x16x32x64xf16, {order
     // CHECK:   [[TransposedConv:%.*]] = IE.TransposedConvolution(%arg0, [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:      output_padding = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      spatial_output_padding = [1, 1],
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x16x32x64xf16, {order = #NHWC}>, tensor<16x16x2x2xf16, {order = #NHWC}>
     // CHECK-SAME:      -> tensor<1x16x65x129xf16, {order = #NWCH}>
@@ -710,7 +710,7 @@ func.func @TransposedConvWithMemPermuteNCWH(%arg0: tensor<1x16x32x64xf16, {order
     %0 = IE.TransposedConvolution(%arg0, %cst) {
         dilations = [1, 1],
         operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-        output_padding = [1, 1],
+        spatial_output_padding = [1, 1],
         pads_begin = [0, 0],
         pads_end = [0, 0],
         strides = [2, 2]
@@ -729,9 +729,9 @@ func.func @TransposedConvWithMemPermuteNCWH(%arg0: tensor<1x16x32x64xf16, {order
     // CHECK:   [[TransposedConv:%.*]] = IE.TransposedConvolution(%arg0, [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-    // CHECK-SAME:      output_padding = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      spatial_output_padding = [1, 1],
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x16x32x64xf16, {order = #NHWC}>, tensor<16x16x2x2xf16, {order = #NHWC}>
     // CHECK-SAME:      -> tensor<1x16x65x129xf16, {order = #NHCW}>

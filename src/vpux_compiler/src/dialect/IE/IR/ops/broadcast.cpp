@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 
 using namespace vpux;
 
@@ -45,8 +46,8 @@ mlir::LogicalResult vpux::IE::BroadcastOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    auto inShape = to_small_vector(broadcast.getInput().getType().cast<mlir::ShapedType>().getShape());
-    const auto inType = broadcast.getInput().getType().cast<mlir::ShapedType>().getElementType();
+    auto inShape = to_small_vector(mlir::cast<mlir::ShapedType>(broadcast.getInput().getType()).getShape());
+    const auto inType = mlir::cast<mlir::ShapedType>(broadcast.getInput().getType()).getElementType();
     const auto broadcastMode = broadcast.getMode().has_value() ? broadcast.getMode().value() : IE::BroadcastType::NUMPY;
 
     auto outShape = IE::constInputToData(loc, broadcast.getTargetShape()).value();

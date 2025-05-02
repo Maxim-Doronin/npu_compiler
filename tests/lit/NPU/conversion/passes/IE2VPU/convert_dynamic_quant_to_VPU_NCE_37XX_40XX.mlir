@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -26,7 +26,7 @@ func.func @ConvToNCEWeightsAsInputs(%input: tensor<1x16x16x16xf16, {order = #NHW
             pads_begin = [0, 0],
             pads_end = [0, 0],
             strides = [1, 1],
-            post_op = #IE.PostOp<name = "IE.LeakyRelu", attrs = {negative_slope = 0.1}>
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
         } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>
             -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -46,7 +46,8 @@ func.func @ConvToNCEWeightsAsInputs(%input: tensor<1x16x16x16xf16, {order = #NHW
     // CHECK-SAME:      ppe = #VPU.PPEInt<mode = <LPRELU>,
     // CHECK-SAME:        clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
     // CHECK-SAME:        lrelu_mult = 1638 : i64, lrelu_shift = 14 : i64, fp_prelu_alpha = 0.10000000149011612 : f64>,
-    // CHECK-SAME:      rawFilterShape = [16, 16, 1, 1], strides = [1, 1]} -> tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-SAME:      rawFilterShape = [16, 16, 1, 1], strides = [1, 1]}
+    // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
     // CHECK:   return [[CONV]] : tensor<1x16x16x16xf16, {order = #NHWC}>
 }

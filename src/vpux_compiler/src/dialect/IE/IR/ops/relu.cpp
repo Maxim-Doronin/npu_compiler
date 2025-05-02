@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 // include arith utils for getValueOrCreateConstantIndexOp declaration
 #include <mlir/Dialect/Arith/Utils/Utils.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 
 using namespace vpux;
 

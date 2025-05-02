@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -10,14 +10,14 @@ module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 6 of @NCE at 6.000000e+02 MHz
-  IE.CNNNetwork entryPoint : @main inputsInfo : {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input_0" : tensor<1x2x3x4xf16>
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
     ELF.Main @ELFMain {
-      ELF.CreateSection @program.nnrt_config aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") {
+      ELF.CreateSection @program.nnrt_config aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
         VPUASM.nnrtConfig {actShaveRt = @shave.runtime::@ActShaveRt, elfMemOffsetAttrKey = 0 : ui64, isActKernelInvocations} @MappedInference_nnrtConfigManaged : dmaHwpBase(@buffer.CMX_NN.0::@DeclareBuffer6)
       }
     }

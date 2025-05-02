@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024 Intel Corporation.
+// Copyright (C) 2024-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,8 +14,7 @@ namespace IE {
 namespace arch37xx {
 
 bool isMixPrecisionSupported(mlir::Operation* origOp, bool isPReLUSupported, Logger log);
-bool checkPostOp(IE::LayerWithPostOpInterface layerWithPostOp, bool isPerAxisQuantizedOutput, bool isFloatInput,
-                 mlir::Location loc);
+bool checkPostOp(IE::LayerWithPostOpInterface layerWithPostOp, bool isPerAxisQuantizedOutput, bool isFloatInput);
 
 }  // namespace arch37xx
 }  // namespace IE

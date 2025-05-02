@@ -49,26 +49,6 @@ void updateBarriersForDma(const SmallVector<mlir::Value>& consumes, const SmallV
 // In this context supportedDMA is a DMA which has channel DDR and port 0
 bool isDMAOnSupportedPortAndChannel(VPURT::TaskOp dmaTaskOp);
 
-/*
-Function returns the sibling task on the last tile by default
-When a value of tile is provided it returns the sibling task on queried tile.
-If the task is not running on the asked tile e.g. SHV running on single cluster then it returns SIZE_MAX
-
-In following case when passed the index of Task 0 it will return Task 3
-    Task 0 (CMX, 0) .. Task 1 (CMX, 1) .. Task 2 (CMX, 2) .. Task 3 (CMX, 3)
-
-The function assumes the tasks are ordered in certain way, assuming max tiles to be 4
-task0_0 -> task0_1 -> task0_2 -> task0_3 -> task1_0
-above is valid order, task0 runs on all 4 tiles before we see a new task on tile 0
-
-task0_0 -> task0_1 -> task0_2 -> task1_0
-above is invalid order, task0 only runs on 3 of available 4 tiles before we see new task on tile 0
-
-task0_0 -> task1_0 -> task2_0 -> task3_0
-above is valid as all task only run on 1 tile
-*/
-size_t getSiblingTaskOpOnTile(size_t inputTaskOpIdx, BarrierInfo& barrierInfo, size_t maxTiles, size_t tile = SIZE_MAX);
-
 // Function to find min or max position in a vector of TaskOps
 VPURT::TaskOp findMinMaxPosition(const SmallVector<size_t>& dmas, BarrierInfo& barrierInfo, MinMaxOption option);
 

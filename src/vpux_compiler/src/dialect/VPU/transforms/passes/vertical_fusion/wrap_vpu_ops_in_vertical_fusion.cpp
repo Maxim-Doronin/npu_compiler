@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -28,10 +28,10 @@ void wrapIntoVFRegion(VPU::VerticalFusionOpInterface op, Logger log) {
         return;
     }
 
-    const auto inputType = op->getOperand(0).getType().cast<vpux::NDTypeInterface>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
     const SmallVector<int64_t> one(inputType.getRank(), 1);
 
-    auto tilingStrategyArray = op->hasAttr(tilingStrategy) ? op->getAttr(tilingStrategy).cast<mlir::ArrayAttr>()
+    auto tilingStrategyArray = op->hasAttr(tilingStrategy) ? mlir::cast<mlir::ArrayAttr>(op->getAttr(tilingStrategy))
                                                            : getIntArrayAttr(op->getContext(), one);
 
     const auto bodyBuilder = [op](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange newOperands) {
@@ -84,7 +84,7 @@ void WrapVerticalFusionRegionPass::safeRunOnFunc() {
 
         if (op->hasAttr(tilingStrategy)) {
             const auto tilingShape =
-                    Shape(parseIntArrayAttr<int64_t>(op->getAttr(tilingStrategy).cast<mlir::ArrayAttr>()));
+                    Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(op->getAttr(tilingStrategy))));
             auto tilingDimCount = getNonOneDim(tilingShape).size();
             if (tilingDimCount > 1) {
                 _log.trace("Skip for operation '{0}' at '{1}' because VF doesn't support multi-dim tiling",
