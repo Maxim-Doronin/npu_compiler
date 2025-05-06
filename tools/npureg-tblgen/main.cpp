@@ -24,8 +24,8 @@
 #include <vpux/compiler/dialect/VPU/enums.cpp.inc>
 // clang-format on
 
-#include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/error.hpp"
+#include "vpux/utils/core/format.hpp"
 
 enum ActionType { Generate };
 
@@ -348,14 +348,19 @@ llvm::Error generate(llvm::raw_ostream& stream, llvm::RecordKeeper& records, con
 
 bool RegGenMain(llvm::raw_ostream& stream, llvm::RecordKeeper& records) {
     auto doGenerate = [](auto& stream, auto& records, auto& platformTypeName) {
-        if (auto error = generate(stream, records, platformTypeName)) {
-            handleAllErrors(std::move(error), [](const llvm::ErrorInfoBase& error) {
-                error.log(llvm::WithColor::error());
-                llvm::errs() << '\n';
-            });
-            return true;
+        try {
+            if (auto error = generate(stream, records, platformTypeName)) {
+                handleAllErrors(std::move(error), [](const llvm::ErrorInfoBase& error) {
+                    error.log(llvm::WithColor::error());
+                    llvm::errs() << '\n';
+                });
+                return true;
+            }
+            return false;
+        } catch (const vpux::Exception& e) {
+            llvm::errs() << "vpux::Exception caught: " << e.what() << "\n";
+            return false;
         }
-        return false;
     };
 
     const auto platformTypeName = platformTypeMap[vpux::VPU::stringifyArchKind(Platform).str()];
