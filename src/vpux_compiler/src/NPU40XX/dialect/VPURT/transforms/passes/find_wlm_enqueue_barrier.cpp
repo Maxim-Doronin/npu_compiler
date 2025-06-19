@@ -28,7 +28,11 @@ public:
     }
 
 private:
+#if defined(__clang__)
+    [[maybe_unused]] WorkloadManagementMode _workloadManagementMode;
+#else
     WorkloadManagementMode _workloadManagementMode;
+#endif
     bool _disableDmaSwFifo;
     void safeRunOnFunc() final;
 };
@@ -57,9 +61,7 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
 
     VPURT::EnqueueBarrierHandler enqueueBarrier(func, barrierInfo, _disableDmaSwFifo, _log);
 
-    const auto enqDmaAtBootstrap = enqDmaAtBootstrapOpt.hasValue()
-                                           ? enqDmaAtBootstrapOpt.getValue()
-                                           : false;
+    const auto enqDmaAtBootstrap = enqDmaAtBootstrapOpt.hasValue() ? enqDmaAtBootstrapOpt.getValue() : false;
 
     mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap;
     if (enqDmaAtBootstrap) {
