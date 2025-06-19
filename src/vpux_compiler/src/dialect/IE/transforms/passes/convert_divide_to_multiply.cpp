@@ -131,9 +131,9 @@ mlir::FailureOr<mlir::Value> replaceWithNewFakeQuantizeOp(mlir::PatternRewriter&
                        newOutHighVal);
 }
 
-class DivideRewriter final : public mlir::OpRewritePattern<Const::DeclareOp> {
+class ConstDivisorRewriter final : public mlir::OpRewritePattern<Const::DeclareOp> {
 public:
-    DivideRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<Const::DeclareOp>(ctx), _log(log) {
+    ConstDivisorRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<Const::DeclareOp>(ctx), _log(log) {
     }
 
 public:
@@ -161,7 +161,8 @@ private:
 // Every IE.Divide op that operates on floating point types is replaced by a IE.Multiply op.
 // The constant input divisor is replaced by its reciprocal.
 //
-mlir::LogicalResult DivideRewriter::matchAndRewrite(Const::DeclareOp origOp, mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult ConstDivisorRewriter::matchAndRewrite(Const::DeclareOp origOp,
+                                                          mlir::PatternRewriter& rewriter) const {
     _log.trace("Got Const.Declare op at '{0}'", origOp->getLoc());
     // Checks if Const.DeclareOp has at least one IE.Divide user
     auto noneOfUsersAreDivide = llvm::none_of(origOp->getUsers(), [&](auto user) {
@@ -180,7 +181,7 @@ mlir::LogicalResult DivideRewriter::matchAndRewrite(Const::DeclareOp origOp, mli
         return isDivideUser(origOp, opOperand.getOwner());
     });
 
-    for (auto userOp : newCstOp->getUsers()) {
+    for (auto userOp : llvm::make_early_inc_range(newCstOp->getUsers())) {
         // Casting is safe because newCstOp has only IE.Divide users
         auto divideOp = mlir::cast<IE::DivideOp>(userOp);
         rewriter.setInsertionPoint(divideOp);
@@ -188,6 +189,99 @@ mlir::LogicalResult DivideRewriter::matchAndRewrite(Const::DeclareOp origOp, mli
                                                     divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr,
                                                     nullptr);
     }
+    return mlir::success();
+}
+
+// Convert:
+// Input1(1x1024x1024)   Input2(1x1x1)
+//             \            /
+//           IE.Divide(1x1024x1024)
+
+// To:
+
+//                  Const(1x1x1)     Input2(1x1x1)
+//                           \           /
+// Input1(1x1024x1024)      IE.Divide(1x1x1)
+//              \               /
+//           IE.Multiply(1x1024x1024)
+class NonConstDivisorRewriter final : public mlir::OpRewritePattern<IE::DivideOp> {
+public:
+    NonConstDivisorRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::DivideOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::DivideOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult NonConstDivisorRewriter::matchAndRewrite(IE::DivideOp origOp,
+                                                             mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got Divide op at '{0}'", origOp->getLoc());
+
+    // Const divisor is handled in other rewriter
+    if (mlir::isa_and_nonnull<Const::DeclareOp>(origOp.getInput2().getDefiningOp())) {
+        return mlir::failure();
+    }
+
+    // InverseOp only support float type
+    const auto divisorElemType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput2().getType()).getElementType();
+    if (!mlir::isa<mlir::FloatType>(divisorElemType)) {
+        return mlir::failure();
+    }
+
+    // Experimental threshold data
+    constexpr int64_t SIZE_RATIO_THRESHOLD = 1024;
+    auto divisorShape = getShape(origOp.getInput2());
+    auto outputShape = getShape(origOp.getOutput());
+    // The transformation will create a new Divide(1, divisor)
+    // It's beneficial when the new Divide will be much smaller than the original Divide
+    if (outputShape.totalSize() / divisorShape.totalSize() < SIZE_RATIO_THRESHOLD) {
+        return mlir::failure();
+    }
+
+    constexpr int64_t THRESHOLD_FOR_BENEFICIAL_CONVERSION = 4096;
+    if (outputShape.totalSize() < THRESHOLD_FOR_BENEFICIAL_CONVERSION) {
+        return mlir::failure();
+    }
+
+    // The Divide SW kernel is optimized for specific scenarios:
+    // 1. When the second input (divisor) is a scalar.
+    // 2. When both inputs have identical shapes.
+    // Empirical evidence suggests that converting operations is advantageous when the divisor is a scalar.
+    // Current implementation does not perform conversion when both inputs share the same shape,
+    // as this scenario is already optimized by the kernel.
+    if (divisorShape == outputShape) {
+        return mlir::failure();
+    }
+
+    auto elemType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput2().getType()).getElementType();
+    if (!elemType.isF16() && !elemType.isF32()) {
+        _log.trace("Unsupported data type");
+        return mlir::failure();
+    }
+
+    auto ctx = rewriter.getContext();
+    auto constLoc = appendLoc(origOp->getLoc(), "_inverse");
+    mlir::Value constOp;
+    if (elemType.isF16()) {
+        const auto baseType = mlir::RankedTensorType::get({1}, mlir::Float16Type::get(ctx));
+        constOp = Const::createConst(rewriter, constLoc, baseType, ArrayRef(vpux::type::float16(1.f)));
+    }
+    if (elemType.isF32()) {
+        const auto baseType = mlir::RankedTensorType::get({1}, mlir::Float32Type::get(ctx));
+        constOp = Const::createConst(rewriter, constLoc, baseType, ArrayRef(1.f));
+    }
+    auto divideOp = rewriter.create<IE::DivideOp>(appendLoc(origOp->getLoc(), "_divide"), constOp, origOp.getInput2(),
+                                                  IE::AutoBroadcastType::NUMPY);
+
+    auto multiplyOp =
+            rewriter.create<IE::MultiplyOp>(takeOpLoc(origOp, "_multiply"), origOp.getInput1(), divideOp.getOutput(),
+                                            origOp.getAutoBroadcast(), nullptr, nullptr, nullptr, nullptr);
+    rewriter.replaceOp(origOp, multiplyOp.getOutput());
+    _log.trace("Successfully replaced divide with multiply");
+
     return mlir::success();
 }
 
@@ -254,7 +348,7 @@ mlir::LogicalResult FakeQuantizeDivideRewriter::matchAndRewrite(IE::FakeQuantize
     }
 
     const auto newFqOp = maybeNewFq.value();
-    for (auto userOp : newFqOp.getDefiningOp()->getUsers()) {
+    for (auto userOp : llvm::make_early_inc_range(newFqOp.getDefiningOp()->getUsers())) {
         // Casting is safe because newFqOp has only IE.Divide users (see replaceWithNewFakeQuantizeOp)
         auto divideOp = mlir::cast<IE::DivideOp>(userOp);
         // Insertion point was changed in replaceWithNewFakeQuantizeOp, we have to reset it manually here
@@ -275,8 +369,9 @@ void ConvertDivideToMultiplyPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<DivideRewriter>(&ctx, _log);
+    patterns.add<ConstDivisorRewriter>(&ctx, _log);
     patterns.add<FakeQuantizeDivideRewriter>(&ctx, _log);
+    patterns.add<NonConstDivisorRewriter>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

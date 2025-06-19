@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -17,7 +17,7 @@ func.func @MaxpoolIncrementalPipelineCheck(%arg0: tensor<1x16x1x4xf16, {order = 
 
     //CHECK: [[OP0:%.+]] =  VPU.Copy([[ARG0]]) {out_mem_space = @CMX_NN} : tensor<1x16x1x4xf16, {order = #NHWC}>
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x16x1x4xf16, #NHWC, @CMX_NN,
-    //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 6 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
+    //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
     //CHECK-SAME{LITERAL}:   compute_shapes = [[1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4]]
     //CHECK-SAME{LITERAL}:   compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
     //CHECK-SAME{LITERAL}:   memory_shapes = [[1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4]]
@@ -25,14 +25,14 @@ func.func @MaxpoolIncrementalPipelineCheck(%arg0: tensor<1x16x1x4xf16, {order = 
 
     //CHECK: [[OP1:%.+]] = VPU.NCE.MaxPool([[OP0]]) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]}
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x16x1x4xf16, #NHWC, @CMX_NN,
-    //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 6 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments
+    //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments
     //CHECK-SAME{LITERAL}:   compute_shapes = [[1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4]]
     //CHECK-SAME{LITERAL}:   compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
     //CHECK-SAME{LITERAL}:   memory_shapes = [[1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4]]
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
 
     //CHECK: [[OP4:%.+]] = VPU.Copy([[OP1]]) : !VPU.DistributedTensor<1x16x1x4xf16, #NHWC, @CMX_NN,
-    //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 6 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
+    //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
     //CHECK-SAME{LITERAL}:  compute_shapes = [[1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4]],
     //CHECK-SAME{LITERAL}:  compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     //CHECK-SAME{LITERAL}:  memory_shapes = [[1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4], [1, 16, 1, 4]],
@@ -458,19 +458,20 @@ func.func @ReduceSumSOH(%arg0: tensor<1x16x32x64xf32>) -> tensor<1x1x32x1xf32> {
 
 // -----
 
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 // CHECK-LABEL: func.func @LSTMSequenceBidirectionalSplitOverKernel(
 // CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x2x80x512xf16>) -> (tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>) {
 func.func @LSTMSequenceBidirectionalSplitOverKernel(%arg0: tensor<1x2x80x512xf16>) -> (tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>) {
     %cst_0 = const.Declare tensor<1x2x1x128xf16> = dense<1.000000e+00> : tensor<1x2x1x128xf16>
     %cst_2 = const.Declare tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}> = dense<3.000000e+00> : tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>
+    %cst_5 = const.Declare tensor<1x2x4x128xf16, {order = #NCWH}> = dense<1.000000e+00> : tensor<1x2x4x128xf16, {order = #NCWH}>
     %cst = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
-
-    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} : tensor<1x2x80x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x1x1x2xsi32> -> tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
-
+    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst_5, %cst) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} : tensor<1x2x80x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
 
 // CHECK-DAG:   [[VAL_1:%.+]] = const.Declare tensor<1x2x1x128xf16> = dense<1.000000e+00> : tensor<1x2x1x128xf16>
 // CHECK-DAG:   [[VAL_2:%.+]] = const.Declare tensor<2x4x128x128xf16, {order = #NWHC}> = dense<3.000000e+00> : tensor<2x4x128x128xf16, {order = #NWHC}>
+// CHECK-DAG:   [[VAL_33:%.+]] = const.Declare tensor<1x2x4x128xf16, {order = #NCWH}> = dense<1.000000e+00> : tensor<1x2x4x128xf16, {order = #NCWH}>
 // CHECK-DAG:   [[VAL_3:%.+]] = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
 
 // CHECK:        [[VAL_4:%.+]] = VPU.Copy([[VAL_0]]) {out_mem_space = @CMX_NN} : tensor<1x2x80x512xf16>
@@ -505,6 +506,14 @@ func.func @LSTMSequenceBidirectionalSplitOverKernel(%arg0: tensor<1x2x80x512xf16
 // CHECK-SAME{LITERAL}: memory_shapes = [[1, 4, 128, 128], [1, 4, 128, 128]],
 // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]}>
 
+// CHECK:         [[VAL_88:%.+]] = VPU.Copy([[VAL_33]]) {out_mem_space = @CMX_NN} : tensor<1x2x4x128xf16, {order = #NCWH}>
+// CHECK-SAME:  -> !VPU.DistributedTensor<1x2x4x128xf16, #NCWH, @CMX_NN,
+// CHECK-SAME:  {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 4, 128], [1, 1, 4, 128]],
+// CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+// CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 4, 128], [1, 1, 4, 128]],
+// CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+
 // CHECK:         [[VAL_8:%.+]] = VPU.Copy([[VAL_3]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x2xsi32>
 // CHECK-SAME:  -> !VPU.DistributedTensor<1x1x1x2xsi32, #NCHW, @CMX_NN,
 // CHECK-SAME:  {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments,
@@ -513,7 +522,7 @@ func.func @LSTMSequenceBidirectionalSplitOverKernel(%arg0: tensor<1x2x80x512xf16
 // CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 1, 2], [1, 1, 1, 2]],
 // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-// CHECK:         [[VAL_9:%.+]], [[VAL_10:%.+]], [[VAL_11:%.+]] = VPU.LSTMSequence([[VAL_4]], [[VAL_5]], [[VAL_6]], [[VAL_7]], [[VAL_8]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} :
+// CHECK:         [[VAL_9:%.+]], [[VAL_10:%.+]], [[VAL_11:%.+]] = VPU.LSTMSequence([[VAL_4]], [[VAL_5]], [[VAL_6]], [[VAL_7]], [[VAL_88]], [[VAL_8]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} :
 
 // CHECK-SAME:    !VPU.DistributedTensor<1x2x80x512xf16, #NCHW, @CMX_NN,
 // CHECK-SAME:  {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
@@ -542,6 +551,13 @@ func.func @LSTMSequenceBidirectionalSplitOverKernel(%arg0: tensor<1x2x80x512xf16
 // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]],
 // CHECK-SAME{LITERAL}: memory_shapes = [[1, 4, 128, 128], [1, 4, 128, 128]],
 // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]}>,
+
+// CHECK-SAME:    !VPU.DistributedTensor<1x2x4x128xf16, #NCWH, @CMX_NN,
+// CHECK-SAME:  {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments,
+// CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 4, 128], [1, 1, 4, 128]],
+// CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
+// CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 4, 128], [1, 1, 4, 128]],
+// CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
 
 // CHECK-SAME:    !VPU.DistributedTensor<1x1x1x2xsi32, #NCHW, @CMX_NN,
 // CHECK-SAME:  {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments,

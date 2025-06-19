@@ -36,12 +36,30 @@ llvm::json::Value convertAttrToJSON(mlir::Attribute attr) {
         return stringifyMultiClusterStrategy(mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(attr).getValue());
     } else if (mlir::isa<mlir::ArrayAttr>(attr)) {
         auto values = Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attr)));
-        VPUX_THROW_UNLESS(values.size() == 4, "Shape has fewer dimensions than expected (4), got '{0}'", values.size());
+        VPUX_THROW_UNLESS(values.size() <= 5 && values.size() >= 1,
+                          "Shape has invalid dimensions than expected ([1-5]), got '{0}'", values.size());
         llvm::json::Object tilingStrategy{};
-        tilingStrategy["N"] = values[Dims4D::Act::N];
-        tilingStrategy["C"] = values[Dims4D::Act::C];
-        tilingStrategy["H"] = values[Dims4D::Act::H];
-        tilingStrategy["W"] = values[Dims4D::Act::W];
+        if (values.size() == 5) {
+            tilingStrategy["G"] = values[DimsGroups5D::Act::G];
+            tilingStrategy["N"] = values[DimsGroups5D::Act::N];
+            tilingStrategy["C"] = values[DimsGroups5D::Act::C];
+            tilingStrategy["H"] = values[DimsGroups5D::Act::H];
+            tilingStrategy["W"] = values[DimsGroups5D::Act::W];
+        } else if (values.size() == 4) {
+            tilingStrategy["N"] = values[Dims4D::Act::N];
+            tilingStrategy["C"] = values[Dims4D::Act::C];
+            tilingStrategy["H"] = values[Dims4D::Act::H];
+            tilingStrategy["W"] = values[Dims4D::Act::W];
+        } else if (values.size() == 3) {
+            tilingStrategy["B"] = values[Dims3D::Output::B];
+            tilingStrategy["H"] = values[Dims3D::Output::H];
+            tilingStrategy["OC"] = values[Dims3D::Output::OC];
+        } else if (values.size() == 2) {
+            tilingStrategy["H"] = values[Dim(0)];
+            tilingStrategy["W"] = values[Dim(1)];
+        } else {
+            tilingStrategy["N"] = values[Dim(0)];
+        }
 
         return tilingStrategy;
     }
@@ -110,7 +128,6 @@ void createStrategyJSONFromOperations(llvm::json::Value& json,
     llvm::json::Object opsToStrategies{};
     for (auto& op : operations) {
         auto opName = vpux::stringifyPrimaryLocation(op.first);
-        auto parentClusterOp = op.second->getParentOfType<VPU::NCEClusterTilingOp>();
         auto parentVFOp = op.second->getParentOfType<VPU::VerticalFusionOp>();
 
         // retrieve related attributes and save in JSON
@@ -121,9 +138,6 @@ void createStrategyJSONFromOperations(llvm::json::Value& json,
             if (op.second->hasAttr(attribute.first)) {
                 // Get value present in IR
                 attributeValue = convertAttrToJSON(op.second->getAttr(attribute.first));
-            } else if (parentClusterOp != nullptr && parentClusterOp->hasAttr(attribute.first)) {
-                // Get value from parentClusterOp
-                attributeValue = convertAttrToJSON(parentClusterOp->getAttr(attribute.first));
             } else {
                 // If opName is found, assign the value read from previous runs
                 attributeValue = getPreviousAttributeValue(json, opName, attribute.first).value_or(attributeValue);
@@ -258,7 +272,6 @@ void updateTilingStrategyInJSONForOperations(llvm::json::Value& json,
                                              llvm::MapVector<mlir::Location, mlir::Operation*>& operations) {
     for (auto& op : operations) {
         auto opName = vpux::stringifyPrimaryLocation(op.first);
-        auto parentClusterOp = op.second->getParentOfType<VPU::NCEClusterTilingOp>();
 
         // If opName is found, retrieve previous attribute from json
         auto prevAttributeValue = getPreviousAttributeValue(json, opName, tilingStrategy);
@@ -270,9 +283,6 @@ void updateTilingStrategyInJSONForOperations(llvm::json::Value& json,
         if (op.second->hasAttr(tilingStrategy)) {
             // Get value present in IR
             currAttributeValue = convertAttrToJSON(op.second->getAttr(tilingStrategy));
-        } else if (parentClusterOp != nullptr && parentClusterOp->hasAttr(tilingStrategy)) {
-            // Get value from parentClusterOp
-            currAttributeValue = convertAttrToJSON(parentClusterOp->getAttr(tilingStrategy));
         }
 
         // Update tiling strategy attribute in json

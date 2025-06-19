@@ -11,7 +11,7 @@ bool isStrEqualSpaceAgnostic(const std::string& lhs, const std::string& rhs) {
         return std::isspace(static_cast<unsigned char>(ch));
     };
     auto seekWhile = [](auto& beginIt, const auto& endIt, auto cond) {
-        while (cond(*beginIt) && beginIt != endIt) {
+        while ((beginIt != endIt) && cond(*beginIt)) {
             ++beginIt;
             continue;
         }

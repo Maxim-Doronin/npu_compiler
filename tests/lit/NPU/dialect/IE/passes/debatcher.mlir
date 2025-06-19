@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --debatcher %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 // CHECK-LABEL: @SingleInputSingleOutputBatched
 func.func @SingleInputSingleOutputBatched(%arg: tensor<3x3x62x62xf32>) -> tensor<3x48x60x60xf32> {
     %cst = const.Declare tensor<48x3x3x3xf32> = dense<1.0> : tensor<48x3x3x3xf32>
@@ -300,4 +301,21 @@ func.func @MultipleInputMultipleOutputMixed(%arg0: tensor<1x3x62x62xf32>, %arg1:
         // CHECK: [[VAL5:%.+]] = IE.SoftMax([[VAL4]]) {axisInd = 1 : i64} : tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
         // CHECK: [[VAL6:%.+]] = builtin.unrealized_conversion_cast [[VAL5]] : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
         // CHECK: return [[VAL6]], [[VAL3]] : tensor<3x48x60x60xf32>, tensor<1x48x60x60xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @DebatchConstantShape
+// CHECK-SAME:     ([[ARG0:%.+]]: tensor<2x2xsi32>)
+func.func @DebatchConstantShape(%arg0: tensor<2x2xsi32>) -> tensor<2xsi32> {
+    %cst = const.Declare tensor<2x1xsi32> = dense<1>  : tensor<2x1xsi32>
+    %0 = IE.GatherND(%arg0, %cst) {batch_dims = 1 : i64} : tensor<2x2xsi32>, tensor<2x1xsi32> -> tensor<2xsi32>
+    return %0 : tensor<2xsi32>
+
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<2x1xsi32> = dense<1> : tensor<2x1xsi32>
+    // CHECK: [[DE_ARG0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<2x2xsi32> to tensor<1x2xsi32>
+    // CHECK: [[DE_CST:%.+]] = builtin.unrealized_conversion_cast [[CST]] : tensor<2x1xsi32> to tensor<1x1xsi32>
+    // CHECK: [[FUNC_RES:%.+]] = IE.GatherND([[DE_ARG0]], [[DE_CST]]) {batch_dims = 1 : i64} : tensor<1x2xsi32>, tensor<1x1xsi32> -> tensor<1xsi32>
+    // CHECK: [[RES:%.+]] = builtin.unrealized_conversion_cast [[FUNC_RES]] : tensor<1xsi32> to tensor<2xsi32>
+    // CHECK: return [[RES]] : tensor<2xsi32>
 }

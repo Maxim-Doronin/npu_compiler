@@ -6,6 +6,7 @@
 #include <mlir/IR/BuiltinTypes.h>
 
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -21,7 +22,7 @@ namespace vpux {
 namespace NPUReg40XX {
 
 void DPUInvariantOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto invariantDesc = getDescriptor().getRegMapped();
+    auto invariantDesc = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuDPUInvariant) == invariantDesc.size(),
                       "HW VpuDPUInvariant size {0} != regMapped representation size {1}.",
@@ -196,7 +197,7 @@ size_t DPUInvariantOp::getAlignmentRequirements(VPU::ArchKind) {
 }
 
 void DPUVariantOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto variantDesc = getDescriptor().getRegMapped();
+    auto variantDesc = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuDPUVariant) == variantDesc.size(),
                       "HW VpuDPUVariant size {0} != regMapped representation size {1}.",
@@ -271,6 +272,55 @@ std::vector<ELF::RelocationInfo> DPUVariantOp::getRelocationInfo(ELF::SymbolRefe
 
 size_t DPUVariantOp::getAlignmentRequirements(VPU::ArchKind) {
     return alignof(nn_public::VpuDPUVariant);
+}
+
+void vpux::NPUReg40XX::DPUInvariantOp::build(
+        mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName, mlir::TypeAttr taskIndex,
+        vpux::NPUReg40XX::Descriptors::DpuInvariantRegister&& descriptor, mlir::SymbolRefAttr taskLocation,
+        mlir::SymbolRefAttr input, mlir::SymbolRefAttr inputSparsityMap, mlir::SymbolRefAttr inputStorageElementTable,
+        mlir::SymbolRefAttr weights, mlir::SymbolRefAttr weightsSparsityMap, mlir::SymbolRefAttr weightTable,
+        mlir::SymbolRefAttr sprLookupTable, mlir::SymbolRefAttr output, mlir::SymbolRefAttr outputSparsityMap,
+        mlir::SymbolRefAttr profilingData, mlir::UnitAttr isZeroOffsetWeightsTable, VPUIP::NCETaskTypeAttr nceTaskType,
+        mlir::UnitAttr isContinued) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.task_index = taskIndex;
+    props.descriptor = std::move(descriptor);
+    props.task_location = taskLocation;
+    props.input = input;
+    props.input_sparsity_map = inputSparsityMap;
+    props.input_storage_element_table = inputStorageElementTable;
+    props.weights = weights;
+    props.weights_sparsity_map = weightsSparsityMap;
+    props.weight_table = weightTable;
+    props.spr_lookup_table = sprLookupTable;
+    props.output = output;
+    props.output_sparsity_map = outputSparsityMap;
+    props.profiling_data = profilingData;
+    props.is_zero_offset_weights_table = isZeroOffsetWeightsTable;
+    props.nce_task_type = nceTaskType;
+    props.is_continued = isContinued;
+}
+
+void vpux::NPUReg40XX::DPUVariantOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
+                                           mlir::SymbolRefAttr nextLink, mlir::TypeAttr taskIndex,
+                                           vpux::NPUReg40XX::Descriptors::DpuVariantRegister&& descriptor,
+                                           mlir::SymbolRefAttr taskLocation, mlir::SymbolRefAttr invariantTaskLocation,
+                                           mlir::SymbolRefAttr weights, mlir::SymbolRefAttr weightTable,
+                                           VPUIP::NCETaskTypeAttr nceTaskType, mlir::IntegerAttr workloadId) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.next_link = nextLink;
+    props.task_index = taskIndex;
+    props.descriptor = std::move(descriptor);
+    props.task_location = taskLocation;
+    props.invariant_task_location = invariantTaskLocation;
+    props.weights = weights;
+    props.weight_table = weightTable;
+    props.nce_task_type = nceTaskType;
+    props.workload_id = workloadId;
 }
 
 }  // namespace NPUReg40XX

@@ -62,10 +62,12 @@ public:
     uint32_t getIndex(VPURT::BarrierOpInterface barrierOp) const;
     virtual VPURT::TaskOp getTaskOpAtIndex(size_t opIdx) const;
     VPURT::TaskQueueType getTaskQueueType(size_t taskInd) const;
-    std::optional<size_t> getPrevTaskOnFifo(size_t taskInd) const;
-    std::optional<size_t> getNextTaskOnFifo(size_t taskInd) const;
+    SmallVector<VPURT::TaskQueueType> getNonEmptyTaskQueueTypes() const;
+    size_t getLastTaskForQueueType(VPURT::TaskQueueType taskQueueType) const;
+    std::optional<size_t> getPrevTaskOnSameQueue(size_t taskInd) const;
+    std::optional<size_t> getNextTaskOnSameQueue(size_t taskInd) const;
     // Return the closest previous task on the same queue that has a wait barrier
-    std::optional<size_t> getPrevTaskOnFifoWithWaitBar(size_t taskInd) const;
+    std::optional<size_t> getPrevTaskOnSameQueueWithWaitBar(size_t taskInd) const;
     VPURT::BarrierOpInterface getBarrierOpAtIndex(size_t opIdx) const;
     void enableUnevenVariantSplit();
 
@@ -117,8 +119,15 @@ private:
 public:
     // Get index of barrier's latest producer - largest index among barrier producers
     size_t getBarrierLatestProducer(size_t barInd);
+
+    // Get index of latest producer from the set of producers of provided barriers
+    size_t getBarriersLatestProducer(const TaskSet& barriers);
+
     // Get index of barrier's earliest consumer - smallest index among barrier consumers
     size_t getBarrierEarliestConsumer(size_t barInd);
+
+    // Get index of earliest consumer from the set of consumers of provided barriers
+    size_t getBarriersEarliestConsumer(const TaskSet& barriers);
 
     void logBarrierInfo();
     void optimizeBarriers(bool checkValidSlotCount = true, bool considerTaskFifoDependency = false);
@@ -388,13 +397,11 @@ public:
      * @brief Create barrier dependencies between task execution groups
      *
      * @param blockIdx - task block index for which the dependencies should be generated
-     * @param executorKind - set of FIFO executors that should be taken into account. By default all FIFOs are
      * @param execGroups - groups of tasks used to split schedule by barriers
      *
      * @return Number of newly created barriers
      */
-    unsigned createBarrierDependenciesBetweenExecutionGroups(size_t blockIdx, vpux::VPU::ExecutorKind executorKind,
-                                                             ExecutionGroupListMap& executionGroups);
+    unsigned createBarrierDependenciesBetweenExecutionGroups(size_t blockIdx, ExecutionGroupListMap& executionGroups);
 
     /**
      * @brief Remove barrier representation of dependencies implied FIFOs execution order created by

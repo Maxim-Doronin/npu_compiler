@@ -69,6 +69,9 @@ def VPUIPDPU_DPUInvariantOp :
         OptionalAttr<SymbolRefAttr>:$min_per_xy,
         OptionalAttr<SymbolRefArrayAttr>:$min_max_per_tensor,
 
+        OptionalAttr<SymbolRefAttr>:$dynamic_sequence_length,
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig,
+
         VPUIP_NCETaskTypeAttr:$nce_task_type,
         UnitAttr:$is_continued
     );
@@ -118,7 +121,8 @@ def VPUIPDPU_DPUVariantOp :
         OptionalAttr<SymbolRefAttr>:$weight_zero_points,
 
         VPUIP_NCETaskTypeAttr:$nce_task_type,
-        OptionalAttr<IntAttr>:$workload_id
+        OptionalAttr<IntAttr>:$workload_id,
+        OptionalAttr<I64ArrayAttr>:$variant_primitive_id // IDs for variant primitives A and B
     );
 
     let regions = (region

@@ -1,9 +1,4 @@
 
-//
-// Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
-//
-
 #include "vpux/utils/profiling/taskinfo.hpp"
 #include "vpux/utils/profiling/tasknames.hpp"
 

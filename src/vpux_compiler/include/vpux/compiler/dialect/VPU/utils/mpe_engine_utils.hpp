@@ -11,12 +11,25 @@ namespace vpux::VPU {
  */
 class MPEEngineConfig {
 public:
-    static MPEEngineAttr retrieveMPEEngineAttribute(mlir::Operation* operation, VPU::ArchKind arch) {
-        if (arch == VPU::ArchKind::NPU37XX || arch == VPU::ArchKind::NPU40XX) {
-            return MPEEngine37XXAttr::get(operation->getContext(),
-                                          MPEEngine37XXModeAttr::get(operation->getContext(), MPEEngine37XXMode::SCL));
-        }
-        return nullptr;
+    static MPEEngineAttr retrieveMPEEngineAttribute(mlir::Operation* operation) {
+        const auto arch = VPU::getArch(operation);
+
+        VPUX_THROW_WHEN(arch == VPU::ArchKind::UNKNOWN,
+                        "An unknown architecture is associated to the provided operation");
+
+        return MPEEngine37XXAttr::get(operation->getContext(),
+                                      MPEEngine37XXModeAttr::get(operation->getContext(), MPEEngine37XXMode::SCL));
+    }
+
+    template <typename ConcreteOp>
+    static MPEEngineAttr retrieveMPEEngineAttribute(ConcreteOp operation, bool) {
+        static_assert(std::is_same_v<ConcreteOp, IE::ConvolutionOp>, "Invalid operation, expected IE::ConvolutionOp");
+
+        return retrieveMPEEngineAttribute(operation);
+    }
+
+    static bool useNewWeightTableFormat(mlir::Operation*, MPEEngineAttr) {
+        return false;
     }
 };
 

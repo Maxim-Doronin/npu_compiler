@@ -83,7 +83,7 @@ std::list<mlir::Value> getOperandsToDebatch(mlir::Operation* op,
 template <class Integer>
 SmallVector<Integer> consumeArrayAttrAsIntegerArray(mlir::Operation* op, std::string_view attName) {
     VPUX_THROW_UNLESS(op != nullptr, "consumeArrayAttrAsIntegerArray failed on nullptr");
-    auto attr = op->getAttr(attName).dyn_cast_or_null<mlir::ArrayAttr>();
+    auto attr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(op->getAttr(attName));
     VPUX_THROW_UNLESS(attr != nullptr, "Unexpected type for \"{0}\", only \"mlir::ArrayAttr\" supported", attName);
 
     return parseIntArrayAttr<Integer>(attr);
@@ -413,27 +413,41 @@ struct AttributedConstOpConverter : public OpConverter {
         // might have been flattened to accomodate swizzled buffer.
         if (!vpux::getSwizzlingSchemeAttr(opType)) {
             if (opType.getShape() != attrType.getShape()) {
-                /* TODO E####-159644
-                 * debatch Constant here, canonize it (so that all unrealized_cast will be put at the block beginning)
-                 * and use it as a function arguments in the similar way as debatched `main` arguments are passed to a
-                 * function Need to teach outliner to recognize such types of unrealized_cast's Until that we will throw
-                 * an exception here. When done, uncomment the further block of code
-                 *
-                 * mlir::OpBuilder builder(constDeclareOp);
-                 * auto operand = op->getResults()[0];
-                 * builder.setInsertionPointAfterValue(operand);
-                 * const auto debatchedArgLoc = appendLoc(operand.getLoc(), "_debatched_const");
-                 * auto unrealized_cast =
-                 *     builder.create<mlir::UnrealizedConversionCastOp>(debatchedArgLoc, opType, operand);
-                 * operand.replaceUsesWithIf(unrealized_cast.getResult(0), [&](mlir::OpOperand& opOperand) {
-                 *     return opOperand.getOwner() != unrealized_cast;
-                 * });
-                 * operand.setType(attrType);
+                /* We need to debatch Constant here, canonize it (so that all unrealized_cast will be put at the block
+                 * beginning) and use it as a function arguments in the similar way as debatched `main` arguments are
+                 * passed to a function Need to teach outliner to recognize such types of unrealized_cast's Until that
+                 * we will throw an exception here. When done, uncomment the further block of code
                  */
 
-                VPUX_THROW("ContentAttr alignment isn't supported yet! Cannot align opType shape: {0} and attrType "
-                           "shape: {1}",
-                           opType.getShape(), attrType.getShape());
+                mlir::OpBuilder builder(constDeclareOp);
+                auto operand = op->getResults()[0];
+                builder.setInsertionPointAfterValue(operand);
+                const auto debatchedArgLoc = appendLoc(operand.getLoc(), "_debatched_const");
+                auto unrealized_cast =
+                        builder.create<mlir::UnrealizedConversionCastOp>(debatchedArgLoc, opType, operand);
+                operand.replaceUsesWithIf(unrealized_cast.getResult(0), [&](mlir::OpOperand& opOperand) {
+                    return opOperand.getOwner() != unrealized_cast;
+                });
+                operand.setType(attrType);
+
+                // As a const DeclareOp is being debatched, we need to move the original
+                // DeclareOp on top of an enclosing block to imitate func_args behavior.
+                // Respective UnrealizedConversionCastOp must be placed after first existing UnrealizedConversionCastOp
+                // in the block of operations. Such separation of operations resembles canonization approach, where we
+                // move constants on top. This canonization allows us to outline operations encompassed between the
+                // first and last unrealized_cast easily and treat these const DeclareOps in the same way as we treat
+                // main-function arguments without additional processing
+                auto curBlock = constDeclareOp->getBlock();
+                VPUX_THROW_WHEN(curBlock == nullptr, "Operation {0} must be a part of a block", *constDeclareOp);
+                VPUX_THROW_WHEN(curBlock->getOperations().empty(), "Operation {0} enclosure block must not be empty",
+                                *constDeclareOp);
+                constDeclareOp->moveBefore(&(*curBlock->getOperations().begin()));
+                for (auto& blockOp : curBlock->getOperations()) {
+                    if (mlir::isa<mlir::UnrealizedConversionCastOp>(blockOp)) {
+                        unrealized_cast->moveAfter(&blockOp);
+                        break;
+                    }
+                }
             }
         }
     }
@@ -457,6 +471,33 @@ struct OpCastVisitor {
         converters.push_back(std::make_unique<AttributedConstOpConverter>(log));
     }
 
+    OpCastVisitor(const OpCastVisitor&) = default;
+    OpCastVisitor(OpCastVisitor&&) = default;
+    OpCastVisitor& operator=(const OpCastVisitor&) = default;
+    OpCastVisitor& operator=(OpCastVisitor&&) = default;
+
+    ~OpCastVisitor() noexcept {
+        // it appears that std::stingstream operator<<() might throw std::bad_cast due to locale issues. Providing that
+        // it's a bad practice to rethrow exception from dtors, we must just catch everything to stop static
+        // analysators complaining
+        try {
+            _log.debug("Statistic: {0}", stat.to_string());
+        } catch (...) {
+        }
+    }
+
+    struct Statistic {
+        size_t ops_total_count = 0;
+        size_t ops_debatched_count = 0;
+        size_t applied_converters_count = 0;
+        std::string to_string() const {
+            std::stringstream sstream;
+            sstream << "debatched ops count: (" << ops_debatched_count << "/" << ops_total_count << ")"
+                    << ", total transformations: " << applied_converters_count << std::endl;
+            return sstream.str();
+        }
+    } stat;
+
     template <class Converter, class... Args>
     void addConverter(Args&&... args) {
         converters.push_back(std::make_unique<Converter>(_log, std::forward<Args>(args)...));
@@ -465,11 +506,18 @@ struct OpCastVisitor {
     DenseMap<mlir::OpResult, Shape> runConverters(mlir::Operation* op,
                                                   std::vector<detail::ConversionDescription> operationArguments) {
         DenseMap<mlir::OpResult, Shape> deductedResultShapes;
+        bool conversions_applied = false;
+        stat.ops_total_count++;
         for (const auto& c : converters) {
             if (c->isApplicable(op)) {
                 c->apply(op, operationArguments);
                 c->refineResults(op, operationArguments, deductedResultShapes);
+                conversions_applied = true;
+                stat.applied_converters_count++;
             }
+        }
+        if (conversions_applied) {
+            stat.ops_debatched_count++;
         }
         return deductedResultShapes;
     }
@@ -618,14 +666,16 @@ public:
         _log.debug("Create {0}", getName());
     }
 
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
 private:
     void safeRunOnFunc() final;
 };
 
-mlir::LogicalResult DebatcherPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult DebatcherPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
     _log.debug("{0}: {1}", debatcherIntputCoeffPartitions.getArgStr(), debatcherIntputCoeffPartitions.getValue());
@@ -669,6 +719,14 @@ void DebatcherPass::safeRunOnFunc() {
     _log.debug("Use an option value \"{0}\": {1}", debatcherIntputCoeffPartitions.getArgStr(),
                debatcherIntputCoeffPartitions.getValue());
     auto debatchingCoefficients = DebatchCoefficients::create(debatcherIntputCoeffPartitions.getValue());
+    if (debatchingCoefficients.has_value()) {
+        for (size_t i = 0; i < debatchingCoefficients->size(); ++i) {
+            auto coeffValues = debatchingCoefficients ? debatchingCoefficients->getCoefficient(i) : std::nullopt;
+            VPUX_THROW_UNLESS(coeffValues->batchPositionIndex == vpux::Dim(0),
+                              "DebatchCoeffDescription expects the batch position to be 0, got: {0} in {1}",
+                              coeffValues->batchPositionIndex, coeffValues->to_string());
+        }
+    }
     size_t argIndex = 0;
     for (const auto& arg : main.getArguments()) {
         auto originalShape = Shape{vpux::getShape(arg)};

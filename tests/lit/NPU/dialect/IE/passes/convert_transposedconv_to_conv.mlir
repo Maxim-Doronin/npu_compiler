@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-transposed-conv-to-conv %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ConvertTransposedConv2DToConv2D
 func.func @ConvertTransposedConv2DToConv2D(%input: tensor<1x32x23x30xf16>) -> tensor<1x16x46x60xf16> {
     %weights = const.Declare tensor<16x32x2x2xf16> = dense<1.000000e+00> : tensor<16x32x2x2xf16>

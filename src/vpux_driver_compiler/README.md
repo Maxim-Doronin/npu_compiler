@@ -78,10 +78,14 @@ Unlike local build of Driver Compiler related targets, we need to apply some pat
 
 Please refer to [How to test](./docs/how_to_test.md).
 
+Please note that the instructions for testing the deprecated version [How to test with deprecated version](./docs/how_to_test_with_deprecated_version.md) will be removed in the future.
+
 
 ## How to debug
 
 Please refer to [How to debug](./docs/how_to_debug.md).
+
+Please note that the instructions for [How to debug with deprecated version](./docs/how_to_debug_with_deprecated_version.md) will be removed in the future.
 
 [OpenVINO Project]: https://github.com/openvinotoolkit/openvino
 [NPU-Plugin Project]: https://github.com/openvinotoolkit/npu_compiler

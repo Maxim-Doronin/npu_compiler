@@ -148,6 +148,7 @@ VPUXCompilerL0::VPUXCompilerL0(vcl_compiler_desc_t* compilerDesc, vcl_device_des
     _options->add<intel_npu::COMPILER_DYNAMIC_QUANTIZATION>();
     _options->add<intel_npu::BATCH_COMPILER_MODE_SETTINGS>();
     _options->add<intel_npu::QDQ_OPTIMIZATION>();
+    _options->add<intel_npu::TURBO>();
 
     // Create compiler instance with the default config
     // COMPILER_TYPE DRIVER is assumed

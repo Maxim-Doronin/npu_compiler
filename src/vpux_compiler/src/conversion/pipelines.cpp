@@ -9,6 +9,9 @@
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
+#include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
+#include <mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h>
 #include <mlir/Dialect/Linalg/Passes.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/Passes.h>
@@ -24,8 +27,7 @@ void vpux::buildLowerIE2IERTPipeline(mlir::OpPassManager& pm, Logger log) {
 
     pm.addPass(createBufferizeIEPass(log));
     pm.addPass(createOneShotBufferizeVPU2VPUIPPass());
-    pm.addPass(VPUIP::createWrapVPUIPOpsInNCEClusterTilingPass(log));
-    pm.addPass(createAddBuffersForNetResults(log));
+    pm.addPass(createAddBuffersForNetResults(/*useMemrefForHostFunctionBufferization*/ false, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 }
 
@@ -42,6 +44,18 @@ void vpux::ShaveCodeGen::buildLowerSwLayers2LinalgPipeline(mlir::OpPassManager& 
 }
 
 //
+// HostCompile
+//
+void vpux::buildLLVMTranslationPipeline(mlir::OpPassManager& pm) {
+    const auto grc = getDefaultGreedyRewriteConfig();
+
+    pm.addPass(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
+    pm.addPass(mlir::createConvertControlFlowToLLVMPass());
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+}
+
+//
 // registerConversionPipelines
 //
 
@@ -54,5 +68,9 @@ void vpux::registerConversionPipelines() {
                                      "Performs full lowering of compatible SW Layers from IE to Linalg",
                                      [](mlir::OpPassManager& pm) {
                                          ShaveCodeGen::buildLowerSwLayers2LinalgPipeline(pm);
+                                     });
+    mlir::PassPipelineRegistration<>("llvm-translate", "Performs full lowering to LLVM dialect for host compilation",
+                                     [](mlir::OpPassManager& pm) {
+                                         buildLLVMTranslationPipeline(pm);
                                      });
 }

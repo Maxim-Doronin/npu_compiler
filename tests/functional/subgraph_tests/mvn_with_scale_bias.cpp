@@ -4,6 +4,11 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/mvn.hpp"
+#include "openvino/op/sigmoid.hpp"
+
 namespace ov::test {
 
 class MVNWithScaleBiasTest_NPU3720 : public VpuOv2LayerTest, public testing::WithParamInterface<std::vector<int64_t>> {

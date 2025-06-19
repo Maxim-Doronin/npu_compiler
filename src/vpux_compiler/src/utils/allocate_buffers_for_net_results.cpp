@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/utils/allocate_buffers_for_net_results.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
@@ -84,10 +85,20 @@ std::function<std::optional<mlir::Location>(mlir::OpOperand&)> getResultLocation
     };
 }
 
+inline mlir::Value getCopyOpOutput(VPUIP::CopyOp copyOp) {
+    return copyOp.getOutput();
+}
+
+inline mlir::Value getCopyOpOutput(mlir::memref::CopyOp copyOp) {
+    return copyOp.getTarget();
+}
+
 // Updates all ReturnOps in the scope of the given FuncOp by copying the associated buffer contents into the given
 // out-params.
+template <typename T>
 void updateReturnOps(mlir::func::FuncOp func, ArrayRef<mlir::BlockArgument> appendedEntryArgs, vpux::Logger& log) {
     const auto locProvider = getResultLocationProvider(func, log);
+
     func.walk([&](mlir::func::ReturnOp op) {
         mlir::OpBuilder builder(op);
         for (auto& opOperand : op->getOpOperands()) {
@@ -96,8 +107,8 @@ void updateReturnOps(mlir::func::FuncOp func, ArrayRef<mlir::BlockArgument> appe
                 opLoc = realLoc.value();
             }
             auto idx = opOperand.getOperandNumber();
-            auto copyOp = builder.create<VPUIP::CopyOp>(opLoc, op.getOperand(idx), appendedEntryArgs[idx]);
-            opOperand.set(copyOp.getOutput());
+            auto copyOp = builder.create<T>(opLoc, op.getOperand(idx), appendedEntryArgs[idx]);
+            opOperand.set(getCopyOpOutput(copyOp));
         }
     });
 }
@@ -142,13 +153,20 @@ void updateCallOp(ArrayRef<mlir::func::CallOp> callOps, vpux::Logger& log) {
 
 }  // namespace
 
+template <typename CopyOp>
 void vpux::allocateBuffersForNetResults(ArrayRef<mlir::func::CallOp> callOps, ArrayRef<mlir::func::FuncOp> funcOps,
                                         vpux::Logger& log) {
     for (auto func : funcOps) {
         SmallVector<mlir::BlockArgument> appendedEntryArgs;
         updateFuncOp(func, appendedEntryArgs);
-        updateReturnOps(func, appendedEntryArgs, log);
+        updateReturnOps<CopyOp>(func, appendedEntryArgs, log);
     }
 
     updateCallOp(callOps, log);
 }
+
+template void vpux::allocateBuffersForNetResults<VPUIP::CopyOp>(ArrayRef<mlir::func::CallOp> callOps,
+                                                                ArrayRef<mlir::func::FuncOp> funcOps, Logger& log);
+template void vpux::allocateBuffersForNetResults<mlir::memref::CopyOp>(ArrayRef<mlir::func::CallOp> callOps,
+                                                                       ArrayRef<mlir::func::FuncOp> funcOps,
+                                                                       Logger& log);

@@ -298,7 +298,7 @@ bool isCscRequired(VPU::M2iColorFmt inFormat, VPU::M2iColorFmt outFormat) {
 mlir::LogicalResult M2IRewriter::matchAndRewrite(VPUASM::M2IOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
-    // // prepare MediaRegister
+    // prepare MediaRegister
     VpuMediaTask descriptor;
 
     auto outFormat = static_cast<uint64_t>(origOp.getOutFmt());
@@ -381,11 +381,9 @@ mlir::LogicalResult M2IRewriter::matchAndRewrite(VPUASM::M2IOp origOp, mlir::Pat
     descriptor.write<Registers::media_barriers_sched_, Fields::start_after_>(origOp.getStartAfter());
     descriptor.write<Registers::media_barriers_sched_, Fields::clean_after_>(origOp.getCleanAfter());
 
-    auto regM2IDescriptorAttr = VpuMediaTaskAttr::get(rewriter.getContext(), std::move(descriptor));
-
     rewriter.create<NPUReg40XX::M2IOp>(origOp->getLoc(), origOp.getSymNameAttr(), origOp.getInputAttr(),
                                        origOp.getOutputBuffAttr(), origOp.getProfilingDataAttr(),
-                                       origOp.getNextLinkAttr(), regM2IDescriptorAttr);
+                                       origOp.getNextLinkAttr(), std::move(descriptor));
 
     rewriter.eraseOp(origOp);
 

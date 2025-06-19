@@ -20,15 +20,6 @@ namespace arch37xx {
 struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, public vpux::BatchCompileOptionsAdapter {
     DefaultHWOptionsDeviceBase(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
     }
-    StrOption enableActivationSparsity{*this, "enable-activation-sparsity",
-                                       llvm::cl::desc("Enable activation sparsity"), llvm::cl::init("auto")};
-
-    BoolOption enableWeightsSparsity{*this, "enable-weights-sparsity", llvm::cl::desc("Enable weights sparsity"),
-                                     llvm::cl::init(true)};
-
-    BoolOption enableSEPtrsOperations{*this, "enable-se-ptrs-operations",
-                                      llvm::cl::desc("Enable storage element pointer operations"),
-                                      llvm::cl::init(false)};
 
     BoolOption enableExperimentalSEPtrsOperations{*this, "enable-experimental-se-ptrs-operations",
                                                   llvm::cl::desc("Enable the experimental operation of SEP"),
@@ -39,15 +30,14 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
             llvm::cl::desc("Enable DistributionInfoAttr with explicit per cluster memory/compute shapes & offsets"),
             llvm::cl::init(false)};
 
+    BoolOption enableConvertToPalletizationLUT{*this, "enable-convert-to-palletization-lut",
+                                               llvm::cl::desc("Enable conversion of certain types to palletized LUT"),
+                                               llvm::cl::init(false)};
+
     BoolOption enableGroupedMatMul{*this, "enable-grouped-matmul",
                                    llvm::cl::desc("Enable execution of grouped MatMul as a single operation."),
                                    llvm::cl::init(false)};
 
-    BoolOption enableOutputEnsurance{
-            *this, "enable-output-ensurance",
-            llvm::cl::desc(
-                    "Enable output size ensurance when checking nce op shapes in EnsureNCEOpsSizeRequirements pass"),
-            llvm::cl::init(true)};
     // VPUIP option shared with VPU pass
     BoolOption enableWeightsSwizzling{*this, "enable-weights-swizzling", ::llvm::cl::desc("Enable weights swizzling"),
                                       ::llvm::cl::init(true)};

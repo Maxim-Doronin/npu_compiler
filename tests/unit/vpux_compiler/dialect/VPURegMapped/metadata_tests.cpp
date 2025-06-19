@@ -30,8 +30,8 @@ std::vector<std::pair<mlir::Type, elf::OVNodeType>> getMLIR2OVTypes(mlir::MLIRCo
             std::make_pair(mlir::Float32Type::get(ctx), elf::OVNodeType::OVNodeType_F32),
             std::make_pair(mlir::Float16Type::get(ctx), elf::OVNodeType::OVNodeType_F16),
             std::make_pair(mlir::BFloat16Type::get(ctx), elf::OVNodeType::OVNodeType_BF16),
+            std::make_pair(mlir::Float8E4M3FNType::get(ctx), elf::OVNodeType::OVNodeType_F8E4M3FN),
             std::make_pair(mlir::Float8E5M2Type::get(ctx), elf::OVNodeType::OVNodeType_F8E5M2),
-            std::make_pair(mlir::Float8E4M3FNType::get(ctx), elf::OVNodeType::OVNodeType_F8E4M3),
 
             // Signed
             std::make_pair(getSInt64Type(ctx), elf::OVNodeType::OVNodeType_I64),

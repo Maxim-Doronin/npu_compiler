@@ -6,6 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-all" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
+
 // CHECK-LABEL: @CommonSubexpressionElimination
 {-#
     dialect_resources: {
@@ -124,6 +125,17 @@ module @SubViewOutside {
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!DistributedTensor0 = !VPU.DistributedTensor<
+    48x16x1x1xf16, #NHWC, @CMX_NN, {
+    mode = "DUPLICATED",
+    num_clusters = 4 : i64,
+    uniform_distributed_segments,
+    compute_shapes = [[48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+    memory_shapes = [[48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+}>
 // CHECK-LABEL: @SubViewOutsideAdvanced
 module @SubViewOutsideAdvanced {
     net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -137,17 +149,13 @@ module @SubViewOutsideAdvanced {
     // CHECK: } outputsInfo : {
     // CHECK:     DataInfo "Convolution_63" friendlyName = "Result_64" : tensor<48x16x1x1xf16>
 
-    func.func @main(%arg0: tensor<1x192x100x100xf16>) -> tensor<48x16x1x1xf16> {
+    func.func @main(%arg0: tensor<1x192x100x100xf16>) -> tensor<48x16x1x1xf16, {order = #NHWC}> {
         %cst = const.Declare tensor<48x16x1x1xf16, {order = #NHWC}> = dense_resource<ov> : tensor<2x2x1x1xf16>, [#const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [46, 14, 0, 0]>, #const.SubView<[0, 0, 0, 0], [48, 16, 1, 1]>]
-        %12 = VPU.NCE.ClusterTiling (%cst as %arg1: tensor<48x16x1x1xf16, {order = #NHWC}>) -> !VPU.DistributedTensor<48x16x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], memory_shapes = [[48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}> {
-          %55 = VPU.Copy(%arg1) {out_mem_space = @CMX_NN} : tensor<48x16x1x1xf16, {order = #NHWC}> -> tensor<48x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>
-          VPU.Yield %55
-        }
-        %13 = VPU.NCE.ClusterTiling (%12 as %arg1: tensor<48x16x1x1xf16, {mem_space = @CMX_NN, order = #NCHW}>) -> tensor<48x16x1x1xf16> {
-          %55 = VPU.Copy(%arg1) : tensor<48x16x1x1xf16, {mem_space = @CMX_NN, order = #NCHW}> -> tensor<48x16x1x1xf16>
-          VPU.Yield %55
-        }
-        return %13 : tensor<48x16x1x1xf16>
+        %0 = VPU.Copy(%cst) {out_mem_space = @CMX_NN} : tensor<48x16x1x1xf16, {order = #NHWC}> -> !DistributedTensor0
+
+        %1 = VPU.Copy(%0) : !DistributedTensor0 -> tensor<48x16x1x1xf16, {order = #NHWC}>
+
+        return %1 : tensor<48x16x1x1xf16, {order = #NHWC}>
     }
 
     // CHECK:   func.func private @init([[OV_CONST0:%.+]]: tensor<2x2x1x1xf16>) -> tensor<48x16x1x1xf16, {order = #NHWC}>
@@ -155,19 +163,21 @@ module @SubViewOutsideAdvanced {
     // CHECK:       [[PAD:%.+]] = IE.Pad([[REORDER]]) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [0, 0, 0, 0], pads_end_attr = [46, 14, 0, 0]} : tensor<2x2x1x1xf16, {order = #NHWC}> -> tensor<48x16x1x1xf16, {order = #NHWC}>
     // CHECK:       return [[PAD]] : tensor<48x16x1x1xf16, {order = #NHWC}>
 
-    // CHECK: func.func private @main([[ARG0:%.+]]: tensor<1x192x100x100xf16>, [[OVARG0:%.+]]: tensor<48x16x1x1xf16, {order = #NHWC}>) -> tensor<48x16x1x1xf16>
+    // CHECK: func.func private @main([[ARG0:%.+]]: tensor<1x192x100x100xf16>, [[OVARG0:%.+]]: tensor<48x16x1x1xf16, {order = #NHWC}>) -> tensor<48x16x1x1xf16, {order = #NHWC}>
     // -- Ensure that the #const.SubViews have been converted to VPU ops.
     // CHECK:     [[SLICE:%.+]] = VPU.Slice [[OVARG0]] [0, 0, 0, 0] [48, 16, 1, 1] : tensor<48x16x1x1xf16, {order = #NHWC}> to tensor<48x16x1x1xf16, {order = #NHWC}>
-    // CHECK:     [[TILING0:%.+]] = VPU.NCE.ClusterTiling ([[SLICE]] as {{%.+}}: tensor<48x16x1x1xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
-    // CHECK:     [[TILING1:%.+]] = VPU.NCE.ClusterTiling ([[TILING0]] as {{%.+}}: tensor<48x16x1x1xf16, {mem_space = @CMX_NN, order = #NCHW}>) -> tensor<48x16x1x1xf16> {
-    // CHECK:     return [[TILING1]] : tensor<48x16x1x1xf16>
+    // CHECK:     [[TILING0:%.+]] = VPU.Copy([[SLICE]]
+    // CHECK-SAME:              -> !VPU.DistributedTensor
+    // CHECK:     [[TILING1:%.+]] = VPU.Copy([[TILING0]]
+    // CHECK-SAME:              -> tensor<48x16x1x1xf16, {order = #NHWC}>
+    // CHECK:     return [[TILING1]] : tensor<48x16x1x1xf16, {order = #NHWC}>
 
-    // CHECK: func.func @wrapper_main([[ARG0:%.+]]: tensor<1x192x100x100xf16>) -> tensor<48x16x1x1xf16>
+    // CHECK: func.func @wrapper_main([[ARG0:%.+]]: tensor<1x192x100x100xf16>) -> tensor<48x16x1x1xf16, {order = #NHWC}>
     // -- Ensure that the stripped ngraph constants are outside.
     // CHECK-DAG: [[CST0:%.+]] = const.Declare tensor<2x2x1x1xf16> = dense_resource<ov> : tensor<2x2x1x1xf16>
     // CHECK:     [[CALL:%.+]] = call @init([[CST0]]) : (tensor<2x2x1x1xf16>) -> tensor<48x16x1x1xf16, {order = #NHWC}>
     // CHECK:     [[RET:%.+]] = call @main([[ARG0]], [[CALL]])
-    // CHECK:     return [[RET:%.+]] : tensor<48x16x1x1xf16>
+    // CHECK:     return [[RET:%.+]] : tensor<48x16x1x1xf16, {order = #NHWC}>
 }
 
 // -----

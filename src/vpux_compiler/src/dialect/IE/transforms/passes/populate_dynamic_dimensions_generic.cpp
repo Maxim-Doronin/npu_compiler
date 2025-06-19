@@ -30,11 +30,11 @@ namespace {
 
 // temporary limit the pass to use only limited number of operations
 bool isSupportedOp(mlir::Operation* op) {
-    return mlir::isa<IE::SoftMaxOp, IE::LSTMSequenceOp>(op);
+    return mlir::isa<IE::SoftMaxOp, IE::MinimumOp, IE::MaximumOp, IE::LSTMSequenceOp, IE::LessOp>(op);
 }
 
 bool supportsStridedAccess(mlir::Operation* op) {
-    return mlir::isa<IE::SoftMaxOp, IE::LSTMSequenceOp>(op);
+    return mlir::isa<IE::SoftMaxOp, IE::MinimumOp, IE::MaximumOp, IE::LSTMSequenceOp, IE::LessOp>(op);
 }
 
 void populateDynamicResult(mlir::Operation* op, const unsigned resultIdx) {

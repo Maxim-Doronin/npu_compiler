@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -66,9 +66,6 @@ void buildDMAUnrollingPipeline(mlir::OpPassManager& pm, Logger log = Logger::glo
 struct DefaultHWOptions :
         public VPUIP::DefaultHWOptionsDialectBase,
         virtual vpux::arch37xx::DefaultHWOptionsDeviceBase {
-    StrOption enableDMAProfiling{*this, "dma-profiling", llvm::cl::desc("Enable DMA task profiling"),
-                                 llvm::cl::init("true")};
-
     BoolOption enableCompressWeightsBTC{*this, "compress-weights-btc", ::llvm::cl::desc("Enable compress-weights pass"),
                                         ::llvm::cl::init(false)};
 

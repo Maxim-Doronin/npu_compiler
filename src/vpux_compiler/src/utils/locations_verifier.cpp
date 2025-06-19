@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
@@ -53,8 +54,8 @@ bool isOpFromAnyDialect(mlir::Operation* op) {
 bool isOpFromIgnoredDialect(mlir::Operation* op) {
     // ELF dialects are ignored because locations are serialized before.
     return !isOpFromAnyDialect<Const::ConstDialect, IE::IEDialect, VPU::VPUDialect, IERT::IERTDialect,
-                               VPUIP::VPUIPDialect, VPURT::VPURTDialect, mlir::BuiltinDialect, mlir::func::FuncDialect,
-                               net::NetDialect>(op);
+                               VPUIP::VPUIPDialect, VPURT::VPURTDialect, config::ConfigDialect, mlir::BuiltinDialect,
+                               mlir::func::FuncDialect, net::NetDialect>(op);
 }
 
 bool isIgnoredOpType(mlir::Operation* op) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -317,6 +317,7 @@ public:
         auto tileExec = IE::getTileExecutor(moduleOp);
         auto shaveActExec = tileExec.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT);
         const auto numSplits = tileExec.getCount() * shaveActExec.getCount();
+        VPUX_THROW_WHEN(numSplits <= 0, "Number of splits should be a positive integer, while it is {0}", numSplits);
 
         const auto minChannelsPerSplit = inputShape[Dims4D::Act::C] / numSplits;
         const auto maxChannelsPerSplit = (inputShape[Dims4D::Act::C] + numSplits - 1) / numSplits;
@@ -356,7 +357,8 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::SoftMaxOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::SpaceToDepthOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::SwishOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
-        VPU::PReluOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        VPU::PReluOp::attachInterface<
+                vpux::VPU::SameMultipleInOutDimsOrderOpModelForSW_NCHW_CHW_NCWH_CWH_NHWC_HWC_NWHC_WHC>(*ctx);
         VPU::TileOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::AddOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::SigmoidOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
@@ -401,6 +403,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::DivideOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::InverseOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::DynamicDequantizeOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        VPU::FakeConvertOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::PowerOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::ModOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::MinimumOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
@@ -556,7 +559,8 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::SoftMaxOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::SpaceToDepthOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::SwishOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
-        IE::PReluOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        IE::PReluOp::attachInterface<
+                vpux::VPU::SameMultipleInOutDimsOrderOpModelForSW_NCHW_CHW_NCWH_CWH_NHWC_HWC_NWHC_WHC>(*ctx);
         IE::TileOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::SigmoidOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::SignOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
@@ -596,6 +600,7 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::CumSumOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::DivideOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::InverseOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        IE::FakeConvertOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::PowerOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::FloorModOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::ModOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);

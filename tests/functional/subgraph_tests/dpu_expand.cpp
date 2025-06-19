@@ -3,8 +3,11 @@
 //
 
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 #include "shared_test_classes/subgraph/nce_tasks.hpp"
+
+#include "openvino/op/convert.hpp"
+#include "openvino/op/convolution.hpp"
 
 using namespace ov::test::utils;
 

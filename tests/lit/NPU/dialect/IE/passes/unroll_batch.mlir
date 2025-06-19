@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-batch %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @UnrollFullyConnectedBatch
 func.func @UnrollFullyConnectedBatch(%arg0: tensor<2x16xf32>) -> tensor<2x64xf32> {
     %cst = const.Declare tensor<64x16xf16> = dense<1.0> : tensor<64x16xf32>, [#const.CastElemType<f16>]

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-pad-to-concat %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @convertPadToConcatWithN
 func.func @convertPadToConcatWithN(%arg0: tensor<1x8x16x16xf16>) -> tensor<4x8x16x16xf16> {
     %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [1, 0, 0, 0], pads_end_attr = [2, 0, 0, 0]}
@@ -240,6 +241,28 @@ func.func @convertQuantPadToConcatBeginEndEqualToTwo(%arg0: tensor<8x4x16x16x!qE
 
 // -----
 
+!qElemType = !quant.uniform<i8:f16, 0.5:120>
+// CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<i8:f16, 5.000000e-01:120>
+
+// Note: CHECK-LABEL must NOT be used: it resets quantization checks above such
+//       that [[QTYPE*]] captured variables become undefined.
+// CHECK: @convertQuantPadToConcatPerTensor
+// CHECK-SAME: [[ARG0:%.+]]: tensor<8x2x16x16x[[QTYPE]]>)
+func.func @convertQuantPadToConcatPerTensor(%arg0: tensor<8x2x16x16x!qElemType>) -> tensor<8x4x16x16x!qElemType> {
+    %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [0, 1, 0, 0], pads_end_attr = [0, 1, 0, 0]}
+                        : tensor<8x2x16x16x!qElemType> -> tensor<8x4x16x16x!qElemType>
+    return %0 : tensor<8x4x16x16x!qElemType>
+
+    // CHECK:   [[CST0:%.*]] = const.Declare tensor<8x1x16x16x[[QTYPE]]> = dense<1.000000e+00> : tensor<8x1x16x16xf32>, [#const.CastElemType<[[QTYPE]]>]
+
+    // CHECK-NOT:      IE.Pad
+    // CHECK:       [[CONCAT0:%.*]] = IE.Concat([[CST0]], [[ARG0]], [[CST0]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:       tensor<8x1x16x16x[[QTYPE]]>, tensor<8x2x16x16x[[QTYPE]]>, tensor<8x1x16x16x[[QTYPE]]> -> tensor<8x4x16x16x[[QTYPE]]>
+    // CHECK:       return [[CONCAT0]] : tensor<8x4x16x16x[[QTYPE]]>
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 !qElemType = !quant.uniform<i8:f16, 0.5:120>
@@ -247,9 +270,9 @@ func.func @convertQuantPadToConcatBeginEndEqualToTwo(%arg0: tensor<8x4x16x16x!qE
 
 // Note: CHECK-LABEL must NOT be used: it resets quantization checks above such
 //       that [[QTYPE*]] captured variables become undefined.
-// CHECK: @convertQuantPadToConcatPerTensor
+// CHECK: @convertQuantPadToConcatPerTensorNonDefaultLayout
 // CHECK-SAME: [[ARG0:%.+]]: tensor<8x2x16x16x[[QTYPE]], {order = #NHWC}>)
-func.func @convertQuantPadToConcatPerTensor(%arg0: tensor<8x2x16x16x!qElemType, {order = #NHWC}>) -> tensor<8x4x16x16x!qElemType, {order = #NHWC}> {
+func.func @convertQuantPadToConcatPerTensorNonDefaultLayout(%arg0: tensor<8x2x16x16x!qElemType, {order = #NHWC}>) -> tensor<8x4x16x16x!qElemType, {order = #NHWC}> {
     %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 1.000000e+00 : f64, pads_begin_attr = [0, 1, 0, 0], pads_end_attr = [0, 1, 0, 0]}
                         : tensor<8x2x16x16x!qElemType, {order = #NHWC}> -> tensor<8x4x16x16x!qElemType, {order = #NHWC}>
     return %0 : tensor<8x4x16x16x!qElemType, {order = #NHWC}>

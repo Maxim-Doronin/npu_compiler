@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -168,6 +168,7 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
 
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
+    VPUX_THROW_UNLESS(dmaPortCount > 0, "DMA port count should be > 0; it is: {0}", dmaPortCount);
 
     int64_t dmaProfReservedMemSize = 0;
     int64_t dmaProfMemOffset = 0;

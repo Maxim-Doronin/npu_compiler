@@ -32,12 +32,11 @@ mlir::LogicalResult vpux::VPU::AvgPoolOp::inferReturnTypes(mlir::MLIRContext* ct
     const auto roundingType = avgPool.getRoundingType();
 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(avgPool.getInput().getType());
-    const auto inShape = inType.getShape().raw();
 
-    const auto shapeI64 = inferAvgPoolOutputShape(inShape, windowStrides, dataPaddingBelow, dataPaddingAbove,
-                                                  windowShape, roundingType);
+    const auto shapeI64 = inferAvgPoolOutputShape(ShapeInfo::fromNDType(inType), windowStrides, dataPaddingBelow,
+                                                  dataPaddingAbove, windowShape, roundingType);
 
-    const auto outType = inType.changeShape(Shape(shapeI64));
+    const auto outType = inType.changeShape(Shape(shapeI64.shape));
     inferredReturnTypes.push_back(outType);
 
     return mlir::success();

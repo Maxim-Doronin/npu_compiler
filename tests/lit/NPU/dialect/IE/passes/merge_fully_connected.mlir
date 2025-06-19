@@ -6,6 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --merge-fully-connected %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
+
 #HWC = affine_map<(d0, d1, d2) -> (d1, d2, d0)>
 #map = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
 
@@ -46,8 +47,8 @@ func.func @MergeMatMulWithWeightsAsConstant(%arg0: tensor<1x1x256xf16>) -> tenso
     // CHECK-DAG:      [[WEIGHTS_0:%.+]] = const.Declare tensor<1x128x4096xf16> = dense<1> : tensor<4096x2x128xui4>, [#const.SubView<[0, 0, 0], [4096, 1, 128]>, #const.ConvertElemType<ui8>, #const.CastElemType<ui4>, #const.CastElemType<f16>, #const.Transpose<#HWC>]
     // CHECK-DAG:      [[WEIGHTS_1:%.+]] = const.Declare tensor<1x128x4096xf16> = dense<1> : tensor<4096x2x128xui4>, [#const.SubView<[0, 1, 0], [4096, 1, 128]>, #const.ConvertElemType<ui8>, #const.CastElemType<ui4>, #const.CastElemType<f16>, #const.Transpose<#HWC>]
     // CHECK-DAG:      [[FQ_OUTPUT_HIGH:%.+]] = const.Declare tensor<1x1x4096xf16> = dense<2.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
-    // CHECK:      [[FQ_INPUT_LOW:%.+]] = const.Declare tensor<1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>, #const.Transpose<#map>, #const.Reshape<[1, 1]>]
-    // CHECK:      [[FQ_INPUT_HIGHT:%.+]] = const.Declare tensor<1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>, #const.Transpose<#map>, #const.Reshape<[1, 1]>]
+    // CHECK:      [[FQ_INPUT_LOW:%.+]] = const.Declare tensor<1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>, #const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [1, 1]>]
+    // CHECK:      [[FQ_INPUT_HIGHT:%.+]] = const.Declare tensor<1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>, #const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [1, 1]>]
     // CHECK:      [[FQ_OUTPUT_LOW:%.+]] = const.Declare tensor<1x1x4096xf16> = dense<1.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
 
     // CHECK:      [[FQ_OUTPUT_LOW_CONCAT:%.+]] = IE.Concat([[FQ_OUTPUT_LOW]], [[FQ_OUTPUT_LOW]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x1x4096xf16>, tensor<1x1x4096xf16> -> tensor<2x1x4096xf16>

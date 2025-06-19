@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outliner="function-outlining=\"naive='num-parts=2'\"" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 module @OneInputOneOutput {
 
     net.NetworkInfo entryPoint : @main

@@ -110,7 +110,7 @@ mlir::LogicalResult ReshapeSingleConstDWConvInput::matchAndRewrite(IE::GroupConv
     // Adjust from C to H and W like [1, C, 1, 1] -> [1, C/16, 4, 4]
 
     const auto ctx = origOp->getContext();
-    if (!IE::groupConvIsEltwise(origOp)) {
+    if (!IE::isEltwiseGroupConv(origOp)) {
         return matchFailed(rewriter, origOp, "Not a valid groupConv");
     }
 

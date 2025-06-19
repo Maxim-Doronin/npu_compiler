@@ -76,6 +76,14 @@ def AddBuffersForNetResults : PassBase<"add-buffers-for-net-results", "vpux::Mod
         "mlir::func::FuncDialect",
         "mlir::memref::MemRefDialect"
     ];
+
+    let options = [
+        Option<
+            "useMemrefForHostFunctionBufferization", "use-memref-for-host-function-bufferization",
+            "bool", "false",
+            "Flag to use memref copy instead of VPUIP copy in host function."
+        >
+    ];
 }
 
 //=================================================================================
@@ -112,7 +120,6 @@ def OneShotBufferizeVPU2VPUIP : PassBase<"one-shot-bufferize-VPU-to-VPUIP", "vpu
         One shot bufferize ops from VPU to VPUIP dialect, include converting:
         (1) software ops from VPU to VPUIP::SWKernel ops. (37XX+)
         (2) ops which can be executed on NCE to VPUIP::NCEClusterTask ops. (37XX+)
-        (3) VPU::NCEClusterTiling ops to VPUIP::NCEClusterTiling. (37XX+)
     }];
 
     let constructor = "vpux::createOneShotBufferizeVPU2VPUIPPass()";
@@ -168,6 +175,22 @@ def ConvertEltwiseLayers2Math : PassBase<"convert-eltwise-layers-to-math", "vpux
         "mlir::math::MathDialect"
     ];
 }
+
+//
+// ExpandLayers
+//
+
+def ExpandLayers : PassBase<"expand-layers", "vpux::ModulePass"> {
+    let summary = "Expand IE Dialect SW Layers to Math dialect";
+
+    let constructor = "vpux::ShaveCodeGen::createExpandLayersPass()";
+
+    let dependentDialects = [
+        "mlir::arith::ArithDialect",
+        "mlir::math::MathDialect"
+    ];
+}
+
 
 //
 // ConvertAffine2LLVM
@@ -338,14 +361,6 @@ def ConvertVPUASM2NPUReg40XX : PassBase<"convert-VPUASM-to-NPUReg40XX", "vpux::M
         "vpux::VPUASM::VPUASMDialect",
         "vpux::NPUReg40XX::NPUReg40XXDialect",
         "vpux::ELF::ELFDialect"
-    ];
-
-    let options = [
-        Option<
-            "wlmEnabled", "workload-management-enable",
-            "bool", "false",
-            "Flag which identifies enablement of Workload management"
-        >
     ];
 }
 //

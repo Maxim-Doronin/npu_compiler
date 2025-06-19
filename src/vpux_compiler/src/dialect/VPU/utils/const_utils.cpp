@@ -85,61 +85,69 @@ std::vector<float> createBiasTableData(mlir::Value opInput, mlir::Value opOutput
     return createBiasTableData(opInput, outElemType, weights, bias, OC, biasConverter);
 }
 
-NewWeightsTableData::NewWeightsTableData(VPU::ArchKind arch, mlir::Value opInput, mlir::Type opOutputElemType,
+NewWeightsTableData::NewWeightsTableData(bool useNewWeightTableFormat, mlir::Value opInput, mlir::Type opOutputElemType,
                                          mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
                                          VPU::NCESparsity::PPEConverterCb ppeConverter,
                                          VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
-    initializeData(arch, opInput, opOutputElemType, weights, bias, OC, ppeConverter, biasConverter, constScale);
+    initializeData(useNewWeightTableFormat, opInput, opOutputElemType, weights, bias, OC, ppeConverter, biasConverter,
+                   constScale);
 }
 
-NewWeightsTableData::NewWeightsTableData(VPU::ArchKind arch, mlir::Value opInput, mlir::Value opOutput,
+NewWeightsTableData::NewWeightsTableData(bool useNewWeightTableFormat, mlir::Value opInput, mlir::Value opOutput,
                                          mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
                                          VPU::NCESparsity::PPEConverterCb ppeConverter,
                                          VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
     const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
 
-    initializeData(arch, opInput, outElemType, weights, bias, OC, ppeConverter, biasConverter, constScale);
+    initializeData(useNewWeightTableFormat, opInput, outElemType, weights, bias, OC, ppeConverter, biasConverter,
+                   constScale);
 }
 
-void NewWeightsTableData::initializeData(VPU::ArchKind /*arch*/, mlir::Value /*opInput*/,
-                                         mlir::Type /*opOutputElemType*/, mlir::Value /*weights*/,
-                                         const Const::ContentAttr& /*bias*/, int64_t /*OC*/,
-                                         VPU::NCESparsity::PPEConverterCb /*ppeConverter*/,
-                                         VPU::NCESparsity::BiasConverterCb /*biasConverter*/,
-                                         mlir::FloatAttr /*constScale*/) {
-    return;
+void NewWeightsTableData::initializeData(bool useNewWeightTableFormat, mlir::Value opInput, mlir::Type opOutputElemType,
+                                         mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
+                                         VPU::NCESparsity::PPEConverterCb ppeConverter,
+                                         VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
+    // leave vectors empty for archs using the legacy weights table format
+    if (useNewWeightTableFormat) {
+        scaleData = createScaleTableData<float>(opInput, opOutputElemType, weights, OC, ppeConverter, constScale);
+        if (bias != nullptr) {
+            biasData = createBiasTableData(opInput, opOutputElemType, weights, bias, OC, biasConverter);
+        } else {
+            biasData = std::vector<float>(OC, 0.0);
+        }
+    }
 }
 
-NewWeightsTableTensors::NewWeightsTableTensors(VPU::ArchKind arch, mlir::OpBuilder& builder, mlir::Location loc,
-                                               mlir::Value opInput, mlir::Type opOutputElemType, mlir::Value weights,
-                                               const Const::ContentAttr& bias, int64_t OC,
+NewWeightsTableTensors::NewWeightsTableTensors(bool useNewWeightTableFormat, mlir::OpBuilder& builder,
+                                               mlir::Location loc, mlir::Value opInput, mlir::Type opOutputElemType,
+                                               mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
                                                VPU::NCESparsity::PPEConverterCb ppeConverter,
                                                VPU::NCESparsity::BiasConverterCb biasConverter,
                                                mlir::FloatAttr constScale) {
-    initializeTensors(arch, builder, loc, opInput, opOutputElemType, weights, bias, OC, ppeConverter, biasConverter,
-                      constScale);
+    initializeTensors(useNewWeightTableFormat, builder, loc, opInput, opOutputElemType, weights, bias, OC, ppeConverter,
+                      biasConverter, constScale);
 }
 
-NewWeightsTableTensors::NewWeightsTableTensors(VPU::ArchKind arch, mlir::OpBuilder& builder, mlir::Location loc,
-                                               mlir::Value opInput, mlir::Value opOutput, mlir::Value weights,
-                                               const Const::ContentAttr& bias, int64_t OC,
+NewWeightsTableTensors::NewWeightsTableTensors(bool useNewWeightTableFormat, mlir::OpBuilder& builder,
+                                               mlir::Location loc, mlir::Value opInput, mlir::Value opOutput,
+                                               mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
                                                VPU::NCESparsity::PPEConverterCb ppeConverter,
                                                VPU::NCESparsity::BiasConverterCb biasConverter,
                                                mlir::FloatAttr constScale) {
     const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
 
-    initializeTensors(arch, builder, loc, opInput, outElemType, weights, bias, OC, ppeConverter, biasConverter,
-                      constScale);
+    initializeTensors(useNewWeightTableFormat, builder, loc, opInput, outElemType, weights, bias, OC, ppeConverter,
+                      biasConverter, constScale);
 }
 
-void NewWeightsTableTensors::initializeTensors(VPU::ArchKind arch, mlir::OpBuilder& builder, mlir::Location loc,
-                                               mlir::Value opInput, mlir::Type opOutputElemType, mlir::Value weights,
-                                               const Const::ContentAttr& bias, int64_t OC,
+void NewWeightsTableTensors::initializeTensors(bool useNewWeightTableFormat, mlir::OpBuilder& builder,
+                                               mlir::Location loc, mlir::Value opInput, mlir::Type opOutputElemType,
+                                               mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
                                                VPU::NCESparsity::PPEConverterCb ppeConverter,
                                                VPU::NCESparsity::BiasConverterCb biasConverter,
                                                mlir::FloatAttr constScale) {
-    const auto newWeightsTableData = NewWeightsTableData(arch, opInput, opOutputElemType, weights, bias, OC,
-                                                         ppeConverter, biasConverter, constScale);
+    const auto newWeightsTableData = NewWeightsTableData(useNewWeightTableFormat, opInput, opOutputElemType, weights,
+                                                         bias, OC, ppeConverter, biasConverter, constScale);
 
     if (!newWeightsTableData.scaleData.empty()) {
         scaleTensor =

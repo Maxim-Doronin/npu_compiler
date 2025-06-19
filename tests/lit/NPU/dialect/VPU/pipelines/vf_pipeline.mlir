@@ -6,6 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --vertical-fusion %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
+
 module @Do_not_Canocalize_VF_op_with_outline {
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input"  : tensor<1x64x300x300xf32>

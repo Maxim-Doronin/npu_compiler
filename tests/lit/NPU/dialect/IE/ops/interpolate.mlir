@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ConvertConstToAttr
 func.func @ConvertConstToAttr(%arg0: tensor<1x3x10x10xf32>) -> tensor<1x3x20x15xf32> {
     %0 = const.Declare tensor<2xsi64> = dense<[20, 15]> : tensor<2xsi64>

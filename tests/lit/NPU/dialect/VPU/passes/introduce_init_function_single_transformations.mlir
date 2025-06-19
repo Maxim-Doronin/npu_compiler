@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 {-#
     dialect_resources: {
         builtin: {
@@ -427,4 +428,382 @@ module @QuantizedToQuantizedConversionPerAxis_2D {
     // CHECK:       [[PER_AXIS_CAST_4:%.+]] = IE.QuantizeCast([[PER_AXIS_CAST_3]]) {dstElemType = [[QTYPE_U8]]}
     // CHECK:       [[IO_CAST_2:%.+]] = IE.QuantizeCast([[PER_AXIS_CAST_4]]) {dstElemType = ui8}
     // CHECK:       return [[IO_CAST_2]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x0000000411223344551122334455"
+        }
+    }
+#-}
+
+!qElemType1 = !quant.uniform<i8:f16:3, {8.9134667433944398E-4:-24, 3.9134667433944398E-4:-24}>
+!qElemType2 = !quant.uniform<u8:f16:3, {8.9134667433944398E-4:104, 3.9134667433944398E-4:104}>
+// CHECK-DAG: [[QTYPE_I8:!.+]] = !quant.uniform<i8:f16:3, {8.9134667433944398E-4:-24,3.9134667433944397E-4:-24}>
+// CHECK-DAG: [[QTYPE_U8:!.+]] = !quant.uniform<u8:f16:3, {8.9134667433944398E-4:104,3.9134667433944397E-4:104}>
+// CHECK-DAG: [[QTYPE_1:!.+]] = !quant.uniform<i8:f16, 1.000000e+00>
+// CHECK-DAG: [[QTYPE_2:!.+]] = !quant.uniform<u8:f16, 1.000000e+00:128>
+
+
+// CHECK: module @QuantizedToQuantizedConversionPerAxisNegativeZp
+module @QuantizedToQuantizedConversionPerAxisNegativeZp {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<5x1x1x2xui8>
+    }
+
+    func.func @main() -> tensor<5x1x1x2xui8> {
+        // Note: surrounding casts is to abide I/O requirements
+        %cst = const.Declare tensor<5x1x1x2xui8> = dense_resource<ov_1> : tensor<5x1x1x2xsi8>,
+        [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<ui8>]
+        return %cst : tensor<5x1x1x2xui8>
+    }
+
+    // CHECK:   func.func @init([[NGRAPH_CST:%.+]]: tensor<5x1x1x2xsi8>) -> tensor<5x1x1x2xui8>
+    // CHECK:       [[IO_CAST_1:%.+]] = IE.QuantizeCast([[NGRAPH_CST]]) {dstElemType = [[QTYPE_I8]]}
+
+    // CHECK:       [[PER_TENSOR_CAST_1:%.+]] = IE.QuantizeCast([[IO_CAST_1]]) {dstElemType = si8}
+    // CHECK:       [[PER_TENSOR_CAST_2:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_1]]) {dstElemType = [[QTYPE_1]]}
+
+    // CHECK:       [[AVG_POOL:%.+]] = IE.AvgPool([[PER_TENSOR_CAST_2]])
+    // CHECK-SAME:      {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}
+    // CHECK-SAME:      tensor<5x1x1x2x[[QTYPE_1]]> -> tensor<5x1x1x2x[[QTYPE_2]]>
+
+    // CHECK:       [[PER_TENSOR_CAST_3:%.+]] = IE.QuantizeCast([[AVG_POOL]]) {dstElemType = ui8}
+    // CHECK:       [[PER_TENSOR_CAST_4:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_3]]) {dstElemType = [[QTYPE_U8]]}
+    // CHECK:       [[IO_CAST_2:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_4]]) {dstElemType = ui8}
+    // CHECK:       return [[IO_CAST_2]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x0000000411223344551122334455"
+        }
+    }
+#-}
+
+!qElemType1 = !quant.uniform<i8:f16, 8.9134667433944398E-4:-24>
+!qElemType2 = !quant.uniform<u8:f16, 8.9134667433944398E-4:104>
+// CHECK-DAG: [[QTYPE_I8:!.+]] = !quant.uniform<i8:f16, 8.9134667433944398E-4:-24>
+// CHECK-DAG: [[QTYPE_U8:!.+]] = !quant.uniform<u8:f16, 8.9134667433944398E-4:104>
+// CHECK-DAG: [[QTYPE_1:!.+]] = !quant.uniform<i8:f16, 1.000000e+00>
+// CHECK-DAG: [[QTYPE_2:!.+]] = !quant.uniform<u8:f16, 1.000000e+00:128>
+
+// CHECK: module @QuantizedToQuantizedConversionPerTensorNegativeZp
+module @QuantizedToQuantizedConversionPerTensorNegativeZp {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<5x1x1x2xui8>
+    }
+
+    func.func @main() -> tensor<5x1x1x2xui8> {
+        // Note: surrounding casts is to abide I/O requirements
+        %cst = const.Declare tensor<5x1x1x2xui8> = dense_resource<ov_1> : tensor<5x1x1x2xsi8>,
+        [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<ui8>]
+        return %cst : tensor<5x1x1x2xui8>
+    }
+
+    // CHECK:   func.func @init([[NGRAPH_CST:%.+]]: tensor<5x1x1x2xsi8>) -> tensor<5x1x1x2xui8>
+    // CHECK:       [[IO_CAST_1:%.+]] = IE.QuantizeCast([[NGRAPH_CST]]) {dstElemType = [[QTYPE_I8]]}
+
+    // CHECK:       [[PER_TENSOR_CAST_1:%.+]] = IE.QuantizeCast([[IO_CAST_1]]) {dstElemType = si8}
+    // CHECK:       [[PER_TENSOR_CAST_2:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_1]]) {dstElemType = [[QTYPE_1]]}
+
+    // CHECK:       [[AVG_POOL:%.+]] = IE.AvgPool([[PER_TENSOR_CAST_2]])
+    // CHECK-SAME:      {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}
+    // CHECK-SAME:      tensor<5x1x1x2x[[QTYPE_1]]> -> tensor<5x1x1x2x[[QTYPE_2]]>
+
+    // CHECK:       [[PER_TENSOR_CAST_3:%.+]] = IE.QuantizeCast([[AVG_POOL]]) {dstElemType = ui8}
+    // CHECK:       [[PER_TENSOR_CAST_4:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_3]]) {dstElemType = [[QTYPE_U8]]}
+    // CHECK:       [[IO_CAST_2:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_4]]) {dstElemType = ui8}
+    // CHECK:       return [[IO_CAST_2]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x0000000411223344551122334455"
+        }
+    }
+#-}
+
+!qElemType1 = !quant.uniform<u8:f16, 8.9134667433944398E-4:104>
+!qElemType2 = !quant.uniform<i8:f16, 8.9134667433944398E-4:-24>
+// CHECK-DAG: [[QTYPE_U8:!.+]] = !quant.uniform<u8:f16, 8.9134667433944398E-4:104>
+// CHECK-DAG: [[QTYPE_I8:!.+]] = !quant.uniform<i8:f16, 8.9134667433944398E-4:-24>
+// CHECK-DAG: [[QTYPE_1:!.+]] = !quant.uniform<u8:f16, 1.000000e+00:128>
+// CHECK-DAG: [[QTYPE_2:!.+]] = !quant.uniform<i8:f16, 1.000000e+00>
+
+// CHECK: module @QuantizedToQuantizedConversionPerTensorNegativeOutZp
+module @QuantizedToQuantizedConversionPerTensorNegativeOutZp {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<5x1x1x2xsi8>
+    }
+
+    func.func @main() -> tensor<5x1x1x2xsi8> {
+        // Note: surrounding casts is to abide I/O requirements
+        %cst = const.Declare tensor<5x1x1x2xsi8> = dense_resource<ov_1> : tensor<5x1x1x2xui8>,
+        [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<si8>]
+        return %cst : tensor<5x1x1x2xsi8>
+    }
+
+    // CHECK:   func.func @init([[NGRAPH_CST:%.+]]: tensor<5x1x1x2xui8>) -> tensor<5x1x1x2xsi8>
+    // CHECK:       [[IO_CAST_1:%.+]] = IE.QuantizeCast([[NGRAPH_CST]]) {dstElemType = [[QTYPE_U8]]}
+
+    // CHECK:       [[PER_TENSOR_CAST_1:%.+]] = IE.QuantizeCast([[IO_CAST_1]]) {dstElemType = ui8}
+    // CHECK:       [[PER_TENSOR_CAST_2:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_1]]) {dstElemType = [[QTYPE_1]]}
+
+    // CHECK:       [[AVG_POOL:%.+]] = IE.AvgPool([[PER_TENSOR_CAST_2]])
+    // CHECK-SAME:      {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}
+    // CHECK-SAME:      tensor<5x1x1x2x[[QTYPE_1]]> -> tensor<5x1x1x2x[[QTYPE_2]]>
+
+    // CHECK:       [[PER_TENSOR_CAST_3:%.+]] = IE.QuantizeCast([[AVG_POOL]]) {dstElemType = si8}
+    // CHECK:       [[PER_TENSOR_CAST_4:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_3]]) {dstElemType = [[QTYPE_I8]]}
+    // CHECK:       [[IO_CAST_2:%.+]] = IE.QuantizeCast([[PER_TENSOR_CAST_4]]) {dstElemType = si8}
+    // CHECK:       return [[IO_CAST_2]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+        }
+    }
+#-}
+
+// CHECK: module @Reverse
+module @Reverse {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<2x2xf32>
+    }
+
+    func.func @main() -> tensor<2x2xf32> {
+        %NOT_supported = const.Declare tensor<2x2xf32> = dense_resource<ov_1> : tensor<2x2xf32>,
+            [#const.Reverse<0 : i64>]
+
+        // Note: the "supported" constant is here to show that the exact same
+        // constant, given a different transformation, ends up in init schedule
+        %supported = const.Declare tensor<2x2xf16> = dense_resource<ov_1> : tensor<2x2xf32>,
+            [#const.CastElemType<f16>]
+
+        return %NOT_supported : tensor<2x2xf32>
+    }
+
+    // CHECK:   func.func @init([[CST:%.+]]: tensor<2x2xf32>) -> tensor<2x2xf16>
+    // CHECK-NEXT:  [[CVT:%.+]] = IE.Convert([[CST]])
+    // CHECK-NEXT:  return [[CVT]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+        }
+    }
+#-}
+
+// CHECK: module @ExpandDilated
+module @ExpandDilated {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<1x1x3x3xf32>
+    }
+
+    func.func @main() -> tensor<1x1x3x3xf32> {
+        %NOT_supported = const.Declare tensor<1x1x3x3xf32> = dense_resource<ov_1> : tensor<1x1x2x2xf32>,
+            [#const.ExpandDilated<[2, 2]>]
+
+        // Note: the "supported" constant is here to show that the exact same
+        // constant, given a different transformation, ends up in init schedule
+        %supported = const.Declare tensor<1x1x2x2xf16> = dense_resource<ov_1> : tensor<1x1x2x2xf32>,
+            [#const.CastElemType<f16>]
+
+        return %NOT_supported : tensor<1x1x3x3xf32>
+    }
+
+    // CHECK:   func.func @init([[CST:%.+]]: tensor<1x1x2x2xf32>) -> tensor<1x1x2x2xf16>
+    // CHECK-NEXT:  [[CVT:%.+]] = IE.Convert([[CST]])
+    // CHECK-NEXT:  return [[CVT]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x00000004aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccd6"
+        }
+    }
+#-}
+
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+// CHECK: module @AffineReshape
+module @AffineReshape {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<1x1x3x3xf32>
+    }
+
+    func.func @main() -> tensor<1x1x3x3xf16, {order = #NCWH}> {
+        // Note: CastElemType is only here to avoid this constant from being ignored as #const.AffineReshape is view-like.
+        %cst = const.Declare tensor<1x1x3x3xf16, {order = #NCWH}> = dense_resource<ov_1> : tensor<1x1x3x3xf32>,
+            [#const.CastElemType<f16>, #const.AffineReshape<[[0], [1], [3], [2]], [1, 1, 3, 3]>]
+        return %cst : tensor<1x1x3x3xf16, {order = #NCWH}>
+    }
+
+    // CHECK:           func.func @init([[CST:%.+]]: tensor<1x1x3x3xf32>) -> tensor<1x1x3x3xf16, {order = #NCWH}>
+    // CHECK-NEXT:          [[CVT:%.+]] = IE.Convert([[CST]]) {dstElemType = f16}
+    // CHECK-NEXT:          [[AFFINE:%.+]] = IE.AffineReshape([[CVT]])
+    // CHECK-LITERAL:           {dim_mapping = [[0], [1], [3], [2]], shape_value = [1, 1, 3, 3]}
+    // CHECK-NEXT:          return [[AFFINE]]
+}
+
+// -----
+
+{-#
+  dialect_resources: {
+    builtin: {
+        ov_0: "0x10000000AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30"
+    }
+  }
+#-}
+
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK: module @MemPermuteConversion
+module @MemPermuteConversion {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output_0" : tensor<1x4x2x3xsi8>
+    }
+
+    func.func @main() -> (tensor<1x4x2x3xsi8>) {
+        %cst = const.Declare tensor<1x4x2x3xsi8> = dense_resource<ov_0> : tensor<1x2x3x4xsi8>,
+                    [#const.MemPermute<#NCHW, #NWCH>]
+        return %cst : tensor<1x4x2x3xsi8>
+    }
+    // CHECK: func.func @init([[ARG0:%.+]]: tensor<1x2x3x4xsi8>) -> tensor<1x4x2x3xsi8>
+    // CHECK:   [[SHCAST:%.+]] = IE.ShapeCast {shape = [1, 2, 3, 4]} inputs([[ARG0:%.+]] : tensor<1x2x3x4xsi8>) -> tensor<1x2x3x4xsi8>
+    // CHECK:   [[LAYOUTCAST:%.+]] = IE.LayoutCast([[SHCAST:%.+]]) {dst_order = #NCHW} : tensor<1x2x3x4xsi8> -> tensor<1x2x3x4xsi8>
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[LAYOUTCAST:%.+]]) {order_value = #NWCH} : tensor<1x2x3x4xsi8> -> tensor<1x4x2x3xsi8>
+    // CHECK:   [[SHCAST2:%.+]] = IE.ShapeCast {shape = [1, 4, 2, 3]} inputs([[TRANSPOSE:%.+]] : tensor<1x4x2x3xsi8>) -> tensor<1x4x2x3xsi8>
+    // CHECK:   [[LAYOUTCAST2:%.+]] = IE.LayoutCast([[SHCAST2:%.+]]) {dst_order = #NCHW} : tensor<1x4x2x3xsi8> -> tensor<1x4x2x3xsi8>
+    // CHECK:   return [[LAYOUTCAST2]]
+}
+
+// -----
+
+{-#
+  dialect_resources: {
+    builtin: {
+        ov_0: "0x10000000AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30"
+    }
+  }
+#-}
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK: module @MemPermuteConversionNoTranspose
+module @MemPermuteConversionNoTranspose {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output_0" : tensor<1x2x3x4xsi8, {order = #NHWC}>
+    }
+
+    func.func @main() -> (tensor<1x2x3x4xsi8, {order = #NHWC}>) {
+        %cst = const.Declare tensor<1x2x3x4xsi8, {order = #NHWC}> = dense_resource<ov_0> : tensor<1x2x3x4xsi8>,
+                            [#const.MemPermute<#NHWC, #NHWC>]
+        return %cst : tensor<1x2x3x4xsi8, {order = #NHWC}>
+    }
+    // CHECK: func.func @init([[ARG0:%.+]]: tensor<1x2x3x4xsi8>) -> tensor<1x2x3x4xsi8, {order = #NHWC}>
+    // CHECK:   [[SHCAST:%.+]] = IE.ShapeCast {shape = [1, 2, 3, 4]} inputs([[ARG0:%.+]] : tensor<1x2x3x4xsi8>) -> tensor<1x2x3x4xsi8>
+    // CHECK:   [[LAYOUTCAST:%.+]] = IE.LayoutCast([[SHCAST:%.+]]) {dst_order = #NCHW} : tensor<1x2x3x4xsi8> -> tensor<1x2x3x4xsi8>
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[LAYOUTCAST:%.+]]) {order_value = #NHWC} : tensor<1x2x3x4xsi8> -> tensor<1x3x4x2xsi8>
+    // CHECK:   [[SHCAST2:%.+]] = IE.ShapeCast {shape = [1, 2, 3, 4]} inputs([[TRANSPOSE:%.+]] : tensor<1x3x4x2xsi8>) -> tensor<1x2x3x4xsi8>
+    // CHECK:   [[LAYOUTCAST2:%.+]] = IE.LayoutCast([[SHCAST2:%.+]]) {dst_order = #NHWC} : tensor<1x2x3x4xsi8> -> tensor<1x2x3x4xsi8, {order = #NHWC}>
+    // CHECK:   return [[LAYOUTCAST2]]
+}
+
+// -----
+
+{-#
+  dialect_resources: {
+    builtin: {
+        ov_0: "0x10000000AEB00E30AEB0"
+    }
+  }
+#-}
+
+#map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK: module @MemPermuteConversion3D
+module @MemPermuteConversion3D {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output_0" : tensor<1x3x2xsi8>
+    }
+
+    func.func @main() -> (tensor<1x3x2xsi8>) {
+        %cst = const.Declare tensor<1x3x2xsi8> = dense_resource<ov_0> : tensor<1x2x3xsi8>,
+                    [#const.MemPermute<#CHW, #map>]
+        return %cst : tensor<1x3x2xsi8>
+    }
+    // CHECK: func.func @init([[ARG0:%.+]]: tensor<1x2x3xsi8>) -> tensor<1x3x2xsi8>
+    // CHECK:   [[SHCAST:%.+]] = IE.ShapeCast {shape = [1, 2, 3]} inputs([[ARG0:%.+]] : tensor<1x2x3xsi8>) -> tensor<1x2x3xsi8>
+    // CHECK:   [[LAYOUTCAST:%.+]] = IE.LayoutCast([[SHCAST:%.+]]) {dst_order = #CHW} : tensor<1x2x3xsi8> -> tensor<1x2x3xsi8>
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[LAYOUTCAST:%.+]]) {order_value = #map} : tensor<1x2x3xsi8> -> tensor<1x3x2xsi8>
+    // CHECK:   [[SHCAST2:%.+]] = IE.ShapeCast {shape = [1, 3, 2]} inputs([[TRANSPOSE:%.+]] : tensor<1x3x2xsi8>) -> tensor<1x3x2xsi8>
+    // CHECK:   [[LAYOUTCAST2:%.+]] = IE.LayoutCast([[SHCAST2:%.+]]) {dst_order = #CHW} : tensor<1x3x2xsi8> -> tensor<1x3x2xsi8>
+    // CHECK:   return [[LAYOUTCAST2]]
+}
+
+// -----
+
+{-#
+  dialect_resources: {
+    builtin: {
+        ov_0: "0x10000000AEB00E30AEB0"
+    }
+  }
+#-}
+
+#map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK: module @MemPermuteConversionNoTranspose3D
+module @MemPermuteConversionNoTranspose3D {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output_0" : tensor<1x2x3xsi8, {order = #map}>
+    }
+
+    func.func @main() -> (tensor<1x2x3xsi8, {order = #map}>) {
+        %cst = const.Declare tensor<1x2x3xsi8, {order = #map}> = dense_resource<ov_0> : tensor<1x2x3xsi8>,
+                            [#const.MemPermute<#map, #map>]
+        return %cst : tensor<1x2x3xsi8, {order = #map}>
+    }
+    // CHECK: func.func @init([[ARG0:%.+]]: tensor<1x2x3xsi8>) -> tensor<1x2x3xsi8, {order = #map}>
+    // CHECK:   [[SHCAST:%.+]] = IE.ShapeCast {shape = [1, 2, 3]} inputs([[ARG0:%.+]] : tensor<1x2x3xsi8>) -> tensor<1x2x3xsi8>
+    // CHECK:   [[LAYOUTCAST:%.+]] = IE.LayoutCast([[SHCAST:%.+]]) {dst_order = #CHW} : tensor<1x2x3xsi8> -> tensor<1x2x3xsi8>
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[LAYOUTCAST:%.+]]) {order_value = #map} : tensor<1x2x3xsi8> -> tensor<1x3x2xsi8>
+    // CHECK:   [[SHCAST2:%.+]] = IE.ShapeCast {shape = [1, 2, 3]} inputs([[TRANSPOSE:%.+]] : tensor<1x3x2xsi8>) -> tensor<1x2x3xsi8>
+    // CHECK:   [[LAYOUTCAST2:%.+]] = IE.LayoutCast([[SHCAST2:%.+]]) {dst_order = #map} : tensor<1x2x3xsi8> -> tensor<1x2x3xsi8, {order = #map}>
+    // CHECK:   return [[LAYOUTCAST2]]
 }

@@ -3,8 +3,11 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -93,14 +96,18 @@ void ConvertSETablesToConstantsPass::safeRunOnFunc() {
         const auto dataShape = Shape(parseIntArrayAttr<int64_t>(seTableOp.getDataShape()));
         const auto dataStrides = inputType.getStrides();
         const auto elemByteSize = getElemTypeSize(seTableOp.getDataElemType()).to<Byte>();
-        std::vector<int32_t> seOffsets;
-        if (auto uniformSeSize = mlir::dyn_cast<mlir::IntegerAttr>(seTableOp.getSeSize())) {
-            const auto seSize = uniformSeSize.getValue().getSExtValue();
-            seOffsets = seAttr.value().computeSEOffsets(dataShape, dataStrides, elemByteSize, seSize);
-        } else {
-            auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seTableOp.getSeSize()));
-            seOffsets = seAttr.value().computeSEOffsetsWithMultiSeSize(dataShape, dataStrides, elemByteSize, seSizes);
-        }
+        const auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seTableOp.getSeSize()));
+
+        // When segmenting on K, it is expected for the seTable depth in each cluster to start from 0 offset.
+        // For more detailed examples, look at computeSEOffsetsWithMultiSeSize and computeSEOffsets impls.
+        auto seTableDistribution = mlir::dyn_cast<VPUIP::DistributedBufferType>(seTableOperand.getType());
+        const auto isTableSegmentedOnK =
+                seTableDistribution != nullptr && VPU::isSegmentedOverC(seTableDistribution.getDistribution());
+
+        std::vector<int32_t> seOffsets =
+                isTableSegmentedOnK
+                        ? seAttr.value().computeSEOffsetsWithMultiSeSize(dataShape, dataStrides, elemByteSize, seSizes)
+                        : seAttr.value().computeSEOffsets(dataShape, dataStrides, elemByteSize, seSizes.front());
 
         std::vector<int32_t> basePtrs(seOffsets.size(), 0);
         if (seTableOp.getBasePtrs().has_value()) {

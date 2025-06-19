@@ -5,6 +5,8 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/convert_like.hpp"
+
 using namespace ov;
 using namespace element;
 
@@ -29,7 +31,7 @@ protected:
         auto data = std::make_shared<op::v0::Parameter>(data_type, data_shape);
         auto like = std::make_shared<op::v0::Constant>(like_type, like_shape);
 
-        auto ConvertLikeOp = std::make_shared<ov::opset10::ConvertLike>(data, like);
+        auto ConvertLikeOp = std::make_shared<ov::op::v1::ConvertLike>(data, like);
 
         ov::ResultVector results{std::make_shared<ov::op::v0::Result>(ConvertLikeOp)};
         function = std::make_shared<ov::Model>(results, ov::ParameterVector{data}, "ConvertLikeTest");
@@ -45,15 +47,12 @@ public:
     };
 };
 
-class ConvertLikeLayerTest_NPU3720 : public ConvertLikeLayerTestCommon {};
-class ConvertLikeLayerTest_NPU4000 : public ConvertLikeLayerTestCommon {};
-
-TEST_P(ConvertLikeLayerTest_NPU3720, SW) {
+TEST_P(ConvertLikeLayerTestCommon, NPU3720_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(ConvertLikeLayerTest_NPU4000, SW) {
+TEST_P(ConvertLikeLayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
@@ -64,12 +63,7 @@ const TypeVector inType{
 const std::vector<ov::Shape> data_Shapes = {{2, 2}};
 const std::vector<ov::Shape> like_Shapes = {{2}};
 
-INSTANTIATE_TEST_SUITE_P(smoke_ConvertLikeTest, ConvertLikeLayerTest_NPU3720,
-                         ::testing::Combine(::testing::ValuesIn(data_Shapes), ::testing::ValuesIn(like_Shapes),
-                                            ::testing::ValuesIn(inType), ::testing::ValuesIn(inType)),
-                         ConvertLikeLayerTestCommon::getTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(smoke_ConvertLikeTest, ConvertLikeLayerTest_NPU4000,
+INSTANTIATE_TEST_SUITE_P(smoke_ConvertLikeTest, ConvertLikeLayerTestCommon,
                          ::testing::Combine(::testing::ValuesIn(data_Shapes), ::testing::ValuesIn(like_Shapes),
                                             ::testing::ValuesIn(inType), ::testing::ValuesIn(inType)),
                          ConvertLikeLayerTestCommon::getTestCaseName);

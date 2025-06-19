@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-view-ops-to-declarations %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK: func.func @Reshape([[ARG0:%.+]]: memref<1x512xf16>, [[ARG1:%.+]]: memref<1x512xf16>)
 func.func @Reshape(%arg0: memref<1x512xf16>, %arg1: memref<1x512xf16>) -> memref<1x512xf16> {
     %in = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x512xf16>

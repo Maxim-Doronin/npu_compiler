@@ -51,5 +51,8 @@ SparsityRemovalFlag shouldRemoveOutputSparsity(mlir::Operation* op);
 
 bool isSEOnlyWithoutSMSupported(VPU::ArchKind arch);
 
+std::pair<SmallVector<int64_t>, SmallVector<int64_t>> getUpdatedSliceOffsetsAndShapesForSETable(
+        int64_t seDepth, mlir::ArrayAttr seSizeAttr, ArrayRef<int64_t> sliceOffsets, ArrayRef<int64_t> sliceSizes);
+
 }  // namespace VPU
 }  // namespace vpux

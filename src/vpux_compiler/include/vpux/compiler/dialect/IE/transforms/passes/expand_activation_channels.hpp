@@ -215,5 +215,21 @@ private:
     Logger _log;
 };
 
+//
+// SoftMaxRewriter
+//
+
+class SoftMaxRewriter final : public mlir::OpRewritePattern<IE::SoftMaxOp> {
+public:
+    SoftMaxRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::SoftMaxOp>(ctx), _log(log) {
+        setDebugName("SoftMaxRewriter");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::SoftMaxOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
 }  // namespace IE
 }  // namespace vpux

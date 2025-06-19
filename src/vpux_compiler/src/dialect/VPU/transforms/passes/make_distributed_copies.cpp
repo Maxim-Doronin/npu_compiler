@@ -9,6 +9,9 @@
 #include "vpux/compiler/dialect/const/dialect.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -38,7 +41,7 @@ private:
 mlir::LogicalResult UnrolledTypeToCopyConversion::matchAndRewrite(VPU::UnrolledTypeOp origOp,
                                                                   mlir::PatternRewriter& rewriter) const {
     auto isDistributedType = [](mlir::Value val) {
-        auto distributedIf = val.getType().dyn_cast_or_null<VPU::DistributedTypeInterface>();
+        auto distributedIf = mlir::dyn_cast_or_null<VPU::DistributedTypeInterface>(val.getType());
         return distributedIf != nullptr && distributedIf.containsDistributedTypes();
     };
 
@@ -87,6 +90,17 @@ void MakeDistributedCopiesPass::safeRunOnFunc() {
     target.addLegalDialect<Const::ConstDialect>();
     target.addLegalOp<VPU::CopyOp>();
     target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp, mlir::func::CallOp>();
+
+    // TODO: The scf/affine/tensor dialects are explicitly marked as legal because, in the case of the HostCompile
+    // pipeline, this pass is executed on the main function, which contains host-side code as well. Ideally, this pass
+    // should not operate on the main function in the HostCompile pipeline. This will be refactored in the future.
+    // Track: E#168311
+    target.addLegalDialect<mlir::arith::ArithDialect>();
+    target.addLegalDialect<mlir::scf::SCFDialect>();
+    target.addLegalDialect<mlir::affine::AffineDialect>();
+    target.addLegalOp<mlir::tensor::ExtractSliceOp>();
+    target.addLegalOp<mlir::tensor::InsertSliceOp>();
+    target.addLegalOp<mlir::tensor::EmptyOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<UnrolledTypeToCopyConversion>(&ctx, _log);

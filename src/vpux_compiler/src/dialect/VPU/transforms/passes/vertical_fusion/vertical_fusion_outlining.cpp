@@ -146,7 +146,8 @@ public:
     VerticalFusionOutliningPass(const VPU::TilingOptions& TilingOptions, Logger log);
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnModule() final;
 
 private:
@@ -165,8 +166,9 @@ VerticalFusionOutliningPass::VerticalFusionOutliningPass(const VPU::TilingOption
     initializeFromOptions();
 }
 
-mlir::LogicalResult VerticalFusionOutliningPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult VerticalFusionOutliningPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

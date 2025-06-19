@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -62,7 +62,6 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     if (options.enableShaveKernelTiling) {
         pm.addPass(VPUIP::createTileActShaveKernelTaskPass(log));
     }
-    pm.addPass(VPUIP::createUnwrapClusterTilingPass(log));
     if (options.enableOptimizeCopies || options.enableOpsAsDMA) {
         // This pass is a part of "copy optimization pipeline", but need to be done before because
         // WrapWithPermuteAsNNDMA depends on it.
@@ -200,8 +199,7 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     if (options.enableSimpleSchedule) {
-        pm.addPass(VPURT::createSimplifySchedulePass(options.shareWaitAndUpdateBarriers,
-                                                     options.reduceParallelControlFlows, log));
+        pm.addPass(VPURT::createSimplifySchedulePass(options.reduceParallelControlFlows, std::nullopt, log));
     }
 
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(std::nullopt, log));

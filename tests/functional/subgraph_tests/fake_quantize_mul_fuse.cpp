@@ -6,6 +6,10 @@
 
 #include "common_test_utils/node_builders/fake_quantize.hpp"
 
+#include "openvino/op/convert.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/multiply.hpp"
+
 namespace ov::test {
 
 // FakeQuantizeMulFusion transformation replaces:

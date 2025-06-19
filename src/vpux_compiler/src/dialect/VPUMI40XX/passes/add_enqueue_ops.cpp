@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -27,13 +27,12 @@ static constexpr int64_t DMA_OUTSTANDING_TRANSACTIONS = 64;
 class AddEnqueueOpsPass : public VPUMI40XX::impl::AddEnqueueOpsBase<AddEnqueueOpsPass> {
 public:
     explicit AddEnqueueOpsPass(const WorkloadManagementMode workloadManagementMode, Logger log)
-            : _enabledWlmVpurtEnqueue(workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO ||
-                                      workloadManagementMode == WorkloadManagementMode::PWLM_V2_PAGES) {
+            : _enabledPredefinedEnqueue(workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
-    bool _enabledWlmVpurtEnqueue;
+    bool _enabledPredefinedEnqueue;
     void safeRunOnFunc() final;
 };
 
@@ -253,9 +252,10 @@ mlir::LogicalResult verifyEnqueueOpsOrderIsAlignedWithPerFifoTaskOrder(SmallVect
 // This method will use an LCA algorithm on previous instance of tasks barriers and update barrier
 // of fetch DMA.
 mlir::LogicalResult addEnqusForTasksWithFetch(VPUMI40XX::MappedInferenceOp mpi, const VPURegMapped::TaskType primary,
-                                              const VPURegMapped::TaskType secondary, const int64_t tilesCount,
+                                              const VPURegMapped::TaskType secondary,
                                               VPURegMapped::EnqueueOp& globalPreviousEnqu, mlir::OpBuilder& builder,
-                                              int64_t& counter, VPUMI40XX::lcaCache& cache, Logger log) {
+                                              int64_t& counter, VPUMI40XX::lcaCache& cache, Logger log,
+                                              const int64_t tilesCount, const int64_t listsCount = 1) {
     auto ctx = mpi.getContext();
 
     auto getFetchTask = [](mlir::Value result) {
@@ -268,138 +268,140 @@ mlir::LogicalResult addEnqusForTasksWithFetch(VPUMI40XX::MappedInferenceOp mpi, 
     };
 
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
-        auto startVal = mpi.getListHead(primary, tileIdx);
-        if (!startVal)
-            continue;
+        for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
+            auto startVal = mpi.getListHead(primary, tileIdx, listIdx);
+            if (!startVal)
+                continue;
 
-        log.trace("Search for enqueue barriers for {0}:{1}", stringifyTaskType(primary), tileIdx);
-        log = log.nest();
+            log.trace("Search for enqueue barriers for {0}:{1}", stringifyTaskType(primary), tileIdx);
+            log = log.nest();
 
-        // reset local previousEnqu
-        VPURegMapped::EnqueueOp localPreviousEnqu;
+            // reset local previousEnqu
+            VPURegMapped::EnqueueOp localPreviousEnqu;
 
-        // strongly assume that the FIRST OP always has a fetchTask
-        auto previousFetchTask = getFetchTask(startVal);
-        VPUX_THROW_UNLESS(previousFetchTask, "Starting OP {0} does not have a fetchTask", startVal);
-        VPURegMapped::TaskOpInterface taskOp = mlir::cast<VPURegMapped::TaskOpInterface>(startVal.getDefiningOp());
-        do {
-            auto filteredRange =
-                    to_small_vector(taskOp.getResult().getUsers() | vpux::filtered([&secondary](mlir::Operation* op) {
-                                        // filter out the usages that are of the secondaryType
-                                        auto taskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(op);
-                                        return taskOp && taskOp.getTaskType() == secondary;
-                                    }));
+            // strongly assume that the FIRST OP always has a fetchTask
+            auto previousFetchTask = getFetchTask(startVal);
+            VPUX_THROW_UNLESS(previousFetchTask, "Starting OP {0} does not have a fetchTask", startVal);
+            VPURegMapped::TaskOpInterface taskOp = mlir::cast<VPURegMapped::TaskOpInterface>(startVal.getDefiningOp());
+            do {
+                auto filteredRange = to_small_vector(
+                        taskOp.getResult().getUsers() | vpux::filtered([&secondary](mlir::Operation* op) {
+                            // filter out the usages that are of the secondaryType
+                            auto taskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(op);
+                            return taskOp && taskOp.getTaskType() == secondary;
+                        }));
 
-            auto firstSecondaryIt = vpux::min_element(filteredRange, VPUMI40XX::taskOpComparator);
-            auto lastSecondaryIt = vpux::max_element(filteredRange, VPUMI40XX::taskOpComparator);
-            auto firstSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**firstSecondaryIt);
-            auto lastSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**lastSecondaryIt);
+                auto firstSecondaryIt = vpux::min_element(filteredRange, VPUMI40XX::taskOpComparator);
+                auto lastSecondaryIt = vpux::max_element(filteredRange, VPUMI40XX::taskOpComparator);
+                auto firstSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**firstSecondaryIt);
+                auto lastSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**lastSecondaryIt);
 
-            auto fetchTask = getFetchTask(taskOp.getResult());
-            previousFetchTask = fetchTask ? fetchTask : previousFetchTask;
-            /*
-                FetchTask
-                    |
-                    |
-                    .   Bar1
-                    .   /
-                   DMA0_1
-                    |   \
-                    |   Bar2
-                    .
-                    .
+                auto fetchTask = getFetchTask(taskOp.getResult());
+                previousFetchTask = fetchTask ? fetchTask : previousFetchTask;
+                /*
+                    FetchTask
+                        |
+                        |
+                        .   Bar1
+                        .   /
+                       DMA0_1
+                        |   \
+                        |   Bar2
+                        .
+                        .
 
-                Start with the fetchTask, get all the users such that the previous task for user is fetchTask
-                For the next iteration this user becomes the task and the loop continues until we find a task which
-               is of type ExecutableTaskOpInterface e.g. DMA0_1 and use its updateBarriers to ensure the fetch task
-               has been completed
-            */
-            auto fetchTaskUpdateBarrs = VPUMI40XX::getClosestProductionBarriers(
-                    mlir::cast<VPURegMapped::TaskOpInterface>(previousFetchTask.getOperation()));
+                    Start with the fetchTask, get all the users such that the previous task for user is fetchTask
+                    For the next iteration this user becomes the task and the loop continues until we find a task which
+                   is of type ExecutableTaskOpInterface e.g. DMA0_1 and use its updateBarriers to ensure the fetch task
+                   has been completed
+                */
+                auto fetchTaskUpdateBarrs = VPUMI40XX::getClosestProductionBarriers(
+                        mlir::cast<VPURegMapped::TaskOpInterface>(previousFetchTask.getOperation()));
 
-            // all of them must have the same barrier
-            // so take any - in our case last
-            auto barrieredOp = VPUMI40XX::getBarrieredOp(taskOp, lastSecondary);
-            // Similar approach comparing to DMA L:593, to ensure both wait,update have been reprogrammed before
-            // Enqueuing the task have both wait and update barriers in the lca search space
-            llvm::SmallVector<mlir::Value> targetBarriers(barrieredOp.updateBarriers().begin(),
-                                                          barrieredOp.updateBarriers().end());
-            llvm::append_range(targetBarriers, barrieredOp.waitBarriers());
+                // all of them must have the same barrier
+                // so take any - in our case last
+                auto barrieredOp = VPUMI40XX::getBarrieredOp(taskOp, lastSecondary);
+                // Similar approach comparing to DMA L:593, to ensure both wait,update have been reprogrammed before
+                // Enqueuing the task have both wait and update barriers in the lca search space
+                llvm::SmallVector<mlir::Value> targetBarriers(barrieredOp.updateBarriers().begin(),
+                                                              barrieredOp.updateBarriers().end());
+                llvm::append_range(targetBarriers, barrieredOp.waitBarriers());
 
-            // you cannot take barriers of the task you enqueue, because enqueue happens at barrier consumption
-            // and barrier consumption of wait barrier of a task won't happen before execution start of this task
-            // so take previous usage of the same physical id = earliest you can enqueue
-            auto previousUsages = VPUMI40XX::getPreviousUsages(targetBarriers);
+                // you cannot take barriers of the task you enqueue, because enqueue happens at barrier consumption
+                // and barrier consumption of wait barrier of a task won't happen before execution start of this task
+                // so take previous usage of the same physical id = earliest you can enqueue
+                auto previousUsages = VPUMI40XX::getPreviousUsages(targetBarriers);
 
-            // If there are multiple barriers updated by fetch task we only need 1 to
-            // take into account for LCA algorithm as it is sufficient to identify fetch
-            // task completion. Taking multiple barriers only increases complexity for LCA
-            if (!fetchTaskUpdateBarrs.empty()) {
-                previousUsages.push_back(*fetchTaskUpdateBarrs.begin());
-            }
+                // If there are multiple barriers updated by fetch task we only need 1 to
+                // take into account for LCA algorithm as it is sufficient to identify fetch
+                // task completion. Taking multiple barriers only increases complexity for LCA
+                if (!fetchTaskUpdateBarrs.empty()) {
+                    previousUsages.push_back(*fetchTaskUpdateBarrs.begin());
+                }
 
-            // here searching for a barrier we're going down in a tree-order
-            // lca gives us a collection of barrier, at each of them you can enqueue = where all of "previousUsages" =
-            // (fetch production + previous barriers to barriers of task) are consumed
-            auto enqueueTarget = VPUMI40XX::findEnqTargetUsingLcaForBars(previousUsages, cache,
-                                                                         VPUMI40XX::getLcaSearchLimit(targetBarriers));
+                // here searching for a barrier we're going down in a tree-order
+                // lca gives us a collection of barrier, at each of them you can enqueue = where all of "previousUsages"
+                // = (fetch production + previous barriers to barriers of task) are consumed
+                auto enqueueTarget = VPUMI40XX::findEnqTargetUsingLcaForBars(
+                        previousUsages, cache, VPUMI40XX::getLcaSearchLimit(targetBarriers));
 
-            if (enqueueTarget == nullptr) {
-                log.warning("Could not find a lowest common ancestor for barriers of task '{0}'", barrieredOp);
-                return mlir::failure();
-            }
+                if (enqueueTarget == nullptr) {
+                    log.warning("Could not find a lowest common ancestor for barriers of task '{0}'", barrieredOp);
+                    return mlir::failure();
+                }
 
-            // we can get into a corner case where a subsequent DPU can be enqueued before it's preceding enqueue,
-            // based on barrier constraints. we could include the previous barriers enqueue barrier into the
-            // LCA, but need to prove that will be satisfactory. For now, assuming that barriers are
-            // topologically ordered, we will compare with the previous enqueOp's triggering barriers list idx
+                // we can get into a corner case where a subsequent DPU can be enqueued before it's preceding enqueue,
+                // based on barrier constraints. we could include the previous barriers enqueue barrier into the
+                // LCA, but need to prove that will be satisfactory. For now, assuming that barriers are
+                // topologically ordered, we will compare with the previous enqueOp's triggering barriers list idx
 
-            // not needed anymore as long as we are sure to topologically sort enqueue tasks themselves
-            // since now Runtime guarantees ordered submission of enqueues
+                // not needed anymore as long as we are sure to topologically sort enqueue tasks themselves
+                // since now Runtime guarantees ordered submission of enqueues
 
-            // we order enqueues because RT requires that
-            if (localPreviousEnqu) {
-                auto previousEnquBarrier = localPreviousEnqu.getBarrier();
+                // we order enqueues because RT requires that
+                if (localPreviousEnqu) {
+                    auto previousEnquBarrier = localPreviousEnqu.getBarrier();
 
-                enqueueTarget = std::max(previousEnquBarrier, enqueueTarget, [](mlir::Value lhs, mlir::Value rhs) {
-                    return mlir::cast<VPURegMapped::IndexType>(lhs.getType()).getValue() <
-                           mlir::cast<VPURegMapped::IndexType>(rhs.getType()).getValue();
-                });
-            }
+                    enqueueTarget = std::max(previousEnquBarrier, enqueueTarget, [](mlir::Value lhs, mlir::Value rhs) {
+                        return mlir::cast<VPURegMapped::IndexType>(lhs.getType()).getValue() <
+                               mlir::cast<VPURegMapped::IndexType>(rhs.getType()).getValue();
+                    });
+                }
 
-            // check we don't enqueue too late = after task should start executing
-            if (!verifyEnqueueBarrierHasNoTopoDepOnBarrs(enqueueTarget, targetBarriers, log)) {
-                log.warning("Invalid enqueue barrier found for task '{0}'", taskOp);
-                return mlir::failure();
-            }
+                // check we don't enqueue too late = after task should start executing
+                if (!verifyEnqueueBarrierHasNoTopoDepOnBarrs(enqueueTarget, targetBarriers, log)) {
+                    log.warning("Invalid enqueue barrier found for task '{0}'", taskOp);
+                    return mlir::failure();
+                }
 
-            // if the previous enqueue's barrier is the same as the target barrier, we can just add this variant
-            // range to the previous enqueue. This is made with the assumption that we topologically iterate over
-            // the variants list by their listOrder
-            if (localPreviousEnqu && (localPreviousEnqu.getBarrier() == enqueueTarget)) {
-                localPreviousEnqu.getEndMutable().assign(lastSecondary->getResult(0));
-                log.trace("Enqueue task {0} with previous task",
-                          mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue());
-            } else {
-                auto index = VPURegMapped::IndexType::get(ctx, counter);
-                mlir::Value previousEnquVal = localPreviousEnqu
-                                                      ? localPreviousEnqu.getResult()
-                                                      : (globalPreviousEnqu ? globalPreviousEnqu.getResult() : nullptr);
-                localPreviousEnqu = builder.create<VPURegMapped::EnqueueOp>(
-                        taskOp->getLoc(), index, previousEnquVal, enqueueTarget,
-                        /*previousTaskIdxOnSameBarrier*/ nullptr, secondary, firstSecondary->getResult(0),
-                        lastSecondary->getResult(0));
-                counter++;
-                log.trace("New enqueue for task {0} at barrier {1}",
-                          mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue(),
-                          mlir::cast<VPURegMapped::IndexType>(enqueueTarget.getType()).getValue());
-            }
+                // if the previous enqueue's barrier is the same as the target barrier, we can just add this variant
+                // range to the previous enqueue. This is made with the assumption that we topologically iterate over
+                // the variants list by their listOrder
+                if (localPreviousEnqu && (localPreviousEnqu.getBarrier() == enqueueTarget)) {
+                    localPreviousEnqu.getEndMutable().assign(lastSecondary->getResult(0));
+                    log.trace("Enqueue task {0} with previous task",
+                              mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue());
+                } else {
+                    auto index = VPURegMapped::IndexType::get(ctx, counter);
+                    mlir::Value previousEnquVal =
+                            localPreviousEnqu ? localPreviousEnqu.getResult()
+                                              : (globalPreviousEnqu ? globalPreviousEnqu.getResult() : nullptr);
+                    localPreviousEnqu = builder.create<VPURegMapped::EnqueueOp>(
+                            taskOp->getLoc(), index, previousEnquVal, enqueueTarget,
+                            /*previousTaskIdxOnSameBarrier*/ nullptr, secondary, firstSecondary->getResult(0),
+                            lastSecondary->getResult(0));
+                    counter++;
+                    log.trace("New enqueue for task {0} at barrier {1}",
+                              mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue(),
+                              mlir::cast<VPURegMapped::IndexType>(enqueueTarget.getType()).getValue());
+                }
 
-            taskOp = VPUMI40XX::getNextOp(taskOp);
-        } while (taskOp);
+                taskOp = VPUMI40XX::getNextOp(taskOp);
+            } while (taskOp);
 
-        globalPreviousEnqu = localPreviousEnqu;
-        log = log.unnest();
+            globalPreviousEnqu = localPreviousEnqu;
+            log = log.unnest();
+        }
     }
 
     return mlir::success();
@@ -552,69 +554,72 @@ mlir::LogicalResult addEnqusForDmas(VPUMI40XX::MappedInferenceOp mpi, const int6
 // For each task that depends also on descriptor fetching (DPU and SHV)
 // read preconfigured enqueue barrier and create new enqueue ops
 void addPredefinedEnqusForTasksWithFetch(VPUMI40XX::MappedInferenceOp mpi, const VPURegMapped::TaskType primary,
-                                         const VPURegMapped::TaskType secondary, const int64_t tilesCount,
+                                         const VPURegMapped::TaskType secondary,
                                          VPURegMapped::EnqueueOp& globalPreviousEnqu, mlir::OpBuilder& builder,
-                                         int64_t& counter, Logger log) {
+                                         int64_t& counter, Logger log, const int64_t tilesCount,
+                                         const int64_t listsCount = 1) {
     auto ctx = mpi.getContext();
 
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
-        auto startVal = mpi.getListHead(primary, tileIdx);
-        if (!startVal)
-            continue;
+        for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
+            auto startVal = mpi.getListHead(primary, tileIdx, listIdx);
+            if (!startVal)
+                continue;
 
-        log.trace("Get enqueue barriers for {0}:{0}:{1}", stringifyTaskType(primary), tileIdx);
-        log = log.nest();
+            log.trace("Get enqueue barriers for {0}:{0}:{1}:{2}", stringifyTaskType(primary), tileIdx, listIdx);
+            log = log.nest();
 
-        // reset local previousEnqu
-        VPURegMapped::EnqueueOp localPreviousEnqu;
+            // reset local previousEnqu
+            VPURegMapped::EnqueueOp localPreviousEnqu;
 
-        VPURegMapped::TaskOpInterface taskOp = mlir::cast<VPURegMapped::TaskOpInterface>(startVal.getDefiningOp());
-        do {
-            auto filteredRange =
-                    to_small_vector(taskOp.getResult().getUsers() | vpux::filtered([&secondary](mlir::Operation* op) {
-                                        // filter out the usages that are of the secondaryType
-                                        auto taskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(op);
-                                        return taskOp && taskOp.getTaskType() == secondary;
-                                    }));
+            VPURegMapped::TaskOpInterface taskOp = mlir::cast<VPURegMapped::TaskOpInterface>(startVal.getDefiningOp());
+            do {
+                auto filteredRange = to_small_vector(
+                        taskOp.getResult().getUsers() | vpux::filtered([&secondary](mlir::Operation* op) {
+                            // filter out the usages that are of the secondaryType
+                            auto taskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(op);
+                            return taskOp && taskOp.getTaskType() == secondary;
+                        }));
 
-            auto firstSecondaryIt = vpux::min_element(filteredRange, VPUMI40XX::taskOpComparator);
-            auto lastSecondaryIt = vpux::max_element(filteredRange, VPUMI40XX::taskOpComparator);
-            auto firstSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**firstSecondaryIt);
-            auto lastSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**lastSecondaryIt);
+                auto firstSecondaryIt = vpux::min_element(filteredRange, VPUMI40XX::taskOpComparator);
+                auto lastSecondaryIt = vpux::max_element(filteredRange, VPUMI40XX::taskOpComparator);
+                auto firstSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**firstSecondaryIt);
+                auto lastSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(**lastSecondaryIt);
 
-            auto barrieredOp = VPUMI40XX::getBarrieredOp(taskOp, lastSecondary);
+                auto barrieredOp = VPUMI40XX::getBarrieredOp(taskOp, lastSecondary);
 
-            auto enqueueTarget = barrieredOp.getEnqueueBarrier();
+                auto enqueueTarget = barrieredOp.getEnqueueBarrier();
 
-            VPUX_THROW_UNLESS(enqueueTarget, "No enqueue barrier configured for op {0}", barrieredOp);
+                VPUX_THROW_UNLESS(enqueueTarget, "No enqueue barrier configured for op {0}", barrieredOp);
 
-            // if the previous enqueue's barrier is the same as the target barrier, we can just add this variant
-            // range to the previous enqueue. This is made with the assumption that we topologically iterate over
-            // the variants list by their listOrder
-            if (localPreviousEnqu && (localPreviousEnqu.getBarrier() == enqueueTarget)) {
-                localPreviousEnqu.getEndMutable().assign(lastSecondary->getResult(0));
-                log.trace("Enqueue task {0} with previous task",
-                          mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue());
-            } else {
-                auto index = VPURegMapped::IndexType::get(ctx, counter);
-                mlir::Value previousEnquVal = localPreviousEnqu
-                                                      ? localPreviousEnqu.getResult()
-                                                      : (globalPreviousEnqu ? globalPreviousEnqu.getResult() : nullptr);
-                localPreviousEnqu = builder.create<VPURegMapped::EnqueueOp>(
-                        taskOp->getLoc(), index, previousEnquVal, enqueueTarget,
-                        /*previousTaskIdxOnSameBarrier*/ nullptr, secondary, firstSecondary->getResult(0),
-                        lastSecondary->getResult(0));
-                counter++;
-                log.trace("New enqueue for task {0} at barrier {1}",
-                          mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue(),
-                          mlir::cast<VPURegMapped::IndexType>(enqueueTarget.getType()).getValue());
-            }
+                // if the previous enqueue's barrier is the same as the target barrier, we can just add this variant
+                // range to the previous enqueue. This is made with the assumption that we topologically iterate over
+                // the variants list by their listOrder
+                if (localPreviousEnqu && (localPreviousEnqu.getBarrier() == enqueueTarget)) {
+                    localPreviousEnqu.getEndMutable().assign(lastSecondary->getResult(0));
+                    log.trace("Enqueue task {0} with previous task",
+                              mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue());
+                } else {
+                    auto index = VPURegMapped::IndexType::get(ctx, counter);
+                    mlir::Value previousEnquVal =
+                            localPreviousEnqu ? localPreviousEnqu.getResult()
+                                              : (globalPreviousEnqu ? globalPreviousEnqu.getResult() : nullptr);
+                    localPreviousEnqu = builder.create<VPURegMapped::EnqueueOp>(
+                            taskOp->getLoc(), index, previousEnquVal, enqueueTarget,
+                            /*previousTaskIdxOnSameBarrier*/ nullptr, secondary, firstSecondary->getResult(0),
+                            lastSecondary->getResult(0));
+                    counter++;
+                    log.trace("New enqueue for task {0} at barrier {1}",
+                              mlir::cast<VPURegMapped::IndexType>(firstSecondary->getResult(0).getType()).getValue(),
+                              mlir::cast<VPURegMapped::IndexType>(enqueueTarget.getType()).getValue());
+                }
 
-            taskOp = VPUMI40XX::getNextOp(taskOp);
-        } while (taskOp);
+                taskOp = VPUMI40XX::getNextOp(taskOp);
+            } while (taskOp);
 
-        globalPreviousEnqu = localPreviousEnqu;
-        log = log.unnest();
+            globalPreviousEnqu = localPreviousEnqu;
+            log = log.unnest();
+        }
     }
 }
 
@@ -794,8 +799,8 @@ void AddEnqueueOpsPass::safeRunOnFunc() {
     auto netFunc = getOperation();
     auto module = netFunc->getParentOfType<mlir::ModuleOp>();
 
-    if (enableWlmVpurtEnqueueOpt.hasValue()) {
-        _enabledWlmVpurtEnqueue = enableWlmVpurtEnqueueOpt.getValue();
+    if (enablePredefinedEnqueueOpt.hasValue()) {
+        _enabledPredefinedEnqueue = enablePredefinedEnqueueOpt.getValue();
     }
 
     auto mpi = VPUMI40XX::getMPI(netFunc);
@@ -803,6 +808,7 @@ void AddEnqueueOpsPass::safeRunOnFunc() {
 
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = IE::getTileExecutor(parentModule).getCount();
+    const auto shavesCountPerTile = IE::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
 
     auto barriers = to_small_vector(netFunc.getOps<VPUMI40XX::ConfigureBarrierOp>());
 
@@ -813,15 +819,15 @@ void AddEnqueueOpsPass::safeRunOnFunc() {
     // enqueue op added in this pass.
     SmallVector<SmallVector<mlir::Operation*>> lastDmaWithNoEnqueue(tilesCount, SmallVector<mlir::Operation*>(2));
 
-    if (_enabledWlmVpurtEnqueue) {
+    if (_enabledPredefinedEnqueue) {
         _log.trace("Use already configured enqueue barriers by algorithm from VPURT");
 
         addPredefinedEnqusForTasksWithFetch(mpi, VPURegMapped::TaskType::DPUInvariant,
-                                            VPURegMapped::TaskType::DPUVariant, tilesCount, globalPreviousEnqu, builder,
-                                            globalEnquCounter, _log);
+                                            VPURegMapped::TaskType::DPUVariant, globalPreviousEnqu, builder,
+                                            globalEnquCounter, _log, tilesCount);
         addPredefinedEnqusForTasksWithFetch(mpi, VPURegMapped::TaskType::ActKernelRange,
-                                            VPURegMapped::TaskType::ActKernelInvocation, tilesCount, globalPreviousEnqu,
-                                            builder, globalEnquCounter, _log);
+                                            VPURegMapped::TaskType::ActKernelInvocation, globalPreviousEnqu, builder,
+                                            globalEnquCounter, _log, tilesCount, shavesCountPerTile);
 
         addPredefinedEnqusForDmas(mpi, tilesCount, globalPreviousEnqu, builder, globalEnquCounter, lastDmaWithNoEnqueue,
                                   _log);
@@ -842,15 +848,15 @@ void AddEnqueueOpsPass::safeRunOnFunc() {
         VPUMI40XX::lcaCache cache;
 
         if (mlir::failed(addEnqusForTasksWithFetch(mpi, VPURegMapped::TaskType::DPUInvariant,
-                                                   VPURegMapped::TaskType::DPUVariant, tilesCount, globalPreviousEnqu,
-                                                   builder, globalEnquCounter, cache, _log))) {
+                                                   VPURegMapped::TaskType::DPUVariant, globalPreviousEnqu, builder,
+                                                   globalEnquCounter, cache, _log, tilesCount))) {
             vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
             signalPassFailure();
             return;
         }
-        if (mlir::failed(addEnqusForTasksWithFetch(mpi, VPURegMapped::TaskType::ActKernelRange,
-                                                   VPURegMapped::TaskType::ActKernelInvocation, tilesCount,
-                                                   globalPreviousEnqu, builder, globalEnquCounter, cache, _log))) {
+        if (mlir::failed(addEnqusForTasksWithFetch(
+                    mpi, VPURegMapped::TaskType::ActKernelRange, VPURegMapped::TaskType::ActKernelInvocation,
+                    globalPreviousEnqu, builder, globalEnquCounter, cache, _log, tilesCount, shavesCountPerTile))) {
             vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
             signalPassFailure();
             return;

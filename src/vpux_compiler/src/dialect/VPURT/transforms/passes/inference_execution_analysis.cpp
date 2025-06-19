@@ -149,6 +149,7 @@ private:
 void InferenceExecutionAnalysisPass::safeRunOnFunc() {
     auto funcOp = getOperation();
     CycleCostInfo cycleCostInfo(funcOp);
+    cycleCostInfo.resetNNCacheCounter();
     auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
 
     VPURT::InferenceExecutionSimulator infSim(_log, funcOp, cycleCostInfo);
@@ -217,6 +218,9 @@ void InferenceExecutionAnalysisPass::safeRunOnFunc() {
         auto tasksCycleConfig = infSim.getTaskCycleConfig();
         createScheduleTraceEventFile(tasksCycleConfig, freqInMHz, _compileSchedTraceFileName, _log);
     }
+
+    _log.info("[InferenceExecutionAnalysis phase]");
+    cycleCostInfo.printNNCacheStatistics(_log);
 }
 
 }  // namespace

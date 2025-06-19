@@ -3,9 +3,13 @@
 //
 
 #include <openvino/core/type/float16.hpp>
-#include <openvino/opsets/opset1.hpp>
-#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset1_decl.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
 #include <vpu_ov2_layer_test.hpp>
+
+#include "openvino/op/broadcast.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/reshape.hpp"
 
 namespace ov::test {
 

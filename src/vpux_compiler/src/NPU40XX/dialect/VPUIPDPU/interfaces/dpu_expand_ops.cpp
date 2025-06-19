@@ -47,6 +47,9 @@ public:
         return arch40xx::buildDPUInvariantODU(mlir::cast<VPUASM::DPUInvariantOp>(dpuInvariantOp), builder, log,
                                               invBlock, invBlockArgsPos, symRefMap);
     }
+    mlir::LogicalResult expandGeneralConfig(mlir::Operation*, mlir::OpBuilder&) const {
+        return mlir::success();
+    }
 };
 
 class DPUVariantExpandOpInterfaceModel final :

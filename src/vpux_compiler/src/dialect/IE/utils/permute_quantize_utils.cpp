@@ -57,6 +57,50 @@ bool IE::isBeneficialConvertToPermuteQuantize(ShapeRef shape) {
     return shape[Dims4D::Act::N] == 1;
 }
 
+bool IE::isLegalReorderLikeToPermuteQuantize(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType, Logger log) {
+    const auto inOrder = inType.getDimsOrder();
+    const auto expectedInOrder = DimsOrder::NCHW;
+    if (inOrder != expectedInOrder) {
+        log.trace("Unsupported input layout. Expected: '{0}', got: '{1}'", expectedInOrder, inOrder);
+        return false;
+    }
+
+    const auto outOrder = outType.getDimsOrder();
+    const auto expectedOutOrder = DimsOrder::NHWC;
+    if (outOrder != expectedOutOrder) {
+        log.trace("Unsupported output layout. Expected: '{0}', got: '{1}'", expectedOutOrder, outOrder);
+        return false;
+    }
+
+    const auto inElemType = inType.getElementType();
+    if (!inElemType.isF16()) {
+        log.trace("Unsupported input element type. Expected: f16, got: '{0}'", inElemType);
+        return false;
+    }
+
+    const auto outElemType = outType.getElementType();
+    if (!outElemType.isF16()) {
+        log.trace("Unsupported output element type. Expected: f16, got: '{0}'", outElemType);
+        return false;
+    }
+
+    const auto inShape = inType.getShape();
+    const auto inAlignment = VPU::NCEInvariant::getAlignment(inElemType);
+    if (!IE::isODUPermuteEffectiveForShape(inShape, inAlignment)) {
+        log.trace("ODU permute is not effective for input shape {0}", inShape);
+        return false;
+    }
+
+    const auto outShape = outType.getShape();
+    const auto outAlignment = VPU::NCEInvariant::getAlignment(outElemType);
+    if (!IE::isODUPermuteEffectiveForShape(outShape, outAlignment)) {
+        log.trace("ODU permute is not effective for output shape {0}", outShape);
+        return false;
+    }
+
+    return true;
+}
+
 std::optional<SmallVector<int64_t>> IE::getAdjustHW(int64_t alignment, int64_t width, int64_t height) {
     if (width > VPU::NCEInvariant::VPU_DIMENSION_LIMIT && height > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
         return std::nullopt;

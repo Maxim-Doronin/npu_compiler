@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
@@ -50,7 +51,7 @@ struct TaskCycles {
 };
 
 bool isDuplicatedBufferType(NDTypeInterface bufferType) {
-    if (const auto distributedType = bufferType.dyn_cast_or_null<VPUIP::DistributedBufferType>()) {
+    if (const auto distributedType = mlir::dyn_cast_or_null<vpux::VPUIP::DistributedBufferType>(bufferType)) {
         return VPU::isDuplicated(distributedType.getDistribution());
     }
 
@@ -260,7 +261,7 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
     const auto arch = VPU::getArch(module);
-    const auto costModel = VPU::createCostModel(arch);
+    const auto costModel = VPU::CostModelConfig::createCostModel(arch);
 
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
@@ -269,6 +270,7 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
     }
 
     CycleCostInfo cycleCostInfo(func);
+    cycleCostInfo.resetNNCacheCounter();
     VPURT::InferenceExecutionSimulator infSim(_log, func, cycleCostInfo);
     infSim.runSim();
     auto dmaTasks = infSim.getTaskCycleConfig(VPU::ExecutorKind::DMA_NN);
@@ -373,6 +375,8 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
         }
     });
     _log.trace("Done");
+    _log.info("[DetectDMASplitCandidate phase]");
+    cycleCostInfo.printNNCacheStatistics(_log);
 }
 
 }  // namespace

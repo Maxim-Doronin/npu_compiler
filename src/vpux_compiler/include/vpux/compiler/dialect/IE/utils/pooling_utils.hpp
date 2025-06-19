@@ -36,7 +36,7 @@ bool isEltwisePooling(ConcreteOp poolingOp) {
 
 inline bool doesPoolingHaveNonOneStaticScaleAttr(mlir::Operation* op) {
     if (auto avgPool = mlir::dyn_cast<IE::AvgPoolOp>(op)) {
-        const auto scaleAttr = avgPool.getStaticScaleAttr().dyn_cast_or_null<mlir::FloatAttr>();
+        const auto scaleAttr = mlir::dyn_cast_or_null<mlir::FloatAttr>(avgPool.getStaticScaleAttr());
         if (scaleAttr == nullptr) {
             return false;
         }

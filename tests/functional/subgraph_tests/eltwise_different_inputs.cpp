@@ -6,6 +6,8 @@
 
 #include "common_test_utils/node_builders/fake_quantize.hpp"
 
+#include "openvino/op/add.hpp"
+
 namespace ov::test {
 
 class EltwiseAddQuantizedSubGraphTest_NPU3720 :

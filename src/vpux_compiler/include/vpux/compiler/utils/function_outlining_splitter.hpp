@@ -79,6 +79,8 @@ private:
                               ArrayRef<OutliningInstance> outlinedTargets) = 0;
     virtual void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                               ArrayRef<OutliningInstance> outlinedTargets) = 0;
+    virtual void updateMainFuncOp(mlir::ModuleOp /*moduleOp*/, ArrayRef<OutliningInstance> /*outlinedTargets*/) {
+    }
 
 private:
     std::unique_ptr<IFunctionOutliner> _splitter;

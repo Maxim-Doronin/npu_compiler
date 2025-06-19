@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outline-linalg-sw-layers %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 module @SingleCosLayer {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -89,3 +90,4 @@ module @TestIsolateFromAbove {
   // CHECK-SAME: tensor<1x1x256x56xsi32> -> tensor<1x1x256x56xsi32>
   // CHECK-NOT: tensor.bitcast
   // CHECK: return [[GENERIC_SW_LAYER_RES]] : tensor<1x1x256x56xsi32>
+

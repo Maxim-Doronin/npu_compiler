@@ -1,9 +1,11 @@
-// Copyright (C) 2019-2024 Intel Corporation
+// Copyright (C) 2019-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/reshape.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/reshape.hpp"
 
 using namespace ov::test::utils;
 

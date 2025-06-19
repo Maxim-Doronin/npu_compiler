@@ -6,10 +6,12 @@
 #include <common/print_test_case_name.hpp>
 #include <common/random_generator.hpp>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset3.hpp>
-#include <openvino/opsets/opset4.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+#include <openvino/opsets/opset4_decl.hpp>
 #include <pretty_test_arguments.hpp>
 #include <vpu_ov2_layer_test.hpp>
+
+#include "openvino/op/scatter_nd_update.hpp"
 
 namespace {
 
@@ -180,8 +182,8 @@ const std::vector<InputType> inputType = {ov::element::i32, ov::element::f16};
 const std::vector<IndicesType> indicesType = {ov::element::i32};
 
 const std::vector<std::tuple<DataShape, IndicesShape>> inputShapes = {
-        std::make_tuple(DataShape(staticShape(1, 3, 3)), IndicesShape({{-1, -1, -1, 3}, {{1, 2, 3, 3}}})),
-        std::make_tuple(DataShape(staticShape(1, 20)), IndicesShape({{-1, 2}, {{20, 2}}})),
+        std::make_tuple(DataShape(generateTestShape(1, 3, 3)), IndicesShape({{-1, -1, -1, 3}, {{1, 2, 3, 3}}})),
+        std::make_tuple(DataShape(generateTestShape(1, 20)), IndicesShape({{-1, 2}, {{20, 2}}})),
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit, ScatterNDUpdateCustomLayerTest,

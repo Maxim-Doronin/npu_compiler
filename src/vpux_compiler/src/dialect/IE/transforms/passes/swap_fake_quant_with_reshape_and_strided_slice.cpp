@@ -90,7 +90,10 @@ bool matchFakeQuantReshapePattern(IE::FakeQuantizeOp fqOp) {
         return false;
     }
 
-    if (!(!mlir::isa<IE::AlignedChannelsOpInterface>(parentOp) && mlir::isa<IE::AlignedChannelsOpInterface>(childOp))) {
+    auto isPotentialAlignedOp = [&](mlir::Operation* op) {
+        return mlir::isa<IE::AlignedChannelsOpInterface>(op) && !mlir::isa<IE::SoftMaxOp>(op);
+    };
+    if (!(!isPotentialAlignedOp(parentOp) && isPotentialAlignedOp(childOp))) {
         return false;
     }
 

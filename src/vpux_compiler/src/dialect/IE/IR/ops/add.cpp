@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include "vpux/compiler/dialect/core/types.hpp"
 
@@ -16,10 +16,6 @@
 using namespace vpux;
 
 namespace {
-mlir::AffineMap inferOrder(const mlir::RankedTensorType lhsType, const mlir::RankedTensorType rhsType) {
-    return lhsType.getRank() > rhsType.getRank() ? vpux::getOrder(lhsType) : vpux::getOrder(rhsType);
-}
-
 SmallVector<int64_t> dispatchBounds(const mlir::Value operand) {
     if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(operand.getType())) {
         return boundedType.getBounds().raw();
@@ -106,7 +102,7 @@ mlir::LogicalResult vpux::IE::AddOp::reifyResultShapes(mlir::OpBuilder& builder,
                                                        mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
     auto loc = getLoc();
 
-    auto outShape = IE::reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
+    auto outShape = reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
 
     if (mlir::failed(outShape)) {
         return outShape;

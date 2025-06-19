@@ -103,7 +103,7 @@ mlir::ArrayAttr getFPArrayOfArray(mlir::MLIRContext* ctx, Range&& arrayOfArray) 
 
 template <typename T>
 T parseIntAttr(mlir::Attribute attr) {
-    const auto intAttr = attr.dyn_cast_or_null<mlir::IntegerAttr>();
+    const auto intAttr = mlir::dyn_cast_or_null<mlir::IntegerAttr>(attr);
     VPUX_THROW_UNLESS(intAttr != nullptr, "Got non Integer Attribute '{0}'", attr);
     if (intAttr.getType().isUnsignedInteger()) {
         return checked_cast<T>(intAttr.getUInt());

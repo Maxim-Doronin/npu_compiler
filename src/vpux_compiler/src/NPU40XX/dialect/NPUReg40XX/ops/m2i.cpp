@@ -57,7 +57,7 @@ void setAddendForInAddr1AndInAddr2(size_t addend, uint64_t inFormat, uint64_t PS
 }  // namespace
 
 void NPUReg40XX::M2IOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto m2iDescriptor = getDescriptor().getRegMapped();
+    auto m2iDescriptor = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuMediaTask) == m2iDescriptor.size(),
                       "HW M2iDescriptor size {0} != regMapped representation size {1}.",
@@ -100,7 +100,7 @@ std::vector<ELF::RelocationInfo> NPUReg40XX::M2IOp::getRelocationInfo(ELF::Symbo
     auto buffDescOffset = offsetof(nn_public::VpuMediaTask, standard.buff_desc_);
 
     auto inputSymRef = getInput();
-    auto m2iDescriptor = getDescriptor().getRegMapped();
+    auto m2iDescriptor = getProperties().getDescriptor();
     auto PSOB_inPS = m2iDescriptor.read<Fields::inPS>();
     auto inFormat = m2iDescriptor.read<Fields::inFormat>();
 
@@ -145,4 +145,18 @@ std::vector<ELF::RelocationInfo> NPUReg40XX::M2IOp::getRelocationInfo(ELF::Symbo
     }
 
     return relocs;
+}
+
+void vpux::NPUReg40XX::M2IOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
+                                    mlir::SymbolRefAttr input, mlir::SymbolRefAttr outputBuff,
+                                    mlir::SymbolRefAttr profilingData, mlir::SymbolRefAttr nextLink,
+                                    vpux::NPUReg40XX::Descriptors::VpuMediaTask&& descriptor) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.input = input;
+    props.output_buff = outputBuff;
+    props.profiling_data = profilingData;
+    props.next_link = nextLink;
+    props.descriptor = std::move(descriptor);
 }

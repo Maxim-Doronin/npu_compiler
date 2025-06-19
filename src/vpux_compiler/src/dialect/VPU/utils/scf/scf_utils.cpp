@@ -8,6 +8,26 @@
 
 using namespace vpux::VPU;
 
+mlir::OpFoldResult vpux::VPU::getDimValue(mlir::OpBuilder& builder, mlir::Operation* operation, int64_t dim) {
+    const auto outputType = mlir::cast<mlir::ShapedType>(operation->getResult(0).getType());
+    if (!outputType.hasStaticShape() && !operation->getOperand(0).hasOneUse()) {
+        auto dimUser = llvm::find_if(operation->getOperand(0).getUsers(), [](auto* user) {
+            return mlir::isa<mlir::tensor::DimOp>(user);
+        });
+
+        if (dimUser != operation->getOperand(0).getUsers().end()) {
+            return dimUser->getResult(0);
+        }
+    }
+
+    mlir::ReifiedRankedShapedTypeDims resultShape;
+    if (mlir::failed(reifyResultShapes(builder, operation, resultShape))) {
+        return builder.getIndexAttr(outputType.getDimSize(dim));
+    }
+
+    return resultShape[0][dim];
+}
+
 SCFTileInfo vpux::VPU::getWeightsTableSCFTile(mlir::Type origWeightsTableType, mlir::OpBuilder& builder,
                                               const SCFTileInfo& outputTile) {
     auto origWeightsTableShape = mlir::cast<mlir::ShapedType>(origWeightsTableType).getShape();

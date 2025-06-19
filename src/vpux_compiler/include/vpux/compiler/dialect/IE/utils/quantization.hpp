@@ -4,7 +4,6 @@
 //
 
 #pragma once
-
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
@@ -87,6 +86,5 @@ mlir::LogicalResult checkRescaledBiasRange(ConcreteOp op) {
 
 // Parses the IR upwards looking for a possibly quantized splat constant and returns its folded dequantized value.
 mlir::FailureOr<double> getQuantizedSplatConstant(mlir::Value input);
-
 }  // namespace IE
 }  // namespace vpux

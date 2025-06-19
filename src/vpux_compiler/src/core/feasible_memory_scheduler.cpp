@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
@@ -51,6 +52,7 @@ FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::M
           _archKind(arch),
           _costModel(std::move(costModel)),
           _nceClusterCount(nceClusterCount),
+          _numDMAPorts(dmaCount),
           _enableScheduleStatistics(enableScheduleStatistics),
           _optimizeFragmentation(optimizeFragmentation) {
     _log.setName("feasible-memory-scheduler-allocator");
@@ -161,23 +163,7 @@ VPU::ExecutorKind FeasibleMemoryScheduler::getExecutorType(operationIdxType opId
         return VPU::ExecutorKind::DMA_NN;
     }
     auto execOp = _depsInfo.getExecuteOpAtIndex(opIdx);
-    if (execOp->hasAttr(VPUIP::VPUIPDialect::getExecutorAttrName())) {
-        return VPUIP::VPUIPDialect::getExecutorKind(execOp);
-    }
-    // for now treat all other executors as DPU - same as previous implementation
-    return VPU::ExecutorKind::DPU;
-}
-
-VPUIP::DMATypeOpInterface getDmaTypeOp(mlir::async::ExecuteOp execOp) {
-    auto* bodyBlock = execOp.getBody();
-
-    for (auto& op : bodyBlock->getOperations()) {
-        if (auto dmaOp = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(op)) {
-            return dmaOp;
-        }
-    }
-
-    return nullptr;
+    return vpux::getExecutorType(execOp);
 }
 
 FeasibleMemoryScheduler::QueueType FeasibleMemoryScheduler::getQueueType(operationIdxType opIdx) {
@@ -189,7 +175,7 @@ FeasibleMemoryScheduler::QueueType FeasibleMemoryScheduler::getQueueType(operati
     if (execOp->hasAttr(VPUIP::VPUIPDialect::getExecutorAttrName())) {
         queueType.execKind = VPUIP::VPUIPDialect::getExecutorKind(execOp);
 
-        if (auto dmaTask = getDmaTypeOp(execOp)) {
+        if (auto dmaTask = vpux::getDmaTypeOp(execOp)) {
             queueType.id = getDMAQueueIdEncoding(dmaTask.getChannelType());
         }
         return queueType;
@@ -385,7 +371,8 @@ size_t FeasibleMemoryScheduler::spilledOperationCycleCost(mlir::Value spilledBuf
         return _spillBufferCycleCost[spilledBuffer];
     }
     // get and store cost of buffer spill
-    _spillBufferCycleCost[spilledBuffer] = getDMACost(spilledBuffer, spilledBuffer, _archKind, _costModel);
+    _spillBufferCycleCost[spilledBuffer] =
+            getDMACost(spilledBuffer, spilledBuffer, _archKind, _costModel, _numDMAPorts);
     return _spillBufferCycleCost[spilledBuffer];
 }
 
@@ -423,7 +410,7 @@ bool FeasibleMemoryScheduler::isDataOp(operationIdxType opIdx) {
         }
     }
 
-    if (auto dmaTask = getDmaTypeOp(_depsInfo.getExecuteOpAtIndex(opIdx))) {
+    if (auto dmaTask = vpux::getDmaTypeOp(_depsInfo.getExecuteOpAtIndex(opIdx))) {
         // DMA from DDR to NN_CMX
         auto srcMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaTask.getInput().getType()).getMemoryKind();
         auto dstMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaTask.getOutput().getType()).getMemoryKind();

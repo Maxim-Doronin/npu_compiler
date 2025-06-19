@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/const/utils/mem_permute_optimized.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/loop.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 
 using namespace vpux;
 
@@ -188,7 +189,8 @@ inline void blob_copy_5d(vpux::Const::Content& input, vpux::Const::Content& outp
 
 };  // namespace
 
-bool Const::details::isOptimizedTransformationSupported(vpux::Const::Content& input, vpux::NDTypeInterface outType) {
+bool Const::details::isOptimizedTransformationSupported(vpux::Const::Content& input, vpux::NDTypeInterface outType,
+                                                        DimsOrder permOrder) {
     const Bit elemSize = getElemTypeSize(input.getStorageElemType());
     const size_t elemSizeBytes = checked_cast<size_t>(elemSize.to<Byte>().count());
     static const std::unordered_set<size_t> optimizedElemTypeSizes = {sizeof(uint8_t), sizeof(uint16_t), sizeof(float)};
@@ -198,15 +200,19 @@ bool Const::details::isOptimizedTransformationSupported(vpux::Const::Content& in
     }
 
     const auto createDimsVerifier = [](vpux::DimsOrder order1, vpux::DimsOrder order2) {
-        return [=](vpux::NDTypeInterface type1, vpux::NDTypeInterface type2) {
-            return (type1.getDimsOrder() == order1 && type2.getDimsOrder() == order2) ||
-                   (type1.getDimsOrder() == order2 && type2.getDimsOrder() == order1);
+        return [=](DimsOrder typeOrder1, DimsOrder typeOrder2) {
+            return (typeOrder1 == order1 && typeOrder2 == order2) || (typeOrder1 == order2 && typeOrder2 == order1);
         };
     };
     const auto isBetweenNCHW_NHWC = createDimsVerifier(DimsOrder::NHWC, DimsOrder::NCHW);
     const auto isBetweenNCDHW_NDHWC = createDimsVerifier(DimsOrder::NCDHW, DimsOrder::NDHWC);
+    const auto inOrder = input.getType().getDimsOrder();
+    const auto outOrder = outType.getDimsOrder();
+    const auto reorderPerm =
+            DimsOrder::fromAffineMap(getPermutationFromOrders(inOrder, outOrder, outType.getContext()));
 
-    return isBetweenNCHW_NHWC(input.getType(), outType) || isBetweenNCDHW_NDHWC(input.getType(), outType);
+    return (isBetweenNCHW_NHWC(inOrder, outOrder) || isBetweenNCDHW_NDHWC(inOrder, outOrder)) &&
+           permOrder == reorderPerm;
 }
 
 // This code is similar to openvino solution,

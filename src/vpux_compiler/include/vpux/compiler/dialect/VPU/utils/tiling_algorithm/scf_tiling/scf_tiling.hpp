@@ -17,6 +17,9 @@ namespace vpux::VPU {
 mlir::LogicalResult applySCFTiling(mlir::Operation* operation, mlir::RewriterBase& builder);
 
 SmallVector<mlir::OpFoldResult> staticTileSizeComputation(mlir::OpBuilder& builder, mlir::Operation* operation,
-                                                          ShapeRef strategy);
+                                                          ShapeRef strategy, ShapeRef outputShape);
+
+SmallVector<mlir::OpFoldResult> dynamicTileSizeComputation(mlir::OpBuilder& builder, mlir::Operation* operation,
+                                                           ShapeRef strategy);
 
 }  // namespace vpux::VPU

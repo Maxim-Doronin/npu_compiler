@@ -11,6 +11,7 @@
 #include <vpux/utils/core/type/float8_e5m2.hpp>
 
 #include <mlir/IR/Types.h>
+#include <variant>
 
 namespace vpux {
 namespace VPU {

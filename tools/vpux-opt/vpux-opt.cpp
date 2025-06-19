@@ -84,14 +84,8 @@ int main(int argc, char* argv[]) {
         mlir::registerTransformsPasses();
         mlir::func::registerFuncPasses();
         mlir::memref::registerResolveShapedTypeResultDims();
-        mlir::registerConvertElementwiseToLinalg();
-        mlir::registerLinalgBufferize();
-        mlir::registerLinalgGeneralization();
-        mlir::registerLinalgNamedOpConversion();
-        mlir::registerLinalgInlineScalarOperands();
-        mlir::registerLinalgLowerToLoops();
-        mlir::registerLinalgLowerToParallelLoops();
-        mlir::registerLinalgLowerToAffineLoops();
+        mlir::registerLinalgPasses();
+        mlir::memref::registerExpandStridedMetadataPass();
 
         return mlir::asMainReturnCode(
                 mlir::MlirOptMain(argc, argv, "NPU Optimizer Testing Tool", registry, hwSpecificRegistration));

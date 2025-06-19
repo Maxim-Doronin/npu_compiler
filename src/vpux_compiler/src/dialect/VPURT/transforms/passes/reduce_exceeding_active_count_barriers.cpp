@@ -48,7 +48,7 @@ private:
     const bool _considerTaskFifoDependency = false;
     bool _mergeWaitBarriersIteratively = false;
     bool _considerTaskExecutorType = false;
-    bool _shareWaitAndUpdateBarriers = true;
+    bool _shareWaitAndUpdateBarriers = false;
 
     std::optional<int> _virtualBarrierThresholdForWlm = std::nullopt;
     std::optional<WorkloadManagementMode> _workloadManagementMode = std::nullopt;
@@ -289,9 +289,12 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
                       numBarriersToUse);
 
     auto wlmFlag = (vpux::VPUIP::getWlmStatus(module) == vpux::VPUIP::WlmStatus::ENABLED) && !isArchVPUX3XXX(arch);
+    _shareWaitAndUpdateBarriers = VPURT::isShareWaitAndUpdateBarriersNeeded(_workloadManagementMode);
+
     auto shareWaitAndUpdateBarriers = shareWaitAndUpdateBarriersOpt.hasValue()
                                               ? static_cast<bool>(shareWaitAndUpdateBarriersOpt.getValue())
                                               : _shareWaitAndUpdateBarriers;
+    _log.trace("Sharing wait and update barriers: {0}", shareWaitAndUpdateBarriers);
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
     if (barrierInfo.getNumOfBarrierOps() <= numBarriersToUse) {

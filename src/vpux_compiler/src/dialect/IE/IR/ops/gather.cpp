@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include "vpux/utils/core/checked_cast.hpp"
@@ -72,31 +73,46 @@ mlir::LogicalResult vpux::IE::GatherOp::inferReturnTypeComponents(
     }
 
     SmallVector<int64_t> outShape;
+    SmallVector<int64_t> outShapeBounds;
 
-    // calculate output shape
-    int64_t batchDims = gather.getBatchDims();
-    int64_t axisVal = checked_cast<int64_t>(*axis);
-    int64_t indicesRank = gather.getIndicesRank().value_or(indicesShape.size());
-    int64_t outRank = inputShape.size() + indicesRank - 1 - batchDims;
-    int64_t i = 0;
+    auto calculateOutputShape = [&](auto& shape, const auto& indicesShape) {
+        int64_t batchDims = gather.getBatchDims();
+        int64_t axisVal = checked_cast<int64_t>(*axis);
+        int64_t indicesRank = gather.getIndicesRank().value_or(indicesShape.size());
+        int64_t outRank = inputShape.size() + indicesRank - 1 - batchDims;
+        int64_t i = 0;
 
-    for (; i < batchDims; i++) {
-        outShape.push_back(inputShape[i] & indicesShape[i]);
+        for (; i < batchDims; i++) {
+            shape.push_back(inputShape[i] & indicesShape[i]);
+        }
+        for (; i < axisVal; i++) {
+            shape.push_back(inputShape[i]);
+        }
+        for (; i < axisVal + indicesRank - batchDims; i++) {
+            shape.push_back(indicesShape[batchDims - axisVal + i]);
+        }
+        for (; i < outRank; i++) {
+            shape.push_back(inputShape[batchDims + 1 - indicesRank + i]);
+        }
+        // To avoid shape size 0 error, set the shape 1.
+        if (shape.empty()) {
+            shape.push_back(1);
+        }
+    };
+
+    calculateOutputShape(outShape, indicesShape);
+
+    auto indicesType = gather.getIndices().getType();
+    Bounds bounds;
+    if (auto boundedTensor = mlir::dyn_cast<Core::BoundedTensorType>(indicesType)) {
+        auto indicesBounds = boundedTensor.getBounds().raw();
+        calculateOutputShape(outShapeBounds, indicesBounds);
+        bounds = Bounds(outShapeBounds);
     }
-    for (; i < axisVal; i++) {
-        outShape.push_back(inputShape[i]);
-    }
-    for (; i < axisVal + indicesRank - batchDims; i++) {
-        outShape.push_back(indicesShape[batchDims - axisVal + i]);
-    }
-    for (; i < outRank; i++) {
-        outShape.push_back(inputShape[batchDims + 1 - indicesRank + i]);
-    }
-    // To avoid outShap size 0 error, set the shape 1.
-    if (outShape.size() == 0) {
-        outShape.push_back(1);
-    }
-    inferredReturnShapes.emplace_back(outShape, inType.getElementType());
+
+    const auto outDesc =
+            vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape.size()), /*memSpace=*/nullptr, std::move(bounds));
+    inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
 
     return mlir::success();
 }

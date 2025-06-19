@@ -24,7 +24,7 @@ mlir::LogicalResult ManagedMappedInferenceRewriter::matchAndRewrite(VPUASM::Mana
     managedMappedInferenceDescriptor.write<Fields::taskReferenceCount_MMI_work_item>(origOp.getWorkItemsCount());
     managedMappedInferenceDescriptor.write<Fields::taskReferenceCount_MMI_task_configs>(origOp.getBarrierCount());
     managedMappedInferenceDescriptor.write<Fields::taskReferenceCount_MMI_initial_barriers>(
-            origOp.getBootstrapTasksCount());
+            origOp.getBootstrapBarriersCount());
     managedMappedInferenceDescriptor.write<Fields::MMI_bootstrap_workitems_count>(origOp.getBootsrapWorkItemsCount());
     managedMappedInferenceDescriptor.write<Fields::MMI_actshv_used>(origOp.getActshvUsed());
     managedMappedInferenceDescriptor.write<Fields::MMI_dpu_used>(origOp.getDpuUsed());
@@ -48,8 +48,7 @@ mlir::LogicalResult ManagedMappedInferenceRewriter::matchAndRewrite(VPUASM::Mana
         managedMappedInferenceDescriptor.write<Fields::MMI_DisableDmaSwFifo>(1);
     }
 
-    auto managedMappedInferenceDescriptorAttr =
-            VpuManagedMappedInferenceAttr::get(rewriter.getContext(), std::move(managedMappedInferenceDescriptor));
+    managedMappedInferenceDescriptor.write<Fields::MMI_model_identifier>(_modelIdentifier);
 
     rewriter.create<NPUReg40XX::ManagedMappedInferenceOp>(origOp->getLoc(),                            //
                                                           origOp.getSymNameAttr(),                     //
@@ -58,10 +57,12 @@ mlir::LogicalResult ManagedMappedInferenceRewriter::matchAndRewrite(VPUASM::Mana
                                                           origOp.getDmaTasksAttr(),                    //
                                                           origOp.getWorkItemsAttr(),                   //
                                                           origOp.getBarrierTasksAttr(),                //
-                                                          origOp.getBootstrapTasksAttr(),              //
+                                                          origOp.getBootstrapBarriersAttr(),           //
                                                           origOp.getBarrierConfigurationTasksAttr(),   //
                                                           origOp.getNumOfBarrierReprogrammingsAttr(),  //
-                                                          managedMappedInferenceDescriptorAttr);       //
+                                                          std::move(managedMappedInferenceDescriptor)  //
+    );                                                                                                 //
+
     rewriter.eraseOp(origOp);
 
     return mlir::success();

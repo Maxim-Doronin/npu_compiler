@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vcl_tests_common.h"
@@ -47,7 +47,7 @@ public:
     bool check() const;
 
     /**
-     * @brief Test parallel excution of one compiler and check results
+     * @brief Test parallel execution of a compiler and check the results
      */
     void run();
 
@@ -55,7 +55,6 @@ private:
     int numCompilationThreads;
     int numGetBlobThreads;
     std::vector<std::string> outputs;
-    std::mutex lock;
 };
 
 vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& options) {
@@ -76,14 +75,14 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
     vcl_compiler_handle_t compiler = nullptr;
     ret = vclCompilerCreate(&compilerDesc, &deviceDesc, &compiler, nullptr);
     if (ret) {
-        std::cerr << "Failed to create compiler! Result:0x" << std::hex << uint64_t(ret) << std::dec << std::endl;
+        printErrorInfo("Failed to create compiler! Result:0x", ret);
         return ret;
     }
 
     vcl_compiler_properties_t compilerProp;
     ret = vclCompilerGetProperties(compiler, &compilerProp);
     if (ret) {
-        std::cerr << "Failed to query compiler props! Result:0x" << std::hex << uint64_t(ret) << std::dec << std::endl;
+        printErrorInfo("Failed to query compiler props! Result:0x", ret);
         vclCompilerDestroy(compiler);
         return ret;
     } else {
@@ -112,7 +111,6 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
             resCreate[i] = vclExecutableCreate(compiler, exeDesc, exeHandle);
         }};
         exeHandles.push_back(std::make_pair(exeHandle, blobSize));
-
         compilationThreads.push_back(move(thread));
     }
 
@@ -124,9 +122,9 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
     /// Check all execution results
     for (auto i = resCreate.begin(); i != resCreate.end(); ++i) {
         if (*i != VCL_RESULT_SUCCESS) {
-            std::cerr << "Failed to vclExecutableCreate with " << std::distance(resCreate.begin(), i) << " thread!"
-                      << std::endl;
-            std::cerr << "Result:0x" << std::hex << uint64_t(*i) << std::dec << std::endl;
+            std::string printStr = "Failed to vclExecutableCreate with " +
+                                   std::to_string(std::distance(resCreate.begin(), i)) + " thread!\n" + "Result:0x";
+            printErrorInfo(printStr, *i);
             vclCompilerDestroy(compiler);
             return *i;
         }
@@ -154,7 +152,7 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
         const auto result = resGetBlobInit[i];
         if (result != VCL_RESULT_SUCCESS) {
             std::cerr << "Failed to vclExecutableGetSerializableBlob initially with " << i << " thread!" << std::endl;
-            std::cerr << "Result:0x" << std::hex << result << std::dec << std::endl;
+            printErrorInfo("Result:0x", result);
             vclCompilerDestroy(compiler);
             return result;
         }
@@ -189,8 +187,9 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
     for (size_t i = 0; i < resGetBlob.size(); i++) {
         const auto result = resGetBlob[i];
         if (result != VCL_RESULT_SUCCESS) {
-            std::cerr << "Failed to vclExecutableGetSerializableBlob with " << i << " thread!" << std::endl;
-            std::cerr << "Result:0x" << std::hex << result << std::dec << std::endl;
+            std::string printStr =
+                    "Failed to vclExecutableGetSerializableBlob with " + std::to_string(i) + " thread!\n" + "Result:0x";
+            printErrorInfo(printStr, result);
             vclCompilerDestroy(compiler);
             return result;
         }
@@ -221,15 +220,14 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
     for (auto& pair : exeHandles) {
         ret = vclExecutableDestroy(*(pair.first));
         if (ret != VCL_RESULT_SUCCESS) {
-            std::cerr << "Failed to destroy executable! Result:0x" << std::hex << uint64_t(ret) << std::dec
-                      << std::endl;
+            printErrorInfo("Failed to destroy executable! Result:0x", ret);
             vclCompilerDestroy(compiler);
             return ret;
         }
     }
     ret = vclCompilerDestroy(compiler);
     if (ret != VCL_RESULT_SUCCESS) {
-        std::cerr << "Failed to destroy compiler! Result:0x" << std::hex << uint64_t(ret) << std::dec << std::endl;
+        printErrorInfo("Failed to destroy compiler! Result:0x", ret);
         return ret;
     }
     return ret;
@@ -277,9 +275,9 @@ const auto cidTool = VCLParallelCompilationTest::getCidToolPath();
 const auto smokeIRInfos = VCLParallelCompilationTest::readJson2Vec(cidTool + VCLTestsUtils::SMOKE_TEST_CONFIG);
 /// Models and configs for normal test
 const auto irInfos = VCLParallelCompilationTest::readJson2Vec(cidTool + VCLTestsUtils::TEST_CONFIG);
-/// Params for somke tests
+/// Parameters for smoke tests
 const auto smokeParams = testing::Combine(testing::ValuesIn(smokeIRInfos));
-/// Params for normal tests
+/// Parameters for normal tests
 const auto params = testing::Combine(testing::ValuesIn(irInfos));
 
 INSTANTIATE_TEST_SUITE_P(smoke_ParallelCompilationTest, VCLParallelCompilationTest, smokeParams,
@@ -287,3 +285,232 @@ INSTANTIATE_TEST_SUITE_P(smoke_ParallelCompilationTest, VCLParallelCompilationTe
 
 INSTANTIATE_TEST_SUITE_P(ParallelCompilationTest, VCLParallelCompilationTest, params,
                          VCLParallelCompilationTest::getTestCaseName);
+
+class VCLAllocatorParallelCompilationTest : public VCLTestsUtils::VCLTestsCommon {
+public:
+    VCLAllocatorParallelCompilationTest(): numCompilationThreads(0) {
+        outputs.clear();
+    }
+    /**
+     * @brief Set the number of threads during tests
+     *
+     * @param compilationThreads The number of threads to do compilation
+     */
+    void setThreadCount(int compilationThreads) {
+        numCompilationThreads = compilationThreads;
+    }
+
+    size_t getOutputSize() const {
+        return outputs.size();
+    }
+
+    /**
+     * @brief Multiple threads to call API of one compiler
+     *
+     * @param options Build flags of a model
+     */
+    vcl_result_t parallelCompilation(const std::string& options);
+
+    /**
+     * @brief Check if all compilations have created blob
+     */
+    bool check() const;
+
+    /**
+     * @brief Test parallel execution of one compiler and check results
+     */
+    void run();
+    struct CreateThreadParams {
+        vcl_compiler_handle_t compiler;
+        vcl_executable_desc_t& exeDesc;
+        vcl_allocator_t& allocator;
+        std::vector<vcl_result_t>& resCreate;
+        std::vector<std::pair<uint8_t*, uint64_t>>& blobs;
+        std::mutex& lock;
+    };
+
+    class CreateThread {
+    public:
+        CreateThread(const CreateThreadParams& params)
+                : m_compiler(params.compiler),
+                  m_exeDesc(params.exeDesc),
+                  m_allocator(params.allocator),
+                  m_resCreate(params.resCreate),
+                  m_blobs(params.blobs),
+                  m_lock(params.lock) {
+        }
+
+        void createThreadVector(int i) {
+            uint8_t* blob;
+            uint64_t size = 0;
+            m_resCreate[i] = vclAllocatedExecutableCreate(m_compiler, m_exeDesc, &m_allocator, &blob, &size);
+            EXPECT_TRUE(blob != nullptr) << "blob is empty!" << std::endl;
+            {
+                std::lock_guard<std::mutex> guard(m_lock);
+                m_blobs.push_back(std::make_pair(blob, size));
+            }
+        }
+
+    private:
+        vcl_compiler_handle_t m_compiler;
+        vcl_executable_desc_t& m_exeDesc;
+        vcl_allocator_t& m_allocator;
+        std::vector<vcl_result_t>& m_resCreate;
+        std::vector<std::pair<uint8_t*, uint64_t>>& m_blobs;
+        std::mutex& m_lock;
+    };
+
+private:
+    int numCompilationThreads;
+    std::vector<std::string> outputs;
+};
+
+vcl_result_t VCLAllocatorParallelCompilationTest::parallelCompilation(const std::string& options) {
+    static int count = 0;
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    auto id = std::this_thread::get_id();
+    std::stringstream ss;
+    ss << id;
+    std::string threadName = ss.str();
+    vcl_result_t ret = VCL_RESULT_SUCCESS;
+
+    /// Default device is 4000, can be updated by test config
+    vcl_compiler_desc_t compilerDesc;
+    compilerDesc.version.major = VCL_COMPILER_VERSION_MAJOR;
+    compilerDesc.version.minor = VCL_COMPILER_VERSION_MINOR;
+    compilerDesc.debugLevel = VCL_LOG_INFO;
+    vcl_device_desc_t deviceDesc = {sizeof(vcl_device_desc_t), 0x643e, 3, 5};
+    vcl_compiler_handle_t compiler = nullptr;
+    ret = vclCompilerCreate(&compilerDesc, &deviceDesc, &compiler, nullptr);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to create compiler! Result: 0x", ret);
+        return ret;
+    }
+
+    vcl_compiler_properties_t compilerProp;
+    ret = vclCompilerGetProperties(compiler, &compilerProp);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to query compiler props! Result: 0x", ret);
+        vclCompilerDestroy(compiler);
+        return ret;
+    }
+    std::cout << "############################################" << std::endl;
+    std::cout << threadName.c_str() << " Current compiler info:" << std::endl;
+    std::cout << threadName.c_str() << " ID: " << compilerProp.id << std::endl;
+    std::cout << threadName.c_str() << " Version:" << compilerProp.version.major << "." << compilerProp.version.minor
+              << std::endl;
+    std::cout << threadName.c_str() << "\tSupported opsets:" << compilerProp.supportedOpsets << std::endl;
+    std::cout << "############################################" << std::endl;
+
+    vcl_allocator_t allocator;
+    allocator.allocate = VCLTestsUtils::allocateBlob;
+    allocator.deallocate = VCLTestsUtils::deallocateBlob;
+
+    vcl_executable_desc_t exeDesc = {getModelIR().data(), getModelIRSize(), options.c_str(), options.size() + 1};
+
+    /// Create multiple thread to do compilation
+    std::vector<std::thread> compilationThreads;
+    compilationThreads.reserve(numCompilationThreads);
+    /// The execution result of compilation of each thread
+    std::vector<vcl_result_t> resCreate(numCompilationThreads, VCL_RESULT_SUCCESS);
+    std::vector<std::pair<uint8_t*, uint64_t>> blobs;
+    std::mutex lock;
+
+    /// Create multiple threads to do compilation with one compiler
+    CreateThreadParams params = {compiler, exeDesc, allocator, resCreate, blobs, lock};
+    CreateThread createThread(params);
+    for (int i = 0; i < numCompilationThreads; i++) {
+        compilationThreads.emplace_back([&createThread, i] {
+            createThread.createThreadVector(i);
+        });
+    }
+
+    /// Wait for all threads to finish
+    for (auto& compilationThread : compilationThreads) {
+        compilationThread.join();
+    }
+
+    /// Check all execution results
+    for (auto i = resCreate.begin(); i != resCreate.end(); ++i) {
+        if (*i != VCL_RESULT_SUCCESS) {
+            std::string printStr = "Failed to vclExecutableCreate with " +
+                                   std::to_string(std::distance(resCreate.begin(), i)) + " thread!\n" + "Result:0x";
+            printErrorInfo(printStr, *i);
+            vclCompilerDestroy(compiler);
+            return *i;
+        }
+    }
+
+    /// Save all result blobs
+    for (auto pair : blobs) {
+        auto blob = pair.first;
+        auto blobSize = pair.second;
+#ifdef BLOB_DUMP
+        auto ir = GetParam();
+        auto netInfo = std::get<0>(ir);
+        const std::string networkName = netInfo.at("network");
+        std::string blobName = "ct2_" + std::to_string(count) + "_" + threadName + networkName + ".net.allocator";
+        std::ofstream bfos(blobName, std::ios::binary);
+        if (!bfos.is_open()) {
+            std::cerr << "Failed to open " << blobName << ", skip dump!" << std::endl;
+        } else {
+            bfos.write(reinterpret_cast<char*>(blob), blobSize);
+            if (bfos.fail()) {
+                std::cerr << "Short write to " << blobName << ", the file is invalid!" << std::endl;
+            }
+        }
+        bfos.close();
+#endif  // BLOB_DUMP
+        std::string output(reinterpret_cast<char*>(blob), blobSize);
+        outputs.push_back(std::move(output));
+        allocator.deallocate(blob);
+        count++;
+    }
+
+    ret = vclCompilerDestroy(compiler);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to destroy compiler! Result: 0x", ret);
+        return ret;
+    }
+    return ret;
+}
+
+bool VCLAllocatorParallelCompilationTest::check() const {
+    const size_t count = outputs.size();
+    if (count == 0) {
+        std::cerr << "No outputs!" << std::endl;
+        return false;
+    }
+    for (size_t i = 1; i < count; i++) {
+        if (outputs[i].size() == 0) {
+            std::cerr << "blob " << i << "'s size is zero." << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+void VCLAllocatorParallelCompilationTest::run() {
+    setThreadCount(1);
+    vcl_result_t ret = parallelCompilation(getNetOptions());
+    EXPECT_EQ(ret, VCL_RESULT_SUCCESS) << "Failed to run test to create ref! Result: 0x" << std::hex << ret
+                                       << std::endl;
+
+    // Get the outputs from multiple threads env;
+    int numCompilationThreads = 5;
+    setThreadCount(numCompilationThreads);
+    ret = parallelCompilation(getNetOptions());
+    EXPECT_EQ(ret, VCL_RESULT_SUCCESS) << "Failed to run thread test! Result: 0x" << std::hex << ret << std::endl;
+    EXPECT_EQ(getOutputSize(), 6) << "Not get all outputs successfully!" << std::endl;
+    EXPECT_EQ(check(), true);
+}
+
+TEST_P(VCLAllocatorParallelCompilationTest, ParallelCompilation) {
+    run();
+}
+
+INSTANTIATE_TEST_SUITE_P(smoke_ParallelCompilationTest, VCLAllocatorParallelCompilationTest, smokeParams,
+                         VCLAllocatorParallelCompilationTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(ParallelCompilationTest, VCLAllocatorParallelCompilationTest, params,
+                         VCLAllocatorParallelCompilationTest::getTestCaseName);

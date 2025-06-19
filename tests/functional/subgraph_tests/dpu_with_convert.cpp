@@ -2,9 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <openvino/op/convert_like.hpp>
 #include <vpu_ov2_layer_test.hpp>
 #include "vpux/utils/core/error.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/avg_pool.hpp"
+#include "openvino/op/convert.hpp"
+#include "openvino/op/convert_like.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
+#include "openvino/op/max_pool.hpp"
 
 namespace ov::test {
 
@@ -64,7 +71,7 @@ class DpuWithF16ToF32ConvertTestBase :
 
     std::shared_ptr<ov::Node> buildConvert(const ov::Output<ov::Node>& param, const ov::Shape& shape) {
         auto like = std::make_shared<op::v0::Constant>(ov::element::f32, shape);
-        return std::make_shared<ov::opset10::ConvertLike>(param, like);
+        return std::make_shared<ov::op::v1::ConvertLike>(param, like);
     }
 
 protected:

@@ -16,9 +16,21 @@ namespace vpux {
 //
 
 struct ReferenceSWOptions37XX final :
+        public PublicOptions,
         public ReferenceSWOptions<ReferenceSWOptions37XX>,
         public vpux::BatchCompileOptionsAdapter {
     ReferenceSWOptions37XX(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
+    }
+    ReferenceSWOptions37XX(VPU::ArchKind arch)
+            : PublicOptions(arch), vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
+    }
+
+    static std::unique_ptr<ReferenceSWOptions37XX> createFromString(StringRef options, VPU::ArchKind arch) {
+        auto result = std::make_unique<ReferenceSWOptions37XX>(arch);
+        if (mlir::failed(result->parseFromString(options))) {
+            return nullptr;
+        }
+        return result;
     }
 
     BoolOption enableConvertFFTToConv{*this, "convert-fft-to-conv", llvm::cl::desc("Enable convert-fft-to-conv pass"),
@@ -36,9 +48,17 @@ struct DefaultHWOptions37XX final :
         VPU::arch37xx::DefaultHWOptions,
         VPUIP::arch37xx::DefaultHWOptions,
         mlir::PassPipelineOptions<DefaultHWOptions37XX> {
-    // Due to multiple inheritance, 'DefaultHWOptions37XX' has multiple definitions of 'createFromString' method
-    // here we assume that we are interested in a "final" method that includes parameters from all parent classes
-    using mlir::PassPipelineOptions<DefaultHWOptions37XX>::createFromString;
+    DefaultHWOptions37XX() = default;
+    DefaultHWOptions37XX(VPU::ArchKind arch): PublicOptions(arch) {
+    }
+
+    static std::unique_ptr<DefaultHWOptions37XX> createFromString(StringRef options, VPU::ArchKind arch) {
+        auto result = std::make_unique<DefaultHWOptions37XX>(arch);
+        if (mlir::failed(result->parseFromString(options))) {
+            return nullptr;
+        }
+        return result;
+    }
 };
 
 }  // namespace vpux

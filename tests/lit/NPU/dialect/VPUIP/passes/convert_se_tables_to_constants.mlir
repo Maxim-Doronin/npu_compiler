@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --mlir-print-elementsattrs-with-hex-if-larger=-1 --convert-se-tables-to-constants %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -36,7 +37,7 @@ func.func @SETableInterpolateNearestSingleCluster(%input_data: !Input_DDR, %inpu
                 dataShape = [1, 32, 3, 3], dataElemType = f16,
                 seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                             nearest_mode = <FLOOR>,  offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
-                seSize = 32, seDepth = 1
+                seSize = [32], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
@@ -188,7 +189,7 @@ func.func @SETableInterpolateNearest(%input_data: !Input_DDR, %input_sm: !InputS
                 dataShape = [1, 32, 3, 3], dataElemType = f16,
                 seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                             nearest_mode = <FLOOR>,  offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
-                seSize = 32, seDepth = 1
+                seSize = [32], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
@@ -350,7 +351,7 @@ func.func @SETableInterpolateBilinear(%input_data: !Input_DDR, %input_sm: !Input
                 dataShape = [1, 32, 3, 3], dataElemType = f16,
                 seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                             offsets = [0, 0, 0, 0], sizes = [1, 32, 7, 7]>,
-                seSize = 32, seDepth = 1
+                seSize = [32], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
             seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
@@ -495,14 +496,6 @@ func.func @SETableInterpolateBilinear(%input_data: !Input_DDR, %input_sm: !Input
 !WeightsTable_DDR = memref<16x1x1x4xsi32, @DDR>
 !Output_DDR = memref<1x16x18x18xf16, #NHWC, @DDR>
 
-!Input_CMX_Tile = memref<1x16x4x6xf16, #NHWC, @CMX_NN>
-!InputSM_CMX_Tile = memref<1x16x11x20xi1, #NHWC, @CMX_NN>
-!InputSE_CMX_Tile = memref<1x1x11x20xi32, #NHWC, @CMX_NN>
-!Weights_CMX = memref<16x16x3x3xf16, #NHWC, @CMX_NN>
-!WeightsSM_CMX = memref<16x1x1x256xi1, @CMX_NN>
-!WeightsTable_CMX = memref<16x1x1x4xsi32, @CMX_NN>
-!Output_CMX_Tile = memref<1x16x9x18xf16, #NHWC, @CMX_NN>
-
 // CHECK-LABEL:  func.func @InterpolateTileAndMultiCluster
 func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: !InputSM_DDR_Tile, %input_sm_1: !InputSM_DDR_Tile) -> !Output_DDR {
     %input_se_0 = VPUIP.StorageElementTable {
@@ -520,7 +513,7 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
                   dataShape = [1, 16, 4, 6], dataElemType = f16,
                   seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                               offsets = [0, 0, 0, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>,
-                  seSize = 16, seDepth = 1
+                  seSize = [16], seDepth = 1
               } -> !InputSE_DDR_Tile
     %input_se_1 = VPUIP.StorageElementTable {
                   basePtrs = dense<[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -537,7 +530,7 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
                   dataShape = [1, 16, 4, 6], dataElemType = f16,
                   seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                               offsets = [0, 0, 3, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>,
-                  seSize = 16, seDepth = 1
+                  seSize = [16], seDepth = 1
               } -> !InputSE_DDR_Tile
 
     %input_sub_1 = VPUIP.SubView %input_data [0, 0, 2, 0] [1, 16, 4, 6]
@@ -783,4 +776,177 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     // CHECK-SAME{LITERAL}:    [6145, 6145, 6145, 6145, 7169, 7169, 7169, 8193, 8193, 8193, 9217, 9217, 9217, 10241, 10241, 10241, 11265, 11265, 11265, 11265],
     // CHECK-SAME{LITERAL}:    [6145, 6145, 6145, 6145, 7169, 7169, 7169, 8193, 8193, 8193, 9217, 9217, 9217, 10241, 10241, 10241, 11265, 11265, 11265, 11265]
     // CHECK-SAME:  : tensor<1x1x11x20xi32, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!Input_DDR = memref<1x128x4x4xf16, #NHWC, @DDR>
+!InputSE_DDR = memref<1x4x4x10xi32, #NHWC, @DDR>
+!InputSM_DDR = memref<1x128x4x10xi1, #NHWC, @DDR>
+!InputSparseDDR = !VPUIP.SparseBuffer<
+    data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
+    #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
+                       scale = [1.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00]>
+>
+
+!DataDistributedBuff = !VPUIP.DistributedBuffer<
+    1x128x4x4xf16, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 4, 1, 1],
+    num_clusters = 4 : i64,
+    uniform_distributed_segments,
+    compute_shapes = [[1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4]],
+    compute_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]],
+    memory_shapes = [[1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4]],
+    memory_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]]
+}>
+
+!SmapDistributedBuff = !VPUIP.DistributedBuffer<
+    1x128x4x10xi1, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 4, 1, 1],
+    num_clusters = 4 : i64,
+    alignment = [1, 16, 1, 1],
+    uniform_distributed_segments,
+    compute_shapes = [[1, 32, 4, 10], [1, 32, 4, 10], [1, 32, 4, 10], [1, 32, 4, 10]],
+    compute_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]],
+    memory_shapes = [[1, 32, 4, 10], [1, 32, 4, 10], [1, 32, 4, 10], [1, 32, 4, 10]],
+    memory_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]]
+}>
+
+!SeDistributedBuff = !VPUIP.DistributedBuffer<
+    1x4x4x10xi32, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 4, 1, 1],
+    num_clusters = 4 : i64,
+    alignment = [1, 1, 1, 1],
+    uniform_distributed_segments,
+    compute_shapes = [[1, 1, 4, 10], [1, 1, 4, 10], [1, 1, 4, 10], [1, 1, 4, 10]],
+    compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]],
+    memory_shapes = [[1, 1, 4, 10], [1, 1, 4, 10], [1, 1, 4, 10], [1, 1, 4, 10]],
+    memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]
+}>
+
+!SparseDistributedBuffer = !VPUIP.SparseBuffer<
+    data=!DataDistributedBuff, sparsity_map=!SmapDistributedBuff, storage_element_table=!SeDistributedBuff,
+    #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
+                       scale = [1.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00]>
+>
+
+!OutputDistributed = !VPUIP.DistributedBuffer<
+    1x128x4x8xf16, #NHWC, @CMX_NN, {
+    mode = "DUPLICATED|SEGMENTED",
+    num_tiles = [1, 4, 1, 1],
+    num_clusters = 4 : i64,
+    alignment = [1, 16, 1, 1],
+    uniform_distributed_segments,
+    compute_shapes = [[1, 32, 4, 8], [1, 32, 4, 8], [1, 32, 4, 8], [1, 32, 4, 8]],
+    compute_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]],
+    memory_shapes = [[1, 128, 4, 8], [1, 128, 4, 8], [1, 128, 4, 8], [1, 128, 4, 8]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+}>
+
+!WeightsDistributedBuff = !VPUIP.DistributedBuffer<
+    128x16x1x1xf16, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [4, 1, 1, 1],
+    num_clusters = 4 : i64,
+    alignment = [16, 1, 1, 1],
+    uniform_distributed_segments,
+    compute_shapes = [[32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1]],
+    compute_offsets = [[0, 0, 0, 0], [32, 0, 0, 0], [64, 0, 0, 0], [96, 0, 0, 0]],
+    memory_shapes = [[32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1]],
+    memory_offsets = [[0, 0, 0, 0], [32, 0, 0, 0], [64, 0, 0, 0], [96, 0, 0, 0]]
+}>
+
+!WTableDistributedBuff = !VPUIP.DistributedBuffer<
+    128x1x1x4xsi32, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [4, 1, 1, 1],
+    num_clusters = 4 : i64,
+    alignment = [16, 1, 1, 1],
+    uniform_distributed_segments,
+    compute_shapes = [[32, 1, 1, 4], [32, 1, 1, 4], [32, 1, 1, 4], [32, 1, 1, 4]],
+    compute_offsets = [[0, 0, 0, 0], [32, 0, 0, 0], [64, 0, 0, 0], [96, 0, 0, 0]],
+    memory_shapes = [[32, 1, 1, 4], [32, 1, 1, 4], [32, 1, 1, 4], [32, 1, 1, 4]],
+    memory_offsets = [[0, 0, 0, 0], [32, 0, 0, 0], [64, 0, 0, 0], [96, 0, 0, 0]]
+}>
+
+// CHECK-LABEL:  func.func @DWConvInterpSOKInput
+func.func @DWConvInterpSOKInput(
+    %data: !Input_DDR, %smap: !InputSM_DDR, %weights: !WeightsDistributedBuff, %wtable: !WTableDistributedBuff)
+    -> !OutputDistributed {
+    %0 = VPUIP.StorageElementTable {
+        basePtrs = dense<0> : tensor<160xi32>, dataElemType = f16, dataShape = [1, 128, 4, 4],
+        seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
+                  scale = [1.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00]>,
+                  seDepth = 4 : i64, seSize = [32, 32, 32, 32]
+    } -> !InputSE_DDR
+
+    %1 = VPUIP.GroupSparseBuffer(%data, %smap, %0) {
+        seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
+                  scale = [1.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00]>
+    } -> !InputSparseDDR
+
+    %alloc_data = VPURT.AllocDistributed -> !DataDistributedBuff
+    %alloc_smap = VPURT.AllocDistributed -> !SmapDistributedBuff
+    %alloc_se = VPURT.AllocDistributed -> !SeDistributedBuff
+    %alloc_sparse = VPUIP.GroupSparseBuffer(%alloc_data, %alloc_smap, %alloc_se) {
+        seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
+                scale = [1.000000e+00, 1.000000e+00, 1.000000e+00, 2.000000e+00]>
+    } -> !SparseDistributedBuffer
+    %2 = VPUIP.Copy inputs(%1 : !InputSparseDDR) outputs(%alloc_sparse : !SparseDistributedBuffer) -> !SparseDistributedBuffer
+
+    %alloc_output = VPURT.AllocDistributed -> !OutputDistributed
+    %data_cmx, %sparsity_map_cmx, %storage_element_table_cmx = VPUIP.UngroupSparseBuffer(%2) {resultSegmentSizes = array<i32: 1, 1, 1>}
+        -> !DataDistributedBuff, !SmapDistributedBuff, !SeDistributedBuff
+
+    %3 = VPUIP.NCEClusterTask {
+        is_small_kernel_optimized, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        kernel_size = [1, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 267 : i64,
+        mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>
+    }
+    input(%data_cmx : !DataDistributedBuff)
+    input_sparsity_map(%sparsity_map_cmx : !SmapDistributedBuff)
+    input_storage_element_table(%storage_element_table_cmx : !SeDistributedBuff)
+    weights(%weights : !WeightsDistributedBuff)
+    weight_table(%wtable : !WTableDistributedBuff)
+    parent_input(%data_cmx : !DataDistributedBuff)
+    parent_input_sparsity_map(%sparsity_map_cmx : !SmapDistributedBuff)
+    parent_input_storage_element_table(%storage_element_table_cmx : !SeDistributedBuff)
+    parent_output(%alloc_output : !OutputDistributed) outputs(%alloc_output : !OutputDistributed) -> !OutputDistributed
+    variants : {
+        DPUTask {cluster_id = 0 : i64, inEnd = [9, 3, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [7, 3, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 1 : i64, inEnd = [9, 3, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [7, 3, 63], outStart = [0, 0, 32], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 2 : i64, inEnd = [9, 3, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [7, 3, 95], outStart = [0, 0, 64], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 3 : i64, inEnd = [9, 3, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [7, 3, 127], outStart = [0, 0, 96], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+  } PPE : {
+    PPETask {ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>}
+  }
+
+    return %3 : !OutputDistributed
+
+    // CHECK-NOT:   VPUIP.StorageElementTable
+    // CHECK:       const.Declare memref<1x4x4x10xi32, #NHWC, @DDR> = dense<
+    // CHECK-SAME{LITERAL}:    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    // CHECK-SAME{LITERAL}:    [0, 0, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048],
+    // CHECK-SAME{LITERAL}:    [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 6144, 6144],
+    // CHECK-SAME{LITERAL}:    [6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144]],
+    // CHECK-SAME{LITERAL}:    [8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192],
+    // CHECK-SAME{LITERAL}:    [8192, 8192, 10240, 10240, 10240, 10240, 10240, 10240, 10240, 10240],
+    // CHECK-SAME{LITERAL}:    [12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 14336, 14336],
+    // CHECK-SAME{LITERAL}:    [14336, 14336, 14336, 14336, 14336, 14336, 14336, 14336, 14336, 14336]],
+    // CHECK-SAME{LITERAL}:    [16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384],
+    // CHECK-SAME{LITERAL}:    [16384, 16384, 18432, 18432, 18432, 18432, 18432, 18432, 18432, 18432],
+    // CHECK-SAME{LITERAL}:    [20480, 20480, 20480, 20480, 20480, 20480, 20480, 20480, 22528, 22528],
+    // CHECK-SAME{LITERAL}:    [22528, 22528, 22528, 22528, 22528, 22528, 22528, 22528, 22528, 22528]],
+    // CHECK-SAME{LITERAL}:    [24576, 24576, 24576, 24576, 24576, 24576, 24576, 24576, 24576, 24576],
+    // CHECK-SAME{LITERAL}:    [24576, 24576, 26624, 26624, 26624, 26624, 26624, 26624, 26624, 26624],
+    // CHECK-SAME{LITERAL}:    [28672, 28672, 28672, 28672, 28672, 28672, 28672, 28672, 30720, 30720],
+    // CHECK-SAME{LITERAL}:    [30720, 30720, 30720, 30720, 30720, 30720, 30720, 30720, 30720, 30720]]
+    // CHECK-SAME:  : tensor<1x4x4x10xi32, {order = #NHWC}>
+
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
@@ -341,7 +342,7 @@ mlir::LogicalResult vpux::convertFunc(mlir::func::FuncOp funcOp, ArrayRef<mlir::
 mlir::GreedyRewriteConfig vpux::getDefaultGreedyRewriteConfig() {
     mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;
-    config.enableRegionSimplification = true;
+    config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Normal;
     config.maxIterations = 10;
     return config;
 }
@@ -428,9 +429,9 @@ mlir::bufferization::OneShotBufferizationOptions vpux::getOneShotBufferizationOp
                                         const mlir::bufferization::BufferizationOptions& /*options*/) {
         return getMemRefTypeForUnknownTensorType(value.getType(), memorySpace);
     };
-    options.opFilter
-            .allowDialect<mlir::bufferization::BufferizationDialect, mlir::memref::MemRefDialect,
-                          mlir::func::FuncDialect, VPU::VPUDialect, Const::ConstDialect, mlir::linalg::LinalgDialect>();
+    options.opFilter.allowDialect<mlir::bufferization::BufferizationDialect, mlir::memref::MemRefDialect,
+                                  mlir::func::FuncDialect, VPU::VPUDialect, Const::ConstDialect,
+                                  mlir::linalg::LinalgDialect, Core::CoreDialect>();
 
     return options;
 }

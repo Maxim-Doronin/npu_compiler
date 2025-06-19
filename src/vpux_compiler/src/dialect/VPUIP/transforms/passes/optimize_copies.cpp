@@ -250,8 +250,8 @@ mlir::LogicalResult CopyOpSequence::matchAndRewrite(VPUIP::CopyOp copyOp, mlir::
             return input.getType() == output.getType();
         }
 
-        auto inDistributedType = VPUIP::extractDataType(input).dyn_cast_or_null<VPUIP::DistributedBufferType>();
-        auto outDistributedType = VPUIP::extractDataType(output).dyn_cast_or_null<VPUIP::DistributedBufferType>();
+        auto inDistributedType = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(VPUIP::extractDataType(input));
+        auto outDistributedType = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(VPUIP::extractDataType(output));
         if (inDistributedType == nullptr || outDistributedType == nullptr) {
             nestedLogger.trace("CopyOpSequence: types are not distributed");
             return false;
@@ -763,6 +763,11 @@ mlir::LogicalResult CMXToCMXCopy::matchAndRewrite(VPUIP::CopyOp copyOp, mlir::Pa
         if (!vpux::VPUIP::hasDistributedOperand(copyOp) && !mlir::isa<VPUIP::NCEClusterTaskOp>(parentNCE)) {
             nestedLogger.trace("Cannot match because copy operation is non-distributed so it must be a successor of "
                                "NCEClusterTask");
+            return mlir::failure();
+        }
+
+        if (vpux::VPUIP::hasDistributedOperand(copyOp) && mlir::isa<VPUIP::SubViewOp>(parentNCE)) {
+            nestedLogger.trace("Cannot remove Copy because of SubViewOp");
             return mlir::failure();
         }
 

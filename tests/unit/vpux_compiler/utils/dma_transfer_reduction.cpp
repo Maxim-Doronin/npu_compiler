@@ -9,6 +9,7 @@
 
 #include "common/utils.hpp"
 #include "vpux/compiler/utils/dma_transaction_utils.hpp"
+#include "vpux/utils/core/range.hpp"
 
 using namespace vpux;
 
@@ -23,8 +24,8 @@ struct DMAReductionTestParams {
     SmallVector<int64_t> strides;
     DimsOrder::StorageType storageOrder;
     std::string elementType;
-    SmallVector<uint64_t> expectedReducedDims;
-    SmallVector<uint64_t> expectedReducedStrides;
+    SmallVector<int64_t> expectedReducedDims;
+    SmallVector<int64_t> expectedReducedStrides;
 };
 
 class DMAReductionTest : public testing::TestWithParam<DMAReductionTestParams> {};
@@ -68,7 +69,9 @@ TEST_P(DMAReductionTest, GetParams) {
 
     const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
 
-    const auto reducedDimsStrides = reduceDimsForDma(ndType);
+    const auto reducedDimsStrides =
+            reduceDimsForDma(to_small_vector(ndType.getMemShape()), to_small_vector(ndType.getMemStrides()),
+                             ndType.getElemTypeSize().count());
     EXPECT_EQ(reducedDimsStrides.dims, expectedReducedDims);
     EXPECT_EQ(reducedDimsStrides.strides, expectedReducedStrides);
 }
@@ -287,7 +290,8 @@ TEST_P(DMAReductionTestExpectFail, GetParams) {
 
     const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
 
-    EXPECT_ANY_THROW(reduceDimsForDma(ndType));
+    EXPECT_ANY_THROW(reduceDimsForDma(to_small_vector(ndType.getMemShape()), to_small_vector(ndType.getMemStrides()),
+                                      ndType.getElemTypeSize().count()));
 }
 
 // To add a test that throws an error #E118627

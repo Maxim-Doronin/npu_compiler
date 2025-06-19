@@ -28,7 +28,6 @@ std::unique_ptr<mlir::Pass> createOptimizeSliceExpandPass(Logger log = Logger::g
 std::unique_ptr<mlir::Pass> createPropagateExpandPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFusePermuteQuantizeExpandPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createExpandActivationChannelsPass(const bool seOpsEnabled = false,
-                                                               const bool seExperimentalOpsEnabled = false,
                                                                Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertFFTToConvPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertSubGRUSequenceToConvPass(Logger log = Logger::global());
@@ -54,7 +53,8 @@ void buildExpandAndOptimizeActivationChannelsPipeline(mlir::OpPassManager& pm,
                                                       const ExpandActivationChannelsOptions& options,
                                                       Logger log = Logger::global());
 
-void buildMemPermuteProcessingPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
+void buildMemPermuteProcessingPipeline(mlir::OpPassManager& pm, const ExpandActivationChannelsOptions& options,
+                                       Logger log = Logger::global());
 
 void buildOptimizeMemPermuteAndActivationChannelsExpandPipeline(mlir::OpPassManager& pm,
                                                                 const ExpandActivationChannelsOptions& options,

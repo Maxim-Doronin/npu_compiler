@@ -122,14 +122,14 @@ mlir::FailureOr<bool> verifyStridesByteAligned(mlir::Location location, vpux::ND
 
 SmallVector<mlir::Type> convertToUnrankedTypes(mlir::Value operand) {
     SmallVector<mlir::Type> result;
-    if (auto type = operand.getType().dyn_cast_or_null<mlir::MemRefType>()) {
+    if (auto type = mlir::dyn_cast_or_null<mlir::MemRefType>(operand.getType())) {
         result.emplace_back(mlir::UnrankedMemRefType::get(type.getElementType(), type.getMemorySpace()));
-    } else if (auto type = operand.getType().dyn_cast_or_null<VPUIP::BoundedBufferType>()) {
+    } else if (auto type = mlir::dyn_cast_or_null<VPUIP::BoundedBufferType>(operand.getType())) {
         const auto dataNDType = mlir::cast<vpux::NDTypeInterface>(type.getData());
         result.emplace_back(mlir::UnrankedMemRefType::get(dataNDType.getElementType(), dataNDType.getMemSpace()));
         const auto shapeNDType = mlir::cast<vpux::NDTypeInterface>(type.getDynamicShape());
         result.emplace_back(mlir::UnrankedMemRefType::get(shapeNDType.getElementType(), shapeNDType.getMemSpace()));
-    } else if (auto type = operand.getType().dyn_cast_or_null<VPUIP::DistributedBufferType>()) {
+    } else if (auto type = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(operand.getType())) {
         result.emplace_back(mlir::UnrankedMemRefType::get(type.getElementType(), type.getMemSpace()));
     } else {
         VPUX_THROW_UNLESS(!result.empty(),

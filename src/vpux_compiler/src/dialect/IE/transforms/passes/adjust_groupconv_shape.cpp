@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/attributes/attributes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -85,7 +86,7 @@ Const::DeclareOp ReshapeGroupConvInput::broadcastConst(mlir::Value activation, i
         setup = setup.reshape(Shape(origInShape.size(), int64_t(1)));
 
         for (auto attr : contentAttr.getTransformations()) {
-            if (llvm::isa<Const::PadWithZeroAttr, Const::BroadcastAttr, Const::ReshapeAttr, Const::SubViewAttr>(attr)) {
+            if (Const::canChangeShape(attr)) {
                 // The const's shape will fully handled by this pass, the broadcast will be added,
                 //   so ignore the origin broadcast, reshape and pad transformation
                 continue;

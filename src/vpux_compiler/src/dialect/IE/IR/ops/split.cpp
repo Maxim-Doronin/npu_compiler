@@ -92,6 +92,9 @@ mlir::LogicalResult vpux::IE::SplitOp::inferReturnTypeComponents(
     }
 
     const auto num_splits = split.getNumSplits();
+    if (num_splits <= 0) {
+        return errorAt(loc, "Number of splits should be a natural number");
+    }
 
     auto outShape = mlir::cast<vpux::NDTypeInterface>(inType).getShape().toValues();
     if ((outShape[*axis] < num_splits) || (outShape[*axis] % num_splits != 0)) {
@@ -106,6 +109,17 @@ mlir::LogicalResult vpux::IE::SplitOp::inferReturnTypeComponents(
         inferredReturnShapes.emplace_back(outShape.raw(), elemType, outDesc);
     }
 
+    return mlir::success();
+}
+
+//
+// verify
+//
+
+mlir::LogicalResult vpux::IE::SplitOp::verify() {
+    if (getNumSplits() <= 0) {
+        return errorAt(*this, "Number of splits should be a positive integer, while it is {0}", getNumSplits());
+    }
     return mlir::success();
 }
 

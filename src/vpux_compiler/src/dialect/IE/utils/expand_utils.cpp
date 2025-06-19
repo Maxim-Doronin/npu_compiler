@@ -241,7 +241,7 @@ bool beneficialToKeepExpand(ShapeRef unExpandedShape, ShapeRef expandedShape, ml
         }
         // Mul/Sub/Add are selected since they are covered by the AdjustInputShapeForEltwise pass
         if (auto grpConvOp = mlir::dyn_cast<IE::GroupConvolutionOp>(op)) {
-            return groupConvIsEltwise(grpConvOp);
+            return isEltwiseGroupConv(grpConvOp);
         } else if (mlir::isa<IE::MultiplyOp, IE::SubtractOp, IE::AddOp>(op)) {
             return true;
         }
@@ -295,6 +295,23 @@ bool beneficialToPadHeight(IE::ExpandOp origOp) {
     }
 
     return true;
+}
+
+bool beneficialToReshapeHeightToChannel(IE::ExpandOp origOp) {
+    auto inShape = getShape(origOp.getInput());
+    if (inShape[Dims4D::Act::W] != 1) {
+        return false;
+    }
+
+    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
+    if (inShape[Dims4D::Act::H] % convolutionAlignment != 0) {
+        return false;
+    }
+
+    constexpr int64_t THRESHOLD_FOR_BENEFICIAL_CONVERSION = 4096;
+    auto outShape = getShape(origOp.getOutput());
+    return outShape.totalSize() >= THRESHOLD_FOR_BENEFICIAL_CONVERSION;
 }
 
 bool beneficialToPadWidth(IE::ExpandOp origOp) {
@@ -436,10 +453,11 @@ bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugN
     }
 
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
-    if (!beneficialToPadHeight(expandOp) && !beneficialToPadWidth(expandOp)) {
-        log.trace("[{0}]: Expand at {1} has width {2} not multiple of {3}. Expand to conv only for case "
-                  "beneficialToPadHeight or beneficialToPadWidth",
-                  debugName, expandOp.getLoc(), expandInShape[Dims4D::Act::W], convolutionAlignment);
+    if (!beneficialToReshapeHeightToChannel(expandOp) && !beneficialToPadHeight(expandOp) &&
+        !beneficialToPadWidth(expandOp)) {
+        log.trace("[{0}]: Expand at {1} has shape {2} not compatible with alignment {3}. Expand to conv only for case "
+                  "beneficialToReshapeHeightToChannel or beneficialToPadHeight or beneficialToPadWidth",
+                  debugName, expandOp.getLoc(), expandInShape, convolutionAlignment);
         return false;
     }
 

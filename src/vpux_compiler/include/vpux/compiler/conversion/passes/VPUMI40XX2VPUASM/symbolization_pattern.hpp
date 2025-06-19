@@ -72,6 +72,28 @@ protected:
         return mlir::ArrayAttr::get(ctx, barrierVec);
     };
 
+    llvm::SmallVector<mlir::FlatSymbolRefAttr> getSymbolicNamesByTileListValue(OperationType op) {
+        auto fullName = OperationType::getOperationName();
+        auto opName = fullName.drop_front(VPUMI40XX::VPUMI40XXDialect::getDialectNamespace().size() + 1);
+
+        mlir::Operation* base = op.getOperation();
+        VPUX_THROW_UNLESS(base->getResults().size() == 1,
+                          "Default symbolic converter only supports ops with exactly one result. For {0} got {1}",
+                          fullName, base->getResults().size());
+        auto indexType = mlir::dyn_cast<vpux::VPURegMapped::IndexType>(base->getResult(0).getType());
+
+        VPUX_THROW_UNLESS(indexType, "Can't use the generic symbolizer for an Op that does not return IndexType: {0}",
+                          fullName);
+
+        auto tileIdx = std::to_string(indexType.getTileIdx());
+        auto srcTypeIdx = std::to_string(indexType.getListIdx());
+        auto opIdx = std::to_string(indexType.getValue());
+
+        auto symName = mlir::StringAttr::get(op.getContext(), opName + "_" + tileIdx + "_" + srcTypeIdx + "_" + opIdx);
+
+        return {mlir::FlatSymbolRefAttr::get(symName)};
+    }
+
     Logger _log;
 };
 

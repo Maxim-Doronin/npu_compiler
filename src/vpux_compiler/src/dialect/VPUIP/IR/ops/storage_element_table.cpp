@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -16,10 +16,10 @@ using namespace vpux;
 //
 
 void vpux::VPUIP::StorageElementTableOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
-                                               ArrayRef<int64_t> dataShape, mlir::Type dataElemType, int64_t seSize,
-                                               int64_t seDepth, VPU::SEAttr seAttr) {
+                                               ArrayRef<int64_t> dataShape, mlir::Type dataElemType,
+                                               ArrayRef<int64_t> seSize, int64_t seDepth, VPU::SEAttr seAttr) {
     auto dataShapeAttr = getIntArrayAttr(odsBuilder.getContext(), dataShape);
-    auto seSizeAttr = getIntAttr(odsBuilder.getContext(), seSize);
+    auto seSizeAttr = getIntArrayAttr(odsBuilder.getContext(), seSize);
     build(odsBuilder, odsState, dataShapeAttr, dataElemType, seSizeAttr, seDepth, seAttr, nullptr, nullptr);
 }
 
@@ -69,6 +69,19 @@ mlir::LogicalResult vpux::VPUIP::StorageElementTableOp::verify() {
         }
     }
 
+    const auto seSizeAttr = getSeSize();
+    if (seSizeAttr == nullptr) {
+        return errorAt(setOp->getLoc(), "SETable op does not have seSize array.");
+    }
+
+    const auto seDepth = static_cast<size_t>(getSeDepth());
+    const auto seSizes = parseIntArrayAttr<int64_t>(seSizeAttr);
+
+    if (seSizes.size() != seDepth) {
+        return errorAt(setOp->getLoc(), "SeSizes array is invalid. It should hold {0} se_size values; actual {1}.",
+                       seDepth, seSizes.size());
+    }
+
     if (!getBasePtrs().has_value()) {
         return mlir::success();
     }
@@ -112,55 +125,33 @@ mlir::LogicalResult FuseChildSubviewOps::matchAndRewrite(VPUIP::StorageElementTa
             auto effectiveOutputOffsets = subViewOffsets;
             auto effectiveOutputSizes = subViewSizes;
 
-            if (auto seSize = mlir::dyn_cast<mlir::IntegerAttr>(origOp.getSeSize())) {
-                const auto uniformSeSize = seSize.getValue().getSExtValue();
-                effectiveOutputOffsets[Dims4D::Act::C.ind()] *= uniformSeSize;
-                effectiveOutputSizes[Dims4D::Act::C.ind()] *= uniformSeSize;
+            auto seSizes = parseIntArrayAttr<int64_t>(origOp.getSeSize());
+            effectiveOutputOffsets[Dims4D::Act::C.ind()] =
+                    std::accumulate(seSizes.begin(), seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()], 0);
+            effectiveOutputSizes[Dims4D::Act::C.ind()] = std::accumulate(
+                    seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()],
+                    seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()] + subViewSizes[Dims4D::Act::C.ind()], 0);
 
-                const auto inputDataShape = Shape(parseIntArrayAttr<int64_t>(origOp.getDataShape()));
-                auto inputTileShape = Shape(inputDataShape.size());
-                auto inputTileOffset = inputTileShape;
-                seAttr = seAttr.extractTile(Shape(effectiveOutputOffsets), Shape(effectiveOutputSizes), inputDataShape,
-                                            inputTileOffset, inputTileShape);
-                auto newSETableOp = rewriter.replaceOpWithNewOp<VPUIP::StorageElementTableOp>(
-                        subViewUserOp, inputTileShape.raw(), origOp.getDataElemType(), uniformSeSize,
-                        subViewSizes[Dims4D::Act::C.ind()], seAttr);
-                auto currentOp = newSETableOp.getOperation();
-                while (currentOp != nullptr) {
-                    if (mlir::isa<mlir::InferTypeOpInterface>(currentOp)) {
-                        vpux::inferReturnTypes(currentOp, vpux::InferShapedTypeMode::ALL);
-                    }
-                    currentOp = currentOp->getNextNode();
+            const auto inputDataShape = Shape(parseIntArrayAttr<int64_t>(origOp.getDataShape()));
+            auto inputTileShape = Shape(inputDataShape.size());
+            auto inputTileOffset = inputTileShape;
+            auto newSeAttr = seAttr.extractTile(Shape(effectiveOutputOffsets), Shape(effectiveOutputSizes),
+                                                inputDataShape, inputTileOffset, inputTileShape);
+
+            auto dataShapeAttr = getIntArrayAttr(rewriter.getContext(), inputTileShape);
+            SmallVector<int64_t> seSizesVec(
+                    seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()],
+                    seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()] + subViewSizes[Dims4D::Act::C.ind()]);
+            auto newSeSizeAttr = getIntArrayAttr(rewriter.getContext(), seSizesVec);
+            auto newSETableOp = rewriter.replaceOpWithNewOp<VPUIP::StorageElementTableOp>(
+                    subViewUserOp, dataShapeAttr, origOp.getDataElemType(), newSeSizeAttr,
+                    subViewSizes[Dims4D::Act::C.ind()], newSeAttr, nullptr, nullptr);
+            auto currentOp = newSETableOp.getOperation();
+            while (currentOp != nullptr) {
+                if (mlir::isa<mlir::InferTypeOpInterface>(currentOp)) {
+                    vpux::inferReturnTypes(currentOp, vpux::InferShapedTypeMode::ALL);
                 }
-            } else {
-                auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(origOp.getSeSize()));
-                effectiveOutputOffsets[Dims4D::Act::C.ind()] =
-                        std::accumulate(seSizes.begin(), seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()], 0);
-                effectiveOutputSizes[Dims4D::Act::C.ind()] = std::accumulate(
-                        seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()],
-                        seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()] + subViewSizes[Dims4D::Act::C.ind()], 0);
-
-                const auto inputDataShape = Shape(parseIntArrayAttr<int64_t>(origOp.getDataShape()));
-                auto inputTileShape = Shape(inputDataShape.size());
-                auto inputTileOffset = inputTileShape;
-                seAttr = seAttr.extractTile(Shape(effectiveOutputOffsets), Shape(effectiveOutputSizes), inputDataShape,
-                                            inputTileOffset, inputTileShape);
-
-                auto dataShapeAttr = getIntArrayAttr(rewriter.getContext(), inputTileShape);
-                SmallVector<int64_t> seSizesVec(
-                        seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()],
-                        seSizes.begin() + subViewOffsets[Dims4D::Act::C.ind()] + subViewSizes[Dims4D::Act::C.ind()]);
-                auto newSeSizeAttr = getIntArrayAttr(rewriter.getContext(), seSizesVec);
-                auto newSETableOp = rewriter.replaceOpWithNewOp<VPUIP::StorageElementTableOp>(
-                        subViewUserOp, dataShapeAttr, origOp.getDataElemType(), newSeSizeAttr,
-                        subViewSizes[Dims4D::Act::C.ind()], seAttr, nullptr, nullptr);
-                auto currentOp = newSETableOp.getOperation();
-                while (currentOp != nullptr) {
-                    if (mlir::isa<mlir::InferTypeOpInterface>(currentOp)) {
-                        vpux::inferReturnTypes(currentOp, vpux::InferShapedTypeMode::ALL);
-                    }
-                    currentOp = currentOp->getNextNode();
-                }
+                currentOp = currentOp->getNextNode();
             }
         }
     }

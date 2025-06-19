@@ -6,9 +6,12 @@
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/factories/shave_controls_dpu.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/asm.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -41,19 +44,6 @@ int64_t computeReverseMemDim(mlir::Value tensorArg, int64_t dimIdx) {
     const auto shape = getShape(tensorArg);
     auto nDims = checked_cast<uint32_t>(shape.size());
     return nDims - 1 - md.ind();
-}
-
-static SmallVector<int64_t> reversePermutation(mlir::AffineMap map) {
-    const auto origPerm = DimsOrder::fromAffineMap(map).toPermutation();
-    SmallVector<int64_t> revPerm(origPerm.size());
-    for (const auto srcInd : irange(origPerm.size())) {
-        const auto dstInd = origPerm[srcInd].ind();
-        const auto revSrcInd = origPerm.size() - 1 - srcInd;
-        const auto revDstInd = origPerm.size() - 1 - dstInd;
-        revPerm[revSrcInd] = revDstInd;
-    }
-
-    return revPerm;
 }
 
 // permute int array attribute in the physical order
@@ -265,6 +255,11 @@ void vpux::VPUIP::SwKernelOp::print(mlir::OpAsmPrinter& p) {
         p << ' ' << "tile";
         p << ' ';
         p.printAttributeWithoutType(getTileIndexAttr());
+        if (getListIndex().has_value()) {
+            p << ' ' << "list";
+            p << ' ';
+            p.printAttributeWithoutType(getListIndexAttr());
+        }
     }
 
     p.printOptionalArrowTypeList(getResultTypes());
@@ -413,7 +408,8 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
     build(builder, opState, results.getTypes(), /*dynamicOutputShapes types*/ TypeRange{},
           /*profiling_output_type*/ nullptr, kernelFunction, inputs, /*dynamicInputShapes*/ ValueRange{},
           /*dynamicInputShapesMap*/ nullptr, results, /*dynamicOutputShapes*/ ValueRange{},
-          /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, stride, /*profilingMetadata*/ nullptr);
+          /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, /* listIndex */ nullptr, stride,
+          /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -423,7 +419,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs,
           /*dynamicInputShapes*/ ValueRange{}, /*dynamicInputShapesMap*/ nullptr, results,
           /*dynamicOutputShapes*/ ValueRange{}, /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex,
-          /*stride*/ nullptr, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /*stride*/ nullptr, /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -432,8 +428,8 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
     build(builder, opState, results.getTypes(), /*dynamicOutputShapes types*/ TypeRange{},
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs,
           /*dynamicInputShapes*/ ValueRange{}, /*dynamicInputShapesMap*/ nullptr, results,
-          /*dynamicOutputShapes*/ ValueRange{}, /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, stride,
-          /*profilingMetadata*/ nullptr);
+          /*dynamicOutputShapes*/ ValueRange{}, /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex,
+          /* listIndex */ nullptr, stride, /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -445,7 +441,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), /*profilingOutput*/ nullptr, tileIndex,
-          /*strides*/ nullptr, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /*strides*/ nullptr, /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -457,7 +453,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), /*profilingOutput*/ nullptr, tileIndex,
-          stride, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, stride, /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -469,8 +465,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
-          /*strides*/ nullptr,
-          /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /*strides*/ nullptr, /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, SwKernelOp swOp,
@@ -506,8 +501,8 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
     build(builder, opState, results.getTypes(), dynamicOutputShapes.getTypes(),
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
-          DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex, stride,
-          /*profilingMetadata*/ nullptr);
+          DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
+          /* listIndex */ nullptr, stride, /*profilingMetadata*/ nullptr);
 }
 
 mlir::LogicalResult SwKernelOp::verify() {
@@ -1197,6 +1192,11 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 auto LowFpTypeAttr = getIntAttr(ctx, defaultLowFpTypeValue);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{levelsAttr, LowFpTypeAttr}, {"fake_quantize"}};
             })
+            .Case<VPU::FakeConvertOp>([&](VPU::FakeConvertOp op) {
+                const auto dstTypeAttr = op.getDstTypeAttr();
+                const auto delimiterAttr = getIntAttr(ctx, INT64_MAX);
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{delimiterAttr, dstTypeAttr}, {"fake_convert"}};
+            })
             .Case<VPU::QuantizeOp>([&](VPU::QuantizeOp op) {
                 const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
                 const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
@@ -1429,8 +1429,19 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                                                                       poolingModeAttr, alignedModeAttr},
                                          {"roi_align"}};
             })
-            .Case<VPU::RollOp>([&](VPU::RollOp) {
-                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"roll"}};
+            .Case<VPU::RollOp>([&](VPU::RollOp rollOp) {
+                const auto axes = rollOp.getAxes();
+                SmallVector<int64_t> axesValues;
+                if (axes != nullptr) {
+                    auto axesConst = axes.getDefiningOp<Const::DeclareOp>();
+                    if (axesConst != nullptr) {
+                        const auto axesContent = axesConst.getContent();
+                        const auto axesVec = to_small_vector(axesContent.getValues<int64_t>());
+                        axesValues.append(axesVec.begin(), axesVec.end());
+                    }
+                }
+                const auto axesValAttr = getIntArrayAttr(ctx, axesValues);
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{axesValAttr}, {"roll"}};
             })
             .Case<VPU::OneHotOp>([&](VPU::OneHotOp oneHot) {
                 int64_t axis = oneHot.getAxis();
@@ -1829,6 +1840,13 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 const auto direction =
                         static_cast<std::underlying_type_t<IE::RNNSequenceDirection>>(LSTMSequence.getDirection());
                 const auto RNNForward = getIntAttr(ctx, direction);
+                auto useDpu = false;
+                if (LSTMSequence.getUseDpuAttr()) {
+                    useDpu = LSTMSequence.getUseDpuAttr().getValue();
+                }
+                if (useDpu) {
+                    return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{RNNForward}, {"lstm_dpu"}};
+                }
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{RNNForward}, {"lstm_sequence"}};
             })
             .Case<VPU::CTCGreedyDecoderSeqLenOp>([&](VPU::CTCGreedyDecoderSeqLenOp op) {

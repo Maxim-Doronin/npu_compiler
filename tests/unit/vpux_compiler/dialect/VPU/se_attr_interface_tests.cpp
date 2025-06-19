@@ -557,7 +557,7 @@ TEST_P(SEUpsamplingAttrTests, SEAttrInterface) {
         Shape inputTileShape{};
         auto newSEAttr = seAttrInterface.extractTile(outputTileOffset, outputTileShape, dataShape, inputTileOffset,
                                                      inputTileShape);
-        auto newSEUpsamplingAttr = newSEAttr.dyn_cast_or_null<VPU::SEUpsamplingAttr>();
+        auto newSEUpsamplingAttr = mlir::dyn_cast_or_null<VPU::SEUpsamplingAttr>(newSEAttr);
         ASSERT_TRUE(newSEUpsamplingAttr != nullptr);
         EXPECT_EQ(inputTileOffset.raw(), params.expectedInputTileOffset);
         EXPECT_EQ(inputTileShape.raw(), params.expectedInputTileShape);
@@ -832,7 +832,7 @@ TEST_P(SEPaddingAttrTests, SEAttrInterface) {
         Shape inputTileShape{};
         auto newSEAttr = seAttrInterface.extractTile(outputTileOffset, outputTileShape, dataShape, inputTileOffset,
                                                      inputTileShape);
-        auto newSEPaddingAttr = newSEAttr.dyn_cast_or_null<VPU::SEPaddingAttr>();
+        auto newSEPaddingAttr = mlir::dyn_cast_or_null<VPU::SEPaddingAttr>(newSEAttr);
         ASSERT_TRUE(newSEPaddingAttr != nullptr);
         EXPECT_EQ(inputTileOffset.raw(), params.expectedInputTileOffset);
         EXPECT_EQ(inputTileShape.raw(), params.expectedInputTileShape);
@@ -880,7 +880,7 @@ std::vector<SEPaddingAttrParams> paddingParams = {
      /*outputTileOffset=*/{0, 0, 1, 4}, /*outputTileShape=*/{1, 16, 1, 2},
      /*expectedOutputShape*/{1, 16, 6, 6}, /*expectedBackInferredInputShape=*/{1, 16, 3, 3},
      /*expectedInputTileOffset=*/{0, 0, 0, 0}, /*expectedInputTileShape=*/{1, 16, 2, 3},
-     /*expectedAttrOffsets=*/{0, 0, 3, 4}, /*expectedAttrSizes=*/{1, 16, 1, 2}, /*expectedAttrPadding=*/{1, 2, 2, 1},
+     /*expectedAttrOffsets=*/{0, 0, 1, 4}, /*expectedAttrSizes=*/{1, 16, 1, 2}, /*expectedAttrPadding=*/{1, 2, 2, 1},
      /*expectedInputCoords*/{{2, 1}, {2, 0}, {2, 1}, {2, 2}, {2, 1}, {2, 0}, \
                              {1, 1}, {1, 0}, {1, 1}, {1, 2}, {1, 1}, {1, 0}, \
                              {0, 1}, {0, 0}, {0, 1}, {0, 2}, {0, 1}, {0, 0}, \
@@ -1199,7 +1199,7 @@ TEST_P(SERollAttrTests, SEAttrInterface) {
         Shape inputTileShape{};
         auto newSEAttr = seAttrInterface.extractTile(outputTileOffset, outputTileShape, dataShape, inputTileOffset,
                                                      inputTileShape);
-        auto newSERollAttr = newSEAttr.dyn_cast_or_null<VPU::SERollAttr>();
+        auto newSERollAttr = mlir::dyn_cast_or_null<VPU::SERollAttr>(newSEAttr);
         ASSERT_TRUE(newSERollAttr != nullptr);
         EXPECT_EQ(inputTileOffset.raw(), params.expectedInputTileOffset);
         EXPECT_EQ(inputTileShape.raw(), params.expectedInputTileShape);
@@ -1457,7 +1457,7 @@ TEST_P(SEDilatedConvAttrTests, SEAttrInterface) {
         auto newSEAttr = seAttrInterface.extractTile(outputTileOffset, outputTileShape, dataShape, inputTileOffset,
                                                      inputTileShape);
 
-        auto newSEDilatedConvAttr = newSEAttr.dyn_cast_or_null<VPU::SEDilatedConvAttr>();
+        auto newSEDilatedConvAttr = mlir::dyn_cast_or_null<VPU::SEDilatedConvAttr>(newSEAttr);
         ASSERT_TRUE(newSEDilatedConvAttr != nullptr);
 
         EXPECT_EQ(inputTileOffset.raw(), params.expectedInputTileOffset);

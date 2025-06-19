@@ -1,5 +1,16 @@
 Change Log:
 -----------
+VPUXCompilerL0 7.3.3:
+  - Add support for FP8 types
+
+VPUXCompilerL0 7.3.2:
+  - Deprecate undefined type
+  - Add NPUInferRequestElementTypeTests function test
+
+VPUXCompilerL0 7.3.1:
+  - Update compilerTest api to 2.0
+  - Add vclAllocatedExecutableCreate function test
+
 VPUXCompilerL0 7.3.0:
   - Add new API for querying options supported by compiler: vclGetCompilerSupportedOptions
   - Add new API for checking if specified option is supported by compiler: vclGetCompilerIsOptionSupported

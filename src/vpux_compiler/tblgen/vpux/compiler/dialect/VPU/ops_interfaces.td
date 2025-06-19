@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -201,6 +201,13 @@ def VPU_SWOpInterface : OpInterface<"SWOpInterface"> {
         InterfaceMethod<
             "Check if layer is supported by cost model for cycle cost calculation",
             "bool", "supportCycleCostCalculation", (ins)
+            >,
+        InterfaceMethod<
+            "Check if layer will be lowered as DMA op",
+            "bool", "supportLoweringAsDMA", (ins),
+            [{
+                return vpux::VPU::supportSwOpLoweringAsDMA($_op);
+            }]
             >
     ];
 }

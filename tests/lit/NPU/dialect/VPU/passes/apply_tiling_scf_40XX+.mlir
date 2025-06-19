@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --apply-tiling="enable-scf-tiling=true" %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 //CHECK: #[[$MAP:.*]] = affine_map<(d0) -> (d0 - 1, 0)>
@@ -388,3 +389,108 @@ func.func @ApplyConvCTiling(
     //CHECK: scf.yield [[INSERT]] : tensor<1x512x14x14xf16, {order = #NHWC}>
     //CHECK: return [[LOOP]] : tensor<1x512x14x14xf16, {order = #NHWC}>
 }
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: #[[$MAP_MIN:.+]] = affine_map<(d0)[s0] -> (240, -d0 + s0)>
+
+// CHECK-LABEL: @DynamicEltwiseTiling
+// CHECK-SAME:      [[INPUT0:%arg[0-9]]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>,
+// CHECK-SAME:      [[INPUT1:%arg[0-9]]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>)
+func.func @DynamicEltwiseTiling(
+         %arg0: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>,
+         %arg1: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+) -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> {
+     %0 = VPU.NCE.Eltwise(%arg0, %arg1) {
+         is_inplace = true,
+         multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+         op_type = #VPU.eltwise_type<ADD>,
+         ppe = #VPU.PPEInt<
+             mode = <NOOP>,
+             clamp_low = -2147483648 : i64,
+             clamp_high = 2147483647 : i64,
+             lrelu_mult = 1 : i64,
+             lrelu_shift = 0 : i64,
+             quant_scale = [1.000000e+00],
+             fp_prelu_alpha = 1.000000e+00 : f64
+         >,
+         tilingStrategy = [1, 1, 1, 2]
+     } -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+ 
+     return %0 : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+
+    //CHECK: [[DIM_VALUE0:%.+]] = arith.constant 3 : index
+    //CHECK: [[DIM0:%.+]] = tensor.dim [[INPUT0]], [[DIM_VALUE0]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+    //CHECK: [[LOOP_OUTPUT:%.+]] = tensor.empty([[DIM0]]) : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+    
+    //CHECK: [[LOOP_BEGIN:%.+]] = arith.constant 0 : index
+    //CHECK: [[DIM_VALUE1:%.+]]  = arith.constant 3 : index
+    //CHECK: [[LOOP_END:%.+]] = tensor.dim [[INPUT0]], [[DIM_VALUE1]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+    //CHECK: [[LOOP_STEP:%.+]] = arith.constant 240 : index
+    //CHECK: [[LOOP:%.+]] = scf.for 
+    //CHECK-SAME:           [[LOOP_ITER:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP]]
+    //CHECK-SAME:           iter_args([[LOOP_OUT:%arg[0-9]]] = [[LOOP_OUTPUT]]) -> (tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) {
+    
+    //CHECK:      [[UNEVEN_SIZE:%.+]] = affine.min #[[$MAP_MIN]]([[LOOP_ITER]])[[[LOOP_END]]]
+    //CHECK:      [[SLICE0:%.+]] = tensor.extract_slice [[INPUT0]][0, 0, 0, [[LOOP_ITER]]] [1, 16, 256, [[UNEVEN_SIZE]]] [1, 1, 1, 1] : 
+    //CHECK-SAME:           tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> 
+    //CHECK-SAME:           to tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+    //CHECK:      [[SLICE1:%.+]] = tensor.extract_slice [[INPUT1]][0, 0, 0, [[LOOP_ITER]]] [1, 16, 256, [[UNEVEN_SIZE]]] [1, 1, 1, 1] : 
+    //CHECK-SAME:           tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> 
+    //CHECK-SAME:           to tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+    //CHECK:      [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[SLICE0]], [[SLICE1]]) 
+    //CHECK:      [[INSERT:%.+]] = tensor.insert_slice [[ELTWISE]] into [[LOOP_OUT]][0, 0, 0, [[LOOP_ITER]]] [1, 16, 256, [[UNEVEN_SIZE]]] [1, 1, 1, 1] : tensor<1x16x256x?xf16, {order = #NHWC}> into tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+    //CHECK:      scf.yield [[INSERT]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+
+    //CHECK: return [[LOOP]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+}
+
+// -----
+
+ #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+ // CHECK: #[[$MAP_MIN:.+]] = affine_map<(d0) -> (69, -d0 + 480)>
+ 
+ // CHECK-LABEL: @NotPaddedUnevenMaxPool
+ // CHECK-SAME:      [[INPUT:%arg[0-9]]]: tensor<1x16x256x480xf16, {order = #NHWC}>
+ func.func @NotPaddedUnevenMaxPool(
+         %arg0: tensor<1x16x256x480xf16, {order = #NHWC}>
+ ) -> tensor<1x16x127x480xf16, {order = #NHWC}> {
+     %1 = VPU.NCE.MaxPool(%arg0) {
+         kernel_size = [3, 1],
+         multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+         pad = #VPU.Padding<
+             left = 0 : i64,
+             right = 0 : i64,
+             top = 0 : i64,
+             bottom = 0 : i64>,
+             ppe = #VPU.PPEInt<mode = <NOOP>,
+             clamp_low = -2147483648 : i64,
+             clamp_high = 2147483647 : i64,
+             lrelu_mult = 1 : i64,
+             lrelu_shift = 0 : i64,
+             fp_prelu_alpha = 1.000000e+00 : f64
+         >,
+         strides = [2, 1],
+         tilingStrategy = [1, 1, 1, 7]
+     } -> tensor<1x16x127x480xf16, {order = #NHWC}>
+ 
+     return %1 : tensor<1x16x127x480xf16, {order = #NHWC}>
+
+    //CHECK: [[LOOP_OUTPUT:%.+]] = tensor.empty() : tensor<1x16x127x480xf16, {order = #NHWC}>
+    //CHECK: [[LOOP_BEGIN:%.+]] = arith.constant 0 : index
+    //CHECK: [[LOOP_END:%.+]] = arith.constant 480 : index
+    //CHECK: [[LOOP_STEP:%.+]] = arith.constant 69 : index
+    //CHECK: [[LOOP:%.+]] = scf.for 
+    //CHECK-SAME:           [[LOOP_ITER:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP]] 
+    //CHECK-SAME:           iter_args([[LOOP_OUT:%arg[0-9]]]  = [[LOOP_OUTPUT]]) -> (tensor<1x16x127x480xf16, {order = #NHWC}>) {
+
+    //CHECK:      [[UNEVEN_SIZE:%.+]] = affine.min #[[$MAP_MIN]]([[LOOP_ITER]])   
+    //CHECK:      [[SLICE:%.+]] = tensor.extract_slice [[INPUT]][0, 0, 0, [[LOOP_ITER]]] [1, 16, 256, [[UNEVEN_SIZE]]] [1, 1, 1, 1] : tensor<1x16x256x480xf16, {order = #NHWC}> to tensor<1x16x256x?xf16, {order = #NHWC}>
+    //CHECK:      [[MAXPOOL:%.+]] = VPU.NCE.MaxPool([[SLICE]]) 
+    //CHECK-SAME: pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    
+    //CHECK: [[INSERT:%.+]]  = tensor.insert_slice [[MAXPOOL]] into [[LOOP_OUT]][0, 0, 0, [[LOOP_ITER]]] [1, 16, 127, [[UNEVEN_SIZE]]] [1, 1, 1, 1] : tensor<1x16x127x?xf16, {order = #NHWC}> into tensor<1x16x127x480xf16, {order = #NHWC}>
+    //CHECK:  scf.yield [[INSERT]] : tensor<1x16x127x480xf16, {order = #NHWC}>
+    //CHECK:  return [[LOOP]] : tensor<1x16x127x480xf16, {order = #NHWC}>
+ }

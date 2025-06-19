@@ -82,7 +82,7 @@ mlir::LogicalResult vpux::VPU::NCEInterpolateOp::verify() {
         return mlir::failure();
     }
 
-    auto seAttr = sparseInput.getSeAttr().dyn_cast_or_null<VPU::SEInterpolateAttr>();
+    auto seAttr = mlir::dyn_cast_or_null<VPU::SEInterpolateAttr>(sparseInput.getSeAttr());
     if (seAttr == nullptr) {
         return mlir::failure();
     }

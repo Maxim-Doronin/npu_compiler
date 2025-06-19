@@ -607,8 +607,8 @@ func.func @ConvBeforeMVNAssignedSplitOverKernel(%arg0: tensor<1x128x64x128x!qEle
     %5 = VPU.MVN(%4) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x128xf16> -> tensor<1x64x64x128xf16>
     return %5 : tensor<1x64x64x128xf16>
 
-    //CHECK:    [[Conv:%.*]] = VPU.NCE.Convolution([[cst0:%.*]], [[cst1:%.*]], [[cst2:%.*]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
-    //CHECK:    [[MVN:%.*]] = VPU.MVN([[Conv]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
+    //CHECK:    [[CONV:%.+]] = VPU.NCE.Convolution({{[^:]+}}, {{[^:]+}}, {{[^:]+}}) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+    //CHECK:    [[MVN:%.+]] = VPU.MVN([[CONV]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
     //CHECK:    return [[MVN]] : tensor<1x64x64x128xf16>
 }
 
@@ -753,7 +753,7 @@ func.func @CompressConvolutionAssignedSOB(%arg0: tensor<6x3x224x224xf16, {order 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// Track E#113592 - SEP cost support
+// Track E#160175 - SEP cost support
 
 // CHECK-LABEL: @InterpolateNearestAssignedSOH
 func.func @InterpolateNearestAssignedSOH(%arg0: tensor<1x128x10x10xf16, {order = #NHWC}>) -> tensor<1x128x20x20xf16, {order = #NHWC}> {
@@ -761,7 +761,7 @@ func.func @InterpolateNearestAssignedSOH(%arg0: tensor<1x128x10x10xf16, {order =
     %weights_table = const.Declare tensor<128x1x1x4xsi32> = dense<1> : tensor<128x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x128x20x20xi1> = dense<1> : tensor<1x128x20x20xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 128, dataShape = [1, 128, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [128], dataShape = [1, 128, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 128, 20, 20]>
     } -> tensor<1x1x20x20xi32, {order = #NHWC}>
@@ -818,7 +818,7 @@ func.func @InterpolateNearestAssignedSOK(%arg0: tensor<1x256x10x10xf16, {order =
     %weights_table = const.Declare tensor<256x1x1x4xsi32> = dense<1> : tensor<256x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x256x20x20xi1> = dense<1> : tensor<1x256x20x20xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 256, dataShape = [1, 256, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [256], dataShape = [1, 256, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 256, 20, 20]>
     } -> tensor<1x1x20x20xi32, {order = #NHWC}>
@@ -869,7 +869,7 @@ func.func @InterpolateNearestAssignedSOK(%arg0: tensor<1x256x10x10xf16, {order =
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// Track E#113592 - SEP cost support
+// Track E#160175 - SEP cost support
 
 // CHECK-LABEL: @InterpolateBilinearAssignedSOH
 func.func @InterpolateBilinearAssignedSOH(%arg0: tensor<1x96x20x20xf16, {order = #NHWC}>) -> tensor<1x96x40x40xf16, {order = #NHWC}> {
@@ -877,7 +877,7 @@ func.func @InterpolateBilinearAssignedSOH(%arg0: tensor<1x96x20x20xf16, {order =
     %weights_table = const.Declare tensor<96x1x1x4xsi32> = dense<1> : tensor<96x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x96x41x41xi1> = dense<1> : tensor<1x96x41x41xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 96, dataShape = [1, 96, 20, 20],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [96], dataShape = [1, 96, 20, 20],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 96, 41, 41]>
     } -> tensor<1x1x41x41xi32, {order = #NHWC}>
@@ -933,7 +933,7 @@ func.func @InterpolateBilinearAssignedSOK(%arg0: tensor<1x256x10x10xf16, {order 
     %weights_table = const.Declare tensor<256x1x1x4xsi32> = dense<1> : tensor<256x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x256x21x21xi1> = dense<1> : tensor<1x256x21x21xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 256, dataShape = [1, 256, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [256], dataShape = [1, 256, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 256, 21, 21]>
     } -> tensor<1x1x21x21xi32, {order = #NHWC}>
@@ -1472,6 +1472,54 @@ func.func @EqualAssignedClustering(%arg0: tensor<2x106x1x256xf16>, %arg1: tensor
 
 // -----
 
+// CHECK-LABEL:   @NotEqualAssignedSplitOverKernel
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x106x1x256xf16>, [[INPUT_1:%.+]]: tensor<1x106x1x1xf16>
+func.func @NotEqualAssignedSplitOverKernel(%arg0: tensor<1x106x1x256xf16>, %arg1: tensor<1x106x1x1xf16>) -> tensor<1x106x1x256xi8> {
+
+    %0 = VPU.NotEqual(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x106x1x256xf16>, tensor<1x106x1x1xf16> -> tensor<1x106x1x256xi8>
+
+    return %0 : tensor<1x106x1x256xi8>
+
+    //CHECK:   [[NOTEQUAL:%.+]] = VPU.NotEqual([[INPUT_0]], [[INPUT_1]]) {
+    //CHECK-SAME:       multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>}
+    //CHECK-SAME:       tensor<1x106x1x256xf16>, tensor<1x106x1x1xf16> -> tensor<1x106x1x256xi8>
+    //CHECK:   return [[NOTEQUAL]] : tensor<1x106x1x256xi8>
+}
+
+// -----
+
+// CHECK-LABEL:   @NotEqualAssignedSplitOverHeight
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x1x256x256xf16>, [[INPUT_1:%.+]]: tensor<1x1x1x1xf16>
+func.func @NotEqualAssignedSplitOverHeight(%arg0: tensor<1x1x256x256xf16>, %arg1: tensor<1x1x1x1xf16>) -> tensor<1x1x256x256xi8> {
+
+    %0 = VPU.NotEqual(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256x256xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x256x256xi8>
+
+    return %0 : tensor<1x1x256x256xi8>
+
+    //CHECK:   [[NOTEQUAL:%.+]] = VPU.NotEqual([[INPUT_0]], [[INPUT_1]]) {
+    //CHECK-SAME:       multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>}
+    //CHECK-SAME:       tensor<1x1x256x256xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x256x256xi8>
+    //CHECK:   return [[NOTEQUAL]] : tensor<1x1x256x256xi8>
+}
+
+// -----
+
+// CHECK-LABEL:   @NotEqualAssignedClustering
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<2x106x1x256xf16>, [[INPUT_1:%.+]]: tensor<2x106x1x1xf16>
+func.func @NotEqualAssignedClustering(%arg0: tensor<2x106x1x256xf16>, %arg1: tensor<2x106x1x1xf16>) -> tensor<2x106x1x256xi8> {
+
+    %0 = VPU.NotEqual(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x106x1x256xf16>, tensor<2x106x1x1xf16> -> tensor<2x106x1x256xi8>
+
+    return %0 : tensor<2x106x1x256xi8>
+
+    //CHECK:   [[NOTEQUAL:%.+]] = VPU.NotEqual([[INPUT_0]], [[INPUT_1]]) {
+    //CHECK-SAME:       multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>}
+    //CHECK-SAME:       tensor<2x106x1x256xf16>, tensor<2x106x1x1xf16> -> tensor<2x106x1x256xi8>
+    //CHECK:   return [[NOTEQUAL]] : tensor<2x106x1x256xi8>
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SkipSubGraphOptimizationForINFCost
@@ -1494,7 +1542,7 @@ func.func @SkipSubGraphOptimizationForINFCost(%input_data: tensor<1x128x72x72xf1
             factors = [1, 1],
             padding = [2, 2, 2, 2]>,
         seDepth = 1 : i64,
-        seSize = 64 : i64
+        seSize = [64]
     } -> tensor<1x1x147x147xi32, {order = #NHWC}>
     %input = VPU.GroupSparseTensor(%conv, %sparsityMap, %storageElement) {
         seAttr = #VPU.SEUpsampling<
@@ -1547,7 +1595,7 @@ func.func @SkipSubGraphOptimizationForINFCost(%input_data: tensor<1x128x72x72xf1
     // CHECK-SAME:        seAttr = #VPU.SEUpsampling<
     // CHECK-SAME:            factors = [1, 1],
     // CHECK-SAME:            padding = [2, 2, 2, 2]>,
-    // CHECK-SAME:            seDepth = 1 : i64, seSize = 64 : i64} -> tensor<1x1x147x147xi32, {order = #NHWC}>
+    // CHECK-SAME:            seDepth = 1 : i64, seSize = [64]} -> tensor<1x1x147x147xi32, {order = #NHWC}>
     // CHECK:        [[SPARSE_INPUT:%.+]] = VPU.GroupSparseTensor([[CONV]], [[SPARSITY_MAP]], [[SE_TBL]])
     // CHECK-SAME:        {seAttr = #VPU.SEUpsampling<
     // CHECK-SAME:            factors = [1, 1],
@@ -2421,14 +2469,16 @@ func.func @ConvAssignedSOHWithSOHIncompatibleConsumer(%arg0: tensor<1x256x2000x1
 
 // -----
 
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 // CHECK-LABEL: func.func @LSTMSequenceBidirectionalSplitOverKernel(
 // CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x2x80x512xf16>) -> (tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>) {
 func.func @LSTMSequenceBidirectionalSplitOverKernel(%arg0: tensor<1x2x80x512xf16>) -> (tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>) {
     %cst_0 = const.Declare tensor<1x2x1x128xf16> = dense<1.000000e+00> : tensor<1x2x1x128xf16>
     %cst_2 = const.Declare tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}> = dense<3.000000e+00> : tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>
+    %cst_5 = const.Declare tensor<1x2x4x128xf16, {order = #NCWH}> = dense<1.000000e+00> : tensor<1x2x4x128xf16, {order = #NCWH}>
     %cst = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
 
-    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} : tensor<1x2x80x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x1x1x2xsi32> -> tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst_5, %cst) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} : tensor<1x2x80x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x2x80x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
 
@@ -2438,14 +2488,16 @@ func.func @LSTMSequenceBidirectionalSplitOverKernel(%arg0: tensor<1x2x80x512xf16
 
 // -----
 
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 // CHECK-LABEL: func.func @LSTMSequenceBidirectionalSplitOverBatch(
 // CHECK-SAME:      [[VAL_0:%.+]]: tensor<3x2x80x512xf16>) -> (tensor<3x2x80x128xf16>, tensor<3x2x1x128xf16>, tensor<3x2x1x128xf16>) {
 func.func @LSTMSequenceBidirectionalSplitOverBatch(%arg0: tensor<3x2x80x512xf16>) -> (tensor<3x2x80x128xf16>, tensor<3x2x1x128xf16>, tensor<3x2x1x128xf16>) {
     %cst_0 = const.Declare tensor<3x2x1x128xf16> = dense<1.000000e+00> : tensor<3x2x1x128xf16>
     %cst_2 = const.Declare tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}> = dense<3.000000e+00> : tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>
+    %cst_5 = const.Declare tensor<1x2x4x128xf16, {order = #NCWH}> = dense<1.000000e+00> : tensor<1x2x4x128xf16, {order = #NCWH}>
     %cst = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
 
-    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} : tensor<3x2x80x512xf16>, tensor<3x2x1x128xf16>, tensor<3x2x1x128xf16>, tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x1x1x2xsi32> -> tensor<3x2x80x128xf16>, tensor<3x2x1x128xf16>, tensor<3x2x1x128xf16>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst_5, %cst) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 80 : i64} : tensor<3x2x80x512xf16>, tensor<3x2x1x128xf16>, tensor<3x2x1x128xf16>, tensor<2x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<3x2x80x128xf16>, tensor<3x2x1x128xf16>, tensor<3x2x1x128xf16>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<3x2x80x128xf16>, tensor<3x2x1x128xf16>, tensor<3x2x1x128xf16>
 
@@ -2455,14 +2507,16 @@ func.func @LSTMSequenceBidirectionalSplitOverBatch(%arg0: tensor<3x2x80x512xf16>
 
 // -----
 
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 // CHECK-LABEL: func.func @LSTMSequenceForwardNoStrategy(
 // CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1x80x512xf16>) -> (tensor<1x1x80x128xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>) {
 func.func @LSTMSequenceForwardNoStrategy(%arg0: tensor<1x1x80x512xf16>) -> (tensor<1x1x80x128xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>) {
     %cst_0 = const.Declare tensor<1x1x1x128xf16> = dense<1.000000e+00> : tensor<1x1x1x128xf16>
     %cst_2 = const.Declare tensor<1x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}> = dense<3.000000e+00> : tensor<1x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>
+    %cst_5 = const.Declare tensor<1x2x4x128xf16, {order = #NCWH}> = dense<1.000000e+00> : tensor<1x2x4x128xf16, {order = #NCWH}>
     %cst = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
 
-    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst) {direction = #IE.rnn_seq_direction<FORWARD>, sequenceLength = 80 : i64} : tensor<1x1x80x512xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>, tensor<1x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x1x1x2xsi32> -> tensor<1x1x80x128xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_2, %cst_5, %cst) {direction = #IE.rnn_seq_direction<FORWARD>, sequenceLength = 80 : i64} : tensor<1x1x80x512xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>, tensor<1x4x128x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<1x1x80x128xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x1x80x128xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>
 
@@ -2499,6 +2553,44 @@ func.func @PermuteWithoutAlignedInputAndOutputDontAssignedSOK(%arg0: tensor<1x50
     //CHECK:        [[AVG:%.+]] = VPU.NCE.AveragePool([[PERMUTE]])
 
     return %AVG : tensor<1x512x2x128xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: func.func @PermuteWithInputSWNotCompatibleSOKAssignedSOK
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x384x18x32xf16>
+func.func @PermuteWithInputSWNotCompatibleSOKAssignedSOK(%arg0: tensor<1x384x18x32xf16>) -> tensor<1x384x36x64xf16, {order = #NHWC}> {
+    %INTERPOLATE = VPU.Interpolate(%arg0) {
+            attr = #IE.Interpolate<mode = <LINEAR_ONNX>,
+            shape_calc_mode = <SIZES>,
+            coord_mode = <ALIGN_CORNERS>,
+            nearest_mode = <FLOOR>, antialias = false,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0],
+            cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3],
+            multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
+            operandSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>,
+            scales_attr = [2.000000e+00, 2.000000e+00],
+            sizes_attr = [36, 64]
+        } : tensor<1x384x18x32xf16> -> tensor<1x384x36x64xf16>
+
+    %PERMUTE = VPU.NCE.Permute(%INTERPOLATE) {dstElemType = f16,
+            dstOrder = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>,
+            expandedChannels = 384 : i64, ppe = #VPU.PPEInt<mode = <NOOP>,
+            clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
+            lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>
+        } -> tensor<1x384x36x64xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}>
+
+    return %PERMUTE : tensor<1x384x36x64xf16, {order = #NHWC}>
+
+    // CHECK:       [[INTERPOLATE:%.+]] = VPU.Interpolate([[INPUT]])
+    // CHECK:       [[PERMUTE:%.+]] = VPU.NCE.Permute([[INTERPOLATE]]) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 384 : i64,
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>, ppe = #VPU.PPEInt<mode = <NOOP>,
+    // CHECK-SAME:      clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>}
+    // CHECK-SAME:      -> tensor<1x384x36x64xf16, {order = #NHWC}>
+
+    //CHECK:        return [[PERMUTE]] : tensor<1x384x36x64xf16, {order = #NHWC}>
 }
 
 // -----

@@ -30,16 +30,35 @@ private:
     void safeRunOnFunc() final;
 };
 
+// DMA programs 4 instances for each pid in range
+VPUIP::PhysicalBarrierRangeAttr getPidRangeForDMAProgBarrier(mlir::OpBuilder& builder, int64_t nPhysBarrs,
+                                                             int64_t barPDmaPage) {
+    int64_t pidStart = 0;
+    int64_t pidEnd = nPhysBarrs - 1;
+
+    if (barPDmaPage % 2 == 1) {
+        // Odd pages → First half of barriers
+        pidEnd = (nPhysBarrs / 2) - 1;
+    } else {
+        // Even pages → Second half of barriers
+        pidStart = (nPhysBarrs / 2);
+    }
+
+    auto pidStartAttr = mlir::IntegerAttr::get(getInt64Type(builder.getContext()), pidStart);
+    auto pidEndAttr = mlir::IntegerAttr::get(getInt64Type(builder.getContext()), pidEnd);
+    return VPUIP::PhysicalBarrierRangeAttr::get(builder.getContext(), pidStartAttr, pidEndAttr);
+}
+
 void WlmLegalizePagesForBarrierDmasPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
+    auto nPhysBarrs = VPUIP::getNumAvailableBarriers(func);
 
     if (vpux::VPUIP::getWlmStatus(module) != vpux::VPUIP::WlmStatus::ENABLED) {
         // WLM is not supported, no need to run this pass
         return;
     }
-    const auto numBarriers =
-            numBarriersOpt.hasValue() ? numBarriersOpt.getValue() : VPUIP::getNumAvailableBarriers(func);
+    const auto numBarriers = numBarriersOpt.hasValue() ? numBarriersOpt.getValue() : nPhysBarrs;
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
     VPURT::BarrierPagesSplitHandler barrierPagesSplitHandler(barrierInfo, numBarriers, _log);
@@ -106,21 +125,19 @@ void WlmLegalizePagesForBarrierDmasPass::safeRunOnFunc() {
 
         auto insertPointOp = barrierInfo.getTaskOpAtIndex(insertPoint);
         builder.setInsertionPointAfter(insertPointOp);
-        auto barSynTaskOp = VPUIP::createSyncDMA(builder, inBuffer, outBuffer, 0, {}, {}, "bar_reprogram_sync_dma");
-        auto barSynDmaOp = barSynTaskOp.getInnerTaskOpOfType<VPUIP::SyncDMAOp>();
-        barSynDmaOp.setBarProgDmaAtPage(pageInd);
-        barSynTaskOp.setWlmPageAttr(insertPointOp.getWlmPageAttr());
+        auto pidAttr = getPidRangeForDMAProgBarrier(builder, numBarriers, pageInd);
+        auto barProgDMATaskOp = VPUIP::createBarProgDMA(builder, inBuffer, outBuffer, 0, {}, {}, pidAttr);
+        barProgDMATaskOp.setWlmPage(pageInd);
 
-        auto barSyncTaskInd = barrierInfo.addNewTaskOp(barSynTaskOp);
-        barrierInfo.addConsumer(waitBars.back(), barSyncTaskInd);
+        auto barProgDMATaskInd = barrierInfo.addNewTaskOp(barProgDMATaskOp);
+        barrierInfo.addConsumer(waitBars.back(), barProgDMATaskInd);
         llvm::for_each(updateBars, [&](auto updateBar) {
             _log.nest(2).trace("update bar {0}", updateBar);
-            barrierInfo.addProducer(updateBar, barSyncTaskInd);
+            barrierInfo.addProducer(updateBar, barProgDMATaskInd);
         });
-        barSynTaskOp.setWlmPage(pageInd);
     }
 
-    VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);
+    VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
 
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
 

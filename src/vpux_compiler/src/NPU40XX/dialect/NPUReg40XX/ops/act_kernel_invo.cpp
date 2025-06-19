@@ -16,7 +16,7 @@ using namespace npu40xx;
 //
 
 void vpux::NPUReg40XX::ActKernelInvocationOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto actKernInvoDescriptor = getDescriptor().getRegMapped();
+    auto actKernInvoDescriptor = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuActKernelInvocation) == actKernInvoDescriptor.size(),
                       "HW VpuActKernelInvocation size {0} != regMapped representation size {1}.",
@@ -91,4 +91,23 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::ActKernelInvocationOp::getRel
     }
 
     return relocs;
+}
+
+void vpux::NPUReg40XX::ActKernelInvocationOp::build(mlir::OpBuilder&, mlir::OperationState& state,
+                                                    mlir::StringAttr symName,
+                                                    vpux::NPUReg40XX::Descriptors::VpuActKernelInvocation&& descriptor,
+                                                    mlir::SymbolRefAttr taskLocation, mlir::SymbolRefAttr nextLink,
+                                                    mlir::SymbolRefAttr kernelRange, mlir::SymbolRefAttr kernelData,
+                                                    mlir::SymbolRefAttr kernelParams,
+                                                    mlir::SymbolRefAttr profilingData) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.descriptor = std::move(descriptor);
+    props.task_location = taskLocation;
+    props.next_link = nextLink;
+    props.kernel_range = kernelRange;
+    props.kernel_data = kernelData;
+    props.kernel_params = kernelParams;
+    props.profiling_data = profilingData;
 }

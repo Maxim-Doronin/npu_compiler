@@ -63,4 +63,51 @@ def AdaptLLVMFuncsForShave : PassBase<"adapt-LLVM-funcs-for-shave", "vpux::Modul
     ];
 }
 
+//
+// WrapSupportedOpsInCodeGenRegions
+//
+
+def EncapsulateCodeGenOps : PassBase<"encapsulate-codegen-ops", "vpux::FunctionPass"> {
+    let summary = "Encapsulate ShaveCodeGen supported ops into IE.CodeGenCapsule operations";
+
+    let description = [{
+        This pass aims at encapsulating all the ShaveCodeGen supported operations within
+        IE::CodeGenCapsule ops. The triage for the encapsulation is done based on the
+        ShaveCodeGenSupportedOpInterface. All ops implementing this interface will be wrapped.
+
+        Additionally, this pass also constructs a FusionChainAnalysis which can be used in a
+        succeding fusion pass. The construction of this analysis is also required for the
+        well-functioning of the encapsulation logic.
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createEncapsulateCodeGenOpsPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// WrapSupportedOpsInCodeGenRegions
+//
+
+def EarlyCodeGenCapsuleFusion : PassBase<"early-codegen-capsule-fusion", "vpux::FunctionPass"> {
+    let summary = "Fuse compatible CodeGenCapsules";
+
+    let description = [{
+        This pass aims at fusing compatible CodeGenCapsules such that the compute-abstracting
+        operation within these capsules can be further fused.
+
+        The fusion is done by using the FusionChainAnalysis and querying the pre-computed capsule chains.
+        Because of this, EncapsulateCodeGenOps & the ahead-of-time construction of the FusionChainAnalysis
+        is a hard requirement for the well-functioning of this pass.
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createEarlyCodeGenCapsuleFusionPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
 #endif

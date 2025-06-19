@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-input-shape --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ExpandAddToShapeCastAddWithTwoExpands
 // CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x3x32x32xf16>,
 // CHECK-SAME:        [[INPUT2:%arg[0-9]]]: tensor<1x3x32x32xf16>
@@ -1048,9 +1049,9 @@ func.func @PropagateAffineReshapeBeforeEltwise(%arg0: tensor<1x144x576x4xf16, {o
 !qElemType = !quant.uniform<u8:f16, 0.0031202451855528589>
 !qElemType1 = !quant.uniform<u8:f16, 0.0062404903711057178>
 
-// CHECK-LABEL: @PropagateAffineReshapeAfterEltwise
+// CHECK-LABEL: @ConvPropagateAffineReshapeAfterEltwise
 // CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x48x512x32xf16, {order = #NHWC}>
-func.func @PropagateAffineReshapeAfterEltwise(%input: tensor<1x48x512x32xf16, {order = #NHWC}>)
+func.func @ConvPropagateAffineReshapeAfterEltwise(%input: tensor<1x48x512x32xf16, {order = #NHWC}>)
             -> tensor<1x48x16384x1x!qElemType, {order = #NHWC}> {
     %weights = const.Declare tensor<48x48x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<48x48x3x3xf16>, [#const.Reorder<#NHWC>]
 
@@ -1072,6 +1073,41 @@ func.func @PropagateAffineReshapeAfterEltwise(%input: tensor<1x48x512x32xf16, {o
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]])
     // CHECK:       [[ADD:%.+]] = IE.Add([[CONV]], [[CONV]])
     // CHECK:       [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[ADD]]) {dstElemType = !qElemType}
+    // CHECK:       [[AFFINE_RESHAPE:%.+]] =  IE.AffineReshape([[QUANTIZE_CAST]])
+    // CHECK-SAME:      tensor<1x48x512x32x!qElemType, {order = #NHWC}> -> tensor<1x48x16384x1x!qElemType, {order = #NHWC}>
+    // CHECK:       return [[AFFINE_RESHAPE]] : tensor<1x48x16384x1x!qElemType, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<u8:f16, 0.0031202451855528589>
+!qElemType1 = !quant.uniform<u8:f16, 0.0062404903711057178>
+
+// CHECK-LABEL: @AddActivationPropagateAffineReshapeAfterEltwise
+// CHECK-SAME:        [[INPUT0:%arg[0-9]]]: tensor<1x48x512x32xf16, {order = #NHWC}>,
+// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x48x512x32xf16, {order = #NHWC}>
+func.func @AddActivationPropagateAffineReshapeAfterEltwise(%arg0: tensor<1x48x512x32xf16, {order = #NHWC}>, %arg1: tensor<1x48x512x32xf16, {order = #NHWC}>)
+            -> tensor<1x48x16384x1x!qElemType, {order = #NHWC}> {
+    %add = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+        tensor<1x48x512x32xf16, {order = #NHWC}>, tensor<1x48x512x32xf16, {order = #NHWC}>
+            -> tensor<1x48x512x32xf16, {order = #NHWC}>
+    %sin = IE.Sin(%add) : tensor<1x48x512x32xf16, {order = #NHWC}> -> tensor<1x48x512x32xf16, {order = #NHWC}>
+    %affine_reshape = IE.AffineReshape(%sin) {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 48, 16384, 1]} :
+        tensor<1x48x512x32xf16, {order = #NHWC}> -> tensor<1x48x16384x1xf16, {order = #NHWC}>
+    %eltwise = IE.Add(%affine_reshape, %affine_reshape) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+        tensor<1x48x16384x1xf16, {order = #NHWC}>,
+        tensor<1x48x16384x1xf16, {order = #NHWC}> -> tensor<1x48x16384x1x!qElemType1, {order = #NHWC}>
+    %quantize_cast = IE.QuantizeCast(%eltwise) {dstElemType = !qElemType} :
+        tensor<1x48x16384x1x!qElemType1, {order = #NHWC}> -> tensor<1x48x16384x1x!qElemType, {order = #NHWC}>
+
+    return %quantize_cast : tensor<1x48x16384x1x!qElemType, {order = #NHWC}>
+
+    // CHECK:       [[ADD:%.+]] = IE.Add([[INPUT0]], [[INPUT1]])
+    // CHECK:       [[SIN:%.+]] = IE.Sin([[ADD]])
+    // CHECK:       [[ELTWISE:%.+]] = IE.Add([[SIN]], [[SIN]])
+    // CHECK:       [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[ELTWISE]]) {dstElemType = !qElemType}
     // CHECK:       [[AFFINE_RESHAPE:%.+]] =  IE.AffineReshape([[QUANTIZE_CAST]])
     // CHECK-SAME:      tensor<1x48x512x32x!qElemType, {order = #NHWC}> -> tensor<1x48x16384x1x!qElemType, {order = #NHWC}>
     // CHECK:       return [[AFFINE_RESHAPE]] : tensor<1x48x16384x1x!qElemType, {order = #NHWC}>
@@ -1333,4 +1369,28 @@ func.func @AdjustAvgPoolingWithBatchSizeNot1(%arg0: tensor<1024x77x1x1xf16, {ord
     // CHECK-SAME:      : tensor<1024x80x1x1xf16, {order = #NHWC}> to tensor<1024x77x1x1xf16, {order = #NHWC}>
 
     // CHECK:       return [[SLICE]] : tensor<1024x77x1x1xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+// CHECK-LABEL: @AdjustInputShapeForNHCWMemPermute
+// CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x380x720x1xf16>
+func.func @AdjustInputShapeForNHCWMemPermute(%arg0: tensor<1x380x720x1xf16>) -> tensor<1x720x380x1xf16> {
+    %0 = IE.MemPermute(%arg0) {dstElemType = f16, dst_order = #NCHW, mem_perm = #NHCW} :
+        tensor<1x380x720x1xf16> -> tensor<1x720x380x1xf16>
+    
+    return %0 : tensor<1x720x380x1xf16>
+
+    // CHECK:   [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 1, 380, 720]} inputs([[INPUT]] : tensor<1x380x720x1xf16>)
+    // CHECK-SAME:      -> tensor<1x1x380x720xf16>
+    // CHECK:   [[MEM_PERMUTE:%.+]] = IE.MemPermute([[SHAPECAST_IN]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x380x720xf16>
+    // CHECK-SAME:      -> tensor<1x1x720x380xf16>
+    // CHECK:   [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 720, 380, 1]} inputs([[MEM_PERMUTE]] : tensor<1x1x720x380xf16>)
+    // CHECK-SAME:      -> tensor<1x720x380x1xf16>
+
+    // CHECK:   return [[SHAPECAST_OUT]] : tensor<1x720x380x1xf16>
 }

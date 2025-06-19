@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --lower-sw-layers-to-linalg %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 module @SingleCosLayer {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -27,8 +28,10 @@ module @SingleCosLayer {
 // CHECK-SAME: outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
 
 // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16)
-// CHECK: [[COS_RES:%.+]] = math.cos [[IN]] : f16
-// CHECK: linalg.yield [[COS_RES]] : f16
+// CHECK: [[EXT:%.+]] = arith.extf [[IN]] : f16 to f32
+// CHECK: [[COS:%.+]] = math.cos [[EXT]] : f32
+// CHECK: [[TRUNC:%.+]] = arith.truncf [[COS]] : f32 to f16
+// CHECK: linalg.yield [[TRUNC]] : f16
 // CHECK: } -> tensor<1x1x1x1000xf16>
 
 // CHECK: return [[LINALG_GENERIC]] : tensor<1x1x1x1000xf16>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -257,7 +257,11 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::SplitOp origO
     // Prepare strides array for subview. We have dense array, so all strides have to be equal 1
     SmallVector<int64_t> svOffsets(inputShape.size(), 0);
     SmallVector<mlir::Value> newResults;
-    const auto offsetStep = inputShape[axis] / origOp.getNumSplits();
+
+    const auto numSplits = origOp.getNumSplits();
+    VPUX_THROW_WHEN(numSplits <= 0, "Invalid number of splits: {0}", numSplits);
+
+    const auto offsetStep = inputShape[axis] / numSplits;
 
     for (auto i : irange(origOp->getNumResults())) {
         const auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(i).getType());

@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-precision-to-fp16 --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 //
 // The 'convert-precision-to-fp16' pass:
 //
@@ -63,6 +64,59 @@ func.func @main() -> tensor<1x2x2x2xf32> {
     // CHECK:       return %[[OUT]] : tensor<1x2x2x2xf16>
 }
 
+}
+
+// -----
+
+// CHECK-LABEL: @SplatConstantsWithOverflow
+module @SplatConstantsWithOverflow {
+net.NetworkInfo
+    entryPoint : @main
+    inputsInfo : {
+    }
+    outputsInfo : {
+        // CHECK: DataInfo "overflow1" : tensor<1x2x2x2xf32>
+        DataInfo "overflow1" : tensor<1x2x2x2xf32>
+        // CHECK: DataInfo "overflow2" : tensor<1x2x2x2xf32>
+        DataInfo "overflow2" : tensor<1x2x2x2xf32>
+    }
+
+    // CHECK: func.func @main() -> (tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16>)
+    func.func @main() -> (tensor<1x2x2x2xf32>, tensor<1x2x2x2xf32>) {
+        %negative = const.Declare tensor<1x2x2x2xf32> = dense<-100000.0> : tensor<1x2x2x2xf32>
+        %positive = const.Declare tensor<1x2x2x2xf32> = dense<100000.0> : tensor<1x2x2x2xf32>
+        return %negative, %positive : tensor<1x2x2x2xf32>, tensor<1x2x2x2xf32>
+
+        // CHECK-DAG: %[[NEG:.+]] = const.Declare {{.*}} = dense<-6.550400e+04> : tensor<1x2x2x2xf16>, [#const.CastElemType<f16>]
+        // CHECK-DAG: %[[POS:.+]] = const.Declare {{.*}} = dense<6.550400e+04> : tensor<1x2x2x2xf16>, [#const.CastElemType<f16>]
+        // CHECK: return %[[NEG]], %[[POS]]
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @ArrayConstantsWithOverflow
+module @ArrayConstantsWithOverflow {
+net.NetworkInfo
+    entryPoint : @main
+    inputsInfo : {
+    }
+    outputsInfo : {
+        // CHECK: DataInfo "overflow" : tensor<1x1x1x2xf32>
+        DataInfo "overflow" : tensor<1x1x1x2xf32>
+    }
+
+    // CHECK: func.func @main() -> tensor<1x1x1x2xf16>
+    func.func @main() -> tensor<1x1x1x2xf32> {
+        %array = const.Declare tensor<1x1x1x2xf32> = dense<[[[[-100000.0, 100000.0]]]]> : tensor<1x1x1x2xf32>
+        return %array : tensor<1x1x1x2xf32>
+
+        // E#160872: float16 non-splats behave *differently* from splats...
+
+        // CHECK: %[[ARR:.+]] = const.Declare
+        // CHECK-SAME{LITERAL}: dense<[[[[-1.000000e+05, 1.000000e+05]]]]> : tensor<1x1x1x2xf32>, [#const.CastElemType<f16>]
+        // CHECK: return %[[ARR]]
+    }
 }
 
 // -----
@@ -180,6 +234,47 @@ func.func @main(%arg0: tensor<1xsi32>) -> tensor<128x128xf16> {
     // CHECK-SAME:      outputType = f16
     // CHECK-SAME:      tensor<1xsi32> -> tensor<128x128xf16>
     // CHECK: return %[[OUT]] : tensor<128x128xf16>
+}
+
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f32, 2.4627450980392158>
+// CHECK: !qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+
+// CHECK-LABEL: @FP32Quantize
+module @FP32Quantize {
+
+net.NetworkInfo
+    entryPoint : @main
+    inputsInfo : {
+        // CHECK: DataInfo "Parameter_200" : tensor<1x128x256x256xf32>
+        DataInfo "Parameter_200" : tensor<1x128x256x256xf32>
+        // CHECK: DataInfo "Parameter_201" : tensor<1x128x1x1xf32>
+        DataInfo "Parameter_201" : tensor<1x128x1x1xf32>
+    }
+    outputsInfo : {
+        // CHECK: DataInfo "Result_202" : tensor<1x1x256x256xf32>
+        DataInfo "Result_202" : tensor<1x1x256x256xf32>
+    }
+
+// CHECK: func.func @main([[ARG0:[^:]+]]: tensor<1x128x256x256xf16>, [[ARG1:[^:]+]]: tensor<1x128x1x1xf16>) -> tensor<1x1x256x256xf16>
+func.func @main(%arg0: tensor<1x128x256x256xf32>, %arg1: tensor<1x128x1x1xf32>) -> tensor<1x1x256x256xf32> {
+    %0 = IE.Quantize(%arg1) {dstElemType = !qElemType} : tensor<1x128x1x1xf32> -> tensor<1x128x1x1x!qElemType>
+    %1 = IE.Convolution(%arg0, %0) {
+            dilations = [1, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            strides = [1, 1]
+        } : tensor<1x128x256x256xf32>, tensor<1x128x1x1x!qElemType>
+            -> tensor<1x1x256x256xf32>
+    return %1 : tensor<1x1x256x256xf32>
+
+    // CHECK:       [[QUANT:%.+]] = IE.Quantize([[ARG1]])
+    // CHECK-SAME:      dstElemType = !qElemType
+    // CHECK-SAME:      tensor<1x128x1x1xf16> -> tensor<1x128x1x1x!qElemType>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[ARG0]], [[QUANT]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x128x256x256xf16>, tensor<1x128x1x1x!qElemType> -> tensor<1x1x256x256xf16>
 }
 
 }
@@ -590,5 +685,65 @@ module @fp32DynamicDataMask {
 
         // CHECK: [[VAR0:%.+]] = IE.DynamicDataMask([[INPUT]]) {outputTensorType = tensor<1x3x32x32xf16>} : tensor<4xsi32> -> tensor<1x3x32x32xf16>
         // CHECK: return [[VAR0]] : tensor<1x3x32x32xf16>
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @uniquifyAndOpInputsPrecision
+module @uniquifyAndOpInputsPrecision {
+    net.NetworkInfo
+        entryPoint : @main
+        inputsInfo : {
+            // CHECK: DataInfo "Input0" : tensor<1x1x1xsi32>
+            // CHECK: DataInfo "Input1" : tensor<1x1x1025xsi32>
+            // CHECK: DataInfo "Input2" : tensor<1x1x1025xf16>
+            DataInfo "Input0" : tensor<1x1x1xsi32>
+            DataInfo "Input1" : tensor<1x1x1025xsi32>
+            DataInfo "Input2" : tensor<1x1x1025xf16>
+        }
+        outputsInfo : {
+            // CHECK: DataInfo "Out" : tensor<1x1x1025xf16>
+            DataInfo "Out" : tensor<1x1x1025xf16>
+        }
+
+    // CHECK: func.func @main([[INPUT0:%.+]]: tensor<1x1x1xsi32>, [[INPUT1:%.+]]: tensor<1x1x1025xsi32>, [[INPUT2:%.+]]: tensor<1x1x1025xf16>) -> tensor<1x1x1025xf16> {
+    func.func @main(%arg0: tensor<1x1x1xsi32>, %arg1: tensor<1x1x1025xsi32>, %arg2: tensor<1x1x1025xf16>) -> tensor<1x1x1025xf16> {
+        %0 = IE.GreaterEqual(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1xsi32>, tensor<1x1x1025xsi32> -> tensor<1x1x1025xsi32>
+        %1 = IE.And(%arg2, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1025xf16>, tensor<1x1x1025xsi32> -> tensor<1x1x1025xf16>
+        return %1 : tensor<1x1x1025xf16>
+
+        // CHECK: [[VAR0:%.+]] = IE.GreaterEqual([[INPUT0]], [[INPUT1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1xsi32>, tensor<1x1x1025xsi32> -> tensor<1x1x1025xsi32>
+        // CHECK: [[VAR1:%.+]] = IE.Convert([[VAR0]]) {dstElemType = f16} : tensor<1x1x1025xsi32> -> tensor<1x1x1025xf16>
+        // CHECK: [[VAR2:%.+]] = IE.And([[INPUT2]], [[VAR1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1025xf16>, tensor<1x1x1025xf16> -> tensor<1x1x1025xf16>
+        // CHECK: return [[VAR2]] : tensor<1x1x1025xf16>
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @FP64toFP16
+module @FP64toFP16 {
+    net.NetworkInfo
+        entryPoint : @main
+        inputsInfo : {
+            // CHECK: DataInfo "data" : tensor<1x1000xf64>
+            DataInfo "data" : tensor<1x1000xf64>
+        }
+        outputsInfo : {
+            // CHECK: DataInfo "prob" : tensor<1x1000xf64>
+            DataInfo "prob" : tensor<1x1000xf64>
+        }
+
+    // CHECK: func.func @main([[ARG0:[^:]+]]: tensor<1x1000xf16>) -> tensor<1x1000xf16>
+    func.func @main(%arg0: tensor<1x1000xf64>) -> tensor<1x1000xf64> {
+        %cst = const.Declare tensor<1xf64> = dense<1.0> : tensor<1xf64>
+        %out = IE.Divide(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1000xf64>, tensor<1xf64> -> tensor<1x1000xf64>
+        return %out : tensor<1x1000xf64>
+
+        // CHECK:       [[CST:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf64>, [#const.CastElemType<f16>]
+        // CHECK:       [[OUT:%.+]] = IE.Divide([[ARG0]], [[CST]])
+        // CHECK-SAME:  {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1000xf16>, tensor<1xf16> -> tensor<1x1000xf16>
+        // CHECK:       return [[OUT]] : tensor<1x1000xf16>
     }
 }

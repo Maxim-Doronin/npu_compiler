@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,6 @@
 #include <openvino/core/shape.hpp>
 #include <vpux/utils/core/checked_cast.hpp>
 
-#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -45,13 +44,15 @@ struct HasValueType<T, std::void_t<typename T::value_type>> : std::true_type {};
         *os << #name ": " << ::testing::PrintToString((name::paramType)(param));               \
     }
 
-PRETTY_PARAM(Device, std::string);
+//
+// BoundedDim
+//
 
 struct BoundedDim {
     int dim;
     int bound;
 
-    BoundedDim(int value): dim(value), bound(value) {
+    BoundedDim(int value = 1): dim(value), bound(value) {
         VPUX_THROW_UNLESS(value > 0, "Static dimension must have positive value, got: {0}", value);
     }
 
@@ -65,41 +66,62 @@ inline BoundedDim operator"" _Dyn(unsigned long long value) {
     return BoundedDim{-1, vpux::checked_cast<int>(value)};
 }
 
-template <typename... Dims>
-auto makeShape(Dims... dims) {
-    if constexpr ((std::is_same_v<Dims, BoundedDim> || ...)) {
-        return std::vector<BoundedDim>{BoundedDim(dims)...};
-    } else {
-        using signed_dims_t = std::make_signed_t<ov::Shape::value_type>;
-        return ov::Shape{vpux::checked_cast<ov::Shape::value_type, signed_dims_t>(dims)...};
+inline void PrintTo(const BoundedDim& boundedDim, std::ostream* os) {  // NOLINT function case style
+    if (boundedDim.dim == -1) {
+        *os << "1..";
     }
+
+    *os << boundedDim.bound;
 }
 
-ov::test::InputShape staticShape(const ov::Shape& shape);
+//
+// Input test shapes creation
+//
 
 template <typename... Dims>
-ov::test::InputShape staticShape(Dims... dims) {
-    return staticShape(makeShape(dims...));
+ov::Shape makeShape(Dims... dims) {
+    using signed_dims_t = std::make_signed_t<ov::Shape::value_type>;
+    return ov::Shape{vpux::checked_cast<ov::Shape::value_type, signed_dims_t>(dims)...};
 }
 
-ov::test::InputShape boundedShape(const ov::Shape& bounds);
-ov::test::InputShape boundedShape(const std::vector<BoundedDim>& boundedDims);
+// Creates test::InputShape(PartialShape, RuntimeShapes)
+// For each BoundedDim dimension, that could be created with _Dyn literal, acts as an upper bound value.
+// Create 3 static dimensions = (1, bound / 2, bound)
+// Each BoundedDim multiplies the number of total RuntimeShapes by 3.
+ov::test::InputShape generateTestShape(const std::vector<BoundedDim>& dims);
 
+// Generate simple static input shape
+ov::test::InputShape generateTestShape(const ov::Shape& shape);
+
+// Examples of what the resulting InputShape would look like
+// generateTestShape(10, 20)     -> ov::test::InputShape(PartialShape{10, 20}, std::vector<ov::Shape>{{10, 20}})
+// generateTestShape(10, 20_Dyn) -> ov::test::InputShape(PartialShape{10, 1..20},
+//                                                       std::vector<ov::Shape>{{10, 1}, {10,5}, {10, 10}})
 template <typename... Dims>
-ov::test::InputShape boundedShape(Dims... dims) {
-    return boundedShape(makeShape(dims...));
+ov::test::InputShape generateTestShape(Dims... dims) {
+    auto boundedDims = std::vector<BoundedDim>{BoundedDim(dims)...};
+    return generateTestShape(boundedDims);
 }
 
-std::vector<ov::Shape> generateStaticShapes(const std::vector<BoundedDim>& dims);
+//
+// Combine utility
+//
 
-template <typename... Dims>
-ov::test::InputShape generateShapes(Dims... dims) {
-    if constexpr ((std::is_same_v<Dims, BoundedDim> || ...)) {
-        auto staticShapes = generateStaticShapes(std::vector<BoundedDim>{dims...});
-        auto testShape = boundedShape(dims...);
-        testShape.second = staticShapes;
-        return testShape;
-    } else {
-        return staticShape(dims...);
-    }
+template <typename T, typename U, typename = std::enable_if_t<std::is_convertible<U, T>::value>>
+void appendTo(std::vector<T>& result, const U& value) {
+    result.push_back(static_cast<T>(value));
+}
+
+template <typename T>
+void appendTo(std::vector<T>& result, const std::vector<T>& vec) {
+    result.insert(result.end(), vec.begin(), vec.end());
+}
+
+// Combines a list of single elements and std::vector of elements into one std::vector
+// combine<int>(1, std::vector<int>{2, 3}, 4) => std::vector<int>{1, 2, 3, 4}
+template <typename T, typename... Us>
+std::vector<T> combine(const Us&... us) {
+    auto result = std::vector<T>();
+    (appendTo<T>(result, us), ...);
+    return result;
 }

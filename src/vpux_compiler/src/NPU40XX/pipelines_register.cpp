@@ -12,6 +12,7 @@
 #include "vpux/compiler/NPU40XX/dialect/VPU/transforms/passes.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 
 #include <mlir/Pass/PassManager.h>
@@ -27,9 +28,9 @@ void PipelineRegistry40XX::registerPipelines() {
     mlir::PassPipelineRegistration<DefaultHWOptions40XX>(
             "ShaveCodeGen", "Compile both from IE to VPUIP and from IERT to LLVM for VPU40XX",
             [](mlir::OpPassManager& pm, const DefaultHWOptions40XX& options) {
-                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX, VPU::CompilationMode::ShaveCodeGen,
-                                                             options};
-                auto createPipelineStartegy = [&](VPU::CompilationMode) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX,
+                                                             config::CompilationMode::ShaveCodeGen, options};
+                auto createPipelineStartegy = [&](config::CompilationMode) {
                     return createDialectPipelineStrategy40XX<DefaultHWOptions40XX>(&initCompilerOptions, &options);
                 };
                 ShaveCodeGenStrategy factory(createPipelineStartegy, Logger::global());
@@ -39,9 +40,9 @@ void PipelineRegistry40XX::registerPipelines() {
     mlir::PassPipelineRegistration<ReferenceSWOptions40XX>(
             "reference-sw-mode", "Compile IE Network in Reference Software mode (SW only execution) for VPU40XX",
             [](mlir::OpPassManager& pm, const ReferenceSWOptions40XX& options) {
-                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX, VPU::CompilationMode::ReferenceSW,
-                                                             options};
-                auto createPipelineStartegy = [&](VPU::CompilationMode) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX,
+                                                             config::CompilationMode::ReferenceSW, options};
+                auto createPipelineStartegy = [&](config::CompilationMode) {
                     return createDialectPipelineStrategy40XX<ReferenceSWOptions40XX>(&initCompilerOptions, &options);
                 };
                 ReferenceSWStrategy factory(createPipelineStartegy, Logger::global());
@@ -51,12 +52,50 @@ void PipelineRegistry40XX::registerPipelines() {
     mlir::PassPipelineRegistration<DefaultHWOptions40XX>(
             "default-hw-mode", "Compile IE Network in Default Hardware mode (HW and SW execution) for VPU40XX",
             [](mlir::OpPassManager& pm, const DefaultHWOptions40XX& options) {
-                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX, VPU::CompilationMode::DefaultHW,
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX, config::CompilationMode::DefaultHW,
                                                              options};
-                auto createPipelineStartegy = [&](VPU::CompilationMode) {
+                auto createPipelineStartegy = [&](config::CompilationMode) {
                     return createDialectPipelineStrategy40XX<DefaultHWOptions40XX>(&initCompilerOptions, &options);
                 };
                 DefaultHwStrategy factory(createPipelineStartegy, Logger::global());
+                factory.buildPipeline(pm);
+            });
+
+    mlir::PassPipelineRegistration<DefaultHWOptions40XX>(
+            "ws-monolithic", "Compile IE Network in Weights separation Monolithic mode for NPU40XX",
+            [](mlir::OpPassManager& pm, const DefaultHWOptions40XX& options) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX,
+                                                             config::CompilationMode::WSMonolithic, options};
+                auto createPipelineStartegy = [&](config::CompilationMode compilationMode) {
+                    return createDialectPipelineStrategy40XXWS<DefaultHWOptions40XX>(compilationMode,
+                                                                                     &initCompilerOptions, &options);
+                };
+                WSMonolithicStrategy factory(createPipelineStartegy, Logger::global());
+                factory.buildPipeline(pm);
+            });
+
+    mlir::PassPipelineRegistration<DefaultHWOptions40XX>(
+            "ws-monolithic-partial", "Compile IE Network in Weights separation Monolithic mode for NPU40XX",
+            [](mlir::OpPassManager& pm, const DefaultHWOptions40XX& options) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX,
+                                                             config::CompilationMode::WSMonolithic, options};
+                auto createPipelineStartegy = [&](config::CompilationMode compilationMode) {
+                    return createDialectPipelineStrategy40XXWS<DefaultHWOptions40XX>(compilationMode,
+                                                                                     &initCompilerOptions, &options);
+                };
+                auto factory = WSMonolithicStrategy::createForLITTests(createPipelineStartegy, Logger::global());
+                factory.buildPipeline(pm);
+            });
+
+    mlir::PassPipelineRegistration<DefaultHWOptions40XX>(
+            "host-compile", "Compile IE Network in Host mode (host and HW execution) for NPU40XX",
+            [](mlir::OpPassManager& pm, const DefaultHWOptions40XX& options) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX,
+                                                             config::CompilationMode::HostCompile, options};
+                auto createPipelineStrategy = [&](config::CompilationMode) {
+                    return createDialectPipelineStrategy40XX<DefaultHWOptions40XX>(&initCompilerOptions, &options);
+                };
+                HostPipelineStrategy factory(createPipelineStrategy, Logger::global());
                 factory.buildPipeline(pm);
             });
 

@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/utils/llvm_to_binary.hpp"
+#include "shave_ld.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
@@ -86,6 +87,19 @@ void vpux::transitivelyCloneFunctions(mlir::ModuleOp dstModuleOp, mlir::ModuleOp
     }
 }
 
+static void addDenormalFlags(llvm::Module& module) {
+    // Set the denormal math behavior in order to enable proper lowering of intrinsics.
+    StringRef denormalAttrName = "denormal-fp-math";
+    for (auto& F : module) {
+        if (F.empty() || F.hasFnAttribute(denormalAttrName)) {
+            // Skip any functions which don't have a body or
+            // already have the attribute specified.
+            continue;
+        }
+        F.addFnAttr(denormalAttrName, llvm::DenormalMode::getPreserveSign().str());
+    }
+}
+
 void vpux::translateToLLVMIR(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKernelSymbol, vpux::Logger log) {
     // Create a temporary module to perform the LLVM IR lowering on.
     auto moduleBuilder = mlir::OpBuilder::atBlockBegin(moduleOp.getBody());
@@ -111,45 +125,12 @@ void vpux::translateToLLVMIR(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKern
 
     tmpModuleOp.erase();
 
+    addDenormalFlags(*llvmModule);
+
     // We write llvmModule to file sw_layer.ll.
     std::error_code llFileEC;
     llvm::raw_fd_ostream llFile("sw_layer.ll", llFileEC);
     llFile << *llvmModule;
-
-    // We write the linker script to file shave_kernel.ld in order to be
-    // available at runtime and avoid relying on eviroment variable.
-    std::ofstream shaveKernelFile("shave_kernel.ld");
-    if (!shaveKernelFile) {
-        throw std::runtime_error("Error: Could not open file 'shave_kernel.ld'.");
-    }
-    const std::string linkerStr = R"(
-        OUTPUT_FORMAT("elf32-sparc")
-        OUTPUT_ARCH(sparc)
-
-        SECTIONS
-        {  
-            . = 0x1e000000;
-            .arg.data : {
-                KEEP(*(.arg.data))
-                *(.arg.data)
-                . = ALIGN(16);
-                *(.data*)
-            }
-
-            . = 0x1d000000;      
-            .text : {               
-                *(.text*)
-                . = ALIGN(16);
-                *(.gnu.linkonce.text.*)
-                . = ALIGN(16);
-                *(.rodata*)
-                . = ALIGN(16);
-                KEEP(*(.uuid.rodata*))           
-                *(.uuid.rodata*)
-            }
-        }
-    )";
-    shaveKernelFile << linkerStr;
 }
 
 void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKernelSymbol) {
@@ -232,10 +213,14 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKern
     std::string mLibCLGPLStr = mvToolsPathCompleteStr + "/common/moviCompile/lib/" + moviLibArchPath + "/mlibc_lgpl.a";
     std::string mLibCStr = mvToolsPathCompleteStr + "/common/moviCompile/lib/" + moviLibArchPath + "/mlibc.a";
     llvm::StringRef prgLd = prgLdStr;
-    std::ifstream kernelPathFile("shave_kernel.ld");
-    if (!kernelPathFile) {
-        throw std::runtime_error("Error: Could not open file 'shave_kernel.ld'.");
+
+    std::string linkerStr = SHAVE_LD_SCRIPT;
+    std::ofstream ldScriptFile("shave_kernel.ld");
+    if (!ldScriptFile.is_open()) {
+        throw std::runtime_error("Error: Could not open file shave_kernel.ld.");
     }
+    ldScriptFile << linkerStr;
+    ldScriptFile.close();
     std::string scriptStr = std::string("--script=shave_kernel.ld");
 
     llvm::SmallVector<llvm::StringRef> runArgsLd = {prgLd,

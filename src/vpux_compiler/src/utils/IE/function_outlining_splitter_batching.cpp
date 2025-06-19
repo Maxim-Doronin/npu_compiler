@@ -4,6 +4,7 @@
 //
 
 #include <mlir/IR/BuiltinOps.h>
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/IE/function_outlining_splitter.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -33,6 +34,12 @@ SmallVector<OutliningInstance> BatchingSplitter::getOutliningInstances(mlir::fun
         // DebatcherPass
         auto& currentSplit = splits.front();
         if (!mlir::isa<mlir::UnrealizedConversionCastOp>(op)) {
+            if (currentSplit.inputs.empty()) {
+                VPUX_THROW_UNLESS(mlir::isa<Const::DeclareOp>(op),
+                                  "Operations encountered at the beginning of a main function block right before  a "
+                                  "first `unrealized cast` must be `Const::DeclareOp`");
+                return;
+            }
             currentSplit.operations.push_back(op);
 
             // update inputs & outputs of the slice
@@ -55,7 +62,8 @@ SmallVector<OutliningInstance> BatchingSplitter::getOutliningInstances(mlir::fun
         });
 
         // Gather inputs of our single split produced by initial `UnrealizedConversionCastOp` operations
-        if (areInitialCasts) {
+        bool isDebatchedConstant = op->getOperand(0).getDefiningOp<Const::DeclareOp>();
+        if (areInitialCasts || (currentSplit.operations.empty() && isDebatchedConstant)) {
             // avoid remembering stale operands as a split input
             if (!op->getUsers().empty()) {
                 llvm::copy(op->getResults(), std::back_inserter(currentSplit.inputs));
@@ -67,7 +75,9 @@ SmallVector<OutliningInstance> BatchingSplitter::getOutliningInstances(mlir::fun
             return mlir::isa<mlir::func::ReturnOp>(u.getOwner());
         });
 
-        VPUX_THROW_UNLESS(areFinalCasts, "Only two category of UnrealizedConversionCastOp are supported");
+        VPUX_THROW_UNLESS(areFinalCasts || isDebatchedConstant,
+                          "Only three category of UnrealizedConversionCastOp are supported: {0}, owner: {1}", *op,
+                          *op->getParentOp());
 
         // Gather outputs of our single split to consume by terminational `UnrealizedConversionCastOp` operations
         llvm::copy(op->getOperands(), std::back_inserter(currentSplit.outputs));

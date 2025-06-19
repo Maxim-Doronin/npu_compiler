@@ -34,20 +34,21 @@ mlir::LogicalResult vpux::IE::AvgPoolOp::inferReturnTypeComponents(
     const auto windowStrides = parseIntArrayAttr<int64_t>(avgPool.getStrides());
     const auto roundingType = avgPool.getRoundingType();
 
-    const auto inType = mlir::cast<mlir::ShapedType>(avgPool.getInput().getType()).getElementType();
-    auto inShape = SmallVector<int64_t>(mlir::cast<mlir::ShapedType>(avgPool.getInput().getType()).getShape());
-    if (mlir::failed(IE::unpadInputShape(inShape, avgPool.getInputPaddingAttr(), loc))) {
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(avgPool.getInput().getType());
+    const auto inType = inputType.getElementType();
+    auto inShapeInfo = ShapeInfo::fromNDType(inputType);
+    if (mlir::failed(IE::unpadInputShape(inShapeInfo.shape, avgPool.getInputPaddingAttr(), loc))) {
         return mlir::failure();
     }
 
-    auto outShape = inferAvgPoolOutputShape(inShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape,
+    auto outShape = inferAvgPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape,
                                             roundingType);
 
-    if (mlir::failed(IE::padOutputShape(outShape, avgPool.getOutputPaddingAttr(), loc))) {
+    if (mlir::failed(IE::padOutputShape(outShape.shape, avgPool.getOutputPaddingAttr(), loc))) {
         return mlir::failure();
     }
 
-    inferredReturnShapes.emplace_back(outShape, inType);
+    inferredReturnShapes.emplace_back(outShape.shape, inType);
 
     return mlir::success();
 }

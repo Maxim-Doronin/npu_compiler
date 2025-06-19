@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --matmul-inputs-to-2d %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @MatMulInputsTo2d
 func.func @MatMulInputsTo2d(%arg0: tensor<2x1x512xf32>) -> tensor<2x1x40xf32> {
     %cst = const.Declare tensor<2x512x40xf32> = dense<1.0> : tensor<2x512x40xf32>
@@ -12,8 +13,8 @@ func.func @MatMulInputsTo2d(%arg0: tensor<2x1x512xf32>) -> tensor<2x1x40xf32> {
 
     return %0 : tensor<2x1x40xf32>
 
-    // CHECK-DAG:   %[[CST_1_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<2x512x40xf32>, [#const.SubView<[0, 0, 0], [1, 512, 40]>, #const.Reshape<[512, 40]>]
-    // CHECK-DAG:   %[[CST_2_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<2x512x40xf32>, [#const.SubView<[1, 0, 0], [1, 512, 40]>, #const.Reshape<[512, 40]>]
+    // CHECK-DAG:   %[[CST_1_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<2x512x40xf32>, [#const.SubView<[0, 0, 0], [1, 512, 40]>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [512, 40]>]
+    // CHECK-DAG:   %[[CST_2_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<2x512x40xf32>, [#const.SubView<[1, 0, 0], [1, 512, 40]>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [512, 40]>]
     // CHECK:       %[[IN_1:.*]] = IE.Slice %arg0 [0, 0, 0] [1, 1, 512] : tensor<2x1x512xf32> to tensor<1x1x512xf32>
     // CHECK:       %[[IN_1_2D:.*]] = IE.AffineReshape(%[[IN_1]])
     // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [0], [1]], shape_value = [1, 512]} : tensor<1x1x512xf32> -> tensor<1x512xf32>
@@ -37,8 +38,8 @@ func.func @MatMul4dInputsTo2d(%arg0: tensor<1x2x1x512xf32>) -> tensor<1x2x1x40xf
 
     return %0 : tensor<1x2x1x40xf32>
 
-    // CHECK-DAG:   %[[CST_1_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<1x2x512x40xf32>, [#const.SubView<[0, 0, 0, 0], [1, 1, 512, 40]>, #const.Reshape<[512, 40]>]
-    // CHECK-DAG:   %[[CST_2_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<1x2x512x40xf32>, [#const.SubView<[0, 1, 0, 0], [1, 1, 512, 40]>, #const.Reshape<[512, 40]>]
+    // CHECK-DAG:   %[[CST_1_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<1x2x512x40xf32>, [#const.SubView<[0, 0, 0, 0], [1, 1, 512, 40]>, #const.AffineReshape<{{\[\[}}0], [0], [0], [1]], [512, 40]>]
+    // CHECK-DAG:   %[[CST_2_2D:.*]] = const.Declare tensor<512x40xf32> = dense<1.000000e+00> : tensor<1x2x512x40xf32>, [#const.SubView<[0, 1, 0, 0], [1, 1, 512, 40]>, #const.AffineReshape<{{\[\[}}0], [0], [0], [1]], [512, 40]>]
     // CHECK:       %[[IN_1:.*]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 1, 512] : tensor<1x2x1x512xf32> to tensor<1x1x1x512xf32>
     // CHECK:       %[[IN_1_2D:.*]] = IE.AffineReshape(%[[IN_1]])
     // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [0], [0], [1]], shape_value = [1, 512]} : tensor<1x1x1x512xf32> -> tensor<1x512xf32>
@@ -352,8 +353,8 @@ func.func @matmulBroadcastSupport(%arg0: tensor<1x?x512xf32, {bounds = #const.Op
 
     return %4 : tensor<1x2x?x512xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 35, 512]> : tensor<4xsi64>, order = #NCHW}>
 
-    // CHECK: [[CST:%.+]] = const.Declare tensor<512x512xf32> = dense<0.000000e+00> : tensor<2x512x512xf32>, [#const.SubView<[1, 0, 0], [1, 512, 512]>, #const.Reshape<[512, 512]>]
-    // CHECK: [[CST_0:%.+]] = const.Declare tensor<512x512xf32> = dense<0.000000e+00> : tensor<2x512x512xf32>, [#const.SubView<[0, 0, 0], [1, 512, 512]>, #const.Reshape<[512, 512]>]
+    // CHECK: [[CST:%.+]] = const.Declare tensor<512x512xf32> = dense<0.000000e+00> : tensor<2x512x512xf32>, [#const.SubView<[1, 0, 0], [1, 512, 512]>, #const.Reshape<[1, 1, 512, 512]>, #const.AffineReshape<{{\[\[}}0], [0], [0], [1]], [512, 512]>]
+    // CHECK: [[CST_0:%.+]] = const.Declare tensor<512x512xf32> = dense<0.000000e+00> : tensor<2x512x512xf32>, [#const.SubView<[0, 0, 0], [1, 512, 512]>, #const.Reshape<[1, 1, 512, 512]>, #const.AffineReshape<{{\[\[}}0], [0], [0], [1]], [512, 512]>]
     // CHECK: [[CST_1:%.+]] = const.Declare tensor<4xsi32> = dense<[1, 2, -1, 512]> : tensor<4xsi32>
     // CHECK: [[CST_2:%.+]] = const.Declare tensor<4xsi32> = dense<[1, 2, -9223372036854775808, 512]> : tensor<4xsi64>, [#const.CastElemType<si32>]
     // CHECK: [[CST_3:%.+]] = const.Declare tensor<4xsi32> = dense<[1, 1, -1, 512]> : tensor<4xsi32>
@@ -392,4 +393,68 @@ func.func @matmulBroadcastSupportReproducer(%arg0: tensor<1x1x4x3xf16>) -> tenso
     // CHECK: [[RESHAPE_1:%.+]] = IE.AffineReshape([[CONCAT]])
     // CHECK: [[CONVERT_1:%.+]] = IE.Convert([[RESHAPE_1]]) {dstElemType = f16} : tensor<1x6x4x10xf32> -> tensor<1x6x4x10xf16>
     // CHECK: return [[CONVERT_1]] : tensor<1x6x4x10xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @SwapInputsWhenHeightOne(
+// CHECK-SAME:  [[ARG_0:.+]]: tensor<1x6336x1x64xf32>) -> tensor<1x6336x32x1xf32> {
+func.func @SwapInputsWhenHeightOne(%arg0: tensor<1x6336x1x64xf32>) -> tensor<1x6336x32x1xf32> {
+    %cst = const.Declare tensor<1x1x32x64xf32> = dense<0.000000e+00> : tensor<1x1x32x64xf32>
+    %0 = IE.MatMul(%cst, %arg0) {transpose_b} : tensor<1x1x32x64xf32>, tensor<1x6336x1x64xf32> -> tensor<1x6336x32x1xf32>
+    return %0 : tensor<1x6336x32x1xf32>
+
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<32x64xf32> = dense<0.000000e+00> : tensor<1x1x32x64xf32>, [#const.Reshape<[32, 64]>]
+    // CHECK:               [[RESHAPE_0:%.+]] = IE.AffineReshape([[ARG_0]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [6336, 64]} : tensor<1x6336x1x64xf32> -> tensor<6336x64xf32>
+    // CHECK:               [[MATMUL:%.+]] = IE.MatMul([[RESHAPE_0]], [[CST]]) {transpose_b} : tensor<6336x64xf32>, tensor<32x64xf32> -> tensor<6336x32xf32>
+    // CHECK:               [[RESHAPE_1:%.+]] = IE.AffineReshape([[MATMUL]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 6336, 1, 32]} : tensor<6336x32xf32> -> tensor<1x6336x1x32xf32>
+    // CHECK:               [[RESHAPE_2:%.+]] = IE.AffineReshape([[RESHAPE_1]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 6336, 32, 1]} : tensor<1x6336x1x32xf32> -> tensor<1x6336x32x1xf32>
+    // CHECK:               return [[RESHAPE_2]] : tensor<1x6336x32x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @SwapInputsWhenWidthOne(
+// CHECK-SAME:  [[ARG_0:.+]]: tensor<1x6336x64x1xf32>) -> tensor<1x6336x32x1xf32> {
+func.func @SwapInputsWhenWidthOne(%arg0: tensor<1x6336x64x1xf32>) -> tensor<1x6336x32x1xf32> {
+    %cst = const.Declare tensor<1x1x32x64xf32> = dense<0.000000e+00> : tensor<1x1x32x64xf32>
+    %0 = IE.MatMul(%cst, %arg0) : tensor<1x1x32x64xf32>, tensor<1x6336x64x1xf32> -> tensor<1x6336x32x1xf32>
+    return %0 : tensor<1x6336x32x1xf32>
+
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<32x64xf32> = dense<0.000000e+00> : tensor<1x1x32x64xf32>, [#const.Reshape<[32, 64]>]
+    // CHECK:               [[RESHAPE_0:%.+]] = IE.AffineReshape([[ARG_0]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [1], [2]], shape_value = [6336, 64, 1]} : tensor<1x6336x64x1xf32> -> tensor<6336x64x1xf32>
+    // CHECK:               [[MATMUL:%.+]] = IE.MatMul([[RESHAPE_0]], [[CST]]) {transpose_a, transpose_b} : tensor<6336x64x1xf32>, tensor<32x64xf32> -> tensor<6336x1x32xf32>
+    // CHECK:               [[RESHAPE_1:%.+]] = IE.AffineReshape([[MATMUL]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 6336, 1, 32]} : tensor<6336x1x32xf32> -> tensor<1x6336x1x32xf32>
+    // CHECK:               [[RESHAPE_2:%.+]] = IE.AffineReshape([[RESHAPE_1]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 6336, 32, 1]} : tensor<1x6336x1x32xf32> -> tensor<1x6336x32x1xf32>
+    // CHECK:               return [[RESHAPE_2]] : tensor<1x6336x32x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @NotSwapInputsWhenHeightOne(
+// CHECK-SAME:  [[ARG_0:.+]]: tensor<1x2x1x64xf32>) -> tensor<1x2x32x64xf32> {
+func.func @NotSwapInputsWhenHeightOne(%arg0: tensor<1x2x1x64xf32>) -> tensor<1x2x32x64xf32> {
+    %cst = const.Declare tensor<1x1x32x1xf32> = dense<0.000000e+00> : tensor<1x1x32x1xf32>
+    %0 = IE.MatMul(%cst, %arg0) : tensor<1x1x32x1xf32>, tensor<1x2x1x64xf32> -> tensor<1x2x32x64xf32>
+    return %0 : tensor<1x2x32x64xf32>
+
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<32x1xf32> = dense<0.000000e+00> : tensor<1x1x32x1xf32>, [#const.Reshape<[32, 1]>]
+    // CHECK:               [[SLICE_0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 1, 1, 64] : tensor<1x2x1x64xf32> to tensor<1x1x1x64xf32>
+    // CHECK:               [[RESHAPE_0:%.+]] = IE.AffineReshape([[SLICE_0]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [1, 64]} : tensor<1x1x1x64xf32> -> tensor<1x64xf32>
+    // CHECK:               [[SLICE_1:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 1, 1, 64] : tensor<1x2x1x64xf32> to tensor<1x1x1x64xf32>
+    // CHECK:               [[RESHAPE_1:%.+]] = IE.AffineReshape([[SLICE_1]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [1, 64]} : tensor<1x1x1x64xf32> -> tensor<1x64xf32>
+    // CHECK:               [[MATMUL_0:%.+]] = IE.MatMul([[CST]], [[RESHAPE_0]]) : tensor<32x1xf32>, tensor<1x64xf32> -> tensor<32x64xf32>
+    // CHECK:               [[MATMUL_1:%.+]] = IE.MatMul([[CST]], [[RESHAPE_1]]) : tensor<32x1xf32>, tensor<1x64xf32> -> tensor<32x64xf32>
+    // CHECK:               [[CONCAT:%.+]] = IE.Concat([[MATMUL_0]], [[MATMUL_1]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<32x64xf32>, tensor<32x64xf32> -> tensor<64x64xf32>
+    // CHECK:               [[RESHAPE_2:%.+]] = IE.AffineReshape([[CONCAT]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 2, 32, 64]} : tensor<64x64xf32> -> tensor<1x2x32x64xf32>
+    // CHECK:               return [[RESHAPE_2]] : tensor<1x2x32x64xf32>
 }

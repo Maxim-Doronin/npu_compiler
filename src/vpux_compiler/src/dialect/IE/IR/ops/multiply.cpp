@@ -4,9 +4,9 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -76,7 +76,7 @@ mlir::LogicalResult vpux::IE::MultiplyOp::reifyResultShapes(mlir::OpBuilder& bui
                                                             mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
     auto loc = getLoc();
 
-    auto outShape = IE::reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
+    auto outShape = reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
 
     if (mlir::failed(outShape)) {
         return outShape;

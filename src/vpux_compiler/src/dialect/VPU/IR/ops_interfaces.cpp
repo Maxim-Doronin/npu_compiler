@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/NPU40XX/utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
@@ -15,6 +16,8 @@
 
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <llvm/ADT/TypeSwitch.h>
 
 using namespace vpux;
 
@@ -100,9 +103,14 @@ mlir::Operation* vpux::VPU::details::addWorkload(mlir::Region& workloads, mlir::
 }
 
 mlir::LogicalResult vpux::VPU::details::verifyInputTypeOp(mlir::Operation* op, vpux::NDTypeInterface inputType) {
+    auto alignedOp = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op);
+    if (alignedOp == nullptr) {
+        return mlir::success();
+    }
+
     // TODO: #123810 split verifier into arch-specific parts
     bool supportsInputActCompression = false;
-    auto alignment = VPU::NCEInvariant::getAlignment(inputType.getElementType());
+    auto alignment = alignedOp.getInputChannelAlignment();
     if (mlir::isa<VPU::NCECompressConvolutionOp>(op)) {
         alignment = vpux::VPU::NCEInvariant::VPU_COMPRESSED_INPUT_CHANNEL_NUM;
         supportsInputActCompression = true;
@@ -233,6 +241,17 @@ vpux::NDTypeInterface vpux::VPU::getDistributedTypeForOpResult(mlir::Operation* 
 
     return getDistributedOutputTensorType(clusteredOp, mlir::cast<vpux::NDTypeInterface>(result.getType()),
                                           siblingsAnalysis, strategy, hasExplicitDistributedAttr);
+}
+
+bool vpux::VPU::supportSwOpLoweringAsDMA(mlir::Operation* op) {
+    VPUX_THROW_UNLESS(mlir::isa_and_nonnull<VPU::SWOpInterface>(op), "Unexpected operation type");
+    return llvm::TypeSwitch<mlir::Operation*, bool>(op)
+            .Case<VPU::ConvertOp>([](auto convertOp) {
+                return isConvertSupportedOnDMA<VPU::ConvertOp>(convertOp);
+            })
+            .Default([](mlir::Operation*) {
+                return false;
+            });
 }
 
 //

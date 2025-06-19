@@ -1,4 +1,4 @@
-// Copyright (C) 2023 - 2024 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -59,9 +59,6 @@ class RangeLayerTestCommon : public RangeLayerTest, virtual public VpuOv2LayerTe
     }
 };
 
-// Do not support dynamic shapes yet, but created tests for validation when will support.
-// Tests will be disabled until this feature is implemented.
-// [Tracking number E#113199]
 class RangeLayerTestDynamic : public RangeLayerTestCommon {
     void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
         VpuOv2LayerTest::inputs.clear();
@@ -119,6 +116,11 @@ TEST_P(RangeLayerTestDynamic, NPU3720_HW) {
 TEST_P(RangeLayerTestCommon, NPU3720_HW) {
     VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU3720);
+}
+
+TEST_P(RangeLayerTestDynamic, NPU4000_HW) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU4000);
 }
 
 TEST_P(RangeLayerTestCommon, NPU4000_HW) {

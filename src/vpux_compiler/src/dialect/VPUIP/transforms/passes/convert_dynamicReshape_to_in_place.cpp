@@ -44,53 +44,52 @@ mlir::LogicalResult ConvertDynamicReshapeToInPlacePass::makeInPlaceDynamicReshap
     auto output = dynamicReshape.getOutputs()[0];
     mlir::OpBuilder builder(dynamicReshape);
 
-    auto inputRank = mlir::cast<vpux::NDTypeInterface>(input.getType()).getRank();
-    auto outputRank = mlir::cast<vpux::NDTypeInterface>(output.getType()).getRank();
+    auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(output.getType());
+
+    if (inType.getRank() != outType.getRank() || inType.getMemoryKind() != outType.getMemoryKind()) {
+        return mlir::failure();
+    }
 
     bool inputIsDynamic = hasUngroupedInputBoundedBuffers(dynamicReshape);
     auto operands = dynamicReshape.getOperands();
 
-    if (inputRank != outputRank) {
-        return mlir::failure();
-    }
-
-    auto outputMemSpace = mlir::cast<vpux::NDTypeInterface>(output.getType()).getMemoryKind();
-    auto inputMemSpace = mlir::cast<vpux::NDTypeInterface>(input.getType()).getMemoryKind();
-
-    if (outputMemSpace != inputMemSpace) {
-        return mlir::failure();
-    }
-
     auto updatedDataBuffer = builder.create<VPUIP::ViewOp>(takeOpLoc(dynamicReshape, "view"), output.getType(), input);
+    auto updatedDataBufferResults = updatedDataBuffer.getResult();
 
     SmallVector<mlir::Value> inputs{dynamicReshape.getOperand(0), dynamicReshape.getOperand(1)};
     SmallVector<mlir::Value> outputs(
             operands.begin() + dynamicReshape.getInputs().size() + dynamicReshape.getDynamicInputShapes().size(),
             operands.end());
 
-    inputs[0] = updatedDataBuffer.getResult();
-    outputs[0] = updatedDataBuffer.getResult();
+    inputs[0] = updatedDataBufferResults;
+    outputs[0] = updatedDataBufferResults;
+
+    auto tileIndex = dynamicReshape.getTileIndexAttr();
+    auto swKernelRun = *dynamicReshape.getBody().getOps<VPUIP::SwKernelRun>().begin();
+
+    VPUIP::SwKernelOp newSwKernelOp;
 
     if (inputIsDynamic) {
         auto inputBounds = dynamicReshape.getOperand(2);
         auto inputShapesMap = dynamicReshape.getDynamicInputShapesMapAttr();
 
-        auto tileIndex = dynamicReshape.getTileIndexAttr();
-
-        auto newSwKernelOp = builder.create<VPUIP::SwKernelOp>(
+        newSwKernelOp = builder.create<VPUIP::SwKernelOp>(
                 takeOpLoc(dynamicReshape, "swKernel"), inputs, outputs[0], inputBounds, inputShapesMap,
                 dynamicReshape.getDynamicOutputShapeBuffs(), dynamicReshape.getDynamicOutputShapesMapAttr(),
                 dynamicReshape.getKernelFunction(), tileIndex);
-
-        auto swKernelRun = *dynamicReshape.getBody().getOps<VPUIP::SwKernelRun>().begin();
-        VPUIP::initSwKernel(newSwKernelOp, swKernelRun, _log);
-
-        dynamicReshape.replaceAllUsesWith(newSwKernelOp);
-        dynamicReshape.erase();
     } else {
-        dynamicReshape->setOperand(0, updatedDataBuffer.getResult());
-        dynamicReshape->setOperand(2, updatedDataBuffer.getResult());
+        SmallVector<int32_t> inputShapesMap(inputs.size(), -1);
+
+        newSwKernelOp = builder.create<VPUIP::SwKernelOp>(
+                takeOpLoc(dynamicReshape, "swKernel"), inputs, outputs[0], dynamicReshape.getDynamicInputShapes(),
+                inputShapesMap, dynamicReshape.getDynamicOutputShapeBuffs(),
+                dynamicReshape.getDynamicOutputShapesMapAttr(), dynamicReshape.getKernelFunction(), tileIndex);
     }
+
+    VPUIP::initSwKernel(newSwKernelOp, swKernelRun, _log);
+    dynamicReshape.replaceAllUsesWith(newSwKernelOp);
+    dynamicReshape.erase();
 
     return mlir::success();
 }

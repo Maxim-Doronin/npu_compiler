@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @FoldNegative
 // CHECK: [[INPUT:%.+]]: tensor<1x2x3x4xf32>
 func.func @FoldNegative(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {

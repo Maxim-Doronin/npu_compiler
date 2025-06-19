@@ -30,15 +30,17 @@ public:
         Base::copyOptionValuesFrom(options);
     }
 
-    mlir::LogicalResult initializeOptions(StringRef options) override;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
 private:
     void safeRunOnModule() final;
     const std::vector<std::string> _supportedModes = {"apply", "revert"};
 };
 
-mlir::LogicalResult OverrideTileExecutorNumPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult OverrideTileExecutorNumPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

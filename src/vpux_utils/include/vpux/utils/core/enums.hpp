@@ -68,7 +68,7 @@ namespace llvm {
 template <typename Enum>
 struct format_provider<Enum, vpux::require_t<std::is_enum<Enum>, vpux::details::HasStringifyEnum<Enum>>> final {
     static void format(const Enum& val, llvm::raw_ostream& stream, StringRef style) {
-        llvm::detail::build_format_adapter(stringifyEnum(val)).format(stream, style);
+        llvm::support::detail::build_format_adapter(stringifyEnum(val)).format(stream, style);
     }
 };
 

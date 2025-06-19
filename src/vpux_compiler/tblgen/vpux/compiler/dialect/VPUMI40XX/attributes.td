@@ -107,4 +107,19 @@ def VPUMI40XX_NNDMATransactionAttr : VPUMI40XX_Attr<"NNDMATransaction",
     );
 }
 
+//
+// PermuteDMATransactionAttr
+//
+
+def VPUMI40XX_PermuteDMAAttr : VPUMI40XX_Attr<"PermuteDMATransaction",
+    [DeclareAttrInterfaceMethods<VPUMI40XX_DMATransactionAttrInterface>]> {
+
+    let parameters = (ins
+        "mlir::Type":$inputType,
+        "mlir::Type":$outputType,
+        "mlir::AffineMapAttr":$mappingOrder,    // Order representing the transpose from input to output
+        "mlir::AffineMapAttr":$loopOrder        // Order in which dimensions from input and output will be iterated over
+    );
+}
+
 #endif

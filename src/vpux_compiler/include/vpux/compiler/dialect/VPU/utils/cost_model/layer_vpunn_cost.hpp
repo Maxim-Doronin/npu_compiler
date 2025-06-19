@@ -6,6 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/operation_strategies.hpp"
 
@@ -55,7 +56,8 @@ public:
     LayerVPUNNCost(mlir::func::FuncOp func, Logger log = Logger::global()): _log(log) {
         auto module = func->getParentOfType<mlir::ModuleOp>();
         _arch = VPU::getArch(module);
-        _vpunnCostModel = VPU::createLayerCostModel(_arch);
+        _vpunnCostModel = VPU::CostModelConfig::createLayerCostModel(_arch);
+        resetNNCacheCounter();
 
         auto tileOp = IE::getTileExecutor(module);
         auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
@@ -115,6 +117,8 @@ public:
 
     StrategyCost getSpillingTypeCost(vpux::NDTypeInterface type,
                                      const std::optional<ShapeRef>& tileAxis = std::nullopt) const;
+    void resetNNCacheCounter();
+    void printNNCacheStatistics() const;
 
 private:
     /*

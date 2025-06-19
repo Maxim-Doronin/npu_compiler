@@ -63,15 +63,11 @@ mlir::Value BroadcastInputRewriter::broadcastInput(mlir::PatternRewriter& rewrit
     const auto origOrder = mlir::cast<NDTypeInterface>(broadcastInput.getType()).getDimsOrder();
     const auto memShape = origOrder.toMemoryOrder(targetShape);
     auto newTargetShape = canonicalOrder.toLogicalOrder(memShape);
-    auto targetShapeConst =
-            vpux::IE::createShapeConstForBroadCast(rewriter, ctx, appendLoc(loc, "shape"), newTargetShape);
-    auto broadCastOp =
-            rewriter.create<IE::BroadcastOp>(loc, canonicalPermuteCast, targetShapeConst, /*axes_mapping*/ nullptr,
-                                             IE::BroadcastTypeAttr::get(ctx, IE::BroadcastType::NUMPY));
+    auto broadCast = IE::createBroadcast(rewriter, appendLoc(loc, "shape"), canonicalPermuteCast, newTargetShape);
 
     // Cast to the original dims order
     return rewriter.createOrFold<IE::PermuteCastOp>(appendLoc(broadcastInput.getLoc(), "_broadcast_permute_cast"),
-                                                    broadCastOp.getResult(), origOrder.toAffineMap(ctx),
+                                                    broadCast, origOrder.toAffineMap(ctx),
                                                     mlir::AffineMap::getMultiDimIdentityMap(origOrder.numDims(), ctx));
 }
 

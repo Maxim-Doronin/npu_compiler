@@ -9,6 +9,10 @@
 #include "common_test_utils/node_builders/convolution.hpp"
 #include "common_test_utils/node_builders/fake_quantize.hpp"
 
+#include "openvino/op/convert.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/fake_quantize.hpp"
+
 namespace ov {
 
 namespace test {

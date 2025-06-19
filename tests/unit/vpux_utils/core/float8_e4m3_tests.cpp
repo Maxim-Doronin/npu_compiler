@@ -154,13 +154,13 @@ TEST(float8_e4m3, f8e4m3_num_limits_exp) {
 }
 
 TEST(float8_e4m3, f32_gt_zero_le_f8_half_lowest_subnormal) {
-    const auto f8 = vpux::type::float8_e4m3(0.0009765625f);
+    const auto f8 = vpux::type::float8_e4m3(0.0009770393f);
 
     EXPECT_EQ(f8.to_bits(), 0x00);
 }
 
 TEST(float8_e4m3, f32_gt_zero_gt_f8_half_lowest_subnormal) {
-    const auto f8 = vpux::type::float8_e4m3(0.00097656273283064365387f);
+    const auto f8 = vpux::type::float8_e4m3(0.0009770394f);
 
     EXPECT_EQ(f8.to_bits(), 0x01);
 }

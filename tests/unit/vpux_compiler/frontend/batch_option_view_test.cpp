@@ -50,13 +50,13 @@ INSTANTIATE_TEST_SUITE_P(
                         BatchCompilerOptionsAdapterViewTestsParams{std::string("Bbatch-compileD-MmethodIC="), ""},
                         BatchCompilerOptionsAdapterViewTestsParams{
                                 "batch-compile-method=unroll",
-                                "batch-compile-method=unroll batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-compile-method=unroll batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions= "
                                 "debatching-inlining-method=naive max-batch-number-disable-limit=-1 "
                                 "model-ops-number-enable-threshold=0}"},
                         BatchCompilerOptionsAdapterViewTestsParams{
                                 "batch-compile-method=",
-                                "batch-compile-method= batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-compile-method= batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions= "
                                 "debatching-inlining-method=naive max-batch-number-disable-limit=-1 "
                                 "model-ops-number-enable-threshold=0}"},
@@ -65,7 +65,7 @@ INSTANTIATE_TEST_SUITE_P(
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2]"
                                 ",[0-2],[0-1], debatching-inlining-method=naive}",
                                 "batch-compile-method=debatch "
-                                "batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2]"
                                 ",[0-2],[0-1], debatching-inlining-method=naive}"},
                         BatchCompilerOptionsAdapterViewTestsParams{
@@ -73,7 +73,7 @@ INSTANTIATE_TEST_SUITE_P(
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2]"
                                 ",[0-2],[0-1], debatching-inlining-method=naive} PARAM_2=VALUE_2",
                                 "batch-compile-method=debatch "
-                                "batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2]"
                                 ",[0-2],[0-1], debatching-inlining-method=naive}"},
                         BatchCompilerOptionsAdapterViewTestsParams{
@@ -82,7 +82,7 @@ INSTANTIATE_TEST_SUITE_P(
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2]"
                                 ",[0-2],[0-1], debatching-inlining-method=naive} PARAM_2=VALUE_2",
                                 "batch-compile-method=debatch "
-                                "batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2]"
                                 ",[0-2],[0-1], debatching-inlining-method=naive}"}),
         AutoBatchCompilerOptionsAdapterViewTests::getTestCaseName);
@@ -137,13 +137,13 @@ INSTANTIATE_TEST_SUITE_P(
                                                                             "must-remain=intact"},
                         BatchCompilerOptionsAdapterViewInjectionTestsParams{
                                 "batch-compile-method=unroll", "",
-                                "batch-compile-method=unroll batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-compile-method=unroll batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions= "
                                 "debatching-inlining-method=naive max-batch-number-disable-limit=-1 "
                                 "model-ops-number-enable-threshold=0}"},
                         BatchCompilerOptionsAdapterViewInjectionTestsParams{
                                 "batch-compile-method=debatch", "batch-compile-method= ",
-                                "batch-compile-method=debatch batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-compile-method=debatch batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions= "
                                 "debatching-inlining-method=naive max-batch-number-disable-limit=-1 "
                                 "model-ops-number-enable-threshold=0}"},
@@ -154,7 +154,7 @@ INSTANTIATE_TEST_SUITE_P(
                                 "batch-compile-method= PARAMETR_IN_THE_MIDDLE=VALUE debatcher-settings={}",
                                 " PARAMETR_IN_THE_MIDDLE=VALUE "
                                 "batch-compile-method=debatch "
-                                "batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2]"
                                 ",[0-2],[0-1], debatching-inlining-method=naive}"},
                         BatchCompilerOptionsAdapterViewInjectionTestsParams{
@@ -171,7 +171,7 @@ INSTANTIATE_TEST_SUITE_P(
                                 "PARAM_BEGIN=VALUE_1 PARAMETR_IN_THE_MIDDLE=VALUE PARAMETR_IN_THE_MIDDLE=VALUE "
                                 "PARAMETR_IN_THE_END=VALUE "
                                 "batch-compile-method=debatch "
-                                "batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-2],[0-2],[0-1],"
                                 " debatching-inlining-method=naive} "}
 

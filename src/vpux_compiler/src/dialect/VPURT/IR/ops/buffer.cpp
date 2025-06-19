@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 
+#include "vpux/compiler/utils/ELF/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
@@ -150,7 +151,7 @@ void vpux::VPURT::DeclareBufferOp::serialize(elf::writer::BinaryDataSection<uint
 
 size_t vpux::VPURT::DeclareBufferOp::getBinarySize() {
     const auto type = mlir::cast<vpux::NDTypeInterface>(getBuffer().getType());
-    return type.getTotalAllocSize().count();
+    return ELF::getOpBinarySize(type);
 }
 
 size_t vpux::VPURT::DeclareBufferOp::getAlignmentRequirements() {

@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IERT/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_INITRESOURCES
@@ -28,7 +29,8 @@ public:
     InitResourcesPass(const VPU::InitCompilerOptions& initCompilerOptions, Logger log);
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnModule() final;
 
 private:
@@ -37,7 +39,7 @@ private:
 
 private:
     VPU::ArchKind _arch = VPU::ArchKind::UNKNOWN;
-    VPU::CompilationMode _compilationMode = VPU::CompilationMode::DefaultHW;
+    config::CompilationMode _compilationMode = config::CompilationMode::DefaultHW;
     std::optional<int> _revisionID;
     int _numOfDPUGroups = 1;
     std::optional<int> _numOfDMAPorts;
@@ -52,8 +54,9 @@ InitResourcesPass::InitResourcesPass(const VPU::InitCompilerOptions& initCompile
     initializeFromOptions();
 }
 
-mlir::LogicalResult InitResourcesPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult InitResourcesPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 
@@ -67,7 +70,7 @@ void InitResourcesPass::initializeFromOptions() {
     VPUX_THROW_UNLESS(archStr.has_value(), "Unknown VPU architecture : '{0}'", archOpt.getValue());
     _arch = archStr.value();
 
-    auto compilationModeStr = VPU::symbolizeEnum<VPU::CompilationMode>(compilationModeOpt.getValue());
+    auto compilationModeStr = config::symbolizeEnum<config::CompilationMode>(compilationModeOpt.getValue());
     VPUX_THROW_UNLESS(compilationModeStr.has_value(), "Unknown compilation mode: '{0}'", compilationModeOpt.getValue());
     _compilationMode = compilationModeStr.value();
 
@@ -99,11 +102,11 @@ void InitResourcesPass::safeRunOnModule() {
     _log.trace("Set VPU architecture to {0}", _arch);
     VPU::setArch(module, _arch, _numOfDPUGroups, _numOfDMAPorts, _availableCMXMemory, _allowCustomValues);
 
-    VPUX_THROW_WHEN(!_allowCustomValues && VPU::hasCompilationMode(module),
+    VPUX_THROW_WHEN(!_allowCustomValues && config::hasCompilationMode(module),
                     "CompilationMode is already defined, probably you run '--init-compiler' twice");
-    if (!VPU::hasCompilationMode(module)) {
+    if (!config::hasCompilationMode(module)) {
         _log.trace("Set compilation mode to {0}", _compilationMode);
-        VPU::setCompilationMode(module, _compilationMode);
+        config::setCompilationMode(module, _compilationMode);
     }
 
     VPUX_THROW_WHEN(!_allowCustomValues && VPU::hasRevisionID(module),

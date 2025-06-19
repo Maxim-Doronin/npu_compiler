@@ -30,9 +30,7 @@ mlir::LogicalResult ActKernelRangeRewriter::matchAndRewrite(VPUASM::ActKernelRan
     descriptor.write<Fields::kernel_entry>(kernelEntry);
     descriptor.write<Fields::code_size>(kernelTextSize);
 
-    auto regActKernelDescriptorAttr = VpuActKernelRangeAttr::get(rewriter.getContext(), std::move(descriptor));
-
-    rewriter.create<NPUReg40XX::ActKernelRangeOp>(origOp->getLoc(), origOp.getSymNameAttr(), regActKernelDescriptorAttr,
+    rewriter.create<NPUReg40XX::ActKernelRangeOp>(origOp->getLoc(), origOp.getSymNameAttr(), std::move(descriptor),
                                                   origOp.getTaskLocationAttr(), origOp.getKernelTextAttr(),
                                                   origOp.getKernelEntryAttr());
 

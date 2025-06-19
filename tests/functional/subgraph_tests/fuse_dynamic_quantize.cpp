@@ -3,8 +3,23 @@
 //
 #include <ov_ops/dynamic_quantize.hpp>
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset6.hpp"
+#include "openvino/opsets/opset6_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/clamp.hpp"
+#include "openvino/op/convert.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/maximum.hpp"
+#include "openvino/op/minimum.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/range.hpp"
+#include "openvino/op/reduce_max.hpp"
+#include "openvino/op/reduce_min.hpp"
+#include "openvino/op/round.hpp"
+#include "openvino/op/shape_of.hpp"
+#include "openvino/op/squeeze.hpp"
+#include "openvino/op/subtract.hpp"
 
 using namespace ov::test::utils;
 using namespace ov::test;

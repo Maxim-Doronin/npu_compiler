@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -85,8 +86,11 @@ VPUIP::SwProfilingMetadataAttr getUpdatedSwProfilingMetadataAttr(VPUIP::SwProfil
 class SwKernelRewriter : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
 public:
     mlir::LogicalResult matchAndRewrite(VPUIP::SwKernelOp swKernelOp, mlir::PatternRewriter& rewriter) const override;
-    SwKernelRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx), _log(log), _ctx(ctx) {
+    SwKernelRewriter(mlir::MLIRContext* ctx, bool enableSwKernelFifoPerShaveEngine, Logger log)
+            : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx),
+              _log(log),
+              _ctx(ctx),
+              _enableSwKernelFifoPerShaveEngine(enableSwKernelFifoPerShaveEngine) {
         setDebugName("SwKernelRewriter");
     }
 
@@ -97,11 +101,15 @@ public:
 protected:
     Logger _log;
     mlir::MLIRContext* _ctx;
+    bool _enableSwKernelFifoPerShaveEngine;
 };
 
 mlir::LogicalResult SwKernelRewriter::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
                                                       mlir::PatternRewriter& rewriter) const {
     if (!needUnroll(swKernelOp)) {
+        if (_enableSwKernelFifoPerShaveEngine && !swKernelOp.getListIndex().has_value()) {
+            swKernelOp.setListIndexAttr(getIntAttr(_ctx, 0));
+        }
         return mlir::failure();
     }
 
@@ -186,6 +194,10 @@ VPURT::TaskOp SwKernelRewriter::createNewTaskOp(VPUIP::SwKernelOp swKernelOp, VP
 
         newProfilingBuffer = newProfilingBufferDecl.getBuffer();
     }
+    // NOTE: use of cluster, tile and list indexes is not consistent. When tile is used in combination with
+    // cluster it is understood that cluster identifies NCE unit and tile identifies its SHAVE sub unit
+    // (typically used in profiling). When tile index is used in combination with list index it is the tile that
+    // identifies NCE unit and list index identifies its SHAVE sub-unit (typically used in HAS and in backend).
     opLoc = appendLoc(opLoc, "tile_{0}", index);
 
     VPUIP::SwKernelOp newSwKernelOp = [&] {
@@ -205,8 +217,38 @@ VPURT::TaskOp SwKernelRewriter::createNewTaskOp(VPUIP::SwKernelOp swKernelOp, VP
     if (maybeProfMeta != nullptr) {
         newSwKernelOp.setProfilingMetadataAttr(maybeProfMeta);
     }
+    if (_enableSwKernelFifoPerShaveEngine) {
+        newSwKernelOp.setListIndexAttr(getIntAttr(_ctx, index));
+    }
     VPUIP::initSwKernel(newSwKernelOp, swKernelRun, _log);
     return newSwKernelOp->getParentOfType<VPURT::TaskOp>();
+}
+
+bool verifySwKernelOpsWithDedicatedFifoPerShaveEngine(mlir::func::FuncOp func, Logger log) {
+    bool hasDefinedListIndexAttr;
+    size_t swKerOpCount = 0;
+    size_t swKerOpCountWithListAttr = 0;
+    func.walk([&](VPURT::TaskOp taskOp) {
+        if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(taskOp.getInnerTaskOp())) {
+            swKerOpCount++;
+            if (swKernelOp.getListIndex().has_value()) {
+                swKerOpCountWithListAttr++;
+            }
+        }
+    });
+
+    if (swKerOpCount == 0) {
+        return true;
+    }
+    hasDefinedListIndexAttr = swKerOpCountWithListAttr > 0;
+    auto isListIndexSetForAllOrNoneOps = (swKerOpCount == swKerOpCountWithListAttr || !hasDefinedListIndexAttr);
+    if (!isListIndexSetForAllOrNoneOps) {
+        log.warning("Inconsistent use of listIndex attribute. SwKernelOp count: {0}, SwKernelOp count with listIndex "
+                    "attribute: {1}",
+                    swKerOpCount, swKerOpCountWithListAttr);
+    }
+
+    return isListIndexSetForAllOrNoneOps;
 }
 
 //
@@ -227,13 +269,18 @@ void UnrollSwKernelPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
+    bool swKernelFifoPerShaveEngine = enableSwKernelFifoPerShaveEngine.hasValue()
+                                              ? enableSwKernelFifoPerShaveEngine.getValue()
+                                              : VPU::isFifoPerShaveEngineEnabled(func);
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.insert<SwKernelRewriter>(&ctx, _log);
+    patterns.insert<SwKernelRewriter>(&ctx, swKernelFifoPerShaveEngine, _log);
 
     if (mlir::failed(
                 mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), vpux::getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
+    VPUX_THROW_UNLESS(verifySwKernelOpsWithDedicatedFifoPerShaveEngine(func, _log),
+                      "Inconsistent use of listIndex attribute");
 }
 }  // namespace
 

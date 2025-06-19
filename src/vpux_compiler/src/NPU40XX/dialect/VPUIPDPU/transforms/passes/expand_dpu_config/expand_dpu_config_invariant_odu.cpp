@@ -14,53 +14,6 @@ using namespace VPUIPDPU::arch40xx::ODU;
 
 namespace vpux::VPUIPDPU::arch40xx::ODU {
 
-std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType) {
-    std::optional<ODUDataBitWidth> outDataWidth;
-
-    if (outDataType.isF32()) {
-        return ODUDataBitWidth::ODU_DTYPE_32BIT;
-    } else if (outDataType.isF16()) {
-        return ODUDataBitWidth::ODU_DTYPE_16BIT;
-    } else if (outDataType.isBF16()) {
-        return ODUDataBitWidth::ODU_DTYPE_16BIT;
-    } else if (outDataType.isFloat8E4M3FN()) {
-        return ODUDataBitWidth::ODU_DTYPE_8BIT;
-    } else if (outDataType.isFloat8E5M2()) {
-        return ODUDataBitWidth::ODU_DTYPE_8BIT;
-    } else if (outDataType.isSignedInteger(CHAR_BIT * sizeof(int32_t))) {
-        return ODUDataBitWidth::ODU_DTYPE_32BIT;
-    } else if (outDataType.isSignedInteger(CHAR_BIT * sizeof(int8_t))) {
-        return ODUDataBitWidth::ODU_DTYPE_8BIT;
-    } else if (outDataType.isSignedInteger(4)) {
-        return ODUDataBitWidth::ODU_DTYPE_4BIT;
-    } else if (outDataType.isInteger(CHAR_BIT * sizeof(uint8_t))) {
-        return ODUDataBitWidth::ODU_DTYPE_8BIT;
-    } else if (outDataType.isInteger(4)) {
-        return ODUDataBitWidth::ODU_DTYPE_4BIT;
-    } else if (outDataType.isInteger(2)) {
-        return ODUDataBitWidth::ODU_DTYPE_2BIT;
-    } else if (outDataType.isInteger(1)) {
-        return ODUDataBitWidth::ODU_DTYPE_1BIT;
-    } else if (mlir::isa<mlir::quant::QuantizedType>(outDataType)) {
-        return getOutDataWidth(mlir::cast<mlir::quant::QuantizedType>(outDataType).getStorageType());
-    }
-
-    return outDataWidth;
-}
-
-uint8_t getQuantZeroPoint(mlir::Type type) {
-    uint8_t quantZeroPoint = 0;
-
-    if (const auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
-        quantZeroPoint = checked_cast<uint8_t>(qType.getZeroPoint());
-    } else if (const auto qPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
-        auto qtypeQuantZp = qPerAxisType.getZeroPoints();
-        quantZeroPoint = checked_cast<uint8_t>(qtypeQuantZp[0]);
-    }
-
-    return quantZeroPoint;
-}
-
 mlir::LogicalResult configureOutTensorSize(const Logger& log, ODUConfig::OutTensorSize& config,
                                            ODUPermuteDataMode permuteMode, const Strides& outStrides) {
     auto outStridesVec = getFloatStrides(outStrides);
@@ -173,16 +126,6 @@ mlir::LogicalResult configurePermuteMode(const Logger& log, ODUConfig::PermuteDa
     return mlir::success();
 }
 
-mlir::LogicalResult configureSparsity(const Logger&, ODUConfig::Sparsity& config, bool outSparsityEnabled,
-                                      uint8_t sparseValue) {
-    if (outSparsityEnabled) {
-        config.compressionEnabled = true;
-        config.sparseValue = sparseValue;
-    }
-
-    return mlir::success();
-}
-
 mlir::LogicalResult configureSwizzleData(const Logger& log, ODUConfig::SwizzleData& config,
                                          std::optional<int64_t> outSwizzling) {
     if (outSwizzling.has_value()) {
@@ -199,7 +142,7 @@ mlir::LogicalResult configureSwizzleData(const Logger& log, ODUConfig::SwizzleDa
 
 mlir::LogicalResult configureOutActivations(const Logger& log, ODUConfig::OutActivations& config,
                                             mlir::Type outDataType) {
-    auto outDataWidth = getOutDataWidth(outDataType);
+    auto outDataWidth = VPUIPDPU::getOutDataWidth(outDataType);
 
     if (!outDataWidth.has_value()) {
         log.error("Invalid output data type '{0}'", outDataType);
@@ -210,6 +153,15 @@ mlir::LogicalResult configureOutActivations(const Logger& log, ODUConfig::OutAct
         config.dataWidth = outDataWidth.value();
     }
 
+    return mlir::success();
+}
+
+mlir::LogicalResult configureSparsity(const Logger&, ODUConfig::Sparsity& config, bool outSparsityEnabled,
+                                      NDTypeInterface outActType) {
+    if (outSparsityEnabled) {
+        config.compressionEnabled = true;
+        config.sparseValue = VPUIPDPU::getZeroPoint<uint8_t>(outActType);
+    }
     return mlir::success();
 }
 
@@ -243,9 +195,7 @@ mlir::LogicalResult configureODU(const Logger& log, ODUConfig& config, const NDT
     if (configureDataReuse(log, config.dataReuse, mpeFrequentMode, dpuTaskType).failed()) {
         return mlir::failure();
     }
-
-    if (configureSparsity(log, config.sparsity, outSparsityEnabled, getQuantZeroPoint(outActType.getElementType()))
-                .failed()) {
+    if (VPUIPDPU::arch40xx::ODU::configureSparsity(log, config.sparsity, outSparsityEnabled, outActType).failed()) {
         return mlir::failure();
     }
 

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-shape-to-4d --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK:       func.func @main(
 // CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1000xf32>
 // CHECK-SAME:      [[VAL_1:%.+]]: tensor<1x224x224xf32>
@@ -36,12 +37,12 @@ func.func @main(%arg0: tensor<1x1000xf32>, %arg1: tensor<1x224x224xf32>, %arg2: 
     // CHECK-DAG: [[VAL_6:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<2.550000e+02> : tensor<1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>]
     // CHECK-DAG: [[VAL_7:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<0.000000e+00> : tensor<1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>]
 
-    // CHECK-DAG:   [[VAL_0_4D:%.+]] = IE.AffineReshape([[VAL_0]]) {
-    // CHECK-SAME:      shape_value = [1, 1, 1, 1000]} : tensor<1x1000xf32> -> tensor<1x1x1x1000xf32>
-    // CHECK-DAG:   [[VAL_1_4D:%.+]] = IE.AffineReshape([[VAL_1]]) {
-    // CHECK-SAME:      shape_value = [1, 1, 224, 224]} : tensor<1x224x224xf32> -> tensor<1x1x224x224xf32>
     // CHECK-DAG:   [[VAL_3_4D:%.+]] = IE.AffineReshape([[VAL_3]]) {
     // CHECK-SAME:      shape_value = [1, 1, 8, 1024]} : tensor<8x1024xf32> -> tensor<1x1x8x1024xf32>
+    // CHECK-DAG:   [[VAL_1_4D:%.+]] = IE.AffineReshape([[VAL_1]]) {
+    // CHECK-SAME:      shape_value = [1, 1, 224, 224]} : tensor<1x224x224xf32> -> tensor<1x1x224x224xf32>
+    // CHECK-DAG:   [[VAL_0_4D:%.+]] = IE.AffineReshape([[VAL_0]]) {
+    // CHECK-SAME:      shape_value = [1, 1, 1, 1000]} : tensor<1x1000xf32> -> tensor<1x1x1x1000xf32>
 
     // CHECK:   [[VAL_8:%.+]] = IE.Clamp([[VAL_0_4D]])
     // CHECK:   [[VAL_8_2D:%.+]] = IE.AffineReshape([[VAL_8]]) {
@@ -324,9 +325,9 @@ func.func @AddOpInput3D(%arg0: tensor<1x1x64xf16>, %arg1: tensor<1x1x64xf16>) ->
     %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x64xf16>, tensor<1x1x64xf16> -> tensor<1x1x64xf16>
     return %0 : tensor<1x1x64xf16>
 
-    // CHECK:    %[[Reshape_0:.+]] = IE.AffineReshape(%arg0) {
-    // CHECK-SAME:      shape_value = [1, 1, 1, 64]} : tensor<1x1x64xf16> -> tensor<1x1x1x64xf16>
     // CHECK:    %[[Reshape_1:.+]] = IE.AffineReshape(%arg1) {
+    // CHECK-SAME:      shape_value = [1, 1, 1, 64]} : tensor<1x1x64xf16> -> tensor<1x1x1x64xf16>
+    // CHECK:    %[[Reshape_0:.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 1, 1, 64]} : tensor<1x1x64xf16> -> tensor<1x1x1x64xf16>
     // CHECK:    %[[Add:.+]] = IE.Add(%[[Reshape_0]], %[[Reshape_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x64xf16>, tensor<1x1x1x64xf16> -> tensor<1x1x1x64xf16>
     // CHECK:    %[[Reshape_out:.+]] = IE.AffineReshape(%[[Add]]) {
@@ -341,10 +342,10 @@ func.func @AddOpInput3DWithBroadcastNoOpt(%arg0: tensor<1x1x1xf16>, %arg1: tenso
     %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1xf16>, tensor<1x1x64xf16> -> tensor<1x1x64xf16>
     return %0 : tensor<1x1x64xf16>
 
-    // CHECK:    %[[Reshape_0:.+]] = IE.AffineReshape(%arg0) {
-    // CHECK-SAME:      shape_value = [1, 1, 1, 1]} : tensor<1x1x1xf16> -> tensor<1x1x1x1xf16>
     // CHECK:    %[[Reshape_1:.+]] = IE.AffineReshape(%arg1) {
     // CHECK-SAME:      shape_value = [1, 1, 1, 64]} : tensor<1x1x64xf16> -> tensor<1x1x1x64xf16>
+    // CHECK:    %[[Reshape_0:.+]] = IE.AffineReshape(%arg0) {
+    // CHECK-SAME:      shape_value = [1, 1, 1, 1]} : tensor<1x1x1xf16> -> tensor<1x1x1x1xf16>
     // CHECK:    %[[Add:.+]] = IE.Add(%[[Reshape_0]], %[[Reshape_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1xf16>, tensor<1x1x1x64xf16> -> tensor<1x1x1x64xf16>
     // CHECK:    %[[Reshape_out:.+]] = IE.AffineReshape(%[[Add]]) {
     // CHECK-SAME:      shape_value = [1, 1, 64]} : tensor<1x1x1x64xf16> -> tensor<1x1x64xf16>
@@ -358,9 +359,9 @@ func.func @AddOpInput2DNoOpt(%arg0: tensor<3x16xf16>, %arg1: tensor<3x16xf16>) -
     %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<3x16xf16>, tensor<3x16xf16> -> tensor<3x16xf16>
     return %0 : tensor<3x16xf16>
 
-    // CHECK:    %[[Reshape_0:.+]] = IE.AffineReshape(%arg0) {
-    // CHECK-SAME:      shape_value = [1, 1, 3, 16]} : tensor<3x16xf16> -> tensor<1x1x3x16xf16>
     // CHECK:    %[[Reshape_1:.+]] = IE.AffineReshape(%arg1) {
+    // CHECK-SAME:      shape_value = [1, 1, 3, 16]} : tensor<3x16xf16> -> tensor<1x1x3x16xf16>
+    // CHECK:    %[[Reshape_0:.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 1, 3, 16]} : tensor<3x16xf16> -> tensor<1x1x3x16xf16>
     // CHECK:    %[[Add:.+]] = IE.Add(%[[Reshape_0]], %[[Reshape_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x3x16xf16>, tensor<1x1x3x16xf16> -> tensor<1x1x3x16xf16>
     // CHECK:    %[[Reshape_out:.+]] = IE.AffineReshape(%[[Add]]) {
@@ -777,10 +778,10 @@ func.func @Convert3DSubtractWithFirstDimLargeOne(%arg0: tensor<64x64x100xf32>, %
 
     return %1 : tensor<64x64x100xf32>
 
-    // CHECK:       %[[VAL_0:.+]] = IE.AffineReshape(%arg0)
-    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 64, 64, 100]} : tensor<64x64x100xf32> -> tensor<1x64x64x100xf32>
     // CHECK:       %[[VAL_1:.+]] = IE.AffineReshape(%arg1)
     // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 64, 1, 100]} : tensor<64x1x100xf32> -> tensor<1x64x1x100xf32>
+    // CHECK:       %[[VAL_0:.+]] = IE.AffineReshape(%arg0)
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 64, 64, 100]} : tensor<64x64x100xf32> -> tensor<1x64x64x100xf32>
     // CHECK:       %[[SUBSTRACT:.+]] = IE.Subtract(%[[VAL_0]], %[[VAL_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x64x100xf32>, tensor<1x64x1x100xf32> -> tensor<1x64x64x100xf32>
     // CHECK:       %[[VAL_2:.+]] = IE.AffineReshape(%[[SUBSTRACT]])
     // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [0], [1], [2]], shape_value = [64, 64, 100]} : tensor<1x64x64x100xf32> -> tensor<64x64x100xf32>
@@ -821,9 +822,9 @@ func.func @Add3dMixPrecision(%arg0: tensor<12x77x64x!qElemType>, %arg1: tensor<1
     %QUANT = IE.Quantize(%ADD) {dstElemType = !qElemType} : tensor<12x77x64xf16> -> tensor<12x77x64x!qElemType>
     return %QUANT : tensor<12x77x64x!qElemType>
 
-    // CHECK:    [[Reshape_0:%.+]] = IE.AffineReshape(%arg0)
-    // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 12, 77, 64]} : tensor<12x77x64x!qElemType> -> tensor<1x12x77x64x!qElemType>
     // CHECK:    [[Reshape_1:%.+]] = IE.AffineReshape(%arg1)
+    // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 12, 77, 64]} : tensor<12x77x64x!qElemType> -> tensor<1x12x77x64x!qElemType>
+    // CHECK:    [[Reshape_0:%.+]] = IE.AffineReshape(%arg0)
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 12, 77, 64]} : tensor<12x77x64x!qElemType> -> tensor<1x12x77x64x!qElemType>
     // CHECK:    [[Add:%.+]] = IE.Add([[Reshape_0]], [[Reshape_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x12x77x64x!qElemType>, tensor<1x12x77x64x!qElemType> -> tensor<1x12x77x64xf16>
     // CHECK:    [[Reshape_out:%.+]] = IE.AffineReshape([[Add]])
@@ -1302,6 +1303,81 @@ func.func @DoNotConvert5DReduceSum(%arg0: tensor<2x1024x7x7x3xf32>) -> tensor<2x
 
 // -----
 
+// CHECK-LABEL: @Convert5DInterpolate
+func.func @Convert5DInterpolate(%arg0: tensor<1x2x2x2x2xf16>) -> tensor<1x2x4x4x4xf16> {
+    %0 = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0, 0], pads_end = [0, 0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3, 4], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00, 2.000000e+00], sizes_attr = [4, 4, 4]} : tensor<1x2x2x2x2xf16> -> tensor<1x2x4x4x4xf16>
+    return %0 : tensor<1x2x4x4x4xf16>
+
+    // CHECK: [[INPUT_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK-SAME{LITERAL}:           {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [2, 2, 2, 2]} : tensor<1x2x2x2x2xf16> -> tensor<2x2x2x2xf16>
+    // CHECK: [[Interpolate:%.+]] = IE.Interpolate([[INPUT_RESHAPE]])
+    // CHECK:   {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>,
+    // CHECK-SAME:       antialias = false,
+    // CHECK-SAME:       pads_begin = [0, 0, 0, 0, 0], pads_end = [0, 0, 0, 0, 0],
+    // CHECK:            cube_coeff = -7.500000e-01 : f64>,
+    // CHECK-SAME:       axes_attr = [1, 2, 3],
+    // CHECK:            operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+    // CHECK:            scales_attr = [2.000000e+00, 2.000000e+00, 2.000000e+00], sizes_attr = [4, 4, 4]} :
+    // CHECK:       tensor<2x2x2x2xf16> -> tensor<2x4x4x4xf16>
+
+    // CHECK: [[OUTPUT_RESHAPE:%.+]] = IE.AffineReshape([[Interpolate]])
+    // CHECK-SAME{LITERAL}:            {dim_mapping = [[0, 1], [2], [3], [4]], shape_value = [1, 2, 4, 4, 4]} : tensor<2x4x4x4xf16> -> tensor<1x2x4x4x4xf16>
+    // CHECK: return [[OUTPUT_RESHAPE]] : tensor<1x2x4x4x4xf16>
+
+}
+
+// -----
+
+// CHECK-LABEL: @Convert5DInterpolateNDifferentThen1
+func.func @Convert5DInterpolateNDifferentThen1(%arg0: tensor<2x2x2x2x2xf16>) -> tensor<2x2x4x4x4xf16> {
+    %0 = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0, 0], pads_end = [0, 0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3, 4], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00, 2.000000e+00], sizes_attr = [4, 4, 4]} : tensor<2x2x2x2x2xf16> -> tensor<2x2x4x4x4xf16>
+    return %0 : tensor<2x2x4x4x4xf16>
+
+    // CHECK: [[INPUT_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK-SAME{LITERAL}:           {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [4, 2, 2, 2]} : tensor<2x2x2x2x2xf16> -> tensor<4x2x2x2xf16>
+    // CHECK: [[Interpolate:%.+]] = IE.Interpolate([[INPUT_RESHAPE]])
+    // CHECK:   {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>,
+    // CHECK-SAME:       antialias = false,
+    // CHECK-SAME:       pads_begin = [0, 0, 0, 0, 0], pads_end = [0, 0, 0, 0, 0],
+    // CHECK:            cube_coeff = -7.500000e-01 : f64>,
+    // CHECK-SAME:       axes_attr = [1, 2, 3],
+    // CHECK:            operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+    // CHECK:            scales_attr = [2.000000e+00, 2.000000e+00, 2.000000e+00], sizes_attr = [4, 4, 4]} :
+    // CHECK:       tensor<4x2x2x2xf16> -> tensor<4x4x4x4xf16>
+
+    // CHECK: [[OUTPUT_RESHAPE:%.+]] = IE.AffineReshape([[Interpolate]])
+    // CHECK-SAME{LITERAL}:            {dim_mapping = [[0, 1], [2], [3], [4]], shape_value = [2, 2, 4, 4, 4]} : tensor<4x4x4x4xf16> -> tensor<2x2x4x4x4xf16>
+    // CHECK: return [[OUTPUT_RESHAPE]] : tensor<2x2x4x4x4xf16>
+
+}
+
+// -----
+
+// CHECK-LABEL: @Convert5DInterpolateTwoAxes
+func.func @Convert5DInterpolateTwoAxes(%arg0: tensor<1x2x2x2x2xf16>) -> tensor<1x2x4x4x2xf16> {
+    %0 = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0, 0], pads_end = [0, 0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [4, 4]} : tensor<1x2x2x2x2xf16> -> tensor<1x2x4x4x2xf16>
+    return %0 : tensor<1x2x4x4x2xf16>
+
+    // CHECK: [[INPUT_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK-SAME{LITERAL}:           {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [2, 2, 2, 2]} : tensor<1x2x2x2x2xf16> -> tensor<2x2x2x2xf16>
+    // CHECK: [[Interpolate:%.+]] = IE.Interpolate([[INPUT_RESHAPE]])
+    // CHECK:   {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>,
+    // CHECK-SAME:       antialias = false,
+    // CHECK-SAME:       pads_begin = [0, 0, 0, 0, 0], pads_end = [0, 0, 0, 0, 0],
+    // CHECK:            cube_coeff = -7.500000e-01 : f64>,
+    // CHECK-SAME:       axes_attr = [1, 2],
+    // CHECK:            operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+    // CHECK:            scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [4, 4]} :
+    // CHECK:       tensor<2x2x2x2xf16> -> tensor<2x4x4x2xf16>
+
+    // CHECK: [[OUTPUT_RESHAPE:%.+]] = IE.AffineReshape([[Interpolate]])
+    // CHECK-SAME{LITERAL}:            {dim_mapping = [[0, 1], [2], [3], [4]], shape_value = [1, 2, 4, 4, 2]} : tensor<2x4x4x2xf16> -> tensor<1x2x4x4x2xf16>
+    // CHECK: return [[OUTPUT_RESHAPE]] : tensor<1x2x4x4x2xf16>
+
+}
+
+// -----
+
 // CHECK-LABEL: @Convert3DInterpolate
 func.func @Convert3DInterpolate(%arg0: tensor<8x64x1xf16>) -> tensor<8x64x2xf16> {
     %0 = IE.Interpolate(%arg0) {
@@ -1409,6 +1485,26 @@ func.func @ConvertSelectThirdInputIsNot4D(%arg0: tensor<1x10x40x40xf16>, %arg1: 
 
 // -----
 
+// CHECK-LABEL: @ConvertSelect5D
+func.func @ConvertSelect5D(%arg0: tensor<1x1x10x40x40xf16>, %arg1: tensor<1x1x10x40x40xf16>) -> tensor<1x1x10x40x40xf16> {
+    %cst = const.Declare tensor<1xf16> = dense<0.000000e+00> : tensor<f16>, [#const.Reshape<[1]>]
+    %0 = IE.Select(%arg0, %arg1, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x10x40x40xf16>, tensor<1x1x10x40x40xf16>, tensor<1xf16> -> tensor<1x1x10x40x40xf16>
+
+    return %0 : tensor<1x1x10x40x40xf16>
+
+    // CHECK:       [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<f16>, [#const.Reshape<[1, 1, 1, 1]>]
+    // CHECK:       [[RESHAPE_0:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [1, 10, 40, 40]} : tensor<1x1x10x40x40xf16> -> tensor<1x10x40x40xf16>
+    // CHECK:       [[RESHAPE_1:%.+]] = IE.AffineReshape(%arg1)
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [1, 10, 40, 40]} : tensor<1x1x10x40x40xf16> -> tensor<1x10x40x40xf16>
+    // CHECK:       [[Select:%.+]] = IE.Select([[RESHAPE_0]], [[RESHAPE_1]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x10x40x40xf16>, tensor<1x10x40x40xf16>, tensor<1x1x1x1xf16> -> tensor<1x10x40x40xf16>
+    // CHECK:       [[RESHAPE_2:%.+]] = IE.AffineReshape([[Select]])
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [3], [4]], shape_value = [1, 1, 10, 40, 40]} : tensor<1x10x40x40xf16> -> tensor<1x1x10x40x40xf16>
+    // CHECK:   return [[RESHAPE_2]]
+}
+
+// -----
+
 // CHECK-LABEL: @ConvertConvertOpTo4dFrom5D
 func.func @ConvertConvertOpTo4dFrom5D(%arg0: tensor<1x2x8x4096x512xf32>) -> tensor<1x2x8x4096x512xf16> {
     %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x2x8x4096x512xf32> -> tensor<1x2x8x4096x512xf16>
@@ -1431,12 +1527,12 @@ func.func @ConvertAccumulate(%LHS: tensor<16x96xf32>, %RHS: tensor<16x96xf32>) -
     %ADD = IE.Accumulate(%LHS, %RHS) {
         operandSegmentSizes = array<i32: 1, 1, 0, 0>
     } : tensor<16x96xf32>, tensor<16x96xf32> -> tensor<16x96xf32>
-    // CHECK:   [[RESHAPE_LHS:%.+]] = IE.AffineReshape([[LHS]]) {
+    // CHECK:   [[RESHAPE_RHS:%.+]] = IE.AffineReshape([[RHS]]) {
     // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1, 2], [3]],
     // CHECK-SAME:              shape_value = [1, 1, 16, 96]
     // CHECK-SAME:  } : tensor<16x96xf32> -> tensor<1x1x16x96xf32>
 
-    // CHECK:   [[RESHAPE_RHS:%.+]] = IE.AffineReshape([[RHS]]) {
+    // CHECK:   [[RESHAPE_LHS:%.+]] = IE.AffineReshape([[LHS]]) {
     // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1, 2], [3]],
     // CHECK-SAME:              shape_value = [1, 1, 16, 96]
     // CHECK-SAME:  } : tensor<16x96xf32> -> tensor<1x1x16x96xf32>
@@ -1478,12 +1574,12 @@ func.func @ConvertAccumulateWithScales(%LHS: tensor<16x96xf32>,
     %ADD = IE.Accumulate(%LHS, %RHS, %LHS_SCALE, %RHS_SCALE) {
         operandSegmentSizes = array<i32: 1, 1, 1, 1>
     } : tensor<16x96xf32>, tensor<16x96xf32>, tensor<96xf32>, tensor<96xf32> -> tensor<16x96xf32>
-    // CHECK:   [[RESHAPE_LHS:%.+]] = IE.AffineReshape([[LHS]]) {
+    // CHECK:   [[RESHAPE_RHS:%.+]] = IE.AffineReshape([[RHS]]) {
     // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1, 2], [3]],
     // CHECK-SAME:              shape_value = [1, 1, 16, 96]
     // CHECK-SAME:  } : tensor<16x96xf32> -> tensor<1x1x16x96xf32>
 
-    // CHECK:   [[RESHAPE_RHS:%.+]] = IE.AffineReshape([[RHS]]) {
+    // CHECK:   [[RESHAPE_LHS:%.+]] = IE.AffineReshape([[LHS]]) {
     // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1, 2], [3]],
     // CHECK-SAME:              shape_value = [1, 1, 16, 96]
     // CHECK-SAME:  } : tensor<16x96xf32> -> tensor<1x1x16x96xf32>
@@ -1758,12 +1854,42 @@ func.func @ConvertSequeezedTileWith5DInput5DRepeats(%arg0: tensor<1024x1x1x1x128
     return %0 : tensor<1024x1x1x16x128xf16>
 
     // CHECK:       [[RESHAPE_IN:%.+]] = IE.AffineReshape([[INPUT]])
-    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [2], [2], [3]], shape_value = [1, 1024, 1, 128]} : tensor<1024x1x1x1x128xf16> -> tensor<1x1024x1x128xf16>
-    // CHECK:       [[TILE:%.+]] = IE.Tile([[RESHAPE_IN]]) {repeats_values = [1, 1, 16, 1]} : tensor<1x1024x1x128xf16> -> tensor<1x1024x16x128xf16>
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1024, 1, 1, 128]} : tensor<1024x1x1x1x128xf16> -> tensor<1024x1x1x128xf16>
+    // CHECK:       [[TILE:%.+]] = IE.Tile([[RESHAPE_IN]]) {repeats_values = [1, 1, 16, 1]} : tensor<1024x1x1x128xf16> -> tensor<1024x1x16x128xf16>
     // CHECK:       [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TILE]])
-    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [0], [1, 2, 3], [4]], shape_value = [1024, 1, 1, 16, 128]} : tensor<1x1024x16x128xf16> -> tensor<1024x1x1x16x128xf16>
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [1, 2], [3], [4]], shape_value = [1024, 1, 1, 16, 128]} : tensor<1024x1x16x128xf16> -> tensor<1024x1x1x16x128xf16>
 
     // CHECK:       return [[RESHAPE_OUT]] : tensor<1024x1x1x16x128xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @ConvertTileWithRepeatInHighestDim
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2x3x4x5x6xf16>
+func.func @ConvertTileWithRepeatInHighestDim(%arg0: tensor<1x2x3x4x5x6xf16>) -> (tensor<4x2x3x16x5x6xf16>) {
+    %0 = IE.Tile(%arg0) {repeats_values = [4, 1, 1, 4, 1, 1]} : tensor<1x2x3x4x5x6xf16> -> tensor<4x2x3x16x5x6xf16>
+    return %0 : tensor<4x2x3x16x5x6xf16>
+
+    // CHECK:       [[RESHAPE_IN:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [1], [1], [2], [3], [3]], shape_value = [1, 6, 4, 30]} : tensor<1x2x3x4x5x6xf16> -> tensor<1x6x4x30xf16>
+    // CHECK:       [[TILE:%.+]] = IE.Tile([[RESHAPE_IN]]) {repeats_values = [4, 1, 4, 1]} : tensor<1x6x4x30xf16> -> tensor<4x6x16x30xf16>
+    // CHECK:       [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TILE]])
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [1, 2], [3], [4, 5]], shape_value = [4, 2, 3, 16, 5, 6]} : tensor<4x6x16x30xf16> -> tensor<4x2x3x16x5x6xf16>
+
+    // CHECK:       return [[RESHAPE_OUT]] : tensor<4x2x3x16x5x6xf16>
+}
+
+
+// -----
+
+// CHECK-LABEL: func.func @NotConvertTileCouldNotAdjustShape
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2x3x4x5x6xf16>
+func.func @NotConvertTileCouldNotAdjustShape(%arg0: tensor<1x2x3x4x5x6xf16>) -> (tensor<2x4x6x8x10x12xf16>) {
+    %0 = IE.Tile(%arg0) {repeats_values = [2, 2, 2, 2, 2, 2]} : tensor<1x2x3x4x5x6xf16> -> tensor<2x4x6x8x10x12xf16>
+    return %0 : tensor<2x4x6x8x10x12xf16>
+
+    // CHECK:       [[TILE:%.+]] = IE.Tile([[INPUT]]) {repeats_values = [2, 2, 2, 2, 2, 2]} : tensor<1x2x3x4x5x6xf16> -> tensor<2x4x6x8x10x12xf16>
+    // CHECK:       return [[TILE]] : tensor<2x4x6x8x10x12xf16>
 }
 
 // -----
@@ -1860,9 +1986,9 @@ func.func @Convert3DTrivialAddExtendNWithOne(%arg0: tensor<1x512x28xf16>, %arg1:
     %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x512x28xf16>, tensor<1x512x28xf16> -> tensor<1x512x28xf16>
     return %0 : tensor<1x512x28xf16>
 
-    // CHECK:       [[VAL_0:%.+]] = IE.AffineReshape([[INPUT_0]])
-    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 512, 28]} : tensor<1x512x28xf16> -> tensor<1x1x512x28xf16>
     // CHECK:       [[VAL_1:%.+]] = IE.AffineReshape([[INPUT_1]])
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 512, 28]} : tensor<1x512x28xf16> -> tensor<1x1x512x28xf16>
+    // CHECK:       [[VAL_0:%.+]] = IE.AffineReshape([[INPUT_0]])
     // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 512, 28]} : tensor<1x512x28xf16> -> tensor<1x1x512x28xf16>
     // CHECK:       [[ADD:%.+]] = IE.Add([[VAL_0]], [[VAL_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x512x28xf16>, tensor<1x1x512x28xf16> -> tensor<1x1x512x28xf16>
     // CHECK:       [[VAL_2:%.+]] = IE.AffineReshape([[ADD]])
@@ -1884,7 +2010,7 @@ func.func @ConvertLSTMSequence(%arg0: tensor<4x640x64xf16>, %arg1: tensor<4x1x12
   return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<4x1x640x128xf16>, tensor<4x1x128xf16>, tensor<4x1x128xf16>
 
 // CHECK-DAG:   [[VAL_4:%.+]] = const.Declare tensor<1x4x128x128xf16> = dense<2.000000e+00> : tensor<1x512x128xf16>, [#const.Reshape<[1, 4, 128, 128]>]
-// CHECK-DAG:   [[VAL_3:%.+]] = const.Declare tensor<1x1x1x512xf16> = dense<3.000000e+00> : tensor<1x512xf16>, [#const.Reshape<[1, 1, 1, 512]>]
+// CHECK-DAG:   [[VAL_3:%.+]] = const.Declare tensor<1x1x4x128xf16> = dense<3.000000e+00> : tensor<1x512xf16>, [#const.Reshape<[1, 1, 4, 128]>]
 // CHECK-DAG:   [[VAL_5:%.+]] = const.Declare tensor<1x1x512x64xf16> = dense<1.000000e+00> : tensor<1x512x64xf16>, [#const.Reshape<[1, 1, 512, 64]>]
 // CHECK:       [[VAL_6:%.+]] = IE.AffineReshape([[VAL_0]])
 // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [3]], shape_value = [4, 1, 640, 64]} : tensor<4x640x64xf16> -> tensor<4x1x640x64xf16>
@@ -1892,7 +2018,7 @@ func.func @ConvertLSTMSequence(%arg0: tensor<4x640x64xf16>, %arg1: tensor<4x1x12
 // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1, 2], [3]], shape_value = [4, 1, 1, 128]} : tensor<4x1x128xf16> -> tensor<4x1x1x128xf16>
 // CHECK:       [[VAL_8:%.+]] = IE.AffineReshape([[VAL_2]])
 // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1, 2], [3]], shape_value = [4, 1, 1, 128]} : tensor<4x1x128xf16> -> tensor<4x1x1x128xf16>
-// CHECK:       [[VAL_9:%.+]], [[VAL_10:.*]], [[VAL_11:.*]] = IE.LSTMSequence([[VAL_6]], [[VAL_7]], [[VAL_8]], [[VAL_5]], [[VAL_4]], [[VAL_3]]) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>, sequenceLength = 640 : i64} : tensor<4x1x640x64xf16>, tensor<4x1x1x128xf16>, tensor<4x1x1x128xf16>, tensor<1x1x512x64xf16>, tensor<1x4x128x128xf16>, tensor<1x1x1x512xf16> -> tensor<4x1x640x128xf16>, tensor<4x1x1x128xf16>, tensor<4x1x1x128xf16>
+// CHECK:       [[VAL_9:%.+]], [[VAL_10:.*]], [[VAL_11:.*]] = IE.LSTMSequence([[VAL_6]], [[VAL_7]], [[VAL_8]], [[VAL_5]], [[VAL_4]], [[VAL_3]]) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>, sequenceLength = 640 : i64} : tensor<4x1x640x64xf16>, tensor<4x1x1x128xf16>, tensor<4x1x1x128xf16>, tensor<1x1x512x64xf16>, tensor<1x4x128x128xf16>, tensor<1x1x4x128xf16> -> tensor<4x1x640x128xf16>, tensor<4x1x1x128xf16>, tensor<4x1x1x128xf16>
 // CHECK:       [[VAL_12:%.+]] = IE.AffineReshape([[VAL_10]])
 // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [1], [2]], shape_value = [4, 1, 128]} : tensor<4x1x1x128xf16> -> tensor<4x1x128xf16>
 // CHECK:       [[VAL_13:%.+]] = IE.AffineReshape([[VAL_11]])
@@ -2092,10 +2218,10 @@ func.func @Convert3DDynamicDequantizeto4D(%arg0: tensor<28x4608x128x!quant.unifo
     return %0 : tensor<28x4608x128xf16>
 
 
-    // CHECK:       [[AffineReshape0:%.+]] = IE.AffineReshape([[INPUT]])
-    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 28, 4608, 128]} : tensor<28x4608x128x!qElemType> -> tensor<1x28x4608x128x!qElemType>
     // CHECK:       [[AffineReshape1:%.+]] = IE.AffineReshape([[SCALE]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 28, 4608, 1]} : tensor<28x4608x1xf16> -> tensor<1x28x4608x1xf16>
+    // CHECK:       [[AffineReshape0:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 28, 4608, 128]} : tensor<28x4608x128x!qElemType> -> tensor<1x28x4608x128x!qElemType>
     // CHECK:       [[DynamicDequantize:%.+]]  = IE.DynamicDequantize([[AffineReshape0]], [[AffineReshape1]]) {dstElemType = f16} : tensor<1x28x4608x128x!qElemType>, tensor<1x28x4608x1xf16> -> tensor<1x28x4608x128xf16>
     // CHECK:       [[AffineReshape2:%.+]] = IE.AffineReshape([[DynamicDequantize]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [1], [2]], shape_value = [28, 4608, 128]} : tensor<1x28x4608x128xf16> -> tensor<28x4608x128xf16>
@@ -2516,6 +2642,41 @@ func.func @NotConvertSplitOpTo4DWithSmallTensorRank(%arg0: tensor<3x1575x72xf16>
 
 // -----
 
+// CHECK-LABEL: @DynamicQuantize
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x6000x400xf32>, [[INPUT1:%.+]]: tensor<1xf32>, [[INPUT2:%.+]]: tensor<1xf32>
+func.func @DynamicQuantize(%arg0: tensor<1x6000x400xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>)
+-> (tensor<1x6000x400xui8>, tensor<1xf32>, tensor<1xui8>) {
+    %output, %scale, %zero_point = IE.DynamicQuantize(%arg0, %arg1, %arg2) {operandSegmentSizes = array<i32: 1, 1, 1>} : tensor<1x6000x400xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1x6000x400xui8>, tensor<1xf32>, tensor<1xui8>
+    return %output, %scale, %zero_point : tensor<1x6000x400xui8>, tensor<1xf32>, tensor<1xui8>
+
+    // CHECK: [[RESHAPE2:%.+]] = IE.AffineReshape([[INPUT2]])
+    // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1, 2, 3]], shape_value = [1, 1, 1, 1]}
+    // CHECK:               tensor<1xf32> -> tensor<1x1x1x1xf32>
+    // CHECK: [[RESHAPE1:%.+]] = IE.AffineReshape([[INPUT1]])
+    // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1, 2, 3]], shape_value = [1, 1, 1, 1]}
+    // CHECK:               tensor<1xf32> -> tensor<1x1x1x1xf32>
+    // CHECK: [[RESHAPE0:%.+]] = IE.AffineReshape([[INPUT0]])
+    // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 6000, 400]}
+    // CHECK:               tensor<1x6000x400xf32> -> tensor<1x1x6000x400xf32>
+
+    // CHECK: [[OUTPUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = IE.DynamicQuantize([[RESHAPE0]], [[RESHAPE1]], [[RESHAPE2]])
+    // CHECK: {operandSegmentSizes = array<i32: 1, 1, 1>} : tensor<1x1x6000x400xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>
+    // CHECK: -> tensor<1x1x6000x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK: [[OUTRESHAPE0:%.+]] = IE.AffineReshape([[OUTPUT]])
+    // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [1], [2]], shape_value = [1, 6000, 400]}
+    // CHECK:               tensor<1x1x6000x400xui8> -> tensor<1x6000x400xui8>
+    // CHECK: [[OUTRESHAPE1:%.+]] = IE.AffineReshape([[SCALE]])
+    // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [0], [0]], shape_value = [1]}
+    // CHECK:               tensor<1x1x1x1xf32> -> tensor<1xf32>
+    // CHECK: [[OUTRESHAPE2:%.+]] = IE.AffineReshape([[ZP]])
+    // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [0], [0]], shape_value = [1]}
+    // CHECK:               tensor<1x1x1x1xui8> -> tensor<1xui8>
+    // CHECK: return [[OUTRESHAPE0]], [[OUTRESHAPE1]], [[OUTRESHAPE2]] : tensor<1x6000x400xui8>, tensor<1xf32>, tensor<1xui8>
+}
+
+// -----
+
 // CHECK-LABEL: @SDPA
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<32x1x96xf16>, [[ARG1:%.+]]: tensor<32x1024x96xf16>, [[ARG2:%.+]]: tensor<32x96x1024xf16>, [[ARG3:%.+]]: tensor<1x1x1024xf16>)
 func.func @SDPA(%arg0: tensor<32x1x96xf16>, %arg1: tensor<32x1024x96xf16>, %arg2: tensor<32x96x1024xf16>, %arg3: tensor<1x1x1024xf16>) -> (tensor<32x1x96xf16>){
@@ -2528,10 +2689,144 @@ func.func @SDPA(%arg0: tensor<32x1x96xf16>, %arg1: tensor<32x1024x96xf16>, %arg2
 // CHECK-SAME{LITERAL}:     shape_value = [1, 32, 1024, 96]} : tensor<32x1024x96xf16> -> tensor<1x32x1024x96xf16>
 // CHECK:               [[AR2:%.+]] = IE.AffineReshape([[ARG2]])
 // CHECK-SAME{LITERAL}:     shape_value = [1, 32, 96, 1024]} : tensor<32x96x1024xf16> -> tensor<1x32x96x1024xf16>
-// CHECK:               [[AR3:%.+]] = IE.AffineReshape([[ARG3]]) 
+// CHECK:               [[AR3:%.+]] = IE.AffineReshape([[ARG3]])
 // CHECK-SAME{LITERAL}:     shape_value = [1, 1, 1, 1024]} : tensor<1x1x1024xf16> -> tensor<1x1x1x1024xf16>
 // CHECK:               [[SDPA:%.+]] = IE.SDPA([[AR0]], [[AR1]], [[AR2]], [[AR3]]) : tensor<1x32x1x96xf16>, tensor<1x32x1024x96xf16>, tensor<1x32x96x1024xf16>, tensor<1x1x1x1024xf16> -> tensor<1x32x1x96xf16>
-// CHECK:               [[AR4:%.+]] = IE.AffineReshape([[SDPA]]) 
+// CHECK:               [[AR4:%.+]] = IE.AffineReshape([[SDPA]])
 // CHECK-SAME{LITERAL}:     shape_value = [32, 1, 96]} : tensor<1x32x1x96xf16> -> tensor<32x1x96xf16>
 // CHECK:               return [[AR4]] : tensor<32x1x96xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @Convert5DAddWithInterleavedInputTo4D
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<18360x1x4x1x2xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<18360x8x4x4x2xf16>
+func.func @Convert5DAddWithInterleavedInputTo4D(%arg0: tensor<18360x1x4x1x2xf16>, %arg1: tensor<18360x8x4x4x2xf16>) -> tensor<18360x8x4x4x2xf16> {
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<18360x1x4x1x2xf16>, tensor<18360x8x4x4x2xf16> -> tensor<18360x8x4x4x2xf16>
+    return %0 : tensor<18360x8x4x4x2xf16>
+
+    // CHECK:               [[BCAST_SHAPE:%.+]] = const.Declare tensor<5xsi32> =
+    // CHECK-SAME{LITERAL}:     dense<[18360, 8, 4, 4, 2]> : tensor<5xsi64>, [#const.CastElemType<si32>]
+
+    // CHECK:               [[AR_IN_1:%.+]] = IE.AffineReshape([[INPUT_1]]) {
+    // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1], [2], [2], [3], [3]], shape_value = [1, 18360, 32, 8]} : tensor<18360x8x4x4x2xf16> -> tensor<1x18360x32x8xf16>
+
+    // CHECK:               [[BCAST:%.+]] = IE.Broadcast([[INPUT_0]], [[BCAST_SHAPE]]) {mode = #IE.broadcast_type<NUMPY>} : tensor<18360x1x4x1x2xf16>, tensor<5xsi32> -> tensor<18360x8x4x4x2xf16>
+    // CHECK:               [[AR_IN_0:%.+]] = IE.AffineReshape([[BCAST]]) {
+    // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1], [2], [2], [3], [3]], shape_value = [1, 18360, 32, 8]} : tensor<18360x8x4x4x2xf16> -> tensor<1x18360x32x8xf16>
+
+    // CHECK:               [[ADD:%.+]] = IE.Add([[AR_IN_0]], [[AR_IN_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x18360x32x8xf16>, tensor<1x18360x32x8xf16> -> tensor<1x18360x32x8xf16>
+    // CHECK:               [[AR_OUT:%.+]] = IE.AffineReshape([[ADD]]) {
+    // CHECK-SAME{LITERAL}:     dim_mapping = [[0], [0], [1, 2], [3, 4]], shape_value = [18360, 8, 4, 4, 2]} : tensor<1x18360x32x8xf16> -> tensor<18360x8x4x4x2xf16>
+
+    // CHECK:         return [[AR_OUT]] : tensor<18360x8x4x4x2xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @Convert5DMultiplyWithInterleavedInputsTo4D
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<18360x1x4x1x2xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x8x1x4x1xf16>
+func.func @Convert5DMultiplyWithInterleavedInputsTo4D(%arg0: tensor<18360x1x4x1x2xf16>, %arg1: tensor<1x8x1x4x1xf16>) -> tensor<18360x8x4x4x2xf16> {
+    %0 = IE.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<18360x1x4x1x2xf16>, tensor<1x8x1x4x1xf16> -> tensor<18360x8x4x4x2xf16>
+    return %0 : tensor<18360x8x4x4x2xf16>
+
+    // CHECK:               [[BCAST_SHAPE:%.+]] = const.Declare tensor<5xsi32> =
+    // CHECK-SAME{LITERAL}:     dense<[18360, 8, 4, 4, 2]> : tensor<5xsi64>, [#const.CastElemType<si32>]
+
+    // CHECK:               [[BCAST_0:%.+]] = IE.Broadcast([[INPUT_0]], [[BCAST_SHAPE]]) {mode = #IE.broadcast_type<NUMPY>} : tensor<18360x1x4x1x2xf16>, tensor<5xsi32> -> tensor<18360x8x4x4x2xf16>
+    // CHECK:               [[AR_IN_0:%.+]] = IE.AffineReshape([[BCAST_0]]) {
+    // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1], [2], [2], [3], [3]], shape_value = [1, 18360, 32, 8]} : tensor<18360x8x4x4x2xf16> -> tensor<1x18360x32x8xf16>
+
+    // CHECK:               [[BCAST_1:%.+]] = IE.Broadcast([[INPUT_1]], [[BCAST_SHAPE]]) {mode = #IE.broadcast_type<NUMPY>} : tensor<1x8x1x4x1xf16>, tensor<5xsi32> -> tensor<18360x8x4x4x2xf16>
+    // CHECK:               [[AR_IN_1:%.+]] = IE.AffineReshape([[BCAST_1]]) {
+    // CHECK-SAME{LITERAL}:     dim_mapping = [[0, 1], [2], [2], [3], [3]], shape_value = [1, 18360, 32, 8]} : tensor<18360x8x4x4x2xf16> -> tensor<1x18360x32x8xf16>
+
+    // CHECK:               [[MUL:%.+]] = IE.Multiply([[AR_IN_0]], [[AR_IN_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x18360x32x8xf16>, tensor<1x18360x32x8xf16> -> tensor<1x18360x32x8xf16>
+    // CHECK:               [[AR_OUT:%.+]] = IE.AffineReshape([[MUL]]) {
+    // CHECK-SAME{LITERAL}:     dim_mapping = [[0], [0], [1, 2], [3, 4]], shape_value = [18360, 8, 4, 4, 2]} : tensor<1x18360x32x8xf16> -> tensor<18360x8x4x4x2xf16>
+
+    // CHECK:         return [[AR_OUT]] : tensor<18360x8x4x4x2xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @ConvertRollOpWith4DInputData
+// CHECK-SAME:      [[DATA:%.+]]: tensor<1x1x1x16xf16>
+func.func @ConvertRollOpWith4DInputData(%arg0: tensor<1x1x1x16xf16>) -> tensor<1x1x1x16xf16> {
+    %shift = const.Declare tensor<1xsi64> = dense<5> : tensor<1xsi64>
+    %axes =  const.Declare tensor<1xsi64> = dense<3> : tensor<1xsi64>
+    %1 = IE.Roll(%arg0, %shift, %axes) : tensor<1x1x1x16xf16>, tensor<1xsi64>, tensor<1xsi64> -> tensor<1x1x1x16xf16>
+    return %1 : tensor<1x1x1x16xf16>
+
+    // CHECK:    [[SHIFT:%.+]] = const.Declare tensor<1x1x1x2xsi32>
+    // CHECK-SAME{LITERAL}: dense<[[[[0, 5]]]]> : tensor<1x1x1x2xsi32>
+    // CHECK:    [[AXES:%.+]] = const.Declare tensor<1x1x1x2xsi32>
+    // CHECK-SAME{LITERAL}:  dense<[[[[2, 3]]]]> : tensor<1x1x1x2xsi32>
+
+    // CHECK:    [[ROLL:%.+]] = IE.Roll([[DATA]], [[SHIFT]], [[AXES]]) : tensor<1x1x1x16xf16>, tensor<1x1x1x2xsi32>, tensor<1x1x1x2xsi32> -> tensor<1x1x1x16xf16>
+
+    // CHECK:    return [[ROLL]] : tensor<1x1x1x16xf16>
+
+}
+
+// -----
+
+// CHECK-LABEL: func.func @Convert5DAddTo4D
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x1x8x1024x2048xf16>
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x1x1x1024x2048xf16>
+func.func @Convert5DAddTo4D(%arg0: tensor<1x1x8x1024x2048xf16>, %arg1: tensor<1x1x1x1024x2048xf16>) -> tensor<1x1x8x1024x2048xf16> {
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x8x1024x2048xf16>, tensor<1x1x1x1024x2048xf16> -> tensor<1x1x8x1024x2048xf16>
+    return %0 : tensor<1x1x8x1024x2048xf16>
+
+    // CHECK:               [[RESHAPE_0:%.+]] = IE.AffineReshape([[INPUT_0]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [1, 8, 1024, 2048]} : tensor<1x1x8x1024x2048xf16> -> tensor<1x8x1024x2048xf16>
+
+    // CHECK:               [[RESHAPE_1:%.+]] = IE.AffineReshape([[INPUT_1]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2], [3]], shape_value = [1, 1, 1024, 2048]} : tensor<1x1x1x1024x2048xf16> -> tensor<1x1x1024x2048xf16>
+
+    // CHECK:               [[ADD:%.+]] = IE.Add([[RESHAPE_0]], [[RESHAPE_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x8x1024x2048xf16>, tensor<1x1x1024x2048xf16> -> tensor<1x8x1024x2048xf16>
+
+    // CHECK:               [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[ADD]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1], [2], [3], [4]], shape_value = [1, 1, 8, 1024, 2048]} : tensor<1x8x1024x2048xf16> -> tensor<1x1x8x1024x2048xf16>
+
+    // CHECK:               return [[RESHAPE_OUT]] : tensor<1x1x8x1024x2048xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @Convert3DSignOpTo4D
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1024x2048xf16>
+func.func @Convert3DSignOpTo4D(%arg0: tensor<1x1024x2048xf16>) -> tensor<1x1024x2048xf16> {
+    %0 = IE.Sign(%arg0) : tensor<1x1024x2048xf16> -> tensor<1x1024x2048xf16>
+    return %0 : tensor<1x1024x2048xf16>
+
+    // CHECK:               [[RESHAPE_IN:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 1024, 2048]} : tensor<1x1024x2048xf16> -> tensor<1x1x1024x2048xf16>
+
+    // CHECK:               [[SIGN:%.+]] = IE.Sign([[RESHAPE_IN]]) : tensor<1x1x1024x2048xf16> -> tensor<1x1x1024x2048xf16>
+
+    // CHECK:               [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[SIGN]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [1], [2]], shape_value = [1, 1024, 2048]} : tensor<1x1x1024x2048xf16> -> tensor<1x1024x2048xf16>
+
+    // CHECK:               return [[RESHAPE_OUT]] : tensor<1x1024x2048xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @Convert5DSoftmax
+func.func @Convert5DSoftmax(%arg0: tensor<1x1x8x1024x2048xf16>) -> tensor<1x1x8x1024x2048xf16> {
+    %0 = IE.SoftMax(%arg0) {axisInd = 4 : i64} : tensor<1x1x8x1024x2048xf16> -> tensor<1x1x8x1024x2048xf16>
+
+    return %0 : tensor<1x1x8x1024x2048xf16>
+
+    // CHECK:       [[VAL_0:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0], [0], [1], [1], [2, 3]], shape_value = [1, 8192, 2048, 1]} : tensor<1x1x8x1024x2048xf16> -> tensor<1x8192x2048x1xf16>
+    // CHECK:       [[SoftMax:%.+]] = IE.SoftMax([[VAL_0]])
+    // CHECK-SAME:      {axisInd = 2 : i64} : tensor<1x8192x2048x1xf16> -> tensor<1x8192x2048x1xf16>
+    // CHECK:       [[VAL_1:%.+]] = IE.AffineReshape([[SoftMax]])
+    // CHECK-SAME{LITERAL}:      {dim_mapping = [[0, 1], [2, 3], [4], [4]], shape_value = [1, 1, 8, 1024, 2048]} : tensor<1x8192x2048x1xf16> -> tensor<1x1x8x1024x2048xf16>
+
+    // CHECK:   return [[VAL_1]]
 }

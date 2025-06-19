@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/utils/core/enums.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
@@ -581,6 +582,10 @@ mlir::Value createDummyBuffer(mlir::OpBuilder& builder, mlir::Operation* inserti
 VPURT::TaskOp createSyncDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
                             mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
                             llvm::StringLiteral opName = "sync_dma");
+VPURT::TaskOp createBarProgDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                               mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                               VPUIP::PhysicalBarrierRangeAttr physicalBarrierRangeAttr,
+                               llvm::StringLiteral opName = "bar_prog_dma");
 //
 // Distributed Type utils
 //
@@ -756,6 +761,42 @@ size_t getUniqueMembersSize(llvm::iterator_range<T> range) {
 void moveDeclarationsToTop(mlir::func::FuncOp& netFunc);
 
 mlir::Type getCompactBufferType(mlir::Type originalType);
+
+//
+// Dim mapping utils
+//
+
+mlir::SmallVector<int64_t> getSmallVectorFromAffineMap(mlir::AffineMap map);
+
+void splitDimMapping(mlir::SmallVector<int64_t>& dimMappingVec, int64_t dimIndex);
+
+vpux::NDTypeInterface splitNDTypeDimWithBlockSize(vpux::NDTypeInterface ndType, int64_t dimIndex, int64_t blockSize,
+                                                  bool blocksFirst);
+
+//
+// SpaceToDepth utils
+//
+
+mlir::MemRefType splitChannelsDim(vpux::NDTypeInterface ndType, int64_t blockSize, bool blocksFirst);
+
+mlir::MemRefType splitSpatialDims(vpux::NDTypeInterface ndType, int64_t blockSize, bool blocksFirst);
+
+mlir::SmallVector<int64_t> getSpaceToDepthInToOutPermutation(int64_t numDims, bool blocksFirst);
+
+mlir::SmallVector<int64_t> getDefaultLoopOrder(int64_t numDims);
+
+mlir::SmallVector<int64_t> getLinearMemOrder(vpux::NDTypeInterface ndType);
+
+mlir::SmallVector<int64_t> getLoopOrder(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                        mlir::AffineMap mappingOrder);
+
+void splitSpaceToDepth(mlir::PatternRewriter& rewriter,
+                       const std::function<void(mlir::MemRefType, VPURT::DeclareBufferOp, mlir::MemRefType,
+                                                VPURT::DeclareBufferOp, mlir::AffineMap, int64_t)>& builder,
+                       vpux::VPURT::TaskOp vpurtTask, vpux::NDTypeInterface origSpaceSideType,
+                       VPURT::DeclareBufferOp origSpaceSideBuffer, vpux::NDTypeInterface origChannelSideType,
+                       VPURT::DeclareBufferOp origChannelSideBuffer, int64_t blockSize, bool blocksFirst,
+                       int64_t splitCount);
 
 }  // namespace VPUIP
 }  // namespace vpux

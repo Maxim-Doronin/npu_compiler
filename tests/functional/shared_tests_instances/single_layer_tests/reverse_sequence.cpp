@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/reverse_sequence.hpp"
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/reverse_sequence.hpp"
 
 using namespace ov::test::utils;
 

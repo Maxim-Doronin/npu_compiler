@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,6 @@ TEST_P(SplitLayerTestCommon, NPU3720_HW) {
 
 TEST_P(SplitLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

@@ -5,9 +5,9 @@
 
 #include "vpux/compiler/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/async_dialect_utils.hpp"
 
 using namespace vpux;
-
 void vpux::printOutliningInstances(ArrayRef<OutliningInstance> outliningInstances, Logger& log) {
     if (!log.isActive(LogLevel::Debug)) {
         return;
@@ -70,10 +70,10 @@ void OutlinerBase::outline(mlir::ModuleOp moduleOp, StringRef functionSuffix) {
         SmallVector<mlir::Type> inputTypes;
         SmallVector<mlir::Type> outputTypes;
         for (const auto input : slice.inputs) {
-            inputTypes.push_back(input.getType());
+            inputTypes.push_back(getAsyncValueType(input));
         }
         for (const auto output : slice.outputs) {
-            outputTypes.push_back(output.getType());
+            outputTypes.push_back(getAsyncValueType(output));
         }
         auto funcName = printToString("{0}_{1}{2}", netFunc.getName(), functionSuffix, targetIdx + 1);
         funcsInfo[targetIdx].push_back({std::move(inputTypes), std::move(outputTypes), std::move(funcName)});
@@ -81,4 +81,5 @@ void OutlinerBase::outline(mlir::ModuleOp moduleOp, StringRef functionSuffix) {
 
     buildFuncOps(moduleOp, funcsInfo, outlinedTargets);
     buildCallOps(moduleOp, funcsInfo, outlinedTargets);
+    updateMainFuncOp(moduleOp, outlinedTargets);
 }

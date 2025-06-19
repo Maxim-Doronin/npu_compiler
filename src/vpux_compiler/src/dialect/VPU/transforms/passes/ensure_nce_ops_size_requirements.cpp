@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -145,70 +145,44 @@ public:
             : mlir::OpRewritePattern<VPU::NCEConvolutionOp>(ctx), _log(log) {
         this->setDebugName("EnsureConvICRequirements");
     }
+    bool splitNCEConvolutionWithLegacyWeightTable(VPU::NCEConvolutionOp& origOp, mlir::Value& weightInput,
+                                                  SmallVector<VPU::NCEConvolutionOp>& convOps,
+                                                  const OutputTiling& tiles, int64_t maxTiles,
+                                                  VPU::DequantizeOp& weightDequantizeOp, VPU::PPEAttr& strippedPpeAttr,
+                                                  mlir::PatternRewriter& rewriter) const;
+    bool splitNCEConvolutionWithNewWeightTable(VPU::NCEConvolutionOp& origOp, mlir::Value& weightInput,
+                                               SmallVector<VPU::NCEConvolutionOp>& convOps, const OutputTiling& tiles,
+                                               int64_t maxTiles, VPU::DequantizeOp& weightDequantizeOp,
+                                               VPU::PPEAttr& strippedPpeAttr, mlir::PatternRewriter& rewriter) const;
     mlir::LogicalResult matchAndRewrite(VPU::NCEConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;
 };
 
-mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutionOp origOp,
-                                                              mlir::PatternRewriter& rewriter) const {
-    _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
-
-    // Split over IC supported only for NCEConvolutionOp
-    // TODO: E#70421
-
+bool EnsureConvICRequirements::splitNCEConvolutionWithLegacyWeightTable(
+        VPU::NCEConvolutionOp& origOp, mlir::Value& weightInput, SmallVector<VPU::NCEConvolutionOp>& convOps,
+        const OutputTiling& tiles, int64_t maxTiles, VPU::DequantizeOp& weightDequantizeOp,
+        VPU::PPEAttr& strippedPpeAttr, mlir::PatternRewriter& rewriter) const {
     // Get the NCEConvolutionOp's input and kernel sizes
     const auto inputShape = getShape(origOp.getInput());
     auto inputW = inputShape[Dims4D::Act::W];
     auto inputH = inputShape[Dims4D::Act::H];
-    auto inputC = inputShape[Dims4D::Act::C];
     auto inputN = inputShape[Dims4D::Act::N];
-
-    if (inputC <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
-        return mlir::failure();
-    }
 
     const auto kernelShape = getShape(origOp.getFilter());
     auto kernelW = kernelShape[Dims4D::Filter::KX];
     auto kernelH = kernelShape[Dims4D::Filter::KY];
     auto kernelN = kernelShape[Dims4D::Filter::OC];
 
-    SmallVector<VPU::NCEConvolutionOp> convOps;
-    auto maxTiles = vpux::divUp(inputC, VPU::NCEInvariant::VPU_DIMENSION_LIMIT);
-
-    if (maxTiles == 1) {
-        return mlir::failure();
-    }
-
-    Shape nTilesOnDim(inputShape.size(), 1);
-    nTilesOnDim[Dims4D::Act::C] = maxTiles;
-    SmallVector<int64_t> alignment(inputShape.size(), 1);
-    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
-    auto weightsType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
-    auto inAlignment = VPU::NCEInvariant::getAlignment(inType.getElementType());
-    auto weightsAlignment = VPU::NCEInvariant::getAlignment(weightsType.getElementType());
-    // Weights alignment requirement is IC * KH * KW aligned with weightsAlignment. For
-    // int4 case, weightsAlignment = 32, if KH = 2, then IC = 16 can meet the requirement.
-    // So here we fist check if inAlignment can meet the requirement or not.
-    if ((inAlignment * kernelW * kernelH) % weightsAlignment == 0) {
-        alignment[Dims4D::Act::C.ind()] = inAlignment;
-    } else {
-        alignment[Dims4D::Act::C.ind()] = weightsAlignment;
-    }
-
-    auto optionalAlignment = std::optional<ArrayRef<int64_t>>(alignment);
-    const auto tiles = fillDividedTiles(nTilesOnDim, inputShape, optionalAlignment);
-
-    if (mlir::failed(tiles)) {
-        return mlir::failure();
-    }
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
+    auto filterElemType = filterType.getElementType();
 
     auto weightsTable = origOp.getWeightsTable();
     auto weightsTableConst = weightsTable.getDefiningOp<Const::DeclareOp>();
     if (weightsTableConst == nullptr) {
         _log.trace("Could not extract constant from weights table.");
-        return mlir::failure();
+        return false;
     }
     auto weightsTableContent = weightsTableConst.getContent();
     auto weightsTableValues = weightsTableContent.getValues<int32_t>();
@@ -216,27 +190,10 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
     std::vector<int32_t> weightsTableVec(weightsTableVecSize);
     std::copy(weightsTableValues.begin(), weightsTableValues.end(), weightsTableVec.begin());
 
-    auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
-    auto filterElemType = filterType.getElementType();
-
-    // A stripped PPE is generated, ignoring post-op's and per-tensor scale/bias (since NCEConvolutionOp is not a
-    // LayerWithPostOp and scale/bias info is discarded)
-    auto strippedPpeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
-    // The original PPE attribute of the convolution (containing post-op and per-tensor scale/bias info), ends up in the
-    // final Add
-    auto finalPpeAttr = origOp.getPpeAttr();
-
-    auto weightInput = origOp.getFilter();
-    // check for parent weight shave dequantize op
-    auto weightDequantizeOp = weightInput.getDefiningOp<VPU::DequantizeOp>();
-    if (weightDequantizeOp != nullptr) {
-        weightInput = weightDequantizeOp.getInput();
-    }
-
     // TODO: E#70371 - Remaining opens for InputChannels 8K size
     for (auto tile = 0; tile < maxTiles; tile++) {
-        auto offsetIC = tiles.value()[tile].offsets[Dims4D::Act::C];
-        auto sizeIC = tiles.value()[tile].shape[Dims4D::Act::C];
+        auto offsetIC = tiles[tile].offsets[Dims4D::Act::C];
+        auto sizeIC = tiles[tile].shape[Dims4D::Act::C];
         _log.nest().trace("Slicing channels {0} - {1}", offsetIC, sizeIC);
 
         // Slice inputs
@@ -299,6 +256,167 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
                 origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
         convOps.push_back(convOp);
+    }
+
+    return true;
+}
+
+bool EnsureConvICRequirements::splitNCEConvolutionWithNewWeightTable(
+        VPU::NCEConvolutionOp& origOp, mlir::Value& weightInput, SmallVector<VPU::NCEConvolutionOp>& convOps,
+        const OutputTiling& tiles, int64_t maxTiles, VPU::DequantizeOp& weightDequantizeOp,
+        VPU::PPEAttr& strippedPpeAttr, mlir::PatternRewriter& rewriter) const {
+    // Get the NCEConvolutionOp's input and kernel sizes
+    const auto inputShape = getShape(origOp.getInput());
+    auto inputW = inputShape[Dims4D::Act::W];
+    auto inputH = inputShape[Dims4D::Act::H];
+    auto inputN = inputShape[Dims4D::Act::N];
+
+    const auto kernelShape = getShape(origOp.getFilter());
+    auto kernelW = kernelShape[Dims4D::Filter::KX];
+    auto kernelH = kernelShape[Dims4D::Filter::KY];
+    auto kernelN = kernelShape[Dims4D::Filter::OC];
+
+    auto biasTable = origOp.getWeightTableBias();
+    std::vector<float> biasTableVec;
+    auto biasTableVecSize = biasTableVec.size();
+    if (biasTable != nullptr) {
+        auto biasTableConst = biasTable.getDefiningOp<Const::DeclareOp>();
+        if (biasTableConst == nullptr) {
+            _log.trace("Could not extract constant from bias table.");
+            return false;
+        }
+        auto biasTableContent = biasTableConst.getContent();
+        auto biasTableValues = biasTableContent.getValues<float>();
+        biasTableVecSize = biasTableValues.size();
+        biasTableVec.resize(biasTableVecSize, 0);
+        std::copy(biasTableValues.begin(), biasTableValues.end(), biasTableVec.begin());
+    }
+
+    // TODO: E#70371 - Remaining opens for InputChannels 8K size
+    for (auto tile = 0; tile < maxTiles; tile++) {
+        auto offsetIC = tiles[tile].offsets[Dims4D::Act::C];
+        auto sizeIC = tiles[tile].shape[Dims4D::Act::C];
+        _log.nest().trace("Slicing channels {0} - {1}", offsetIC, sizeIC);
+
+        // Slice inputs
+        const Shape inSliceOffsets{0, offsetIC, 0, 0};
+        const Shape inSliceShape{inputN, sizeIC, inputH, inputW};
+        auto convInput = rewriter.create<VPU::SliceOp>(origOp->getLoc(), origOp.getInput(),
+                                                       getIntArrayAttr(rewriter, inSliceOffsets.raw()),
+                                                       getIntArrayAttr(rewriter, inSliceShape.raw()));
+
+        // Slice kernels
+        const Shape kernelSliceOffsets{0, offsetIC, 0, 0};
+        const Shape kernelSliceShape{kernelN, sizeIC, kernelH, kernelW};
+        const auto rawKernelSliceShape = getIntArrayAttr(rewriter, kernelSliceShape);
+        auto weightSlice = rewriter.create<VPU::SliceOp>(origOp.getLoc(), weightInput,
+                                                         getIntArrayAttr(rewriter, kernelSliceOffsets.raw()),
+                                                         getIntArrayAttr(rewriter, kernelSliceShape.raw()));
+        auto weightSliceResult = weightSlice.getResult();
+        if (weightDequantizeOp != nullptr) {
+            auto dequantizeSlice = rewriter.create<VPU::DequantizeOp>(weightDequantizeOp->getLoc(), weightSliceResult,
+                                                                      weightDequantizeOp.getDstElemTypeAttr());
+            weightSliceResult = dequantizeSlice.getResult();
+        }
+
+        // Apply bias for the first convolution only
+        if (tile != 0) {
+            // Set the bias values to 0
+            for (size_t i = 0; i < biasTableVecSize; i++) {
+                biasTableVec[i] = checked_cast<float>(0);
+            }
+        }
+
+        auto newBiasTable = biasTable == nullptr
+                                    ? origOp.getWeightTableBias()
+                                    : VPU::createNewWeightsTableTensor<float>(rewriter, origOp->getLoc(), biasTableVec,
+                                                                              rewriter.getF32Type());
+        auto convOp = rewriter.create<VPU::NCEConvolutionOp>(
+                origOp.getLoc(), origOp.getType(), convInput.getResult(), weightSliceResult, origOp.getWeightsTable(),
+                origOp.getWeightTableDataPtr(), origOp.getWeightTableSpPtr(), origOp.getWeightTableScale(),
+                newBiasTable, origOp.getWeightZeroPoints(), origOp.getStrides(), origOp.getPad(), strippedPpeAttr,
+                origOp.getMpeEngineAttr(), rawKernelSliceShape, origOp.getMultiClusterStrategyAttr(),
+                origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+
+        convOps.push_back(convOp);
+    }
+
+    return true;
+}
+
+mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutionOp origOp,
+                                                              mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
+
+    // Split over IC supported only for NCEConvolutionOp
+    // TODO: E#70421
+
+    // Get some of the NCEConvolutionOp's input and kernel sizes
+    const auto inputShape = getShape(origOp.getInput());
+    auto inputC = inputShape[Dims4D::Act::C];
+
+    if (inputC <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
+        return mlir::failure();
+    }
+
+    const auto kernelShape = getShape(origOp.getFilter());
+    auto kernelW = kernelShape[Dims4D::Filter::KX];
+    auto kernelH = kernelShape[Dims4D::Filter::KY];
+
+    auto maxTiles = vpux::divUp(inputC, VPU::NCEInvariant::VPU_DIMENSION_LIMIT);
+
+    if (maxTiles == 1) {
+        return mlir::failure();
+    }
+
+    Shape nTilesOnDim(inputShape.size(), 1);
+    nTilesOnDim[Dims4D::Act::C] = maxTiles;
+    SmallVector<int64_t> alignment(inputShape.size(), 1);
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto weightsType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
+    auto inAlignment = VPU::NCEInvariant::getAlignment(inType.getElementType());
+    auto weightsAlignment = VPU::NCEInvariant::getAlignment(weightsType.getElementType());
+    // Weights alignment requirement is IC * KH * KW aligned with weightsAlignment. For
+    // int4 case, weightsAlignment = 32, if KH = 2, then IC = 16 can meet the requirement.
+    // So here we fist check if inAlignment can meet the requirement or not.
+    if ((inAlignment * kernelW * kernelH) % weightsAlignment == 0) {
+        alignment[Dims4D::Act::C.ind()] = inAlignment;
+    } else {
+        alignment[Dims4D::Act::C.ind()] = weightsAlignment;
+    }
+
+    auto optionalAlignment = std::optional<ArrayRef<int64_t>>(alignment);
+    const auto tiles = fillDividedTiles(nTilesOnDim, inputShape, optionalAlignment);
+
+    if (mlir::failed(tiles)) {
+        return mlir::failure();
+    }
+
+    // A stripped PPE is generated, ignoring post-op's and per-tensor scale/bias (since NCEConvolutionOp is not a
+    // LayerWithPostOp and scale/bias info is discarded)
+    auto strippedPpeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    // The original PPE attribute of the convolution (containing post-op and per-tensor scale/bias info), ends up in the
+    // final Add
+    auto finalPpeAttr = origOp.getPpeAttr();
+
+    auto weightInput = origOp.getFilter();
+    // check for parent weight shave dequantize op
+    auto weightDequantizeOp = weightInput.getDefiningOp<VPU::DequantizeOp>();
+    if (weightDequantizeOp != nullptr) {
+        weightInput = weightDequantizeOp.getInput();
+    }
+
+    SmallVector<VPU::NCEConvolutionOp> convOps;
+    if (origOp.getWeightsTable()) {
+        if (!splitNCEConvolutionWithLegacyWeightTable(origOp, weightInput, convOps, tiles.value(), maxTiles,
+                                                      weightDequantizeOp, strippedPpeAttr, rewriter)) {
+            return mlir::failure();
+        }
+    } else {
+        if (!splitNCEConvolutionWithNewWeightTable(origOp, weightInput, convOps, tiles.value(), maxTiles,
+                                                   weightDequantizeOp, strippedPpeAttr, rewriter)) {
+            return mlir::failure();
+        }
     }
 
     // Add the outputs of the convolutions with NCEEltwise Add operations. This is needed because NCEConvolutionOp

@@ -7,6 +7,10 @@
 #include <random>
 #include <vector>
 
+#include "openvino/op/convert.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/multiply.hpp"
+
 using namespace ov::test::utils;
 
 namespace ov {

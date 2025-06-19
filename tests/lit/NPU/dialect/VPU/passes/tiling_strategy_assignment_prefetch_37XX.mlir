@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -86,7 +86,7 @@ func.func @SplitSoftMaxOverW(%arg0: tensor<1x20x256x512xf16>) -> tensor<1x20x256
     %0 = VPU.SoftMax(%arg0) {axisInd = 1}: tensor<1x20x256x512xf16> -> tensor<1x20x256x512xf16>
     return %0 : tensor<1x20x256x512xf16>
 
-    // CHECK:       [[OUTPUT:%.+]] = VPU.SoftMax([[INPUT]]) {axisInd = 1 : i64, tilingStrategy = [1, 1, 1, 6]}
+    // CHECK:       [[OUTPUT:%.+]] = VPU.SoftMax([[INPUT]]) {axisInd = 1 : i64, tilingStrategy = [1, 1, 6, 1]}
     // CHECK-SAME:      : tensor<1x20x256x512xf16> -> tensor<1x20x256x512xf16>
 
     // CHECK:       return [[OUTPUT]] : tensor<1x20x256x512xf16>
@@ -150,8 +150,8 @@ func.func @InterpSplitOverH(
 
     // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
     // CHECK-SAME:  tilingStrategy = [1, 1, 1, 5]
-    // CHECH-SAME:  : tensor<1x64x48x80xf16, {order = #NHWC}>
-    // CHECH-SAME:  -> tensor<1x64x192x320xf16, {order = #NHWC}>
+    // CHECK-SAME:  : tensor<1x64x48x80xf16, {order = #NHWC}>
+    // CHECK-SAME:  -> tensor<1x64x192x320xf16, {order = #NHWC}>
 
     // CHECK:  return [[INTERP0]] : tensor<1x64x192x320xf16, {order = #NHWC}>
 }
@@ -175,8 +175,8 @@ func.func @InterpSplitOverHW(
 
     // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
     // CHECK-SAME:  tilingStrategy = [1, 1, 1, 8]
-    // CHECH-SAME:  : tensor<1x128x35x35xf16, {order = #NHWC}>
-    // CHECH-SAME:  -> tensor<1x128x168x335xf16, {order = #NHWC}>
+    // CHECK-SAME:  : tensor<1x128x35x35xf16, {order = #NHWC}>
+    // CHECK-SAME:  -> tensor<1x128x168x335xf16, {order = #NHWC}>
 
     // CHECK:  return [[INTERP0]] : tensor<1x128x168x335xf16, {order = #NHWC}>
 
@@ -202,8 +202,8 @@ func.func @InterpSplitOverCNoCommonFactor(
 
     // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
     // CHECK-SAME:  tilingStrategy = [1, 1, 2, 1]
-    // CHECH-SAME:  : tensor<1x64x31x31xf16, {order = #NHWC}>
-    // CHECH-SAME:  -> tensor<1x64x121x121xf16, {order = #NHWC}>
+    // CHECK-SAME:  : tensor<1x64x31x31xf16, {order = #NHWC}>
+    // CHECK-SAME:  -> tensor<1x64x121x121xf16, {order = #NHWC}>
 
     // CHECK:  return [[INTERP0]] : tensor<1x64x121x121xf16, {order = #NHWC}>
 }
@@ -1100,7 +1100,7 @@ func.func @SplitSelectEltwiseSw(%arg0: tensor<1x10x256x256xf16>, %arg1: tensor<1
     return %0 : tensor<1x10x256x256xf16>
 
     // CHECK:       [[OUTPUT:%.+]] = VPU.Select([[INPUT_0]], [[INPUT_1]], [[INPUT_2]]) {
-    // CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>, tilingStrategy = [1, 1, 3, 1]} : tensor<1x10x256x256xf16>, tensor<1x10x256x256xf16>, tensor<1x10x256x256xf16> -> tensor<1x10x256x256xf16>
+    // CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>, tilingStrategy = [1, 5, 1, 1]} : tensor<1x10x256x256xf16>, tensor<1x10x256x256xf16>, tensor<1x10x256x256xf16> -> tensor<1x10x256x256xf16>
 
     // CHECK:       return [[OUTPUT]] : tensor<1x10x256x256xf16>
 }

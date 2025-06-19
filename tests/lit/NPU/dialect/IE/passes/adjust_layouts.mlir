@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-layouts --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
 // CHECK-LABEL: @InOutNHCW
@@ -389,4 +390,26 @@ func.func @AdjustForGeluWNCH(%arg0: tensor<1x512x6x235xf16, {order = #map}>) -> 
     // CHECK: [[GELU:%.+]] = IE.Gelu([[REORDER0]]) : tensor<1x512x6x235xf16> -> tensor<1x512x6x235xf16>
     // CHECK: [[REORDER1:%.+]] = IE.Reorder([[GELU]]) {dstOrder = #map} : tensor<1x512x6x235xf16> -> tensor<1x512x6x235xf16, {order = #map}>
     // CHECK: return [[REORDER1]] : tensor<1x512x6x235xf16, {order = #map}>
+}
+
+// -----
+
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL:   @AdjustForPReluNWCH
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x64x1x41xf16, {order = #NWCH}>, [[INPUT1:%.+]]: tensor<1x64x1x1xf16, {order = #NWCH}>)
+func.func @AdjustForPReluNWCH(%arg0: tensor<1x64x1x41xf16, {order = #NWCH}>,
+                              %arg1: tensor<1x64x1x1xf16, {order = #NWCH}>)
+                              -> tensor<1x64x1x41xf16, {order = #NWCH}> {
+    %0 = IE.PRelu(%arg0, %arg1) : tensor<1x64x1x41xf16, {order = #NWCH}>, tensor<1x64x1x1xf16, {order = #NWCH}> -> tensor<1x64x1x41xf16, {order = #NWCH}>
+
+    return %0 : tensor<1x64x1x41xf16, {order = #NWCH}>
+
+    // CHECK: [[REORDER_IN0:%.+]] = IE.Reorder([[INPUT0]]) {dstOrder = #NCHW} : tensor<1x64x1x41xf16, {order = #NWCH}> -> tensor<1x64x1x41xf16>
+    // CHECK: [[REORDER_IN1:%.+]] = IE.Reorder([[INPUT1]]) {dstOrder = #NCHW} : tensor<1x64x1x1xf16, {order = #NWCH}> -> tensor<1x64x1x1xf16>
+    // CHECK: [[PRELU:%.+]] = IE.PRelu([[REORDER_IN0]], [[REORDER_IN1]]) : tensor<1x64x1x41xf16>, tensor<1x64x1x1xf16> -> tensor<1x64x1x41xf16>
+    // CHECK: [[REORDER_OUT:%.+]] = IE.Reorder([[PRELU]]) {dstOrder = #NWCH} : tensor<1x64x1x41xf16> -> tensor<1x64x1x41xf16, {order = #NWCH}>
+
+    // CHECK: return [[REORDER_OUT]] : tensor<1x64x1x41xf16, {order = #NWCH}>
 }

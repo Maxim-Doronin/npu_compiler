@@ -9,6 +9,9 @@
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/gather_dma_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/dynamic_shape_propagation.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include "vpux/utils/core/checked_cast.hpp"
@@ -70,30 +73,52 @@ mlir::LogicalResult vpux::VPU::GatherOp::inferReturnTypes(mlir::MLIRContext* ctx
 
     SmallVector<int64_t> outShape;
 
-    // calculate output shape
-    int64_t batchDims = gather.getBatchDims();
-    int64_t axisVal = checked_cast<int64_t>(*axis);
-    int64_t indicesRank = gather.getIndicesRank().value_or(indicesShape.size());
-    int64_t outRank = inputShape.size() + indicesRank - 1 - batchDims;
-    int64_t i = 0;
+    SmallVector<int64_t> outShapeBounds;
 
-    for (; i < batchDims; i++) {
-        outShape.push_back(inputShape[i] & indicesShape[i]);
-    }
-    for (; i < axisVal; i++) {
-        outShape.push_back(inputShape[i]);
-    }
-    for (; i < axisVal + indicesRank - batchDims; i++) {
-        outShape.push_back(indicesShape[batchDims - axisVal + i]);
-    }
-    for (; i < outRank; i++) {
-        outShape.push_back(inputShape[batchDims + 1 - indicesRank + i]);
-    }
+    auto calculateOutputShape = [&](auto& shape, const auto& indicesShape) {
+        int64_t batchDims = gather.getBatchDims();
+        int64_t axisVal = checked_cast<int64_t>(*axis);
+        int64_t indicesRank = gather.getIndicesRank().value_or(indicesShape.size());
+        int64_t outRank = inputShape.size() + indicesRank - 1 - batchDims;
+        int64_t i = 0;
+
+        for (; i < batchDims; i++) {
+            shape.push_back(inputShape[i] & indicesShape[i]);
+        }
+        for (; i < axisVal; i++) {
+            shape.push_back(inputShape[i]);
+        }
+        for (; i < axisVal + indicesRank - batchDims; i++) {
+            shape.push_back(indicesShape[batchDims - axisVal + i]);
+        }
+        for (; i < outRank; i++) {
+            shape.push_back(inputShape[batchDims + 1 - indicesRank + i]);
+        }
+        // To avoid shape size 0 error, set the shape 1.
+        if (shape.empty()) {
+            shape.push_back(1);
+        }
+    };
+
+    calculateOutputShape(outShape, indicesShape);
 
     auto outType = mlir::RankedTensorType::get(outShape, inType.getElementType(), createTensorAttrFromType(inType));
+    auto indicesType = gather.getIndices().getType();
+    if (auto boundedTensor = mlir::dyn_cast<Core::BoundedTensorType>(indicesType)) {
+        auto indicesBounds = boundedTensor.getBounds().raw();
+        calculateOutputShape(outShapeBounds, indicesBounds);
 
-    inferredReturnTypes.push_back(outType);
+        const auto typeComponents = TypeComponents()
+                                            .setShape(Shape(outShape))
+                                            .setDimsOrder(DimsOrder::fromNumDims(outShape.size()))
+                                            .setBounds(Bounds(outShapeBounds));
 
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(inType).changeTypeComponents(typeComponents);
+
+        inferredReturnTypes.emplace_back(outputType);
+    } else {
+        inferredReturnTypes.emplace_back(outType);
+    }
     return mlir::success();
 }
 
@@ -109,7 +134,7 @@ vpux::InputTiling vpux::VPU::GatherOp::backInferTileInfo(const vpux::TileInfo& o
     int64_t axisValue = 0;
 
     if (getAxisValueAttr() != nullptr) {
-        axisValue = getAxisValueAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+        axisValue = mlir::dyn_cast_or_null<mlir::IntegerAttr>(getAxisValueAttr()).getValue().getSExtValue();
     }
     if (getAxis() != nullptr) {
         auto axisConst = getAxis().getDefiningOp<Const::DeclareOp>();
@@ -121,7 +146,7 @@ vpux::InputTiling vpux::VPU::GatherOp::backInferTileInfo(const vpux::TileInfo& o
     }
     int64_t batchDims = 0;
     if (getBatchDimsAttr() != nullptr) {
-        batchDims = getBatchDimsAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+        batchDims = mlir::dyn_cast_or_null<mlir::IntegerAttr>(getBatchDimsAttr()).getValue().getSExtValue();
     }
 
     const auto indicesRank = getIndicesRank().value_or(origIndicesShape.size());
@@ -141,7 +166,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherOp::getTilingStrategy(TilingMode 
     int64_t axisValue = 0;
 
     if (getAxisValueAttr() != nullptr) {
-        axisValue = getAxisValueAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+        axisValue = mlir::dyn_cast_or_null<mlir::IntegerAttr>(getAxisValueAttr()).getValue().getSExtValue();
     }
     if (getAxis() != nullptr) {
         auto axisConst = getAxis().getDefiningOp<Const::DeclareOp>();
@@ -156,7 +181,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherOp::getTilingStrategy(TilingMode 
 
     int64_t batchDims = 0;
     if (getBatchDimsAttr() != nullptr) {
-        batchDims = getBatchDimsAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+        batchDims = mlir::dyn_cast_or_null<mlir::IntegerAttr>(getBatchDimsAttr()).getValue().getSExtValue();
     }
 
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
@@ -204,6 +229,12 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherOp::getTilingStrategy(TilingMode 
 //
 
 bool vpux::VPU::GatherOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
+    const auto outputShape = getShape(getOutput());
+
+    if (outputShape.isDynamic()) {
+        return false;
+    }
+
     const auto is4DInputs = std::all_of(getOperands().begin(), getOperands().end(), [](auto input) {
         return getShape(input).size() == 4;
     });

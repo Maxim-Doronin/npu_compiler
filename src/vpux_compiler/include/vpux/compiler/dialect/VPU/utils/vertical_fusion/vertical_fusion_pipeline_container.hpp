@@ -17,13 +17,15 @@ Interval for operation in the timeline
 Constructed based on its cost
 */
 struct TimelineInterval {
-    TimelineInterval(StrategyCost begin, StrategyCost end, mlir::Operation* operation, int64_t index);
-    StrategyCost _mBegin;
-    StrategyCost _mEnd;
+    TimelineInterval(StrategyCost begin, StrategyCost end, mlir::Operation* operation, int64_t index,
+                     bool isLastInPipeline = false);
+    StrategyCost _mBegin = 0;
+    StrategyCost _mEnd = 0;
 
-    mlir::Operation* _mOperation;
-    int64_t _mIndex;
+    mlir::Operation* _mOperation = nullptr;
+    int64_t _mIndex = 0;
     VPU::ExecutorKind _mExecutor;
+    bool _mIsLastInPipeline = false;
 };
 
 /*
@@ -36,7 +38,7 @@ public:
 
     // add new operation to the container to be pipelined with current ones
     bool addOperation(mlir::Operation* operation, int64_t index, const StrategyCost& cost);
-    bool addDMA(int64_t index, const StrategyCost& cost);
+    bool addDMA(int64_t index, const StrategyCost& cost, const bool isLast = false);
 
     // get max cost of operations from the container
     StrategyCost maxCost() const;
@@ -55,7 +57,8 @@ public:
 
 private:
     // insert operation into the timeline
-    bool setPlaceInTimeline(mlir::Operation* operation, int64_t index, const StrategyCost& cost);
+    bool setPlaceInTimeline(mlir::Operation* operation, int64_t index, const StrategyCost& cost,
+                            const bool isLast = false);
 
     // timeline intervals
     SmallVector<TimelineInterval> _containerMapper;

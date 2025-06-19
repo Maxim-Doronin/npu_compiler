@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -13,12 +13,15 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/tiling_constraint_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/workload_splitter_base.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
@@ -110,6 +113,18 @@ std::optional<std::tuple<int64_t, int64_t, size_t>> divideTileSizeAndInterval(Di
     }
 
     return std::make_tuple(tileSize, remainderTileSize, tileSizeInterval);
+}
+
+// Define a function for checking if the operation requires DimsGroups5D
+bool requiresDimsGroups5D(mlir::Operation* op) {
+    auto inputRank = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getRank();
+    if (mlir::isa<VPU::SoftMaxOp>(op) && inputRank == 5) {
+        return true;
+    }
+    if (mlir::isa<VPU::NCEMatMulOp>(op)) {
+        return true;
+    }
+    return false;
 }
 
 // Arguments:
@@ -356,7 +371,7 @@ bool vpux::isWeightsFirstNestedTiling(mlir::Operation* op, ShapeRef divisors) {
            filterMemSize * divisors[Dims4D::Act::H] * divisors[Dims4D::Act::W];
 }
 
-std::optional<SmallVector<int64_t>> getAlignment(mlir::Operation* op, ShapeRef divisors, ShapeRef shape) {
+std::optional<SmallVector<int64_t>> vpux::getAlignment(mlir::Operation* op, ShapeRef divisors, ShapeRef shape) {
     std::optional<SmallVector<int64_t>> optionalAlignment = std::nullopt;
 
     if (VPU::isWeightsDequant(op)) {
@@ -410,7 +425,7 @@ std::optional<SmallVector<int64_t>> getAlignment(mlir::Operation* op, ShapeRef d
         optionalAlignment = std::move(alignment);
     } else if (auto tilingIface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op)) {
         // #E152765 - generic support for GNCHW
-        const auto C = mlir::isa<VPU::NCEMatMulOp>(op) ? DimsGroups5D::Act::C.ind() : Dims4D::Act::C.ind();
+        const auto C = requiresDimsGroups5D(op) ? DimsGroups5D::Act::C.ind() : Dims4D::Act::C.ind();
         alignment[C] = std::lcm(tilingIface.getOutputChannelAlignment(), alignment[C]);
         optionalAlignment = std::move(alignment);
     }
@@ -522,6 +537,7 @@ bool isSupportedChannelSizeForSEPDwConv(mlir::Operation* op, int64_t channelSize
 }
 
 SmallVector<int64_t> vpux::divideChannelForSEPDWConv(mlir::Operation* op, int64_t channelSize, int64_t channelDivisor) {
+    VPUX_THROW_WHEN(channelDivisor == 0, "Invalid channel divisor: {0}", channelDivisor);
     if (channelDivisor == 1) {
         return SmallVector<int64_t>{channelSize};
     }
@@ -1685,6 +1701,49 @@ DimArr vpux::getTileDimOrderND(MemShape memShape, DimsOrder dimOrder) {
     return returntileDimOrder;
 }
 
+// Currently only selectOp uses this function, #E167622 make more operations use it.
+DimArr getOuterDimPrioritizedTileDimOrderND(mlir::Operation* op, TilingMode tilingMode, Logger log) {
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+    auto tileDimOrder = getTileDimOrderND(outputType.getMemShape(), outputType.getDimsOrder());
+
+    auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
+    auto tilingBuilder = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(op);
+    if (tilingInfo == nullptr || tilingBuilder == nullptr) {
+        return tileDimOrder;
+    }
+    auto maxNumTiles = tilingBuilder.getMaxNumTiles();
+
+    const auto isSupportedTileSize = [&](ShapeRef nTilesOnDim, TilingMode tilingMode) -> bool {
+        const auto tiles = fillDividedTiles(op, nTilesOnDim, outputType.getShape());
+        if (mlir::failed(tiles)) {
+            return false;
+        }
+        return tilingInfo.isSupportedTiling(tiles.value(), tilingMode, log);
+    };
+
+    auto compareTilingDim = [&](Dim a, Dim b) {
+        SmallVector<int64_t> nTilesOnA(maxNumTiles.size(), 1);
+        nTilesOnA[a.ind()] = maxNumTiles[a.ind()];
+        bool canTilingOverDimAFit = isSupportedTileSize(ShapeRef(nTilesOnA), tilingMode);
+
+        auto dimsOrder = outputType.getDimsOrder();
+        auto dimAPos = dimsOrder.dimPos(a);
+        auto dimBPos = dimsOrder.dimPos(b);
+
+        // Prioritize dimension A for tiling if:
+        // 1. Single-axis tiling over dimension A can fit within CMX.
+        // 2. Dimension A is an outer dimension compared to dimension B.
+        if (!canTilingOverDimAFit) {
+            return false;
+        }
+        return dimAPos < dimBPos;
+    };
+
+    std::sort(tileDimOrder.begin(), tileDimOrder.end(), compareTilingDim);
+
+    return tileDimOrder;
+}
+
 DimArr getTileDimOrderByShape(mlir::Operation* op, Dim filterDimToCompare, Dim actInputDimToCompare) {
     const auto preferTilingOrder = VPU::getSEPConvTilingOrder(op);
     if (preferTilingOrder.has_value()) {
@@ -1805,8 +1864,7 @@ DimArr vpux::getTileDimOrder(mlir::Operation* op, TilingMode tilingMode, Logger 
                                        : DimArr{Dims4D::Act::C, Dims4D::Act::H, Dims4D::Act::W};
                     })
                     .Case<VPU::SoftMaxOp>([&](mlir::Operation* op) {
-                        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
-                        auto tileDimOrder = getTileDimOrderND(outputType.getMemShape(), outputType.getDimsOrder());
+                        auto tileDimOrder = getOuterDimPrioritizedTileDimOrderND(op, tilingMode, log);
                         auto softMaxOp = mlir::cast<VPU::SoftMaxOp>(op);
                         auto axis = softMaxOp.getAxisIndAttr().getValue().getSExtValue();
                         auto dimIt = std::find(tileDimOrder.begin(), tileDimOrder.end(), Dim(axis));
@@ -1859,6 +1917,18 @@ DimArr vpux::getTileDimOrder(mlir::Operation* op, TilingMode tilingMode, Logger 
 
                         VPUX_THROW("Unknown DepthToSpaceMode. BLOCKS_FIRST and DEPTH_FIRST methods are supported only");
                     })
+                    .Case<VPU::MemPermuteOp>([&](mlir::Operation* op) {
+                        log.nest(2).trace("Check tile Dim order for Op at {0}", op->getLoc());
+                        const auto inType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+                        const auto outType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+                        const auto inOrder = inType.getDimsOrder();
+                        const auto outOrder = outType.getDimsOrder();
+                        if ((inOrder == DimsOrder::NHWC) && (outOrder == DimsOrder::NCHW)) {
+                            return DimArr{Dims4D::Act::H, Dims4D::Act::W, Dims4D::Act::C};
+                        } else {  // default behavior
+                            return getTileDimOrderND(outType.getMemShape(), outType.getDimsOrder());
+                        }
+                    })
                     .Case<VPU::NCEPermuteOp>([&](mlir::Operation* op) {
                         log.nest(2).trace("Check tile Dim order for Op at {0}", op->getLoc());
                         return DimArr{Dims4D::Act::H, Dims4D::Act::W, Dims4D::Act::C};
@@ -1866,6 +1936,7 @@ DimArr vpux::getTileDimOrder(mlir::Operation* op, TilingMode tilingMode, Logger 
                     .Case<VPU::NormalizeL2Op>([&](VPU::NormalizeL2Op op) {
                         const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
                         auto tileDimOrder = getTileDimOrderND(outputType.getMemShape(), outputType.getDimsOrder());
+
                         auto axes = parseIntArrayAttr<int64_t>(op.getAxesValue());
 
                         for (auto axis : axes) {
@@ -1893,6 +1964,32 @@ DimArr vpux::getTileDimOrder(mlir::Operation* op, TilingMode tilingMode, Logger 
                         VPUX_THROW_UNLESS(dims.size(), "Could not find dims that can be tiled");
                         return dims;
                     })
+                    .Case<VPU::RollOp>([&](mlir::Operation* op) {
+                        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+                        auto tileDimOrder = getTileDimOrderND(outputType.getMemShape(), outputType.getDimsOrder());
+
+                        auto rollOp = mlir::cast<VPU::RollOp>(op);
+                        auto shiftAndAxesOrFail = IE::getShiftAndAxesForRollOp(rollOp.getLoc(), rollOp.getShift(),
+                                                                               rollOp.getAxes(), outputType.getShape());
+                        // if fail to get shift/axes, return empty DimArr
+                        if (mlir::failed(shiftAndAxesOrFail)) {
+                            return DimArr{};
+                        }
+                        const auto shiftAndAxes = shiftAndAxesOrFail.value();
+                        for (auto axis : shiftAndAxes.axes) {
+                            auto dimIt = std::find(tileDimOrder.begin(), tileDimOrder.end(), Dim(axis));
+                            if (dimIt != tileDimOrder.end()) {
+                                // Tiling along Roll operation axis is not supported
+                                log.nest(2).trace("Removing axis dim {0} for Roll {1}", *dimIt, tileDimOrder);
+                                tileDimOrder.erase(dimIt);
+                            }
+                        }
+                        return tileDimOrder;
+                    })
+                    .Case<VPU::SelectOp>([&](mlir::Operation* op) {
+                        log.nest(2).trace("Check tile Dim order for Op at {0}", op->getLoc());
+                        return getOuterDimPrioritizedTileDimOrderND(op, tilingMode, log);
+                    })
                     .Default([&](mlir::Operation* op) -> DimArr {
                         log.nest(2).trace("Check tile Dim order for Op at {0}", op->getLoc());
                         const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
@@ -1909,9 +2006,17 @@ DimArr vpux::getTileDimOrder(mlir::Operation* op, TilingMode tilingMode, Logger 
 
 bool vpux::isMultiClusterCompatibleForTiling(mlir::Operation* op, const OutputTiling& tiles, Logger log) {
     auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(op);
-    VPUX_THROW_WHEN(op == nullptr, "Operation '{0}' doesn't implement ClusteredOpInterface", op->getName());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Operation '{0}' doesn't implement ClusteredOpInterface", op->getName());
+
+    auto isValidChannelSize = [&](int64_t maxChannelSize) {
+        return !llvm::any_of(tiles, [maxChannelSize](const auto& tile) {
+            ShapeRef shape = tile.shape;
+            return shape[Dims4D::Act::C] > maxChannelSize;
+        });
+    };
+
     if (!clusteredOp->hasAttr(VPU::multiClusterStrategy)) {
-        return true;
+        return isValidChannelSize(VPU::NCEInvariant::VPU_DIMENSION_LIMIT);
     }
 
     // Instead of checking strategy compatible shapes for all tiles, we only check the tiles have unique shapes
@@ -1923,7 +2028,18 @@ bool vpux::isMultiClusterCompatibleForTiling(mlir::Operation* op, const OutputTi
                                               log);
     };
 
-    return llvm::all_of(tileCandidates, isStrategyCompatibleWithTile);
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    auto tileOp = IE::getTileExecutor(module);
+    int64_t numClusters = tileOp.getCount();
+    auto multiClusterStrategy = clusteredOp.getMultiClusterStrategy();
+    int64_t numTilesSplitAcross = multiClusterStrategy.has_value() && (multiClusterStrategy.value() ==
+                                                                       VPU::MultiClusterStrategy::SplitOverKernel)
+                                          ? numClusters
+                                          : 1;
+
+    // If the tileOp will also be split across clusters, each clustered tile will statisfy the dimension limit
+    return isValidChannelSize(numTilesSplitAcross * VPU::NCEInvariant::VPU_DIMENSION_LIMIT) &&
+           llvm::all_of(tileCandidates, isStrategyCompatibleWithTile);
 }
 
 // Compute the maximum number of tiles for each dimension to ensure:
@@ -1934,9 +2050,10 @@ bool vpux::isMultiClusterCompatibleForTiling(mlir::Operation* op, const OutputTi
 SmallVector<int64_t> vpux::getMaxNumTiles(mlir::Operation* op, bool checkMinimalWidthAndHeight) {
     const auto outputShape = getShape(op->getResult(0));
     // #E152765 - generic support for GNCHW
-    const auto dimH = mlir::isa<VPU::NCEMatMulOp>(op) ? DimsGroups5D::Act::H : Dims4D::Act::H;
-    const auto dimW = mlir::isa<VPU::NCEMatMulOp>(op) ? DimsGroups5D::Act::W : Dims4D::Act::W;
-    const auto dimC = mlir::isa<VPU::NCEMatMulOp>(op) ? DimsGroups5D::Act::C : Dims4D::Act::C;
+    const auto dimH = requiresDimsGroups5D(op) ? DimsGroups5D::Act::H : Dims4D::Act::H;
+    const auto dimW = requiresDimsGroups5D(op) ? DimsGroups5D::Act::W : Dims4D::Act::W;
+    const auto dimC = requiresDimsGroups5D(op) ? DimsGroups5D::Act::C : Dims4D::Act::C;
+
     auto maxNumTiles = SmallVector<int64_t>(outputShape.begin(), outputShape.end());
 
     int64_t subByteAlignmentFactor = 1;
@@ -2025,7 +2142,8 @@ SmallVector<int64_t> vpux::getMaxNumTiles(mlir::Operation* op, bool checkMinimal
 
         auto strategy = op->getAttrOfType<VPU::MultiClusterStrategyAttr>(VPU::multiClusterStrategy).getValue();
         auto module = op->getParentOfType<mlir::ModuleOp>();
-        auto tileOp = IE::getTileExecutor(module);
+        auto tileCount = IE::getTileExecutor(module).getCount();
+        VPUX_THROW_WHEN(tileCount <= 0, "Number of tiles should be a positive integer, while it is {0}", tileCount);
         if (strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
             strategy == VPU::MultiClusterStrategy::SplitOverHeightOverlapped) {
             // To ensure the SOH MultiCluster strategy remains compatible and maintains NCE efficiency after tiling:
@@ -2037,24 +2155,24 @@ SmallVector<int64_t> vpux::getMaxNumTiles(mlir::Operation* op, bool checkMinimal
             // Allow tiling down to a single line if the tiling dimension and the MultiCluster segmented dimension are
             // the same.
             minHeightSize = subByteAlignmentFactor;
-            minHeightSize *= tileOp.getCount();
+            minHeightSize *= tileCount;
         } else if (strategy == VPU::MultiClusterStrategy::SplitOverWidth) {
             minWidthSize = subByteAlignmentFactor;
-            minWidthSize *= tileOp.getCount();
+            minWidthSize *= tileCount;
         } else if (strategy == VPU::MultiClusterStrategy::SplitOverKernel) {
             // To make sure the SOK MultiCluster strategy still compatible after tiling,
             // each cluster should compute at least minChannelSize(=16) output channels.
             // For SOK, we can use less than the specified number of clusters, to avoid the requirement to align output
-            int64_t minNumClustersForSOK = tileOp.getCount();
+            int64_t minNumClustersForSOK = tileCount;
             while (minNumClustersForSOK > 0 && outputShape[dimC] % (minChannelSize * minNumClustersForSOK) != 0) {
                 --minNumClustersForSOK;
             }
             if (minNumClustersForSOK <= 1) {
-                minNumClustersForSOK = tileOp.getCount();
+                minNumClustersForSOK = tileCount;
             }
             maxNumTiles[dimC.ind()] = outputShape[dimC] / (minChannelSize * minNumClustersForSOK);
         } else if (strategy == VPU::MultiClusterStrategy::SplitOverGroup) {
-            maxNumTiles[DimsGroups5D::Act::G.ind()] = divUp(outputShape[DimsGroups5D::Act::G], tileOp.getCount());
+            maxNumTiles[DimsGroups5D::Act::G.ind()] = divUp(outputShape[DimsGroups5D::Act::G], tileCount);
         }
     }
 
@@ -2075,6 +2193,9 @@ SmallVector<int64_t> vpux::getMaxNumTiles(mlir::Operation* op, bool checkMinimal
 }
 
 InputTiling vpux::backInferEltwiseTile(mlir::Operation* op, const vpux::TileInfo& outputTile) {
+    auto alignedOp = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op);
+    const auto inChannelAlignment = alignedOp != nullptr ? alignedOp.getInputChannelAlignment() : 1;
+
     SmallVector<TileInfo> inputTiles;
     for (auto& origInput : op->getOpOperands()) {
         const auto curShape = getShape(origInput.get());
@@ -2089,6 +2210,17 @@ InputTiling vpux::backInferEltwiseTile(mlir::Operation* op, const vpux::TileInfo
             if (curShape[d] == 1) {
                 curTile.shape[d] = 1;
                 curTile.offsets[d] = 0;
+            }
+        }
+
+        // It is possible for the input channels to differ from the output channels, if the autopad feature is enabled
+        // In this case, the channel alignment for the IDU and ODU differs. For this reason, the back-inferred input
+        // tiles must maintain their alignment
+        if (curTile.shape.size() == 4) {
+            auto& inChannelsTile = curTile.shape[Dims4D::Act::C];
+            if (inChannelsTile % inChannelAlignment != 0) {
+                const auto alignedInChannelsTile = alignValUp(inChannelsTile, inChannelAlignment);
+                inChannelsTile = alignedInChannelsTile;
             }
         }
 
@@ -2271,7 +2403,8 @@ bool isSupportedTileSizeForLargeFilter(mlir::Operation* origOp, ShapeRef nTilesO
     auto tiledFilterType = tiledOperandTypes[1];
     const auto filterSize = VPU::getRequiredCMXSize({std::move(tiledFilterType)});
     auto largeFilterSizeThreshold = Byte(checked_cast<int64_t>(
-            std::ceil(checked_cast<double>(cmxSize.count()) * FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS)));
+            std::ceil(checked_cast<double>(cmxSize.count()) *
+                      VPU::getConstraint<double>(origOp, VPU::FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS))));
     log.trace(" Tiled filter size : {0}, CMX threshold : {1}", filterSize, largeFilterSizeThreshold);
 
     return filterSize < largeFilterSizeThreshold;
@@ -2281,9 +2414,7 @@ bool isSupportedTileSizeForLargeFilter(mlir::Operation* origOp, ShapeRef nTilesO
 // especially when considering large activation pipelining. It returns true if the tiling size already fits into CMX
 // with fragments considered. Otherwise, it returns false, indicating that the number of tiles should be increased.
 bool isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTilesOnDim, Logger log) {
-    // E#161431
-    const bool disableMe = true;
-    if (disableMe) {
+    if (VPU::getArch(origOp) <= VPU::ArchKind::NPU40XX) {
         return true;
     }
 
@@ -2309,9 +2440,9 @@ bool isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTi
     const auto cmxSize = VPU::getTotalCMXSize(module);
 
     auto tiledOperandTypes = VPUIP::NCEInvariant::getNCEOpsRequiredOperandsForPipelining(origOp, tiling);
-    VPUX_THROW_WHEN(tiledOperandTypes.size() < 3, "Expected 3 operands at least");
+    VPUX_THROW_WHEN(tiledOperandTypes.size() < 2, "Expected 2 operands at least");
     auto tiledInputType = tiledOperandTypes[0];
-    auto tiledOutputType = tiledOperandTypes[2];
+    auto tiledOutputType = tiledOperandTypes.size() == 2 ? tiledOperandTypes[1] : tiledOperandTypes[2];
     const auto inputSize = VPU::getRequiredCMXSize({std::move(tiledInputType)});
     const auto outputSize = VPU::getRequiredCMXSize({std::move(tiledOutputType)});
     auto largeActivationSizeThreshold = Byte(checked_cast<int64_t>(
@@ -2556,7 +2687,7 @@ mlir::FailureOr<OutputTiling> vpux::getHWLayerTilingStrategyWithTileDimOrderForP
     // For pipelining, continue to increase on the dimension of isolated tiling or on the channel dimension in case of
     // neutral tiling to cover cases with large constants
     // #E152765 - generic support for GNCHW
-    auto dimActC = mlir::isa<VPU::NCEMatMulOp>(op) ? DimsGroups5D::Act::C : Dims4D::Act::C;
+    auto dimActC = requiresDimsGroups5D(op) ? DimsGroups5D::Act::C : Dims4D::Act::C;
     const auto targetDim = dimsToTile.size() == 0 ? dimActC : dimsToTile[0];
     Shape prefetchableTilesOnDim = nTilesOnDim;
     auto increaseDimForAlign = [&](Shape& tilesOnDim) -> bool {
@@ -2730,7 +2861,7 @@ mlir::FailureOr<OutputTiling> vpux::isSupportedTileSize(mlir::Operation* op, Sha
 std::pair<Dim, int64_t> vpux::getAlignDimAndSize(mlir::Operation* op) {
     int64_t dimAlignment = 1;
     // #E152765 - generic support for GNCHW
-    auto dimToAlign = mlir::isa<VPU::NCEMatMulOp>(op) ? DimsGroups5D::Act::C : Dims4D::Act::C;
+    auto dimToAlign = requiresDimsGroups5D(op) ? DimsGroups5D::Act::C : Dims4D::Act::C;
 
     if (auto channelsInfo = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op)) {
         dimAlignment = channelsInfo.getOutputChannelAlignment();
@@ -2741,6 +2872,12 @@ std::pair<Dim, int64_t> vpux::getAlignDimAndSize(mlir::Operation* op) {
     if (mlir::isa<VPU::NCEPermuteOp>(op)) {
         const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
         dimToAlign = Dims4D::Act::W;
+        dimAlignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
+    }
+
+    if (mlir::isa<VPU::DequantizeOp>(op)) {
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+        dimToAlign = Dims4D::Filter::OC;
         dimAlignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
     }
 
@@ -2846,7 +2983,7 @@ SmallVector<SmallVector<Dim>> getValidPermutations(mlir::Operation* op, TilingMo
     }
 
     const auto outputShape = getShape(op->getResult(0));
-    const auto& maxNumTiles = tilingBuilder.getMaxNumTiles();
+    const auto& maxNumTiles = getMaxNumTiles(op, true);
     const auto tilingModeToCheck = tilingMode == TilingMode::PIPELINING ? TilingMode::ISOLATED : tilingMode;
 
     Shape maxTilesOnDim(outputShape.size(), 1);

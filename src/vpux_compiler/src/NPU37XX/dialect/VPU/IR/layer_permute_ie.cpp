@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sep_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/asm.hpp"
 
@@ -35,7 +36,7 @@ class LayerWithPermuteInterface final :
         public IE::LayerWithPermuteInterface::ExternalModel<LayerWithPermuteInterface<MainOpType>, MainOpType> {
 public:
     bool isSupportedPermutation(mlir::Operation* nceOp, mlir::Operation* permuteOp) const {
-        if (VPU::getCompilationMode(permuteOp) == VPU::CompilationMode::ReferenceSW) {
+        if (config::getCompilationMode(permuteOp) == config::CompilationMode::ReferenceSW) {
             return false;
         }
 

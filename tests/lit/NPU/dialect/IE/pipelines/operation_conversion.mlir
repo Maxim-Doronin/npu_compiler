@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --operation-conversion %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -284,10 +285,10 @@ func.func @ConvertGPTQWithMergedMatMul(%arg0: tensor<1x1x4096xf16>) -> (tensor<1
     return  %5, %11 : tensor<1x1x1024xf16>, tensor<1x1x512xf16>
 
     // CHECK:     [[CST:%.+]] = const.Declare tensor<1xf16> = dense<2.000000e+00> : tensor<1xf16>
-    // CHECK:     [[FQ_IN_HIGH:%.+]] = const.Declare tensor<1x1xf16> = dense<1.500000e+01> : tensor<1x1x1xf32>, [#const.CastElemType<f16>, #const.Transpose<#map>, #const.Reshape<[1, 1]>]
-    // CHECK:     [[FQ_IN_LOW:%.+]] = const.Declare tensor<1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf32>, [#const.CastElemType<f16>, #const.Transpose<#map>, #const.Reshape<[1, 1]>]
-    // CHECK:     [[FQ_OUT_HIGH:%.+]] = const.Declare tensor<3072x1xf16> = dense<4.500000e+01> : tensor<2x1x1536xf16>, [#const.Transpose<#map>, #const.Reshape<[3072, 1]>]
-    // CHECK:     [[FQ_OUT_LOW:%.+]] = const.Declare tensor<3072x1xf16> = dense<-1.500000e+01> : tensor<2x1x1536xf16>, [#const.Transpose<#map>, #const.Reshape<[3072, 1]>]
+    // CHECK:     [[FQ_IN_HIGH:%.+]] = const.Declare tensor<1x1xf16> = dense<1.500000e+01> : tensor<1x1x1xf32>, [#const.CastElemType<f16>, #const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [1, 1]>]
+    // CHECK:     [[FQ_IN_LOW:%.+]] = const.Declare tensor<1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf32>, [#const.CastElemType<f16>, #const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [1, 1]>]
+    // CHECK:     [[FQ_OUT_HIGH:%.+]] = const.Declare tensor<3072x1xf16> = dense<4.500000e+01> : tensor<2x1x1536xf16>, [#const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [3072, 1]>]
+    // CHECK:     [[FQ_OUT_LOW:%.+]] = const.Declare tensor<3072x1xf16> = dense<-1.500000e+01> : tensor<2x1x1536xf16>, [#const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [3072, 1]>]
     // CHECK:     [[WEIGHTS:%.+]] = const.Declare tensor<3072x2048xf16>
     // CHECK:     [[FQ:%.+]] = IE.FakeQuantize([[WEIGHTS]], [[FQ_IN_LOW]], [[FQ_IN_HIGH]], [[FQ_OUT_LOW]], [[FQ_OUT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 16 : i64} : tensor<3072x2048xf16>, tensor<1x1xf16>, tensor<1x1xf16>, tensor<3072x1xf16>, tensor<3072x1xf16> -> tensor<3072x2048xf16>
     // CHECK:     [[IN_RESHAPE:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [2, 2048, 1, 1]} : tensor<1x1x4096xf16> -> tensor<2x2048x1x1xf16>

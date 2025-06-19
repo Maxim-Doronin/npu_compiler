@@ -251,7 +251,7 @@ bool ExpandEltwisePattern::init() {
         // eltwise, like expand -> add -> add, continue the optimization.
         for (auto user : _eltwiseOp->getResult(0).getUsers()) {
             auto groupConvOp = mlir::dyn_cast<IE::GroupConvolutionOp>(user);
-            if (!mlir::isa<IE::MultiplyOp, IE::SubtractOp, IE::AddOp>(user) && !groupConvIsEltwise(groupConvOp)) {
+            if (!mlir::isa<IE::MultiplyOp, IE::SubtractOp, IE::AddOp>(user) && !isEltwiseGroupConv(groupConvOp)) {
                 return false;
             }
         }
@@ -289,7 +289,7 @@ bool ExpandEltwisePattern::init() {
                 return false;
             }
             auto lastAttr = contentAttr.getTransformations().back();
-            auto padWithZeroAttr = lastAttr.dyn_cast_or_null<vpux::Const::PadWithZeroAttr>();
+            auto padWithZeroAttr = mlir::dyn_cast_or_null<vpux::Const::PadWithZeroAttr>(lastAttr);
             if (padWithZeroAttr == nullptr) {
                 return false;
             }
@@ -342,6 +342,8 @@ bool ExpandEltwisePattern::init() {
             const auto sizeToAlignChannel = alignIface.getInputChannelAlignment();
             auto module = producerOp->getParentOfType<mlir::ModuleOp>();
             const auto numCluster = IE::getTileExecutor(module).getCount();
+            VPUX_THROW_WHEN(numCluster <= 0, "Number of clusters should be a positive integer, while it is {0}",
+                            numCluster);
             // There are two restrictions to ensure this updated shape is always the best solution:
             // 1. The shape meets functional requirements:
             //    Since operations with AlignedChannelsOpInterface are not always NCE tasks and vary with the platform
@@ -652,7 +654,7 @@ mlir::LogicalResult ExpandGroupConvRewriter::matchAndRewrite(IE::GroupConvolutio
     // even if the BaseContent total size larger than 1.
     // Kernel size and Stride size must be 1x1, and must be a depthwise convolution.
     // in that case, the GroupConvolution can be considered as an Eltwise
-    if (!groupConvIsEltwise(layerOp)) {
+    if (!isEltwiseGroupConv(layerOp)) {
         return mlir::failure();
     }
 
@@ -1288,6 +1290,81 @@ mlir::LogicalResult AdjustPermuteQuantizeRewriter::matchAndRewrite(IE::PermuteQu
 }
 
 //
+// AdjustMemPermuteRewriter
+//
+
+class AdjustMemPermuteRewriter final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
+public:
+    AdjustMemPermuteRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::MemPermuteOp>(ctx), _log(log) {
+        setDebugName("AdjustMemPermuteRewriter");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp layerOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult AdjustMemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp layerOp,
+                                                              mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), layerOp->getName(), layerOp->getLoc());
+
+    const auto inputShape = getShape(layerOp.getInput());
+    if (inputShape.size() != 4) {
+        return mlir::failure();
+    }
+
+    const auto memPerm = DimsOrder::fromAffineMap(layerOp.getMemPerm());
+
+    // This rewriter only process MemPermute with 2 non-one dims, and it will be processed by ConvertMemPermuteToOp
+    // pass. Otherwise such MemPermute cannot convert to Pool. And for such MemPermute. And for such MemPermute with 2
+    // non-one dims, only 2 cases, NxCx1x1 and 1xCxHx1. Both of them are reshaped to 1x1xHxW.
+    if (!((inputShape[Dims4D::Act::N] == 1 && inputShape[Dims4D::Act::W] == 1 && memPerm == DimsOrder::NHCW) ||
+          (inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1 && memPerm == DimsOrder::CNHW))) {
+        return mlir::failure();
+    }
+
+    const auto memPermuteOutputOrder = mlir::cast<vpux::NDTypeInterface>(layerOp.getOutput().getType()).getDimsOrder();
+    const auto memPermuteInputOrder = mlir::cast<vpux::NDTypeInterface>(layerOp.getInput().getType()).getDimsOrder();
+    const auto expectedOutOrder = DimsOrder::NCHW;
+    if (memPermuteOutputOrder != expectedOutOrder || memPermuteInputOrder != expectedOutOrder) {
+        return mlir::failure();
+    }
+
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(layerOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
+    auto getNonOneDims = [](ShapeRef shape) {
+        Shape resultShape;
+        llvm::copy_if(shape, std::back_inserter(resultShape), [](int64_t elem) {
+            return elem != 1;
+        });
+        return resultShape;
+    };
+    const auto inputNonOneDims = getNonOneDims(getShape(layerOp.getInput()));
+    if (inputNonOneDims.size() != 2) {
+        return mlir::failure();
+    }
+
+    const auto newShape = Shape({1, 1, inputNonOneDims[Dims4D::Act::N], inputNonOneDims[Dims4D::Act::C]});
+    auto inputShapeCastOp =
+            rewriter.create<IE::ShapeCastOp>(layerOp.getLoc(), inputType.changeShape(newShape), layerOp.getInput(),
+                                             getIntArrayAttr(layerOp.getContext(), newShape));
+
+    const SmallVector<int64_t> newPermVec{0, 1, 3, 2};
+    auto newPerm = mlir::AffineMap::getPermutationMap(ArrayRef(newPermVec), rewriter.getContext());
+    auto newOp = rewriter.create<IE::MemPermuteOp>(layerOp->getLoc(), inputShapeCastOp.getResult(),
+                                                   layerOp.getDstOrderAttr(), mlir::AffineMapAttr::get(newPerm));
+    auto outputShapeCastOp =
+            rewriter.create<IE::ShapeCastOp>(layerOp.getLoc(), outputType, newOp.getOutput(),
+                                             getIntArrayAttr(layerOp.getContext(), outputType.getShape()));
+
+    rewriter.replaceOp(layerOp, outputShapeCastOp.getResult());
+    return mlir::success();
+}
+
+//
 // EltwiseShapeRewriter
 //
 
@@ -1315,11 +1392,18 @@ bool isOutputShapeAligned(mlir::Operation* op, ShapeRef newOutputShape) {
     return newOutputShape[Dims4D::Act::C] % alignIface.getOutputChannelAlignment() == 0;
 }
 
+enum class PatternType { NO_MATCH = 0, SHAPE_OP_BEFORE_NCE = 1, SHAPE_OP_AFTER_NCE = 2 };
+
 template <class EltwiseOp>
-mlir::LogicalResult matchEltwiseShapePattern(EltwiseOp layerOp, SmallVector<mlir::Operation*>& opList, Logger log) {
+PatternType getEltwiseShapePatternType(EltwiseOp layerOp, mlir::Operation*& origShapeOp, Logger log) {
     if (layerOp->getOperands().size() != 2) {
-        return mlir::failure();
+        return PatternType::NO_MATCH;
     }
+
+    if (layerOp.getInputPaddingAttr() != nullptr || layerOp.getOutputPaddingAttr() != nullptr) {
+        return PatternType::NO_MATCH;
+    }
+
     const auto inputOp1 = layerOp->getOperand(0).getDefiningOp();
     const auto inputOp2 = layerOp->getOperand(1).getDefiningOp();
     const bool hasInputsFromSameOp = inputOp1 != nullptr && inputOp1 == inputOp2;
@@ -1336,24 +1420,29 @@ mlir::LogicalResult matchEltwiseShapePattern(EltwiseOp layerOp, SmallVector<mlir
                 (!hasInputsFromSameOp || hasShapeOpBefore) && !VPU::hasMultiBranches(userMaybeShapeOp) &&
                 !VPU::hasMultiBranches(currentOp) &&
                 isOutputShapeAligned(currentOp, getShape(userMaybeShapeOp->getResult(0)))) {
-                opList = SmallVector({layerOp.getOperation(), userMaybeShapeOp, maybeNCEOp});
-                return mlir::success();
+                origShapeOp = userMaybeShapeOp;
+                return PatternType::SHAPE_OP_BEFORE_NCE;
             }
         }
     }
-    // Match NCE -> ShapeCast/AffineReshape => Eltwise(QuantizeCast)
+    // Match NCE -> (Activation) -> ShapeCast/AffineReshape => Eltwise(QuantizeCast)
     auto producerMaybeShapeOp = layerOp->getOperand(0).getDefiningOp();
     if (mlir::isa_and_nonnull<IE::ShapeCastOp, AffineReshapeOp>(producerMaybeShapeOp)) {
-        if (auto maybeNCEOp = producerMaybeShapeOp->getOperand(0).getDefiningOp()) {
-            if (mlir::succeeded(VPU::NCEInvariant::isSupported(maybeNCEOp, log)) && hasInputsFromSameOp &&
-                !VPU::hasMultiBranches(producerMaybeShapeOp) && !VPU::hasMultiBranches(maybeNCEOp) &&
+        if (mlir::Operation* maybeNCEOp = producerMaybeShapeOp->getOperand(0).getDefiningOp()) {
+            if (maybeNCEOp->hasTrait<IE::EltwiseOp>() && maybeNCEOp->getNumOperands() == 1 &&
+                !VPU::hasMultiBranches(maybeNCEOp)) {
+                maybeNCEOp = maybeNCEOp->getOperand(0).getDefiningOp();
+            }
+            if (maybeNCEOp != nullptr && mlir::succeeded(VPU::NCEInvariant::isSupported(maybeNCEOp, log)) &&
+                hasInputsFromSameOp && !VPU::hasMultiBranches(producerMaybeShapeOp) &&
+                !VPU::hasMultiBranches(maybeNCEOp) &&
                 isOutputShapeAligned(layerOp.getOperation(), getShape(producerMaybeShapeOp->getOperand(0)))) {
-                opList = SmallVector({maybeNCEOp, producerMaybeShapeOp, layerOp.getOperation()});
-                return mlir::success();
+                origShapeOp = producerMaybeShapeOp;
+                return PatternType::SHAPE_OP_AFTER_NCE;
             }
         }
     }
-    return mlir::failure();
+    return PatternType::NO_MATCH;
 }
 
 /**
@@ -1372,22 +1461,19 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
                                                                      mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), layerOp->getName(), layerOp->getLoc());
 
-    SmallVector<mlir::Operation*> opList;
-    if (mlir::failed(matchEltwiseShapePattern(layerOp, opList, _log))) {
+    mlir::Operation* origShapeOp = nullptr;
+    auto matchType = getEltwiseShapePatternType(layerOp, origShapeOp, _log);
+    if (matchType == PatternType::NO_MATCH) {
         return mlir::failure();
     }
 
     _log.nest().trace("Matched pattern, rewriting");
-    auto isShapeOpAfterEltwise =
-            mlir::isa<EltwiseOp>(opList[0]) && mlir::isa<IE::ShapeCastOp, AffineReshapeOp>(opList[1]);
-    auto origShapeOp = opList[1];
     const auto origShapeInType = mlir::cast<vpux::NDTypeInterface>(origShapeOp->getOperand(0).getType());
     const auto origShapeOutType = mlir::cast<vpux::NDTypeInterface>(origShapeOp->getResult(0).getType());
     const auto origEltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(layerOp->getResult(0).getType());
-    auto newEltwiseShape = isShapeOpAfterEltwise ? origShapeOutType.getShape() : origShapeInType.getShape();
-    auto newEltwiseOutputType = origEltwiseOutputType.changeShape(newEltwiseShape);
     auto quantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(*layerOp->getUsers().begin());
-    if (isShapeOpAfterEltwise) {
+
+    if (matchType == PatternType::SHAPE_OP_BEFORE_NCE) {
         // For Eltwise(QuantizeCast)-ShapeCast/AffineReshape-NCE
         // create new ShapeCastOp/AffineReshapeOp for each input
         SmallVector<mlir::Value> newInputValues;
@@ -1399,10 +1485,12 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
             newInputValues.push_back(newShapeOp->getResult(0));
         }
         // Update EltwiseOp
+        auto newEltwiseShape = origShapeOutType.getShape();
+        auto newEltwiseOutputType = origEltwiseOutputType.changeShape(newEltwiseShape);
         auto newEltwise = rewriter.template create<EltwiseOp>(
                 layerOp->getLoc(), newEltwiseOutputType, newInputValues[0], newInputValues[1],
                 layerOp.getAutoBroadcast(), layerOp.getPostOpAttr(), layerOp.getClampAttr(),
-                layerOp.getOutputPaddingAttr(), /*inputPadding=*/nullptr);
+                layerOp.getOutputPaddingAttr(), layerOp.getInputPaddingAttr());
         mlir::Value newOutput = newEltwise->getResult(0);
         // Update QuantizeCastOp
         if (quantizeCastOp) {
@@ -1411,13 +1499,15 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
                                 .getResult();
         }
         origShapeOp->getResult(0).replaceAllUsesWith(newOutput);
-    } else {
-        // For NCE-ShapeCast/AffineReshape-Eltwise(QuantizeCast)
+    } else if (matchType == PatternType::SHAPE_OP_AFTER_NCE) {
+        // For NCE-(Activation)-ShapeCast/AffineReshape-Eltwise(QuantizeCast)
         // Update EltwiseOp
+        auto newEltwiseShape = origShapeInType.getShape();
+        auto newEltwiseOutputType = origEltwiseOutputType.changeShape(newEltwiseShape);
         auto newEltwise = rewriter.template create<EltwiseOp>(
                 layerOp->getLoc(), newEltwiseOutputType, origShapeOp->getOperand(0), origShapeOp->getOperand(0),
-                layerOp.getAutoBroadcast(), layerOp.getPostOpAttr(), layerOp.getClampAttr(), /*outputPadding=*/nullptr,
-                layerOp.getInputPaddingAttr());
+                layerOp.getAutoBroadcast(), layerOp.getPostOpAttr(), layerOp.getClampAttr(),
+                layerOp.getOutputPaddingAttr(), layerOp.getInputPaddingAttr());
         mlir::Value origOutput = layerOp->getResult(0);
         mlir::Value newOutput = newEltwise->getResult(0);
         // Update QuantizeCastOp
@@ -1435,6 +1525,8 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
 
         vpux::inferReturnTypes(newShapeOp, vpux::InferShapedTypeMode::ALL);
         origOutput.replaceAllUsesWith(newShapeOp->getResult(0));
+    } else {
+        VPUX_THROW("Unknown PatternType");
     }
 
     return mlir::success();
@@ -1452,6 +1544,7 @@ void AdjustInputShapePass::safeRunOnFunc() {
     patterns.add<ExpandGroupConvRewriter>(&ctx, _log);
     patterns.add<ExpandPermuteQuantizeRewriter>(&ctx, _log);
     patterns.add<AdjustPermuteQuantizeRewriter>(&ctx, _log);
+    patterns.add<AdjustMemPermuteRewriter>(&ctx, _log);
     patterns.add<ExpandPoolingRewriter<IE::AvgPoolOp>>(&ctx, benefitLevels[0], _log);
     patterns.add<ExpandPoolingRewriter<IE::MaxPoolOp>>(&ctx, benefitLevels[0], _log);
     patterns.add<ExpandSingleChannelPoolingRewriter<IE::AvgPoolOp>>(&ctx, benefitLevels[1], _log);

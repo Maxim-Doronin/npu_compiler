@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 !qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
 !qElemType2 = !quant.uniform<u8:f16, 1.23423>
 
@@ -118,8 +119,8 @@ func.func @DifferentQuantizationParams(%arg0: tensor<1x2x4x4x!qElemType>) -> ten
 // CHECK-LABEL:  func.func @FuseReshapeQuantizationParamsDifferent
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x12x512x8xf16>)
 module {
-IE.PipelineOptions @Options {
-    IE.Option @VPU.EnableAdaptiveStripping : true
+config.PipelineOptions @Options {
+    config.Option @VPU.EnableAdaptiveStripping : true
 }
 
 func.func @FuseReshapeQuantizationParamsDifferent(%input: tensor<1x12x512x8xf16>) -> tensor<1x12288x4x1xf16> {
@@ -150,8 +151,8 @@ func.func @FuseReshapeQuantizationParamsDifferent(%input: tensor<1x12x512x8xf16>
 // CHECK-LABEL:  func.func @FuseAffineReshapeQuantizationParamsDifferent
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x12x512x8xf16>)
 module {
-IE.PipelineOptions @Options {
-    IE.Option @VPU.EnableAdaptiveStripping : true
+config.PipelineOptions @Options {
+    config.Option @VPU.EnableAdaptiveStripping : true
 }
 
 func.func @FuseAffineReshapeQuantizationParamsDifferent(%input: tensor<1x12x512x8xf16>) -> tensor<1x12288x4x1xf16> {
@@ -182,8 +183,8 @@ func.func @FuseAffineReshapeQuantizationParamsDifferent(%input: tensor<1x12x512x
 // CHECK-LABEL:  func.func @FuseSliceQuantizationParamsDifferent
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x12x256x2xf16>)
 module {
-IE.PipelineOptions @Options {
-    IE.Option @VPU.EnableAdaptiveStripping : true
+config.PipelineOptions @Options {
+    config.Option @VPU.EnableAdaptiveStripping : true
 }
 
 func.func @FuseSliceQuantizationParamsDifferent(%input: tensor<1x12x256x2xf16>) -> tensor<1x12x256x1xf16> {
@@ -214,8 +215,8 @@ func.func @FuseSliceQuantizationParamsDifferent(%input: tensor<1x12x256x2xf16>) 
 // CHECK-LABEL:  func.func @FuseTileQuantizationParamsDifferent
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x12x256x2xf16>)
 module {
-IE.PipelineOptions @Options {
-    IE.Option @VPU.EnableAdaptiveStripping : true
+config.PipelineOptions @Options {
+    config.Option @VPU.EnableAdaptiveStripping : true
 }
 
 func.func @FuseTileQuantizationParamsDifferent(%input: tensor<1x12x256x2xf16>) -> tensor<1x12x256x4xf16> {
@@ -248,8 +249,8 @@ func.func @FuseTileQuantizationParamsDifferent(%input: tensor<1x12x256x2xf16>) -
 // CHECK-LABEL:  func.func @FuseTransposeQuantizationParamsDifferent
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x512x12x8xf16>)
 module {
-IE.PipelineOptions @Options {
-    IE.Option @VPU.EnableAdaptiveStripping : true
+config.PipelineOptions @Options {
+    config.Option @VPU.EnableAdaptiveStripping : true
 }
 
 func.func @FuseTransposeQuantizationParamsDifferent(%input: tensor<1x512x12x8xf16>) -> tensor<1x12x512x8xf16> {

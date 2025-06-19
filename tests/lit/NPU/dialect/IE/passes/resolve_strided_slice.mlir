@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --resolve-strided-slice %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ResolveStridedSliceWithStride
 func.func @ResolveStridedSliceWithStride(%arg0: tensor<1x10x20x30xf16>) -> tensor<1x5x5x5xf16> {
     %0 = IE.StridedSlice(%arg0) {
@@ -241,4 +242,178 @@ func.func @SkipDynamicStridedSlice(%IN: tensor<1x3x16x?xf16, {bounds = #const.Op
 
     return %SLICE : tensor<1x3x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 29]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:   [[SLICE]]
+}
+
+// -----
+
+// CHECK-LABEL:  @StridedSliceNegBeginNegEndNegStrides
+func.func @StridedSliceNegBeginNegEndNegStrides(%arg0: tensor<1x7x1536xf32>) -> tensor<1x2x1536xf32> {
+    %0 = IE.StridedSlice(%arg0) {
+      begins_attr = [0, -1], 
+      ends_attr = [0, -3], 
+      strides_attr = [1, -1],
+      begin_mask = [1, 0], 
+      end_mask = [1, 0], 
+      new_axis_mask = [], 
+      ellipsis_mask = [], 
+      shrink_axis_mask = [], 
+      operandSegmentSizes = array<i32: 1, 0, 0, 0>
+    } : tensor<1x7x1536xf32> -> tensor<1x2x1536xf32>
+
+    // CHECK:   [[IN:%.+]]: tensor<1x7x1536xf32>
+    // CHECK-DAG:  [[VAL0:%.*]] = IE.Slice [[IN]] [0, 0, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL1:%.*]] = IE.Slice [[IN]] [0, 1, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL2:%.*]] = IE.Slice [[IN]] [0, 2, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL3:%.*]] = IE.Slice [[IN]] [0, 3, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL4:%.*]] = IE.Slice [[IN]] [0, 4, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL5:%.*]] = IE.Slice [[IN]] [0, 5, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL6:%.*]] = IE.Slice [[IN]] [0, 6, 0] [1, 1, 1536]
+    // CHECK:  [[VALCAT:%.*]] = IE.Concat([[VAL6]], [[VAL5]], [[VAL4]], [[VAL3]], [[VAL2]], [[VAL1]], [[VAL0]])
+    // CHECK-SAME:  axis = 1 :
+    // CHECK:  [[OUT:%.*]] = IE.Slice [[VALCAT]] [0, 0, 0] [1, 2, 1536]
+    // CHECK:  return [[OUT]]
+
+    return %0 : tensor<1x2x1536xf32>
+}
+
+// -----
+
+// CHECK-LABEL:  @StridedSliceBeginGreaterThanEndNegStrides
+func.func @StridedSliceBeginGreaterThanEndNegStrides(%arg0: tensor<1x7x1536xf32>) -> tensor<1x2x1536xf32> {
+    %0 = IE.StridedSlice(%arg0) {
+      begins_attr = [0, 2], 
+      ends_attr = [0, 0], 
+      strides_attr = [1, -1],
+      begin_mask = [1, 0], 
+      end_mask = [1, 0], 
+      new_axis_mask = [], 
+      ellipsis_mask = [], 
+      shrink_axis_mask = [], 
+      operandSegmentSizes = array<i32: 1, 0, 0, 0>
+    } : tensor<1x7x1536xf32> -> tensor<1x2x1536xf32>
+
+    // CHECK:   [[IN:%.+]]: tensor<1x7x1536xf32>
+    // CHECK-DAG:  [[VAL0:%.*]] = IE.Slice [[IN]] [0, 0, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL1:%.*]] = IE.Slice [[IN]] [0, 1, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL2:%.*]] = IE.Slice [[IN]] [0, 2, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL3:%.*]] = IE.Slice [[IN]] [0, 3, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL4:%.*]] = IE.Slice [[IN]] [0, 4, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL5:%.*]] = IE.Slice [[IN]] [0, 5, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL6:%.*]] = IE.Slice [[IN]] [0, 6, 0] [1, 1, 1536]
+    // CHECK:  [[VALCAT:%.*]] = IE.Concat([[VAL6]], [[VAL5]], [[VAL4]], [[VAL3]], [[VAL2]], [[VAL1]], [[VAL0]])
+    // CHECK-SAME:  axis = 1 :
+    // CHECK:  [[OUT:%.*]] = IE.Slice [[VALCAT]] [0, 4, 0] [1, 2, 1536]
+    // CHECK:  return [[OUT]]
+
+    return %0 : tensor<1x2x1536xf32>
+}
+
+// -----
+
+// CHECK-LABEL:  @StridedSliceMaskedEndNegStrides
+func.func @StridedSliceMaskedEndNegStrides(%arg0: tensor<1x7x1536xf32>) -> tensor<1x2x1536xf32> {
+    %0 = IE.StridedSlice(%arg0) {
+      begins_attr = [0, 1], 
+      ends_attr = [0, 100], 
+      strides_attr = [1, -1],
+      begin_mask = [1, 0], 
+      end_mask = [1, 1], 
+      new_axis_mask = [], 
+      ellipsis_mask = [], 
+      shrink_axis_mask = [], 
+      operandSegmentSizes = array<i32: 1, 0, 0, 0>
+    } : tensor<1x7x1536xf32> -> tensor<1x2x1536xf32>
+
+    // CHECK:   [[IN:%.+]]: tensor<1x7x1536xf32>
+    // CHECK-DAG:  [[VAL0:%.*]] = IE.Slice [[IN]] [0, 0, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL1:%.*]] = IE.Slice [[IN]] [0, 1, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL2:%.*]] = IE.Slice [[IN]] [0, 2, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL3:%.*]] = IE.Slice [[IN]] [0, 3, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL4:%.*]] = IE.Slice [[IN]] [0, 4, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL5:%.*]] = IE.Slice [[IN]] [0, 5, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL6:%.*]] = IE.Slice [[IN]] [0, 6, 0] [1, 1, 1536]
+    // CHECK:  [[VALCAT:%.*]] = IE.Concat([[VAL6]], [[VAL5]], [[VAL4]], [[VAL3]], [[VAL2]], [[VAL1]], [[VAL0]])
+    // CHECK-SAME:  axis = 1 :
+    // CHECK:  [[OUT:%.*]] = IE.Slice [[VALCAT]] [0, 5, 0] [1, 2, 1536]
+    // CHECK:  return [[OUT]]
+
+    return %0 : tensor<1x2x1536xf32>
+}
+
+// -----
+
+// CHECK-LABEL:  @StridedSliceMaskedBeginNegEndNegStrides
+func.func @StridedSliceMaskedBeginNegEndNegStrides(%arg0: tensor<1x7x1536xf32>) -> tensor<1x2x1536xf32> {
+    %0 = IE.StridedSlice(%arg0) {
+      begins_attr = [0, 0, 0], 
+      ends_attr = [0, -3, 0], 
+      strides_attr = [1, -1, 1],
+      begin_mask = [1, 1, 1], 
+      end_mask = [1, 0, 1], 
+      new_axis_mask = [], 
+      ellipsis_mask = [], 
+      shrink_axis_mask = [], 
+      operandSegmentSizes = array<i32: 1, 0, 0, 0>
+    } : tensor<1x7x1536xf32> -> tensor<1x2x1536xf32>
+
+    // CHECK:   [[IN:%.+]]: tensor<1x7x1536xf32>
+    // CHECK-DAG:  [[VAL0:%.*]] = IE.Slice [[IN]] [0, 0, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL1:%.*]] = IE.Slice [[IN]] [0, 1, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL2:%.*]] = IE.Slice [[IN]] [0, 2, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL3:%.*]] = IE.Slice [[IN]] [0, 3, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL4:%.*]] = IE.Slice [[IN]] [0, 4, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL5:%.*]] = IE.Slice [[IN]] [0, 5, 0] [1, 1, 1536]
+    // CHECK-DAG:  [[VAL6:%.*]] = IE.Slice [[IN]] [0, 6, 0] [1, 1, 1536]
+    // CHECK:  [[VALCAT:%.*]] = IE.Concat([[VAL6]], [[VAL5]], [[VAL4]], [[VAL3]], [[VAL2]], [[VAL1]], [[VAL0]])
+    // CHECK-SAME:  axis = 1 :
+    // CHECK:  [[OUT:%.*]] = IE.Slice [[VALCAT]] [0, 0, 0] [1, 2, 1536]
+    // CHECK:  return [[OUT]]
+
+    return %0 : tensor<1x2x1536xf32>
+}
+
+// -----
+
+// CHECK-LABEL:  @SkipStridedSliceNonUnitaryNegStrides
+func.func @SkipStridedSliceNonUnitaryNegStrides(%arg0: tensor<1x7x1536xf32>) -> tensor<1x2x1536xf32> {
+    %0 = IE.StridedSlice(%arg0) {
+      begins_attr = [0, 3], 
+      ends_attr = [0, 0], 
+      strides_attr = [1, -2],
+      begin_mask = [1, 0], 
+      end_mask = [1, 0], 
+      new_axis_mask = [], 
+      ellipsis_mask = [], 
+      shrink_axis_mask = [], 
+      operandSegmentSizes = array<i32: 1, 0, 0, 0>
+    } : tensor<1x7x1536xf32> -> tensor<1x2x1536xf32>
+
+    return %0 : tensor<1x2x1536xf32>
+
+    // CHECK:   [[IN:%.+]]: tensor<1x7x1536xf32>
+    // CHECK:   [[OUT:%.+]] = IE.StridedSlice([[IN]])
+    // CHECK:   return [[OUT]]
+}
+
+// -----
+
+// CHECK-LABEL:  @SkipStridedSliceNonUnitaryPosStrides
+func.func @SkipStridedSliceNonUnitaryPosStrides(%arg0: tensor<1x7x1536xf32>) -> tensor<1x2x1536xf32> {
+    %0 = IE.StridedSlice(%arg0) {
+      begins_attr = [0, 0], 
+      ends_attr = [0, 3], 
+      strides_attr = [1, 2],
+      begin_mask = [1, 0], 
+      end_mask = [1, 0], 
+      new_axis_mask = [], 
+      ellipsis_mask = [], 
+      shrink_axis_mask = [], 
+      operandSegmentSizes = array<i32: 1, 0, 0, 0>
+    } : tensor<1x7x1536xf32> -> tensor<1x2x1536xf32>
+
+    return %0 : tensor<1x2x1536xf32>
+
+    // CHECK:   [[IN:%.+]]: tensor<1x7x1536xf32>
+    // CHECK:   [[OUT:%.+]] = IE.StridedSlice([[IN]])
+    // CHECK:   return [[OUT]]
 }

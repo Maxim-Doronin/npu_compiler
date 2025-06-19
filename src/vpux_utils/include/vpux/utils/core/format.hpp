@@ -97,9 +97,9 @@ struct MapFormatProvider {
         size_t ind = 0;
         const auto size = static_cast<size_t>(map.size());
         for (const auto& p : map) {
-            llvm::detail::build_format_adapter(p.first).format(stream, style);
+            llvm::support::detail::build_format_adapter(p.first).format(stream, style);
             stream << " : ";
-            llvm::detail::build_format_adapter(p.second).format(stream, style);
+            llvm::support::detail::build_format_adapter(p.second).format(stream, style);
 
             if (++ind < size) {
                 stream << ", ";
@@ -142,7 +142,7 @@ namespace llvm {
 template <>
 struct format_provider<std::error_code> final {
     static void format(const std::error_code& err, llvm::raw_ostream& stream, StringRef style) {
-        llvm::detail::build_format_adapter(err.message()).format(stream, style);
+        llvm::support::detail::build_format_adapter(err.message()).format(stream, style);
     }
 };
 
@@ -151,9 +151,9 @@ struct format_provider<std::pair<T1, T2>> final {
     static void format(const std::pair<T1, T2>& val, llvm::raw_ostream& stream, StringRef style) {
         stream << '(';
 
-        llvm::detail::build_format_adapter(val.first).format(stream, style);
+        llvm::support::detail::build_format_adapter(val.first).format(stream, style);
         stream << ", ";
-        llvm::detail::build_format_adapter(val.second).format(stream, style);
+        llvm::support::detail::build_format_adapter(val.second).format(stream, style);
 
         stream << ')';
     }
@@ -199,13 +199,13 @@ private:
     template <size_t Index = 0>
     static auto printItems(const std::tuple<Args...>& val, llvm::raw_ostream& stream, StringRef style)
             -> std::enable_if_t<Index + 1 == sizeof...(Args)> {
-        llvm::detail::build_format_adapter(std::get<Index>(val)).format(stream, style);
+        llvm::support::detail::build_format_adapter(std::get<Index>(val)).format(stream, style);
     }
 
     template <size_t Index = 0>
     static auto printItems(const std::tuple<Args...>& val, llvm::raw_ostream& stream, StringRef style)
             -> std::enable_if_t<Index + 1 < sizeof...(Args)> {
-        llvm::detail::build_format_adapter(std::get<Index>(val)).format(stream, style);
+        llvm::support::detail::build_format_adapter(std::get<Index>(val)).format(stream, style);
         stream << ", ";
 
         printItems<Index + 1>(val, stream, style);

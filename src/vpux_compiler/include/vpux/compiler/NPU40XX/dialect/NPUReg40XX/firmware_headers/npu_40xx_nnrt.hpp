@@ -7,10 +7,10 @@
 
 #pragma once
 
-namespace npu40xx {
-
 #include <cstdint>
 #include <cstdlib>
+
+namespace npu40xx {
 
 // clang-format off
 
@@ -30,6 +30,9 @@ static constexpr size_t NNRT_API_UD2024_44_PATCH_VERSION = 10;
 static constexpr size_t NNRT_API_WLM_BARRIER_FIFO_MAJOR_VERSION = 11;
 static constexpr size_t NNRT_API_WLM_BARRIER_FIFO_MINOR_VERSION = 5;
 static constexpr size_t NNRT_API_WLM_BARRIER_FIFO_PATCH_VERSION = 0;
+
+static constexpr auto VPU_METADATA_STORAGE_START = static_cast<uint32_t>(npu40xx::nn_public::align_storage(alignof(npu40xx::nn_public::VpuDPUInvariant),
+                                                                 npu40xx::nn_public::VPU_METADATA_STORAGE_ADDR));
 
 // clang-format on
 

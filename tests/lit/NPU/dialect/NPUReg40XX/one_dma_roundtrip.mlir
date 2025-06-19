@@ -4,6 +4,7 @@
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
+// RUN: vpux-opt --emit-bytecode --init-compiler="vpu-arch=%arch%" %s | vpux-opt --vpu-arch=%arch% | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 module @OneDMAWithoutAttributes {
@@ -26,7 +27,7 @@ module @OneDMAWithoutAttributes {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0 idx(!VPURegMapped.Index<0:0:0>) <DMA>
       }
       ELF.CreateSection @text.nndma0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-        "NPUReg40XX.NNDMA"() <{descriptor = #NPUReg40XX.DMARegister<
+        NPUReg40XX.NNDMA descriptor = <
           DMARegister {
             dma_watermark {
               UINT dma_watermark = 0,
@@ -160,15 +161,15 @@ module @OneDMAWithoutAttributes {
             dma_pad_24_0 = UINT 0,
             dma_pad_24_1 = UINT 0,
             dma_pad_24_2 = UINT 0,
-          } requires 11:4:10
-        >, input = @DeclareBuffer0, output_buffs = [@DeclareBuffer1], sym_name = "NNDMA_0_0_0"}> : () -> ()
+          }
+        > {input = @DeclareBuffer0, output_buffs = [@DeclareBuffer1], sym_name = "NNDMA_0_0_0"}
       }
     }
     return
   }
 }
 
-// CHECK: descriptor = #NPUReg40XX.DMARegister<
+// CHECK: NPUReg40XX.NNDMA descriptor = <
 // CHECK: DMARegister {
 // CHECK:   dma_watermark {
 // CHECK:     UINT dma_watermark = 0,
@@ -303,7 +304,7 @@ module @OneDMAWithoutAttributes {
 // CHECK:   dma_pad_24_1 = UINT 0,
 // CHECK:   dma_pad_24_2 = UINT 0,
 // CHECK: } requires 11:4:10
-// CHECK: >
+// CHECK: > {input = @DeclareBuffer0, output_buffs = [@DeclareBuffer1], sym_name = "NNDMA_0_0_0"}
 
 // -----
 
@@ -327,7 +328,7 @@ module @OneDMAWithCustomVersions {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0 idx(!VPURegMapped.Index<0:0:0>) <DMA>
       }
       ELF.CreateSection @text.nndma0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-        "NPUReg40XX.NNDMA"() <{descriptor = #NPUReg40XX.DMARegister<
+        NPUReg40XX.NNDMA descriptor = <
           DMARegister {
             dma_watermark {
               UINT dma_watermark = 0,
@@ -462,14 +463,14 @@ module @OneDMAWithCustomVersions {
             dma_pad_24_1 = UINT 0,
             dma_pad_24_2 = UINT 0,
           } requires 11:4:10
-        >, input = @DeclareBuffer0, output_buffs = [@DeclareBuffer1], sym_name = "NNDMA_0_0_0"}> : () -> ()
+        > {input = @DeclareBuffer0, output_buffs = [@DeclareBuffer1], sym_name = "NNDMA_0_0_0"}
       }
     }
     return
   }
 }
 
-// CHECK: descriptor = #NPUReg40XX.DMARegister<
+// CHECK: NPUReg40XX.NNDMA descriptor = <
 // CHECK: DMARegister {
 // CHECK:   dma_watermark {
 // CHECK:     UINT dma_watermark = 0,
@@ -604,4 +605,4 @@ module @OneDMAWithCustomVersions {
 // CHECK:   dma_pad_24_1 = UINT 0,
 // CHECK:   dma_pad_24_2 = UINT 0,
 // CHECK: } requires 11:4:10
-// CHECK: >
+// CHECK: > {input = @DeclareBuffer0, output_buffs = [@DeclareBuffer1], sym_name = "NNDMA_0_0_0"}

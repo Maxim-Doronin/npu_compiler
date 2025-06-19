@@ -192,9 +192,9 @@ mlir::LogicalResult HandleU16FakeQuantizePass::RemoveU16FakeQuantizeRewriter::ma
     auto moduleOp = getModuleOp(origOp);
     auto setAdaptiveStrippingEnabled = VPU::hasEnableAdaptiveStripping(moduleOp);
     auto levels = origOp.getLevels();
-
+    auto maxLevels = QuantizationLevels::QUANT_LEVELS_8BIT;
     // Maximum number of levels that don't exceeds I8/U8 storage type
-    if (!levels.has_value() || *levels <= MAX_LEVELS) {
+    if (!levels.has_value() || *levels <= maxLevels) {
         return mlir::failure();
     }
 
@@ -223,7 +223,7 @@ mlir::LogicalResult HandleU16FakeQuantizePass::RemoveU16FakeQuantizeRewriter::ma
     if (setAdaptiveStrippingEnabled) {
         auto childOp = *origOp.getOutput().getUsers().begin();
         auto childFqOp = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(childOp);
-        if (childFqOp != nullptr && *childFqOp.getLevels() > MAX_LEVELS) {
+        if (childFqOp != nullptr && *childFqOp.getLevels() > maxLevels) {
             const auto inLowValue = IE::getConst(origOp.getInputLow().getDefiningOp<Const::DeclareOp>())[0];
             const auto outLowValue = IE::getConst(origOp.getOutputLow().getDefiningOp<Const::DeclareOp>())[0];
             const auto inHighValue = IE::getConst(origOp.getInputHigh().getDefiningOp<Const::DeclareOp>())[0];

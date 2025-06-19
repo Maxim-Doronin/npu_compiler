@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ParsePrintGroupSparseTensorPartial
 func.func @ParsePrintGroupSparseTensorPartial(%arg0: tensor<1x32x16x16xf16>) -> tensor<1x32x16x16xf16> {
     %0 = const.Declare tensor<1x32x16x16xi1> = dense<1> : tensor<1x32x16x16xi1>
@@ -176,7 +177,7 @@ func.func @CanonicalizeSEAttrSlice(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>)
                              #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 5, 9]>> {
     %data_cmx = VPU.Copy(%arg0)  {out_mem_space = @CMX_NN} : tensor<1x64x4x4xf16, {order = #NHWC}> -> tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
     %cst_sm = const.Declare tensor<1x64x9x9xi1> = dense<true> : tensor<1x64x9x9xi1>
-    %se_table = VPU.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = 64 : i64, seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]> } -> tensor<1x1x9x9xi32, {order = #NHWC}>
+    %se_table = VPU.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = [64], seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]> } -> tensor<1x1x9x9xi32, {order = #NHWC}>
 
     %sparse = VPU.GroupSparseTensor(%data_cmx, %cst_sm, %se_table)  {seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>}
         -> !VPU.SparseTensor<data=tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>,
@@ -207,7 +208,7 @@ func.func @CanonicalizeSEAttrSlice(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>)
     // CHECK-SAME:                       dataShape = [1, 64, 3, 4],
     // CHECK-SAME:                       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 0, 0], sizes = [1, 64, 5, 9]>,
     // CHECK-SAME:                       seDepth = 1 : i64,
-    // CHECK-SAME:                       seSize = 64 : i64}
+    // CHECK-SAME:                       seSize = [64]}
     // CHECK-SAME:                     -> tensor<1x1x5x9xi32, {order = #NHWC}>
 
     // CHECK:       [[DATA_SLICE:%.+]] = VPU.Slice [[DATA]] [0, 0, 0, 0] [1, 64, 3, 4] : tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
@@ -239,7 +240,7 @@ func.func @CanonicalizeSEAttrMultipleSlice(%arg0: tensor<1x64x4x4xf16, {order = 
                                              #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 1, 0], sizes = [1, 64, 4, 9]>>) {
     %data_cmx = VPU.Copy(%arg0)  {out_mem_space = @CMX_NN} : tensor<1x64x4x4xf16, {order = #NHWC}> -> tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
     %cst_sm = const.Declare tensor<1x64x9x9xi1> = dense<true> : tensor<1x64x9x9xi1>
-    %se_table = VPU.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = 64 : i64, seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>} -> tensor<1x1x9x9xi32, {order = #NHWC}>
+    %se_table = VPU.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = [64], seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>} -> tensor<1x1x9x9xi32, {order = #NHWC}>
 
     %sparse = VPU.GroupSparseTensor(%data_cmx, %cst_sm, %se_table)  {seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>}
         -> !VPU.SparseTensor<data=tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>,
@@ -290,7 +291,7 @@ func.func @CanonicalizeSEAttrMultipleSlice(%arg0: tensor<1x64x4x4xf16, {order = 
     // CHECK-SAME:                          dataShape = [1, 64, 3, 4],
     // CHECK-SAME:                          seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 0, 0], sizes = [1, 64, 5, 9]>,
     // CHECK-SAME:                          seDepth = 1 : i64,
-    // CHECK-SAME:                          seSize = 64 : i64}
+    // CHECK-SAME:                          seSize = [64]}
     // CHECK-SAME:                        -> tensor<1x1x5x9xi32, {order = #NHWC}>
 
     // CHECK:       [[SET_SLICE_1:%.+]] = VPU.StorageElementTable {
@@ -298,7 +299,7 @@ func.func @CanonicalizeSEAttrMultipleSlice(%arg0: tensor<1x64x4x4xf16, {order = 
     // CHECK-SAME:                          dataShape = [1, 64, 2, 4],
     // CHECK-SAME:                          seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 1, 0], sizes = [1, 64, 4, 9]>,
     // CHECK-SAME:                          seDepth = 1 : i64,
-    // CHECK-SAME:                          seSize = 64 : i64}
+    // CHECK-SAME:                          seSize = [64]}
     // CHECK-SAME:                          -> tensor<1x1x4x9xi32, {order = #NHWC}>
 
     // CHECK:       [[DATA_SLICE_0:%.+]] = VPU.Slice [[DATA]] [0, 0, 2, 0] [1, 64, 2, 4] : tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
@@ -352,7 +353,7 @@ func.func @MoveChannelSliceBeforeGroupSparseOp(%arg0: tensor<1x128x4x4xf16, {ord
     %cst_sm = const.Declare tensor<1x128x9x9xi1> = dense<true> : tensor<1x128x9x9xi1>
     %se_table = VPU.StorageElementTable {
         dataElemType = f16, dataShape=[1, 128, 4, 4],
-        seDepth = 1 : i64, seSize = 128 : i64,
+        seDepth = 1 : i64, seSize = [128],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                     scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 128, 9, 9]>
     } -> tensor<1x1x9x9xi32, {order = #NHWC}>
@@ -375,7 +376,7 @@ func.func @MoveChannelSliceBeforeGroupSparseOp(%arg0: tensor<1x128x4x4xf16, {ord
     // CHECK-SAME:                       dataElemType = f16, dataShape = [1, 128, 4, 4],
     // CHECK-SAME:                       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:                                scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 0, 0], sizes = [1, 128, 9, 9]>,
-    // CHECK-SAME:                       seDepth = 1 : i64, seSize = 128 : i64
+    // CHECK-SAME:                       seDepth = 1 : i64, seSize = [128]
     // CHECK-SAME:   } -> tensor<1x1x9x9xi32, {order = #NHWC}>
 
     // CHECK:       [[DATA_SLICE:%.+]] = VPU.Slice [[DATA]] [0, 0, 0, 0] [1, 64, 4, 4] : tensor<1x128x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>

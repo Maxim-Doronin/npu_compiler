@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-sw-kernel-cache-handling-ops %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 VPURT.SW.Runtime
     entryPoint: @VPU.SW::@runtime
     stack_configuration: [4096, 4096, 4096, 4096]

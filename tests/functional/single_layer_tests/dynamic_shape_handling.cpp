@@ -6,6 +6,8 @@
 #include "shared_test_classes/base/ov_subgraph.hpp"
 #include "shared_test_classes/single_op/shape_of.hpp"
 
+#include "openvino/op/softmax.hpp"
+
 using namespace ov::test;
 
 namespace LayerTestsDefinitions {

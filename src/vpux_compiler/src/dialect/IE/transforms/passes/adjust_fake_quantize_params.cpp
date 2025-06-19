@@ -360,8 +360,9 @@ mlir::LogicalResult FQParamsRewriter::matchAndRewrite(IE::FakeQuantizeOp fakeQua
                                                       mlir::PatternRewriter& rewriter) const {
     auto levels = fakeQuantizeOp.getLevels();
 
-    // Maximum number of levels that don't exceeds I8/U8 storage type
-    if (!levels.has_value() || *levels <= MAX_LEVELS) {
+    // Maximum number of levels that don't exceeds I8/U8 storage type . TODO: E#169024 adjust logic for int16 quant
+    // levels.
+    if (!levels.has_value() || *levels <= QuantizationLevels::QUANT_LEVELS_8BIT) {
         return matchFailed(rewriter, fakeQuantizeOp,
                            "Skipping AdjustFQParams pass for quantization range < i8 {0} at {1}",
                            fakeQuantizeOp->getName(), fakeQuantizeOp->getLoc());
@@ -421,7 +422,7 @@ mlir::LogicalResult FQParamsRewriter::matchAndRewrite(IE::FakeQuantizeOp fakeQua
             }
         }
 
-        for (auto user : subgraphOp->getResult(0).getUsers()) {
+        for (auto user : llvm::make_early_inc_range(subgraphOp->getResult(0).getUsers())) {
             if (auto fqOut = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(user)) {
                 updateFqParams(fqOut,
                                subgraphMetaData[subgraphOp].isStartNode ? metadata.outputScale : metadata.inputScale,

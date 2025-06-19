@@ -839,7 +839,7 @@ mlir::LogicalResult vpux::VPU::ConcatOp::verify() {
     }
 
     auto input1DataType = getInputs().front().getType();
-    auto input1SparseType = input1DataType.dyn_cast_or_null<VPU::SparseTensorType>();
+    auto input1SparseType = mlir::dyn_cast_or_null<VPU::SparseTensorType>(input1DataType);
     if (input1SparseType != nullptr) {
         input1DataType = input1SparseType.getData();
     }

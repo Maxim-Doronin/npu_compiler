@@ -10,10 +10,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/passes.hpp"
 #include "vpux/compiler/utils/passes.hpp"
-
-#include <npu_40xx_nnrt.hpp>
-
-using namespace npu40xx;
+#include "vpux/compiler/utils/shave.hpp"
 
 namespace vpux::VPUMI40XX {
 #define GEN_PASS_DECL_RESOLVETASKLOCATION
@@ -145,22 +142,6 @@ private:
     void safeRunOnFunc() final;
 };
 
-namespace {
-const std::unordered_map<VPURegMapped::TaskType, size_t> taskBinarySize40XX = {
-        {VPURegMapped::TaskType::DPUInvariant, sizeof(npu40xx::nn_public::VpuDPUInvariant)},
-        {VPURegMapped::TaskType::DPUVariant, sizeof(npu40xx::nn_public::VpuDPUVariant)},
-        {VPURegMapped::TaskType::ActKernelRange, sizeof(npu40xx::nn_public::VpuActKernelRange)},
-        {VPURegMapped::TaskType::ActKernelInvocation, sizeof(npu40xx::nn_public::VpuActKernelInvocation)},
-        {VPURegMapped::TaskType::DMA, sizeof(npu40xx::nn_public::VpuDMATask)},
-        {VPURegMapped::TaskType::M2I, sizeof(npu40xx::nn_public::VpuMediaTask)}};
-}  // namespace
-
-// TODO: E#121934 Add method for VPURegMapped TaskType to be able to directly return its binary size in an
-// arch-specific way
-size_t getTaskBinarySize(VPURegMapped::TaskType taskType, [[maybe_unused]] VPU::ArchKind arch) {
-    return taskBinarySize40XX.at(taskType);
-}
-
 void ResolveTaskLocationPass::createTaskLocationBuffers(VPURegMapped::TaskBufferLayoutOp taskLayoutOp,
                                                         MetadataBuffersContainer& metadataBuffers) {
     auto function = getOperation();
@@ -189,6 +170,9 @@ void ResolveTaskLocationPass::createTaskLocationBuffers(VPURegMapped::TaskBuffer
                         vpux::VPURegMapped::IndexType::get(context, checked_cast<uint32_t>(tile),
                                                            checked_cast<uint32_t>(list), checked_cast<uint32_t>(i)),
                         type, offsetAttr);
+                VPUX_THROW_UNLESS(list < metadataBuffersPerTaskType.size(),
+                                  "Incorrect size of metadata buffers ({0}) for list index {1}",
+                                  metadataBuffersPerTaskType.size(), list);
                 metadataBuffersPerTaskType[list].push_back(declareTaskBufferOp);
             }
         }
@@ -215,16 +199,14 @@ void ResolveTaskLocationPass::createTaskLocationBuffers(VPURegMapped::TaskBuffer
 
 void ResolveTaskLocationPass::safeRunOnFunc() {
     auto funcOp = getOperation();
+    VPUX_THROW_WHEN(VPU::isFifoPerShaveEngineEnabled(funcOp), "Dedicated Shave FIFOs for non-Wlm are not supported.");
     const auto arch = VPU::getArch(funcOp);
 
     MetadataBuffersContainer metadataBuffers;
     MaxTileInfo maxTileInfo;
     maxTileInfo.maxUsedTile = 0;
 
-    auto mappedInferenceRange = funcOp.getOps<VPUMI40XX::MappedInferenceOp>();
-    VPUX_THROW_WHEN(std::distance(mappedInferenceRange.begin(), mappedInferenceRange.end()) != 1,
-                    "There should be only one MappedInferenceOp");
-    auto mappedInferenceOp = *(mappedInferenceRange.begin());
+    auto mappedInferenceOp = VPUMI40XX::getMPI(funcOp);
 
     // resize the container to the number of max used tiles - no need to create task layout for tiles that are not used
     for (auto& taskType : _supportedTaskTypes) {
@@ -260,10 +242,10 @@ void ResolveTaskLocationPass::safeRunOnFunc() {
                         builder.getContext(), mlir::IntegerAttr::get(u64Type, list.dynamicSize),
                         mlir::IntegerAttr::get(u64Type, list.staticSize),
                         mlir::IntegerAttr::get(u64Type, taskOffset + intraTileOffset),
-                        mlir::IntegerAttr::get(u64Type, getTaskBinarySize(taskType, arch)));
+                        mlir::IntegerAttr::get(u64Type, VPUMI40XX::getTaskBinarySize(taskType, arch)));
                 sizesPerList.push_back(taskGroup);
 
-                intraTileOffset += list.staticSize * getTaskBinarySize(taskType, arch);
+                intraTileOffset += list.staticSize * VPUMI40XX::getTaskBinarySize(taskType, arch);
             }
             auto arrayAttr = mlir::ArrayAttr::get(builder.getContext(), sizesPerList);
             sizeForTileAndList.push_back(arrayAttr);

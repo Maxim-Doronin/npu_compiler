@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 !MemRef1 = memref<1x128x64x32xf16, #NWHC>
 !Distributed0 = !VPUIP.DistributedBuffer<1x128x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
@@ -23,9 +24,7 @@ func.func @ParsePrintDistributedBuffer(%arg0: !MemRef1) -> !MemRef1 {
     %1 = VPURT.AllocDistributed -> !Distributed0
     %2 = memref.alloc() : !MemRef1
     %token, %results = async.execute -> !async.value<!Distributed0> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 0 : i64} {
-        %4 = VPUIP.NCEClusterTiling inputs(%arg0 as %arg1: !MemRef1) outputs(%0 as %arg2: memref<1x128x64x32xf16, #NWHC, @CMX_NN>) -> !Distributed0 {
-        %5 = VPUIP.Copy inputs(%arg1 : !MemRef1) outputs(%arg2 : memref<1x128x64x32xf16, #NWHC, @CMX_NN>) -> memref<1x128x64x32xf16, #NWHC, @CMX_NN>
-        }
+        %4 = VPUIP.Copy inputs(%arg0 : !MemRef1) outputs(%0 : !Distributed0) -> !Distributed0
         async.yield %4 : !Distributed0
     }
     %token_0, %results_1:2 = async.execute [%token] (%results as %arg1: !async.value<!Distributed0>) -> (!async.value<!Distributed1>, !async.value<!Distributed2>) attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
@@ -45,9 +44,7 @@ func.func @ParsePrintDistributedBuffer(%arg0: !MemRef1) -> !MemRef1 {
     }
     %token_2, %results_3 = async.execute [%token_0] (%results_1#0 as %arg1: !async.value<!Distributed1>, %results_1#1 as %arg2: !async.value<!Distributed2>) -> !async.value<!MemRef1> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 2 : i64} {
         %4 = VPUIP.ConcatView inputs(%arg1, %arg2 : !Distributed1, !Distributed2) outputs(%1 : !Distributed0) -> !Distributed0
-        %5 = VPUIP.NCEClusterTiling inputs(%4 as %arg3: memref<1x128x64x32xf16, #NWHC, @CMX_NN>) outputs(%2 as %arg4: !MemRef1) -> !MemRef1 {
-        %6 = VPUIP.Copy inputs(%arg3 : memref<1x128x64x32xf16, #NWHC, @CMX_NN>) outputs(%arg4 : !MemRef1) -> !MemRef1
-        }
+        %5 = VPUIP.Copy inputs(%4 : !Distributed0) outputs(%2 : !MemRef1) -> !MemRef1
         async.yield %5 : !MemRef1
     }
     %3 = async.await %results_3 : !async.value<!MemRef1>

@@ -240,7 +240,7 @@ void ConvertWeightsToU8Pass::safeRunOnFunc() {
 
     mlir::TypeConverter typeConverter;
     typeConverter.addConversion([](vpux::NDTypeInterface tensor) {
-        if (const auto quantType = tensor.getElementType().dyn_cast_or_null<mlir::quant::QuantizedType>()) {
+        if (const auto quantType = mlir::dyn_cast_or_null<mlir::quant::QuantizedType>(tensor.getElementType())) {
             // Handle I8 only storage type
             if (llvm::dyn_cast<mlir::IntegerType>(quantType.getStorageType()) && quantType.isSigned() &&
                 quantType.getStorageTypeIntegralWidth() == 8) {

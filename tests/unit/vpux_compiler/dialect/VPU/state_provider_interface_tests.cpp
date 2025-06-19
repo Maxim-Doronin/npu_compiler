@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/Parser/Parser.h>
@@ -129,7 +130,7 @@ TEST_F(StateProviderInterfaceTests, StateProvider_tests) {
     ASSERT_TRUE(func != nullptr);
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -231,7 +232,7 @@ TEST_F(StateProviderInterfaceTests, DefaultStateProvider_tests) {
     ASSERT_TRUE(func != nullptr);
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -338,7 +339,7 @@ TEST_F(StateProviderInterfaceTests, StateProviderNCEPermute_tests) {
 
     module.get()->removeAttr("VPU.arch");
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -450,7 +451,7 @@ TEST_F(StateProviderInterfaceTests, StateProviderMultiUsers_tests) {
     ASSERT_TRUE(func != nullptr);
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -542,7 +543,7 @@ TEST_F(StateProviderInterfaceTests, StateProvider_InitTemp) {
     ASSERT_TRUE(func != nullptr);
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 

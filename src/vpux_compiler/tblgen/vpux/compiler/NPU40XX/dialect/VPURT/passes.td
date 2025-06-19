@@ -73,6 +73,14 @@ def FindWlmEnqueueBarrier : PassBase<"find-wlm-enqueue-barrier", "vpux::Function
     }];
 
     let constructor = "vpux::VPURT::arch40xx::createFindWlmEnqueueBarrierPass()";
+
+    let options = [
+        Option<
+            "enqDmaAtBootstrapOpt", "enq-dma-at-bootstrap",
+            "bool", "",
+            "Enforce enqueuing DMA at bootstrap"
+        >
+    ];
 }
 
 //
@@ -176,11 +184,21 @@ def WlmInsertDummyDmasInPages : PassBase<"wlm-insert-dummy-dmas-in-pages", "vpux
 
     let description = [{
         This pass checks if in each page there is at least 1 DMA of each type to enable possibility
-        of enqueuing all DMAs at bootstrap as single link-list of tasks. If there is no DMA of given type
-        in the page, this pass will insert dummy DMA of this type
+        of enqueuing all DMAs at bootstrap as single link-list of tasks. If there is no DMAx in PageN
+        that guarantees that barriers from PageN-1 have been consumed and there are DMAs of this type
+        in some later pages, then we need to insert task of DMAx in PageN and this DMAx
+        needs to depend on all boundary tasks on PageN-1/PageN border.
     }];
 
     let constructor = "vpux::VPURT::arch40xx::createWlmInsertDummyDmasInPagesPass()";
+
+    let options = [
+        Option<
+            "numBarriersOpt", "num-barriers",
+            "int", "",
+            "Number of physical barriers, available for use"
+        >
+    ];
 }
 
 #endif

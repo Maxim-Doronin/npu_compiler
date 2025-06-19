@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>
+#include <vpu_layer_cost_model.h>
 
 namespace vpux {
 
@@ -18,7 +19,7 @@ constexpr StringLiteral cycleBegin = "cycleBegin";
 constexpr StringLiteral cycleEnd = "cycleEnd";
 
 size_t getDMACost(mlir::Value input, mlir::Value output, VPU::ArchKind archKind,
-                  const std::shared_ptr<VPUNN::VPUCostModel>& costModel);
+                  const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts = 1);
 size_t getDMACost(vpux::NDTypeInterface tensorType, VPUNN::VPUDevice vpuDevice,
                   const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts);
 size_t getDPUCost(mlir::Operation* op);
@@ -49,4 +50,5 @@ VPUNN::Swizzling getVPUNNSwizzlingKey(mlir::Type type);
 VPUNN::ActivationFunction getVPUNNActivationFunction(VPU::PPEAttr ppeAttr);
 VPUNN::SEPModeInfo getSEPModeInfo(VPUIP::SEPInfo sepInfo);
 
+std::string stringifyVPUNNStrategy(VPUNN::VPUTilingStrategy strategy);
 }  // namespace vpux

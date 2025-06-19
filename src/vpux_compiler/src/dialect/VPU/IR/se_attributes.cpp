@@ -20,6 +20,22 @@
 
 using namespace vpux;
 
+namespace {
+
+Shape combineOffsets(ShapeRef origOffset, mlir::ArrayAttr offsetToAdd) {
+    Shape finalOffset(origOffset);
+    if (offsetToAdd != nullptr) {
+        auto offsetToAddVec = parseIntArrayAttr<int64_t>(offsetToAdd);
+        std::transform(offsetToAddVec.begin(), offsetToAddVec.end(), finalOffset.begin(), finalOffset.begin(),
+                       [](auto offsetToAdd, auto baseOffset) {
+                           return offsetToAdd + baseOffset;
+                       });
+    }
+    return finalOffset;
+}
+
+}  // namespace
+
 //
 // SEInterpolateAttr
 //
@@ -529,13 +545,14 @@ Shape VPU::SEInterpolateAttr::backInferInputCoord(ShapeRef outputCoord, ShapeRef
 VPU::SEAttr VPU::SEInterpolateAttr::extractTile(ShapeRef outputTileOffset, ShapeRef outputTileShape,
                                                 ShapeRef inputShape, Shape& inputTileOffset,
                                                 Shape& inputTileShape) const {
-    std::tie(inputTileShape, inputTileOffset) =
-            inferInputTileShapeAndOffset(outputTileOffset, outputTileShape, inputShape);
+    const auto finalOffset = combineOffsets(outputTileOffset, getOffsets());
+
+    std::tie(inputTileShape, inputTileOffset) = inferInputTileShapeAndOffset(finalOffset, outputTileShape, inputShape);
     const auto scales = extractInterpScales(getScale());
     const auto factors = VPU::getNCEInterpolateFactors(scales, getMode(), getCoordinateTransformationMode());
     SmallVector<int64_t> offsets(inputShape.size(), 0);
     const auto getDimOffset = [&](Dim dim, const int64_t factor) {
-        return outputTileOffset[dim] - inputTileOffset[dim] * factor;
+        return finalOffset[dim] - inputTileOffset[dim] * factor;
     };
     offsets[Dims4D::Act::H.ind()] = getDimOffset(Dims4D::Act::H, factors[VPU::SE_INTERPOLATE_FACTOR_H]);
     offsets[Dims4D::Act::W.ind()] = getDimOffset(Dims4D::Act::W, factors[VPU::SE_INTERPOLATE_FACTOR_W]);
@@ -907,11 +924,12 @@ Shape VPU::SEUpsamplingAttr::backInferInputCoord(ShapeRef outputCoord, ShapeRef 
 //   0   1   2
 VPU::SEAttr VPU::SEUpsamplingAttr::extractTile(ShapeRef outputTileOffset, ShapeRef outputTileShape, ShapeRef inputShape,
                                                Shape& inputTileOffset, Shape& inputTileShape) const {
-    std::tie(inputTileShape, inputTileOffset) =
-            inferInputTileShapeAndOffset(outputTileOffset, outputTileShape, inputShape);
+    const auto finalOffset = combineOffsets(outputTileOffset, getOffsets());
+
+    std::tie(inputTileShape, inputTileOffset) = inferInputTileShapeAndOffset(finalOffset, outputTileShape, inputShape);
     auto outputTileStartOffset = inferOutputTileStartOffset(inputTileOffset, *this);
     Shape relativeOffsets(inputTileOffset);
-    std::transform(outputTileOffset.raw().begin(), outputTileOffset.raw().end(), outputTileStartOffset.begin(),
+    std::transform(finalOffset.raw().begin(), finalOffset.raw().end(), outputTileStartOffset.begin(),
                    relativeOffsets.begin(), [](auto offset, auto outerTileOffset) {
                        return offset - outerTileOffset;
                    });
@@ -1234,11 +1252,10 @@ std::tuple<Shape, Shape, Shape> VPU::SEPaddingAttr::inferPadInputTileParams(Shap
             outputEndOffsetLocation == CoordLocation::padBegin) {
             inputTileShape[dim] = inputTileDimStart - inputTileDimEnd + 1;
             inputTileOffset[dim] = inputTileDimEnd;
-            relativeOffsets[dim] = padBeginValue;
+            relativeOffsets[dim] = padBeginValue - inputTileShape[dim];
             if (padModeAttr.getValue() == IE::PadMode::REFLECT) {
                 inputTileShape[dim] += 1;
                 inputTileOffset[dim] -= 1;
-                relativeOffsets[dim] += 1;
             }
         } else if (outputStartOffsetLocation == CoordLocation::padBegin &&
                    outputEndOffsetLocation == CoordLocation::inData) {
@@ -1325,9 +1342,10 @@ std::tuple<Shape, Shape, Shape> VPU::SEPaddingAttr::inferPadInputTileParams(Shap
 //
 VPU::SEAttr VPU::SEPaddingAttr::extractTile(ShapeRef outputTileOffset, ShapeRef outputTileShape, ShapeRef inputShape,
                                             Shape& inputTileOffset, Shape& inputTileShape) const {
+    const auto finalOffset = combineOffsets(outputTileOffset, getOffsets());
     Shape relativeOffsets;
     std::tie(inputTileShape, inputTileOffset, relativeOffsets) =
-            inferPadInputTileParams(outputTileOffset, outputTileShape, inputShape);
+            inferPadInputTileParams(finalOffset, outputTileShape, inputShape);
     return mlir::cast<vpux::VPU::SEAttr>(VPU::SEPaddingAttr::get(
             getContext(), getMode(), getPadding(), getIntArrayAttr(getContext(), relativeOffsets),
             getIntArrayAttr(getContext(), Shape(outputTileShape.raw()))));
@@ -1512,12 +1530,13 @@ Shape VPU::SERollAttr::backInferInputCoord(ShapeRef outputCoord, ShapeRef inputS
 //
 VPU::SEAttr VPU::SERollAttr::extractTile(ShapeRef outputTileOffset, ShapeRef outputTileShape, ShapeRef inputShape,
                                          Shape& inputTileOffset, Shape& inputTileShape) const {
-    std::tie(inputTileShape, inputTileOffset) =
-            inferInputTileShapeAndOffset(outputTileOffset, outputTileShape, inputShape);
+    const auto finalOffset = combineOffsets(outputTileOffset, getOffsets());
+
+    std::tie(inputTileShape, inputTileOffset) = inferInputTileShapeAndOffset(finalOffset, outputTileShape, inputShape);
     const auto axes = parseIntArrayAttr<int64_t>(getAxes());
     const auto shifts = parseIntArrayAttr<int64_t>(getShift());
     const auto getNewShift = [&](int64_t dim) -> int64_t {
-        const auto offset = outputTileOffset[Dim(axes[dim])];
+        const auto offset = finalOffset[Dim(axes[dim])];
         if (offset >= shifts[dim]) {
             return 0;
         } else {
@@ -1720,15 +1739,15 @@ VPU::SEAttr VPU::SEDilatedConvAttr::extractTile(ShapeRef outputTileOffset, Shape
                                                 ShapeRef inputShape, Shape& inputTileOffset,
                                                 Shape& inputTileShape) const {
     auto [offsetN, offsetC, offsetH, offsetW] = DilationUtils::extractDilationDataOffsets(getDataOffset());
-    // auto [dilateY, dilateX] = DilationUtils::extractDilationFactors(getDilation());
+    const auto finalOffset = combineOffsets(outputTileOffset, getOffsets());
     Shape relativeOffsets;  // Unused, just zero it out. Always start from zero.
 
     // Calc input tile start offset
-    inputTileOffset = backInferInputCoord(outputTileOffset, inputShape);
+    inputTileOffset = backInferInputCoord(finalOffset, inputShape);
 
     // Calc output tile end offset
     // it is output tile start + output tile shape - 1
-    Shape outputTileEnd(outputTileOffset.raw());
+    Shape outputTileEnd(finalOffset.raw());
     std::transform(outputTileEnd.begin(), outputTileEnd.end(), outputTileShape.raw().begin(), outputTileEnd.begin(),
                    [](auto offset, auto size) {
                        return offset + size - 1;

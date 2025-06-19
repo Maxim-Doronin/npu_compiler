@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --adjust-memory-space %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 func.func @ConvNCEtoCMX(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
@@ -180,9 +181,8 @@ func.func @InterpolateBilinearNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NH
     %sparsityMap = const.Declare tensor<1x64x11x21xi1> = dense<1> : tensor<1x64x11x21xi1>
 
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
-        seDepth = 1,
-        seSize = 64,
+        dataElemType = f16,
+        seDepth = 1, seSize = [64],
         dataShape = [1, 64, 5, 10],
         seAttr = #VPU.SEInterpolate<
             mode = <BILINEAR>,
@@ -226,7 +226,7 @@ func.func @InterpolateBilinearNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NH
     // CHECK:       [[SPARSITY_MAP:%.+]] = const.Declare tensor<1x64x11x21xi1> = dense<true> : tensor<1x64x11x21xi1>
 
     // CHECK:       [[STORAGE_ELEMENT:%.+]] = VPU.StorageElementTable {
-    // CHECK-SAME:      dataElemType = i32,
+    // CHECK-SAME:      dataElemType = f16,
     // CHECK-SAME:      dataShape = [1, 64, 5, 10],
     // CHECK-SAME:      seAttr = #VPU.SEInterpolate<
     // CHECK-SAME:          mode = <BILINEAR>,
@@ -235,7 +235,7 @@ func.func @InterpolateBilinearNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NH
     // CHECK-SAME:          offsets = [0, 0, 0, 0],
     // CHECK-SAME:          sizes = [1, 64, 11, 21]>,
     // CHECK-SAME:      seDepth = 1 : i64,
-    // CHECK-SAME:      seSize = 64 : i64
+    // CHECK-SAME:      seSize = [64]
     // CHECK-SAME:  } -> tensor<1x1x11x21xi32, {order = #NHWC}>
 
     // CHECK:       [[SPARSE_TENSOR:%.+]] = VPU.GroupSparseTensor(%arg0, [[SPARSITY_MAP]], [[STORAGE_ELEMENT]]) {
@@ -308,9 +308,8 @@ func.func @InterpolateNearestNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NHW
     %sparsityMap = const.Declare tensor<1x64x10x20xi1> = dense<1> : tensor<1x64x10x20xi1>
 
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
-        seDepth = 1,
-        seSize = 64,
+        dataElemType = f16,
+        seDepth = 1, seSize = [64],
         dataShape = [1, 64, 5, 10],
         seAttr = #VPU.SEInterpolate<
             mode = <NEAREST>,
@@ -357,7 +356,7 @@ func.func @InterpolateNearestNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NHW
     // CHECK:       [[SPARSITY_MAP:%.+]] = const.Declare tensor<1x64x10x20xi1> = dense<true> : tensor<1x64x10x20xi1>
 
     // CHECK:       [[STORAGE_ELEMENT:%.+]] = VPU.StorageElementTable {
-    // CHECK-SAME:      dataElemType = i32,
+    // CHECK-SAME:      dataElemType = f16,
     // CHECK-SAME:      dataShape = [1, 64, 5, 10],
     // CHECK-SAME:      seAttr = #VPU.SEInterpolate<
     // CHECK-SAME:          mode = <NEAREST>,
@@ -367,7 +366,7 @@ func.func @InterpolateNearestNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NHW
     // CHECK-SAME:          offsets = [0, 0, 0, 0],
     // CHECK-SAME:          sizes = [1, 64, 10, 20]>,
     // CHECK-SAME:      seDepth = 1 : i64,
-    // CHECK-SAME:      seSize = 64 : i64
+    // CHECK-SAME:      seSize = [64]
     // CHECK-SAME:  } -> tensor<1x1x10x20xi32, {order = #NHWC}>
 
     // CHECK:       [[SPARSE_TENSOR:%.+]] = VPU.GroupSparseTensor(%arg0, [[SPARSITY_MAP]], [[STORAGE_ELEMENT]]) {

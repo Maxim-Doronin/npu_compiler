@@ -16,7 +16,6 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
@@ -32,7 +31,6 @@ namespace {
 //
 // RemoveGroupUngroup
 //
-
 class RemoveGroupUngroupRewriter final : public mlir::OpRewritePattern<VPUIP::GroupBoundedBufferOp> {
 public:
     RemoveGroupUngroupRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit)
@@ -154,29 +152,6 @@ mlir::LogicalResult UngroupCopyOp::matchAndRewrite(VPUIP::CopyOp origOp, mlir::P
 
     return mlir::success();
 }
-
-class UngroupSubViewOp final : public mlir::OpRewritePattern<VPUIP::SubViewOp> {
-public:
-    UngroupSubViewOp(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<VPUIP::SubViewOp>(ctx), _log(log) {
-    }
-
-public:
-    mlir::LogicalResult matchAndRewrite(VPUIP::SubViewOp origOp, mlir::PatternRewriter& rewriter) const final {
-        auto ungroupInput = rewriter.create<VPUIP::UngroupBoundedBufferOp>(origOp->getLoc(), origOp.getSource());
-
-        auto subviewData = rewriter.create<VPUIP::SubViewOp>(origOp->getLoc(), ungroupInput.getData(),
-                                                             origOp.getStaticOffsetsAttr(), origOp.getStaticSizesAttr(),
-                                                             origOp.getStaticStridesAttr());
-
-        rewriter.replaceOpWithNewOp<VPUIP::GroupBoundedBufferOp>(origOp, subviewData.getResult(),
-                                                                 ungroupInput.getDynamicShape());
-
-        return mlir::success();
-    }
-
-private:
-    Logger _log;
-};
 
 class UngroupConcatViewOp final : public mlir::OpRewritePattern<VPUIP::ConcatViewOp> {
 public:
@@ -386,16 +361,12 @@ void UngroupBoundedBuffers::safeRunOnFunc() {
 
         return !hasDynamicInputs && !hasDynamicOutputs;
     };
-    auto isLegalSubViewOp = [](VPUIP::SubViewOp subviewOp) {
-        return !VPUIP::isBoundedBufferType(subviewOp.getSource());
-    };
 
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<VPUIP::CopyOp>(isLegalCopyOp);
     target.addDynamicallyLegalOp<VPUIP::ConcatViewOp>(isLegalConcatViewOp);
     target.addDynamicallyLegalOp<VPUIP::ConvertDMAOp>(isLegalConvertDMAOp);
     target.addDynamicallyLegalOp<VPUIP::SwKernelOp>(isLegalSwKernelOp);
-    target.addDynamicallyLegalOp<VPUIP::SubViewOp>(isLegalSubViewOp);
     target.addLegalOp<VPUIP::GroupBoundedBufferOp>();
     target.addLegalOp<VPUIP::UngroupBoundedBufferOp>();
 
@@ -404,7 +375,6 @@ void UngroupBoundedBuffers::safeRunOnFunc() {
     patterns.add<UngroupConcatViewOp>(&ctx, _log);
     patterns.add<UngroupSwKernelOp>(&ctx, _log);
     patterns.add<UngroupConvertDMAOp>(&ctx, _log);
-    patterns.add<UngroupSubViewOp>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, std::move(patterns)))) {
         signalPassFailure();

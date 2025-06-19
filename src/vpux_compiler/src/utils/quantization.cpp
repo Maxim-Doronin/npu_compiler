@@ -118,14 +118,14 @@ mlir::LogicalResult vpux::validateQuantElemType(mlir::Location loc, vpux::NDType
 
 mlir::Type vpux::normalizeQuantStorageType(mlir::quant::QuantizedType qType) {
     auto elemType = qType.getStorageType();
-    if (const auto intType = elemType.dyn_cast_or_null<mlir::IntegerType>()) {
+    if (const auto intType = mlir::dyn_cast_or_null<mlir::IntegerType>(elemType)) {
         return mlir::IntegerType::get(intType.getContext(), intType.getWidth(),
                                       qType.isSigned() ? mlir::IntegerType::Signed : mlir::IntegerType::Unsigned);
     }
-    if (const auto lowFpType = elemType.dyn_cast_or_null<mlir::Float8E4M3FNType>()) {
+    if (const auto lowFpType = mlir::dyn_cast_or_null<mlir::Float8E4M3FNType>(elemType)) {
         return mlir::FloatType::getFloat8E4M3FN(lowFpType.getContext());
     }
-    if (const auto lowFpType = elemType.dyn_cast_or_null<mlir::Float8E5M2Type>()) {
+    if (const auto lowFpType = mlir::dyn_cast_or_null<mlir::Float8E5M2Type>(elemType)) {
         return mlir::FloatType::getFloat8E5M2(lowFpType.getContext());
     }
 
@@ -455,6 +455,17 @@ std::optional<int64_t> vpux::extractSingleZeroPoint(mlir::quant::QuantizedType t
     return zeroPointsEqual ? std::make_optional(canonical) : std::nullopt;
 }
 
+bool vpux::areAllZeroPointsEqual(mlir::quant::UniformQuantizedPerAxisType type) {
+    const auto zeroPoints = type.getZeroPoints();
+    if (zeroPoints.empty()) {
+        return true;
+    }
+    const auto firstZeroPoint = zeroPoints[0];
+    return std::all_of(zeroPoints.begin(), zeroPoints.end(), [&firstZeroPoint](const int64_t zp) {
+        return zp == firstZeroPoint;
+    });
+}
+
 vpux::QuantizationApproximation::QuantizationApproximation(double target): _mult(0), _shift(0), _postShift(0) {
     std::tie(_mult, _shift, _postShift) = approximate<decltype(_mult)>(15, target);
 
@@ -764,6 +775,87 @@ mlir::FailureOr<std::tuple<SmallVector<double>, SmallVector<int64_t>>> vpux::get
     return std::make_tuple(std::move(scales), std::move(zeroPoints));
 }
 
+mlir::FailureOr<int64_t> vpux::getSingleZeroPointOrFail(mlir::quant::QuantizedType quantType) {
+    if (auto perAxis = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(quantType)) {
+        auto zeroPoints = perAxis.getZeroPoints();
+        VPUX_THROW_WHEN(zeroPoints.empty(), "Missing zero points from UniformQuantizedPerAxisType object.");
+
+        const auto zpFront = zeroPoints[0];
+        const bool allZpEqual = std::all_of(zeroPoints.begin(), zeroPoints.end(), [zpFront](auto zp) {
+            return zp == zpFront;
+        });
+        if (allZpEqual) {
+            return zpFront;
+        }
+
+        return mlir::failure();
+    } else if (auto perTensor = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(quantType)) {
+        return perTensor.getZeroPoint();
+    }
+
+    VPUX_THROW("Unsupported quantized type '{0}': only UniformQuantizedPerAxisType and UniformQuantizedType and "
+               "derived types are supported.",
+               quantType);
+    return mlir::failure();
+}
+
+int64_t vpux::getDefaultQuantizedZeroPoint(mlir::quant::QuantizedType quantType) {
+    const auto getDefaultIntegerZp = [](mlir::IntegerType intType, bool isSigned) -> int64_t {
+        const auto bitwidth = intType.getWidth();
+        auto qMin = mlir::quant::QuantizedType::getDefaultMinimumForInteger(isSigned, bitwidth);
+        auto qMax = mlir::quant::QuantizedType::getDefaultMaximumForInteger(isSigned, bitwidth);
+        // u8: min = 0, max = 255
+        // zp = (255 + 0 + 1) / 2 = 128
+        // i8: min = -128, max = 127
+        // zp = (127 + -128 + 1) / 2 = 0
+        // u4: min = 0, max = 15
+        // zp = (15 + 0 + 1) / 2 = 8
+        // i4: min = -8, max = 7
+        // zp = (7 + -8 + 1) / 2 = 0
+        return (qMax + qMin + 1) / 2;
+    };
+
+    // TODO #E-164790: Add handling of QuantileQuantized types to check the quantileType field for the signedness
+    // instead of the storageType as part of [#E-164790] fix
+    if (mlir::isa_and_nonnull<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(quantType)) {
+        if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantType.getStorageType())) {
+            return getDefaultIntegerZp(intType, quantType.isSigned());
+        }
+    } else {
+        VPUX_THROW("Unsupported quantized type '{0}'", quantType);
+    }
+
+    // return 0 as a default mid range zp value in case of floating point storage type or quantile type
+    return 0;
+}
+
+SmallVector<int64_t> vpux::getQuantizedTypeZeroPoints(mlir::quant::QuantizedType quantType) {
+    if (auto perAxis = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(quantType)) {
+        auto zeroPoints = perAxis.getZeroPoints();
+        if (!zeroPoints.empty()) {
+            return to_small_vector(zeroPoints);
+        }
+
+        VPUX_THROW("Missing zero points from UniformQuantizedPerAxisType object.");
+    } else if (auto perTensor = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(quantType)) {
+        return SmallVector<int64_t>{perTensor.getZeroPoint()};
+    }
+
+    VPUX_THROW("Unsupported quantized type '{0}': only UniformQuantizedPerAxisType and UniformQuantizedType and "
+               "derived types are supported.",
+               quantType);
+}
+
+bool vpux::isSymmetricZeroPoint(mlir::quant::QuantizedType quantType) {
+    const auto targetZeroPoint = getDefaultQuantizedZeroPoint(quantType);
+    const auto isSymmetricZP = [targetZeroPoint](const int64_t zp) -> bool {
+        return zp == targetZeroPoint;
+    };
+
+    auto zeroPoints = getQuantizedTypeZeroPoints(quantType);
+    return std::all_of(zeroPoints.begin(), zeroPoints.end(), isSymmetricZP);
+}
+
 mlir::FailureOr<std::tuple<double, double>> vpux::getFp8Range(mlir::Type lowFpType) {
     if (mlir::isa<mlir::Float8E4M3FNType>(lowFpType)) {
         return std::make_tuple(static_cast<double>(mlir::quant::QuantizedType::getDefaultMinimumForF8E4M3FN()),
@@ -790,21 +882,30 @@ std::tuple<double, double, mlir::Type> vpux::getStorageParams(mlir::MLIRContext*
         }
 
         return {0., static_cast<double>(levels - 1), getUInt8Type(ctx)};
+    case 65536:
+        if (isSigned) {
+            return {-32768., 32767., getSInt16Type(ctx)};
+        }
 
+        return {0., static_cast<double>(levels - 1), getUInt16Type(ctx)};
     case 16:
         if (isSigned) {
             return {-8., 7., getSInt4Type(ctx)};
         }
 
         return {0., static_cast<double>(levels - 1), getUInt4Type(ctx)};
-
     case 15:
         if (isSigned) {
             return {-7., 7., getSInt4Type(ctx)};
         }
 
         return {0., static_cast<double>(levels - 1), getUInt4Type(ctx)};
+    case 4:
+        if (isSigned) {
+            return {-2., 1., getSInt2Type(ctx)};
+        }
 
+        return {0., static_cast<double>(levels - 1), getUInt2Type(ctx)};
     // Because in the absence of I1 support, we must use U8 datatype.
     // [Track number: E#24341].
     case 2:
@@ -838,7 +939,7 @@ std::tuple<double, double, mlir::Type> vpux::getStorageParams(mlir::Type lowPrec
 
     // Quantile float types (NF4)
     if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(lowPrecisionType)) {
-        const auto bitWidth = quantileFloatType.getWidth();
+        const auto bitWidth = quantileFloatType.getStorageTypeIntegralWidth();
 
         // Although the quantile float representable range is [first_quantile, last_quantile], its storage type is a
         // unsigned integer of the same bit-width. The storage range is set according to the storage type.
@@ -933,13 +1034,6 @@ mlir::quant::QuantizedType vpux::getQuantizedType(const Const::ContentAttr& lowC
                                                   bool isSigned, mlir::Location loc, IE::AutoBroadcastType broadcast,
                                                   bool ignoreZPCheck, const Logger& log) {
     const auto innerLog = log.nest("getQuantizedType");
-
-    // If levels is greater then MAX_LEVELS then the quantization cannot be done on HW
-    // FakeQuantize should not be split in Quantize -> Dequantize
-    if (levels.has_value() && *levels > MAX_LEVELS) {
-        innerLog.warning("levels '{0}' is greater than MAX_LEVELS '{1}'", *levels, MAX_LEVELS);
-        return nullptr;
-    }
 
     if (levels.has_value() == lowFpType.has_value()) {
         innerLog.warning("Exactly one of 'levels' or 'lowFpType' must have a value");

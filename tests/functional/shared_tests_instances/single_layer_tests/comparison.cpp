@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,8 @@
 #include "common_test_utils/node_builders/comparison.hpp"
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/convert.hpp"
 
 using namespace ov::test::utils;
 
@@ -46,7 +48,43 @@ class ComparisonLayerTestCommon : public ComparisonLayerTest, virtual public Vpu
     }
 };
 
+class ComparisonLayerTestDynamic : public ComparisonLayerTest, virtual public VpuOv2LayerTest {
+    // A copy of ComparisonLayerTest, because compiler does not support boolean type (it is represented as u8).
+    // We cannot use ComparisonLayerTestCommon since it handles inputShapes and inputDynamicShapes differently,
+    // which prevents its use with dynamic shapes. The SetUp override can be removed once the compiler supports the
+    // boolean type as-is (#109588).
+    void SetUp() override {
+        std::vector<InputShape> shapes;
+        InputLayerType secondInputType;
+        std::map<std::string, std::string> additionalConfig;
+        ov::element::Type modelType;
+        ov::test::utils::ComparisonTypes comparisonOpType;
+        std::tie(shapes, comparisonOpType, secondInputType, modelType, targetDevice, additionalConfig) =
+                this->GetParam();
+        configuration.insert(additionalConfig.begin(), additionalConfig.end());
+        init_input_shapes(shapes);
+
+        ov::ParameterVector inputs{std::make_shared<ov::op::v0::Parameter>(modelType, inputDynamicShapes[0])};
+
+        std::shared_ptr<ov::Node> secondInput;
+        if (secondInputType == InputLayerType::PARAMETER) {
+            secondInput = std::make_shared<ov::op::v0::Parameter>(modelType, inputDynamicShapes[1]);
+            inputs.push_back(ov::as_type_ptr<ov::op::v0::Parameter>(secondInput));
+        } else {
+            ov::Tensor tensor = ov::test::utils::create_and_fill_tensor(modelType, targetStaticShapes.front()[1]);
+            secondInput = std::make_shared<ov::op::v0::Constant>(tensor);
+        }
+
+        auto comparisonNode = ov::test::utils::make_comparison(inputs[0], secondInput, comparisonOpType);
+
+        // Workaround added - Convert node to avoid working with boolean as output.
+        auto convertedComparisonNode = std::make_shared<ov::op::v0::Convert>(comparisonNode, modelType);
+        function = std::make_shared<ov::Model>(convertedComparisonNode, inputs, "Comparison");
+    }
+};
+
 class ComparisonLayerTest_Tiling : public ComparisonLayerTestCommon {};
+class ShaveCodeGenComparisonLayerTestCommon : public ComparisonLayerTestCommon {};
 
 TEST_P(ComparisonLayerTestCommon, NPU3720_SW) {
     setReferenceSoftwareMode();
@@ -58,11 +96,26 @@ TEST_P(ComparisonLayerTest_Tiling, NPU3720_HW) {
     run(Platform::NPU3720);
 }
 
+TEST_P(ComparisonLayerTestDynamic, NPU3720_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU3720);
+}
+
 TEST_P(ComparisonLayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
 
+TEST_P(ComparisonLayerTestDynamic, NPU4000_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ShaveCodeGenComparisonLayerTestCommon, NPU4000) {
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
 }  // namespace test
 }  // namespace ov
 
@@ -72,6 +125,10 @@ namespace {
 std::vector<ComparisonTypes> comparisonOpTypes_MLIR = {
         ComparisonTypes::EQUAL,     ComparisonTypes::LESS,    ComparisonTypes::LESS_EQUAL,
         ComparisonTypes::NOT_EQUAL, ComparisonTypes::GREATER, ComparisonTypes::GREATER_EQUAL,
+};
+
+std::vector<ComparisonTypes> comparisonOpTypesDynamic_MLIR = {
+        ComparisonTypes::LESS,
 };
 
 std::vector<InputLayerType> secondInputTypes = {
@@ -104,6 +161,13 @@ std::map<ov::Shape, std::vector<ov::Shape>> tiling_inShapes = {
         {{1, 10, 256, 256}, {{1, 10, 256, 256}}},
 };
 
+// Only 4D dynamic shapes are supported (3D and 2D require ConvertShapeTo4D support for this layer #163161)
+// Test 3 cases - broadcast with max dim, no broadcast and broadcast where input is not a max dim.
+std::vector<std::vector<ov::test::InputShape>> in_shapes_dynamic_4D = {
+        {{{1, 1, ov::Dimension(1, 10), 200}, {{1, 1, 10, 200}, {1, 1, 10, 200}, {1, 1, 5, 200}}},
+         {{1, 1, ov::Dimension(1, 10), 200}, {{1, 1, 1, 200}, {1, 1, 10, 200}, {1, 1, 1, 200}}}},
+};
+
 std::vector<ov::element::Type> precision = {
         ov::element::f32,
         ov::element::f16,
@@ -128,6 +192,11 @@ const auto tiling_comparison_params = ::testing::Combine(
         ::testing::Values(ComparisonTypes::EQUAL), ::testing::ValuesIn(secondInputTypes),
         ::testing::Values(ov::element::f16), ::testing::Values(DEVICE_NPU), ::testing::Values(additionalConfig));
 
+const auto comparison_params_dynamic = ::testing::Combine(
+        ::testing::ValuesIn(in_shapes_dynamic_4D), ::testing::ValuesIn(comparisonOpTypesDynamic_MLIR),
+        ::testing::ValuesIn(secondInputTypes), ::testing::ValuesIn(precision), ::testing::Values(DEVICE_NPU),
+        ::testing::Values(additionalConfig));
+
 INSTANTIATE_TEST_SUITE_P(smoke_Comparison, ComparisonLayerTestCommon, comparison_params,
                          ComparisonLayerTestCommon::getTestCaseName);
 
@@ -136,5 +205,20 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Comparison, ComparisonLayerTestCommon, 
 
 INSTANTIATE_TEST_SUITE_P(smoke_tiling_Comparison, ComparisonLayerTestCommon, tiling_comparison_params,
                          ComparisonLayerTestCommon::getTestCaseName);
+
+// ShaveCodeGen tests
+INSTANTIATE_TEST_SUITE_P(smoke_Comparison, ShaveCodeGenComparisonLayerTestCommon, comparison_params,
+                         ShaveCodeGenComparisonLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Comparison, ShaveCodeGenComparisonLayerTestCommon, precommit_comparison_params,
+                         ShaveCodeGenComparisonLayerTestCommon::getTestCaseName);
+
+// E-152367: ShaveCodeGen Tiling support
+INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_tiling_Comparison, ShaveCodeGenComparisonLayerTestCommon,
+                         tiling_comparison_params, ShaveCodeGenComparisonLayerTestCommon::getTestCaseName);
+
+//  Dynamic shapes cases
+INSTANTIATE_TEST_SUITE_P(smoke_ComparisonDynamic, ComparisonLayerTestDynamic, comparison_params_dynamic,
+                         ComparisonLayerTestDynamic::getTestCaseName);
 
 }  // namespace

@@ -17,5 +17,10 @@ mlir::FailureOr<SymbolizationResult> KernelEntryRewriter::symbolize(VPUMI40XX::D
     return SymbolizationResult(newOp);
 }
 
+llvm::SmallVector<mlir::FlatSymbolRefAttr> KernelEntryRewriter::getSymbolicNames(VPUMI40XX::DeclareKernelEntryOp op,
+                                                                                 size_t) {
+    return getSymbolicNamesByTileListValue(op);
+}
+
 }  // namespace vpumi40xx2vpuasm
 }  // namespace vpux

@@ -1,8 +1,10 @@
-// Copyright (C) 2021 - 2024 Intel Corporation
+// Copyright (C) 2021-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "shared_test_classes/single_op/variadic_split.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/variadic_split.hpp"
 
 std::shared_ptr<ov::Node> makeVariadicSplit(const ov::Output<ov::Node>& in, const std::vector<size_t> numSplits,
                                             int32_t axis) {

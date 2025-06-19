@@ -8,7 +8,10 @@
 
 #include "vpux/compiler/NPU40XX/conversion.hpp"
 
-#include "vpux/compiler/options_mapper.hpp"
+#include "vpux/compiler/compilation_options.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/pipelines/options_mapper.hpp"
+#include "vpux/compiler/pipelines/options_setup.hpp"
 #include "vpux/utils/IE/config.hpp"
 
 #include "intel_npu/config/options.hpp"
@@ -32,11 +35,16 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::PassManager& pm, const 
                       "build ELF pipeline failed to parse BACKEND_COMPILATION_PARAMS: {0}",
                       config.get<intel_npu::BACKEND_COMPILATION_PARAMS>());
 
-    if (compilationMode == VPU::CompilationMode::DefaultHW) {
-        auto options = DefaultHWOptions40XX::createFromString(config.get<intel_npu::COMPILATION_MODE_PARAMS>());
+    if (compilationMode == config::CompilationMode::DefaultHW) {
+        auto options = parseCompilationModeParams<DefaultHWOptions40XX>(
+                config.get<intel_npu::COMPILATION_MODE_PARAMS>(), getArchKind(config));
         VPUX_THROW_UNLESS(options != nullptr, "build ELF pipeline failed to parse COMPILATION_MODE_PARAMS: {0}",
                           config.get<intel_npu::COMPILATION_MODE_PARAMS>());
-        setupPWLMCompilationParams(options->optimizationLevel, *options, useWlm);
+        if (config.get<intel_npu::TURBO>()) {
+            overwriteIfUnset(options->optimizationLevel, 3);
+        }
+        setupParamsAccordingToOptimizationLevel(options->optimizationLevel, *options, useWlm);
+        setupPWLMParams(*options);
         dpuDryRunMode = VPU::getDPUDryRunMode(options->dpuDryRun);
         backendCompilationOptions->enableDMAProfiling = options->enableDMAProfiling.getValue();
         backendCompilationOptions->enableShaveDDRAccessOptimization = options->enableShaveDDRAccessOptimization;
@@ -46,27 +54,9 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::PassManager& pm, const 
         backendCompilationOptions->workloadManagementMode = options->workloadManagementMode;
         backendCompilationOptions->workloadManagementEnable = options->workloadManagementEnable;
         backendCompilationOptions->workloadManagementBarrierProgrammingMode =
-                options->workloadManagementBarrierProgrammingMode.hasValue()
-                        ? options->workloadManagementBarrierProgrammingMode
-                        : WorkloadManagementBarrierProgrammingMode::UNKNOWN;
-
-        if (!options->workloadManagementBarrierProgrammingMode.hasValue()) {
-            switch (backendCompilationOptions->workloadManagementMode) {
-            case WorkloadManagementMode::PWLM_V0_LCA:
-                backendCompilationOptions->workloadManagementBarrierProgrammingMode =
-                        WorkloadManagementBarrierProgrammingMode::LEGACY;
-                break;
-            case WorkloadManagementMode::PWLM_V1_BARRIER_FIFO:
-                backendCompilationOptions->workloadManagementBarrierProgrammingMode =
-                        WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED;
-                break;
-            case WorkloadManagementMode::PWLM_V2_PAGES:
-                backendCompilationOptions->workloadManagementBarrierProgrammingMode =
-                        WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED;
-                break;
-            }
-        }
+                options->workloadManagementBarrierProgrammingMode;
         backendCompilationOptions->workloadManagementDmaFifoType = options->workloadManagementDmaFifoType;
+        backendCompilationOptions->modelIdentifier = options->modelIdentifier;
     }
     arch40xx::buildLowerVPUIP2ELFPipeline(pm, *backendCompilationOptions, log.nest(), dpuDryRunMode);
 }

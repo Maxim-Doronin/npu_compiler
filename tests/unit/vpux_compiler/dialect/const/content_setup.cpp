@@ -4,23 +4,23 @@
 //
 
 #include "common/utils.hpp"
+#include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/constant_transformations_control.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/scope_exit.hpp"
 
-#include <llvm/Support/raw_ostream.h>
-#include <mlir/Dialect/Quant/QuantOps.h>
-#include <mlir/IR/BuiltinAttributes.h>
-#include <mlir/Parser/Parser.h>
-
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
+#include <mlir/Dialect/Quant/QuantOps.h>
+#include <mlir/IR/BuiltinAttributes.h>
 
 using namespace vpux;
 
@@ -162,6 +162,16 @@ public:
         ASSERT_TRUE(actualFuse != nullptr);
     }
 
+    void checkQuantizePerAxisAttr(Const::TransformAttrInterface actualTransformation,
+                                  mlir::quant::UniformQuantizedPerAxisType expectedType) {
+        auto actualQuant = mlir::dyn_cast<Const::QuantizeAttr>(actualTransformation);
+        EXPECT_TRUE(actualQuant != nullptr);
+
+        auto quantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(actualQuant.getTargetType());
+        EXPECT_TRUE(quantPerAxisType != nullptr);
+        EXPECT_TRUE(quantPerAxisType == expectedType);
+    }
+
     void checkFuseAttrAfterSubView(Const::TransformAttrInterface actualTransformation, bool wtPresent, bool wtSliced,
                                    ArrayRef<int64_t> wtExpectedOffset, ArrayRef<int64_t> wtExpectedShape, bool wtFlat,
                                    ArrayRef<int64_t> wtReshape, ArrayRef<int64_t> wtFlatOffset,
@@ -211,6 +221,10 @@ public:
         }
     }
 
+    mlir::MLIRContext* getContext() {
+        return &ctx;
+    }
+
 private:
     template <typename AttrType, typename ValType>
     void checkSingleValueAttr(Const::TransformAttrInterface actualTransformation, ValType expectedValue,
@@ -228,12 +242,17 @@ private:
 //
 
 struct ReshapeAndSubViewInputParams {
+    DimsOrder dimsOrder;
+    SmallVector<int64_t> reshape;
+    SmallVector<int64_t> subViewOffset;
+    SmallVector<int64_t> subViewShape;
+};
+struct ExpectedReshapeAndSubViewInputParams {
     SmallVector<int64_t> reshape;
     SmallVector<int64_t> subViewOffset;
     SmallVector<int64_t> subViewShape;
 };
 
-using ExpectedReshapeAndSubViewInputParams = ReshapeAndSubViewInputParams;
 using SwapReshapeAndSubViewParams =
         std::tuple<SmallVector<int64_t>, ReshapeAndSubViewInputParams, ExpectedReshapeAndSubViewInputParams>;
 
@@ -255,6 +274,7 @@ public:
         std::string str;
         llvm::raw_string_ostream result(str);
         printTo(result, "baseContentShape={0}_", baseContentShape);
+        printTo(result, "inDimsOrder={0}_", inputParams.dimsOrder);
         printTo(result, "inReshape={0}_", inputParams.reshape);
         printTo(result, "inSubView_offset={0}_", inputParams.subViewOffset);
         printTo(result, "inSubView_shape={0}_", inputParams.subViewShape);
@@ -292,6 +312,7 @@ public:
         std::string str;
         llvm::raw_string_ostream result(str);
         printTo(result, "baseContentShape={0}_", baseContentShape);
+        printTo(result, "inDimsOrder={0}_", inputParams.dimsOrder);
         printTo(result, "inReshape={0}_", inputParams.reshape);
         printTo(result, "inSubView_offset={0}_", inputParams.subViewOffset);
         printTo(result, "inSubView_shape={0}", inputParams.subViewShape);
@@ -1355,60 +1376,102 @@ TEST_F(MLIR_ContentSetupTest, SwapCastElemTypeAndSubView_Quantized) {
 TEST_P(MLIR_ContentSetupTest_SwapReshapeAndSubView, SwapReshapeAndSubView) {
     auto baseContentAttrSetup = getContentSetup(ArrayRef<int64_t>{_baseContentShape}, getInt8Type(&ctx));
 
+    auto contentAttrSetup = baseContentAttrSetup.reorder(_inputParams.dimsOrder);
     // first Reshape
-    auto contentAttrSetup = baseContentAttrSetup.reshape(ShapeRef(_inputParams.reshape));
+    contentAttrSetup = contentAttrSetup.reshape(ShapeRef(_inputParams.reshape));
 
     // second SubView
     contentAttrSetup =
             contentAttrSetup.subview(ShapeRef(_inputParams.subViewOffset), ShapeRef(_inputParams.subViewShape));
 
     auto actualTransformations = contentAttrSetup.getTransformations();
-    EXPECT_EQ(actualTransformations.size(), 2);
 
-    checkSubViewAttr(actualTransformations[0], _expectedParams.subViewOffset, _expectedParams.subViewShape);
-    checkReshapeAttr(actualTransformations[1], _expectedParams.reshape);
+    if (_inputParams.dimsOrder == vpux::DimsOrder::NHWC) {
+        EXPECT_EQ(actualTransformations.size(), 3);
+        // Reorder is swapped with SubView as well, transformations would be SubView -> Reorder -> Reshape
+        checkSubViewAttr(actualTransformations[0], _expectedParams.subViewOffset, _expectedParams.subViewShape);
+        checkReshapeAttr(actualTransformations[2], _expectedParams.reshape);
+    } else {
+        EXPECT_EQ(actualTransformations.size(), 2);
+        checkSubViewAttr(actualTransformations[0], _expectedParams.subViewOffset, _expectedParams.subViewShape);
+        checkReshapeAttr(actualTransformations[1], _expectedParams.reshape);
+    }
 }
 
-SmallVector<SwapReshapeAndSubViewParams, 5> swapReshapeAndSubViewParams = {
-        SwapReshapeAndSubViewParams{
-                {1, 16, 1, 8}, {{16, 8, 1, 1}, {0, 0, 0, 0}, {8, 8, 1, 1}}, {{8, 8, 1, 1}, {0, 0, 0, 0}, {1, 8, 1, 8}}},
-        SwapReshapeAndSubViewParams{
-                {1, 16, 1, 8}, {{16, 8, 1, 1}, {8, 0, 0, 0}, {8, 8, 1, 1}}, {{8, 8, 1, 1}, {0, 8, 0, 0}, {1, 8, 1, 8}}},
-        SwapReshapeAndSubViewParams{
-                {1, 16, 8, 8}, {{1, 16, 64}, {0, 0, 0}, {1, 8, 64}}, {{1, 8, 64}, {0, 0, 0, 0}, {1, 8, 8, 8}}},
-        SwapReshapeAndSubViewParams{
-                {1, 16, 8}, {{1, 16, 2, 4}, {0, 0, 0, 0}, {1, 8, 2, 4}}, {{1, 8, 2, 4}, {0, 0, 0}, {1, 8, 8}}},
-        SwapReshapeAndSubViewParams{{1, 64, 32, 16, 3, 3},
-                                    {{64, 32, 16, 9}, {16, 8, 0, 0}, {48, 24, 16, 9}},
-                                    {{48, 24, 16, 9}, {0, 16, 8, 0, 0, 0}, {1, 48, 24, 16, 3, 3}}}};
+SmallVector<SwapReshapeAndSubViewParams, 5> getSwapReshapeAndSubViewParams() {
+    return {SwapReshapeAndSubViewParams{{1, 16, 1, 8},           // baseConstShape
+                                        {vpux::DimsOrder::NCHW,  // reorder
+                                         {16, 8, 1, 1},          // reshape
+                                         {0, 0, 0, 0},           // subViewOffset
+                                         {8, 8, 1, 1}},          // subViewShape
+                                        {{8, 8, 1, 1},           // expectedReshape
+                                         {0, 0, 0, 0},           // expectedSubViewOffset
+                                         {1, 8, 1, 8}}},         // expectedSubViewShape
+
+            SwapReshapeAndSubViewParams{{1, 16, 1, 8},
+                                        {vpux::DimsOrder::NCHW, {16, 8, 1, 1}, {8, 0, 0, 0}, {8, 8, 1, 1}},
+                                        {{8, 8, 1, 1}, {0, 8, 0, 0}, {1, 8, 1, 8}}},
+
+            SwapReshapeAndSubViewParams{{1, 1, 16, 8},
+                                        {vpux::DimsOrder::NHWC, {16, 1, 1, 8}, {0, 0, 0, 0}, {8, 1, 1, 8}},
+                                        {{8, 1, 1, 8}, {0, 0, 0, 0}, {1, 1, 8, 8}}},
+
+            SwapReshapeAndSubViewParams{{1, 16, 8, 8},
+                                        {vpux::DimsOrder::NCHW, {1, 16, 64}, {0, 0, 0}, {1, 8, 64}},
+                                        {{1, 8, 64}, {0, 0, 0, 0}, {1, 8, 8, 8}}},
+
+            SwapReshapeAndSubViewParams{{1, 16, 8},
+                                        {vpux::DimsOrder::CHW, {1, 16, 2, 4}, {0, 0, 0, 0}, {1, 8, 2, 4}},
+                                        {{1, 8, 2, 4}, {0, 0, 0}, {1, 8, 8}}},
+
+            SwapReshapeAndSubViewParams{{64, 32, 16, 3, 3},
+                                        {vpux::DimsOrder::NCDHW, {64, 32, 16, 9}, {16, 8, 0, 0}, {48, 24, 16, 9}},
+                                        {{48, 24, 16, 9}, {16, 8, 0, 0, 0}, {48, 24, 16, 3, 3}}}};
+}
 
 INSTANTIATE_TEST_SUITE_P(smoke_SwapReshapeAndSubView, MLIR_ContentSetupTest_SwapReshapeAndSubView,
-                         ::testing::ValuesIn(swapReshapeAndSubViewParams),
+                         ::testing::ValuesIn(getSwapReshapeAndSubViewParams()),
                          MLIR_ContentSetupTest_SwapReshapeAndSubView::getTestCaseName);
 
 TEST_P(MLIR_ContentSetupTest_DoNotSwapReshapeAndSubView, DoNotSwapReshapeAndSubView) {
     auto baseContentAttrSetup = getContentSetup(ArrayRef<int64_t>{_baseContentShape}, getInt8Type(&ctx));
 
+    auto contentAttrSetup = baseContentAttrSetup.reorder(_inputParams.dimsOrder);
     // first Reshape
-    auto contentAttrSetup = baseContentAttrSetup.reshape(ShapeRef(_inputParams.reshape));
+    contentAttrSetup = contentAttrSetup.reshape(ShapeRef(_inputParams.reshape));
 
     // second SubView
     contentAttrSetup =
             contentAttrSetup.subview(ShapeRef(_inputParams.subViewOffset), ShapeRef(_inputParams.subViewShape));
 
     auto actualTransformations = contentAttrSetup.getTransformations();
-    EXPECT_EQ(actualTransformations.size(), 2);
-
-    checkReshapeAttr(actualTransformations[0], _inputParams.reshape);
-    checkSubViewAttr(actualTransformations[1], _inputParams.subViewOffset, _inputParams.subViewShape);
+    if (_inputParams.dimsOrder == vpux::DimsOrder::NCHW) {
+        EXPECT_EQ(actualTransformations.size(), 2);
+        checkReshapeAttr(actualTransformations[0], _inputParams.reshape);
+        checkSubViewAttr(actualTransformations[1], _inputParams.subViewOffset, _inputParams.subViewShape);
+    } else {
+        EXPECT_EQ(actualTransformations.size(), 3);
+        checkReshapeAttr(actualTransformations[1], _inputParams.reshape);
+        checkSubViewAttr(actualTransformations[2], _inputParams.subViewOffset, _inputParams.subViewShape);
+    }
 }
 
-SmallVector<DoNotSwapReshapeAndSubViewParams> doNotswapReshapeAndSubViewParams = {
-        DoNotSwapReshapeAndSubViewParams{{1, 16, 1, 8}, {{128, 1}, {0, 0}, {64, 1}}},
-        DoNotSwapReshapeAndSubViewParams{{1, 16, 48, 1}, {{1, 16, 12, 4}, {0, 0, 9, 0}, {1, 16, 3, 4}}}};
+SmallVector<DoNotSwapReshapeAndSubViewParams, 3> getDoNotswapReshapeAndSubViewParams() {
+    return {DoNotSwapReshapeAndSubViewParams{{1, 16, 1, 8},           // baseConstShape
+                                             {vpux::DimsOrder::NCHW,  // reorder
+                                              {128, 1},               // reshape
+                                              {0, 0},                 // subViewOffset
+                                              {64, 1}}},              // subViewShape
+
+            DoNotSwapReshapeAndSubViewParams{{1, 16, 48, 1},
+                                             {vpux::DimsOrder::NCHW, {1, 16, 12, 4}, {0, 0, 9, 0}, {1, 16, 3, 4}}},
+
+            DoNotSwapReshapeAndSubViewParams{{1, 1, 16, 8},
+                                             {vpux::DimsOrder::NHWC, {1, 2, 4, 8}, {0, 0, 0, 0}, {1, 2, 4, 4}}}};
+}
 
 INSTANTIATE_TEST_SUITE_P(smoke_DoNotSwapReshapeAndSubView, MLIR_ContentSetupTest_DoNotSwapReshapeAndSubView,
-                         ::testing::ValuesIn(doNotswapReshapeAndSubViewParams),
+                         ::testing::ValuesIn(getDoNotswapReshapeAndSubViewParams()),
                          MLIR_ContentSetupTest_DoNotSwapReshapeAndSubView::getTestCaseName);
 
 TEST_P(MLIR_ContentSetupTest_SwapChangeShapeAndElemTypeAndSubView, SwapChangeShapeAndElemTypeAndSubView) {
@@ -1533,6 +1596,276 @@ TEST_F(MLIR_ContentSetupTest, SwapMultipleTransformationsAndSubView) {
 }
 
 //
+// moveAttributeBeforeLayoutTransformations
+//
+
+TEST_F(MLIR_ContentSetupTest, SwapCastElemTypeAndLayoutTransformations) {
+    const int64_t IN = 1;
+    const int64_t IC = 4;
+    const int64_t IH = 8;
+    const int64_t IW = 3;
+    ctx.loadDialect<mlir::quant::QuantizationDialect>();
+    const auto inShape = Shape({IN, IC, IH, IW});
+    const auto baseType = getTensorType(inShape, mlir::Float32Type::get(&ctx), DimsOrder::NCHW, nullptr);
+
+    VPUX_SCOPE_EXIT {
+        // restore default options to avoid failures in other tests
+        Const::setLazyFoldingOptions(&ctx, Const::LazyFoldingOptions());
+    };
+
+    Const::LazyFoldingOptions specialOptions;
+    specialOptions.getFoldingSequenceOptimizations =
+            [=](mlir::Type) -> SmallVector<Const::LazyFoldingOptions::OptimizeConstTransformationsFunc> {
+        auto moveAttributeBeforeLayoutTransformations =
+                [=](SmallVector<Const::TransformAttrInterface>& transformations,
+                    vpux::Const::details::optimization::TransformAttrPos& currPos) {
+                    return vpux::Const::details::moveAttributeBeforeLayoutTransformations(transformations, currPos,
+                                                                                          baseType);
+                };
+        return {moveAttributeBeforeLayoutTransformations};
+    };
+    Const::setLazyFoldingOptions(&ctx, specialOptions);
+
+    Const::ContentSetup baseContentAttrSetup(baseType);
+
+    SmallVector<int64_t> expectedShape = {1, 5, 4, 5};
+    auto contentAttrSetup = baseContentAttrSetup.reshape(ShapeRef(expectedShape));
+
+    const auto dstOrder = DimsOrder::NHWC;
+    const auto memPerm = DimsOrder::NWCH;
+    contentAttrSetup = contentAttrSetup.memPermute(dstOrder, memPerm);  // 1x4x5x5
+
+    auto perAxisQType = mlir::quant::UniformQuantizedPerAxisType::get(
+            0, getUInt8Type(&ctx), mlir::Float32Type::get(&ctx), {2, 0.5, 2, 0.5}, {127, 127, 127, 127}, 1, 0, 255);
+    contentAttrSetup = contentAttrSetup.quantize(perAxisQType);
+
+    SmallVector<int64_t> expectedSubViewOffset = {0, 1, 1};
+    SmallVector<int64_t> expectedSubViewShape = {1, 4, 2};
+    contentAttrSetup = contentAttrSetup.subview(ShapeRef(expectedSubViewOffset), ShapeRef(expectedSubViewShape));
+
+    // check
+    auto actualTransformations = contentAttrSetup.getTransformations();
+    EXPECT_EQ(actualTransformations.size(), 4);
+
+    auto expectedPerAxisQType = mlir::quant::UniformQuantizedPerAxisType::get(
+            0, getUInt8Type(&ctx), mlir::Float32Type::get(&ctx), {2, 0.5, 2, 0.5}, {127, 127, 127, 127}, 2, 0, 255);
+    checkReshapeAttr(actualTransformations[0], expectedShape);
+    checkQuantizePerAxisAttr(actualTransformations[1], expectedPerAxisQType);
+    checkMemPermuteAttr(actualTransformations[2], dstOrder, memPerm);
+    checkSubViewAttr(actualTransformations[3], expectedSubViewOffset, expectedSubViewShape);
+}
+
+TEST_F(MLIR_ContentSetupTest, ReshapeAndLayoutTransformations) {
+    const int64_t IN = 1;
+    const int64_t IC = 4;
+    const int64_t IH = 8;
+    const int64_t IW = 3;
+
+    const auto inShape = Shape({IN, IC, IH, IW});
+    const auto baseType = getTensorType(inShape, mlir::Float32Type::get(&ctx), DimsOrder::NCHW, nullptr);
+
+    VPUX_SCOPE_EXIT {
+        // restore default options to avoid failures in other tests
+        Const::setLazyFoldingOptions(&ctx, Const::LazyFoldingOptions());
+    };
+
+    Const::LazyFoldingOptions specialOptions;
+    specialOptions.getFoldingSequenceOptimizations =
+            [=](mlir::Type) -> SmallVector<Const::LazyFoldingOptions::OptimizeConstTransformationsFunc> {
+        auto moveAttributeBeforeLayoutTransformations =
+                [=](SmallVector<Const::TransformAttrInterface>& transformations,
+                    vpux::Const::details::optimization::TransformAttrPos& currPos) {
+                    return vpux::Const::details::moveAttributeBeforeLayoutTransformations(transformations, currPos,
+                                                                                          baseType);
+                };
+        return {moveAttributeBeforeLayoutTransformations};
+    };
+    Const::setLazyFoldingOptions(&ctx, specialOptions);
+
+    Const::ContentSetup baseContentAttrSetup(baseType);
+
+    const auto dstOrder = DimsOrder::NHWC;
+    const auto memPerm = DimsOrder::NWCH;
+    auto contentAttrSetup = baseContentAttrSetup.memPermute(dstOrder, memPerm);
+
+    SmallVector<int64_t> expectedShape = {1, 4, 3, 8};
+    contentAttrSetup = contentAttrSetup.reshape(ShapeRef(expectedShape));
+
+    // check
+    auto actualTransformations = contentAttrSetup.getTransformations();
+    EXPECT_EQ(actualTransformations.size(), 2);
+
+    checkMemPermuteAttr(actualTransformations[0], dstOrder, memPerm);
+    checkReshapeAttr(actualTransformations[1], expectedShape);
+}
+
+using InputOrderType = DimsOrder;
+using DestinationOrderType = DimsOrder;
+using PermutationType = DimsOrder;
+using QuantDimType = int64_t;
+using InShapeType = SmallVector<int64_t>;
+using SwapQuantizeAndLayoutTransformationsParams =
+        std::tuple<InputOrderType, DestinationOrderType, PermutationType, QuantDimType, InShapeType, QuantDimType>;
+
+// This workaround is needed because using DimsOrder to initialize global variables (as needed for gtest test
+// instances) is undefined behaviour.
+SmallVector<SwapQuantizeAndLayoutTransformationsParams> getSwapQuantizeAndLayoutTransformationsParams() {
+    return {SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NHWC,  // inOrd
+                                                       vpux::DimsOrder::NHWC,  // dstOrd
+                                                       vpux::DimsOrder::NWCH,  // memPerm
+                                                       3,                      // qdim
+                                                       {1, 4, 8, 3},           // inShape
+                                                       1},                     // expectedDim
+                                                                               // perm1: 1x3x4x8 perm2: 1x8x3x4
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NHCW,  // inOrd
+                                                       vpux::DimsOrder::NWCH,  // dstOrd
+                                                       vpux::DimsOrder::NHWC,  // memPerm
+                                                       3,                      // qdim
+                                                       {1, 4, 8, 3},           // inShape
+                                                       1},                     // expectedDim
+                                                                               // perm1: 1x3x8x4 perm2: 1x8x3x4
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NWCH,  // inOrd
+                                                       vpux::DimsOrder::NCWH,  // dstOrd
+                                                       vpux::DimsOrder::NCWH,  // memPerm
+                                                       1,                      // qdim
+                                                       {1, 4, 8, 3},           // inShape
+                                                       1},                     // expectedDim
+                                                                               // perm1: 1x3x4x8 perm2: 1x4x8x3
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NCWH,  // inOrd
+                                                       vpux::DimsOrder::NWCH,  // dstOrd
+                                                       vpux::DimsOrder::NCWH,  // memPerm
+                                                       2,                      // qdim
+                                                       {1, 4, 8, 3},           // inShape
+                                                       1},                     // expectedDim
+                                                                               // perm1: 1x8x3x4 perm2: 1x3x4x8
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NHWC,  // inOrd
+                                                       vpux::DimsOrder::NHWC,  // dstOrd
+                                                       vpux::DimsOrder::NWCH,  // memPerm
+                                                       1,                      // qdim
+                                                       {1, 8, 4, 3},           // inShape
+                                                       2},                     // expectedDim
+                                                                               // perm1: 1x3x8x4 perm2: 1x4x3x8
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NHCW,  // inOrd
+                                                       vpux::DimsOrder::NWCH,  // dstOrd
+                                                       vpux::DimsOrder::NHWC,  // memPerm
+                                                       1,                      // qdim
+                                                       {1, 3, 4, 8},           // inShape
+                                                       2},                     // expectedDim
+                                                                               // perm1: 1x8x4x3 perm2: 1x4x8x3
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NWCH,  // inOrd
+                                                       vpux::DimsOrder::NCWH,  // dstOrd
+                                                       vpux::DimsOrder::NCWH,  // memPerm
+                                                       2,                      // qdim
+                                                       {1, 8, 4, 3},           // inShape
+                                                       2},                     // expectedDim
+                                                                               // perm1: 1x3x8x4 perm2: 1x8x4x3
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NCWH,  // inOrd
+                                                       vpux::DimsOrder::NWCH,  // dstOrd
+                                                       vpux::DimsOrder::NCWH,  // memPerm
+                                                       3,                      // qdim
+                                                       {1, 3, 4, 8},           // inShape
+                                                       2},                     // expectedDim
+                                                                               // perm1: 1x4x8x3 perm2: 1x8x3x4
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NHWC,  // inOrd
+                                                       vpux::DimsOrder::NHWC,  // dstOrd
+                                                       vpux::DimsOrder::NWCH,  // memPerm
+                                                       2,                      // qdim
+                                                       {1, 8, 3, 4},           // inShape
+                                                       3},                     // expectedDim
+                                                                               // perm1: 1x4x8x3 perm2: 1x3x4x8
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NHCW,  // inOrd
+                                                       vpux::DimsOrder::NWCH,  // dstOrd
+                                                       vpux::DimsOrder::NHWC,  // memPerm
+                                                       2,                      // qdim
+                                                       {1, 8, 3, 4},           // inShape
+                                                       3},                     // expectedDim
+                                                                               // perm1: 1x4x3x8 perm2: 1x3x4x8
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NWCH,  // inOrd
+                                                       vpux::DimsOrder::NCWH,  // dstOrd
+                                                       vpux::DimsOrder::NCWH,  // memPerm
+                                                       3,                      // qdim
+                                                       {1, 3, 8, 4},           // inShape
+                                                       3},                     // expectedDim
+                                                                               // perm1: 1x4x3x8 perm2: 1x3x8x4
+            SwapQuantizeAndLayoutTransformationsParams{vpux::DimsOrder::NCWH,  // inOrd
+                                                       vpux::DimsOrder::NWCH,  // dstOrd
+                                                       vpux::DimsOrder::NCWH,  // memPerm
+                                                       1,                      // qdim
+                                                       {1, 3, 8, 4},           // inShape
+                                                       3}};                    // expectedDim
+                                                                               // perm1: 1x8x4x3 perm2: 1x4x3x8
+}
+
+TEST_F(MLIR_ContentSetupTest, QuantizeMemPermAndReorder) {
+    ctx.loadDialect<mlir::quant::QuantizationDialect>();
+    VPUX_SCOPE_EXIT {
+        // restore default options to avoid failures in other tests
+        Const::setLazyFoldingOptions(&ctx, Const::LazyFoldingOptions());
+    };
+
+    for (auto [inputOrder, destinationOrder, permutation, qDim, inShape, expectedQDim] :
+         getSwapQuantizeAndLayoutTransformationsParams()) {
+        auto baseType = getTensorType(Shape(inShape), mlir::Float32Type::get(&ctx), DimsOrder::NCHW, nullptr);
+
+        Const::LazyFoldingOptions specialOptions;
+        specialOptions.getFoldingSequenceOptimizations =
+                [=](mlir::Type) -> SmallVector<Const::LazyFoldingOptions::OptimizeConstTransformationsFunc> {
+            auto moveAttributeBeforeLayoutTransformations =
+                    [=](SmallVector<Const::TransformAttrInterface>& transformations,
+                        vpux::Const::details::optimization::TransformAttrPos& currPos) {
+                        return vpux::Const::details::moveAttributeBeforeLayoutTransformations(transformations, currPos,
+                                                                                              baseType);
+                    };
+            return {moveAttributeBeforeLayoutTransformations};
+        };
+        Const::setLazyFoldingOptions(&ctx, specialOptions);
+        Const::ContentSetup baseContentAttrSetup(baseType);
+
+        const auto inOrd = inputOrder;
+        const auto dstOrd = destinationOrder;
+        const auto memPerm = permutation;
+
+        auto contentAttrSetup = baseContentAttrSetup.reorder(inOrd);
+        contentAttrSetup = contentAttrSetup.memPermute(dstOrd, memPerm);
+
+        // mixing the params for second iteration
+        const auto secondInOrder = memPerm;
+        const auto secondDstOrder = inOrd;
+        const auto secondMemPerm = dstOrd;
+        contentAttrSetup = contentAttrSetup.reorder(secondInOrder);
+        contentAttrSetup = contentAttrSetup.memPermute(secondDstOrder, secondMemPerm);
+
+        contentAttrSetup = contentAttrSetup.add(1);
+        contentAttrSetup = contentAttrSetup.add(1);
+
+        auto perAxisQType =
+                mlir::quant::UniformQuantizedPerAxisType::get(0, getUInt8Type(&ctx), mlir::Float32Type::get(&ctx),
+                                                              {2, 0.5, 2, 0.5}, {127, 127, 127, 127}, qDim, 0, 255);
+        contentAttrSetup = contentAttrSetup.castElemType(perAxisQType);
+
+        // check
+        auto actualTransformations = contentAttrSetup.getTransformations();
+        EXPECT_EQ(actualTransformations.size(), 7);
+
+        auto expectedPerAxisQType = mlir::quant::UniformQuantizedPerAxisType::get(
+                0, getUInt8Type(&ctx), mlir::Float32Type::get(&ctx), {2, 0.5, 2, 0.5}, {127, 127, 127, 127},
+                expectedQDim, 0, 255);
+
+        // verifies 2 adds to see if more non layout transformations are placed corectly
+        // also, checks a double chain of reorder + memPerm, to show that tracing the dimension
+        // works properly through a double layer of transformations which mix the data
+        // using reorders to prove at the same time that the logic works for non-default layouts as well
+        checkAddAttr(actualTransformations[0], 1);
+        checkAddAttr(actualTransformations[1], 1);
+        checkCastElemTypeAttr(actualTransformations[2], expectedPerAxisQType);
+        checkReorderAttr(actualTransformations[3], inOrd);
+        checkMemPermuteAttr(actualTransformations[4], dstOrd, memPerm);
+        checkReorderAttr(actualTransformations[5], secondInOrder);
+        checkMemPermuteAttr(actualTransformations[6], secondDstOrder, secondMemPerm);
+    }
+}
+
+//
 // MoveReshapeBefore
 //
 
@@ -1601,6 +1934,29 @@ TEST_F(MLIR_ContentSetupTest, SwapCastElemTypeAndReshape) {
 
     checkReshapeAttr(actualTransformations[0], expectedShape);
     checkCastElemTypeAttr(actualTransformations[1], expectedType);
+}
+
+TEST_F(MLIR_ContentSetupTest, SwapConvertElemTypeAndReshape) {
+    const int64_t IC = 4;
+    const int64_t IH = 8;
+    const int64_t IW = 3;
+
+    auto baseContentAttrSetup = getContentSetup(ArrayRef<int64_t>{IC, IH, IW}, mlir::Float32Type::get(&ctx));
+
+    // first CastElemType
+    auto expectedType = mlir::Float16Type::get(&ctx);
+    auto contentAttrSetup = baseContentAttrSetup.convertElemType(mlir::Float16Type::get(&ctx));
+
+    // second Reshape
+    SmallVector<int64_t> expectedShape = {1, 2, 1};
+    contentAttrSetup = contentAttrSetup.reshape(ShapeRef(expectedShape));
+
+    // check
+    auto actualTransformations = contentAttrSetup.getTransformations();
+    EXPECT_EQ(actualTransformations.size(), 2);
+
+    checkReshapeAttr(actualTransformations[0], expectedShape);
+    checkConvertElemTypeAttr(actualTransformations[1], expectedType);
 }
 
 TEST_P(MLIR_ContentSetupTest_SwapQuantizeTransformationsAndReshape, SwapQuantizeTransformationsAndReshape) {
@@ -2159,3 +2515,129 @@ TEST_F(MLIR_ContentSetupTest, FuseCastElemType_DisabledDueToOptions) {
     checkCastElemTypeAttr(actualTransformations[0], mlir::Float16Type::get(&ctx));
     checkCastElemTypeAttr(actualTransformations[1], expectedType);
 }
+
+struct AffineReshapeParams {
+    SmallVector<int64_t> shape;
+    SmallVector<SmallVector<int64_t>> dimMapping;
+};
+
+struct SwapAffineReshapeAndSubViewParams {
+    // We construct a constant with inputShape -> AffineReshape -> SubView and see if SubView gets ordered before
+    // AffineReshape and if the folded values are equal!
+
+    SwapAffineReshapeAndSubViewParams(ArrayRef<int64_t> inputShape, const AffineReshapeParams& affineReshape,
+                                      const SubViewParams& subView, bool expectedSwap)
+            : inputShape(inputShape), affineReshape(affineReshape), subView(subView), expectedSwap(expectedSwap) {
+    }
+
+    SmallVector<int64_t> inputShape;
+    AffineReshapeParams affineReshape;
+    SubViewParams subView;
+    // Indicates if this test case actually should cause AffineReshape and SubView to be swapped. This helps
+    // us to test negative cases as well.
+    bool expectedSwap;
+};
+
+class MLIR_ContentSetupTest_SwapAffineReshapeAndSubView :
+        public MLIR_ContentSetupTest,
+        public testing::WithParamInterface<SwapAffineReshapeAndSubViewParams> {
+public:
+    void SetUp() override {
+        const auto& inputShape = GetParam().inputShape;
+        _inType = getTensorType(Shape(inputShape), mlir::IntegerType::get(getContext(), 32, mlir::IntegerType::Signed),
+                                DimsOrder::fromNumDims(inputShape.size()), nullptr);
+        _values = generateValues<int32_t>(_inType.getNumElements());
+    }
+
+    Const::ContentAttr getContentAttr(bool enableTransformationSwapping) {
+        auto [inputShape, affineReshape, subView, expectedSwap] = GetParam();
+
+        auto outShapeAttr = getIntArrayAttr(getContext(), affineReshape.shape);
+        auto dimMappingAttr = getIntArrayOfArray(getContext(), affineReshape.dimMapping);
+
+        VPUX_SCOPE_EXIT {
+            // restore default options to avoid failures in other tests
+            Const::setLazyFoldingOptions(getContext(), Const::LazyFoldingOptions());
+        };
+
+        if (!enableTransformationSwapping) {
+            // set up special options to test that optimizations are disabled.
+            Const::LazyFoldingOptions specialOptions;
+            specialOptions.getFoldingSequenceOptimizations =
+                    [](mlir::Type) -> SmallVector<Const::LazyFoldingOptions::OptimizeConstTransformationsFunc> {
+                return {};
+            };
+        }
+
+        auto setup = Const::ContentSetup(_inType)
+                             .affineReshape(dimMappingAttr, outShapeAttr)
+                             .subview(ShapeRef(subView.offset), ShapeRef(subView.shape));
+        const auto inAttr = Const::createConstContent(_inType, ArrayRef(_values));
+        return Const::ContentAttr::get(inAttr, setup);
+    }
+
+private:
+    template <typename T>
+    static std::vector<T> generateValues(size_t n) {
+        std::vector<T> vals(n);
+        for (size_t i = 0; i < vals.size(); ++i) {
+            vals[i] = static_cast<T>(i);
+        }
+
+        return vals;
+    }
+
+    std::vector<int32_t> _values;
+    mlir::RankedTensorType _inType;
+};
+
+TEST_P(MLIR_ContentSetupTest_SwapAffineReshapeAndSubView, SwapAffineReshapeAndSubView) {
+    auto expectedContentAttr = getContentAttr(false);
+    auto actualContentAttr = getContentAttr(true);
+    ASSERT_EQ(actualContentAttr.getTransformationsAttr().size(), 2);
+
+    if (GetParam().expectedSwap) {
+        EXPECT_TRUE(mlir::isa<Const::SubViewAttr>(actualContentAttr.getTransformationsAttr()[0]));
+        EXPECT_TRUE(mlir::isa<Const::AffineReshapeAttr>(actualContentAttr.getTransformationsAttr()[1]));
+    } else {
+        EXPECT_TRUE(mlir::isa<Const::AffineReshapeAttr>(actualContentAttr.getTransformationsAttr()[0]));
+        EXPECT_TRUE(mlir::isa<Const::SubViewAttr>(actualContentAttr.getTransformationsAttr()[1]));
+    }
+
+    auto expectedFolded = expectedContentAttr.fold();
+    auto expectedValues = to_small_vector(expectedFolded.getValues<int32_t>());
+
+    auto actualFolded = actualContentAttr.fold();
+    auto actualValues = to_small_vector(actualFolded.getValues<int32_t>());
+
+    EXPECT_EQ(ArrayRef(expectedValues), ArrayRef(actualValues));
+}
+
+/// The following tests depict the following cases:
+///     [Denseness][Volume Condition] => [Swap]
+///          y             y               y
+///          y             n               n
+///          n             y               n        (no example of this case found in 2D so far)
+///          n             n               n
+/// We use these 3 cases (minus the one where no example could be found so far) and additionally combine them.
+std::vector<SwapAffineReshapeAndSubViewParams> swapAffineReshapeAndSubViewCases = {
+        // 17x45 -> 765: Dense and volume condition satisfied => swap
+        SwapAffineReshapeAndSubViewParams{{17, 45}, {{765}, {{0}, {0}}}, {{0}, {765}}, true},
+        // 17x45 -> 765: Dense but volume condition violated => no swap
+        SwapAffineReshapeAndSubViewParams{{17, 45}, {{765}, {{0}, {0}}}, {{0}, {764}}, false},
+        // 12 -> 4x3: Neither dense nor the volume condition is true => no swap
+        SwapAffineReshapeAndSubViewParams{{12}, {{4, 3}, {{0, 1}}}, {{0, 1}, {2, 2}}, false},
+        // 5x11 -> 11x5 is a transpose. Since we map 5 -> 5 and 11 -> 11 denseness and the volume condition are true =>
+        // swap
+        SwapAffineReshapeAndSubViewParams{{5, 11}, {{11, 5}, {{1}, {0}}}, {{4, 3}, {6, 2}}, true},
+        // 5x11x17x45 -> 11x5x765
+        // 5x11 -> 11x5 transpose + 17x45 -> 765 dense and volume condition satisfied => swap
+        SwapAffineReshapeAndSubViewParams{
+                {5, 11, 17, 45}, {{11, 5, 765}, {{1}, {0}, {2}, {2}}}, {{4, 3, 0}, {6, 2, 765}}, true},
+        // 33x17x45x44 -> 33x765x44: Surrounded by trivial shape parts, dense and volume condition satisfied => swap
+        SwapAffineReshapeAndSubViewParams{
+                {33, 17, 45, 44}, {{33, 765, 44}, {{0}, {1}, {1}, {2}}}, {{5, 0, 9}, {15, 765, 11}}, true},
+};
+
+INSTANTIATE_TEST_SUITE_P(SwapAffineReshapeAndSubViewTests, MLIR_ContentSetupTest_SwapAffineReshapeAndSubView,
+                         testing::ValuesIn(swapAffineReshapeAndSubViewCases));

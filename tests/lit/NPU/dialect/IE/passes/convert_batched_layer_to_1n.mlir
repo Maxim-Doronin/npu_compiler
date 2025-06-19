@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-batched-layer-to-1n %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #map = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
 
 func.func @main(%arg0: tensor<5x16x1x1xf16>, %arg1: tensor<4x16x1x1xf16>) -> tensor<5x4x1x1xf16> {
@@ -333,11 +334,9 @@ func.func @ReshapeGroupConv(%arg0: tensor<1024x1x16x32xf16>) -> tensor<1024x1x16
 
     return %grp_conv: tensor<1024x1x16x32xf16>
 
-    // CHECK: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>
-    // CHECK: [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 1024, 16, 32]} inputs([[INPUT]] : tensor<1024x1x16x32xf16>) -> tensor<1x1024x16x32xf16>
-    // CHECK: [[SHAPE_CST:%.+]] = const.Declare tensor<4xsi32> = dense<[1024, 1, 1, 1]> : tensor<4xsi64>, [#const.CastElemType<si32>]
-    // CHECK: [[BROADCAST:%.+]] = IE.Broadcast([[CST]], [[SHAPE_CST]]) {mode = #IE.broadcast_type<NUMPY>} : tensor<1x1x1x1xf16>, tensor<4xsi32> -> tensor<1024x1x1x1xf16>
-    // CHECK: [[GRP_CONV:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[BROADCAST]]) {
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1024x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>, [#const.Broadcast<0 : i64, 1024 : i64>]
+    // CHECK-DAG: [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 1024, 16, 32]} inputs([[INPUT]] : tensor<1024x1x16x32xf16>) -> tensor<1x1024x16x32xf16>
+    // CHECK: [[GRP_CONV:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[CST]]) {
     // CHECK-SAME:                  dilations = [1, 1], groups = 1024 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
     // CHECK-SAME:                  } : tensor<1x1024x16x32xf16>, tensor<1024x1x1x1xf16> -> tensor<1x1024x16x32xf16>
     // CHECK: [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1024, 1, 16, 32]} inputs([[GRP_CONV]] : tensor<1x1024x16x32xf16>) -> tensor<1024x1x16x32xf16>
@@ -498,4 +497,28 @@ func.func @BatchConvertTo1N(%arg0: tensor<2x64x38x96xf16>) -> tensor<2x64x38x96x
     // CHECK-LITERAL: {dim_mapping = [[0], [0, 1], [2], [3]], shape_value = [2, 64, 38, 96]} : tensor<1x128x38x96xf32> -> tensor<2x64x38x96xf32>
 
     // CHECK: return [[OUT_AFFINERESHAPE]] : tensor<2x64x38x96xf32>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 1.000000e+00>
+!qElemType1 = !quant.uniform<u8:f16, 1.000000e+00:128>
+
+// CHECK: !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
+// CHECK: !qElemType1 = !quant.uniform<u8:f16, 1.000000e+00:128>
+
+// CHECK-LABEL: @MixedPrecisionF32Case
+// CHECK-SAME: [[INPUT:%.+]]: tensor<5x16x1x1x!qElemType>
+// CHECK-SAME: [[WEIGHTS:%.+]]: tensor<4x16x1x1x!qElemType1>
+func.func @MixedPrecisionF32Case(%arg0: tensor<5x16x1x1x!qElemType>, %arg1: tensor<4x16x1x1x!qElemType1>) -> tensor<5x4x1x1xf32> {
+    %0 = IE.Convolution(%arg0, %arg1) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<5x16x1x1x!qElemType>, tensor<4x16x1x1x!qElemType1> -> tensor<5x4x1x1xf32>
+    return %0 : tensor<5x4x1x1xf32>
+
+    // CHECK: [[IN_TRANSPOSE:%.+]] = IE.Transpose([[INPUT]]) {order_value = #map} : tensor<5x16x1x1x!qElemType> -> tensor<1x16x5x1x!qElemType>
+    // CHECK: [[CONV:%.+]] = IE.Convolution([[IN_TRANSPOSE]], [[WEIGHTS]])
+    // CHECK-SAME:   {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} :
+    // CHECK-SAME:   tensor<1x16x5x1x!qElemType>, tensor<4x16x1x1x!qElemType1> -> tensor<1x4x5x1xf32>
+    // CHECK: [[OUT_TRANSPOSE:%.+]] = IE.Transpose([[CONV]]) {order_value = #map} : tensor<1x4x5x1xf32> -> tensor<5x4x1x1xf32>
+
+    // CHECK: return [[OUT_TRANSPOSE]] : tensor<5x4x1x1xf32>
 }

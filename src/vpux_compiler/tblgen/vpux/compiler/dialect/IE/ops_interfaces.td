@@ -317,4 +317,14 @@ def IE_UnrollBatchOpInterface : OpInterface<"UnrollBatchOpInterface"> {
     ];
 }
 
+//
+// ShaveCodeGenSupportedOpInterface
+//
+
+def IE_ShaveCodeGenSupportedOpInterface: OpInterface<"ShaveCodeGenSupportedOpInterface"> {
+    let description = "Interface for operations which support Shave Code Generation";
+
+    let cppNamespace = "vpux::IE";
+}
+
 #endif

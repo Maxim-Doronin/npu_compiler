@@ -364,7 +364,7 @@ TEST_P(InferReturnTypeComponents, PropagatesBounds) {
         EXPECT_EQ(outputShape, Shape{GetParam()->m_expectedShapesInfo[result.index()].shape});
 
         // check bounds
-        const auto tensorType = outputNDType.cast<mlir::RankedTensorType>();
+        const auto tensorType = mlir::cast<mlir::RankedTensorType>(outputNDType);
         ASSERT_NE(tensorType, nullptr);
 
         const auto outputboundedType = mlir::dyn_cast<Core::BoundedTensorType>(tensorType);

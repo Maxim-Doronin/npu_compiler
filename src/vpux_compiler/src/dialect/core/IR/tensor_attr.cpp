@@ -31,7 +31,7 @@ bool checkAttr(mlir::DictionaryAttr derived, StringRef attrName, int& numAbsentA
         return true;
     }
 
-    return attr.isa<T>();
+    return mlir::isa<T>(attr);
 }
 
 bool vpux::TensorAttr::classof(mlir::Attribute attr) {
@@ -39,7 +39,7 @@ bool vpux::TensorAttr::classof(mlir::Attribute attr) {
         return false;
     }
 
-    auto derived = attr.dyn_cast<mlir::DictionaryAttr>();
+    auto derived = mlir::dyn_cast<mlir::DictionaryAttr>(attr);
     if (derived == nullptr) {
         return false;
     }
@@ -110,7 +110,7 @@ TensorAttr vpux::TensorAttr::get(mlir::MLIRContext* context, mlir::AffineMapAttr
     }
 
     auto dict = mlir::DictionaryAttr::get(context, fields);
-    return dict.dyn_cast<TensorAttr>();
+    return mlir::dyn_cast<vpux::TensorAttr>(dict);
 }
 
 template <class T>
@@ -119,23 +119,23 @@ T getAttr(mlir::DictionaryAttr derived, StringRef attrName) {
     if (attr == nullptr) {
         return nullptr;
     }
-    VPUX_THROW_WHEN(!attr.isa<T>(), "incorrect {0} Attribute type found: {1}", attrName, attr);
-    return attr.cast<T>();
+    VPUX_THROW_WHEN(!mlir::isa<T>(attr), "incorrect {0} Attribute type found: {1}", attrName, attr);
+    return mlir::cast<T>(attr);
 }
 
 mlir::AffineMapAttr TensorAttr::getOrder() const {
-    auto derived = this->cast<mlir::DictionaryAttr>();
-    return getAttr<mlir::AffineMapAttr>(derived, orderName);
+    auto derived = mlir::cast<mlir::DictionaryAttr>(this);
+    return getAttr<mlir::AffineMapAttr>(*derived, orderName);
 }
 
 vpux::IndexedSymbolAttr TensorAttr::getMemSpace() const {
-    auto derived = this->cast<mlir::DictionaryAttr>();
-    return getAttr<vpux::IndexedSymbolAttr>(derived, memSpaceName);
+    auto derived = mlir::cast<mlir::DictionaryAttr>(this);
+    return getAttr<vpux::IndexedSymbolAttr>(*derived, memSpaceName);
 }
 
 Bounds TensorAttr::getBounds() const {
-    auto derived = this->cast<mlir::DictionaryAttr>();
-    auto bounds = getAttr<Const::OpaqueI64ElementsAttr>(derived, boundsName);
+    auto derived = mlir::cast<mlir::DictionaryAttr>(this);
+    auto bounds = getAttr<Const::OpaqueI64ElementsAttr>(*derived, boundsName);
     if (bounds != nullptr) {
         return Bounds(bounds.getValue());
     }
@@ -144,8 +144,8 @@ Bounds TensorAttr::getBounds() const {
 }
 
 DynamicDimsMask TensorAttr::getDynamicDimsMask() const {
-    auto derived = this->cast<mlir::DictionaryAttr>();
-    auto dynamicDimsMask = getAttr<Const::OpaqueI64ElementsAttr>(derived, dynamicDimsMaskName);
+    auto derived = mlir::cast<mlir::DictionaryAttr>(this);
+    auto dynamicDimsMask = getAttr<Const::OpaqueI64ElementsAttr>(*derived, dynamicDimsMaskName);
     if (dynamicDimsMask != nullptr) {
         return DynamicDimsMask(dynamicDimsMask.getValue());
     }
@@ -187,7 +187,7 @@ TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, DimsOrder order, IndexedS
 
 TensorAttr vpux::getTensorAttr(mlir::RankedTensorType type) {
     if (const auto encoding = type.getEncoding()) {
-        const auto tensorAttr = encoding.dyn_cast<TensorAttr>();
+        const auto tensorAttr = mlir::dyn_cast<vpux::TensorAttr>(encoding);
         VPUX_THROW_UNLESS(tensorAttr != nullptr, "Unsupported tensor encoding attribute '{0}'", encoding);
         return tensorAttr;
     }

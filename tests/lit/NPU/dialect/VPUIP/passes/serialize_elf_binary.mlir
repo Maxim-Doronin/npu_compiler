@@ -5,17 +5,18 @@
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --serialize-elf-to-binary %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @OneInputOneOutput
-module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.FP16CompressedConv : false
-    IE.Option @VPU.ReduceSupported : false
-    IE.Option @VPU.AutoPaddingODU : false
-    IE.Option @VPU.AutoPaddingIDU : false
-    IE.Option @VPU.SprLUTEnabled : false
-    IE.Option @VPU.BarrierMaxVariantSum : 256
-    IE.Option @VPU.BarrierMaxVariantCount : 256
-    IE.Option @VPU.MaxKernelSize : 11
+module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.FP16CompressedConv : false
+    config.Option @VPU.ReduceSupported : false
+    config.Option @VPU.AutoPaddingODU : false
+    config.Option @VPU.AutoPaddingIDU : false
+    config.Option @VPU.SprLUTEnabled : false
+    config.Option @VPU.BarrierMaxVariantSum : 256
+    config.Option @VPU.BarrierMaxVariantCount : 256
+    config.Option @VPU.MaxKernelSize : 11
   }
   IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
     IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
@@ -25,7 +26,7 @@ module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.co
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x3x60x60xf16>
   } outputsInfo : {
@@ -141,18 +142,18 @@ module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.co
       IE.ExecutorResource 1 of @SHAVE_NN
       IE.ExecutorResource 1 of @DPU
     }
-    IE.PipelineOptions @Options {
-      IE.Option @VPU.FP16CompressedConv : false
-      IE.Option @VPU.ReduceSupported : false
-      IE.Option @VPU.AutoPaddingODU : false
-      IE.Option @VPU.AutoPaddingIDU : false
-      IE.Option @VPU.SprLUTEnabled : false
-      IE.Option @VPU.BarrierMaxVariantSum : 256
-      IE.Option @VPU.BarrierMaxVariantCount : 256
-      IE.Option @VPU.MaxKernelSize : 11
+    config.PipelineOptions @Options {
+      config.Option @VPU.FP16CompressedConv : false
+      config.Option @VPU.ReduceSupported : false
+      config.Option @VPU.AutoPaddingODU : false
+      config.Option @VPU.AutoPaddingIDU : false
+      config.Option @VPU.SprLUTEnabled : false
+      config.Option @VPU.BarrierMaxVariantSum : 256
+      config.Option @VPU.BarrierMaxVariantCount : 256
+      config.Option @VPU.MaxKernelSize : 11
     }
     IE.ExecutorResource 2 of @DMA_NN
-    IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+    IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   }
   func.func @main(%arg0: memref<1x3x60x60xf16, @DDR>, %arg1: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> {
     %alloc = memref.alloc() : memref<1x3x60x60xf16, @DDR>

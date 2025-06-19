@@ -5,6 +5,38 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-concat %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: OptimizeConcatNonHighestDimWithoutCheck
+func.func @OptimizeConcatNonHighestDimWithoutCheck(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
+                         %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
+    -> (tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>) {
+
+    %concat = VPU.Concat(%arg0, %arg1) {
+        static_offsets = [
+            [0, 0, 0, 0],
+            [0, 32, 0, 0]
+        ]
+    } : tensor<1x32x125x250xf16, {order = #NHWC}>,
+        tensor<1x32x125x250xf16, {order = #NHWC}>
+            -> tensor<1x64x125x250xf16, {order = #NHWC}>
+
+    %slice_0 = VPU.Slice %concat [0, 0, 0, 64] [1, 16, 64, 128] : tensor<1x64x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
+    %slice_1 = VPU.Slice %concat [0, 32, 0, 0] [1, 16, 64, 128] : tensor<1x64x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
+
+    return %slice_0, %slice_1 : tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>
+
+    // CHECK-NOT: VPU.Concat
+    // CHECK: [[SLICE_0:%.+]] = VPU.Slice
+    // CHECK-SAME:      [0, 0, 0, 64] [1, 16, 64, 128] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
+    // CHECK: [[SLICE_1:%.+]] = VPU.Slice
+    // CHECK-SAME:      [0, 0, 0, 0] [1, 16, 64, 128] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
+    // return [[SLICE_0]], [[SLICE_1]] : tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: EliminateConcat

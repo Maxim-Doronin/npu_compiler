@@ -31,15 +31,14 @@ namespace {
 
 class DynamicQuantToVPUNCE final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
 public:
-    DynamicQuantToVPUNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
-            : mlir::OpRewritePattern<IE::ConvolutionOp>(ctx), _arch(arch), _log(log) {
+    DynamicQuantToVPUNCE(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ConvolutionOp>(ctx), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::ConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    VPU::ArchKind _arch;
     Logger _log;
 };
 
@@ -65,7 +64,7 @@ mlir::LogicalResult DynamicQuantToVPUNCE::matchAndRewrite(IE::ConvolutionOp orig
 
     const auto padAttr = VPU::getPaddingAttr(getContext(), PadInfo(origOp.getPadsBegin(), origOp.getPadsEnd()));
     const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
-    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, _arch);
+    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
 
     rewriter.replaceOpWithNewOp<VPU::NCEConvolutionOp>(
             origOp, origOp.getType(), origOp.getInput(), alignedFilter, weightsTable->getResult(0),
@@ -83,7 +82,7 @@ mlir::LogicalResult DynamicQuantToVPUNCE::matchAndRewrite(IE::ConvolutionOp orig
 //
 
 class ConvertDynamicQuantToVPUNCEPass final :
-        public impl::ConvertDynamicQuantToVPUNCEBase<ConvertDynamicQuantToVPUNCEPass> {
+        public vpux::impl::ConvertDynamicQuantToVPUNCEBase<ConvertDynamicQuantToVPUNCEPass> {
 public:
     explicit ConvertDynamicQuantToVPUNCEPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
@@ -96,8 +95,6 @@ private:
 void ConvertDynamicQuantToVPUNCEPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
-    auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
     mlir::ConversionTarget target(ctx);
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
@@ -115,7 +112,7 @@ void ConvertDynamicQuantToVPUNCEPass::safeRunOnFunc() {
     });
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<DynamicQuantToVPUNCE>(&ctx, arch, _log);
+    patterns.add<DynamicQuantToVPUNCE>(&ctx, _log);
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
     }

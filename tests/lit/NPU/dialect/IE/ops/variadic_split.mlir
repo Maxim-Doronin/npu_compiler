@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% %s --verify-diagnostics | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 func.func @ParseAndPrint(%arg: tensor<2x3x4x5xf32, {order = #NCWH}>) -> (tensor<2x3x4x2xf32, {order = #NCWH}>, tensor<2x3x4x2xf32, {order = #NCWH}>, tensor<2x3x4x1xf32, {order = #NCWH}>) {

@@ -130,6 +130,7 @@ using namespace IE;
 namespace {
 
 const std::string NGRAPH_ACT_SPARSITY_STATS_KEY = "activation_sparsity_statistic";
+const int64_t STATIC_RANK_MAX_DIMS = 5;
 
 template <typename ResType>
 ResType getSparsityStatsFieldChecked(const std::shared_ptr<ov::Model>& model, const std::string& primaryKey,
@@ -402,10 +403,12 @@ mlir::Type importPrecision(mlir::MLIRContext* ctx, const ov::element::Type& prec
         return getSInt4Type(ctx);
     case ov::element::Type_t::u4:
         return getUInt4Type(ctx);
+    case ov::element::Type_t::u2:
+        return getUInt2Type(ctx);
     case ov::element::Type_t::boolean:
         return getBool8Type(ctx);
     case ov::element::Type_t::nf4:
-        return vpux::type::QuantileFloatType::getNF4(ctx);
+        return vpux::type::QuantileFloatType::getNF4(ctx, getUInt4Type(ctx), mlir::Float16Type::get(ctx));
     default:
         VPUX_THROW("Unsupported precision : '{0}'", precision);
     }
@@ -566,7 +569,11 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
                 const SmallVector<int64_t> boundsVec(bounds.begin(), bounds.end());
 
                 // Update the bounded tensor type with the new bounds
-                ndType = Core::BoundedTensorType::get(ndType, boundsVec);
+                if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(ndType)) {
+                    ndType = boundedType.changeBounds(boundsVec);
+                } else {
+                    ndType = Core::BoundedTensorType::get(ndType, boundsVec);
+                }
             }
         }
         const auto outShape = boundedOutShape.to_shape();
@@ -834,7 +841,7 @@ SmallVector<mlir::Type> NGraphImporter::getLoopLikeRegionResults(int64_t numIter
                                                                  ArrayRef<mlir::Attribute> invariantOutputVector) {
     mlir::DenseMap<int64_t, int64_t> toConcatOutputAxisMap, toConcatOutputPortIdMap, invariantOutputPortIdMap;
     for (const auto attr : concatOutputVector) {
-        auto copm = attr.dyn_cast_or_null<IE::ConcatOutputPortMapAttr>();
+        auto copm = mlir::dyn_cast_or_null<vpux::IE::ConcatOutputPortMapAttr>(attr);
         auto exId = copm.getExternalPortId().getValue().getSExtValue();
         auto inId = copm.getInternalLayerId().getValue().getSExtValue();
         auto axis = copm.getAxis().getValue().getSExtValue();
@@ -843,7 +850,7 @@ SmallVector<mlir::Type> NGraphImporter::getLoopLikeRegionResults(int64_t numIter
     }
 
     for (const auto attr : invariantOutputVector) {
-        auto iopm = attr.dyn_cast_or_null<IE::InvariantOutputPortMapAttr>();
+        auto iopm = mlir::dyn_cast_or_null<vpux::IE::InvariantOutputPortMapAttr>(attr);
         auto exId = iopm.getExternalPortId().getValue().getSExtValue();
         auto inId = iopm.getInternalLayerId().getValue().getSExtValue();
         invariantOutputPortIdMap.insert({exId, inId});
@@ -4549,6 +4556,146 @@ mlir::RankedTensorType importUserTensor(mlir::MLIRContext* ctx, const ov::descri
 // runNGraphPasses
 //
 
+static bool skipKeepConstAndDecompressionForNode(const std::shared_ptr<const ov::Node>& node) {
+    if (ov::shape_size(node->get_input_shape(0)) <= STATIC_RANK_MAX_DIMS) {
+        return true;
+    }
+
+    // when calling addCommonOptimizationsPasses() certain pattern won't match anymore if this pass is
+    // applied to them and Const->Convert won't get folded
+    auto nextNode = node->get_output_target_inputs(0).begin()->get_node();
+    if (ov::is_type<ov::op::v1::Multiply>(nextNode)) {
+        auto multiplyInputNode = nextNode->get_input_node_shared_ptr(0);
+        // PReluFusion pattern won't match if the Convert node doesn't get folded
+        // so Relu->Multiply won't become PRelu
+        if (ov::is_type<ov::op::v0::Relu>(multiplyInputNode)) {
+            return true;
+        }
+
+        // if ConvertSubtractWithConstant is applied, Subtract will become Add
+        // then AddMultiplyFusion (from LinOpSequenceFusion pass) will be applied, if Multiply has
+        // a Constant as an input
+        if (ov::is_type<ov::op::v1::Subtract>(std::move(multiplyInputNode))) {
+            return true;
+        }
+
+        // AddMultiplyFusion won't match if the Convert node doesn't get folded, so Add needs to have
+        // a Constant as an input
+        auto multiplyOutputNode = nextNode->get_output_target_inputs(0).begin()->get_node();
+        if (ov::is_type<ov::op::v1::Add>(multiplyOutputNode)) {
+            return true;
+        }
+
+        // in the subgraph Multiply -> Concat -> Slice -> Multiply
+        // Slice will get eliminated during StridedSliceOptimization pass
+        // Concat will get eliminated during EliminateConcat pass
+        // MultiplyMultiplyFusion needs both Multiply nodes to have a Constant as an input in order to
+        // replace them with only one Multiply
+        if (ov::is_type<ov::op::v0::Concat>(multiplyOutputNode)) {
+            auto concatOutputs = multiplyOutputNode->get_output_target_inputs(0);
+            if (concatOutputs.size() > 1) {
+                auto concatOutputNode = std::next(concatOutputs.begin(), 1)->get_node();
+                if (ov::is_type<ov::op::v8::Slice>(concatOutputNode)) {
+                    auto sliceOutputNode = concatOutputNode->get_output_target_inputs(0).begin()->get_node();
+                    if (ov::is_type<ov::op::v1::Multiply>(sliceOutputNode)) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (ov::is_type<ov::op::v1::Convolution>(nextNode)) {
+        auto convolutionInputNode = nextNode->get_input_node_shared_ptr(0);
+        // For Transpose->Convolution, Convolution should have a Constant as an input, in case an operation
+        // like Multiply sinks through Transpose during one of the optimizations
+        // in addCommonOptimizationsPasses() so then the Multiply->Convolution pattern will be matched by
+        // MultiplyConvolutionFusion
+        if (ov::is_type<ov::op::v1::Transpose>(convolutionInputNode)) {
+            return true;
+        }
+
+        // MultiplyConvolutionFusion pattern won't match if Convert doesn't get folded, so Convolution
+        // needs to have a Constant as an input
+        if (ov::is_type<ov::op::v1::Multiply>(convolutionInputNode)) {
+            return true;
+        }
+
+        // in the case of Multiply -> Add -> Convolution, when EliminateEltwise pass is applied, the Add
+        // operations will be eliminated and MultiplyConvolutionFusion won't be applied if Convolution
+        // doesn't have a Constant as an input
+        if (ov::is_type<ov::op::v1::Add>(convolutionInputNode)) {
+            auto addInputNode = convolutionInputNode->get_input_node_shared_ptr(0);
+            if (ov::is_type<ov::op::v1::Multiply>(std::move(addInputNode))) {
+                return true;
+            }
+        }
+
+        // in case of Divide -> Convolution, Divide will become Multiply after ConvertDivideWithConstant
+        // and Convolution needs to have a Constant as an input for MultiplyConvolutionFusion to be applied properly
+        if (ov::is_type<ov::op::v1::Divide>(convolutionInputNode)) {
+            return true;
+        }
+
+        // DilatedConvolutionConverter will replace SpaceToBatch -> Convolution -> BatchToSpace to a single
+        // Convolution node this is later followed by ConvolutionMultiplyFusion so this Convolution needs to
+        // have a Constant as an input if the previosly mentioned subgraph is followed by Multiply
+        auto convolutionOutputNode = nextNode->get_output_target_inputs(0).begin()->get_node();
+        if (ov::is_type<ov::op::v1::SpaceToBatch>(std::move(convolutionInputNode)) &&
+            ov::is_type<ov::op::v1::BatchToSpace>(convolutionOutputNode)) {
+            auto batchToSpaceOutputNode = convolutionOutputNode->get_output_target_inputs(0).begin()->get_node();
+            if (ov::is_type<ov::op::v1::Multiply>(batchToSpaceOutputNode)) {
+                return true;
+            }
+        }
+
+        // ConvolutionMultiplyFusion pass will make Multiply the new input of Convolution
+        // if Convolution doesn't have a Constant as the original input, neither will Multiply
+        // and it won't be able to get folded in and eliminated later on
+        if (ov::is_type<ov::op::v1::Multiply>(std::move(convolutionOutputNode))) {
+            return true;
+        }
+    }
+
+    if (ov::is_type<ov::op::v1::Subtract>(nextNode)) {
+        auto substractOutputNode = nextNode->get_output_target_inputs(0).begin()->get_node();
+        // if ConvertSubtractWithConstant is applied, Subtract will become Add only if Subtract has a
+        // Constant as an input, then AddMultiplyFusion will be applied
+        if (ov::is_type<ov::op::v1::Multiply>(std::move(substractOutputNode))) {
+            return true;
+        }
+    }
+
+    if (ov::is_type<ov::op::v1::Add>(nextNode)) {
+        auto addInputNode = nextNode->get_input_node_shared_ptr(0);
+        // AddMultiplyFusion pattern won't apply if Add does't have a Constant as an input
+        if (ov::is_type<ov::op::v1::Multiply>(std::move(addInputNode))) {
+            return true;
+        }
+    }
+
+    if (ov::is_type<ov::op::v8::Gather>(nextNode)) {
+        auto gatherOutputNode = nextNode->get_output_target_inputs(0).begin()->get_node();
+        // Gather->Add won't be folded if Gather doesn't have a Constant as an input
+        if (ov::is_type<ov::op::v1::Add>(std::move(gatherOutputNode))) {
+            return true;
+        }
+    }
+
+    if (ov::is_type<ov::op::v11::Interpolate>(nextNode)) {
+        auto interpolateOutputNode = nextNode->get_output_target_inputs(0).begin()->get_node();
+        // Interpolate->Transpose->Reshape won't be folded if Interpolate doesn't have a Constant as an input
+        if (ov::is_type<ov::op::v1::Transpose>(interpolateOutputNode)) {
+            auto transposeOutputNode = interpolateOutputNode->get_output_target_inputs(0).begin()->get_node();
+            if (ov::is_type<ov::op::v1::Reshape>(std::move(transposeOutputNode))) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 static void addCommonOptimizationsPasses(ov::pass::Manager& manager) {
     // MOCTransformations contain StridedSliceOptimization transformation,
     // so we must call SliceToStridedSlice before MOCTransformations call
@@ -4637,15 +4784,21 @@ void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, m
     auto scopeTiming = rootTiming.nest("Common nGraph passes");
 
     ov::pass::Manager manager;
+    auto passConfig = manager.get_pass_config();
     manager.register_pass<ov::pass::InitNodeInfo>();
 
     // Dequantization of the constants with types specified here will not be folded. If folding occurs the compiler will
     // think weights are FP16/FP32 resulting in high-precision execution.
-    ov::element::TypeVector decompression_precisions{ov::element::u4,     ov::element::i4,    ov::element::nf4,
-                                                     ov::element::u8,     ov::element::i8,    ov::element::f8e4m3,
-                                                     ov::element::f8e5m2, ov::element::f8e8m0};
+    ov::element::TypeVector decompression_precisions{ov::element::u2,     ov::element::u4,     ov::element::i4,
+                                                     ov::element::nf4,    ov::element::u8,     ov::element::i8,
+                                                     ov::element::f8e4m3, ov::element::f8e5m2, ov::element::f8e8m0};
     manager.register_pass<ov::pass::MarkDequantization>(decompression_precisions, /*fold_subtract_const=*/true);
     manager.register_pass<ov::pass::KeepConstPrecision>(decompression_precisions, /*fold_subtract_const=*/true);
+    manager.register_pass<ov::pass::KeepConstAndDecompression>();
+    passConfig->set_callback<ov::pass::KeepConstAndDecompression>(
+            [](const std::shared_ptr<const ov::Node>& node) -> bool {
+                return skipKeepConstAndDecompressionForNode(node);
+            });
     manager.register_pass<ov::pass::SharedOpOptimization>();
     manager.register_pass<ov::pass::ConvertQuantizeDequantize>();
     manager.register_pass<ov::pass::ConstantFolding>();
@@ -4653,10 +4806,10 @@ void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, m
     manager.register_pass<ov::pass::ConvertInterpolate1ToInterpolate4>();
     manager.register_pass<ov::pass::ConvertInterpolate11ToInterpolate4>();
     manager.register_pass<ov::pass::ConvertTopK11ToTopK3>();
-    manager.register_pass<ov::pass::ConvertPad12ToPad1>();
     manager.register_pass<ov::pass::ConstantFolding>();
     addCommonOptimizationsPasses(manager);
 
+    manager.register_pass<ov::pass::ConvertPad12ToPad1>();
     manager.register_pass<ov::pass::ConvertSoftMax1ToSoftMax8>();
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)

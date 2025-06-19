@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --canonicalize --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @FuseClamps1
 func.func @FuseClamps1(%arg0: tensor<1x30x30x30xf16>) -> tensor<1x30x30x30xf16> {
     %0 = IE.Clamp(%arg0) {max = 20.000000e+00 : f64, min = 1.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
@@ -74,4 +75,28 @@ func.func @ConvertClampMinAttrToFP16(%arg0: tensor<1x30x30x30xf16>) -> tensor<1x
 
     // CHECK:        [[CLAMP:%.*]] = IE.Clamp(%arg0) {max = 9.9999997473787516E-6 : f64, min = -6.550400e+04 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     // CHECK-NEXT:       return [[CLAMP]]
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertClampMinMaxAttrToFP16Max
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1024x1xf32>
+func.func @ConvertClampMinMaxAttrToFP16Max(%arg0: tensor<1x1024x1xf32>) -> tensor<1x1024x1xf32> {
+    %0 = IE.Clamp(%arg0) {max = 8500000.00 : f64, min = 8454144.00 : f64} : tensor<1x1024x1xf32> -> tensor<1x1024x1xf32>
+    return %0 : tensor<1x1024x1xf32>
+
+    // CHECK:       [[CLAMP:%.+]] = IE.Clamp([[INPUT]]) {max = 6.550400e+04 : f64, min = 6.550400e+04 : f64} : tensor<1x1024x1xf32> -> tensor<1x1024x1xf32>
+    // CHECK:       return [[CLAMP]]
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertClampMinMaxAttrToFP16Lowest
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1024x1xf32>
+func.func @ConvertClampMinMaxAttrToFP16Lowest(%arg0: tensor<1x1024x1xf32>) -> tensor<1x1024x1xf32> {
+    %0 = IE.Clamp(%arg0) {max = -8454144.00 : f64, min = -8500000.00 : f64} : tensor<1x1024x1xf32> -> tensor<1x1024x1xf32>
+    return %0 : tensor<1x1024x1xf32>
+
+    // CHECK:       [[CLAMP:%.+]] = IE.Clamp([[INPUT]]) {max = -6.550400e+04 : f64, min = -6.550400e+04 : f64} : tensor<1x1024x1xf32> -> tensor<1x1024x1xf32>
+    // CHECK:       return [[CLAMP]]
 }

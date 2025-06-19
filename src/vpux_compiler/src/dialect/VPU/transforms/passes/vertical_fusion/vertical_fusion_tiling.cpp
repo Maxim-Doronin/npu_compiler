@@ -6,8 +6,10 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_config.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_scheduling_factory.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_scheduling_factory.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_scheduling_factory.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 
@@ -33,6 +35,7 @@ namespace {
 
 typedef std::function<void(int64_t, mlir::Operation*, mlir::Value&, Shape&)> TilingFunction;
 
+template <typename VFConfigType, typename VFSchedulingFactoryType>
 class VerticalFusionTilingRewriter final : public mlir::OpRewritePattern<VPU::VerticalFusionOp> {
 public:
     VerticalFusionTilingRewriter(mlir::MLIRContext* ctx, bool enableVerticalFusionPipelining,
@@ -53,9 +56,9 @@ private:
                        int64_t tilingIndex, Dim axis, ShapeRef expectedShape) const;
     bool processBlockArgument(mlir::BlockArgument blockArg, TilingStorage& tilingStorage, TileInfo& originalTiling,
                               int64_t tilingIndex, Dim axis) const;
-    void applyLinearTiling(const int64_t numTiles, VFConfig& config, SmallVector<mlir::Value>& resultTileVals,
+    void applyLinearTiling(const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
                            SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure) const;
-    void applyPipelinedTiling(const int64_t numTiles, VFConfig& config, SmallVector<mlir::Value>& resultTileVals,
+    void applyPipelinedTiling(const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
                               SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure,
                               const TilingOperationStorage::UPtr& storage) const;
 
@@ -64,8 +67,10 @@ private:
     Logger _log;
 };
 
-bool VerticalFusionTilingRewriter::processBlockArgument(mlir::BlockArgument blockArg, TilingStorage& tilingStorage,
-                                                        TileInfo& originalTiling, int64_t tilingIndex, Dim axis) const {
+template <typename VFConfigType, typename VFSchedulingFactoryType>
+bool VerticalFusionTilingRewriter<VFConfigType, VFSchedulingFactoryType>::processBlockArgument(
+        mlir::BlockArgument blockArg, TilingStorage& tilingStorage, TileInfo& originalTiling, int64_t tilingIndex,
+        Dim axis) const {
     auto& offset = originalTiling.offsets[axis];
     const auto storageInfo = tilingStorage.get(blockArg.getArgNumber(), tilingIndex);
     VPUX_THROW_WHEN(!storageInfo.has_value(), "Tiling info for argument {0} with index {1} not found", blockArg,
@@ -93,9 +98,10 @@ bool VerticalFusionTilingRewriter::processBlockArgument(mlir::BlockArgument bloc
     return false;
 }
 
-void VerticalFusionTilingRewriter::processOffset(mlir::Value operand, const TilingOperationStorage::UPtr& opStorage,
-                                                 TileInfo& originalTiling, int64_t tilingIndex, Dim axis,
-                                                 ShapeRef expectedShape) const {
+template <typename VFConfigType, typename VFSchedulingFactoryType>
+void VerticalFusionTilingRewriter<VFConfigType, VFSchedulingFactoryType>::processOffset(
+        mlir::Value operand, const TilingOperationStorage::UPtr& opStorage, TileInfo& originalTiling,
+        int64_t tilingIndex, Dim axis, ShapeRef expectedShape) const {
     auto& offset = originalTiling.offsets[axis];
     if (offset == 0) {
         return;
@@ -119,11 +125,11 @@ void VerticalFusionTilingRewriter::processOffset(mlir::Value operand, const Tili
  during backpropagation process.
  In this case adjust shapes to original one by slicing
 */
-void VerticalFusionTilingRewriter::adjustInputShape(mlir::PatternRewriter& rewriter, mlir::Operation* operation,
-                                                    InputTiling& inputTiling, mlir::IRMapping& mapper,
-                                                    TilingStorage& tilingStorage,
-                                                    const TilingOperationStorage::UPtr& opStorage, int64_t tilingIndex,
-                                                    Dim axis) const {
+template <typename VFConfigType, typename VFSchedulingFactoryType>
+void VerticalFusionTilingRewriter<VFConfigType, VFSchedulingFactoryType>::adjustInputShape(
+        mlir::PatternRewriter& rewriter, mlir::Operation* operation, InputTiling& inputTiling, mlir::IRMapping& mapper,
+        TilingStorage& tilingStorage, const TilingOperationStorage::UPtr& opStorage, int64_t tilingIndex,
+        Dim axis) const {
     VPUX_THROW_WHEN(inputTiling.tiles.size() < operation->getOperands().size(),
                     "Number of operands {0} is more than number of operand tiles {1}", operation->getOperands().size(),
                     inputTiling.tiles.size());
@@ -233,10 +239,10 @@ void VerticalFusionTilingRewriter::adjustInputShape(mlir::PatternRewriter& rewri
     }
 }
 
-void VerticalFusionTilingRewriter::applyLinearTiling(const int64_t numTiles, VFConfig& config,
-                                                     SmallVector<mlir::Value>& resultTileVals,
-                                                     SmallVector<Shape>& resultTileOffsets,
-                                                     const TilingFunction& tilingProcedure) const {
+template <typename VFConfigType, typename VFSchedulingFactoryType>
+void VerticalFusionTilingRewriter<VFConfigType, VFSchedulingFactoryType>::applyLinearTiling(
+        const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
+        SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure) const {
     auto operations = config.getVFOperations();
 
     for (auto index : irange(numTiles)) {
@@ -251,38 +257,43 @@ void VerticalFusionTilingRewriter::applyLinearTiling(const int64_t numTiles, VFC
     }
 }
 
-void VerticalFusionTilingRewriter::applyPipelinedTiling(const int64_t numTiles, VFConfig& config,
-                                                        SmallVector<mlir::Value>& resultTileVals,
-                                                        SmallVector<Shape>& resultTileOffsets,
-                                                        const TilingFunction& tilingProcedure,
-                                                        const TilingOperationStorage::UPtr& storage) const {
+template <typename VFConfigType, typename VFSchedulingFactoryType>
+void VerticalFusionTilingRewriter<VFConfigType, VFSchedulingFactoryType>::applyPipelinedTiling(
+        const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
+        SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure,
+        const TilingOperationStorage::UPtr& storage) const {
     auto scheduling = config.getSubgraph().getScenario();
     VPUX_THROW_WHEN(!scheduling.has_value(), "Cannot get scheduling scenario from VF {0}", config.getSubgraph());
 
-    VFSchedulingFactory costFactory(/*prefetching=*/true);
+    VFSchedulingFactoryType costFactory(/*prefetching=*/true);
     auto scenario = costFactory.createVFScenario(scheduling.value(), _log);
 
-    if (auto pipelinedScenario = std::dynamic_pointer_cast<IVFPipelinedScheduling>(scenario)) {
+    if (auto pipelinedScenario = std::dynamic_pointer_cast<IVFPipelinedScheduling<VFConfigType>>(scenario)) {
         auto pipelining = pipelinedScenario->getPipelining(config, numTiles, storage, _vpunnCostFunction);
 
-        mlir::Value currentResult;
-        Shape currentTile;
-        for (auto& [index, operation] : pipelining.getTimeLine()) {
-            // currentResult and currentTiles keep result from previous call tilingProcedure
-            tilingProcedure(index, operation, currentResult, currentTile);
+        auto timeline = pipelining.getTimeLine();
 
-            if (llvm::find(config.getOutputs(), operation) != config.getOutputs().end()) {
-                resultTileVals.push_back(currentResult);
-                resultTileOffsets.push_back(currentTile);
+        if (!timeline.empty()) {
+            mlir::Value currentResult;
+            Shape currentTile;
+            for (auto& [index, operation] : pipelining.getTimeLine()) {
+                // currentResult and currentTiles keep result from previous call tilingProcedure
+                tilingProcedure(index, operation, currentResult, currentTile);
+
+                if (llvm::find(config.getOutputs(), operation) != config.getOutputs().end()) {
+                    resultTileVals.push_back(currentResult);
+                    resultTileOffsets.push_back(currentTile);
+                }
             }
+            return;
         }
-    } else {
-        applyLinearTiling(numTiles, config, resultTileVals, resultTileOffsets, tilingProcedure);
     }
+    applyLinearTiling(numTiles, config, resultTileVals, resultTileOffsets, tilingProcedure);
 }
 
-mlir::LogicalResult VerticalFusionTilingRewriter::matchAndRewrite(VPU::VerticalFusionOp vfOp,
-                                                                  mlir::PatternRewriter& rewriter) const {
+template <typename VFConfigType, typename VFSchedulingFactoryType>
+mlir::LogicalResult VerticalFusionTilingRewriter<VFConfigType, VFSchedulingFactoryType>::matchAndRewrite(
+        VPU::VerticalFusionOp vfOp, mlir::PatternRewriter& rewriter) const {
     const auto tilingStrategy = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(vfOp.getTilingStrategy()));
 
     const auto numTiledAxis = llvm::count_if(tilingStrategy, [](auto num) {
@@ -302,17 +313,18 @@ mlir::LogicalResult VerticalFusionTilingRewriter::matchAndRewrite(VPU::VerticalF
     auto operationStorage = std::make_unique<TilingOperationStorage>();
     auto tilingStorage = restoreTilingRegions(vfOp, _log, operationStorage);
 
-    auto vfConfig = VFConfig(vfOp, _enableVerticalFusionPipelining);
+    VFConfigType vfConfig(vfOp, _enableVerticalFusionPipelining);
 
     SmallVector<mlir::Value> resultTileVals;
     resultTileVals.reserve(*maxTiledLen);
     SmallVector<Shape> resultTileOffsets;
-    mlir::IRMapping mapper;
+    DenseMap<int64_t, mlir::IRMapping> mappers;
 
     auto dim = Dim(std::distance(tilingStrategy.begin(), maxTiledLen));
 
     const auto tilingProcedure = [&](int64_t index, mlir::Operation* op, mlir::Value& currentResult,
                                      Shape& currentTile) {
+        auto& mapper = mappers[index];
         for (auto operand : op->getOperands()) {
             if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
                 const auto valName = printToString("ba_input {0}", index);
@@ -364,7 +376,7 @@ mlir::LogicalResult VerticalFusionTilingRewriter::matchAndRewrite(VPU::VerticalF
                                                ArrayRef(resultTileOffsets));
 
     return mlir::success();
-}
+}  // namespace
 
 //
 // VfTilingPass
@@ -372,8 +384,10 @@ mlir::LogicalResult VerticalFusionTilingRewriter::matchAndRewrite(VPU::VerticalF
 
 class VfTilingPass final : public VPU::impl::VfTilingBase<VfTilingPass> {
 public:
-    explicit VfTilingPass(bool enableVerticalFusionPipelining, Logger log)
-            : _enableVerticalFusionPipelining(enableVerticalFusionPipelining) {
+    explicit VfTilingPass(bool enableVerticalFusionPipelining, const WorkloadManagementMode workloadManagementMode,
+                          Logger log)
+            : _enableVerticalFusionPipelining(enableVerticalFusionPipelining),
+              _workloadManagementMode(workloadManagementMode) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -382,6 +396,7 @@ public:
 private:
     void safeRunOnFunc() final;
     bool _enableVerticalFusionPipelining = false;
+    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
 };
 
 mlir::LogicalResult VfTilingPass::initialize(mlir::MLIRContext* ctx) {
@@ -391,6 +406,9 @@ mlir::LogicalResult VfTilingPass::initialize(mlir::MLIRContext* ctx) {
     if (enableVerticalFusionPipelining.hasValue()) {
         _log.trace("Overloading VfTilingPass argument by MLIR variable");
         _enableVerticalFusionPipelining = enableVerticalFusionPipelining;
+    }
+    if (workloadManagementModeOpt.hasValue()) {
+        _workloadManagementMode = workloadManagementModeOpt.getValue();
     }
     return mlir::success();
 }
@@ -415,7 +433,13 @@ void VfTilingPass::safeRunOnFunc() {
     target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp, mlir::func::CallOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<VerticalFusionTilingRewriter>(&ctx, _enableVerticalFusionPipelining, costFunction, _log);
+    if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_LCA) {
+        patterns.add<VerticalFusionTilingRewriter<VF::v1::VFConfig, VF::v1::VFSchedulingFactory>>(
+                &ctx, _enableVerticalFusionPipelining, std::move(costFunction), _log);
+    } else {
+        patterns.add<VerticalFusionTilingRewriter<VF::v2::VFConfig, VF::v2::VFSchedulingFactory>>(
+                &ctx, _enableVerticalFusionPipelining, std::move(costFunction), _log);
+    }
 
     if (mlir::failed(mlir::applyFullConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
@@ -428,6 +452,7 @@ void VfTilingPass::safeRunOnFunc() {
 // createVfTilingPass
 //
 
-std::unique_ptr<mlir::Pass> VPU::createVfTilingPass(bool enableVerticalFusionPipelining, Logger log) {
-    return std::make_unique<VfTilingPass>(enableVerticalFusionPipelining, log);
+std::unique_ptr<mlir::Pass> VPU::createVfTilingPass(bool enableVerticalFusionPipelining,
+                                                    const WorkloadManagementMode workloadManagementMode, Logger log) {
+    return std::make_unique<VfTilingPass>(enableVerticalFusionPipelining, workloadManagementMode, log);
 }

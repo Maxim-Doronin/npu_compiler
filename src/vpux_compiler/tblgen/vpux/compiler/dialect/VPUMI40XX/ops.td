@@ -142,12 +142,14 @@ def VPUMI40XX_MappedInferenceOp :
         DenseI32ArrayAttr:$segmentSizes,
         Variadic<VPURegMapped_IndexType>:$invariantTasks,
         Variadic<VPURegMapped_IndexType>:$variantTasks,
-        Variadic<VPURegMapped_IndexType>:$actKernelRanges,
-        Variadic<VPURegMapped_IndexType>:$actKernelInvocations,
+        VariadicOfVariadic<VPURegMapped_IndexType, "actKernelRangesSizes">:$actKernelRanges,
+        DenseI32ArrayAttr:$actKernelRangesSizes,
+        VariadicOfVariadic<VPURegMapped_IndexType, "actKernelInvocationsSizes">:$actKernelInvocations,
+        DenseI32ArrayAttr:$actKernelInvocationsSizes,
         Optional<VPURegMapped_IndexType>:$mediaTasks,
         Optional<VPURegMapped_IndexType>:$barrierTasks,
         Optional<VPURegMapped_IndexType>:$workItemTasks,
-        Optional<VPURegMapped_IndexType>:$bootstrapTasks,
+        Optional<VPURegMapped_IndexType>:$bootstrapBarriers,
         Optional<AnyTypeOf<[VPURegMapped_IndexType, AnyMemRef]>>:$actShaveRt,
         Variadic<VPURegMapped_IndexType>:$actShaveStacks,
         Optional<MemRefOf<[UI32]>>:$dmaHwpBase,
@@ -155,12 +157,12 @@ def VPUMI40XX_MappedInferenceOp :
         I64ArrayOfArraysAttr:$dmaCount,
         I64ArrayAttr:$invariantCount,
         I64ArrayAttr:$variantCount,
-        I64ArrayAttr:$actKernelRangesCount,
-        I64ArrayAttr:$actKernelInvocationsCount,
+        I64ArrayOfArraysAttr:$actKernelRangesCount,
+        I64ArrayOfArraysAttr:$actKernelInvocationsCount,
         I64Attr:$mediaCount,
         I64Attr:$barrierCount,
         OptionalAttr<I64Attr>:$workItemCount,
-        OptionalAttr<I64Attr>:$bootstrapTasksCount,
+        OptionalAttr<I64Attr>:$bootstrapBarriersCount,
         OptionalAttr<I64Attr>:$bootsrapWorkItemsCount,
         OptionalAttr<I64Attr>:$finalBarrierId,
         Optional<AnyMemRef>:$barrierConfigurationTasks,
@@ -193,7 +195,7 @@ def VPUMI40XX_MappedInferenceOp :
         (`mediaTasks` `(` $mediaTasks^ `:` type($mediaTasks) `)`)?
         (`barriers` `(` $barrierTasks^ `:` type($barrierTasks) `)` )?
         (`workItemTasks` `(` $workItemTasks^ `:` type($workItemTasks) `)` )?
-        (`bootstrapTasks` `(` $bootstrapTasks^ `:` type($bootstrapTasks) `)` )?
+        (`bootstrapBarriers` `(` $bootstrapBarriers^ `:` type($bootstrapBarriers) `)` )?
         (`actShaveRt` `(` $actShaveRt^ `:` type($actShaveRt) `)` )?
         (`actShaveStacks` `(` $actShaveStacks^ `:` type($actShaveStacks) `)`)?
         (`dmaHwpBase` `(` $dmaHwpBase^ `:` type($dmaHwpBase) `)`)?
@@ -208,7 +210,7 @@ def VPUMI40XX_MappedInferenceOp :
         `mediaCount` `(` $mediaCount `)`
         `barrierCount` `(` $barrierCount `)`
         (`workItemCount` `(` $workItemCount^ `)`)?
-        (`bootstrapTasksCount` `(` $bootstrapTasksCount^ `)`)?
+        (`bootstrapBarriersCount` `(` $bootstrapBarriersCount^ `)`)?
         (`bootsrapWorkItemsCount` `(` $bootsrapWorkItemsCount^ `)`)?
         (`finalBarrierId` `(` $finalBarrierId^ `)`)?
         (`barrierConfigurationTasksCount` `(` $barrierConfigurationTasksCount^ `)`)?
@@ -255,9 +257,8 @@ def VPUMI40XX_NNDMAOp :
         UnitAttr:$allow_different_in_out_shapes,
         Optional<AnyMemRef>:$indices,
         Optional<VPURegMapped_IndexType>:$enqueueBarrier,
-        OptionalAttr<IntAttr>:$bar_prog_dma_at_page,
-         OptionalAttr<IntAttr>:$wlmPage
-        
+        OptionalAttr<IntAttr>:$wlmPage,
+        OptionalAttr<VPUIP_PhysicalBarrierRangeAttr>:$physical_barrier_range  
     );
 
     let results = (outs
@@ -273,11 +274,38 @@ def VPUMI40XX_NNDMAOp :
                     "mlir::Value":$taskLocation,
                     "mlir::Value":$input,
                     "mlir::Value":$output_buff,
-                    "mlir::Value":$prevousDma,
+                    "mlir::Value":$previousDma,
                     "mlir::ValueRange":$waitBarriers,
                     "mlir::ValueRange":$updateBarriers,
                     "VPUMI40XX::DMATransactionAttr":$dma_transaction,
                     "VPUIP::DMADescriptorAttr":$dma_descriptor)
+        >,
+        OpBuilder<
+            (ins "mlir::Type":$index,
+                    "mlir::Value":$taskLocation,
+                    "mlir::Value":$input,
+                    "mlir::ValueRange":$output_buff,
+                    "mlir::Value":$previousDma,
+                    "mlir::ValueRange":$waitBarriers,
+                    "mlir::ValueRange":$updateBarriers,
+                    "uint64_t":$start_after,
+                    "uint64_t":$clean_after,
+                    "bool":$is_out_of_order,
+                    "bool":$is_critical,
+                    "bool":$enable_msc,
+                    "int64_t":$port,
+                    "VPUIP::DMAAccMode":$acceleration_mode,
+                    "mlir::Value":$act_compression_size_entry,
+                    "mlir::Value":$act_compression_sparsity_map,
+                    "VPUMI40XX::DMATransactionAttr":$dma_transaction,
+                    "VPUIP::DMADescriptorAttr":$dma_descriptor,
+                    "mlir::IntegerAttr":$dma_hwp_id,
+                    "VPUIP::DmaProfilingMetadataAttr":$profilingMetadata,
+                    "bool":$allow_different_in_out_shapes,
+                    "mlir::Value":$indices,
+                    "mlir::Value":$enqueueBarrier,
+                    "mlir::IntegerAttr":$wlmPage
+                    )
         >
     ];
 
@@ -659,7 +687,8 @@ def VPUMI40XX_DPUVariantOp :
         UnitAttr:$spr_lut_read,
         UnitAttr:$pallet_lut_read,
         UnitAttr:$force_inv_read,
-        OptionalAttr<IntAttr>:$wlmPage
+        OptionalAttr<IntAttr>:$wlmPage,
+        OptionalAttr<I64ArrayAttr>:$variant_primitive_id // IDs for variant primitives A and B
     );
 
     let extraClassDefinition = [{
@@ -727,6 +756,7 @@ def VPUMI40XX_DPUInvariantOp :
         Variadic<MemRefOf<[F16, F32, BF16, quant_QuantizedType]>>:$output_buffs,
         Variadic<MemRefOf<[I1]>>:$output_sparsity_map_buffs,
         Optional<MemRefOf<[UI64]>>:$profiling_data,
+        Optional<MemRefOf<[I32]>>:$dynamic_sequence_length, // 1x1x1xVALUExi32
 
         Optional<MemRefOf<[F16, BF16, quant_QuantizedType]>>:$max_per_xy,
         Optional<MemRefOf<[F16, BF16, quant_QuantizedType]>>:$min_per_xy,
@@ -758,7 +788,8 @@ def VPUMI40XX_DPUInvariantOp :
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
         Optional<VPURegMapped_IndexType>:$enqueueBarrier,
-        OptionalAttr<IntAttr>:$wlmPage
+        OptionalAttr<IntAttr>:$wlmPage,
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig
     );
 
     let results = (outs
@@ -803,6 +834,7 @@ def VPUMI40XX_DPUInvariantOp :
         (`outputs` `(` $output_buffs^ `:` type($output_buffs) `)`)?
         (`output_sparsity_maps` `(` $output_sparsity_map_buffs^ `:` type($output_sparsity_map_buffs) `)`)?
         (`profiling_data` `(` $profiling_data^ `:` type($profiling_data) `)`)?
+        (`dynamic_sequence_length` `(` $dynamic_sequence_length^ `:` type($dynamic_sequence_length) `)`)?
         (`max_per_xy` `(` $max_per_xy^ `:` type($max_per_xy) `)`)?
         (`min_per_xy` `(` $min_per_xy^ `:` type($min_per_xy) `)`)?
         (`min_max_per_tensor` `(` $min_max_per_tensor^ `:` type($min_max_per_tensor) `)`)?

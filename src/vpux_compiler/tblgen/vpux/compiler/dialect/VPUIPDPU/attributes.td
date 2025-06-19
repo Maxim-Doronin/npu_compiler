@@ -470,4 +470,22 @@ def VPUIPDPU_PPEScaleDataType :
     let genSpecializedAttr = 1;
 }
 
+//
+// WeightsZpBitwidthType
+//
+
+def VPUIPDPU_WeightsZpBitwidthType :
+        I32EnumAttr<
+            "WeightsZpBitwidthType",
+            "Weights ZeroPoint per channel bitwidth type",
+            [
+                I32EnumAttrCase<"ZP_8b", 0>,
+                I32EnumAttrCase<"ZP_4b", 1>,
+            ]
+        > {
+    let cppNamespace = "vpux::VPUIPDPU";
+    let genSpecializedAttr = 1;
+}
+
+
 #endif

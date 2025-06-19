@@ -60,6 +60,10 @@ bool vpux::VPU::ConvertOp::checkStrategyCompatibility(vpux::VPU::MultiClusterStr
     constexpr int64_t MIN_DIM_SIZE_FOR_TILING = 4;
     auto inputShape = getShape(getInput());
 
+    if (inputShape.isDynamic()) {
+        return false;
+    }
+
     switch (strategy) {
     case VPU::MultiClusterStrategy::Clustering:
         isStrategyCompatible = true;

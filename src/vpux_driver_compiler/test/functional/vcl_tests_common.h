@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -32,10 +32,14 @@ namespace VCLTestsUtils {
 using IRInfoTestType = std::vector<std::unordered_map<std::string, std::string>>;
 using VCLTestsParams = std::tuple<std::unordered_map<std::string, std::string>>;
 
-/// The file contains the models and its configuration for somke test
+/// The file contains the models and their configuration for smoke tests
 const std::string SMOKE_TEST_CONFIG = "/test_smoke.json";
-/// The file contains the modesl and its configuration for noraml test
+/// The file contains the models and their configuration for normal tests
 const std::string TEST_CONFIG = "/test.json";
+
+/// The two functions are prepared to call the vclAllocatedExecutableCreate.
+uint8_t* allocateBlob(uint64_t size);
+void deallocateBlob(uint8_t* ptr);
 
 /**
  * @brief Base class to parse config file to get test cases and provide helper functions
@@ -105,6 +109,15 @@ public:
 
     size_t getModelIRSize() {
         return modelIRSize;
+    }
+
+    /**
+     * @brief Print error info to pass coverity scanner
+     */
+    void printErrorInfo(const std::string& errorStr, vcl_result_t ret) {
+        std::ios::fmtflags originalFormat = std::cerr.flags();
+        std::cerr << errorStr << std::hex << ret << std::endl;
+        std::cerr.flags(originalFormat);
     }
 
 private:

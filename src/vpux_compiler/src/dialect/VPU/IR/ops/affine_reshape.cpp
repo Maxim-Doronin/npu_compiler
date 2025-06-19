@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,7 +15,7 @@ using namespace vpux;
 namespace {
 
 mlir::FailureOr<mlir::Type> inferElemType(VPU::AffineReshapeOpAdaptor affineReshapeOp, mlir::Type inputElemType) {
-    const auto perAxisQType = inputElemType.dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(inputElemType);
     if (perAxisQType == nullptr) {
         return inputElemType;
     }
@@ -53,7 +53,8 @@ mlir::FailureOr<mlir::Type> inferElemType(VPU::AffineReshapeOpAdaptor affineResh
         return mlir::failure();
     }
 
-    if (const auto perAxisQuantileQType = inputElemType.dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>()) {
+    if (const auto perAxisQuantileQType =
+                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(inputElemType)) {
         return mlir::quant::QuantileQuantizedPerAxisType::get(
                 perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
                 perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
@@ -163,4 +164,19 @@ vpux::VPU::AffineReshapeOp::inferCastedTypeAndDistribution(vpux::NDTypeInterface
     const auto typeComponents =
             TypeComponents().setShape(outShape).setDimsOrder(dstType.getDimsOrder()).setElementType(dstElemType);
     return std::make_pair(mlir::cast<mlir::Type>(inType.changeTypeComponents(typeComponents)), distribWithExplicitAttr);
+}
+
+mlir::OpFoldResult vpux::VPU::AffineReshapeOp::fold(FoldAdaptor adaptor) {
+    // This op is view-like, which means that if input and output type are equal, it's a no-op.
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
+    if (inputType == outputType) {
+        return getInput();
+    }
+
+    if (const auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(adaptor.getInput()); attr != nullptr) {
+        return attr.transform().affineReshape(getDimMappingAttr(), getShapeValue()).get();
+    }
+
+    return nullptr;
 }

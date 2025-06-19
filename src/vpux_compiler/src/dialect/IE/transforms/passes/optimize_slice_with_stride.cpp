@@ -37,21 +37,6 @@ namespace {
 const uint32_t levelCount = 3;
 SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(levelCount);
 
-int64_t calculateAlignmentFactor(const vpux::NDTypeInterface sliceInType, const vpux::NDTypeInterface sliceOutType) {
-    const auto channelAlignment = VPU::NCEInvariant::getAlignment(sliceInType.getElementType());
-
-    const auto sliceInShape = sliceInType.getShape();
-    const auto sliceOutShape = sliceOutType.getShape();
-
-    int64_t factor = 1;
-    while (factor * sliceInShape[Dims4D::Act::C] % channelAlignment != 0 ||
-           factor * sliceOutShape[Dims4D::Act::C] % channelAlignment != 0) {
-        factor++;
-    }
-
-    return factor;
-}
-
 IE::ShapeCastOp reshapeConvInput(mlir::Location loc, mlir::Value input, const int64_t channelAlignment,
                                  mlir::PatternRewriter& rewriter) {
     const auto origShape = getShape(input);
@@ -141,7 +126,7 @@ bool SliceOpConverter::isBeneficialToConvert(IE::SliceOp sliceOp) const {
     }
 
     // Currently not support quantized slice and we can remove this for quantized slice
-    if (sliceInType.getElementType().isa_and_nonnull<mlir::quant::QuantizedType>()) {
+    if (mlir::isa_and_nonnull<mlir::quant::QuantizedType>(sliceInType.getElementType())) {
         return false;
     }
 
@@ -512,7 +497,7 @@ mlir::LogicalResult SliceConcatRewriter::matchAndRewrite(IE::ConcatOp concatOp, 
     }
     const auto sliceOutputShape = vpux::getShape(sliceOp.getResult());
     auto cstContentAttrFilterSetup = filterCst.transformContentAttr();
-    const auto subviewOffsets = Shape{0, 0, 0, 0};
+    const auto subviewOffsets = Shape(parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets()));
     const auto subviewStaticShape = Shape{sliceOutputShape[Dims4D::Act::C], filterShape[Dims4D::Filter::IC],
                                           filterShape[Dims4D::Filter::KY], filterShape[Dims4D::Filter::KX]};
     cstContentAttrFilterSetup = cstContentAttrFilterSetup.subview(subviewOffsets, subviewStaticShape);
@@ -555,8 +540,29 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::SliceOp sliceOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    Const::DeclareOp createConstOp(Const::DeclareOp cstOp, ShapeRef inOffset, ShapeRef inShape,
+                                   mlir::PatternRewriter& rewriter, bool isFilter = true) const;
+
     Logger _log;
 };
+
+Const::DeclareOp FuseSliceWithConvRewriter::createConstOp(Const::DeclareOp cstOp, ShapeRef inOffset, ShapeRef inShape,
+                                                          mlir::PatternRewriter& rewriter, bool isFilter) const {
+    const auto constValue = cstOp.getOutput();
+    auto constShape = to_small_vector(getShape(constValue));
+    if (isFilter) {
+        constShape[vpux::Dims4D::Filter::OC.ind()] = inShape[vpux::Dims4D::Act::C];
+    } else {
+        if (constShape[vpux::Dims4D::Act::C.ind()] == 1) {
+            // broadcasting bias
+            return cstOp;
+        }
+        constShape[vpux::Dims4D::Act::C.ind()] = inShape[vpux::Dims4D::Act::C];
+    }
+
+    auto cstContentAttr = cstOp.transformContentAttr().subview(inOffset, Shape(constShape)).get();
+    return rewriter.create<Const::DeclareOp>(cstOp.getLoc(), cstContentAttr.getType(), std::move(cstContentAttr));
+}
 
 mlir::LogicalResult FuseSliceWithConvRewriter::matchAndRewrite(IE::SliceOp sliceOp,
                                                                mlir::PatternRewriter& rewriter) const {
@@ -570,7 +576,7 @@ mlir::LogicalResult FuseSliceWithConvRewriter::matchAndRewrite(IE::SliceOp slice
         return mlir::isa<IE::ConcatOp>(user);
     });
 
-    // If slice's user is concat op, it will processed by 'SliceConcatRewriter'.
+    // If slice's user is concat op, it will be processed by 'SliceConcatRewriter'.
     if (anyUserIsConcat) {
         return mlir::failure();
     }
@@ -578,13 +584,8 @@ mlir::LogicalResult FuseSliceWithConvRewriter::matchAndRewrite(IE::SliceOp slice
     if (!inConvOp.getOutput().hasOneUse()) {
         return mlir::failure();
     }
-    auto filter = inConvOp.getFilter();
-    auto filterShape = vpux::getShape(filter);
-    auto filterCst = filter.getDefiningOp<Const::DeclareOp>();
-    if (filterCst == nullptr) {
-        return mlir::failure();
-    }
-    const auto sliceOutputShape = vpux::getShape(sliceOp.getResult());
+
+    const auto sliceOutputShape = getShape(sliceOp.getResult());
     const auto subviewOffsets = Shape(parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets()));
 
     auto convOutShape = getShape(inConvOp.getOutput());
@@ -594,26 +595,36 @@ mlir::LogicalResult FuseSliceWithConvRewriter::matchAndRewrite(IE::SliceOp slice
         return mlir::failure();
     }
 
-    const auto subviewStaticShape = Shape{sliceOutputShape[vpux::Dims4D::Act::C], filterShape[vpux::Dims4D::Filter::IC],
-                                          filterShape[vpux::Dims4D::Filter::KY], filterShape[vpux::Dims4D::Filter::KX]};
-    auto cstContentAttrFilter = filterCst.transformContentAttr().subview(subviewOffsets, subviewStaticShape).get();
-    auto newFilter = rewriter.create<Const::DeclareOp>(filterCst.getLoc(), cstContentAttrFilter.getType(),
-                                                       std::move(cstContentAttrFilter));
+    const auto filter = inConvOp.getFilter();
+    const auto bias = inConvOp.getBias();
+    const auto filterCst = filter != nullptr ? filter.getDefiningOp<Const::DeclareOp>() : nullptr;
+    const auto biasCst = bias != nullptr ? bias.getDefiningOp<Const::DeclareOp>() : nullptr;
+    if (filterCst == nullptr || (bias != nullptr && biasCst == nullptr)) {
+        _log.trace("The filter or bias is not constant");
+        return mlir::failure();
+    }
+
+    auto newFilter = createConstOp(filterCst, subviewOffsets, sliceOutputShape, rewriter);
 
     // If fused conv cannot be optimized by AdjustConvolutionShape, it will result in performance regession, skip the
     // case.
-    const auto adjustConvShapeParameters =
-            getAdjustConvShapeParameters(inConvOp, newFilter, Shape(vpux::getShape(sliceOp.getResult())), _log);
+    const auto adjustConvShapeParameters = getAdjustConvShapeParameters(inConvOp, newFilter, sliceOutputShape, _log);
     if (mlir::failed(adjustConvShapeParameters)) {
-        _log.trace("Not suitable to fuse slice due to not efficient");
+        _log.trace("Not suitable to fuse slice due to inefficiency");
         rewriter.eraseOp(newFilter);
         return mlir::failure();
     }
 
+    mlir::Value newBias = bias;
+    if (newBias != nullptr) {
+        _log.trace("Create new bias {0}", newBias.getLoc());
+        newBias = createConstOp(biasCst, subviewOffsets, sliceOutputShape, rewriter, false);
+    }
+
     const auto origOutType = mlir::cast<vpux::NDTypeInterface>(inConvOp.getOutput().getType());
-    const auto newOutType = origOutType.changeShape(vpux::getShape(sliceOp.getResult()));
+    const auto newOutType = origOutType.changeShape(sliceOutputShape);
     auto newConv = rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
-            inConvOp, newOutType, inConvOp.getInput(), newFilter, inConvOp.getBias(), inConvOp.getStrides(),
+            inConvOp, newOutType, inConvOp.getInput(), newFilter, newBias, inConvOp.getStrides(),
             inConvOp.getPadsBegin(), inConvOp.getPadsEnd(), inConvOp.getDilations(), inConvOp.getPostOpAttr(),
             inConvOp.getClampAttr(), inConvOp.getStaticScaleAttr(), inConvOp.getOutputPaddingAttr(),
             inConvOp.getInputPaddingAttr());

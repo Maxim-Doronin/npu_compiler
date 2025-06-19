@@ -7,6 +7,12 @@
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include "common_test_utils/node_builders/fake_quantize.hpp"
 
+#include "openvino/op/max_pool.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/sigmoid.hpp"
+#include "openvino/op/strided_slice.hpp"
+#include "openvino/op/transpose.hpp"
+
 using namespace ov::test::utils;
 
 namespace ov::test {

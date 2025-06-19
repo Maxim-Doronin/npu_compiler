@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --vpu-arch=%arch% --split-input-file --dispatched-inliner --move-declarations-to-top %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @CallChain
 module @CallChain {
     net.NetworkInfo entryPoint : @main

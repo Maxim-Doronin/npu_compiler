@@ -39,8 +39,8 @@ std::optional<bool> isSEPConvCompatibleWithClusterStrategy(VPU::NCEConvolutionOp
                                                            VPU::MultiClusterStrategy strategy);
 
 mlir::LogicalResult verifyConvUtil(mlir::Location loc, mlir::Operation* op, ShapeRef filterShape,
-                                   ShapeRef kernelStrides, PaddingAttr padAttr, ShapeRef weightsTableShape,
-                                   mlir::Value output);
+                                   ShapeRef kernelStrides, PaddingAttr padAttr,
+                                   std::optional<ShapeRef> weightsTableShape, mlir::Value output);
 
 PadInfo shrinkPadsForDilatedConvolution(const PadInfo& pads, const ArrayRef<int64_t> dilations);
 

@@ -1,12 +1,13 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=false" -verify-diagnostics %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // expected-error@+1 {{CompilationMode is already defined, probably you run '--init-compiler' twice}}
-module @mode attributes {VPU.compilationMode = #VPU.compilation_mode<ReferenceSW>} {
+module @mode attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>} {
 }
 
 // -----

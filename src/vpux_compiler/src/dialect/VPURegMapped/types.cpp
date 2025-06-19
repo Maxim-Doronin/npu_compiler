@@ -423,7 +423,8 @@ mlir::Type VPURegMapped::RegisterType::parse(mlir::AsmParser& parser) {
         regFields = parser.getBuilder().getArrayAttr(regFieldAttr);
     } else {
         auto parseRegField = [&]() -> mlir::ParseResult {
-            if (auto regFieldType = RegFieldType::parse(parser).dyn_cast_or_null<RegFieldType>()) {
+            if (auto regFieldType =
+                        mlir::dyn_cast_or_null<vpux::VPURegMapped::RegFieldType>(RegFieldType::parse(parser))) {
                 auto registerFieldAttr = parser.getChecked<RegisterFieldAttr>(parser.getContext(), regFieldType);
                 regFieldsVec.push_back(registerFieldAttr);
                 return mlir::success();
@@ -554,7 +555,7 @@ mlir::Type VPURegMapped::RegMappedType::parse(mlir::AsmParser& parser) {
     }
 
     auto parseReg = [&]() -> mlir::ParseResult {
-        if (auto regType = RegisterType::parse(parser).dyn_cast_or_null<RegisterType>()) {
+        if (auto regType = mlir::dyn_cast_or_null<vpux::VPURegMapped::RegisterType>(RegisterType::parse(parser))) {
             auto registerAttr = parser.getChecked<RegisterAttr>(parser.getContext(), regType);
             regsVec.push_back(registerAttr);
             return mlir::success();

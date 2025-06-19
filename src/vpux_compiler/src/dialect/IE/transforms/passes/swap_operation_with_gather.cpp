@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -23,34 +24,36 @@ using namespace vpux;
 namespace {
 
 //
-// MoveEltwiseAfterGather
+// MoveTwoInputsEltwiseOpAfterGather
 //
 
 template <class ConcreteOp>
-class MoveEltwiseAfterGather final : public mlir::OpRewritePattern<IE::GatherOp> {
+class MoveTwoInputsEltwiseOpAfterGather final : public mlir::OpRewritePattern<IE::GatherOp> {
 public:
-    MoveEltwiseAfterGather(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::GatherOp>(ctx), _log(log) {
-        setDebugName("MoveEltwiseAfterGather");
+    MoveTwoInputsEltwiseOpAfterGather(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::GatherOp>(ctx), _log(log) {
+        setDebugName("MoveTwoInputsEltwiseOpAfterGather");
     }
 
-public:
     mlir::LogicalResult matchAndRewrite(IE::GatherOp gatherOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     bool isBeneficialToConvert(ShapeRef inShape, ShapeRef outShape) const;
-    std::optional<ConcreteOp> getSupportedEltwiseOp(IE::GatherOp gatherOp) const;
+    std::optional<ConcreteOp> getSupportedOp(IE::GatherOp gatherOp) const;
+    mlir::Value createGatherOp(mlir::PatternRewriter& rewriter, mlir::Location loc, mlir::Value input,
+                               IE::GatherOp gatherOp) const;
     const Dim SUPPORTED_GATHER_AXIS = Dim(0);
 
     Logger _log;
 };
 
 template <class ConcreteOp>
-bool MoveEltwiseAfterGather<ConcreteOp>::isBeneficialToConvert(ShapeRef inShape, ShapeRef outShape) const {
+bool MoveTwoInputsEltwiseOpAfterGather<ConcreteOp>::isBeneficialToConvert(ShapeRef inShape, ShapeRef outShape) const {
     return inShape.totalSize() > outShape.totalSize();
 }
 
 template <class ConcreteOp>
-std::optional<ConcreteOp> MoveEltwiseAfterGather<ConcreteOp>::getSupportedEltwiseOp(IE::GatherOp gatherOp) const {
+std::optional<ConcreteOp> MoveTwoInputsEltwiseOpAfterGather<ConcreteOp>::getSupportedOp(IE::GatherOp gatherOp) const {
     if (gatherOp.getAxis() != nullptr) {
         _log.trace("Does not support the case where GatherOp axis constant has not been converted into an attribute");
         return std::nullopt;
@@ -61,18 +64,23 @@ std::optional<ConcreteOp> MoveEltwiseAfterGather<ConcreteOp>::getSupportedEltwis
         return std::nullopt;
     }
 
-    auto eltwiseOp = gatherOp.getInput().getDefiningOp<ConcreteOp>();
-    if (eltwiseOp == nullptr || !eltwiseOp->hasOneUse()) {
+    auto op = gatherOp.getInput().getDefiningOp<ConcreteOp>();
+    if (op == nullptr || !op->hasOneUse()) {
         return std::nullopt;
     }
 
-    if (eltwiseOp.getPostOpAttr() != nullptr || eltwiseOp.getClampAttr() != nullptr ||
-        eltwiseOp.getOutputPaddingAttr() != nullptr || eltwiseOp.getInputPaddingAttr() != nullptr) {
-        _log.trace("Eltwise operation is not supported");
-        return std::nullopt;
+    if constexpr (std::is_same_v<ConcreteOp, IE::DynamicDequantizeOp>) {
+        if (op.getZp() != nullptr) {
+            return std::nullopt;
+        }
+    } else {
+        if (op.getPostOpAttr() != nullptr || op.getClampAttr() != nullptr || op.getOutputPaddingAttr() != nullptr ||
+            op.getInputPaddingAttr() != nullptr) {
+            return std::nullopt;
+        }
     }
 
-    auto outputShape = getShape(eltwiseOp->getResult(0));
+    auto outputShape = getShape(op->getResult(0));
     auto isGatherAxisBroadcasted = [outputShape, this](mlir::Value operand) {
         auto inputShape = getShape(operand);
         auto broadCastAxes = IE::getDiffInOutSizeDims(inputShape, outputShape);
@@ -83,51 +91,62 @@ std::optional<ConcreteOp> MoveEltwiseAfterGather<ConcreteOp>::getSupportedEltwis
         }
         return false;
     };
-    if (llvm::any_of(eltwiseOp->getOperands(), isGatherAxisBroadcasted)) {
-        _log.trace(
-                "Cannot swap Eltwise operation with GatherOp due to a conflict between broadcast axis and gather axis");
+    if (llvm::any_of(op->getOperands(), isGatherAxisBroadcasted)) {
         return std::nullopt;
     }
 
-    return eltwiseOp;
+    return op;
 }
 
 template <class ConcreteOp>
-mlir::LogicalResult MoveEltwiseAfterGather<ConcreteOp>::matchAndRewrite(IE::GatherOp gatherOp,
-                                                                        mlir::PatternRewriter& rewriter) const {
+mlir::Value MoveTwoInputsEltwiseOpAfterGather<ConcreteOp>::createGatherOp(mlir::PatternRewriter& rewriter,
+                                                                          mlir::Location loc, mlir::Value input,
+                                                                          IE::GatherOp gatherOp) const {
+    return rewriter.create<IE::GatherOp>(appendLoc(loc, "gather"), input, gatherOp.getIndices(), gatherOp.getAxis(),
+                                         gatherOp.getAxisValueAttr(), gatherOp.getBatchDims(),
+                                         gatherOp.getIndicesRankAttr());
+}
+
+template <class ConcreteOp>
+mlir::LogicalResult MoveTwoInputsEltwiseOpAfterGather<ConcreteOp>::matchAndRewrite(
+        IE::GatherOp gatherOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", gatherOp->getName(), gatherOp->getLoc());
 
     // Conversion is benificial when GatherOp is reducing tensor size.
-    if (!isBeneficialToConvert(getShape(gatherOp.getInput()), getShape(gatherOp.getOutput()))) {
+    auto inputShapeSize = getShape(gatherOp.getInput());
+    auto outputShapeSize = getShape(gatherOp.getOutput());
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(gatherOp.getInput().getType())) {
+        inputShapeSize = Shape(boundedType.getBounds().raw());
+    }
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(gatherOp.getOutput().getType())) {
+        outputShapeSize = Shape(boundedType.getBounds().raw());
+    }
+    if (!isBeneficialToConvert(inputShapeSize, outputShapeSize)) {
         return matchFailed(_log.nest(), rewriter, gatherOp, "Not beneficial to move operation after GatherOp");
     }
 
-    auto getEltwiseOp = getSupportedEltwiseOp(gatherOp);
-    if (!getEltwiseOp.has_value()) {
+    auto getOp = getSupportedOp(gatherOp);
+    if (!getOp.has_value()) {
         return mlir::failure();
     }
-    auto eltwiseOp = getEltwiseOp.value();
+    auto op = getOp.value();
 
     auto gatherLoc = gatherOp->getLoc();
+    auto newLoc = appendLoc(gatherLoc, "new_lhs");
+    auto newGather1 = createGatherOp(rewriter, newLoc, op->getOperand(0), gatherOp);
+    newLoc = appendLoc(gatherLoc, "new_rhs");
+    auto newGather2 = createGatherOp(rewriter, gatherLoc, op->getOperand(1), gatherOp);
 
-    auto newGather1 = rewriter.create<IE::GatherOp>(
-            appendLoc(gatherLoc, "gather_1"), eltwiseOp.getInput1(), gatherOp.getIndices(), gatherOp.getAxis(),
-            gatherOp.getAxisValueAttr(), gatherOp.getBatchDims(), gatherOp.getIndicesRankAttr());
+    mlir::IRMapping opMapper;
+    opMapper.map(op->getOperand(0), newGather1);
+    opMapper.map(op->getOperand(1), newGather2);
+    auto newOp = rewriter.clone(*op, opMapper);
 
-    auto newGather2 = rewriter.create<IE::GatherOp>(
-            appendLoc(gatherLoc, "gather_2"), eltwiseOp.getInput2(), gatherOp.getIndices(), gatherOp.getAxis(),
-            gatherOp.getAxisValueAttr(), gatherOp.getBatchDims(), gatherOp.getIndicesRankAttr());
-
-    mlir::IRMapping eltwiseMapper;
-    eltwiseMapper.map(eltwiseOp->getOperand(0), newGather1.getOutput());
-    eltwiseMapper.map(eltwiseOp->getOperand(1), newGather2.getOutput());
-    auto newEltwiseOp = rewriter.clone(*eltwiseOp, eltwiseMapper);
-
-    vpux::inferReturnTypes(newEltwiseOp, vpux::InferShapedTypeMode::ALL);
-
-    rewriter.replaceOp(gatherOp, newEltwiseOp->getResult(0));
+    vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ALL);
 
     _log.trace("Successfully replaced '{0}' at '{1}'", gatherOp->getName(), gatherLoc);
+
+    rewriter.replaceOp(gatherOp, newOp->getResult(0));
 
     return mlir::success();
 }
@@ -215,8 +234,9 @@ void SwapOperationWithGatherPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<MoveEltwiseAfterGather<IE::MultiplyOp>>(&ctx, _log);
-    patterns.add<MoveEltwiseAfterGather<IE::SubtractOp>>(&ctx, _log);
+    patterns.add<MoveTwoInputsEltwiseOpAfterGather<IE::MultiplyOp>>(&ctx, _log);
+    patterns.add<MoveTwoInputsEltwiseOpAfterGather<IE::SubtractOp>>(&ctx, _log);
+    patterns.add<MoveTwoInputsEltwiseOpAfterGather<IE::DynamicDequantizeOp>>(&ctx, _log);
     patterns.add<MoveConvertAfterGather>(&ctx, _log);
 
     auto func = getOperation();

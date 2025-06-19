@@ -5,6 +5,11 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/batch_to_space.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
+#include "openvino/op/space_to_batch.hpp"
+
 namespace ov::test {
 
 // This test aims for:

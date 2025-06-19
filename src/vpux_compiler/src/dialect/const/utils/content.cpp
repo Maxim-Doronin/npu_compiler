@@ -111,8 +111,8 @@ void fillBuf(ArrayRef<SrcType> src, MutableArrayRef<char> dst) {
 
 void vpux::Const::Content::copySubByteContent(MutableArrayRef<char> targetData, mlir::Type elemType) const {
     if (_isSplat) {
-        const Bit elemSize = vpux::getElemTypeSize(elemType);
-        const auto numShifts = CHAR_BIT / elemSize.count();
+        const auto bits = vpux::getElemTypeSize(elemType).count();
+        const auto numShifts = CHAR_BIT / bits;
         uint8_t byteValue = 0;
         int8_t subByteValue = 0;
         // Previously, in the case of a splat boolean tensor, the value "true" was interpreted as 0x01
@@ -121,14 +121,15 @@ void vpux::Const::Content::copySubByteContent(MutableArrayRef<char> targetData, 
         // More info here: https://reviews.llvm.org/D133743
         // The _data can't correctly retrieve data when it is of type Float, but getValues can.
         // However, getValues does not support subbytes storageElementType.
+        const auto mask = checked_cast<uint8_t>((1 << bits) - 1);
         if (_storageElemType.isInteger(1)) {
             subByteValue = _data.data().front() & 1;
         } else {
-            subByteValue = getValues<int8_t>()[0];
+            subByteValue = getValues<int8_t>()[0] & mask;
         }
 
         for (int64_t shift = 0; shift < numShifts; shift++) {
-            byteValue = (byteValue << elemSize.count()) + subByteValue;
+            byteValue = (byteValue << bits) + subByteValue;
         }
         std::fill(targetData.begin(), targetData.end(), byteValue);
         return;
@@ -201,7 +202,7 @@ void vpux::Const::Content::copyTo(MutableArrayRef<char> targetData) const {
 
 void vpux::Const::Content::fillWithZero() {
     if (auto perAxisQuantileType =
-                getType().getElementType().dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>()) {
+                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(getType().getElementType())) {
         const auto outShape = getType().getShape();
         const auto order = getType().getDimsOrder();
         const auto outMemShape = order.toMemoryOrder(outShape);
@@ -242,7 +243,8 @@ void vpux::Const::Content::fillWithZero() {
                     mutate(fillChannel);
                 });
 
-    } else if (auto quantileType = getType().getElementType().dyn_cast_or_null<mlir::quant::QuantileQuantizedType>()) {
+    } else if (auto quantileType =
+                       mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedType>(getType().getElementType())) {
         const auto outShape = getType().getShape();
         const auto IC = outShape[Dims4D::Filter::IC];
         const auto H = outShape[Dims4D::Filter::KY];
@@ -269,7 +271,7 @@ void vpux::Const::Content::fillWithZero() {
 
         mutate(fillBuffer);
     } else if (auto perAxisQType =
-                       getType().getElementType().dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>()) {
+                       mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(getType().getElementType())) {
         const auto outShape = getType().getShape();
         const auto order = getType().getDimsOrder();
         const auto outMemShape = order.toMemoryOrder(outShape);
@@ -300,7 +302,7 @@ void vpux::Const::Content::fillWithZero() {
                     mutate(fillChannel);
                 });
 
-    } else if (auto qType = getType().getElementType().dyn_cast_or_null<mlir::quant::UniformQuantizedType>()) {
+    } else if (auto qType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(getType().getElementType())) {
         const auto zp = qType.getZeroPoint();
 
         const auto fillBuffer = [&](auto buffer) {

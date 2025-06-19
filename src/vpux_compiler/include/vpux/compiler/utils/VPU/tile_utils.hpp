@@ -164,16 +164,20 @@ Byte getRequiredCMXSize(ArrayRef<vpux::NDTypeInterface> operands);
 
 Byte getRequiredCMXSize(ArrayRef<std::pair<NDTypeInterface, TensorDistributionMap>> operands);
 
-Byte getRequiredCMXSizeForNCEOps(ArrayRef<vpux::NDTypeInterface> operands, int64_t numChannels);
+Byte getRequiredCMXSizeForNCEOps(ArrayRef<vpux::NDTypeInterface> operands, int64_t numChannels,
+                                 int64_t elemsPerOutputChannel = VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC);
 
 Byte getRequiredCMXSizeForNCEOps(ArrayRef<std::pair<NDTypeInterface, TensorDistributionMap>> operands,
-                                 int64_t numChannels);
+                                 int64_t numChannels,
+                                 int64_t elemsPerOutputChannel = VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC);
 
 Byte getRequiredCMXSizeForDefaultOps(mlir::Operation* op);
 
 Byte getRequiredCMX(mlir::Operation* op, const SmallVector<NDTypeInterface>& types);
 
 OutputTiling getUniqueShapeTilingCandidates(mlir::Operation* op, const OutputTiling& origTiles, Logger log);
+
+int64_t countElementsPerOutputChannelInWeightTable(VPU::NCEConvolutionOp convOp);
 
 bool canSWLayerBeEvenlyUnrolled(mlir::Operation* op, const OutputTiling& tiles, Dim targetDim, Logger);
 struct TileShapeCompare {

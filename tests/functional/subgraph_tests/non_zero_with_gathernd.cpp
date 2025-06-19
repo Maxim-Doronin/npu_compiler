@@ -8,7 +8,13 @@
 #include <pretty_test_arguments.hpp>
 
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+
+#include "openvino/op/convert.hpp"
+#include "openvino/op/gather_nd.hpp"
+#include "openvino/op/non_zero.hpp"
+#include "openvino/op/not_equal.hpp"
+#include "openvino/op/transpose.hpp"
 
 using namespace ov::test;
 namespace {
@@ -73,7 +79,7 @@ TEST_P(NonZeroWithGatherNDNPUTest, NPU3720_HW_TestKindSubgraph) {
 
 const std::vector<ov::element::Type> inputPrecision = {ov::element::i32};
 
-const std::vector<ov::test::InputShape> inShapes = {staticShape(1, 88), staticShape(8, 32)};
+const std::vector<ov::test::InputShape> inShapes = {generateTestShape(1, 88), generateTestShape(8, 32)};
 // Tracking number: E#117210, E#119730
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_NonZeroWithGatherND, NonZeroWithGatherNDNPUTest,
                          ::testing::Combine(::testing::ValuesIn(inShapes), ::testing::ValuesIn(inputPrecision)),

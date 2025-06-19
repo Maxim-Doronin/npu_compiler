@@ -633,7 +633,7 @@ static ::mlir::LogicalResult __mlir_ods_local_type_constraint_ops4(
     unsigned valueIndex) {
   // The type has to be a `mlir::TensorType` and it must have a rank (i.e. the number of dimensions is known)
   // Note: `mlir::TensorType` inherits from `mlir::ShapedType`, which is why the cast to the latter can be executed
-  if (!((((type.isa<::mlir::TensorType>())) && ((type.cast<::mlir::ShapedType>().hasRank()))) && ([](::mlir::Type elementType) { return (true); }(type.cast<::mlir::ShapedType>().getElementType())))) {
+  if (!((((type.isa<::mlir::TensorType>())) && ((mlir::cast<::mlir::ShapedType>(type).hasRank()))) && ([](::mlir::Type elementType) { return (true); }(mlir::cast<::mlir::ShapedType>(type).getElementType())))) {
     return op->emitOpError(valueKind) << " #" << valueIndex
         << " must be ranked tensor of any type values, but got " << type;
   }

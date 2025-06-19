@@ -118,15 +118,17 @@ public:
         log.debug("Create {0}", getName());
     }
 
-    mlir::LogicalResult initializeOptions(StringRef options) override;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
 private:
     void safeRunOnFunc() final;
     mlir::LogicalResult parseFromOptions();
 };
 
-mlir::LogicalResult DeDebatcherPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult DeDebatcherPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

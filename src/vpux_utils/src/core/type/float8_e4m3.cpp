@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2024 Intel Corporation
+// Copyright (C) 2018-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -74,7 +74,7 @@ uint8_t f16_to_f8e4m3_bits(const vpux::type::float16 value) {
 
     const uint16_t input = value.to_bits();
 
-    uint8_t f8_bits = static_cast<uint8_t>((input & f16_s_mask) >> byte_shift);
+    auto f8_bits = static_cast<uint8_t>((input & f16_s_mask) >> byte_shift);
 
     uint16_t f16_e_field = input & f16_e_mask;
 
@@ -85,14 +85,16 @@ uint8_t f16_to_f8e4m3_bits(const vpux::type::float16 value) {
         uint16_t fractional = (input & f16_m_mask) << (f16_e_size - f8e4m3_e_size);
 
         // for normalized values round apply rounding change f8 fractional and biased exponent
-        if ((fractional & round_half) == round_odd || (fractional & round_norm) != 0) {
-            fractional += round_even;
-            if (0 != (fractional & f8_e_mask)) {
-                fractional &= f8_e_mask;
-                ++f8_biased_exp;
+        if (f8_biased_exp >= 0) {
+            if ((fractional & round_half) == round_odd || (fractional & round_norm) != 0) {
+                fractional += round_even;
+                if (0 != (fractional & f8_e_mask)) {
+                    fractional &= f8_e_mask;
+                    ++f8_biased_exp;
+                }
             }
+            fractional &= f8_m_mask;
         }
-        fractional &= f8_m_mask;
 
         // set exponent and mantissa on f8 bits
         if (f8_biased_exp > f8e4m3_e_max) {
@@ -123,243 +125,6 @@ uint8_t f16_to_f8e4m3_bits(const vpux::type::float16 value) {
     return f8_bits;
 }
 
-#define EXTRACT_F32_SIGN(x) ((x >> 31) & 0x1)
-#define EXTRACT_F32_EXP(x) ((x >> 23) & 0xFF)
-#define EXTRACT_F32_FRAC(x) (x & 0x007FFFFF)
-#define HF8_EXP_BITS (4)
-#define HF8_MANTISSA_BITS (3)
-#define HF8_SIGN_BIT_POS (HF8_EXP_BITS + HF8_MANTISSA_BITS)
-#define PACK_HF8(x, y, z) ((x << HF8_SIGN_BIT_POS) + (y << HF8_MANTISSA_BITS) + (z))
-
-// NaN default
-#define HF8_NAN_DEFAULT 0x7F
-
-// exceptions
-#define F32_EX_INEXACT 0x00000001
-#define F32_EX_DIV_BY_ZERO 0x00000002
-#define F32_EX_INVALID 0x00000004
-#define F32_EX_UNDERFLOW 0x00000008
-#define F32_EX_OVERFLOW 0x00000010
-
-// Exponent bias
-#define FP32_EXP_BIAS (127)
-#define HF8_EXP_BIAS (7)
-
-// rounding modes
-#define F32_RND_NEAREST_EVEN 0
-#define F32_RND_MINUS_INF 1
-#define F32_RND_PLUS_INF 2
-#define F32_RND_TO_ZERO 3
-#define F32_RND_NEAREST_AWAY 4
-
-// detect tinyness mode
-#define F32_DETECT_TINY_AFTER_RND 0
-#define F32_DETECT_TINY_BEFORE_RND 1
-
-unsigned int detect_tiny_mode{F32_DETECT_TINY_BEFORE_RND};
-
-unsigned int f16_shift_right_loss_detect(unsigned int op, unsigned int cnt) {
-    unsigned int ret_val;
-    if (cnt == 0) {
-        ret_val = op;
-    } else if (cnt < 16) {
-        ret_val = op >> cnt;
-        // mark LSB as 1 if we shifted out some ones
-        if ((op & ((0x1 << cnt) - 1)) != 0) {
-            ret_val |= 0x1;
-        }
-    } else {
-        // mark LSB as 1 if we shifted out some ones
-        ret_val = (op != 0) ? 1 : 0;
-    }
-    return ret_val;
-}
-
-unsigned int f32_to_hf8_conv(unsigned int x, unsigned int rnd_mode, unsigned int* exceptions, unsigned int preserveDens,
-                             unsigned int clamp) {
-    unsigned int result{0};
-    unsigned int sign = EXTRACT_F32_SIGN(x);
-    int exp = EXTRACT_F32_EXP(x);
-    unsigned int frac = EXTRACT_F32_FRAC(x);
-    // clear flags
-    *exceptions = 0;
-
-    if ((exp == 0) && (frac == 0)) {
-        // FP32 number is zero
-        result = PACK_HF8(sign, 0, 0);
-    } else if ((exp == 0) && !preserveDens) {
-        // flushing FP32 input denormals to zero (no exceptions flags)
-        // FP32 number is zero
-        result = PACK_HF8(sign, 0, 0);
-    } else if (exp == 0xFF) {
-        if (frac == 0) {
-            // Infinity
-            // Input Infinity needs to be converted to HF8 NaN, preserving the sign
-            result = (sign << HF8_SIGN_BIT_POS) | HF8_NAN_DEFAULT;
-        } else {
-            // fp32 number is a NaN - return QNaN, raise invalid if
-            // SNaN. QNaN assumed to have MSB of significand set
-            if ((frac & 0x00400000) == 0)
-                *exceptions |= F32_EX_INVALID;
-
-            // sign needs to be preserved for HF8 NaNs
-            result = (sign << HF8_SIGN_BIT_POS) | HF8_NAN_DEFAULT;
-        }
-    } else {
-        // FP32 number is normal or denormal
-
-        // Add hidden bit if normal
-        if (exp != 0) {
-            frac = frac | 0x00800000;
-        }
-
-        // Unbias exponent
-        exp = exp - FP32_EXP_BIAS;
-
-        // Check if not below HF8 denormal
-        if (exp >= -6) {
-            // Extract lsb, round and sticky bits
-            int round = (frac & 0x00080000) >> 19;  // MSB of discarded FP32 mantissa
-            int sticky = ((frac & 0x0007FFFF) == 0) ? 0 : 1;
-            frac = frac >> 20;             // Truncate mantissa
-            int flsb = frac & 0x00000001;  // LSB of HF8 frac
-
-            // Increment if necessary
-            switch (rnd_mode) {
-                // Use softfloat mappings (P_CFG will have been mapped before call to CMU
-            case F32_RND_NEAREST_EVEN:
-                if ((round && flsb) || (round && sticky)) {
-                    frac = frac + 1;
-                }
-                break;
-            case F32_RND_TO_ZERO:
-                break;
-            case F32_RND_PLUS_INF:
-                if ((sign == 0) && (round || sticky)) {
-                    frac = frac + 1;
-                }
-                break;
-            case F32_RND_MINUS_INF:
-                if ((sign == 1) && (round || sticky)) {
-                    frac = frac + 1;
-                }
-                break;
-            }
-
-            // Inexact if either round or sticky bit set
-            if (round || sticky) {
-                *exceptions |= F32_EX_INEXACT;
-            }
-
-            // Check if rounding caused mantissa overflow
-            if ((frac & 0x00000010))  // Allow for hidden bit
-            {
-                frac = frac >> 1;
-                exp = exp + 1;
-            }
-
-            // Add BF8 bias to exponent
-            exp = exp + HF8_EXP_BIAS;
-
-            // Check for exponent overflow
-            if ((exp > 15) || ((exp == 15) && ((frac & 0x07) > 6))) {
-                // Set overflow and inexact flags
-                *exceptions |= F32_EX_OVERFLOW;
-                *exceptions |= F32_EX_INEXACT;
-
-                if (clamp == 1) {
-                    result = PACK_HF8(sign, 0xF, 0x6);  // Largest HF8 finite value
-                } else {
-                    // Return according to rounding mode
-                    switch (rnd_mode) {
-                    case F32_RND_NEAREST_EVEN:
-                        result = PACK_HF8(sign, 0xF, 0x7);  // Infinity
-                        break;
-                    case F32_RND_TO_ZERO:
-                        result = PACK_HF8(sign, 0xF, 0x6);  // Largest finite #
-                        break;
-                    case F32_RND_PLUS_INF:
-                        result = (sign == 0) ? 0x7F : 0xFE;
-                        break;
-                    case F32_RND_MINUS_INF:
-                        result = (sign == 1) ? 0xFF : 0x7E;
-                        break;
-                    }
-                }
-            } else {
-                // Remove hidden bit and pack
-                frac = frac & 0x07;
-                result = PACK_HF8(sign, exp, frac);
-            }
-        } else {
-            // HF8 denormal
-            if (preserveDens == 1) {
-                bool is_tiny{false};
-
-                frac = f16_shift_right_loss_detect(frac, abs(exp + 6));
-
-                // Extract lsb, round and sticky bits
-                int round = (frac & 0x00080000) >> 19;  // MSB of discarded FP32 mantissa
-                int sticky = ((frac & 0x0007FFFF) == 0) ? 0 : 1;
-                frac = frac >> 20;             // Truncate mantissa
-                int flsb = frac & 0x00000001;  // LSB of hF8 frac
-
-                is_tiny = (detect_tiny_mode == F32_DETECT_TINY_BEFORE_RND);  // as per FergalO'C
-
-                // Increment if necessary
-                switch (rnd_mode) {
-                case F32_RND_NEAREST_EVEN:
-                    if ((round && flsb) || (round && sticky)) {
-                        frac = frac + 1;
-                    }
-                    break;
-                case F32_RND_TO_ZERO:
-                    break;
-                case F32_RND_PLUS_INF:
-                    if ((sign == 0) && (round || sticky)) {
-                        frac = frac + 1;
-                    }
-                    break;
-                case F32_RND_MINUS_INF:
-                    if ((sign == 1) && (round || sticky)) {
-                        frac = frac + 1;
-                    }
-                    break;
-                }
-
-                exp = 0;
-                // Check if mantissa became normal again after rounding
-                if (frac & 0x00000008) {
-                    exp = exp + 1;
-                } else {
-                    // Rounded result is tiny
-                    is_tiny = true;
-                }
-
-                // Inexact if either round or sticky bit set
-                if (round || sticky) {
-                    *exceptions |= F32_EX_INEXACT;
-
-                    // Underflow if also tiny
-                    if (is_tiny) {
-                        *exceptions |= F32_EX_UNDERFLOW;
-                    }
-                }
-
-                // Remove hidden bit and pack
-                frac = frac & 0x07;
-                result = PACK_HF8(sign, exp, frac);
-            } else {
-                *exceptions |= (F32_EX_UNDERFLOW | F32_EX_INEXACT);
-                // Flushing denormals to zero
-                result = PACK_HF8(sign, 0, 0);
-            }
-        }
-    }
-
-    return result;
-}
-
 vpux::type::float8_e4m3::float8_e4m3(const uint32_t sign, const uint32_t biased_exponent, const uint32_t fraction)
         : m_value(((sign & 0x01U) << (f8e4m3_e_size + f8e4m3_m_size)) |
                   (biased_exponent & (f8e4m3_e_mask >> f8e4m3_m_size)) << f8e4m3_m_size | (fraction & f8e4m3_m_mask)) {
@@ -370,11 +135,7 @@ union f32_t {
     uint32_t bits;
 };
 
-vpux::type::float8_e4m3::float8_e4m3(const float value) {
-    const auto input = f32_t{value};
-    uint32_t exceptions = 0;
-    auto hf8Val = f32_to_hf8_conv(input.bits, F32_RND_NEAREST_EVEN, &exceptions, 1, 0);
-    m_value = static_cast<uint8_t>(hf8Val & 0xFF);
+vpux::type::float8_e4m3::float8_e4m3(const float value): m_value{f16_to_f8e4m3_bits(static_cast<float16>(value))} {
 }
 
 vpux::type::float8_e4m3::operator float() const {

@@ -189,7 +189,7 @@ void ConvertNonConstantPadToSliceAndConcatPass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<IE::PadOp>([&](IE::PadOp op) -> bool {
         if (_enableSEPPad &&
             VPU::isSupportedSEPPadOp(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false)) {
-            _log.nest().trace("Pad Operation can be executed using SEP");
+            _log.nest().trace("Pad Operation {0} can be executed using SEP", op);
             return true;
         }
 

@@ -432,6 +432,8 @@ private:
     std::shared_ptr<VPUNN::VPUCostModel> _costModel;
     // NCE cluster count
     int64_t _nceClusterCount;
+    // DMA ports count
+    int64_t _numDMAPorts;
     // Flag for enabling additional statistic related logic
     bool _enableScheduleStatistics;
     // Flag for enabling fragmentation optimization

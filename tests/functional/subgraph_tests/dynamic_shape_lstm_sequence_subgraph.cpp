@@ -6,11 +6,20 @@
 #include "vpu_ov2_layer_test.hpp"
 
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset1.hpp>
+#include <openvino/opsets/opset1_decl.hpp>
 #include <openvino/pass/manager.hpp>
 
 #include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>
 #include <transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp>
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/gather.hpp"
+#include "openvino/op/lstm_sequence.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/shape_of.hpp"
+#include "openvino/op/softmax.hpp"
+#include "openvino/op/transpose.hpp"
 
 using namespace ov::test;
 using namespace ov::test::utils;

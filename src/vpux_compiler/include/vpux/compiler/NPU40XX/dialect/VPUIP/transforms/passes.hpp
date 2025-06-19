@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -34,7 +34,8 @@ std::unique_ptr<mlir::Pass> createDMAOutOfOrderOptimizationPass(Logger log = Log
 std::unique_ptr<mlir::Pass> createUnrollClusterTilingPass(Logger log = Logger::global(),
                                                           bool enableSegmentedDmaFusion = false);
 std::unique_ptr<mlir::Pass> createOptimizeConvertDMAOpPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createAddStartBarrierPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddStartBarrierPass(bool compilerBarrierProgramming = false,
+                                                      Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDetectDMASplitCandidatePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitDMAToBalanceLoadPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseSegmentedDmaPass(Logger log = Logger::global());
@@ -76,11 +77,6 @@ void buildDMAUnrollingPipeline(mlir::OpPassManager& pm, Logger log = Logger::glo
 struct DefaultHWOptions :
         public VPUIP::DefaultHWOptionsDialectBase,
         virtual vpux::arch40xx::DefaultHWOptionsDeviceBase {
-    // Enable for 40XX once RT will be ready, follow up #E95864
-    StrOption enableDMAProfiling{*this, "dma-profiling",
-                                 llvm::cl::desc("Enable DMA task profiling (true, false, static)"),
-                                 ::llvm::cl::init("false")};
-
     BoolOption enableCompressWeightsBTC{*this, "compress-weights-btc", ::llvm::cl::desc("Enable compress-weights pass"),
                                         ::llvm::cl::init(false)};
 

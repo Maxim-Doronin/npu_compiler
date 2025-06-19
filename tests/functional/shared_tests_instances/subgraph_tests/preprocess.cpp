@@ -1,5 +1,5 @@
 
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,8 @@
 #include <vpu_ov2_layer_test.hpp>
 #include "common/utils.hpp"
 #include "common_test_utils/subgraph_builders/preprocess_builders.hpp"
+
+#include "openvino/op/relu.hpp"
 
 using namespace ov::test;
 using namespace ov::test::utils;

@@ -28,7 +28,8 @@ public:
         const auto inputType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getInput().getType());
         const auto inputShape = inputType.getShape().raw();
         const auto inputByteSize = inputType.getElemTypeSize().to<Byte>().count();
-        int64_t axisValue = gatherOp.getAxisValueAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+        int64_t axisValue =
+                mlir::dyn_cast_or_null<mlir::IntegerAttr>(gatherOp.getAxisValueAttr()).getValue().getSExtValue();
         const auto axisDimSizeBytes = inputShape[axisValue] * inputByteSize;
 
         // Can't get feasible tiling strategy because axis dimension of gatherOp can't be tiled.

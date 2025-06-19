@@ -13,7 +13,7 @@ namespace vpux {
 namespace IE {
 
 mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, bool isAttrCheckEnabled = true);
-bool groupConvIsEltwise(IE::GroupConvolutionOp convOp, bool isConstFilter = true);
+bool isEltwiseGroupConv(IE::GroupConvolutionOp convOp, bool isConstFilter = true);
 
 //
 // FuseConvAndBias

@@ -127,7 +127,17 @@ bool vpux::VPU::GridSampleOp::checkStrategyCompatibility(VPU::MultiClusterStrate
     return strategy == VPU::MultiClusterStrategy::Clustering ||
            strategy == VPU::MultiClusterStrategy::SplitOverKernel ||
            strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
-           strategy == VPU::MultiClusterStrategy::SplitOverWidth;
+           strategy == VPU::MultiClusterStrategy::SplitOverWidth ||
+           strategy == VPU::MultiClusterStrategy::SplitOverBatch;
+}
+
+bool vpux::VPU::GridSampleOp::isOperationSplitOverBatchCompatible(ShapeRef) {
+    const auto inputShape = getShape(getInput());
+    const auto gridShape = getShape(getGrid());
+    const auto inputBatchSize = inputShape[Dims4D::Act::N];
+    const auto gridBatchSize = gridShape[Dims4D::Act::N];
+
+    return inputBatchSize > 1 && inputBatchSize == gridBatchSize;
 }
 
 vpux::VPU::DistributionInfo vpux::VPU::GridSampleOp::getExplicitDistributionInfoAttr(

@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/utils/dma.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 
 using namespace vpux;
 
@@ -33,7 +34,10 @@ int64_t getQueueId(VPURT::TaskOp taskOp) {
         auto dpuTask = *(dpuTasks.begin());
         return dpuTask.getClusterId().value_or(0);
     } else if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(op)) {
-        return swKernelOp.getTileIndex().value_or(0);
+        auto numTiles = VPU::getNumTiles(swKernelOp);
+        auto tileIndex = swKernelOp.getTileIndex().value_or(0);
+        auto listIndex = swKernelOp.getListIndex().value_or(0);
+        return getShaveQueueIdEncoding(numTiles, tileIndex, listIndex);
     }
 
     return 0;
@@ -44,7 +48,8 @@ int64_t getQueueId(VPURT::TaskOp taskOp) {
 // - DMA_NN[port = 0, channel = DDR]
 // - NCE[cluster = 0]
 // - SHAVE_ACT[cluster = 0]
-std::string getTaskQueueInfoString(VPURT::TaskQueueType taskType, VPURT::TaskOp taskOp) {
+std::string getTaskQueueInfoString(VPURT::TaskQueueType taskType, VPURT::TaskOp taskOp,
+                                   bool supportsDedicatedActShaveQueues) {
     std::string infoStr = stringifyEnum(taskType.type).data();
 
     auto* op = taskOp.getInnerTaskOp();
@@ -61,7 +66,21 @@ std::string getTaskQueueInfoString(VPURT::TaskQueueType taskType, VPURT::TaskOp 
             infoStr += ", channel = " + channelName;
         }
         infoStr += "]";
-    } else if (mlir::isa<VPUIP::NCEClusterTaskOp, VPUIP::SwKernelOp>(op)) {
+    } else if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(op)) {
+        auto getTileStr = [&]() {
+            // NOTE: use of cluster, tile and list indexes is not consistent. When tile is used in combination with
+            // cluster it is understood that cluster identifies NCE unit and tile identifies its SHAVE sub unit
+            // (typically used in profiling). When tile index is used in combination with list index it is the tile that
+            // identifies NCE unit and list index identifies its SHAVE sub-unit (typically used in HAS and in backend).
+            if (!supportsDedicatedActShaveQueues) {
+                return std::string("");
+            }
+            auto listIndex = swKernelOp.getListIndex().value_or(0);
+            return std::string(", tile = ") + std::to_string(listIndex);
+        };
+        auto tileIndex = swKernelOp.getTileIndex().value_or(0);
+        infoStr += "[cluster = " + std::to_string(tileIndex) + getTileStr() + "]";
+    } else if (mlir::isa<VPUIP::NCEClusterTaskOp>(op)) {
         infoStr += "[cluster = " + std::to_string(taskType.id) + "]";
     }
 
@@ -100,13 +119,16 @@ vpux::VPURT::InferenceExecutionSimulator::InferenceExecutionSimulator(Logger log
         : _log(log), _funcOp(funcOp), _cycleCostInfo(cycleCostInfo) {
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
 
+    _supportsDedicatedActShaveQueues = VPU::isFifoPerShaveEngineEnabled(funcOp);
+
     if (auto tileOp = IE::getTileExecutor(module)) {
-        // In case of ActShave tasks on a single cluster compiler does not assign
-        // it to a dedicated engine instance as it is dispatched only at inference
-        // based on engine availability. Nevertheless simulator needs to know this
-        // to correctly model those queues and track cycles
+        // In case of ActShave tasks on a single cluster compiler does not assign it to a dedicated engine instance
+        // (unless dedicated FIFOs for each SHAVE engine are enabled) as it is dispatched only at inference based on
+        // engine availability. Nevertheless simulator needs to know this to correctly model those queues and track
+        // cycles
         if (auto shaveActExec = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT)) {
-            _numOfExecutorQueuesForWhichAssignmentIsAtInference[VPU::ExecutorKind::SHAVE_ACT] = shaveActExec.getCount();
+            _numOfExecutorQueuesForWhichAssignmentIsAtInference[VPU::ExecutorKind::SHAVE_ACT] =
+                    _supportsDedicatedActShaveQueues ? 1 : shaveActExec.getCount();
         }
         _dpuCount = tileOp.getSubExecutor(VPU::ExecutorKind::DPU).getCount();
     }
@@ -288,7 +310,8 @@ void vpux::VPURT::InferenceExecutionSimulator::runSim() {
             size_t cycleEnd = cycleBegin + cost;
 
             _log.trace("Run {0}[{1}]: cost: {2} cycleBegin: {3} cycleEnd: {4}",
-                       getTaskQueueInfoString(queueType, queueTasks[index].taskOp), index, cost, cycleBegin, cycleEnd);
+                       getTaskQueueInfoString(queueType, queueTasks[index].taskOp, _supportsDedicatedActShaveQueues),
+                       index, cost, cycleBegin, cycleEnd);
 
             // Update all update barriers of this task. Decrement their counter
             // and pass information at what cycle this update has happened. This is later needed

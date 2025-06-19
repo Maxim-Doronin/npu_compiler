@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -114,24 +114,6 @@ def VPU_ExecutorKind :
 }
 
 def VPU_ExecutorKindAttr : VPU_EnumAttr<VPU_ExecutorKind, "executor_kind">;
-
-//
-// CompilationMode
-//
-
-def VPU_CompilationMode  :
-        VPU_I64EnumAttr<
-            "CompilationMode",
-            "Compilation Mode",
-            [
-                I64EnumAttrCase<"ReferenceSW",  0>,
-                I64EnumAttrCase<"DefaultHW",    1>,
-                I64EnumAttrCase<"ShaveCodeGen", 2>
-            ]
-        > {
-}
-
-def VPU_CompilationModeAttr : VPU_EnumAttr<VPU_CompilationMode, "compilation_mode">;
 
 //
 // RevisionID

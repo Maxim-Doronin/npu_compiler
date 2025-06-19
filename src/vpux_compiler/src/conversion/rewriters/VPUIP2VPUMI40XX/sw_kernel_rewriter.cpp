@@ -97,7 +97,12 @@ sw_params::DataType getDataTypeFromMlirType(mlir::Type type) {
             }
             return sw_params::DataType::NN_FP16;
         case 8:
-            return sw_params::DataType::NN_FP8;
+            if (mlir::isa<mlir::Float8E4M3FNType>(floatType)) {
+                return sw_params::DataType::NN_HF8;
+            } else if (mlir::isa<mlir::Float8E5M2Type>(floatType)) {
+                return sw_params::DataType::NN_BF8;
+            }
+            break;
         }
     } else if (auto integerType = mlir::dyn_cast<mlir::IntegerType>(type)) {
         if (integerType.isSigned()) {
@@ -221,19 +226,19 @@ void addTensorArgToVector(SmallVector<uint8_t>& vec, std::optional<uint32_t> til
 }
 
 void addBasicAttrToVector(SmallVector<uint8_t>& vec, mlir::Attribute attr) {
-    if (auto val = attr.dyn_cast_or_null<mlir::IntegerAttr>()) {
+    if (auto val = mlir::dyn_cast_or_null<mlir::IntegerAttr>(attr)) {
         appendValueToVector(vec, val.getValue().getSExtValue());
-    } else if (auto val = attr.dyn_cast_or_null<mlir::FloatAttr>()) {
+    } else if (auto val = mlir::dyn_cast_or_null<mlir::FloatAttr>(attr)) {
         appendValueToVector(vec, static_cast<float>(val.getValue().convertToDouble()));
+    } else if (auto val = mlir::dyn_cast_or_null<mlir::TypeAttr>(attr)) {
+        appendValueToVector(vec, getDataTypeFromMlirType(val.getValue()));
     } else {
-        const auto typedAttr = attr.dyn_cast_or_null<mlir::TypedAttr>();
-        const auto type = typedAttr != nullptr ? typedAttr.getType() : nullptr;
-        VPUX_THROW("Act Shave Invocation: cannot store arg of type {0}", type);
+        VPUX_THROW("Act Shave Invocation: cannot store attribute {0}", attr);
     }
 }
 
 void addAttrsToVector(SmallVector<uint8_t>& vec, mlir::Attribute attr) {
-    if (auto arr = attr.dyn_cast_or_null<mlir::ArrayAttr>()) {
+    if (auto arr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr)) {
         auto vals = arr.getValue();
         for (auto val : vals) {
             addBasicAttrToVector(vec, val);
@@ -315,7 +320,7 @@ SmallVector<uint8_t> createKernelParams(VPUIP::SwKernelOp swKernelOp, bool isJit
 
     for (auto&& kernelRun : swKernelOp.getBody().getOps<VPUIP::SwKernelRun>()) {
         for (auto&& operand : kernelRun.getArgs()) {
-            auto blockArg = operand.dyn_cast_or_null<mlir::BlockArgument>();
+            auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(operand);
             if (blockArg) {
                 auto blockId = blockArg.getArgNumber();
                 VPUX_THROW_UNLESS(blockId < kernelOpArgsCount,
@@ -543,17 +548,18 @@ mlir::LogicalResult SWKernelRewriter::matchAndRewrite(VPUIP::SwKernelOp origOp, 
     auto moduleOp = origOp->getParentOfType<mlir::ModuleOp>();
 
     const auto tileIndex = origOp.getTileIndex().value_or(0);
-    const auto indexWithOnlyTileSet = VPURegMapped::IndexType::get(ctx, tileIndex, 0, 0);
+    const auto listIndex = origOp.getListIndex().value_or(0);
+    const auto index = VPURegMapped::IndexType::get(ctx, tileIndex, listIndex, 0);
     auto kernelFuncSym = origOp.getKernelFunction();
 
     if (auto swKernelFuncOp = moduleOp.lookupSymbol<mlir::func::FuncOp>(kernelFuncSym)) {
         auto swKernelTaskType = swKernelFuncOp->getAttrOfType<mlir::SymbolRefAttr>("VPU.task_type");
 
         if (VPUIP::isCacheOpTaskType(swKernelTaskType)) {
-            createCacheOpSwKernel(origOp, rewriter, swKernelFuncOp, indexWithOnlyTileSet);
+            createCacheOpSwKernel(origOp, rewriter, swKernelFuncOp, index);
         } else {
             auto swKernelELF = swKernelFuncOp->getAttrOfType<mlir::StringAttr>("VPU.kernel_entry");
-            createComputeOpSwKernel(origOp, rewriter, swKernelELF, indexWithOnlyTileSet);
+            createComputeOpSwKernel(origOp, rewriter, swKernelELF, index);
         }
         // For ShaveCodeGen we expect a LLVMFuncOp at this point
     } else if (auto jitCompiledSwKernelFuncOp = moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(kernelFuncSym)) {
@@ -562,7 +568,7 @@ mlir::LogicalResult SWKernelRewriter::matchAndRewrite(VPUIP::SwKernelOp origOp, 
         vpux::translateToLLVMIR(moduleOp, kernelFuncSym,
                                 vpux::Logger("translate-to-LLVMIR", vpux::Logger::global().level()));
 
-        createComputeOpSwKernel(origOp, rewriter, llvmFuncOpName, indexWithOnlyTileSet, true);
+        createComputeOpSwKernel(origOp, rewriter, llvmFuncOpName, index, true);
 
         vpux::lowerLLVMToBinary(moduleOp, kernelFuncSym);
         ShaveBinaryResources::loadElfData(moduleOp);

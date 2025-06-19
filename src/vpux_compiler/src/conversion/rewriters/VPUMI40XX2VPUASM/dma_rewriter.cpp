@@ -11,29 +11,18 @@ namespace vpux {
 namespace vpumi40xx2vpuasm {
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> NNDMARewriter::getSymbolicNames(VPUMI40XX::NNDMAOp op, size_t) {
-    auto fullName = VPUMI40XX::NNDMAOp::getOperationName();
-    auto opName = fullName.drop_front(VPUMI40XX::VPUMI40XXDialect::getDialectNamespace().size() + 1);
-
-    auto tileIdx = std::to_string(op.getType().getTileIdx());
-    auto srcTypeIdx = std::to_string(op.getType().getListIdx());
-    auto opIdx = std::to_string(op.getType().getValue());
-
-    auto symName = mlir::StringAttr::get(op.getContext(), opName + "_" + tileIdx + "_" + srcTypeIdx + "_" + opIdx);
-
-    return {mlir::FlatSymbolRefAttr::get(symName)};
+    return getSymbolicNamesByTileListValue(op);
 }
 
 VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp op, mlir::MLIRContext* ctx) const {
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    NDTypeInterface outputType;
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto inputTotalSizeBits =
+            alignMemSize(inputType.getNumElements() * vpux::getElemTypeSize(inputType), Byte(1));
+    const auto inputTotalLength = vpux::Byte(inputTotalSizeBits).count();
 
-    auto outputBuffers = op.getOutputBuffs();
-    const Bit elemSize = vpux::getElemTypeSize(inputType);
-    auto totalSizeBits = alignMemSize(inputType.getNumElements() * elemSize, Byte(1));
-    auto totalLength = vpux::Byte(totalSizeBits).count();
+    auto [inputMemShape, inputMemStrides, inputElemSize] = getTypeInfo(inputType);
+    auto reducedDimsInput = vpux::reduceDimsForDma(std::move(inputMemShape), std::move(inputMemStrides), inputElemSize);
 
-    auto reducedDimsInput = vpux::reduceDimsForDma(inputType);
-    DMAPattern reducedDimsOutput;
     vpux::patchDimsForNPU37XX(reducedDimsInput);
 
     VPUX_THROW_WHEN(reducedDimsInput.dims.size() != reducedDimsInput.strides.size(),
@@ -53,18 +42,23 @@ VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp 
 
     uint32_t srcPlaneStride = 0;
     uint32_t dstPlaneStride = 0;
-    uint32_t planeLen = totalLength;
+    uint32_t planeLen = inputTotalLength;
     uint32_t numPlanes = 0;
 
+    const auto outputBuffers = op.getOutputBuffs();
     if (outputBuffers.empty()) {
         if (inputTransferRank == 2) {
             srcPlaneStride = reducedDimsInput.strides[0];
-            numPlanes = totalLength / reducedDimsInput.dims[0];
-            planeLen = totalLength / numPlanes;
+            numPlanes = inputTotalLength / reducedDimsInput.dims[0];
+            planeLen = inputTotalLength / numPlanes;
         }
     } else {
-        outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutputBuffs()[0].getType());
-        reducedDimsOutput = vpux::reduceDimsForDma(outputType);
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(outputBuffers[0].getType());
+
+        auto [outputMemShape, outputMemStrides, outputElemSize] = getTypeInfo(outputType);
+        auto reducedDimsOutput =
+                vpux::reduceDimsForDma(std::move(outputMemShape), std::move(outputMemStrides), outputElemSize);
+
         vpux::patchDimsForNPU37XX(reducedDimsOutput);
         VPUX_THROW_WHEN(reducedDimsOutput.dims.size() != reducedDimsOutput.strides.size(),
                         "Non matching rank between dims {0} and strides {1} for output", reducedDimsOutput.dims.size(),
@@ -90,32 +84,36 @@ VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp 
             }
             srcPlaneStride = reducedDimsInput.strides[0];
             dstPlaneStride = reducedDimsOutput.strides[0];
-            numPlanes = totalLength / reducedDimsInput.dims[0];
-            planeLen = totalLength / numPlanes;
+            numPlanes = inputTotalLength / reducedDimsInput.dims[0];
+            planeLen = inputTotalLength / numPlanes;
         } else if (inputTransferRank == 2) {
+            const auto outputTotalSizeBits =
+                    alignMemSize(outputType.getNumElements() * vpux::getElemTypeSize(outputType), Byte(1));
+            const auto outputTotalLength = vpux::Byte(outputTotalSizeBits).count();
+
             // 3D to 2D transaction
             srcPlaneStride = reducedDimsInput.strides[0];
-            numPlanes = totalLength / reducedDimsInput.dims[0];
+            numPlanes = inputTotalLength / reducedDimsInput.dims[0];
+            planeLen = inputTotalLength / numPlanes;
 
-            planeLen = totalLength / numPlanes;
-
-            if (totalLength == static_cast<int64_t>(dstWidth)) {
-                dstWidth = planeLen;
-                dstStride = planeLen;
-                dstPlaneStride = planeLen;
+            const uint32_t outputPlaneLen = outputTotalLength / numPlanes;
+            if (outputTotalLength == static_cast<int64_t>(dstWidth)) {
+                dstWidth = outputPlaneLen;
+                dstStride = outputPlaneLen;
+                dstPlaneStride = outputPlaneLen;
             } else {
-                dstPlaneStride = (planeLen * dstStride) / dstWidth;
-                dstWidth = std::min(static_cast<uint32_t>(dstWidth), planeLen);
-                dstStride = std::min(static_cast<uint32_t>(dstStride), planeLen);
+                dstPlaneStride = (outputPlaneLen * dstStride) / dstWidth;
+                dstWidth = std::min(static_cast<uint32_t>(dstWidth), outputPlaneLen);
+                dstStride = std::min(static_cast<uint32_t>(dstStride), outputPlaneLen);
             }
 
         } else if (outputTransferRank == 2) {
             // 2D to 3D transaction
             dstPlaneStride = reducedDimsOutput.strides[0];
-            numPlanes = totalLength / reducedDimsOutput.dims[0];
+            numPlanes = inputTotalLength / reducedDimsOutput.dims[0];
 
-            planeLen = totalLength / numPlanes;
-            if (totalLength == static_cast<int64_t>(srcWidth)) {
+            planeLen = inputTotalLength / numPlanes;
+            if (inputTotalLength == static_cast<int64_t>(srcWidth)) {
                 srcWidth = planeLen;
                 srcStride = planeLen;
                 srcPlaneStride = planeLen;
@@ -127,7 +125,7 @@ VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp 
         }
     }
 
-    VPUX_THROW_WHEN((numPlanes > 0) && ((totalLength % numPlanes) != 0),
+    VPUX_THROW_WHEN((numPlanes > 0) && ((inputTotalLength % numPlanes) != 0),
                     "Number of planes is not a divisor of total transaction length");
     VPUX_THROW_WHEN((numPlanes > 0) && ((planeLen % srcWidth) != 0),
                     "Source width is not a divisor of transaction plane length");

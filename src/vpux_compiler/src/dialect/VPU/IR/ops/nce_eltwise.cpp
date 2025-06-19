@@ -16,6 +16,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 using namespace vpux;
@@ -332,5 +333,21 @@ mlir::LogicalResult vpux::VPU::NCEEltwiseOp::verifyEltwiseCMX(mlir::Location loc
         return mlir::failure();
     }
 
+    return mlir::success();
+}
+
+mlir::LogicalResult vpux::VPU::NCEEltwiseOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                               mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    // Broadcasting is not supported
+    auto outShape =
+            reifyEltwiseTensors(builder, getInput1(), getInput2(), IE::AutoBroadcastType::NONE_OR_EXPLICIT, loc);
+
+    if (mlir::failed(outShape)) {
+        return outShape;
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
     return mlir::success();
 }

@@ -15,7 +15,7 @@
 !MemRef0 = memref<1x16x112x112xf16, #NHWC>
 
 // CHECK-LABEL: module @AddCycleCostForDistributedBuffers
-module @AddCycleCostForDistributedBuffers attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @AddCycleCostForDistributedBuffers attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
       IE.ExecutorResource 1 of @DPU
       IE.ExecutorResource 2 of @SHAVE_ACT

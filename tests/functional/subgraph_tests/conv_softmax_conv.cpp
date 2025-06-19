@@ -4,6 +4,9 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/softmax.hpp"
+
 namespace ov::test {
 
 struct ConvSoftmaxConvTestParams {

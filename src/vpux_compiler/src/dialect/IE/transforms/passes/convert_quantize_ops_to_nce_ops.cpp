@@ -8,7 +8,9 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/factories/convert_quantize_ops_to_nce_ops_strategy_getter.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -20,6 +22,66 @@ namespace vpux::IE {
 }  // namespace vpux::IE
 
 using namespace vpux;
+
+namespace vpux::IE {
+
+bool isQuantizedPerAxis(mlir::Value val) {
+    auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
+    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
+}
+
+mlir::Value buildDwWeights(const mlir::Location& loc, const int64_t OC, const mlir::Type& elementType,
+                           mlir::PatternRewriter& rewriter) {
+    const auto ctx = rewriter.getContext();
+    if (auto quantizeType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elementType)) {
+        const auto baseType = mlir::RankedTensorType::get({OC, 1, 1, 1}, mlir::Float16Type::get(ctx));
+        const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vpux::type::float16(1.f)));
+        const auto contentAttr = Const::ContentAttr::get(baseAttr);
+        auto quantWeightsConstAttr = contentAttr.transform().castElemType(quantizeType).get();
+        const auto weightsType = mlir::cast<vpux::NDTypeInterface>(contentAttr.getType()).changeElemType(quantizeType);
+        return rewriter.create<Const::DeclareOp>(loc, weightsType, std::move(quantWeightsConstAttr));
+    }
+    if (elementType.isF16()) {
+        const auto baseType = mlir::RankedTensorType::get({OC, 1, 1, 1}, mlir::Float16Type::get(ctx));
+        return Const::createConst(rewriter, loc, baseType, ArrayRef(vpux::type::float16(1.f)));
+    }
+    if (elementType.isF32()) {
+        const auto baseType = mlir::RankedTensorType::get({OC, 1, 1, 1}, mlir::Float32Type::get(ctx));
+        return Const::createConst(rewriter, loc, baseType, ArrayRef(1.f));
+    }
+    VPUX_THROW("buildDwWeights: other types are not supported");
+}
+
+bool isLegalQuantizeOp(IE::QuantizeOp quantizeOp, bool canUseCMajor) {
+    const auto isPerAxisQuantized = isQuantizedPerAxis(quantizeOp.getOutput());
+    auto outputLayerUsers = quantizeOp.getOutput().getUsers();
+    auto anyUserIsConv = !outputLayerUsers.empty() && ::llvm::any_of(outputLayerUsers, [](auto user) {
+        return mlir::isa<IE::ConvolutionOp>(user);
+    });
+
+    return (anyUserIsConv && canUseCMajor) || isPerAxisQuantized;
+};
+
+bool isLegalDequantizeOp(IE::DequantizeOp dequantizeOp) {
+    return isQuantizedPerAxis(dequantizeOp.getInput());
+};
+
+bool isPerChannelQuantizedType(mlir::Value val) {
+    auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
+    auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType);
+    if (perAxisType == nullptr) {
+        return false;
+    }
+
+    auto rank = mlir::cast<vpux::NDTypeInterface>(val.getType()).getRank();
+    if (rank != 4) {
+        return false;
+    }
+
+    auto quantizeDim = perAxisType.getQuantizedDimension();
+    return quantizeDim == Dims4D::Act::C.ind();
+}
+}  // namespace vpux::IE
 
 namespace {
 
@@ -41,16 +103,11 @@ private:
     Logger _log;
 };
 
-bool isPerAxisQuant(mlir::Value val) {
-    auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
-    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
-}
-
 void ConvertQuantizeOpsToNceOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto strategy = IE::createConvertQuantizeOpsToNceOpsStrategy();
+    auto strategy = IE::createConvertQuantizeOpsToNceOpsStrategy(func);
 
     mlir::ConversionTarget toAvgPoolTarget(ctx);
     mlir::RewritePatternSet toAvgPoolPatterns(&ctx);
@@ -68,33 +125,15 @@ void ConvertQuantizeOpsToNceOpsPass::safeRunOnFunc() {
     }
 
     // per-axis scales and per-tensor zero points quantize/dequantize convert to DW conv
-    mlir::ConversionTarget quantToDwTarget(ctx);
-    mlir::RewritePatternSet quantToDwPatterns(&ctx);
-    strategy->prepareQuantToDw(quantToDwTarget, quantToDwPatterns, ctx, _log);
-    if (mlir::failed(mlir::applyPartialConversion(func, quantToDwTarget, std::move(quantToDwPatterns)))) {
+    mlir::ConversionTarget quantToConvTarget(ctx);
+    mlir::RewritePatternSet quantToConvPatterns(&ctx);
+    strategy->prepareQuantToConv(quantToConvTarget, quantToConvPatterns, ctx, _log);
+    if (mlir::failed(mlir::applyPartialConversion(func, quantToConvTarget, std::move(quantToConvPatterns)))) {
         signalPassFailure();
     }
 }
 
 }  // namespace
-
-namespace vpux::IE {
-
-bool isLegalQuantizeOp(IE::QuantizeOp quantizeOp, bool canUseCMajor) {
-    const auto isPerAxisQuantized = isPerAxisQuant(quantizeOp.getOutput());
-    auto outputLayerUsers = quantizeOp.getOutput().getUsers();
-    auto anyUserIsConv = !outputLayerUsers.empty() && ::llvm::any_of(outputLayerUsers, [](auto user) {
-        return mlir::isa<IE::ConvolutionOp>(user);
-    });
-
-    return (anyUserIsConv && canUseCMajor) || isPerAxisQuantized;
-};
-
-bool isLegalDequantizeOp(IE::DequantizeOp dequantizeOp) {
-    return isPerAxisQuant(dequantizeOp.getInput());
-};
-
-}  // namespace vpux::IE
 
 //
 // createConvertQuantizeOpsToNceOpsPass

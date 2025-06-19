@@ -11,11 +11,11 @@ namespace vpux::IE::arch37xx {
 class ConvertQuantizeOpsToNceOpsStrategy final : public vpux::IE::IConvertQuantizeOpsToNceOpsStrategy {
 public:
     void prepareAvgPool(mlir::ConversionTarget& toAvgPoolTarget, mlir::RewritePatternSet& toAvgPoolPatterns,
-                        mlir::MLIRContext& ctx, Logger& log) final override;
+                        mlir::MLIRContext& ctx, Logger& log) const override;
     void prepareEltwise(mlir::ConversionTarget& toEltwiseTarget, mlir::RewritePatternSet& toEltwisePatterns,
-                        mlir::MLIRContext& ctx, Logger& log) final override;
-    void prepareQuantToDw(mlir::ConversionTarget& quantToDwTarget, mlir::RewritePatternSet& quantToDwPatterns,
-                          mlir::MLIRContext& ctx, Logger& log) final override;
+                        mlir::MLIRContext& ctx, Logger& log) const override;
+    void prepareQuantToConv(mlir::ConversionTarget& quantToConvTarget, mlir::RewritePatternSet& quantToConvPatterns,
+                            mlir::MLIRContext& ctx, Logger& log) const override;
 
 private:
     const bool _canUseCMajor = false;

@@ -68,14 +68,14 @@ mlir::LogicalResult TileGatherElement::matchAndRewrite(VPU::GatherOp origOp, mli
         }
         const size_t GATHER_DMA_MAX_ELEMENT_SIZE_ARCH_BASED = VPU::getGatherDMAMaxElementSize(arch);
 
-        for (auto tile : tiles.value()) {
-            size_t element_size = vpux::getElemTypeSize(outputType).to<Byte>().count();
+        for (const auto& tile : tiles.value()) {
+            size_t elementSizeInBit = vpux::getElemTypeSize(outputType).count();
             auto inputTiling = origOp.backInferTileInfo(tile, _log);
             auto& inTiles = inputTiling.tiles;
             for (size_t idx = axis + 1; idx < inputShape.size(); ++idx) {
-                element_size *= inTiles.begin()->shape.raw()[idx];
+                elementSizeInBit *= inTiles.begin()->shape.raw()[idx];
             }
-            if (element_size > GATHER_DMA_MAX_ELEMENT_SIZE_ARCH_BASED) {
+            if (elementSizeInBit > GATHER_DMA_MAX_ELEMENT_SIZE_ARCH_BASED * CHAR_BIT) {
                 return false;
             }
         }

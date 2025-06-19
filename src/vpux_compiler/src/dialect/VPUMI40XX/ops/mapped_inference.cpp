@@ -6,6 +6,8 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 
+#include <numeric>
+
 using namespace vpux;
 
 size_t countEmptyArray(mlir::ArrayAttr array, int64_t limit) {
@@ -51,12 +53,22 @@ mlir::Value vpux::VPUMI40XX::MappedInferenceOp::getListHead(VPURegMapped::TaskTy
             return getVariantTasks().slice(tileIdx - emptyTiles, 1)[0];
             break;
         case VPURegMapped::TaskType::ActKernelInvocation:
-            emptyTiles = countZeroes(getActKernelInvocationsCount(), tileIdx);
-            return getActKernelInvocations().slice(tileIdx - emptyTiles, 1)[0];
+            emptyTiles = countEmptyArray(getActKernelInvocationsCount(), tileIdx);
+            majorOperand = tileIdx - emptyTiles;
+
+            emptyLists = countZeroes(subArray(getActKernelInvocationsCount(), tileIdx), listIdx);
+            minorOperand = listIdx - emptyLists;
+
+            return getActKernelInvocations()[majorOperand].slice(minorOperand, 1)[0];
             break;
         case VPURegMapped::TaskType::ActKernelRange:
-            emptyTiles = countZeroes(getActKernelRangesCount(), tileIdx);
-            return getActKernelRanges().slice(tileIdx - emptyTiles, 1)[0];
+            emptyTiles = countEmptyArray(getActKernelRangesCount(), tileIdx);
+            majorOperand = tileIdx - emptyTiles;
+
+            emptyLists = countZeroes(subArray(getActKernelRangesCount(), tileIdx), listIdx);
+            minorOperand = listIdx - emptyLists;
+
+            return getActKernelRanges()[majorOperand].slice(minorOperand, 1)[0];
             break;
         default:
             return nullptr;
@@ -80,7 +92,7 @@ mlir::MutableOperandRange vpux::VPUMI40XX::MappedInferenceOp::getListHeadMutable
         return false;
     };
 
-    auto dmaTaskListIsNotValid = [&arrayIdx](mlir::ArrayAttr array, int64_t tileIdx, int64_t listIdx) -> bool {
+    auto taskSubListSizeIsNotValid = [&arrayIdx](mlir::ArrayAttr array, int64_t tileIdx, int64_t listIdx) -> bool {
         if (tileIdx >= static_cast<int64_t>(array.size()) || subArray(array, tileIdx).size() == 0 ||
             listIdx >= static_cast<int64_t>(subArray(array, tileIdx).size()) ||
             arrayIdx(subArray(array, tileIdx), listIdx) == 0) {
@@ -95,7 +107,7 @@ mlir::MutableOperandRange vpux::VPUMI40XX::MappedInferenceOp::getListHeadMutable
 
     switch (taskType) {
     case VPURegMapped::TaskType::DMA:
-        if (dmaTaskListIsNotValid(getDmaCount(), tileIdx, listIdx))
+        if (taskSubListSizeIsNotValid(getDmaCount(), tileIdx, listIdx))
             return emptyOperandRange;
 
         emptyTiles = countEmptyArray(getDmaCount(), tileIdx);
@@ -121,18 +133,28 @@ mlir::MutableOperandRange vpux::VPUMI40XX::MappedInferenceOp::getListHeadMutable
         return getVariantTasksMutable().slice(checked_cast<unsigned int>(tileIdx - emptyTiles), 1);
         break;
     case VPURegMapped::TaskType::ActKernelInvocation:
-        if (taskListSizeIsNotValid(getActKernelInvocationsCount(), tileIdx))
+        if (taskSubListSizeIsNotValid(getActKernelInvocationsCount(), tileIdx, listIdx))
             return emptyOperandRange;
 
-        emptyTiles = countZeroes(getActKernelInvocationsCount(), tileIdx);
-        return getActKernelInvocationsMutable().slice(checked_cast<unsigned int>(tileIdx - emptyTiles), 1);
+        emptyTiles = countEmptyArray(getActKernelInvocationsCount(), tileIdx);
+        majorOperand = tileIdx - emptyTiles;
+
+        emptyLists = countZeroes(subArray(getActKernelInvocationsCount(), tileIdx), listIdx);
+        minorOperand = listIdx - emptyLists;
+
+        return getActKernelInvocationsMutable()[majorOperand].slice(checked_cast<unsigned int>(minorOperand), 1);
         break;
     case VPURegMapped::TaskType::ActKernelRange:
-        if (taskListSizeIsNotValid(getActKernelRangesCount(), tileIdx))
+        if (taskSubListSizeIsNotValid(getActKernelRangesCount(), tileIdx, listIdx))
             return emptyOperandRange;
 
-        emptyTiles = countZeroes(getActKernelRangesCount(), tileIdx);
-        return getActKernelRangesMutable().slice(checked_cast<unsigned int>(tileIdx - emptyTiles), 1);
+        emptyTiles = countEmptyArray(getActKernelRangesCount(), tileIdx);
+        majorOperand = tileIdx - emptyTiles;
+
+        emptyLists = countZeroes(subArray(getActKernelRangesCount(), tileIdx), listIdx);
+        minorOperand = listIdx - emptyLists;
+
+        return getActKernelRangesMutable()[majorOperand].slice(checked_cast<unsigned int>(minorOperand), 1);
         break;
     default:
         return emptyOperandRange;
@@ -159,9 +181,17 @@ DOT::EdgeDir VPUMI40XX::MappedInferenceOp::getEdgeDirection(mlir::Operation*) {
 
 size_t vpux::VPUMI40XX::MappedInferenceOp::getTaskCount(vpux::VPURegMapped::TaskType taskType, size_t tileIdx,
                                                         size_t listIdx) {
-    VPUX_THROW_WHEN(((taskType != vpux::VPURegMapped::TaskType::DMA) && listIdx != 0) ||
-                            ((taskType == vpux::VPURegMapped::TaskType::DMA) && (listIdx > 1)),
-                    "Only DMA can have list index == 1");
+    VPUX_THROW_WHEN((taskType != vpux::VPURegMapped::TaskType::DMA &&
+                     taskType != vpux::VPURegMapped::TaskType::ActKernelInvocation &&
+                     taskType != vpux::VPURegMapped::TaskType::ActKernelRange) &&
+                            listIdx != 0,
+                    "Only DMA or SW tasks can have non-zero list index. Encountered task type: {0} and list index: {1}",
+                    taskType, listIdx);
+    VPUX_THROW_WHEN((taskType == vpux::VPURegMapped::TaskType::DMA ||
+                     taskType == vpux::VPURegMapped::TaskType::ActKernelInvocation ||
+                     taskType == vpux::VPURegMapped::TaskType::ActKernelRange) &&
+                            (listIdx > 1),
+                    "Invalid list index value > 1. Task type: {0}, list index: {1}", taskType, listIdx);
 
     switch (taskType) {
     case vpux::VPURegMapped::TaskType::DMA: {
@@ -169,12 +199,12 @@ size_t vpux::VPUMI40XX::MappedInferenceOp::getTaskCount(vpux::VPURegMapped::Task
         return tileIdx > dmaCounts.size() ? 0 : dmaCounts[tileIdx][listIdx];
     }
     case vpux::VPURegMapped::TaskType::ActKernelInvocation: {
-        auto kernelInvoCounts = parseIntArrayAttr<int64_t>(getActKernelInvocationsCount());
-        return tileIdx > kernelInvoCounts.size() ? 0 : kernelInvoCounts[tileIdx];
+        auto kernelInvoCounts = parseIntArrayOfArrayAttr<int64_t>(getActKernelInvocationsCount());
+        return tileIdx > kernelInvoCounts.size() ? 0 : kernelInvoCounts[tileIdx][listIdx];
     }
     case vpux::VPURegMapped::TaskType::ActKernelRange: {
-        auto kernelRangeCounts = parseIntArrayAttr<int64_t>(getActKernelRangesCount());
-        return tileIdx > kernelRangeCounts.size() ? 0 : kernelRangeCounts[tileIdx];
+        auto kernelRangeCounts = parseIntArrayOfArrayAttr<int64_t>(getActKernelRangesCount());
+        return tileIdx > kernelRangeCounts.size() ? 0 : kernelRangeCounts[tileIdx][listIdx];
     }
     case vpux::VPURegMapped::TaskType::DPUInvariant: {
         auto dpuInvariantCounts = parseIntArrayAttr<int64_t>(getInvariantCount());
@@ -203,6 +233,18 @@ size_t vpux::VPUMI40XX::MappedInferenceOp::getMaxTaskTile(vpux::VPURegMapped::Ta
         return std::abs(std::distance(taskCountsVec.rend(), lastPositiveCount));
     };
 
+    auto getMaxUsedTileForShave = [](size_t listIdx,
+                                     llvm::SmallVector<llvm::SmallVector<int64_t>>& taskCountsPerTilesAndListsVec) {
+        auto lastPositiveCount =
+                std::find_if(taskCountsPerTilesAndListsVec.rbegin(), taskCountsPerTilesAndListsVec.rend(),
+                             [listIdx](const llvm::SmallVector<int64_t>& perTileVec) {
+                                 return perTileVec[listIdx] > 0;
+                             });
+
+        // Note: tile indexes start with 1. Return 0 when no tasks were found.
+        return std::abs(std::distance(taskCountsPerTilesAndListsVec.rend(), lastPositiveCount));
+    };
+
     switch (taskType) {
     case vpux::VPURegMapped::TaskType::DMA: {
         auto dmaCounts = parseIntArrayOfArrayAttr<int64_t>(getDmaCount());
@@ -219,13 +261,24 @@ size_t vpux::VPUMI40XX::MappedInferenceOp::getMaxTaskTile(vpux::VPURegMapped::Ta
         return std::max(maxTileDDR, maxTileCMX);
     }
     case vpux::VPURegMapped::TaskType::ActKernelInvocation: {
-        auto kernelInvoCounts = parseIntArrayAttr<int64_t>(getActKernelInvocationsCount());
-
-        return getMaxUsedTile(kernelInvoCounts);
+        auto kernelInvoCounts = parseIntArrayOfArrayAttr<int64_t>(getActKernelInvocationsCount());
+        auto maxTileForShave0 = getMaxUsedTileForShave(0, kernelInvoCounts);
+        auto maxTileForShave1 = getMaxUsedTileForShave(1, kernelInvoCounts);
+        VPUX_THROW_WHEN(maxTileForShave1 > 0,
+                        "In non-WLM compilation no ActKernelInvocation should be assigned to SHAVE1 (found "
+                        "maxTileForShave1 = {0}).",
+                        maxTileForShave1);
+        return maxTileForShave0;
     }
     case vpux::VPURegMapped::TaskType::ActKernelRange: {
-        auto kernelRangeCounts = parseIntArrayAttr<int64_t>(getActKernelRangesCount());
-        return getMaxUsedTile(kernelRangeCounts);
+        auto kernelRangeCounts = parseIntArrayOfArrayAttr<int64_t>(getActKernelRangesCount());
+        auto maxTileForShave0 = getMaxUsedTileForShave(0, kernelRangeCounts);
+        auto maxTileForShave1 = getMaxUsedTileForShave(1, kernelRangeCounts);
+        VPUX_THROW_WHEN(
+                maxTileForShave1 > 0,
+                "In non-WLM compilation no ActKernelRange should be assigned to SHAVE1 (found maxTileForShave1 = {0}).",
+                maxTileForShave1);
+        return maxTileForShave0;
     }
     case vpux::VPURegMapped::TaskType::DPUInvariant: {
         auto dpuInvariantCounts = parseIntArrayAttr<int64_t>(getInvariantCount());

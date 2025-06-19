@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -167,6 +167,40 @@ VPUIPDPU::ODUDataBitWidth getDataBitWidth(mlir::Type outActType) {
                       outActType);
 
     return oduBitWidth.value();
+}
+
+std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType) {
+    std::optional<ODUDataBitWidth> outDataWidth;
+
+    if (outDataType.isF32()) {
+        return ODUDataBitWidth::ODU_DTYPE_32BIT;
+    } else if (outDataType.isF16()) {
+        return ODUDataBitWidth::ODU_DTYPE_16BIT;
+    } else if (outDataType.isBF16()) {
+        return ODUDataBitWidth::ODU_DTYPE_16BIT;
+    } else if (outDataType.isFloat8E4M3FN()) {
+        return ODUDataBitWidth::ODU_DTYPE_8BIT;
+    } else if (outDataType.isFloat8E5M2()) {
+        return ODUDataBitWidth::ODU_DTYPE_8BIT;
+    } else if (outDataType.isSignedInteger(CHAR_BIT * sizeof(int32_t))) {
+        return ODUDataBitWidth::ODU_DTYPE_32BIT;
+    } else if (outDataType.isSignedInteger(CHAR_BIT * sizeof(int8_t))) {
+        return ODUDataBitWidth::ODU_DTYPE_8BIT;
+    } else if (outDataType.isSignedInteger(4)) {
+        return ODUDataBitWidth::ODU_DTYPE_4BIT;
+    } else if (outDataType.isInteger(CHAR_BIT * sizeof(uint8_t))) {
+        return ODUDataBitWidth::ODU_DTYPE_8BIT;
+    } else if (outDataType.isInteger(4)) {
+        return ODUDataBitWidth::ODU_DTYPE_4BIT;
+    } else if (outDataType.isInteger(2)) {
+        return ODUDataBitWidth::ODU_DTYPE_2BIT;
+    } else if (outDataType.isInteger(1)) {
+        return ODUDataBitWidth::ODU_DTYPE_1BIT;
+    } else if (mlir::isa<mlir::quant::QuantizedType>(outDataType)) {
+        return getOutDataWidth(mlir::cast<mlir::quant::QuantizedType>(outDataType).getStorageType());
+    }
+
+    return outDataWidth;
 }
 
 }  // namespace VPUIPDPU

@@ -84,7 +84,8 @@ VPU::SparsityRemovalFlag VPU::shouldRemoveOutputSparsity(mlir::Operation* op) {
 
     // First try to retrive the DistributedTensorType (it will be present in the passes post
     // MakeOpsWithDistributedTensorPass).
-    auto distributedTensorType = clusteredOp->getResult(0).getType().dyn_cast_or_null<VPU::DistributedTensorType>();
+    auto distributedTensorType =
+            mlir::dyn_cast_or_null<vpux::VPU::DistributedTensorType>(clusteredOp->getResult(0).getType());
     if (distributedTensorType == nullptr) {
         if (!clusteredOp.getMultiClusterStrategy().has_value()) {
             return SparsityRemovalFlag::MultiClusterStrategyMissingFail;
@@ -207,4 +208,38 @@ mlir::Type VPU::getEffectiveSparseOutputType(mlir::Type sparseType) {
     auto distributionForEffectiveType = VPU::getExplicitDistrAttrForActualDataFromSparseType(sparseType);
     return mlir::cast<VPU::DistributedTypeInterface>(dataNDType)
             .changeShapeForExplicitDistribution(outShape, distributionForEffectiveType);
+}
+
+std::pair<SmallVector<int64_t>, SmallVector<int64_t>> VPU::getUpdatedSliceOffsetsAndShapesForSETable(
+        const int64_t seDepth, mlir::ArrayAttr seSizeAttr, ArrayRef<int64_t> sliceOffsets,
+        ArrayRef<int64_t> sliceSizes) {
+    SmallVector<int64_t> seTableOffsets(sliceOffsets);
+    SmallVector<int64_t> seTableSizes(sliceSizes);
+    seTableOffsets[Dims4D::Act::N.ind()] = 0;
+    seTableSizes[Dims4D::Act::N.ind()] = 1;
+
+    if (seDepth == 1) {
+        seTableOffsets[Dims4D::Act::C.ind()] = 0;
+        seTableSizes[Dims4D::Act::C.ind()] = 1;
+        return std::make_pair(seTableOffsets, seTableSizes);
+    }
+
+    auto seSizes = parseIntArrayAttr<int64_t>(seSizeAttr);
+    auto offsetRange = irange(seSizes.size());
+    auto offsetIter = llvm::find_if(offsetRange, [&](auto idx) {
+        auto sum = std::accumulate(seSizes.begin(), seSizes.begin() + idx, 0);
+        return sum == sliceOffsets[Dims4D::Act::C.ind()];
+    });
+    VPUX_THROW_WHEN(offsetIter == offsetRange.end(), "Slice over channels offset is not aligned with SE size");
+    seTableOffsets[Dims4D::Act::C.ind()] = static_cast<int64_t>(*offsetIter);
+
+    auto sizeRange = irange(*offsetIter, seSizes.size());
+    auto sizeIter = llvm::find_if(sizeRange, [&](auto idx) {
+        auto sum = std::accumulate(seSizes.begin() + *offsetIter, seSizes.begin() + idx + 1, 0);
+        return sum == sliceSizes[Dims4D::Act::C.ind()];
+    });
+    VPUX_THROW_WHEN(sizeIter == sizeRange.end(), "Slice over channels size is not aligned with SE size");
+
+    seTableSizes[Dims4D::Act::C.ind()] = static_cast<int64_t>(*sizeIter) - *offsetIter + 1;
+    return std::make_pair(seTableOffsets, seTableSizes);
 }

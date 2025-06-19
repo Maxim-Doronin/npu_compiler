@@ -115,44 +115,44 @@ func.func @SplitSwMaxPoolOverH(
 
 // -----
 
-// CHECK-LABEL: func @SplitSoftMaxOverW
+// CHECK-LABEL: func @SplitSoftMaxOverH
 // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x20x256x384xf16>
-func.func @SplitSoftMaxOverW(%arg0: tensor<1x20x256x384xf16>) -> tensor<1x20x256x384xf16> {
+func.func @SplitSoftMaxOverH(%arg0: tensor<1x20x256x384xf16>) -> tensor<1x20x256x384xf16> {
     %0 = VPU.SoftMax(%arg0) {axisInd = 1}: tensor<1x20x256x384xf16> -> tensor<1x20x256x384xf16>
     return %0 : tensor<1x20x256x384xf16>
 
-    // CHECK:       [[INPUT_TILE0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 20, 256, 64]
-    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x256x64xf16>
+    // CHECK:       [[INPUT_TILE0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 20, 43, 384]
+    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x43x384xf16>
     // CHECK:       [[OUTPUT_TILE0:%.+]] = VPU.SoftMax([[INPUT_TILE0]]) {axisInd = 1 : i64}
-    // CHECK-SAME:      : tensor<1x20x256x64xf16> -> tensor<1x20x256x64xf16>
+    // CHECK-SAME:      : tensor<1x20x43x384xf16> -> tensor<1x20x43x384xf16>
 
-    // CHECK:       [[INPUT_TILE1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 64] [1, 20, 256, 64]
-    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x256x64xf16>
+    // CHECK:       [[INPUT_TILE1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 43, 0] [1, 20, 43, 384]
+    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x43x384xf16>
     // CHECK:       [[OUTPUT_TILE1:%.+]] = VPU.SoftMax([[INPUT_TILE1]]) {axisInd = 1 : i64}
-    // CHECK-SAME:      : tensor<1x20x256x64xf16> -> tensor<1x20x256x64xf16>
+    // CHECK-SAME:      : tensor<1x20x43x384xf16> -> tensor<1x20x43x384xf16>
 
-    // CHECK:       [[INPUT_TILE2:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 128] [1, 20, 256, 64]
-    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x256x64xf16>
+    // CHECK:       [[INPUT_TILE2:%.+]] = VPU.Slice [[INPUT]] [0, 0, 86, 0] [1, 20, 43, 384]
+    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x43x384xf16>
     // CHECK:       [[OUTPUT_TILE2:%.+]] = VPU.SoftMax([[INPUT_TILE2]]) {axisInd = 1 : i64}
-    // CHECK-SAME:      : tensor<1x20x256x64xf16> -> tensor<1x20x256x64xf16>
+    // CHECK-SAME:      : tensor<1x20x43x384xf16> -> tensor<1x20x43x384xf16>
 
-    // CHECK:       [[INPUT_TILE3:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 192] [1, 20, 256, 64]
-    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x256x64xf16>
+    // CHECK:       [[INPUT_TILE3:%.+]] = VPU.Slice [[INPUT]] [0, 0, 129, 0] [1, 20, 43, 384]
+    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x43x384xf16>
     // CHECK:       [[OUTPUT_TILE3:%.+]] = VPU.SoftMax([[INPUT_TILE3]]) {axisInd = 1 : i64}
-    // CHECK-SAME:      : tensor<1x20x256x64xf16> -> tensor<1x20x256x64xf16>
+    // CHECK-SAME:      : tensor<1x20x43x384xf16> -> tensor<1x20x43x384xf16>
 
-    // CHECK:       [[INPUT_TILE4:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 256] [1, 20, 256, 64]
-    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x256x64xf16>
+    // CHECK:       [[INPUT_TILE4:%.+]] = VPU.Slice [[INPUT]] [0, 0, 172, 0] [1, 20, 42, 384]
+    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x42x384xf16>
     // CHECK:       [[OUTPUT_TILE4:%.+]] = VPU.SoftMax([[INPUT_TILE4]]) {axisInd = 1 : i64}
-    // CHECK-SAME:      : tensor<1x20x256x64xf16> -> tensor<1x20x256x64xf16>
+    // CHECK-SAME:      : tensor<1x20x42x384xf16> -> tensor<1x20x42x384xf16>
 
-    // CHECK:       [[INPUT_TILE5:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 320] [1, 20, 256, 64]
-    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x256x64xf16>
+    // CHECK:       [[INPUT_TILE5:%.+]] = VPU.Slice [[INPUT]] [0, 0, 214, 0] [1, 20, 42, 384]
+    // CHECK-SAME:      : tensor<1x20x256x384xf16> to tensor<1x20x42x384xf16>
     // CHECK:       [[OUTPUT_TILE5:%.+]] = VPU.SoftMax([[INPUT_TILE5]]) {axisInd = 1 : i64}
-    // CHECK-SAME:      : tensor<1x20x256x64xf16> -> tensor<1x20x256x64xf16>
+    // CHECK-SAME:      : tensor<1x20x42x384xf16> -> tensor<1x20x42x384xf16>
 
     // CHECK:       [[OUTPUT:%.+]] = VPU.Concat([[OUTPUT_TILE0]], [[OUTPUT_TILE1]], [[OUTPUT_TILE2]], [[OUTPUT_TILE3]], [[OUTPUT_TILE4]], [[OUTPUT_TILE5]])
-    // CHECK-SAME:      [0, 0, 0, 0], [0, 0, 0, 64], [0, 0, 0, 128], [0, 0, 0, 192], [0, 0, 0, 256], [0, 0, 0, 320]
+    // CHECK-SAME:      [0, 0, 0, 0], [0, 0, 43, 0], [0, 0, 86, 0], [0, 0, 129, 0], [0, 0, 172, 0], [0, 0, 214, 0]
     // CHECK-SAME:      -> tensor<1x20x256x384xf16>
 
     // CHECK:       return [[OUTPUT]] : tensor<1x20x256x384xf16>
@@ -1855,45 +1855,68 @@ func.func @SplitSelectEltwiseSw(%arg0: tensor<1x10x256x176xf16>, %arg1: tensor<1
 // CHECK-LABEL: @SplitSelectEltwiseSw
 // CHECK-SAME:      [[INPUT_0:%arg[0-9]]]: tensor<1x10x256x176xf16>, [[INPUT_1:%arg[0-9]]]: tensor<1x10x256x176xf16>, [[INPUT_2:%arg[0-9]]]: tensor<1x10x256x176xf16>) -> tensor<1x10x256x176xf16> {
 
-// CHECK:       [[INPUT_TILE0:%.+]] = VPU.Slice [[INPUT_0]] [0, 0, 0, 0] [1, 10, 86, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x86x176xf16>
+// CHECK:       [[INPUT_TILE0:%.+]] = VPU.Slice [[INPUT_0]] [0, 0, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE1:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 0, 0] [1, 10, 86, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x86x176xf16>
+// CHECK:       [[INPUT_TILE1:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE2:%.+]] = VPU.Slice [[INPUT_2]] [0, 0, 0, 0] [1, 10, 86, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x86x176xf16>
+// CHECK:       [[INPUT_TILE2:%.+]] = VPU.Slice [[INPUT_2]] [0, 0, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
 // CHECK:       [[OUTPUT_TILE0:%.+]] = VPU.Select([[INPUT_TILE0]], [[INPUT_TILE1]], [[INPUT_TILE2]]) {
-// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x10x86x176xf16>, tensor<1x10x86x176xf16>, tensor<1x10x86x176xf16> -> tensor<1x10x86x176xf16>
+// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16> -> tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE3:%.+]] = VPU.Slice [[INPUT_0]] [0, 0, 86, 0] [1, 10, 85, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x85x176xf16>
+// CHECK:       [[INPUT_TILE3:%.+]] = VPU.Slice [[INPUT_0]] [0, 2, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE4:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 86, 0] [1, 10, 85, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x85x176xf16>
+// CHECK:       [[INPUT_TILE4:%.+]] = VPU.Slice [[INPUT_1]] [0, 2, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE5:%.+]] = VPU.Slice [[INPUT_2]] [0, 0, 86, 0] [1, 10, 85, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x85x176xf16>
+// CHECK:       [[INPUT_TILE5:%.+]] = VPU.Slice [[INPUT_2]] [0, 2, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
 // CHECK:       [[OUTPUT_TILE1:%.+]] = VPU.Select([[INPUT_TILE3]], [[INPUT_TILE4]], [[INPUT_TILE5]]) {
-// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x10x85x176xf16>, tensor<1x10x85x176xf16>, tensor<1x10x85x176xf16> -> tensor<1x10x85x176xf16>
+// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16> -> tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE6:%.+]] = VPU.Slice [[INPUT_0]] [0, 0, 171, 0] [1, 10, 85, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x85x176xf16>
+// CHECK:       [[INPUT_TILE6:%.+]] = VPU.Slice [[INPUT_0]] [0, 4, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE7:%.+]] = VPU.Slice [[INPUT_1]] [0, 0, 171, 0] [1, 10, 85, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x85x176xf16>
+// CHECK:       [[INPUT_TILE7:%.+]] = VPU.Slice [[INPUT_1]] [0, 4, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
-// CHECK:       [[INPUT_TILE8:%.+]] = VPU.Slice [[INPUT_2]] [0, 0, 171, 0] [1, 10, 85, 176]
-// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x10x85x176xf16>
+// CHECK:       [[INPUT_TILE8:%.+]] = VPU.Slice [[INPUT_2]] [0, 4, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
 
 // CHECK:       [[OUTPUT_TILE2:%.+]] = VPU.Select([[INPUT_TILE6]], [[INPUT_TILE7]], [[INPUT_TILE8]]) {
-// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x10x85x176xf16>, tensor<1x10x85x176xf16>, tensor<1x10x85x176xf16> -> tensor<1x10x85x176xf16>
+// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16> -> tensor<1x2x256x176xf16>
 
-// CHECK:       [[OUTPUT:%.+]] = VPU.Concat([[OUTPUT_TILE0]], [[OUTPUT_TILE1]], [[OUTPUT_TILE2]])
-// CHECK-SAME:  [0, 0, 0, 0], [0, 0, 86, 0], [0, 0, 171, 0]
-// CHECK-SAME:  : tensor<1x10x86x176xf16>, tensor<1x10x85x176xf16>, tensor<1x10x85x176xf16> -> tensor<1x10x256x176xf16>
+// CHECK:       [[INPUT_TILE9:%.+]] = VPU.Slice [[INPUT_0]] [0, 6, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
+
+// CHECK:       [[INPUT_TILE10:%.+]] = VPU.Slice [[INPUT_1]] [0, 6, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
+
+// CHECK:       [[INPUT_TILE11:%.+]] = VPU.Slice [[INPUT_2]] [0, 6, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
+
+// CHECK:       [[OUTPUT_TILE3:%.+]] = VPU.Select([[INPUT_TILE9]], [[INPUT_TILE10]], [[INPUT_TILE11]]) {
+// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16> -> tensor<1x2x256x176xf16>
+// CHECK:       [[INPUT_TILE12:%.+]] = VPU.Slice [[INPUT_0]] [0, 8, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
+
+// CHECK:       [[INPUT_TILE13:%.+]] = VPU.Slice [[INPUT_1]] [0, 8, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
+
+// CHECK:       [[INPUT_TILE14:%.+]] = VPU.Slice [[INPUT_2]] [0, 8, 0, 0] [1, 2, 256, 176]
+// CHECK-SAME:   : tensor<1x10x256x176xf16> to tensor<1x2x256x176xf16>
+
+// CHECK:       [[OUTPUT_TILE4:%.+]] = VPU.Select([[INPUT_TILE12]], [[INPUT_TILE13]], [[INPUT_TILE14]]) {
+// CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16> -> tensor<1x2x256x176xf16>
+
+// CHECK:       [[OUTPUT:%.+]] = VPU.Concat([[OUTPUT_TILE0]], [[OUTPUT_TILE1]], [[OUTPUT_TILE2]], [[OUTPUT_TILE3]], [[OUTPUT_TILE4]])
+// CHECK-SAME:  [0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 6, 0, 0], [0, 8, 0, 0]
+// CHECK-SAME:  : tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16>, tensor<1x2x256x176xf16> -> tensor<1x10x256x176xf16>
 
 // CHECK:       return [[OUTPUT]] : tensor<1x10x256x176xf16>
 

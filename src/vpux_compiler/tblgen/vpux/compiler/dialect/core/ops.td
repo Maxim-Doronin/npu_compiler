@@ -10,6 +10,8 @@ include "vpux/compiler/dialect/core/dialect.td"
 
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //
 // Base classes
@@ -65,6 +67,33 @@ def Core_NestedCallOp : Core_Op<"NestedCall", [
 
     let assemblyFormat = [{
         $callee `(` $arg_operands `)` attr-dict `:` functional-type($arg_operands, results)
+    }];
+}
+
+def Core_ReinterpretCastOp : Core_Op<"ReinterpretCast", [Pure, ViewLikeOpInterface]> {
+    let summary = "This operation overrides all type details of a given tensor / memref.";
+    let description = [{
+        This operation is a highly specialized type-obfuscating facility that is
+        *prohibited* from being used in general contexts. By itself, it does not
+        result in any operation being generated, only serves as glue code to
+        preserve legal IR.
+
+        The operation imposes minimal requirements to guarantee the basic
+        correctness of the transformation: dimensionality of the data must be
+        preserved, byte size of the data must be preserved.
+    }];
+
+    let arguments = (ins
+        AnyTypeOf<[AnyStaticShapeTensor, AnyStaticShapeMemRef]>:$input
+    );
+    let results = (outs
+        AnyTypeOf<[AnyStaticShapeTensor, AnyStaticShapeMemRef]>:$output
+    );
+    let assemblyFormat = "`(` operands `)` attr-dict `:` type(operands) `->` type(results)";
+    let hasVerifier = 1;
+
+    let extraClassDeclaration = [{
+        mlir::Value getViewSource() { return getInput(); }
     }];
 }
 

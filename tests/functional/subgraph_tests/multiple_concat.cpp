@@ -4,6 +4,8 @@
 
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/concat.hpp"
+
 namespace ov::test::subgraph {
 
 using MultipleConcatParams = std::tuple<std::vector<size_t>,  // input shape

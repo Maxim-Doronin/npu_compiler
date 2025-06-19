@@ -24,9 +24,7 @@ mlir::LogicalResult VPU::NonZeroOp::inferReturnTypes(mlir::MLIRContext* ctx, std
     const auto inRank = inType.getRank();
     const auto outShape = Shape{inRank, mlir::ShapedType::kDynamic};
 
-    const auto inShape = inType.getShape();
-    const auto numElements = std::accumulate(inShape.begin(), inShape.end(), ShapeRef::ValueType{1},
-                                             std::multiplies<ShapeRef::ValueType>());
+    const auto numElements = inType.getNumElements();
     const auto outBounds = SmallVector<int64_t>{inRank, numElements};
 
     auto typeComponents = TypeComponents()

@@ -29,8 +29,7 @@ namespace {
 class ExpandActivationChannelsPass final :
         public IE::arch37xx::impl::ExpandActivationChannelsBase<ExpandActivationChannelsPass> {
 public:
-    explicit ExpandActivationChannelsPass(const bool seOpsEnabled, const bool seExperimentalOpsEnabled, Logger log)
-            : _seOpsEnabled(seOpsEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    explicit ExpandActivationChannelsPass(const bool seOpsEnabled, Logger log): _seOpsEnabled(seOpsEnabled) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -41,7 +40,6 @@ private:
 
 private:
     bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
 };
 
 mlir::LogicalResult ExpandActivationChannelsPass::initialize(mlir::MLIRContext* ctx) {
@@ -54,9 +52,6 @@ mlir::LogicalResult ExpandActivationChannelsPass::initialize(mlir::MLIRContext* 
     if (seOpsEnabled.hasValue()) {
         _seOpsEnabled = seOpsEnabled.getValue();
     }
-    if (seExperimentalOpsEnabled.hasValue()) {
-        _seExperimentalOpsEnabled = seExperimentalOpsEnabled.getValue();
-    }
 
     return mlir::success();
 }
@@ -66,11 +61,7 @@ void ExpandActivationChannelsPass::safeRunOnFunc() {
     auto func = getOperation();
 
     const auto isLegal = [&](mlir::Operation* op) {
-        if (!_seExperimentalOpsEnabled && mlir::isa<IE::PadOp>(op)) {
-            return true;
-        }
-
-        if (!_seOpsEnabled && mlir::isa<IE::SEOpInterface>(op) && !mlir::isa<IE::PadOp>(op)) {
+        if (!_seOpsEnabled && mlir::isa<IE::SEOpInterface>(op)) {
             return true;
         }
 
@@ -94,12 +85,11 @@ void ExpandActivationChannelsPass::safeRunOnFunc() {
     patterns.add<IE::ConvolutionRewriter>(&ctx, _log);
     patterns.add<IE::GroupConvolutionRewriter>(&ctx, _log);
     patterns.add<IE::MatMulRewriter>(&ctx, _log);
+    patterns.add<IE::SoftMaxRewriter>(&ctx, _log);
 
     if (_seOpsEnabled) {
         patterns.add<IE::InterpolateRewriter>(&ctx, _log);
         patterns.add<IE::TransposedConvolutionRewriter>(&ctx, _log);
-    }
-    if (_seExperimentalOpsEnabled) {
         patterns.add<IE::PadRewriter>(&ctx, _log);
     }
 
@@ -115,7 +105,6 @@ void ExpandActivationChannelsPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::IE::arch37xx::createExpandActivationChannelsPass(const bool seOpsEnabled,
-                                                                                   const bool seExperimentalOpsEnabled,
                                                                                    Logger log) {
-    return std::make_unique<ExpandActivationChannelsPass>(seOpsEnabled, seExperimentalOpsEnabled, log);
+    return std::make_unique<ExpandActivationChannelsPass>(seOpsEnabled, log);
 }

@@ -23,6 +23,11 @@ using namespace vpux;
 
 namespace {
 
+// To explicitly control the patterns exec order to assure dependency
+// benefitLevels[0] is highest benefit level and represent the relative pattern is the first one to run
+const uint32_t levelCount = 2;
+SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(levelCount);
+
 mlir::LogicalResult checkIfShapesAreBroadcastable(ArrayRef<int64_t> shape1, ArrayRef<int64_t> shape2,
                                                   IE::AutoBroadcastType broadcastType) {
     if (broadcastType == IE::AutoBroadcastType::NONE_OR_EXPLICIT) {
@@ -191,8 +196,8 @@ mlir::LogicalResult verifyAndBroadcastInput(mlir::Location loc, mlir::Value& inp
 template <typename BiasTypeOp>
 class ConvertBiasToScaleShift final : public mlir::OpRewritePattern<BiasTypeOp> {
 public:
-    ConvertBiasToScaleShift<BiasTypeOp>(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<BiasTypeOp>(ctx), _log(log) {
+    ConvertBiasToScaleShift<BiasTypeOp>(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<BiasTypeOp>(ctx, benefit), _log(log) {
         this->setDebugName("ConvertBiasToScaleShift");
     }
 
@@ -284,8 +289,8 @@ mlir::LogicalResult ConvertBiasToScaleShift<BiasTypeOp>::matchAndRewrite(BiasTyp
 
 class ConvertMultiplyToScaleShift : public mlir::OpRewritePattern<IE::MultiplyOp> {
 public:
-    ConvertMultiplyToScaleShift(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx), _log(log) {
+    ConvertMultiplyToScaleShift(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx, benefit), _log(log) {
         this->setDebugName("ConvertMultiplyToScaleShift");
     }
 
@@ -355,6 +360,88 @@ mlir::LogicalResult ConvertMultiplyToScaleShift::matchAndRewrite(IE::MultiplyOp 
 }
 
 //
+// FoldMultiplyHWSplatWeights
+//
+
+class FoldMultiplyHWSplatWeights : public mlir::OpRewritePattern<IE::MultiplyOp> {
+public:
+    FoldMultiplyHWSplatWeights(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx, benefit), _log(log) {
+        this->setDebugName("FoldMultiplyHWSplatWeights");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::MultiplyOp mulOp, mlir::PatternRewriter& rewriter) const final;
+
+protected:
+    Logger _log;
+};
+
+mlir::LogicalResult FoldMultiplyHWSplatWeights::matchAndRewrite(IE::MultiplyOp mulOp,
+                                                                mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got op {0} at {1}", mulOp->getName(), mulOp->getLoc());
+    const auto lhsType = mlir::cast<mlir::ShapedType>(mulOp.getInput1().getType());
+    const auto outShapeRes = mlir::cast<mlir::ShapedType>(mulOp.getOutput().getType());
+
+    bool lhsIsActivation = (lhsType == outShapeRes);
+    mlir::Value activationInput = lhsIsActivation ? mulOp.getInput1() : mulOp.getInput2();
+    mlir::Value weightsInput = lhsIsActivation ? mulOp.getInput2() : mulOp.getInput1();
+
+    auto mulOutShape = getShape(mulOp.getOutput());
+    auto weightsShape = getShape(weightsInput);
+
+    // Activation shape and scaleShift output shape should be consistent
+    if (getShape(activationInput) != mulOutShape) {
+        return mlir::failure();
+    }
+
+    const int64_t rank4D = 4;
+    if (mulOutShape.size() != rank4D || weightsShape.size() != rank4D) {
+        return mlir::failure();
+    }
+
+    // Handle the below weights shape patterns:
+    // <1x1xHx1> isSplat -> <1x1x1x1>
+    // <1x1x1xW> isSplat -> <1x1x1x1>
+    static const auto N = Dims4D::Act::N;
+    static const auto C = Dims4D::Act::C;
+    static const auto H = Dims4D::Act::H;
+    static const auto W = Dims4D::Act::W;
+    if (!(weightsShape[N] == 1 && weightsShape[C] == 1 &&
+          ((weightsShape[W] == 1 && weightsShape[H] != 1) || (weightsShape[H] == 1 && weightsShape[W] != 1)))) {
+        return mlir::failure();
+    }
+
+    auto weightsConstOp = mlir::dyn_cast_or_null<Const::DeclareOp>(weightsInput.getDefiningOp());
+    if (weightsConstOp == nullptr) {
+        return mlir::failure();
+    }
+
+    const auto& constAttr = weightsConstOp.getContentAttr();
+    if (!constAttr.isSplat()) {
+        return mlir::failure();
+    }
+
+    const auto offset = Shape(weightsShape.size(), 0);
+    const auto shape = Shape(weightsShape.size(), 1);
+    Const::ContentAttr newConstAttr = constAttr.transform().subview(offset, shape).get();
+    if (newConstAttr == nullptr) {
+        return mlir::failure();
+    }
+
+    // Create new weights Const with shape 1x1x1x1
+    rewriter.setInsertionPoint(mulOp);
+    auto newWeightsInput =
+            rewriter.create<Const::DeclareOp>(mulOp.getLoc(), newConstAttr.getType(), std::move(newConstAttr))
+                    .getOutput();
+
+    weightsInput.replaceUsesWithIf(newWeightsInput, [&](mlir::OpOperand& opOperand) {
+        return opOperand.getOwner() == mulOp;
+    });
+
+    return mlir::success();
+}
+
+//
 // ConvertToScaleShiftPass
 //
 
@@ -376,9 +463,10 @@ void ConvertToScaleShiftPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<ConvertBiasToScaleShift<IE::AddOp>>(&ctx, _log);
-    patterns.add<ConvertBiasToScaleShift<IE::SubtractOp>>(&ctx, _log);
-    patterns.add<ConvertMultiplyToScaleShift>(&ctx, _log);
+    patterns.add<FoldMultiplyHWSplatWeights>(&ctx, benefitLevels[0], _log);
+    patterns.add<ConvertBiasToScaleShift<IE::AddOp>>(&ctx, benefitLevels[1], _log);
+    patterns.add<ConvertBiasToScaleShift<IE::SubtractOp>>(&ctx, benefitLevels[1], _log);
+    patterns.add<ConvertMultiplyToScaleShift>(&ctx, benefitLevels[1], _log);
 
     auto func = getOperation();
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {

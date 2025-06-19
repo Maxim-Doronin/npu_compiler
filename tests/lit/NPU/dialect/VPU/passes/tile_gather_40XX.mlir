@@ -6,6 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --tile-gather %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
+
 // -----
 
 // CHECK-LABEL: @TileGatherElement
@@ -124,4 +125,17 @@ func.func @NotTileGatherForCouldNotConverToGatherDMA(%arg0: tensor<3x12x4096xf16
 
     // CHECK:       [[GATHER:%.+]] = VPU.Gather([[ARG0]], [[ARG1]]) {axis_value = 1 : i64, batch_dims = 0 : i64} : tensor<3x12x4096xf16>, tensor<1x1xsi32> -> tensor<3x1x1x4096xf16>
     // CHECK:       return      [[GATHER]] : tensor<3x1x1x4096xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @Gather4BitsTiling
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<645632x224xsi4>, [[ARG1:%.+]]:  tensor<1x1024xsi32>)
+
+func.func @Gather4BitsTiling(%arg0: tensor<645632x224xsi4>, %arg1: tensor<1x1024xsi32>) -> tensor<1x1024x224xsi4> {
+    %0 =  VPU.Gather(%arg0, %arg1) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<645632x224xsi4>, tensor<1x1024xsi32> -> tensor<1x1024x224xsi4>
+    return %0 :  tensor<1x1024x224xsi4>
+
+    // CHECK:       [[GATHER:%.+]] = VPU.Gather([[ARG0]], [[ARG1]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<645632x224xsi4>, tensor<1x1024xsi32> -> tensor<1x1024x224xsi4>
+    // CHECK:       return      [[GATHER]] : tensor<1x1024x224xsi4>
 }

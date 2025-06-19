@@ -175,7 +175,7 @@ void MoveThroughTranspose::updateAttrs(mlir::Operation* origOp, ArrayRef<mlir::A
 }
 
 //
-// MoveThroughPermuteCast
+// MoveAffineReshapePermuteCastThroughConcat
 //
 
 // The pattern like below usually converted from decomposed matmul, and due to the AffineReshape -> PermuteCast ->
@@ -285,34 +285,6 @@ mlir::LogicalResult MoveAffineReshapePermuteCastThroughConcat::matchAndRewrite(I
 
     auto concatOutputShape = getShape(origOp.getOutput());
     auto reshape1OutputShape = getShape(firstAffineReshapeOp.getOutput());
-    auto reshape1InputShape = getShape(firstAffineReshapeOp.getInput());
-
-    const auto cmxMemSize = VPU::getTotalCMXSize(origOp.getOperation());
-    auto inNDInterface = mlir::cast<vpux::NDTypeInterface>(secondAffineReshapeOp.getInput().getType());
-    const auto elementSize = inNDInterface.getCompactAllocSize().count() / reshape1InputShape.totalSize();
-
-    auto affreshape1Producer = firstAffineReshapeOp.getInput().getDefiningOp();
-    auto totalProducerInputSize = [&]() {
-        int64_t totalSize = 0;
-        if (affreshape1Producer == nullptr) {
-            return totalSize;  // tensor should be blockarg, so only need concat size
-        }
-
-        for (auto input : affreshape1Producer->getOperands()) {
-            totalSize += mlir::cast<vpux::NDTypeInterface>(input.getType()).getTotalAllocSize().count();
-        }
-        return totalSize;
-    };
-
-    auto concatTotalSize = totalProducerInputSize() + concatOutputShape.totalSize();
-    // If concat op cannot fix into CMX, it's usually need DDR concat which is low efficient, otherwise no need to
-    // propagate and it also introduce accuracy issue for this case. Experimental constraint to ensure this optimization
-    // only process the DDR->DDR copies are the bottleneck.
-    constexpr float threshold = 0.7f;
-    if (concatTotalSize * elementSize * threshold < cmxMemSize.count()) {
-        return mlir::failure();
-    }
-
     auto newConcat = rewriter.create<IE::ConcatOp>(origOp.getLoc(), newConcatInputs, Dims4D::Act::N);
 
     SmallVector<int64_t> newShape1 = {concatOutputShape[Dims4D::Act::C], reshape1OutputShape[Dims4D::Act::C],

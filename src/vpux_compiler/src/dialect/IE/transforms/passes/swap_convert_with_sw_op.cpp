@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -27,7 +27,7 @@ using namespace vpux;
 namespace {
 
 // TODO: Adding limitation, noting that small tensors are not that optimal to fuse in NCE
-constexpr int64_t EXPERIMENTAL_F32_FUSION_THRESHOLD = 64000;
+constexpr int64_t EXPERIMENTAL_F32_FUSION_THRESHOLD = 36000;
 
 //
 // SwapConvertWithSWOp
@@ -50,10 +50,7 @@ private:
 };
 
 bool isReshapeKindOp(mlir::Operation* op) {
-    if (op == nullptr) {
-        return false;
-    }
-    return mlir::isa<IE::TransposeOp, IE::ReshapeOp, IE::AffineReshapeOp>(op);
+    return mlir::isa_and_nonnull<IE::TransposeOp, IE::ReshapeOp, IE::AffineReshapeOp>(op);
 }
 //
 // OpSwapConverter
@@ -138,6 +135,11 @@ void SwapConvertWithSWOp::safeRunOnFunc() {
         const auto inputShape = getShape(parentOp->getOperand(0));
         // This will cause an error, because of EnsureNCEOpsSizeRequirementsPass.
         if (inputShape[Dims4D::Act::C] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
+            return true;
+        }
+
+        // SplitSEOpsPass will cause a compilation error for Interpolate.
+        if (mlir::isa_and_nonnull<IE::InterpolateOp>(parentOp)) {
             return true;
         }
 

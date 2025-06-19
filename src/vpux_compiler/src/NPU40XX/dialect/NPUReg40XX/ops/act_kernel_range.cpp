@@ -16,7 +16,7 @@ using namespace npu40xx;
 //
 
 void vpux::NPUReg40XX::ActKernelRangeOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto actKernRangeDescriptor = getDescriptor().getRegMapped();
+    auto actKernRangeDescriptor = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuActKernelRange) == actKernRangeDescriptor.size(),
                       "HW VpuActKernelRange size {0} != regMapped representation size {1}.",
@@ -49,4 +49,17 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::ActKernelRangeOp::getRelocati
                 "Kernel text (ptr in text_window_base) for act kernel range reloc");
     }
     return relocs;
+}
+
+void NPUReg40XX::ActKernelRangeOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
+                                         vpux::NPUReg40XX::Descriptors::VpuActKernelRange&& descriptor,
+                                         mlir::SymbolRefAttr taskLocation, mlir::SymbolRefAttr kernelText,
+                                         mlir::SymbolRefAttr kernelEntry) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.descriptor = std::move(descriptor);
+    props.task_location = taskLocation;
+    props.kernel_text = kernelText;
+    props.kernel_entry = kernelEntry;
 }

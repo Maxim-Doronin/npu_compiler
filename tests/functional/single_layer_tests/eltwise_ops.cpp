@@ -4,8 +4,12 @@
 //
 
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/subtract.hpp"
 
 using namespace ov;
 using namespace element;
@@ -64,23 +68,23 @@ public:
 
 typedef Eltwise2InputLayerTest<ov::op::v1::Multiply> EltwiseMultiplyLayerTest;
 
-TEST_F(EltwiseMultiplyLayerTest, NPU3720) {
+TEST_F(EltwiseMultiplyLayerTest, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_F(EltwiseMultiplyLayerTest, NPU4000) {
+TEST_F(EltwiseMultiplyLayerTest, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
 typedef Eltwise2InputLayerTest<ov::op::v1::Add> EltwiseAddLayerTest;
 
-TEST_F(EltwiseAddLayerTest, NPU3720) {
+TEST_F(EltwiseAddLayerTest, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_F(EltwiseAddLayerTest, NPU4000) {
+TEST_F(EltwiseAddLayerTest, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }

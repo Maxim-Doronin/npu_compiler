@@ -36,29 +36,12 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    mlir::TypedValue<mlir::RankedTensorType> createBroadcastInput(mlir::PatternRewriter& rewriter,
-                                                                  mlir::MLIRContext* ctx, mlir::Location loc,
-                                                                  mlir::Value broadcastInput,
-                                                                  ShapeRef targetShape) const;
     Logger _log;
 };
-
-mlir::TypedValue<mlir::RankedTensorType> BroadcastInputRewriter::createBroadcastInput(mlir::PatternRewriter& rewriter,
-                                                                                      mlir::MLIRContext* ctx,
-                                                                                      mlir::Location loc,
-                                                                                      mlir::Value broadcastInput,
-                                                                                      ShapeRef targetShape) const {
-    auto targetShapeConst = vpux::IE::createShapeConstForBroadCast(rewriter, ctx, appendLoc(loc, "shape"), targetShape);
-    return rewriter
-            .create<IE::BroadcastOp>(loc, broadcastInput, targetShapeConst, /*axes_mapping*/ nullptr,
-                                     IE::BroadcastTypeAttr::get(ctx, IE::BroadcastType::NUMPY))
-            .getResult();
-}
 
 mlir::LogicalResult BroadcastInputRewriter::matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
 
-    const auto ctx = origOp->getContext();
     const auto loc = origOp->getLoc();
 
     const auto lhsShape = mlir::cast<vpux::NDTypeInterface>(origOp.getInput1().getType()).getShape();
@@ -97,20 +80,39 @@ mlir::LogicalResult BroadcastInputRewriter::matchAndRewrite(IE::AddOp origOp, ml
         return mlir::failure();
     }
 
-    const auto doesInputNeedBroadCast = [&](mlir::Value input) {
-        return getShape(input) != outputShape;
+    const auto doesInputNeedBroadCast = [&](ShapeRef inputShape) {
+        return inputShape != outputShape;
     };
 
-    auto lhsInput = origOp.getInput1();
-    if (doesInputNeedBroadCast(origOp.getInput1())) {
-        lhsInput =
-                createBroadcastInput(rewriter, ctx, appendLoc(loc, "broadcast_lhs"), origOp.getInput1(), outputShape);
+    const auto lhsBroadcast = doesInputNeedBroadCast(lhsShape);
+    const auto lhsDynBroadcast = lhsBroadcast ? rhsShape.isDynamic() : false;
+    const auto rhsBroadcast = doesInputNeedBroadCast(rhsShape);
+    const auto rhsDynBroadcast = rhsBroadcast ? lhsShape.isDynamic() : false;
+
+    // DynamicBroadcast requires an inference-time determined target shape. If only one of the inputs needs to be
+    // broadcasted, the target shape can be obtained from the other input (using ShapeOf). If both inputs need broadcast
+    // we need some other mechanism to determine the targed shape during inference.
+    VPUX_THROW_WHEN((lhsDynBroadcast && rhsBroadcast) || (lhsBroadcast && rhsDynBroadcast),
+                    "Cross-broadcast is not currently supported for dynamic shapes: {0} x {1} -> {2}", lhsShape,
+                    rhsShape, outputShape);
+
+    mlir::Value lhsInput = origOp.getInput1();
+    mlir::Value rhsInput = origOp.getInput2();
+
+    if (lhsBroadcast) {
+        if (lhsDynBroadcast) {
+            lhsInput = IE::createDynamicBroadcast(rewriter, appendLoc(loc, "broadcast_rhs"), lhsInput, rhsInput);
+        } else {
+            lhsInput = IE::createBroadcast(rewriter, appendLoc(loc, "broadcast_lhs"), lhsInput, outputShape);
+        }
     }
 
-    auto rhsInput = origOp.getInput2();
-    if (doesInputNeedBroadCast(origOp.getInput2())) {
-        rhsInput =
-                createBroadcastInput(rewriter, ctx, appendLoc(loc, "broadcast_rhs"), origOp.getInput2(), outputShape);
+    if (rhsBroadcast) {
+        if (rhsDynBroadcast) {
+            rhsInput = IE::createDynamicBroadcast(rewriter, appendLoc(loc, "broadcast_rhs"), rhsInput, lhsInput);
+        } else {
+            rhsInput = IE::createBroadcast(rewriter, appendLoc(loc, "broadcast_rhs"), rhsInput, outputShape);
+        }
     }
 
     auto addOp = rewriter.replaceOpWithNewOp<IE::AddOp>(origOp, lhsInput, rhsInput, origOp.getAutoBroadcast(),

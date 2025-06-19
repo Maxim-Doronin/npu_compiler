@@ -45,3 +45,29 @@ llvm::hash_code vpux::hashOperationForTiling(mlir::Operation* op) {
     }
     return hash;
 }
+
+llvm::hash_code vpux::hashOperationForTilingExcludingAttr(mlir::Operation* op, mlir::StringRef excludedAttrName) {
+    if (!op->hasAttr(excludedAttrName)) {
+        return hashOperationForTiling(op);
+    }
+    auto dictAttrs = op->getAttrDictionary();
+    SmallVector<mlir::NamedAttribute> filteredAttrs;
+
+    for (auto attr : dictAttrs) {
+        if (attr.getName() != excludedAttrName) {
+            filteredAttrs.push_back(attr);
+        }
+    }
+
+    auto opHash = llvm::hash_combine(op->getName(), mlir::DictionaryAttr::get(op->getContext(), filteredAttrs));
+
+    // When doing tiling, the compiler only considers data size related attr for data type, attr like quant
+    // zp or scales are ignored. So related hash calculation should avoid taking those attrs into consideration
+    for (auto operand : op->getOperands()) {
+        opHash = llvm::hash_combine(opHash, hashType(mlir::cast<vpux::NDTypeInterface>(operand.getType())));
+    }
+    for (auto result : op->getResults()) {
+        opHash = llvm::hash_combine(opHash, hashType(mlir::cast<vpux::NDTypeInterface>(result.getType())));
+    }
+    return opHash;
+}

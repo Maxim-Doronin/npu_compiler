@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --apply-dynamic-boundary-correction %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 // -----
 
 // CHECK-LABEL: @ClearDynGarbageAfterDynamicAdd

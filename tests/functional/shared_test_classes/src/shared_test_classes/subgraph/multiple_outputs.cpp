@@ -7,6 +7,8 @@
 #include "common_test_utils/data_utils.hpp"
 #include "common_test_utils/node_builders/convolution.hpp"
 
+#include "openvino/op/max_pool.hpp"
+
 using namespace ov::test::utils;
 namespace ov::test {
 

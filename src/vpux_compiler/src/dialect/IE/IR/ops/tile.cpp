@@ -231,7 +231,7 @@ mlir::OpFoldResult vpux::IE::TileOp::fold(FoldAdaptor adaptor) {
 
     auto operands = adaptor.getOperands();
     // move tile to const attribute as broadcast.
-    if (auto contentAttr = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (auto contentAttr = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         const auto inputShape = to_small_vector(getShape(getInput()));
         const auto outputShape = to_small_vector(getShape(getOutput()));
         if (inputShape.size() != outputShape.size()) {

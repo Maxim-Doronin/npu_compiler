@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -48,7 +48,7 @@ def VPUASM_IndexedTaskInterface : OpInterface<"IndexedTaskInterface"> {
             "getIndexType", (ins), [{}],
             /*defaultImplementation=*/ [{
                 auto attr = this->getOperation()->template getAttrOfType<mlir::TypeAttr>(getListIndexAttrName());
-                return attr.getValue().template cast<VPURegMapped::IndexType>();
+                return mlir::cast<VPURegMapped::IndexType>(attr.getValue());
             }]
         >,
         InterfaceMethod<
@@ -84,6 +84,11 @@ def VPUASM_DPUInvariantExpandOpInterface : OpInterface<"DPUInvariantExpandOpInte
     let cppNamespace = "vpux::VPUASM";
 
     let methods = [
+        InterfaceMethod<
+            "Create DPU invariant general ops",
+            "mlir::LogicalResult",
+            "expandGeneralConfig", (ins "mlir::OpBuilder&":$builder)
+        >,
         InterfaceMethod<
             "Create DPU invariant IDU related ops",
             "mlir::LogicalResult",

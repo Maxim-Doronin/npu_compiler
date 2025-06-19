@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -52,7 +52,6 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     if (options.enableShaveKernelTiling) {
         pm.addPass(VPUIP::createTileActShaveKernelTaskPass(log));
     }
-    pm.addPass(VPUIP::createUnwrapClusterTilingPass(log));
     if (options.enableOptimizeCopies || options.enableOpsAsDMA) {
         // This pass is a part of "copy optimization pipeline", but need to be done before because
         // WrapWithPermuteAsNNDMA depends on it.
@@ -139,6 +138,9 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     VPUIP::buildAsyncSchedulingPipeline(pm, log);
+    if (options.enableAsyncRegionOutlining) {
+        pm.addPass(VPUIP::createAsyncRegionsOutliningPass(options.asyncRegionOutliningMinOpsInBlock, log));
+    }
 
     if (options.enableCompressActivationSpill) {
         pm.addPass(VPUIP::createCompressDmaReserveMemPass(log));
@@ -191,6 +193,10 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     VPUIP::arch40xx::buildDMAUnrollingPipeline(pm, log);
 
+    if (options.enableDpuFromShaveControl) {
+        pm.addPass(VPUIP::createSyncShvDpuPass(log));
+    }
+
     if (options.enableWeightsSwizzling || options.enableActivationSwizzling) {
         pm.addPass(Const::createApplySwizzlingPass());
         pm.addPass(VPUIP::createResolveDMAWithSwizzlingPass(log));
@@ -238,8 +244,8 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     if (options.enableSimpleSchedule) {
-        pm.addPass(VPURT::createSimplifySchedulePass(options.shareWaitAndUpdateBarriers,
-                                                     options.reduceParallelControlFlows, log));
+        pm.addPass(VPURT::createSimplifySchedulePass(options.reduceParallelControlFlows, options.workloadManagementMode,
+                                                     log));
     }
 
     auto dpuDryRunMode = VPU::getDPUDryRunMode(options.dpuDryRun);
@@ -276,14 +282,19 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPURT::arch37xx::createAddFinalBarrierPass(log));
     }
 
-    pm.addPass(VPUIP::arch40xx::createAddStartBarrierPass(log));
+    pm.addPass(VPUIP::arch40xx::createAddStartBarrierPass(
+            options.workloadManagementBarrierProgrammingMode >=
+                    WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED,
+            log));
 
-    if (options.workloadManagementEnable && options.workloadManagementMode == WorkloadManagementMode::PWLM_V2_PAGES) {
+    if (options.workloadManagementEnable && options.workloadManagementMode >= WorkloadManagementMode::PWLM_V2_PAGES) {
         pm.addPass(VPURT::arch40xx::createWlmSplitGraphToPagesPass(log));
         // TODO: E#146544: Add a pass that will insert dummy tasks
         pm.addPass(VPURT::arch40xx::createWlmLegalizeSplitGraphToPagesPass(log));
-        pm.addPass(VPURT::arch40xx::createWlmLegalizePagesForBarrierDmasPass(log));
-        pm.addPass(VPURT::arch40xx::createWlmInsertDummyDmasInPagesPass(log));
+        if (options.workloadManagementBarrierProgrammingMode ==
+            WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED) {
+            pm.addPass(VPURT::arch40xx::createWlmLegalizePagesForBarrierDmasPass(log));
+        }
     }
 
     if (options.enableDmaOutOfOrder) {

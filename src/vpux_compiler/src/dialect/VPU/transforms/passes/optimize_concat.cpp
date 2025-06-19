@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -30,7 +31,8 @@ namespace {
 
 class EliminateConcat final : public mlir::OpRewritePattern<VPU::ConcatOp> {
 public:
-    EliminateConcat(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<VPU::ConcatOp>(ctx), _log(log) {
+    EliminateConcat(mlir::MLIRContext* ctx, Logger log, bool optimizeOnlyOuterConcat)
+            : mlir::OpRewritePattern<VPU::ConcatOp>(ctx), _log(log), _optimizeOnlyOuterConcat(optimizeOnlyOuterConcat) {
         setDebugName("EliminateConcat");
     }
 
@@ -38,6 +40,7 @@ public:
 
 private:
     Logger _log;
+    bool _optimizeOnlyOuterConcat;
 };
 
 mlir::LogicalResult EliminateConcat::matchAndRewrite(VPU::ConcatOp origOp, mlir::PatternRewriter& rewriter) const {
@@ -47,6 +50,7 @@ mlir::LogicalResult EliminateConcat::matchAndRewrite(VPU::ConcatOp origOp, mlir:
 
     const auto concatOffsets = parseIntArrayOfArrayAttr<int64_t>(origOp.getStaticOffsets().value());
     DenseMap<VPU::SliceOp, std::pair<SmallVector<int64_t>, mlir::Value>> newSliceOffsetsInputMap;
+    auto concatOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const auto allUsersSliceSubTensors = llvm::all_of(origOp->getUsers(), [&](auto userOp) {
         auto maybeSliceOp = mlir::dyn_cast_or_null<VPU::SliceOp>(userOp);
@@ -79,6 +83,15 @@ mlir::LogicalResult EliminateConcat::matchAndRewrite(VPU::ConcatOp origOp, mlir:
             };
 
             if (!isSubTensor()) {
+                continue;
+            }
+
+            auto axes = getConcatAxes(origOp);
+            auto dim = getHighestNonTrivialDim(concatOutputType.getShape(), concatOutputType.getDimsOrder())
+                               .value_or(Dim(0));
+            // If slice axis is not the highest non-trivial dim in layout, the concat optimization will produce
+            // non-inplace slice ops, the spilling can not be avoided. Thus we prevent it.
+            if (_optimizeOnlyOuterConcat && ((axes.size() > 1) || (dim.ind() != (*axes.begin())))) {
                 continue;
             }
 
@@ -263,20 +276,36 @@ mlir::LogicalResult EliminateSameSiblingConcat::matchAndRewrite(VPU::ConcatOp or
 
 class OptimizeConcatPass final : public VPU::impl::OptimizeConcatBase<OptimizeConcatPass> {
 public:
-    explicit OptimizeConcatPass(Logger log) {
+    explicit OptimizeConcatPass(bool optimizeOnlyOuterConcat, Logger log) {
         Base::initLogger(log, Base::getArgumentName());
+        _optimizeOnlyOuterConcat = optimizeOnlyOuterConcat;
     }
 
 private:
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnFunc() final;
+    bool _optimizeOnlyOuterConcat = false;
 };
+
+mlir::LogicalResult OptimizeConcatPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
+        return mlir::failure();
+    }
+    if (optimizeOnlyOuterConcat.hasValue()) {
+        _log.trace("Overloading optimizeOnlyOuterConcat with an MLIR variable {0}", optimizeOnlyOuterConcat.getValue());
+        _optimizeOnlyOuterConcat = optimizeOnlyOuterConcat.getValue();
+    }
+    return mlir::success();
+}
 
 void OptimizeConcatPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.insert<EliminateConcat>(&ctx, _log);
+    patterns.insert<EliminateConcat>(&ctx, _log, _optimizeOnlyOuterConcat);
     patterns.insert<EliminateSameSiblingConcat>(&ctx, _log);
 
     if (mlir::failed(
@@ -291,6 +320,6 @@ void OptimizeConcatPass::safeRunOnFunc() {
 // createOptimizeConcatPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPU::createOptimizeConcatPass(Logger log) {
-    return std::make_unique<OptimizeConcatPass>(log);
+std::unique_ptr<mlir::Pass> vpux::VPU::createOptimizeConcatPass(bool optimizeOnlyOuterConcat, Logger log) {
+    return std::make_unique<OptimizeConcatPass>(optimizeOnlyOuterConcat, log);
 }

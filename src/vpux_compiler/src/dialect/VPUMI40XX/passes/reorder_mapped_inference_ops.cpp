@@ -97,9 +97,13 @@ void ReorderMPIOpsPass::safeRunOnFunc() {
         linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
                                                      taskType<VPURegMapped::TaskType::DPUVariant>(tileIndex));
         linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::ActKernelRange>(tileIndex));
+                                                     taskType<VPURegMapped::TaskType::ActKernelRange>(tileIndex, 0));
         linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::ActKernelInvocation>(tileIndex));
+                                                     taskType<VPURegMapped::TaskType::ActKernelRange>(tileIndex, 1));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(
+                func, builder, taskType<VPURegMapped::TaskType::ActKernelInvocation>(tileIndex, 0));
+        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(
+                func, builder, taskType<VPURegMapped::TaskType::ActKernelInvocation>(tileIndex, 1));
         linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
                                                      taskType<VPURegMapped::TaskType::DMA>(tileIndex, 0));
         linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,

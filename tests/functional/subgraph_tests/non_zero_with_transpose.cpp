@@ -8,7 +8,11 @@
 #include <pretty_test_arguments.hpp>
 
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+
+#include "openvino/op/convert.hpp"
+#include "openvino/op/non_zero.hpp"
+#include "openvino/op/transpose.hpp"
 
 using namespace ov::test;
 
@@ -83,7 +87,7 @@ TEST_P(NonZeroWithTransposeNPUTest, NPU3720_HW_TestKindSubgraph) {
 
 const std::vector<ov::element::Type> inputPrecision = {ov::element::f32, ov::element::i32};
 const std::vector<ShapeAndOrder> inShapes = {
-        {staticShape(8, 32), {1, 0}}, {staticShape(8, 32), {0, 1}}, {staticShape(2, 88), {1, 0}}};
+        {generateTestShape(8, 32), {1, 0}}, {generateTestShape(8, 32), {0, 1}}, {generateTestShape(2, 88), {1, 0}}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_NonZeroWithTranspose, NonZeroWithTransposeNPUTest,
                          ::testing::Combine(::testing::ValuesIn(inShapes), ::testing::ValuesIn(inputPrecision)),

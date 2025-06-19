@@ -61,6 +61,9 @@ using OpTilingOperandsFunc = std::function<void(SmallVector<SCFTileInfo>&)>;
 using OpGeneratorFunc = std::function<mlir::Operation*()>;
 using SCFTilingInfo = SmallVector<SCFTileInfo>;
 
+// @brief Dim value of input/output/weights shape
+mlir::OpFoldResult getDimValue(mlir::OpBuilder& builder, mlir::Operation* operation, int64_t dim);
+
 // @brief Calculates tile for weights table based on output tile
 SCFTileInfo getWeightsTableSCFTile(mlir::Type origWeightsTableType, mlir::OpBuilder& builder,
                                    const SCFTileInfo& outputTile);

@@ -17,11 +17,11 @@ namespace vpuasm2npureg40xx {
 mlir::LogicalResult NNDMARewriter::matchAndRewrite(VPUASM::NNDMAOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
-    auto dma = rewriter.create<NPUReg40XX::NNDMAOp>(
-            origOp->getLoc(), origOp.getSymNameAttr(),
-            DMARegisterAttr::get(rewriter.getContext(), DMADescriptorComposer::compose(origOp, _symRefMap)),
-            origOp.getInputAttr(), origOp.getOutputBuffsAttr(), origOp.getNextLinkAttr(),
-            origOp.getActCompressionSizeEntryAttr(), origOp.getIndicesAttr());
+    auto descriptor = DMADescriptorComposer::compose(origOp, _symRefMap);
+    auto dma = rewriter.create<NPUReg40XX::NNDMAOp>(origOp->getLoc(), origOp.getSymNameAttr(), std::move(descriptor),
+                                                    origOp.getInputAttr(), origOp.getOutputBuffsAttr(),
+                                                    origOp.getNextLinkAttr(), origOp.getActCompressionSizeEntryAttr(),
+                                                    origOp.getIndicesAttr());
 
     // TODO: (E#114625) Remove once proper refactoring happened
     if (!origOp.getTaskLocationAttr()) {

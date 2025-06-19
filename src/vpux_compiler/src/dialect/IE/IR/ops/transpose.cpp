@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -357,7 +357,7 @@ mlir::OpFoldResult vpux::IE::TransposeOp::fold(FoldAdaptor adaptor) {
         }
     }
 
-    if (const auto cst = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (const auto cst = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         if (getOrderValue().has_value()) {
             const auto orderAttr = DimsOrder::fromAffineMap(getOrderValue().value());
             return static_cast<Const::ContentAttr>(cst).transform().transpose(orderAttr).get();

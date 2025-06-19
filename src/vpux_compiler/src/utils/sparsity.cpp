@@ -15,10 +15,10 @@ using namespace vpux;
 
 int64_t vpux::getSparsifyValue(mlir::Type& inputElementType) {
     int64_t sparsifyValue = 0;
-    if (auto qtype = inputElementType.dyn_cast_or_null<mlir::quant::UniformQuantizedType>()) {
+    if (auto qtype = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(inputElementType)) {
         inputElementType = normalizeQuantStorageType(qtype);
         sparsifyValue = qtype.getZeroPoint();
-    } else if (auto qtype = inputElementType.dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (auto qtype = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(inputElementType)) {
         inputElementType = normalizeQuantStorageType(qtype);
         const auto zeroPoints = qtype.getZeroPoints();
         const auto notAllEqual =

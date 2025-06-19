@@ -232,9 +232,9 @@ mlir::LogicalResult SplitRoll::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
 
     const auto newAxesElems = checked_cast<int64_t>(axes.size());
     const auto axesDimOrder = mlir::cast<vpux::NDTypeInterface>(origOp.getAxes().getType()).getDimsOrder();
-    const auto newAxesType =
-            mlir::RankedTensorType::get(ArrayRef(newAxesElems), origOp.getAxes().getType().getElementType(),
-                                        getTensorAttr(rewriter.getContext(), axesDimOrder, nullptr));
+    const auto newAxesType = mlir::RankedTensorType::get(
+            ArrayRef(newAxesElems), mlir::cast<vpux::NDTypeInterface>(origOp.getAxes().getType()).getElementType(),
+            getTensorAttr(rewriter.getContext(), axesDimOrder, nullptr));
     const auto newAxesValue = Const::createConst(rewriter, origOp.getAxes().getLoc(), newAxesType,
                                                  ArrayRef({Dims4D::Act::H.ind(), Dims4D::Act::W.ind()}));
 
@@ -243,9 +243,10 @@ mlir::LogicalResult SplitRoll::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
 
     auto createSingleDimRollOp = [&](Dim dim, ArrayRef<int32_t> newShift, mlir::Value inputVal) {
         const auto newShiftElems = checked_cast<int64_t>(newShift.size());
-        const auto newShiftType =
-                mlir::RankedTensorType::get(ArrayRef(newShiftElems), origOp.getShift().getType().getElementType(),
-                                            getTensorAttr(rewriter.getContext(), shiftDimOrder, nullptr));
+        const auto newShiftType = mlir::RankedTensorType::get(
+                ArrayRef(newShiftElems),
+                mlir::cast<vpux::NDTypeInterface>(origOp.getShift().getType()).getElementType(),
+                getTensorAttr(rewriter.getContext(), shiftDimOrder, nullptr));
         const auto shiftValue = Const::createConst(rewriter, shiftLoc, newShiftType, newShift);
         auto newLoc = appendLoc(origOp.getLoc(), "_roll_on_Dim_{0}", dim.ind());
         return rewriter.create<VPU::RollOp>(newLoc, inputVal, shiftValue, newAxesValue).getOutput();
@@ -306,8 +307,6 @@ void SplitSEOpsPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     if (_seOpsEnabled) {
         patterns.add<SplitInterpolate>(&ctx, _log);
-    }
-    if (_seExperimentalOpsEnabled) {
         patterns.add<SplitRoll>(&ctx, _log);
     }
 

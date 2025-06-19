@@ -3,12 +3,14 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/barrier_variant_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 #include "vpux/utils/core/error.hpp"
 
 namespace vpux::VPU {
@@ -28,8 +30,7 @@ namespace {
 class SetupNpuConstraintPass final : public VPU::impl::SetupNpuConstraintBase<SetupNpuConstraintPass> {
 public:
     SetupNpuConstraintPass() = default;
-    SetupNpuConstraintPass(const VPU::InitCompilerOptions& initCompilerOptions, Logger log)
-            : _workloadManagementEnable(workloadManagementEnable) {
+    SetupNpuConstraintPass(const VPU::InitCompilerOptions& initCompilerOptions, Logger log) {
         Base::initLogger(log, Base::getArgumentName());
         Base::copyOptionValuesFrom(initCompilerOptions);
 
@@ -37,7 +38,8 @@ public:
     }
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnModule() final;
 
 private:
@@ -45,13 +47,15 @@ private:
     void initializeFromOptions();
 
 private:
-    bool _workloadManagementEnable = false;
+    bool _workloadManagementEnable = true;
     bool _allowCustomValues = false;
+    bool _enableSwFifoPerShave = false;
 };
 
-void addConstraint(mlir::OpBuilder optionsBuilder, IE::PipelineOptionsOp pipelineOptionsOp,
-                   mlir::StringRef constraintName, size_t constraintValue, bool allowCustomValues) {
-    auto hasPipelineOption = pipelineOptionsOp.lookupSymbol<IE::OptionOp>(constraintName) != nullptr;
+template <typename T>
+void addConstraint(mlir::OpBuilder optionsBuilder, config::PipelineOptionsOp pipelineOptionsOp,
+                   mlir::StringRef constraintName, T constraintValue, bool allowCustomValues) {
+    auto hasPipelineOption = pipelineOptionsOp.lookupSymbol<config::OptionOp>(constraintName) != nullptr;
     VPUX_THROW_WHEN(!allowCustomValues && hasPipelineOption,
                     "Barrier constraint is already defined, probably you run '--init-compiler' twice");
 
@@ -62,12 +66,30 @@ void addConstraint(mlir::OpBuilder optionsBuilder, IE::PipelineOptionsOp pipelin
     auto* ctx = optionsBuilder.getContext();
     mlir::IntegerType sizeType = mlir::IntegerType::get(ctx, sizeof(void*) * 8, mlir::IntegerType::Unsigned);
     const auto constraintAttr = mlir::StringAttr::get(ctx, constraintName);
-    optionsBuilder.create<IE::OptionOp>(optionsBuilder.getUnknownLoc(), constraintAttr,
-                                        mlir::IntegerAttr::get(sizeType, constraintValue));
+    optionsBuilder.create<config::OptionOp>(optionsBuilder.getUnknownLoc(), constraintAttr,
+                                            mlir::IntegerAttr::get(sizeType, constraintValue));
 }
 
-mlir::LogicalResult SetupNpuConstraintPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+template <>
+void addConstraint<bool>(mlir::OpBuilder optionsBuilder, config::PipelineOptionsOp pipelineOptionsOp,
+                         mlir::StringRef constraintName, bool constraintValue, bool allowCustomValues) {
+    auto hasPipelineOption = pipelineOptionsOp.lookupSymbol<config::OptionOp>(constraintName) != nullptr;
+    VPUX_THROW_WHEN(!allowCustomValues && hasPipelineOption,
+                    "Barrier constraint is already defined, probably you run '--init-compiler' twice");
+
+    if (hasPipelineOption) {
+        return;
+    }
+
+    auto* ctx = optionsBuilder.getContext();
+    const auto constraintAttr = mlir::StringAttr::get(ctx, constraintName);
+    optionsBuilder.create<config::OptionOp>(optionsBuilder.getUnknownLoc(), constraintAttr,
+                                            mlir::BoolAttr::get(ctx, constraintValue));
+}
+
+mlir::LogicalResult SetupNpuConstraintPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 
@@ -78,17 +100,14 @@ mlir::LogicalResult SetupNpuConstraintPass::initializeOptions(StringRef options)
 
 void SetupNpuConstraintPass::initializeFromOptions() {
     if (workloadManagementEnable.hasValue()) {
-        _log.trace("Overloading the default value {0} of the '_workloadManagementEnable' field to the value {1} "
+        _log.debug("Overriding the default value {0} of the '_workloadManagementEnable' field. Setting value {1} "
                    "of the pass option 'enableWorkloadManagement' generated by MLIR",
                    _workloadManagementEnable, workloadManagementEnable);
         _workloadManagementEnable = workloadManagementEnable;
     }
 
-    if (wlmRollback.hasValue() && wlmRollback.getValue() == true) {
-        // Using non-WLM values might result in slightly worse inference latency but is
-        // safer in case compilation with WLM enabled fails
-        _log.trace("Disabling partial workload management due to enabled WLM rollback");
-        _workloadManagementEnable = false;
+    if (enableSwKernelFifoPerShaveEngine.hasValue()) {
+        _enableSwFifoPerShave = enableSwKernelFifoPerShaveEngine;
     }
 
     if (allowCustomValues.hasValue()) {
@@ -103,21 +122,62 @@ void SetupNpuConstraintPass::safeRunOnModule() {
     optionsBuilder =
             mlir::OpBuilder::atBlockBegin(&pipelineOptionsOp.getOptions().front(), optionsBuilder.getListener());
 
-    auto perBarrierVariantConstraint =
-            vpux::VPU::getPerBarrierVariantConstraint(VPU::getArch(getOperation()), _workloadManagementEnable);
-    auto barrVariantSum = perBarrierVariantConstraint.getPerBarrierMaxVariantSum();
-    auto barrVariantCount = perBarrierVariantConstraint.getPerBarrierMaxVariantCount();
+    auto arch = VPU::getArch(getOperation());
+    bool isRollBackPossible = wlmRollback.hasValue() && wlmRollback;
+    bool isWlmWithoutRollback = _workloadManagementEnable && !isRollBackPossible;
+    if (_enableSwFifoPerShave && !hasSupportForFifoPerShaveEngine(arch, isWlmWithoutRollback)) {
+        // if dedicated SHAVE FIFOs are not, or cannot be supported, the feature will be disabled. For convenience, this
+        // will be reflected in the iR in pipeline options section, as the value will be accessed by multiple passes.
+        _enableSwFifoPerShave = false;
+        _log.info("Dedicated FIFOs per SHAVE engine were requested but are currently not supported by the architecture "
+                  "({0}) or WLM ({1}) and rollback ({2}) options setting. The feature will not be enabled.",
+                  arch, _workloadManagementEnable, isRollBackPossible);
+    }
+
+    addConstraint(optionsBuilder, pipelineOptionsOp, VPU::USE_DEDICATED_FIFO_PER_SHAVE_ENGINE, _enableSwFifoPerShave,
+                  _allowCustomValues);
+
+    auto supportsSwFifoPerShave = VPU::getConstraint<bool>(moduleOp, VPU::USE_DEDICATED_FIFO_PER_SHAVE_ENGINE);
+    _log.info("Support for FIFO per each SHAVE engine enabled: {0}", supportsSwFifoPerShave);
+
+    auto useWlmBarrierConfig = _workloadManagementEnable;
+    if (wlmRollback.hasValue() && wlmRollback.getValue() == true) {
+        // Using non-WLM values might result in slightly worse inference latency but is
+        // safer in case compilation with WLM enabled fails
+        _log.trace("Will use barrier variant constraint as for non-WLM due to enabled WLM rollback");
+        useWlmBarrierConfig = false;
+    }
+    // Disable WLM barrier configuration as it requires more adjustments in the code to be done in E#155846
+    // Currently enabling this breaks compilation for some models.
+    useWlmBarrierConfig = false;
+
+    auto perBarrierVariantConstraint = vpux::VPU::getPerBarrierVariantConstraint(arch, useWlmBarrierConfig);
+    auto barrVariantSum = static_cast<unsigned>(perBarrierVariantConstraint.getPerBarrierMaxVariantSum());
+    auto barrVariantCount = static_cast<unsigned>(perBarrierVariantConstraint.getPerBarrierMaxVariantCount());
 
     addConstraint(optionsBuilder, pipelineOptionsOp, VPU::BARR_MAX_VARIANT_SUM, barrVariantSum, _allowCustomValues);
     addConstraint(optionsBuilder, pipelineOptionsOp, VPU::BARR_MAX_VARIANT_COUNT, barrVariantCount, _allowCustomValues);
 
     // Get Maximum available space in CMX Metadata for various descriptor types
-    auto maxVariants = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::DPUVariant, VPU::getArch(getOperation()));
-    auto maxInvariants = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::DPUInvariant, VPU::getArch(getOperation()));
+    auto maxVariants = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::DPUVariant, arch);
+    auto maxInvariants = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::DPUInvariant, arch);
+
+    auto numShvExecutorsPerTile = [&] {
+        auto tileOp = IE::getTileExecutor(moduleOp);
+        auto executorKind = VPU::ExecutorKind::SHAVE_ACT;
+        VPUX_THROW_UNLESS(tileOp != nullptr, "Expected tileOp executor in order to query {0} executor.", executorKind);
+        VPUX_THROW_UNLESS(tileOp.hasSubExecutor(executorKind), "Expected tileOp contain executor of type {0}.",
+                          executorKind);
+        return supportsSwFifoPerShave ? static_cast<size_t>(tileOp.getSubExecutor(executorKind).getCount())
+                                      : static_cast<size_t>(1);
+    }();
+
+    VPUX_THROW_UNLESS(numShvExecutorsPerTile == 1 || numShvExecutorsPerTile == 2,
+                      "Unsupported number of SHAVE executors");
     auto maxActKernelRange =
-            vpux::VPU::getDefaultTaskListCount(VPU::TaskType::ActKernelRange, VPU::getArch(getOperation()));
+            vpux::VPU::getDefaultTaskListCount(VPU::TaskType::ActKernelRange, arch) / numShvExecutorsPerTile;
     auto maxActKernelInvocation =
-            vpux::VPU::getDefaultTaskListCount(VPU::TaskType::ActKernelInvocation, VPU::getArch(getOperation()));
+            vpux::VPU::getDefaultTaskListCount(VPU::TaskType::ActKernelInvocation, arch) / numShvExecutorsPerTile;
 
     // Set CMX Metadata Constrains
     addConstraint(optionsBuilder, pipelineOptionsOp, VPU::METADATA_MAX_VARIANT_COUNT, maxVariants, _allowCustomValues);
@@ -127,6 +187,11 @@ void SetupNpuConstraintPass::safeRunOnModule() {
                   _allowCustomValues);
     addConstraint(optionsBuilder, pipelineOptionsOp, VPU::METADATA_MAX_KERNEL_RANGE_COUNT, maxActKernelRange,
                   _allowCustomValues);
+    if (!isArchVPUX3XXX(arch)) {
+        auto maxMediaCount = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::M2I, arch);
+        addConstraint(optionsBuilder, pipelineOptionsOp, VPU::METADATA_MAX_MEDIA_COUNT, maxMediaCount,
+                      _allowCustomValues);
+    }
 }
 
 }  // namespace

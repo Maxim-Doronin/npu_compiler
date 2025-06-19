@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -226,5 +226,39 @@ module @main {
         net.SparsityInfo 0.8 at input 0 of "Conv_1" loc(#loc0)
         net.SparsityInfo 0.8 at input 0 of "Add_1" loc(#loc0)
         net.SparsityInfo 0.8 at input 0 of "Maxpool_1" loc(#loc0)
+    }
+}
+
+//
+// -----
+//
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+#loc0 = loc(unknown)
+module @main {
+    // CHECK: func.func @NotWrapFP32SingleOpWithStats([[INPUT:%.+]]: tensor<1x16x16x16xf16, {order = #NHWC}>
+    // CHECK-SAME:      [[WT:%.+]]: tensor<16x1x1x4xsi32>
+    // CHECK-SAME:      [[WEIGHTS:%.+]]: tensor<16x16x1x1xf16, {order = #NHWC}>
+    func.func @NotWrapFP32SingleOpWithStats(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf32, {order = #NHWC}> {
+        %1 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
+                ppe = #VPU.PPEStub<>,
+                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                rawFilterShape = [16, 16, 1, 1],
+                strides = [1, 1]
+            } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf32, {order = #NHWC}> loc(fused["Conv_1", "t_Convolution"])
+
+        return %1 : tensor<1x16x16x16xf32, {order = #NHWC}>
+
+        // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[INPUT]])
+        // CHECK-NOT:   VPU.Desparsify
+        // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[WEIGHTS]], [[WT]]
+        // CHECK-NOT:       -> !VPU.SparseTensor
+        // CHECK-SAME:      -> tensor<1x16x16x16xf32, {order = #NHWC}>
+        // CHECK:       return [[VAL1]]
+    }
+
+    net.SparsityStatistics sparsityInfo : {
+        net.SparsityInfo 0.3 at input 0 of "Conv_1" loc(#loc0)
     }
 }

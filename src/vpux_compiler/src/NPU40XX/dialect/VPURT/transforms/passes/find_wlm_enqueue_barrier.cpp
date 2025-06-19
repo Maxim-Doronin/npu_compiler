@@ -22,11 +22,13 @@ namespace {
 class FindWlmEnqueueBarrierPass final :
         public VPURT::arch40xx::impl::FindWlmEnqueueBarrierBase<FindWlmEnqueueBarrierPass> {
 public:
-    explicit FindWlmEnqueueBarrierPass(bool disableDmaSwFifo, Logger log): _disableDmaSwFifo(disableDmaSwFifo) {
+    explicit FindWlmEnqueueBarrierPass(WorkloadManagementMode workloadManagementMode, bool disableDmaSwFifo, Logger log)
+            : _workloadManagementMode(workloadManagementMode), _disableDmaSwFifo(disableDmaSwFifo) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
+    WorkloadManagementMode _workloadManagementMode;
     bool _disableDmaSwFifo;
     void safeRunOnFunc() final;
 };
@@ -55,7 +57,16 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
 
     VPURT::EnqueueBarrierHandler enqueueBarrier(func, barrierInfo, _disableDmaSwFifo, _log);
 
-    const auto res = enqueueBarrier.calculateEnqueueBarriers();
+    const auto enqDmaAtBootstrap = enqDmaAtBootstrapOpt.hasValue()
+                                           ? enqDmaAtBootstrapOpt.getValue()
+                                           : false;
+
+    mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap;
+    if (enqDmaAtBootstrap) {
+        executorEnqAtBootstrap.insert(vpux::VPU::ExecutorKind::DMA_NN);
+    }
+
+    const auto res = enqueueBarrier.calculateEnqueueBarriers(executorEnqAtBootstrap);
     if (mlir::failed(res)) {
         _log.warning("Enqueue algorithm failed. Need to switch to nonWLM");
         vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
@@ -86,6 +97,7 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
 // createFindWlmEnqueueBarrierPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPURT::arch40xx::createFindWlmEnqueueBarrierPass(bool disableDmaSwFifo, Logger log) {
-    return std::make_unique<FindWlmEnqueueBarrierPass>(disableDmaSwFifo, log);
+std::unique_ptr<mlir::Pass> vpux::VPURT::arch40xx::createFindWlmEnqueueBarrierPass(
+        WorkloadManagementMode workloadManagementMode, bool disableDmaSwFifo, Logger log) {
+    return std::make_unique<FindWlmEnqueueBarrierPass>(workloadManagementMode, disableDmaSwFifo, log);
 }

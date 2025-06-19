@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layer_post_ops_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/custom_float.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -92,7 +93,7 @@ class LayerWithPostOpModel final :
         public IE::LayerWithPostOpInterface::ExternalModel<LayerWithPostOpModel<MainOpType>, MainOpType> {
 public:
     bool isSupportedPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) const {
-        if (VPU::getCompilationMode(postOp) == VPU::CompilationMode::ReferenceSW) {
+        if (config::getCompilationMode(postOp) == config::CompilationMode::ReferenceSW) {
             return false;
         }
 
@@ -104,7 +105,7 @@ public:
     }
 
     bool isSupportedClampOp(mlir::Operation* mainOp, mlir::Operation* clampOp, const LogCb& logCb) const {
-        if (VPU::getCompilationMode(clampOp) == VPU::CompilationMode::ReferenceSW) {
+        if (config::getCompilationMode(clampOp) == config::CompilationMode::ReferenceSW) {
             return false;
         }
 

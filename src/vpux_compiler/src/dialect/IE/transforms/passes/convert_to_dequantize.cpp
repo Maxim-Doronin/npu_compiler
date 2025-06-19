@@ -46,13 +46,15 @@ public:
     class ConvertOpConverter;
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
     void safeRunOnFunc() final;
 };
 
-mlir::LogicalResult ConvertToDequantizePass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult ConvertToDequantizePass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 
@@ -132,11 +134,9 @@ mlir::LogicalResult ConvertToDequantizePass::ConvertOpConverter::matchAndRewrite
                 mlir::quant::QuantizationFlags::Signed, integerType, mlir::Float16Type::get(ctx), /*scale=*/1,
                 /*zero_point=*/0, -1 * (1 << (inputElemTypeSize - 1)), (1 << (inputElemTypeSize - 1)) - 1);
     } else if (auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(inputElemType)) {
-        // For quantile quantized type, we default its storage type to unsigned integer (palletization LUT encoding is
-        // unsigned), quantile type and expressed type to FP16
         integerType = mlir::IntegerType::get(ctx, inputElemTypeSize, mlir::IntegerType::Unsigned);
         outQuantizeElemType = mlir::quant::QuantileQuantizedType::get(
-                0, integerType, mlir::Float16Type::get(ctx), mlir::Float16Type::get(ctx),
+                0, quantileFloatType.getStorageType(), quantileFloatType.getQuantileType(), mlir::Float16Type::get(ctx),
                 quantileFloatType.getQuantiles(), /*scale=*/1,
                 /*zero_point=*/0, 0, (1 << inputElemTypeSize) - 1);
     } else {

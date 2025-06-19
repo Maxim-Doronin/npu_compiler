@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
+#include "vpux/compiler/dialect/VPUMI40XX/wlm_utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
@@ -26,13 +27,10 @@ using BarrierConfig = SmallVector<uint32_t>;
 // HW reg address for barrier fifo
 constexpr uint32_t STRIDE = 0x20U;
 constexpr uint8_t BARRIER_FIFO_DEPTH = 4;
-constexpr uint32_t FIFO_BARRIERS_BASE = 0x2f000000U;
-constexpr uint32_t FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_OFFSET = 0x00010000U;
-constexpr uint32_t FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR =
-        FIFO_BARRIERS_BASE + FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_OFFSET;
+constexpr uint8_t CONSUMER_INTERRUPT_PAGE_INTERVAL = 100;
 
 uint32_t getBarrierFifoAddr(size_t pid = 0) {
-    return FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR + (pid * STRIDE);
+    return VPUMI40XX::FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR + (pid * STRIDE);
 }
 
 struct BarrierDesc final {
@@ -77,12 +75,15 @@ public:
               _barrierWithMaximumUsage(0),
               _numberOfDescriptorsPerBarrier(0),
               _workloadManagementBarrierProgrammingMode(workloadManagementBarrierProgrammingMode),
-              _workloadManagementMode(workloadManagementMode) {
+              _workloadManagementMode(workloadManagementMode),
+              _enableConsumerInterruptEveryNPages(
+                      workloadManagementBarrierProgrammingMode ==
+                      WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
     void fillPhysicalBarrierUsage();
-    BarrierConfig getBarrierConfig(std::ostringstream& logStream, size_t barPDmaPage = 0);
+    BarrierConfig getBarrierConfig(std::ostringstream& logStream, VPUMI40XX::NNDMAOp barrierProgrammingDMAOp = nullptr);
     void createBarrierConfigurationStrideConstant(VPUMI40XX::MappedInferenceOp mpi, mlir::OpBuilder& builder,
                                                   mlir::Operation* cstInsertionPoint);
     void createRawBarrierConfigurationConstant(VPUMI40XX::MappedInferenceOp mpi, mlir::OpBuilder& builder,
@@ -90,6 +91,11 @@ public:
     VPUMI40XX::NNDMAOp createDMAsToProgramAllBarriers(mlir::OpBuilder& builder, mlir::Operation* bufferInsertionPoint,
                                                       mlir::Operation* cstInsertionPoint,
                                                       mlir::Operation* dmaInsertionPoint);
+    VPUMI40XX::NNDMAOp createBarrierProgrammingDmaOp(mlir::OpBuilder& builder, const BarrierConfig& barrierConfig,
+                                                     mlir::Operation* cstInsertionPoint,
+                                                     mlir::Operation* bufferInsertionPoint,
+                                                     mlir::Operation* dmaInsertionPoint,
+                                                     VPUMI40XX::NNDMAOp referenceDMAOp = nullptr);
 
 private:
     void safeRunOnFunc() final;
@@ -106,6 +112,7 @@ private:
     SmallVector<uint32_t> _barrierProgrammingStrides;
     BarrierConfig _barrierConfigurationsRaw;
     SmallVector<SmallVector<BarrierDesc>> _physicalBarriersUsage;
+    bool _enableConsumerInterruptEveryNPages;
 };
 
 Const::DeclareOp createConstant(mlir::OpBuilder& builder, mlir::Operation* insertionPoint, ArrayRef<uint32_t> vals,
@@ -123,13 +130,17 @@ Const::DeclareOp createConstant(mlir::OpBuilder& builder, mlir::Operation* inser
     return configurationConstOp;
 }
 
-VPUMI40XX::NNDMAOp createBarrierProgrammingDmaOp(mlir::OpBuilder& builder, int64_t nBarrs,
-                                                 const BarrierConfig& barrierConfig, mlir::Operation* cstInsertionPoint,
-                                                 mlir::Operation* bufferInsertionPoint,
-                                                 mlir::Operation* dmaInsertionPoint, size_t firstPidInBuffer = 0,
-                                                 VPUMI40XX::NNDMAOp referenceDMAOp = nullptr) {
-    auto barrierConfigConstOp = createConstant(builder, cstInsertionPoint, barrierConfig, nBarrs * BARRIER_FIFO_DEPTH);
-    const auto type = barrierConfigConstOp.getOutput().getType().cast<vpux::NDTypeInterface>();
+VPUMI40XX::NNDMAOp AddBarrierConfigurationOps::createBarrierProgrammingDmaOp(
+        mlir::OpBuilder& builder, const BarrierConfig& barrierConfig, mlir::Operation* cstInsertionPoint,
+        mlir::Operation* bufferInsertionPoint, mlir::Operation* dmaInsertionPoint, VPUMI40XX::NNDMAOp referenceDMAOp) {
+    auto physicalBarrierRangeAttr = referenceDMAOp != nullptr ? referenceDMAOp.getPhysicalBarrierRangeAttr() : nullptr;
+    auto totalPidsToProgram = physicalBarrierRangeAttr != nullptr ? physicalBarrierRangeAttr.getPidCount() : _nBarrs;
+    size_t firstPidInBuffer = physicalBarrierRangeAttr != nullptr ? physicalBarrierRangeAttr.getFirstPid() : 0;
+
+    auto barrierConfigConstOp =
+            createConstant(builder, cstInsertionPoint, barrierConfig, totalPidsToProgram * BARRIER_FIFO_DEPTH);
+
+    const auto type = mlir::cast<vpux::NDTypeInterface>(barrierConfigConstOp.getOutput().getType());
     vpux::IndexedSymbolAttr memKindAttr =
             IndexedSymbolAttr::get(builder.getContext(), stringifyEnum(VPU::MemoryKind::Register));
     auto newType = type.changeMemSpace(memKindAttr);
@@ -142,17 +153,16 @@ VPUMI40XX::NNDMAOp createBarrierProgrammingDmaOp(mlir::OpBuilder& builder, int64
             builder.getUnknownLoc(), memType, VPURT::BufferSection::Register, getBarrierFifoAddr(firstPidInBuffer));
 
     auto ctx = builder.getContext();
-    auto lengthAttr = vpux::getIntAttr(ctx, nBarrs * 16);
+    auto lengthAttr = vpux::getIntAttr(ctx, totalPidsToProgram * 16);
     auto zeroAttr = vpux::getIntAttr(ctx, 0);
-    auto srcWidthAttr = vpux::getIntAttr(ctx, nBarrs * 16);
+    auto srcWidthAttr = vpux::getIntAttr(ctx, totalPidsToProgram * 16);
     auto dstWidthAttr = vpux::getIntAttr(ctx, 16);
     auto dstStrideAttr = vpux::getIntAttr(ctx, 32);
 
     // Can be anything, the prev DMA will define the index at reindexing stage
-    auto indexAttr = VPURegMapped::IndexType::get(ctx, 0, 0, 0);
-    if (referenceDMAOp != nullptr) {
-        indexAttr = referenceDMAOp.getIndex().getType().cast<VPURegMapped::IndexType>();
-    }
+    auto indexAttr = referenceDMAOp != nullptr
+                             ? mlir::cast<vpux::VPURegMapped::IndexType>(referenceDMAOp.getIndex().getType())
+                             : VPURegMapped::IndexType::get(ctx, 0, 0, 0);
 
     auto dmaDescriptorAttr = VPUIP::DMADescriptorAttr::get(ctx, /*numPlane*/ zeroAttr, /*len*/ lengthAttr,
                                                            /*srcWidth*/ srcWidthAttr, /*srcStride*/ zeroAttr,
@@ -176,7 +186,7 @@ VPUMI40XX::NNDMAOp createBarrierProgrammingDmaOp(mlir::OpBuilder& builder, int64
             bufferOp.getBuffer(), previousTask, waitBarriers, updateBarriers,
             /*startAfter*/ 0,
             /*cleanAfter*/ 0, false, false, false, 0, VPUIP::DMAAccMode::DISABLE, nullptr, nullptr,
-            /*transactionAttr*/ nullptr, dmaDescriptorAttr, nullptr, nullptr, false, nullptr, enqueueBarrier, nullptr,
+            /*transactionAttr*/ nullptr, dmaDescriptorAttr, nullptr, nullptr, false, nullptr, enqueueBarrier,
             wlmPageAttr);
 }
 
@@ -188,7 +198,10 @@ void AddBarrierConfigurationOps::fillPhysicalBarrierUsage() {
 
     // Find which pid has maximum usage as we will need to pad the rest
     DenseMap<int64_t, int64_t> barrierCount;
+
     auto barriers = vpux::to_small_vector(netFunc.getOps<VPUMI40XX::ConfigureBarrierOp>());
+    int64_t lastPage = barriers.back().getWlmPage().value_or(-1);
+    int64_t lastConsumerInterruptPage = -1;
     for (auto barrierOp : barriers) {
         auto pid = barrierOp.getId();
         auto desc =
@@ -197,6 +210,20 @@ void AddBarrierConfigurationOps::fillPhysicalBarrierUsage() {
         // Used for debug trace
         desc.virtualId = barrierOp.getResult().getType().getValue();
         desc.wlmPage = barrierOp.getWlmPage().value_or(-1);
+
+        // Enable interrupt every Nth page except last page
+        if (_enableConsumerInterruptEveryNPages) {
+            bool shouldEnableConsumerInterrupt = (CONSUMER_INTERRUPT_PAGE_INTERVAL > 0) && (desc.wlmPage > 0) &&
+                                                 (desc.wlmPage % CONSUMER_INTERRUPT_PAGE_INTERVAL == 0) &&
+                                                 (desc.wlmPage != lastPage) &&
+                                                 (desc.wlmPage != lastConsumerInterruptPage);
+
+            if (shouldEnableConsumerInterrupt) {
+                lastConsumerInterruptPage = desc.wlmPage;
+            } else {
+                desc.consumerInterrupt = 0;
+            }
+        }
 
         if (barrierOp.getIsFinalBarrier()) {
             desc.consumerCount = 1;
@@ -265,54 +292,62 @@ void AddBarrierConfigurationOps::createRawBarrierConfigurationConstant(VPUMI40XX
 // - Each tile has 16 available PIDs, and each chunk has a size of
 //   (availablePids × BARRIER_FIFO_DEPTH).
 // - Barriers are assigned one of the following descriptor types:
+//   NOTE: For ALL_BARRIER_DMAS_SCHEDULED cInterrupt is set to 1 for one barrier per page, required for heartbeat
 //
-//   1. Common Descriptor:
+//   1. Common Descriptor Partial WLM:
 //      - Producer Count (pCount) = val
 //      - Producer Interrupt (pInterrupt) = 0
 //      - Consumer Count (cCount) = val
 //      - Consumer Interrupt (cInterrupt) = 1
 //
-//   2. Final Barrier:
+//   2. Common Descriptor Full WLM:
+//      - Producer Count (pCount) = val
+//      - Producer Interrupt (pInterrupt) = 0
+//      - Consumer Count (cCount) = val
+//      - Consumer Interrupt (cInterrupt) = 0
+//
+//   3. Special Descriptor for Heartbeat (Full WLM):
+//      - Producer Count (pCount) = val
+//      - Producer Interrupt (pInterrupt) = 0
+//      - Consumer Count (cCount) = val
+//      - Consumer Interrupt (cInterrupt) = 1
+//
+//   4. Final Barrier:
 //      - Producer Count (pCount) = val
 //      - Producer Interrupt (pInterrupt) = 1
 //      - Consumer Count (cCount) = 1
 //      - Consumer Interrupt (cInterrupt) = 0
 //
-//   3. Unused Barrier:
+//   5. Unused Barrier:
 //      - Producer Count (pCount) = 0
 //      - Producer Interrupt (pInterrupt) = 0
 //      - Consumer Count (cCount) = 0
 //      - Consumer Interrupt (cInterrupt) = 0
 //
 // The function updates _barrierUsageIndex to track progress and avoid reprogramming barriers unnecessarily.
-BarrierConfig AddBarrierConfigurationOps::getBarrierConfig(std::ostringstream& logStream, size_t barPDmaPage) {
+BarrierConfig AddBarrierConfigurationOps::getBarrierConfig(std::ostringstream& logStream,
+                                                           VPUMI40XX::NNDMAOp barrierProgrammingDMAOp) {
     BarrierConfig barrierConfig;
     // Clear before adding new logs
     logStream.str("");
     logStream.clear();
 
-    // Determine range based on BarProgDmaAtPage
+    // Default for bootstrap
     int64_t pidStart = 0;
-    int64_t pidEnd = _nBarrs;  // Default for Bootstrap
+    int64_t pidEnd = _nBarrs - 1;
 
-    if (barPDmaPage > 0) {
-        if (barPDmaPage % 2 == 1) {
-            // Odd pages → First half of barriers
-            pidEnd = _nBarrs / 2;
-            logStream << "Programming first half of barriers (0 to " << pidEnd - 1 << ") barPDmaPage: " << barPDmaPage
-                      << "\n";
-        } else {
-            // Even pages → Second half of barriers
-            pidStart = _nBarrs / 2;
-            logStream << "Programming second half of barriers (" << pidStart << " to " << _nBarrs - 1
-                      << ") barPDmaPage: " << barPDmaPage << "\n";
-        }
-    } else {
-        logStream << "Programming all barriers bootstrap (" << pidStart << " to " << _nBarrs - 1
-                  << ") barPDmaPage: " << barPDmaPage << "\n";
+    VPUIP::PhysicalBarrierRangeAttr physicalBarrierRangeAttr = nullptr;
+
+    // We have a reference DMA with pid_start and pid_end defined
+    if (barrierProgrammingDMAOp != nullptr) {
+        physicalBarrierRangeAttr = barrierProgrammingDMAOp.getPhysicalBarrierRangeAttr();
+
+        pidStart = physicalBarrierRangeAttr.getStart().getValue().getSExtValue();
+        pidEnd = physicalBarrierRangeAttr.getEnd().getValue().getSExtValue();
     }
 
-    for (int64_t pid = pidStart; pid < pidEnd; ++pid) {
+    logStream << "Programming barriers (" << pidStart << " to " << pidEnd << ") \n";
+    for (int64_t pid = pidStart; pid <= pidEnd; ++pid) {
         auto& pidUsage = _physicalBarriersUsage[pid];
         size_t usageSize = pidUsage.size();
         // Use _barrierUsageIndex to track how many have been programmed
@@ -326,6 +361,7 @@ BarrierConfig AddBarrierConfigurationOps::getBarrierConfig(std::ostringstream& l
                 logStream << "  ViD: " << static_cast<int>(barrierDesc.virtualId)
                           << " | PCnt: " << static_cast<int>(barrierDesc.producerCount)
                           << " | Ccnt: " << static_cast<int>(barrierDesc.consumerCount)
+                          << " | CInt: " << static_cast<int>(barrierDesc.consumerInterrupt)
                           << " | wlmPage: " << static_cast<int>(barrierDesc.wlmPage) << " ";
 
                 barrierConfig.push_back(combineDescValues(barrierDesc.producerCount, barrierDesc.producerInterrupt,
@@ -358,10 +394,10 @@ VPUMI40XX::NNDMAOp AddBarrierConfigurationOps::createDMAsToProgramAllBarriers(ml
     // Step 1: Explicitly handle bootstrap programming
     _log.trace("Programming Bootstrap Barriers");
     auto bootstrapConfig = getBarrierConfig(logStream);
-    auto bootstrapDMA = createBarrierProgrammingDmaOp(builder, _nBarrs, bootstrapConfig, bufferInsertionPoint,
-                                                      cstInsertionPoint, dmaInsertionPoint);
+    auto bootstrapDMA = createBarrierProgrammingDmaOp(builder, bootstrapConfig, bufferInsertionPoint, cstInsertionPoint,
+                                                      dmaInsertionPoint);
 
-    auto indexAttr = bootstrapDMA.getIndex().getType().cast<VPURegMapped::IndexType>();
+    auto indexAttr = mlir::cast<vpux::VPURegMapped::IndexType>(bootstrapDMA.getIndex().getType());
     _log.trace("DMA {0} {1}", indexAttr.getValue(), logStream.str());
 
     if (auto dmaTypeOp = llvm::dyn_cast<VPURegMapped::DMATypeOpInterface>(dmaInsertionPoint)) {
@@ -376,15 +412,13 @@ VPUMI40XX::NNDMAOp AddBarrierConfigurationOps::createDMAsToProgramAllBarriers(ml
 
     // Step 2: Process DMA tasks
     for (auto dmaOp : llvm::make_early_inc_range(llvm::make_filter_range(dmaTaskOps, [](auto dma) {
-             return dma.getBarProgDmaAtPageAttr() != nullptr;
+             return dma.getPhysicalBarrierRangeAttr() != nullptr;
          }))) {
-        size_t barPDmaPage = dmaOp.getBarProgDmaAtPage().value();
-        size_t pageStartPid = barPDmaPage % 2 == 0 ? _nBarrs / 2 : 0;
-        auto barrierConfig = getBarrierConfig(logStream, barPDmaPage);
-        auto reprogrammingDMAOp = createBarrierProgrammingDmaOp(
-                builder, /*halfOfTotalBarriers*/ _nBarrs / 2, barrierConfig, cstInsertionPoint, bufferInsertionPoint,
-                /*dmaInsertionPoint*/ dmaOp, pageStartPid, /*referenceDMAOp*/ dmaOp);
-        indexAttr = reprogrammingDMAOp.getIndex().getType().cast<VPURegMapped::IndexType>();
+        auto barrierConfig = getBarrierConfig(logStream, dmaOp);
+        auto reprogrammingDMAOp =
+                createBarrierProgrammingDmaOp(builder, barrierConfig, cstInsertionPoint, bufferInsertionPoint,
+                                              /*dmaInsertionPoint*/ dmaOp, /*referenceDMAOp*/ dmaOp);
+        indexAttr = mlir::cast<vpux::VPURegMapped::IndexType>(reprogrammingDMAOp.getIndex().getType());
         _log.trace("DMA {0} {1}", indexAttr.getValue(), logStream.str());
 
         dmaOp.getResult().replaceAllUsesWith(reprogrammingDMAOp.getResult());

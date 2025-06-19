@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger 8192 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --map-bilinear-interpolate-on-dpu %s | FileCheck %s
 // REQUIRES: arch-NPU37XX
+
 
 // CHECK-LABEL: @MapBilinearPytorchHalfPixelInterpolateOnDPU
 func.func @MapBilinearPytorchHalfPixelInterpolateOnDPU(%arg0: tensor<1x128x72x72xf16>) -> tensor<1x128x140x140xf16> {

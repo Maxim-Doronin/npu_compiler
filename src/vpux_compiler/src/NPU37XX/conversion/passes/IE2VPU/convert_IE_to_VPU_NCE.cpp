@@ -34,6 +34,7 @@ namespace vpux::arch37xx {
 using namespace vpux;
 
 //
+// ConvToNCE
 //
 
 mlir::LogicalResult arch37xx::ConvToNCE::matchAndRewrite(IE::ConvolutionOp origOp,
@@ -59,7 +60,7 @@ mlir::LogicalResult arch37xx::ConvToNCE::matchAndRewrite(IE::ConvolutionOp origO
         auto origChannelVal = mlir::cast<vpux::NDTypeInterface>(weightsContentAttr.getBaseContent().getType())
                                       .getShape()[Dims4D::Filter::IC];
         for (auto attr : weightsContentAttr.getTransformations()) {
-            if (auto padWithZeroAttr = attr.dyn_cast_or_null<Const::PadWithZeroAttr>()) {
+            if (auto padWithZeroAttr = mlir::dyn_cast_or_null<Const::PadWithZeroAttr>(attr)) {
                 const auto padZeroAttrPadsBegin = parseIntArrayAttr<int64_t>(padWithZeroAttr.getPadBefore());
                 origChannelVal += padZeroAttrPadsBegin[Dims4D::Filter::IC.ind()];
             }
@@ -92,9 +93,10 @@ mlir::LogicalResult arch37xx::ConvToNCE::matchAndRewrite(IE::ConvolutionOp origO
         bias = biasConstOp.getContentAttr();
     }
     const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
-    const auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(_arch);
-    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, VPU::getArch(origOp));
-    const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(_arch);
+    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, isCompressConvSupported);
+    const auto isNewWeightTableFormat = VPU::MPEEngineConfig::useNewWeightTableFormat(origOp, mpeEngineAttr);
+    const auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(_arch, isNewWeightTableFormat);
+    const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(_arch, isNewWeightTableFormat);
 
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     const auto adaptedOutElemType =
@@ -102,9 +104,14 @@ mlir::LogicalResult arch37xx::ConvToNCE::matchAndRewrite(IE::ConvolutionOp origO
                     ppeAttr, outputType.getElementType());
 
     const auto weightsTableVec =
-            VPU::createWeightsTableData(origOp.getInput(), adaptedOutElemType, alignedFilter, bias, OC, ppeConverter,
-                                        biasConverter, origOp.getStaticScaleAttr(), VPU::canAutopadOutput(origOp));
-    const auto weightsTable = VPU::createWeightsTableTensor(rewriter, origOp->getLoc(), weightsTableVec);
+            isNewWeightTableFormat
+                    ? std::vector<int32_t>{}
+                    : VPU::createWeightsTableData(origOp.getInput(), adaptedOutElemType, alignedFilter, bias, OC,
+                                                  ppeConverter, biasConverter, origOp.getStaticScaleAttr(),
+                                                  /*hasAutopad=*/false);
+    const auto weightsTable = isNewWeightTableFormat
+                                      ? nullptr
+                                      : VPU::createWeightsTableTensor(rewriter, origOp->getLoc(), weightsTableVec);
 
     const auto padAttr = VPU::getPaddingAttr(getContext(), PadInfo(origOp.getPadsBegin(), origOp.getPadsEnd()));
 
@@ -115,11 +122,15 @@ mlir::LogicalResult arch37xx::ConvToNCE::matchAndRewrite(IE::ConvolutionOp origO
                 /*multi_cluster_strategyAttr=*/nullptr, cmSpPatternAttr, origOp.getOutputPaddingAttr(),
                 origOp.getInputPaddingAttr());
     } else {
+        const auto newWeightsTableTensors = VPU::NewWeightsTableTensors(
+                isNewWeightTableFormat, rewriter, origOp->getLoc(), origOp.getInput(), adaptedOutElemType,
+                alignedFilter, bias, OC, ppeConverter, biasConverter, origOp.getStaticScaleAttr());
+
         rewriter.replaceOpWithNewOp<VPU::NCEConvolutionOp>(
                 origOp, origOp.getType(), origOp.getInput(), alignedFilter, weightsTable,
-                /*weight_table_data_ptr=*/nullptr,
-                /*weight_table_sp_ptr=*/nullptr, /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr,
-                /*weight_zero_points=*/nullptr, origOp.getStridesAttr(), padAttr, ppeAttr, mpeEngineAttr,
+                newWeightsTableTensors.dataPointerTensor, newWeightsTableTensors.sparsityPointerTensor,
+                newWeightsTableTensors.scaleTensor, newWeightsTableTensors.biasTensor,
+                newWeightsTableTensors.zeroPointTensor, origOp.getStridesAttr(), padAttr, ppeAttr, mpeEngineAttr,
                 rawFilterShape,
                 /*multi_cluster_strategyAttr=*/nullptr, origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     };
@@ -200,7 +211,7 @@ mlir::LogicalResult arch37xx::MatMulToNCE::matchAndRewrite(IE::MatMulOp origOp, 
     Const::ContentAttr bias;
 
     const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
-    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, VPU::getArch(origOp));
+    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
 
     auto filterShape = getShape(input2).toValues();
 
@@ -215,7 +226,7 @@ mlir::LogicalResult arch37xx::MatMulToNCE::matchAndRewrite(IE::MatMulOp origOp, 
 
     const auto weightsTableVec = VPU::NCESparsity::create5DWeightsTableData(
             origOp.getInput1(), adaptedOutElemType, input2, bias, weightsTableSize, ppeConverter, biasConverter,
-            VPU::canAutopadOutput(origOp));
+            /*hasAutopad=*/false);
 
     const auto weightsTable =
             VPU::NCESparsity::create5DWeightsTableTensor(rewriter, origOp->getLoc(), weightsTableVec,
@@ -283,9 +294,8 @@ mlir::LogicalResult arch37xx::DepthConvToNCE::matchAndRewrite(IE::GroupConvoluti
             VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     ppeAttr, outputType.getElementType());
 
-    auto weightsTableVec =
-            VPU::createWeightsTableData(origOp.getInput(), adaptedOutElemType, alignedFilter, bias, OC, ppeConverter,
-                                        biasConverter, nullptr, VPU::canAutopadOutput(origOp));
+    auto weightsTableVec = VPU::createWeightsTableData(origOp.getInput(), adaptedOutElemType, alignedFilter, bias, OC,
+                                                       ppeConverter, biasConverter, nullptr, /*hasAutopad=*/false);
     auto weightsTable = VPU::createWeightsTableTensor(rewriter, origOp->getLoc(), weightsTableVec);
 
     const auto padAttr = VPU::getPaddingAttr(getContext(), PadInfo(origOp.getPadsBegin(), origOp.getPadsEnd()));

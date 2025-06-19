@@ -218,7 +218,7 @@ bool SharedCopyInputRewriter::meetConcatPattern(VPU::ConcatOp concatOp) const {
         if (!isCopyDDR2CMX(userOp)) {
             return false;
         }
-        auto distributedOutput = userOp->getResult(0).getType().dyn_cast_or_null<VPU::DistributedTensorType>();
+        auto distributedOutput = mlir::dyn_cast_or_null<VPU::DistributedTensorType>(userOp->getResult(0).getType());
         if (distributedOutput != nullptr) {
             const auto distAttr = distributedOutput.getDistribution();
             const auto distMode = distAttr.getMode().getValue();

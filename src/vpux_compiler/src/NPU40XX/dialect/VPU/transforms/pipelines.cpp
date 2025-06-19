@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -23,15 +23,20 @@ void vpux::VPU::arch40xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
                                                              options.mcOptimizationScope, log));
     pm.addPass(VPU::createConvertNCEInterpolateToDWPass(log));
     pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                  options.readStrategyFromJson, readStrategyFileLocation, log));
+                                                  options.readStrategyFromJson, readStrategyFileLocation,
+                                                  options.dumpStrategyToLog, false, log));
     pm.addPass(VPU::createSplitGRUSequencePass(log));
     pm.addPass(VPU::arch37xx::createApplyTilingMVN1SumPass(options.enablePrefetching, log));
     pm.addPass(VPU::createTileLSTMSequencePass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(true, log));
-    pm.addPass(VPU::createOptimizeConcatPass(log));
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
 
     VPU::buildTilingPipeline(pm, VPU::TilingOptions(options), log);
+
+    if (options.enableScfComputeOpsOutlining) {
+        pm.addPass(VPU::createScfComputeOpsOutliningPass(log));
+    }
 
     pm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
     pm.addPass(VPU::createMakeOpsWithDistributedTensorPass(options.enableExplicitDistributionInfoAttr, log));
@@ -79,7 +84,7 @@ void vpux::VPU::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createFuseClampPass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(options.enableOutputEnsurance, log));
-    pm.addPass(VPU::createOptimizeConcatPass(log));
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
 
     if (options.enableWeightsSparsity) {
         VPU::buildWeightsSparsityPipeline(pm, VPU::WeightsSparsityOptions(options), log);
@@ -107,7 +112,7 @@ void vpux::VPU::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPU::createAdjustMemorySpacePass(log));
     pm.addPass(VPU::createOptimizeSharedInputCopyForConcatPass(log));
-    pm.addPass(VPU::createOptimizeConcatPass(log));
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
     pm.addPass(VPU::createCMXConcatPass(log));
@@ -118,11 +123,10 @@ void vpux::VPU::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createResolveEltwiseWithZTiledWorkloadsPass(log));
     pm.addPass(VPU::arch40xx::createComputeNCEInputWorkloadsPass(log));
     pm.addPass(VPU::createShiftOutputWorkloadsForHaloPass(log));
-    pm.addPass(VPU::createOutlineEntireMainContentPass(log));
-    pm.addPass(mlir::createCanonicalizerPass(grc));
-    if (options.wsExtractionMode.hasValue() && options.wsExtractionMode.getValue() == "gen-all") {
-        pm.addPass(VPU::createIntroduceInitFunctionPass(options, log));
+    if (options.enableEntireMainContentOutlining) {
+        pm.addPass(VPU::createOutlineEntireMainContentPass(log));
     }
+    pm.addPass(mlir::createCanonicalizerPass(grc));
 }
 
 void vpux::VPU::arch40xx::registerVPUPipelines() {

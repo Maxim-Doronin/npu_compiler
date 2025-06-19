@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vcl_tests_common.h"
@@ -30,14 +30,14 @@ vcl_result_t VCLSingleThreadTest::run(const std::string& options) {
     vcl_compiler_handle_t compiler = nullptr;
     ret = vclCompilerCreate(&compilerDesc, &deviceDesc, &compiler, nullptr);
     if (ret) {
-        std::cerr << "Failed to create compiler! Result: " << ret << std::endl;
+        printErrorInfo("Failed to create compiler! Result: 0x", ret);
         return ret;
     }
 
     vcl_compiler_properties_t compilerProp;
     ret = vclCompilerGetProperties(compiler, &compilerProp);
     if (ret) {
-        std::cerr << "Failed to query compiler props! Result: " << ret << std::endl;
+        printErrorInfo("Failed to query compiler props! Result: 0x", ret);
         vclCompilerDestroy(compiler);
         return ret;
     } else {
@@ -54,14 +54,14 @@ vcl_result_t VCLSingleThreadTest::run(const std::string& options) {
 
     ret = vclExecutableCreate(compiler, exeDesc, &executable);
     if (ret != VCL_RESULT_SUCCESS) {
-        std::cerr << "Failed to create executable handle! Result: " << ret << std::endl;
+        printErrorInfo("Failed to create executable handle! Result: 0x", ret);
         vclCompilerDestroy(compiler);
         return ret;
     }
     uint64_t blobSize = 0;
     ret = vclExecutableGetSerializableBlob(executable, nullptr, &blobSize);
     if (ret != VCL_RESULT_SUCCESS || blobSize == 0) {
-        std::cerr << "Failed to get blob size! Result: " << ret << std::endl;
+        printErrorInfo("Failed to get blob size! Result: 0x", ret);
         vclExecutableDestroy(executable);
         vclCompilerDestroy(compiler);
         return ret;
@@ -94,7 +94,7 @@ vcl_result_t VCLSingleThreadTest::run(const std::string& options) {
 
     ret = vclExecutableDestroy(executable);
     if (ret != VCL_RESULT_SUCCESS) {
-        std::cerr << "Failed to destroy executable! Result: " << ret << std::endl;
+        printErrorInfo("Failed to destroy executable! Result: 0x", ret);
         ret = vclCompilerDestroy(compiler);
         return ret;
     }
@@ -102,7 +102,7 @@ vcl_result_t VCLSingleThreadTest::run(const std::string& options) {
 
     ret = vclCompilerDestroy(compiler);
     if (ret != VCL_RESULT_SUCCESS) {
-        std::cerr << "Failed to destroy compiler! Result: " << ret << std::endl;
+        printErrorInfo("Failed to destroy compiler! Result: 0x", ret);
         return ret;
     }
     return ret;
@@ -118,12 +118,102 @@ const auto cidTool = VCLSingleThreadTest::getCidToolPath();
 const auto smokeIRInfos = VCLSingleThreadTest::readJson2Vec(cidTool + VCLTestsUtils::SMOKE_TEST_CONFIG);
 /// Models and configs for normal test
 const auto irInfos = VCLSingleThreadTest::readJson2Vec(cidTool + VCLTestsUtils::TEST_CONFIG);
-/// Params for somke tests
+/// Parameters for smoke tests
 const auto smokeParams = testing::Combine(testing::ValuesIn(smokeIRInfos));
-/// Params for normal tests
+/// Parameters for normal tests
 const auto params = testing::Combine(testing::ValuesIn(irInfos));
 
 INSTANTIATE_TEST_SUITE_P(smoke_SingleThreadCompilation, VCLSingleThreadTest, smokeParams,
                          VCLSingleThreadTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLSingleThreadTest, params, VCLSingleThreadTest::getTestCaseName);
+
+class VCLAllocatorSingleThreadTest : public VCLTestsUtils::VCLTestsCommon {
+public:
+    /**
+     * @brief Call L0 compiler to compile model to blob
+     *
+     * @param options Build flags of a model
+     */
+    vcl_result_t run(const std::string& options);
+};
+
+vcl_result_t VCLAllocatorSingleThreadTest::run(const std::string& options) {
+    vcl_result_t ret = VCL_RESULT_SUCCESS;
+    /// Default device is 4000, can be updated by test config
+    vcl_compiler_desc_t compilerDesc;
+    compilerDesc.version.major = VCL_COMPILER_VERSION_MAJOR;
+    compilerDesc.version.minor = VCL_COMPILER_VERSION_MINOR;
+    compilerDesc.debugLevel = VCL_LOG_INFO;
+    vcl_device_desc_t deviceDesc = {sizeof(vcl_device_desc_t), 0x643e, 3, 5};
+    vcl_compiler_handle_t compiler = nullptr;
+    ret = vclCompilerCreate(&compilerDesc, &deviceDesc, &compiler, nullptr);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to create compiler! Result: 0x", ret);
+        return ret;
+    }
+
+    vcl_compiler_properties_t compilerProp;
+    ret = vclCompilerGetProperties(compiler, &compilerProp);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to query compiler props! Result: 0x", ret);
+        vclCompilerDestroy(compiler);
+        return ret;
+    }
+    std::cout << "\n############################################\n\n";
+    std::cout << " Current compiler info:\n"
+              << " ID: " << compilerProp.id << "\n"
+              << " Version: " << compilerProp.version.major << "." << compilerProp.version.minor << "\n"
+              << "\tSupported opsets: " << compilerProp.supportedOpsets << "\n";
+    std::cout << "\n############################################\n\n";
+
+    vcl_allocator_t allocator;
+    allocator.allocate = VCLTestsUtils::allocateBlob;
+    allocator.deallocate = VCLTestsUtils::deallocateBlob;
+    uint8_t* blob = nullptr;
+    uint64_t size = 0;
+
+    vcl_executable_desc_t exeDesc = {getModelIR().data(), getModelIRSize(), options.c_str(), options.size() + 1};
+    ret = vclAllocatedExecutableCreate(compiler, exeDesc, &allocator, &blob, &size);
+
+    if (ret != VCL_RESULT_SUCCESS || blob == nullptr || size == 0) {
+        printErrorInfo("Failed to create executable handle! Result: 0x", ret);
+        vclCompilerDestroy(compiler);
+        return ret;
+    }
+
+#ifdef BLOB_DUMP
+    auto ir = GetParam();
+    auto netInfo = std::get<0>(ir);
+    const std::string blobName = "ct0_" + netInfo.at("network") + ".net.allocator";
+    std::ofstream bfos(blobName, std::ios::binary);
+    if (!bfos.is_open()) {
+        std::cerr << "Cannot open " << blobName << ", skip dump!" << std::endl;
+    } else {
+        bfos.write(reinterpret_cast<char*>(blob), size);
+        if (bfos.fail()) {
+            std::cerr << "Short write to " << blobName << ", the file is invalid!" << std::endl;
+        }
+    }
+    bfos.close();
+#endif  // BLOB_DUMP
+
+    allocator.deallocate(blob);
+
+    ret = vclCompilerDestroy(compiler);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to destroy compiler! Result: 0x", ret);
+        return ret;
+    }
+    return ret;
+}
+
+TEST_P(VCLAllocatorSingleThreadTest, compileModel) {
+    EXPECT_EQ(run(getNetOptions()), VCL_RESULT_SUCCESS);
+}
+
+INSTANTIATE_TEST_SUITE_P(smoke_SingleThreadCompilation, VCLAllocatorSingleThreadTest, smokeParams,
+                         VCLAllocatorSingleThreadTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLAllocatorSingleThreadTest, params,
+                         VCLAllocatorSingleThreadTest::getTestCaseName);

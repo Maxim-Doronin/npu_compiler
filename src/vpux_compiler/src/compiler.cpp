@@ -19,17 +19,15 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/network_description.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_in_background.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
 #include "vpux/compiler/frontend/ov_batch_detection.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
-#include "vpux/compiler/options_mapper.hpp"
-#include "vpux/compiler/utils/dot_printer.hpp"
-#include "vpux/compiler/utils/function_statistics_instrumentation.hpp"
-#include "vpux/compiler/utils/locations_verifier.hpp"
+#include "vpux/compiler/pipelines/developer_config.hpp"
+#include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/memory_usage_collector.hpp"
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 
 #include "vpux/utils/IE/itt.hpp"
@@ -45,9 +43,7 @@
 #include <mlir/Support/Timing.h>
 
 #include <llvm/Support/ManagedStatic.h>  // llvm_shutdown
-#include <llvm/Support/Regex.h>
 #include <llvm/Support/ThreadPool.h>
-#include <llvm/Support/raw_ostream.h>
 
 #include <openvino/core/dimension.hpp>
 #include <openvino/core/preprocess/pre_post_process.hpp>
@@ -61,10 +57,6 @@
 
 #include <algorithm>
 #include <regex>
-
-#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-#include "vpux/compiler/core/developer_build_utils.hpp"
-#endif
 
 using namespace vpux;
 
@@ -96,11 +88,11 @@ StrategyFactoryFn createDialectPipelineStrategyFn(const intel_npu::Config& confi
     auto arch = getArchKind(config);
     switch (arch) {
     case VPU::ArchKind::NPU37XX:
-        return [&](VPU::CompilationMode compilationMode) {
+        return [&](config::CompilationMode compilationMode) {
             return createDialectPipelineStrategy37XX(compilationMode, config);
         };
     case VPU::ArchKind::NPU40XX:
-        return [&](VPU::CompilationMode compilationMode) {
+        return [&](config::CompilationMode compilationMode) {
             return createDialectPipelineStrategy40XX(compilationMode, config);
         };
     default:
@@ -135,218 +127,6 @@ std::unique_ptr<IBackendPipelineStrategy> createBackendPipelineStrategy(VPU::Arc
     }
 }
 
-//
-// DeveloperConfig
-//
-
-class DeveloperConfig final {
-public:
-    explicit DeveloperConfig(Logger log);
-    DeveloperConfig(const DeveloperConfig& other) = delete;
-    DeveloperConfig& operator=(const DeveloperConfig& other) = delete;
-    ~DeveloperConfig();
-
-    void setup(mlir::DefaultTimingManager& tm) const;
-    void setup(mlir::PassManager& pm, const intel_npu::Config& config, bool isSubPipeline = false) const;
-    void dump(mlir::PassManager& pm) const;
-
-    bool useSharedConstants() const {
-        return _useSharedConstants;
-    }
-
-private:
-    Logger _log;
-
-    std::string _crashReproducerFile;
-    bool _localReproducer = true;
-
-    std::string _irPrintingFilter;
-    std::string _irPrintingFile;
-    std::string _irPrintingOrderStr;
-    bool _printFullIR = false;
-    bool _printFullConstant = false;
-    bool _useSharedConstants = true;
-    bool _allowPrintingHexConstant = true;
-    bool _printDebugInfo = false;
-    bool _printDebugInfoPrettyForm = false;
-    std::string _printAsTextualPipelineFilePath = "";
-    std::string _printDotOptions;
-
-    llvm::raw_ostream* _timingStream = nullptr;
-
-    std::unique_ptr<llvm::Regex> _irDumpFilter;
-    std::unique_ptr<llvm::raw_fd_ostream> _irDumpFile;
-    llvm::raw_ostream* _irDumpStream = nullptr;
-    IRPrintingOrder _irPrintingOrder = IRPrintingOrder::AFTER;
-};
-
-DeveloperConfig::DeveloperConfig(Logger log): _log(log) {
-#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    parseEnv("IE_NPU_CRASH_REPRODUCER_FILE", _crashReproducerFile);
-    parseEnv("IE_NPU_GEN_LOCAL_REPRODUCER", _localReproducer);
-
-    parseEnv("IE_NPU_IR_PRINTING_FILTER", _irPrintingFilter);
-    parseEnv("IE_NPU_IR_PRINTING_FILE", _irPrintingFile);
-    parseEnv("IE_NPU_IR_PRINTING_ORDER", _irPrintingOrderStr);
-    parseEnv("IE_NPU_PRINT_FULL_IR", _printFullIR);
-    parseEnv("IE_NPU_PRINT_FULL_CONSTANT", _printFullConstant);
-    parseEnv("IE_NPU_USE_SHARED_CONSTANTS", _useSharedConstants);
-    parseEnv("IE_NPU_PRINT_HEX_CONSTANT", _allowPrintingHexConstant);
-    parseEnv("IE_NPU_PRINT_DEBUG_INFO", _printDebugInfo);
-    parseEnv("IE_NPU_PRINT_DEBUG_INFO_PRETTY_FORM", _printDebugInfoPrettyForm);
-    parseEnv("IE_NPU_PRINT_AS_TEXTUAL_PIPELINE_FILE", _printAsTextualPipelineFilePath);
-
-    parseEnv("IE_NPU_PRINT_DOT", _printDotOptions);
-#endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-
-    if (_log.isActive(LogLevel::Info)) {
-        _timingStream = &Logger::getBaseStream();
-    }
-
-    if (!_irPrintingOrderStr.empty()) {
-        auto orderString = _irPrintingOrderStr;
-        std::transform(orderString.begin(), orderString.end(), orderString.begin(), [](unsigned char c) {
-            return std::toupper(c);
-        });
-        if (orderString == "BEFORE") {
-            _irPrintingOrder = IRPrintingOrder::BEFORE;
-        } else if (orderString == "AFTER") {
-            _irPrintingOrder = IRPrintingOrder::AFTER;
-        } else if (orderString == "BEFORE_AFTER") {
-            _irPrintingOrder = IRPrintingOrder::BEFORE_AFTER;
-        } else {
-            VPUX_THROW("Invalid IR printing order: {0}.\nValid cases are: before, after and before_after. They are not "
-                       "case-sensitive.\nExample: IE_NPU_IR_PRINTING_ORDER=Before",
-                       _irPrintingOrderStr);
-        }
-    }
-
-    if (!_irPrintingFilter.empty()) {
-        _irDumpFilter = std::make_unique<llvm::Regex>(_irPrintingFilter, llvm::Regex::IgnoreCase);
-
-        std::string regexErr;
-        if (!_irDumpFilter->isValid(regexErr)) {
-            VPUX_THROW("Invalid regular expression '{0}' : {1}", _irPrintingFilter, regexErr);
-        }
-
-        if (_irPrintingFile.empty()) {
-            _irDumpStream = &Logger::getBaseStream();
-        } else {
-            std::error_code err;
-            _irDumpFile = std::make_unique<llvm::raw_fd_ostream>(_irPrintingFile, err);
-            if (err) {
-                VPUX_THROW("Failed to open file '{0}' for write : {1}", _irPrintingFile, err.message());
-            }
-
-            _irDumpStream = _irDumpFile.get();
-        }
-    }
-}
-
-DeveloperConfig::~DeveloperConfig() {
-    if (_timingStream != nullptr) {
-        _timingStream->flush();
-    }
-
-    if (_irDumpStream != nullptr) {
-        _irDumpStream->flush();
-    }
-}
-
-void DeveloperConfig::setup(mlir::DefaultTimingManager& tm) const {
-    if (_timingStream == nullptr) {
-        tm.setEnabled(false);
-    } else {
-        tm.setEnabled(true);
-        tm.setDisplayMode(mlir::DefaultTimingManager::DisplayMode::Tree);
-        tm.setOutput(*_timingStream);
-    }
-}
-
-void DeveloperConfig::setup(mlir::PassManager& pm, const intel_npu::Config& config, bool isSubPipeline) const {
-    addLogging(pm, _log);
-
-    // Crash reproducer
-    if (!_crashReproducerFile.empty()) {
-        // In case the pass manager represents a sub-pipeline (e.g. for the backend), multithreading cannot be safely
-        // disabled since the context could be in a multithreading execution context
-        if (_localReproducer && !isSubPipeline) {
-            pm.getContext()->disableMultithreading();
-        }
-
-        pm.enableCrashReproducerGeneration(_crashReproducerFile, _localReproducer);
-    }
-
-    // IR printing
-    if (_irDumpFilter != nullptr) {
-        const bool printAfterOnlyOnChange = false;
-        const bool printAfterOnlyOnFailure = false;
-
-        const auto shouldPrintBeforePass = [&](mlir::Pass* pass, mlir::Operation*) {
-            return (_irDumpFilter->match(pass->getName()) || _irDumpFilter->match(pass->getArgument())) &&
-                   (_irPrintingOrder == IRPrintingOrder::BEFORE || _irPrintingOrder == IRPrintingOrder::BEFORE_AFTER);
-        };
-        const auto shouldPrintAfterPass = [&](mlir::Pass* pass, mlir::Operation*) {
-            return (_irDumpFilter->match(pass->getName()) || _irDumpFilter->match(pass->getArgument())) &&
-                   (_irPrintingOrder == IRPrintingOrder::AFTER || _irPrintingOrder == IRPrintingOrder::BEFORE_AFTER);
-        };
-
-        if (_printFullIR && !isSubPipeline) {
-            pm.getContext()->disableMultithreading();
-        }
-
-        mlir::OpPrintingFlags flags;
-        if (!_printFullConstant) {
-            flags.elideLargeElementsAttrs();
-            flags.elideLargeResourceString();
-        }
-        if (!_allowPrintingHexConstant) {
-            flags.setAllowPrintingElementsAttrAsHex(false);
-        }
-        if (_printDebugInfo) {
-            flags.enableDebugInfo(true, _printDebugInfoPrettyForm);
-        }
-
-        pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass, _printFullIR, printAfterOnlyOnChange,
-                            printAfterOnlyOnFailure, *_irDumpStream, flags);
-    }
-
-    // Dot printing
-    if (!_printDotOptions.empty()) {
-        addDotPrinter(pm, _printDotOptions);
-    }
-    // Locations verifier
-    addLocationsVerifier(pm);
-
-    const auto shouldEnableFunctionStatistics = getEnableFunctionStatisticsInstrumentation(config).value_or(false);
-    if (shouldEnableFunctionStatistics) {
-        _log.info("The function statistics instrumentation is enabled");
-        addFunctionStatisticsInstrumentation(pm, _log);
-    }
-
-    // Memory usage instrumentation
-    const auto shouldEnableMemoryCollector = getEnableMemoryUsageCollector(config).value_or(false);
-    _log.info("The memory usage collector is {0}", shouldEnableMemoryCollector ? "enabled" : "disabled");
-    if (shouldEnableMemoryCollector) {
-        addMemoryUsageCollector(pm, _log);
-    }
-
-    // Enable pass verifiers
-    const auto shouldEnableVerifiers = getEnableVerifiers(config).value_or(false);
-    _log.info("Verifiers are {0}", shouldEnableVerifiers ? "enabled" : "disabled");
-    pm.enableVerifier(shouldEnableVerifiers);
-}
-
-void DeveloperConfig::dump(mlir::PassManager& pm) const {
-    if (!_printAsTextualPipelineFilePath.empty()) {
-        std::error_code err;
-        auto passesDumpFile = std::make_unique<llvm::raw_fd_ostream>(_printAsTextualPipelineFilePath, err);
-        if (err) {
-            VPUX_THROW("Failed to open file '{0}' for write : {1}", _printAsTextualPipelineFilePath, err.message());
-        }
-        pm.printAsTextualPipeline(*passesDumpFile);
-    }
-}
 }  // namespace
 
 //
@@ -394,18 +174,74 @@ namespace {
 
 auto importNetwork(mlir::MLIRContext* ctx, const std::shared_ptr<ov::Model>& model,
                    const std::vector<std::shared_ptr<const ov::Node>>& originalParameters,
-                   const std::vector<std::shared_ptr<const ov::Node>>& originalResults, const DeveloperConfig& devConf,
-                   mlir::TimingScope& rootTiming, bool enableProfiling, vpux::DummyOpMode stubLayers,
-                   bool dynamicShapeToStatic, Logger log) {
+                   const std::vector<std::shared_ptr<const ov::Node>>& originalResults, const intel_npu::Config& config,
+                   const DeveloperConfig& devConf, mlir::TimingScope& rootTiming, Logger log) {
     auto importTiming = rootTiming.nest("Import network");
+
+    const auto dynamicShapeToStatic = config.get<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
+    const auto dummyOpReplacement = getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED);
+
     return IE::importNetwork(ctx, model, originalParameters, originalResults, devConf.useSharedConstants(),
-                             importTiming, enableProfiling, stubLayers, dynamicShapeToStatic, log.nest());
+                             importTiming, config.get<intel_npu::PERF_COUNT>(), dummyOpReplacement,
+                             dynamicShapeToStatic, log.nest());
 }
 
-mlir::LogicalResult compileNetwork(mlir::ModuleOp module, mlir::PassManager& pm, mlir::TimingScope& rootTiming) {
-    auto compileTiming = rootTiming.nest("Compile network");
-    pm.enableTiming(compileTiming);
+mlir::LogicalResult compileNetwork(mlir::ModuleOp module, mlir::PassManager& pm, mlir::TimingScope& nestTiming) {
+    pm.enableTiming(nestTiming);
     return pm.run(module);
+}
+
+void middleendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& module, const DeveloperConfig& devConf,
+                          const intel_npu::Config& config, mlir::TimingScope& compileNetworkTiming, Logger log) {
+    auto initIEtoVPUIPTiming = compileNetworkTiming.nest("IE to VPUIP pipeline");
+
+    mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+    devConf.setup(pm, config);
+
+    buildPipeline(config, pm, log);
+
+    auto compileResult = compileNetwork(module.get(), pm, initIEtoVPUIPTiming);
+    VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
+
+    devConf.dump(pm);
+}
+
+void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const DeveloperConfig& devConf,
+                        const intel_npu::Config& config, mlir::TimingScope& compileNetworkTiming, Logger log) {
+    auto elfTiming = compileNetworkTiming.nest("ELF pipeline");
+
+    mlir::PassManager elfPm(vpuipModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+    devConf.setup(elfPm, config);
+
+    mlir::LogicalResult compileResult = mlir::failure();
+    auto wlmStatus = vpux::VPUIP::getWlmStatus(vpuipModule.get());
+    auto wlmStillEnabled = wlmStatus == vpux::VPUIP::WlmStatus::ENABLED;
+    auto backendPipelineStrategy = createBackendPipelineStrategy(getArchKind(config));
+    backendPipelineStrategy->buildELFPipeline(elfPm, config, elfTiming, log, wlmStillEnabled);
+    if (getWlmRollback(config).value_or(false)) {
+        auto backupModule = mlir::OwningOpRef<mlir::ModuleOp>(vpuipModule.get().clone());
+        // We moved away from the exception-based fallback mechanism because the MLIRContext remained in an invalid
+        // state when the exception was thrown, it assumed that it was still executing the pass leading to broken
+        // compile time stats. Now we rely on the PassManager::run result and WLM status attribute to decide if we need
+        // to rollback. This allows MLIR to run the pass instrumentation and set the context to the correct state.
+        compileResult = compileNetwork(vpuipModule.get(), elfPm, elfTiming);
+        wlmStatus = vpux::VPUIP::getWlmStatus(vpuipModule.get());
+        if (mlir::failed(compileResult) && wlmStatus == vpux::VPUIP::WlmStatus::FAILED) {
+            log.warning("Failed to export to ELF with current config, reverting to simple ELF pipeline");
+            vpuipModule = std::move(backupModule);
+            mlir::PassManager simpleElfPm(vpuipModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+            devConf.setup(simpleElfPm, config, /*isSubPipeline=*/true);
+            backendPipelineStrategy->buildELFPipeline(simpleElfPm, config, elfTiming, log, /*useWlm=*/false);
+            vpux::VPUIP::setWlmStatus(vpuipModule.get(), vpux::VPUIP::WlmStatus::DISABLED);
+            VPUX_THROW_UNLESS(mlir::succeeded(compileNetwork(vpuipModule.get(), simpleElfPm, elfTiming)),
+                              "Compilation failed");
+        } else {
+            VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
+        }
+    } else {
+        compileResult = compileNetwork(vpuipModule.get(), elfPm, elfTiming);
+        VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
+    }
 }
 
 auto exportToELF(mlir::ModuleOp module, Logger log) {
@@ -525,22 +361,13 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
                                                DeveloperConfig& devConf, mlir::TimingScope& rootTiming,
                                                const intel_npu::Config& config, vpux::Logger& log) {
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "compileModel");
-    const auto arch = getArchKind(config);
 
     OV_ITT_TASK_NEXT(COMPILER_IMPLEMENTATION, "importNetwork");
 
-    const auto dynamicShapeToStatic = config.get<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
-    const auto dummyOpReplacement = getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED);
     mlir::OwningOpRef<mlir::ModuleOp> module =
-            importNetwork(&ctx, model, originalParameters, originalResults, devConf, rootTiming,
-                          config.get<intel_npu::PERF_COUNT>(), dummyOpReplacement, dynamicShapeToStatic, log);
+            importNetwork(&ctx, model, originalParameters, originalResults, config, devConf, rootTiming, log);
 
     OV_ITT_TASK_NEXT(COMPILER_IMPLEMENTATION, "PassManager");
-
-    mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    devConf.setup(pm, config);
-
-    buildPipeline(config, pm, log);
 
 #ifdef BACKGROUND_FOLDING_ENABLED
     const auto foldingConfig = getConstantFoldingInBackground(config);
@@ -562,41 +389,10 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
                               wlmEnabled ? vpux::VPUIP::WlmStatus::ENABLED : vpux::VPUIP::WlmStatus::DISABLED);
 
     // applies each pass in the pipeline
-    auto compileResult = compileNetwork(module.get(), pm, rootTiming);
-    VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
+    auto compileNetworkTiming = rootTiming.nest("Compile network");
 
-    mlir::PassManager elfPm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    devConf.setup(elfPm, config);
-    auto wlmStatus = vpux::VPUIP::getWlmStatus(module.get());
-    auto wlmStillEnabled = wlmStatus == vpux::VPUIP::WlmStatus::ENABLED;
-    auto backendPipelineStrategy = createBackendPipelineStrategy(arch);
-    backendPipelineStrategy->buildELFPipeline(elfPm, config, rootTiming, log, wlmStillEnabled);
-    if (getWlmRollback(config).value_or(false)) {
-        auto backup_module = mlir::OwningOpRef<mlir::ModuleOp>(module.get().clone());
-        // We moved away from the exception-based fallback mechanism because the MLIRContext remained in an invalid
-        // state when the exception was thrown, it assumed that it was still executing the pass leading to broken
-        // compile time stats. Now we rely on the PassManager::run result and WLM status attribute to decide if we need
-        // to rollback. This allows MLIR to run the pass instrumentation and set the context to the correct state.
-        compileResult = compileNetwork(module.get(), elfPm, rootTiming);
-        wlmStatus = vpux::VPUIP::getWlmStatus(module.get());
-        if (mlir::failed(compileResult) && wlmStatus == vpux::VPUIP::WlmStatus::FAILED) {
-            log.warning("Failed to export to ELF with current config, reverting to simple ELF pipeline");
-            module = std::move(backup_module);
-            mlir::PassManager simpleElfPm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-            devConf.setup(simpleElfPm, config, /*isSubPipeline=*/true);
-            backendPipelineStrategy->buildELFPipeline(simpleElfPm, config, rootTiming, log, /*useWlm=*/false);
-            vpux::VPUIP::setWlmStatus(module.get(), vpux::VPUIP::WlmStatus::DISABLED);
-            VPUX_THROW_UNLESS(mlir::succeeded(compileNetwork(module.get(), simpleElfPm, rootTiming)),
-                              "Compilation failed");
-        } else {
-            VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
-        }
-    } else {
-        compileResult = compileNetwork(module.get(), elfPm, rootTiming);
-        VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
-    }
-
-    devConf.dump(pm);
+    middleendCompilation(module, devConf, config, compileNetworkTiming, log);
+    backendCompilation(module, devConf, config, compileNetworkTiming, log);
 
     return module;
 }
@@ -620,7 +416,7 @@ auto createContext(mlir::DialectRegistry& registry, const intel_npu::Config& con
 }
 
 auto enableMultithreading(mlir::MLIRContext& context, const intel_npu::Config& config)
-        -> std::unique_ptr<llvm::ThreadPool> {
+        -> std::unique_ptr<llvm::StdThreadPool> {
     // Set the number of threads in the pool to be the total number of threads of the compilation minus one: one for the
     // main thread and the rest for the MLIR thread pool. If user didn't specify the number of threads, default to 8
     // threads for the pool. By default MLIR will attempt to use all of the threads available on the system which might
@@ -636,7 +432,7 @@ auto enableMultithreading(mlir::MLIRContext& context, const intel_npu::Config& c
     strategy.ThreadsRequested = totalThreadCount - 1;
     strategy.Limit = true;  // limits number of threads to the number of physical threads
 
-    auto threadPool = std::make_unique<llvm::ThreadPool>(strategy);
+    auto threadPool = std::make_unique<llvm::StdThreadPool>(strategy);
     context.setThreadPool(*threadPool);
 
     return threadPool;
@@ -645,7 +441,7 @@ auto enableMultithreading(mlir::MLIRContext& context, const intel_npu::Config& c
 struct CompilerSetup {
     mlir::DialectRegistry registry;
     std::unique_ptr<mlir::MLIRContext> ctx;
-    std::unique_ptr<llvm::ThreadPool> threadPool;
+    std::unique_ptr<llvm::StdThreadPool> threadPool;
 
     static std::unique_ptr<CompilerSetup> create(const intel_npu::Config& config);
     ~CompilerSetup() = default;

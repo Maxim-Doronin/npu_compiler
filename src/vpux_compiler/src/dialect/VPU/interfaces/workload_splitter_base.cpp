@@ -49,7 +49,7 @@ void vpux::VPU::WorkloadSplitterBase::correctInvalidWorkload(const VPU::Sparsity
             producerNCEOps.insert(invalidSparseOps.begin(), invalidSparseOps.end());
         }
 
-        const auto supportedChannels = getSupportedChannels(producerNCEOps, sparsityConstraint);
+        auto supportedChannels = getSupportedChannels(producerNCEOps, sparsityConstraint);
         const auto invalidDepthwiseOps = findInvalidDepthwiseOps(producerNCEOps, supportedChannels);
         const auto invalidNCEPermuteOps = findInvalidNCEPermuteOps(producerNCEOps);
         if (invalidSparseOps.empty() && invalidDepthwiseOps.empty() && invalidNCEPermuteOps.empty()) {
@@ -57,7 +57,7 @@ void vpux::VPU::WorkloadSplitterBase::correctInvalidWorkload(const VPU::Sparsity
         }
 
         _log.trace("supportedChannels {0} for nceOp {1} to correct workloads", supportedChannels, nceOp->getLoc());
-        auto channelPadding = 0;  // used for NCEPermute
+        auto channelPadding = int64_t(0);  // used for NCEPermute
 
         int64_t opIdx = 1;
         for (auto op : producerNCEOps) {
@@ -78,7 +78,39 @@ void vpux::VPU::WorkloadSplitterBase::correctInvalidWorkload(const VPU::Sparsity
                         mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getShape()[Dims4D::Act::C] -
                         mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape()[Dims4D::Act::C];
             }
-            auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
+            auto workloads = to_small_vector(nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>());
+            // The workloads must have the same channel size when there's output sparsity
+            // It's because the workloads share the unique storage element size
+            // However the last workload can have any channel size which is smaller than the previous workloads
+            //
+            // We can't skip the last workload for DepthwiseConv and NCEPermute because they have extra constraints on
+            // workload size
+            // We can't skip the last workload if there are multiple NCE operations as producer because we don't know
+            // which NCE operation provides the last workload
+            if ((producerNCEOps.size() == 1) && isInvalidSparsity && !isInvalidDepthwise && !isInvalidNCEPermuteOp) {
+                const auto lastWorkloadSizes = parseIntArrayAttr<int64_t>(workloads.back().getOutSizes());
+                const auto lastChannel = lastWorkloadSizes[Dims4D::Act::C.ind()];
+                auto canSkipTheLastWorkload = llvm::any_of(supportedChannels, [&](int64_t channel) -> bool {
+                    return lastChannel < channel;
+                });
+
+                if (canSkipTheLastWorkload) {
+                    workloads.pop_back();
+                }
+            }
+
+            // In case ODU autopad is used and the existing channel padding needs to be removed, update the supported
+            // channels to reflect the unpadded channels
+            if (channelPadding != 0 && VPU::canAutopadOutput(op)) {
+                const auto outputChannels =
+                        mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getShape()[Dims4D::Act::C];
+                for (auto& channel : supportedChannels) {
+                    if (channel == outputChannels) {
+                        channel -= channelPadding;
+                    }
+                }
+            }
+
             for (auto workloadOp : llvm::make_early_inc_range(workloads)) {
                 const auto wlSizes = parseIntArrayAttr<int64_t>(workloadOp.getOutSizes());
                 auto wlChannels = wlSizes[Dims4D::Act::C.ind()];
@@ -162,9 +194,6 @@ mlir::DenseSet<mlir::Operation*> vpux::VPU::WorkloadSplitterBase::findConsumerOp
     mlir::DenseSet<mlir::Operation*> consumerOps;
     for (auto userOp : value.getUsers()) {
         auto taskOp = userOp;
-        if (auto nceClusterOp = mlir::dyn_cast<VPU::NCEClusterTilingOp>(userOp)) {
-            taskOp = nceClusterOp.getInnerTaskOp();
-        }
 
         if (mlir::isa<VPU::NCEOpInterface, VPU::DesparsifyOp, mlir::func::ReturnOp>(taskOp)) {
             consumerOps.insert(userOp);
@@ -183,9 +212,6 @@ mlir::DenseSet<mlir::Operation*> vpux::VPU::WorkloadSplitterBase::findProducerNC
 
     auto producerOp = value.getDefiningOp();
     auto taskOp = producerOp;
-    if (auto nceClusterOp = mlir::dyn_cast<VPU::NCEClusterTilingOp>(producerOp)) {
-        taskOp = nceClusterOp.getInnerTaskOp();
-    }
 
     if (auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(taskOp)) {
         producerNCEOps.insert(nceOp);
@@ -275,9 +301,6 @@ mlir::DenseSet<mlir::Operation*> vpux::VPU::WorkloadSplitterBase::findInvalidSpa
     }
 
     auto result = nceOp->getResult(0);
-    if (auto parentOp = nceOp->getParentOfType<VPU::NCEClusterTilingOp>()) {
-        result = parentOp->getResult(0);
-    }
     auto producerOps = findProducersForConsumers(result);
     auto workloadsChannels = getWorkloadsChannels(producerOps);
 
@@ -430,13 +453,22 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitterBase::getSupportedChannels(
             // a combination of supported channels. For example, A DW Conv which has single workload with
             // channel 96 should be split to {64, 32} A DW Conv which has single workload with channel 112
             // should be split to {32, 32 ,32}
+            // However if there are multiple workloads and the last workload's channel is smaller than the current
+            // supported channel, we can skip the check because the last workload can have any channel size which is
+            // smaller than the previous workloads. For example, for a Conv with output sparsity which has 256 output
+            // channel, we first split across clusters as {96, 96, 64} with three tiles config, then we can skip the
+            // check of 64 and keep 96 as a supported channel
             if (llvm::find(supportedChannels, lastChannel) == supportedChannels.end()) {
                 supportedChannels.erase(
                         std::remove_if(supportedChannels.begin(), supportedChannels.end(),
                                        [&](const int64_t channels) {
-                                           return (lastChannel % channels) &&
-                                                  (llvm::find(supportedChannels, lastChannel % channels) ==
-                                                   supportedChannels.end());
+                                           auto remainder = lastChannel % channels;
+                                           auto remainderIsNotSupported =
+                                                   remainder && (llvm::find(supportedChannels, remainder) ==
+                                                                 supportedChannels.end());
+                                           auto needToCheckRemainderFromLastChannel =
+                                                   ((lastChannel > channels) || (workloads.size() == 1));
+                                           return needToCheckRemainderFromLastChannel && remainderIsNotSupported;
                                        }),
                         supportedChannels.end());
             }

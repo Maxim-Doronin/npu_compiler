@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -90,6 +90,7 @@ private:
     void unrollSegmentedOrOverlapped(mlir::Location loc, VPURT::TaskOp vpurtTask, mlir::OpBuilder& builder,
                                      bool isDataOverlapped) const;
     void unrollDuplicated(mlir::Location loc, VPURT::TaskOp vpurtTask, mlir::OpBuilder& builder) const;
+    void unrollZeroOffsetWeightTableDMA(mlir::Location loc, VPURT::TaskOp vpurtTask, mlir::OpBuilder& builder) const;
 
 private:
     Logger _log;

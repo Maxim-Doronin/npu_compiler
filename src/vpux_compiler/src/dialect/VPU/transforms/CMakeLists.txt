@@ -14,6 +14,7 @@ add_npu_library(npu_compiler_dialect_vpu_transforms
         npu_profiling_utils
         flatbuffers
         npu_elf
+        npu_compiler_dialect_config
         npu_compiler_dialect_vpu
         npu_compiler_dialect_vpu_interfaces
         npu_compiler_dialect_vpu_utils

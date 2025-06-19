@@ -67,6 +67,7 @@ public:
     static const DimsOrder HCNW;
     static const DimsOrder HNWC;
     static const DimsOrder CWNH;
+    static const DimsOrder CNHW;
 
     // Orders for 2D Convolution weights
     static const DimsOrder OIYX;
@@ -193,6 +194,8 @@ inline bool operator!=(DimsOrder order1, DimsOrder order2) {
 }
 
 std::optional<Dim> getHighestNonTrivialDim(ShapeRef shape, const DimsOrder& dimOrder);
+
+std::optional<Dim> getInnermostNonTrivialDim(ShapeRef shape, const DimsOrder& dimOrder);
 
 }  // namespace vpux
 

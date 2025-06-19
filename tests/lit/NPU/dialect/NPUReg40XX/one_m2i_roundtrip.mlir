@@ -4,6 +4,7 @@
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
+// RUN: vpux-opt --emit-bytecode --init-compiler="vpu-arch=%arch%" %s | vpux-opt --vpu-arch=%arch% | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 module @OneM2IWithoutAttributes {
@@ -26,7 +27,7 @@ module @OneM2IWithoutAttributes {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_M2I_0 idx(!VPURegMapped.Index<0:0:0>) <M2I>
       }
       ELF.CreateSection @text.dma0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-        "NPUReg40XX.M2I"() <{input = @DeclareBuffer0, descriptor = #NPUReg40XX.VpuMediaTask<
+        NPUReg40XX.M2I descriptor = <
           VpuMediaTask {
             inAddr0 {
               UINT inAddr = 0,
@@ -145,14 +146,14 @@ module @OneM2IWithoutAttributes {
             pad8_0 = UINT 0,
             pad8_1 = UINT 0,
           } requires 11:4:10
-        >, output_buff = @DeclareBuffer1, sym_name = "M2I_0_0"}> : () -> ()
+         > {input = @DeclareBuffer0, output_buff = @DeclareBuffer1, sym_name = "M2I_0_0"}
       }
     }
     return
   }
 }
 
-// CHECK: descriptor = #NPUReg40XX.VpuMediaTask<
+// CHECK: NPUReg40XX.M2I descriptor = <
 // CHECK: VpuMediaTask {
 // CHECK:   inAddr0 {
 // CHECK:     UINT inAddr = 0,

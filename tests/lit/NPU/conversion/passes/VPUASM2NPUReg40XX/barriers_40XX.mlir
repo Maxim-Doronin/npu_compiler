@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -27,7 +27,7 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
 }
 
 //CHECK-LABEL: @main
-//CHECK: "NPUReg40XX.ConfigureBarrier"() <{descriptor = #NPUReg40XX.VpuBarrierCountConfig<
+//CHECK:       NPUReg40XX.ConfigureBarrier descriptor = <
 //CHECK:         VpuBarrierCountConfig {
 //CHECK:           next_same_id_ = UINT 0xFFFFFFFF,
 //CHECK:           producer_count_ = UINT 3,
@@ -35,8 +35,8 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
 //CHECK:           real_id_ = UINT 0,
 //CHECK:           barcfg_pad_3_ = UINT 0
 //CHECK:         } requires 11:4:10
-//CHECK:       >, sym_name = "ConfigureBarrier_0_0"}> : () -> ()
-//CHECK:       "NPUReg40XX.ConfigureBarrier"() <{descriptor = #NPUReg40XX.VpuBarrierCountConfig<
+//CHECK:       > {sym_name = "ConfigureBarrier_0_0"}
+//CHECK:       NPUReg40XX.ConfigureBarrier descriptor = <
 //CHECK:         VpuBarrierCountConfig {
 //CHECK:           next_same_id_ = UINT 0xC,
 //CHECK:           producer_count_ = UINT 0x22,
@@ -44,8 +44,8 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
 //CHECK:           real_id_ = UINT 0x11,
 //CHECK:           barcfg_pad_3_ = UINT 0
 //CHECK:         } requires 11:4:10
-//CHECK:       >, sym_name = "ConfigureBarrier_0_1"}> : () -> ()
-//CHECK:       "NPUReg40XX.ManagedBarrier"() <{descriptor = #NPUReg40XX.VpuTaskBarrierMap<
+//CHECK:       > {sym_name = "ConfigureBarrier_0_1"}
+//CHECK:       NPUReg40XX.ManagedBarrier descriptor = <
 //CHECK:         VpuTaskBarrierMap {
 //CHECK:           tb_next_same_id = UINT 0xFFFFFFFF,
 //CHECK:           tb_producer_count = UINT 4,
@@ -56,8 +56,8 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
 //CHECK:           tb_enqueue_count = UINT 0,
 //CHECK:           tb_reserved_next_enqueue_id = UINT 0
 //CHECK:         } requires 11:4:10
-//CHECK:       >, sym_name = "ConfigureBarrier_0_2"}> : () -> ()
-//CHECK:       "NPUReg40XX.ManagedBarrier"() <{descriptor = #NPUReg40XX.VpuTaskBarrierMap<
+//CHECK:       > {sym_name = "ConfigureBarrier_0_2"}
+//CHECK:       NPUReg40XX.ManagedBarrier descriptor = <
 //CHECK:         VpuTaskBarrierMap {
 //CHECK:           tb_next_same_id = UINT 4,
 //CHECK:           tb_producer_count = UINT 0x17,
@@ -68,4 +68,4 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
 //CHECK:           tb_enqueue_count = UINT 0,
 //CHECK:           tb_reserved_next_enqueue_id = UINT 0
 //CHECK:         } requires 11:4:10
-//CHECK:       >, sym_name = "ConfigureBarrier_0_3"}> : () -> ()
+//CHECK:       > {sym_name = "ConfigureBarrier_0_3"}

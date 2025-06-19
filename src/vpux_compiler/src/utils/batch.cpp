@@ -190,7 +190,7 @@ Shape DebatchCoefficients::applyDefault(ShapeRef shape) {
 
 Shape DebatchCoefficients::apply(ShapeRef shape, size_t index) const {
     VPUX_THROW_UNLESS(index < orderedInputCoefficients.size(),
-                      "DebatchCoefficients requested index: {0} must be lesser than tesnor description count: {1}",
+                      "DebatchCoefficients requested index: {0} must be lesser than tensor description count: {1}",
                       index, orderedInputCoefficients.size());
     auto [nodeCoeffDescriptionBeginIt, nodeCoeffDescriptionEndIt] = orderedInputCoefficients.equal_range("");
     size_t nodesCount = std::distance(nodeCoeffDescriptionBeginIt, nodeCoeffDescriptionEndIt);
@@ -213,4 +213,50 @@ Shape DebatchCoefficients::apply(ShapeRef shape, const std::string& nodeName) co
 
 size_t DebatchCoefficients::size() const {
     return orderedInputCoefficients.size();
+}
+
+/**
+ * @brief Retrieves the coefficient description at the specified index.
+ *
+ * This function attempts to access the coefficient description from the
+ * `orderedInputCoefficients` container based on the provided index. If the
+ * index is out of bounds, an empty `std::optional` is returned.
+ *
+ * @param index The zero-based index of the coefficient to retrieve.
+ * @return std::optional<DebatchCoeffDescription> containing the coefficient
+ *         description if the index is valid, or an empty optional if the
+ *         index is out of range.
+ */
+std::optional<DebatchCoeffDescription> DebatchCoefficients::getCoefficient(size_t index) const {
+    if (index >= orderedInputCoefficients.size()) {
+        return {};
+    }
+
+    auto it = orderedInputCoefficients.begin();
+    std::advance(it, index);
+    return it->second;
+}
+
+/**
+ * @brief Retrieves the coefficient description associated with a given node name.
+ *
+ * This function searches for the coefficient description in the `orderedInputCoefficients`
+ * map using the provided node name. If the node name is empty or not found in the map,
+ * the function returns an empty optional.
+ *
+ * @param nodeName The name of the node for which the coefficient description is to be retrieved.
+ *                 Must be a non-empty string.
+ * @return std::optional<DebatchCoeffDescription> An optional containing the coefficient description
+ *         if the node name is found in the map, or an empty optional if the node name is empty
+ *         or not found.
+ */
+std::optional<DebatchCoeffDescription> DebatchCoefficients::getCoefficient(const std::string& nodeName) const {
+    if (nodeName.empty()) {
+        return {};
+    }
+    auto it = orderedInputCoefficients.find(nodeName);
+    if (it == orderedInputCoefficients.end()) {
+        return {};
+    }
+    return it->second;
 }

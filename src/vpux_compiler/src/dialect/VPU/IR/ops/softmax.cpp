@@ -71,6 +71,11 @@ bool vpux::VPU::SoftMaxOp::checkStrategyCompatibility(VPU::MultiClusterStrategy 
         return true;
     }
 
+    if (inputType.getRank() == 5 && strategy == VPU::MultiClusterStrategy::SplitOverGroup &&
+        getAxisInd() != DimsGroups5D::Act::G.ind() && inShape[DimsGroups5D::Act::G] > 1) {
+        return true;
+    }
+
     return false;
 }
 

@@ -30,8 +30,8 @@ bool fitInCMXAfterSplit(VPU::GRUSequenceOp op, Logger log) {
 
     const auto batchSize = outputYShape[0];
     const auto numDirection = outputYShape[1];
-    const auto seqLength = op.getSeqLengthAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
-    const auto hiddenSize = op.getHiddenSizeAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+    const auto seqLength = mlir::dyn_cast_or_null<mlir::IntegerAttr>(op.getSeqLengthAttr()).getValue().getSExtValue();
+    const auto hiddenSize = mlir::dyn_cast_or_null<mlir::IntegerAttr>(op.getHiddenSizeAttr()).getValue().getSExtValue();
 
     const auto byteSize = outputYType.getElemTypeSize().to<Byte>().count();
 

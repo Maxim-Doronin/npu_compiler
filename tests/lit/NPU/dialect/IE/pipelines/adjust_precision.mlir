@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --adjust-precision %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 module @Test {
 
 net.NetworkInfo

@@ -15,11 +15,12 @@ namespace vpux::IE {
 class IConvertQuantizeOpsToNceOpsStrategy {
 public:
     virtual void prepareAvgPool(mlir::ConversionTarget& toAvgPoolTarget, mlir::RewritePatternSet& toAvgPoolPatterns,
-                                mlir::MLIRContext& ctx, Logger& log) = 0;
+                                mlir::MLIRContext& ctx, Logger& log) const = 0;
     virtual void prepareEltwise(mlir::ConversionTarget& toEltwiseTarget, mlir::RewritePatternSet& toEltwisePatterns,
-                                mlir::MLIRContext& ctx, Logger& log) = 0;
-    virtual void prepareQuantToDw(mlir::ConversionTarget& quantToDwTarget, mlir::RewritePatternSet& quantToDwPatterns,
-                                  mlir::MLIRContext& ctx, Logger& log) = 0;
+                                mlir::MLIRContext& ctx, Logger& log) const = 0;
+    virtual void prepareQuantToConv(mlir::ConversionTarget& quantToConvTarget,
+                                    mlir::RewritePatternSet& quantToConvPatterns, mlir::MLIRContext& ctx,
+                                    Logger& log) const = 0;
 
     virtual ~IConvertQuantizeOpsToNceOpsStrategy() = default;
 };

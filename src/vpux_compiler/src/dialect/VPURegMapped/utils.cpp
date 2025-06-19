@@ -1,8 +1,3 @@
-//
-// Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
-//
-
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 
@@ -56,22 +51,6 @@ std::optional<TaskBufferLayoutOp> getTaskBufferLayoutOp(mlir::Operation* op) {
     VPUX_THROW_WHEN(std::distance(taskBufferOpsRange.begin(), taskBufferOpsRange.end()) > 1,
                     "Only one VPURegMapped::TaskBufferLayoutOp should exist");
     return *(taskBufferOpsRange.begin());
-}
-
-template <typename T>
-struct TaskTypeMapper;
-
-template <>
-struct TaskTypeMapper<VPURegMapped::TaskType> {
-    static VPU::TaskType map(VPURegMapped::TaskType regMappedType) {
-        return static_cast<VPU::TaskType>(
-                static_cast<std::underlying_type<VPURegMapped::TaskType>::type>(regMappedType));
-    }
-};
-
-uint32_t getDefaultTaskListCount(VPURegMapped::TaskType taskType, VPU::ArchKind archKind) {
-    VPU::TaskType vpuTaskType = TaskTypeMapper<VPURegMapped::TaskType>::map(taskType);
-    return VPU::getDefaultTaskListCount(vpuTaskType, archKind);
 }
 
 }  // namespace VPURegMapped

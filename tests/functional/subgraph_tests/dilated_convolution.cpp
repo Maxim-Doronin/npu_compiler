@@ -1,13 +1,15 @@
-//
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpu_ov2_layer_test.hpp>
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 
 #include "shared_test_classes/single_op/shape_of.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
+
+#include "openvino/op/group_conv.hpp"
+#include "openvino/op/max_pool.hpp"
 
 using namespace ov::test;
 

@@ -707,14 +707,53 @@ mlir::LogicalResult ConvertToDMAPass::SwKernelPerAxisTileConverter::matchAndRewr
         }
         return requiredCMX;
     };
-    for (size_t i = 0; i < checked_cast<size_t>(diffDims.size()); ++i) {
-        auto currRepeatDim = diffDims[i];
+
+    // In case of multiple broadcast axis, convert to PerAxisTileDMAOp from the inner axis to outer axis
+    // which can reduce the DMA plane number.
+
+    // e.g. Input 1344x1x1x2@NCHW, Output 1344x9x9x2@NCHW, repeats [1x9x9x1]
+    // Convert to 2 sub PerAxisTileDMA Op:
+    //
+    //  Sub Op 0: Input 1344x1x1x2, Output 1344x9x1x2, repeats [1x9x1x1], DMA-numPlanes=1344
+    //  Sub Op 1: Input 1344x9x1x2, Output 1344x9x9x2, repeats [1x1x9x4], DMA-numPlanes=1344x9=12096
+    //   ->
+    //  Sub Op 0: Input 1344x1x1x2, Output 1344x1x9x2, repeats [1x1x9x1], DMA-numPlanes=1344
+    //  Sub Op 1: Input 1344x1x9x2, Output 1344x9x9x2, repeats [1x9x1x4], DMA-numPlanes=1344
+    //
+
+    auto adjustDimsOrder = [&](DimArrRef dims) {
+        SmallVector<std::pair<Dim, size_t>> diffDimsOrder;
+        DimArr diffDimsOut;
+
+        const auto inputOrder = inType.getDimsOrder();
+
+        for (const auto dim : dims) {
+            diffDimsOrder.push_back({dim, inputOrder.dimPos(dim)});
+        }
+
+        // Skip the case of 1x1x1x512 -> 1x2x512x512 as the intermdediate tensor@1x2x1x512
+        // has smaller element number than tensor@1x1x512x512
+        std::sort(diffDimsOrder.begin(), diffDimsOrder.end(), [&](const auto& lhs, const auto& rhs) {
+            return lhs.second > rhs.second && !(outShape[lhs.first] > outShape[rhs.first]);
+        });
+
+        for (const auto& [dim, pos] : diffDimsOrder) {
+            diffDimsOut.push_back(inputOrder.dimAt(pos));
+        }
+
+        return diffDimsOut;
+    };
+
+    const auto dimsOrder = adjustDimsOrder(diffDims);
+
+    for (size_t i = 0; i < checked_cast<size_t>(dimsOrder.size()); ++i) {
+        auto currRepeatDim = dimsOrder[i];
         auto lastInType = mlir::cast<vpux::NDTypeInterface>(lastResult.getType());
         auto newOutShape = to_small_vector(lastInType.getShape());
         newOutShape[currRepeatDim.ind()] = outShape[currRepeatDim];
         auto newMemRefOutputType = outType.changeShape(ShapeRef(newOutShape));
-        if (i < checked_cast<size_t>(diffDims.size()) - 1) {
-            auto nextRepeatDim = diffDims[i + 1];
+        if (i < checked_cast<size_t>(dimsOrder.size()) - 1) {
+            auto nextRepeatDim = dimsOrder[i + 1];
             // Infer the output shape for the next PerAxisTile
             auto nextOutShape = std::move(newOutShape);
             nextOutShape[nextRepeatDim.ind()] = outShape[nextRepeatDim];

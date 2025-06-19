@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,6 +14,8 @@
 
 namespace vpux {
 namespace VPUIP {
+
+bool isBeneficialForUsingSWDepthToSpace(VPU::DepthToSpaceOp d2sOp);
 
 // Replace permute with DMA
 std::optional<Shape> getPermuteDMAInputShape(NDTypeInterface inType, NDTypeInterface outType, mlir::AffineMap memPerm,
@@ -49,6 +51,15 @@ bool doesPermuteDMATileDimSupportWrapInCluster(vpux::NDTypeInterface inputType, 
                                                VPUIP::DistributedBufferType distributedOutputType, vpux::Logger log);
 
 std::optional<mlir::AffineMap> getMemPermFromSwKernel(VPUIP::SwKernelOp swKernelTask);
+
+/**
+ * Cost function to evaluate whether it's beneficial to implement the operation using DMA for
+ * operations like MemPermute.
+ * @return true if it's beneficial for using DMA, otherwise false.
+ */
+bool isBeneficialForUsingPermuteDMA(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType,
+                                    mlir::AffineMap memPerm, int64_t dmaPortCount, vpux::Logger log);
+
 bool isMemPermSwKernel(VPUIP::SwKernelOp swKernelTask);
 
 // Replace DepthToSpace with DMA

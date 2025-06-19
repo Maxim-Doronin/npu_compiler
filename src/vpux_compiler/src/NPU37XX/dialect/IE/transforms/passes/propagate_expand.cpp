@@ -19,6 +19,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/empty_node.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
@@ -133,8 +134,9 @@ bool EltwiseShapeCastRewriter::checkInput(mlir::Value tensor, int64_t origChanne
             return false;
         }
 
-        if (getShape(slice.getSource())[Dims4D::Act::C] / (depthToSpace.getBlockSize() * depthToSpace.getBlockSize()) !=
-            origChannels) {
+        const auto blockSize = depthToSpace.getBlockSize();
+        VPUX_THROW_WHEN(blockSize <= 0, "blockSize must be greater than zero");
+        if (getShape(slice.getSource())[Dims4D::Act::C] / (blockSize * blockSize) != origChannels) {
             return false;
         }
 
@@ -150,9 +152,8 @@ mlir::LogicalResult EltwiseShapeCastRewriter::matchAndRewrite(IE::ExpandOp expan
 
     // F16 case would be beneficial to be executed as Concat + Const.
     auto inputTensor = expandOp.getInput();
-    if (mlir::cast<vpux::NDTypeInterface>(inputTensor.getType())
-                .getElementType()
-                .dyn_cast_or_null<mlir::quant::QuantizedType>() == nullptr) {
+    if (mlir::dyn_cast_or_null<mlir::quant::QuantizedType>(
+                mlir::cast<vpux::NDTypeInterface>(inputTensor.getType()).getElementType()) == nullptr) {
         return mlir::failure();
     }
 
@@ -271,7 +272,11 @@ mlir::LogicalResult DepthToSpaceSliceRewriter::matchAndRewrite(IE::ExpandOp expa
         return mlir::failure();
     }
 
-    auto blockSizeSquare = depthToSpace.getBlockSize() * depthToSpace.getBlockSize();
+    const auto blockSize = depthToSpace.getBlockSize();
+    if (blockSize <= 0) {
+        return matchFailed(rewriter, depthToSpace, "Unsupported block size: {0}", blockSize);
+    }
+    auto blockSizeSquare = blockSize * blockSize;
     auto sliceInChannels = getShape(slice.getSource())[Dims4D::Act::C];
     if (sliceInChannels / blockSizeSquare != getShape(expandOp)[Dims4D::Act::C]) {
         return mlir::failure();

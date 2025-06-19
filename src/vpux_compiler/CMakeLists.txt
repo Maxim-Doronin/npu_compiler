@@ -48,34 +48,6 @@ if(NOT ENABLE_MLIR_COMPILER)
 endif()
 
 #
-# Embed VPUNN models
-#
-
-find_package(Git REQUIRED)
-
-execute_process(
-    COMMAND ${GIT_EXECUTABLE} lfs pull
-    WORKING_DIRECTORY "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel")
-
-vpux_embed_bin_file(
-    SOURCE_FILE "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_2_7_159.vpunn"
-    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_data_2_7.hpp.inc"
-    VARIABLE_NAME "COST_MODEL_2_7")
-vpux_embed_bin_file(
-    SOURCE_FILE "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_2_7_159.fast.vpunn"
-    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_data_2_7_fast.hpp.inc"
-    VARIABLE_NAME "COST_MODEL_2_7_FAST")
-
-vpux_embed_bin_file(
-    SOURCE_FILE "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_40_159_strict.vpunn"
-    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_data_4_0.hpp.inc"
-    VARIABLE_NAME "COST_MODEL_4_0")
-vpux_embed_bin_file(
-    SOURCE_FILE "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_40_159_strict.fast.vpunn"
-    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_data_4_0_fast.hpp.inc"
-    VARIABLE_NAME "COST_MODEL_4_0_FAST")
-
-#
 # OBJECT target
 #
 

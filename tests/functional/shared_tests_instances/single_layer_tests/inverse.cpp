@@ -20,10 +20,9 @@ TEST_P(InverseLayerTestCommon, NPU3720_HW) {
 
 TEST_P(InverseLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
-    // TODO E####-159644
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
+
 }  // namespace test
 }  // namespace ov
 

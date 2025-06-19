@@ -9,8 +9,8 @@
 
 #include <gtest/gtest.h>
 
-#include <openvino/opsets/opset4.hpp>
-#include <openvino/opsets/opset6.hpp>
+#include <openvino/opsets/opset4_decl.hpp>
+#include <openvino/opsets/opset6_decl.hpp>
 
 using namespace vpux::driverCompilerAdapter;
 

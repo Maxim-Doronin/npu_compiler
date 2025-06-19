@@ -100,7 +100,7 @@ Const::Content vpux::Const::ReverseAttr::transform(vpux::Const::Content& input) 
 
     const auto axis = getAxis().getInt();
 
-    if (auto qtype = inputElementType.dyn_cast_or_null<mlir::quant::UniformQuantizedType>()) {
+    if (auto qtype = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(inputElementType)) {
         inputElementType = normalizeQuantStorageType(qtype);
     }
     if (inputElementType.isSignedInteger(8)) {

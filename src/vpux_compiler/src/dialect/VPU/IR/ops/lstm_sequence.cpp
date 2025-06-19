@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -8,8 +8,10 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/max_lstm_hidden_size_constant.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/factories/shave_controls_dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -92,42 +94,96 @@ mlir::Value createSyncBuffer(mlir::OpBuilder& rewriter, ShapeRef shape) {
                               auxIndicesType, ArrayRef<int32_t>(0));
 }
 
-}  // namespace
+//
+// Create a buffer that will contain all internal usage buffers for MatMull on DPU usage scope.
+// Dpu usage buffers: [dpuInvariantSize + dpuVariantSize + dpuWeightTableSize + maxDpuStatsSize]
+// lstmIntermediateMultiplicationBuffersize - is the outputs of MatMull between hidden and all 4 recurrence weights.
+mlir::Value createIntermediateSumsBuffer(mlir::OpBuilder& rewriter, int64_t hiddenSize) {
+    const auto module = getModule(rewriter);
+    constexpr int32_t lstmNumberOfGates = 4;
+    auto phaseSizeWithPadding = hiddenSize;
+    const auto lstmIntermediateMultiplicationBuffersize =
+            phaseSizeWithPadding * lstmNumberOfGates * sizeof(uint16_t);  // intermediate buffer size
+    const auto dpuWeightTableSize = vpux::VPU::NCEInvariant::getWeightsTableSize(hiddenSize) * lstmNumberOfGates;
 
-void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
-                                      ::mlir::Value inputData, ::mlir::Value initialHiddenState,
-                                      ::mlir::Value initialCellState, ::mlir::Value reccurenceWeights,
-                                      ::mlir::IntegerAttr sequenceLength, vpux::IE::RNNSequenceDirectionAttr direction,
-                                      vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
-    const auto module = getModule(odsBuilder);
-    auto tileOp = IE::getTileExecutor(module);
+    int64_t size = dpuWeightTableSize.count() + lstmIntermediateMultiplicationBuffersize +
+                   VPU::getDpuDebugDataSize(VPU::getArch(module)) + VPU::getDPUVariantDataSize(VPU::getArch(module)) +
+                   VPU::getDPUInvariantDataSize(VPU::getArch(module));
 
-    const auto numShavesPerTile = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount();
-    const auto syncBuffer = createSyncBuffer(odsBuilder, Shape{1, 1, 1, numShavesPerTile});
-
-    build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, reccurenceWeights, syncBuffer,
-          sequenceLength, direction, multiClusterStrategy);
+    size = size / sizeof(int32_t);  // int32_t type format
+    const auto shape = Shape{1, 1, 1, size};
+    const auto auxIndicesType = mlir::RankedTensorType::get(shape.raw(), getSInt32Type(rewriter.getContext()));
+    return Const::createConst(rewriter,
+                              appendLoc(mlir::UnknownLoc::get(rewriter.getContext()), "LstmDpu_InternalSumsBuffer"),
+                              auxIndicesType, ArrayRef<int32_t>(0));
 }
 
-bool vpux::VPU::LSTMSequenceOp::isSupported(vpux::IE::LSTMSequenceOp op) {
-    if (op.getReccurenceWeights().getDefiningOp<Const::DeclareOp>() == nullptr) {
+bool isSupported(VPU::ArchKind arch, ShapeRef initialHiddenStateShape, bool useDpu) {
+    auto maxHiddenSize = getMaxLstmSequenceHiddenSizeConstant(arch);
+
+    // shave implementation allow reduced size. Bigger size can and are map on DPU.
+    if (initialHiddenStateShape.back() > maxHiddenSize) {
         return false;
     }
 
-    auto maxHiddenSize = getMaxLstmSequenceHiddenSizeConstant(VPU::getArch(op));
-
-    // shave implementation allow reduced size. Bigger size can and are map on DPU.
-    const auto initialHiddenStateShape = getShape(op.getInitialHiddenState());
-
-    // shave asm implement just 16 element alignment hidden size. Except that, speed is low.
-    constexpr int64_t alignmentRequired(16);
-    if (initialHiddenStateShape.back() > maxHiddenSize) {
-        return false;
+    // shave asm implement just 32 element alignment hidden size. Except that, speed is low.
+    int64_t alignmentRequired = 16;
+    if (useDpu) {
+        alignmentRequired = 32;
     }
     if (initialHiddenStateShape.back() % alignmentRequired != 0) {
         return false;
     }
     return true;
+}
+
+}  // namespace
+
+void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
+                                      ::mlir::Value inputData, ::mlir::Value initialHiddenState,
+                                      ::mlir::Value initialCellState, ::mlir::Value reccurenceWeights,
+                                      ::mlir::Value biases, ::mlir::IntegerAttr sequenceLength,
+                                      vpux::IE::RNNSequenceDirectionAttr direction, ::mlir::BoolAttr useDpu,
+                                      vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
+    const auto module = getModule(odsBuilder);
+    auto tileOp = IE::getTileExecutor(module);
+
+    mlir::Value internalBuffer = nullptr;
+    auto useDpuVal = useDpu ? useDpu.getValue() : false;
+    if (useDpuVal) {
+        const auto initialHiddenStateType = mlir::cast<vpux::NDTypeInterface>(initialHiddenState.getType());
+        const auto initialHiddenStateShape = initialHiddenStateType.getShape();
+        internalBuffer = createIntermediateSumsBuffer(odsBuilder, initialHiddenStateShape.back());
+    } else {
+        const auto numShavesPerTile = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount();
+        internalBuffer = createSyncBuffer(odsBuilder, Shape{1, 1, 1, numShavesPerTile});
+    }
+
+    build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, reccurenceWeights, biases,
+          internalBuffer, sequenceLength, direction, useDpu, multiClusterStrategy);
+}
+
+void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
+                                      ::mlir::Value inputData, ::mlir::Value initialHiddenState,
+                                      ::mlir::Value initialCellState, ::mlir::Value reccurenceWeights,
+                                      ::mlir::Value biases, ::mlir::IntegerAttr sequenceLength,
+                                      vpux::IE::RNNSequenceDirectionAttr direction,
+                                      vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
+    const auto module = getModule(odsBuilder);
+    auto useDpu = VPU::getShaveControlsDpu(VPU::getArch(module));
+    // extra alignment condition should be meet in order to run on internal on dpu.
+    useDpu = useDpu ? ::isSupported(VPU::getArch(module), getShape(initialHiddenState), useDpu) : useDpu;
+    mlir::BoolAttr useDpuAttr(nullptr);
+    useDpuAttr = useDpu ? mlir::BoolAttr::get(odsBuilder.getContext(), useDpu) : useDpuAttr;
+    build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, reccurenceWeights, biases,
+          sequenceLength, direction, useDpuAttr, multiClusterStrategy);
+}
+
+bool vpux::VPU::LSTMSequenceOp::isSupported(vpux::IE::LSTMSequenceOp op, bool useDpu) {
+    if (op.getReccurenceWeights().getDefiningOp<Const::DeclareOp>() == nullptr) {
+        return false;
+    }
+    return ::isSupported(VPU::getArch(op), getShape(op.getInitialHiddenState()), useDpu);
 }
 
 //

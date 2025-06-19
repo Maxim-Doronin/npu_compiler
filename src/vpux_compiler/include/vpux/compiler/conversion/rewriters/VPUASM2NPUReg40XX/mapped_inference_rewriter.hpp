@@ -14,8 +14,8 @@ namespace vpuasm2npureg40xx {
 
 class MappedInferenceRewriter final : public mlir::OpRewritePattern<VPUASM::MappedInferenceOp> {
 public:
-    MappedInferenceRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<VPUASM::MappedInferenceOp>(ctx), _log(log) {
+    MappedInferenceRewriter(mlir::MLIRContext* ctx, Logger log, ELF::SymbolReferenceMap& symRefMap)
+            : mlir::OpRewritePattern<VPUASM::MappedInferenceOp>(ctx), _log(log), _symRefMap(symRefMap) {
         setDebugName("MappedInference_VPUASM2NPUReg40XXRewriter");
     }
 
@@ -24,6 +24,7 @@ public:
 
 private:
     Logger _log;
+    ELF::SymbolReferenceMap& _symRefMap;
 };
 }  // namespace vpuasm2npureg40xx
 }  // namespace vpux

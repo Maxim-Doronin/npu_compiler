@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include <vpux/compiler/dialect/config/IR/dialect.hpp>
 #include <vpux/compiler/dialect/core/IR/dialect.hpp>
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"

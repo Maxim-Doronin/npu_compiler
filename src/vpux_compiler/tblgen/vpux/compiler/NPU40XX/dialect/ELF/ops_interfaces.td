@@ -75,7 +75,7 @@ def ELF_SectionInterface : OpInterface<"ElfSectionInterface"> {
             "getSectionType", (ins), [{}], [{
                 auto op = this->getOperation();
                 if (op->hasAttr("secType")) {
-                    auto secTypeAttr = (op->getAttr("secType")).template cast<::vpux::ELF::SectionTypeAttrAttr>();
+                    auto secTypeAttr = mlir::cast<::vpux::ELF::SectionTypeAttrAttr>(op->getAttr("secType"));
                     return std::optional<::vpux::ELF::SectionTypeAttr>(secTypeAttr.getValue());
                 } else {
                     return std::nullopt;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -208,11 +208,7 @@ def VPUIP_BoundedBuffer :
         "BoundedBuffer",
         [
             DeclareTypeInterfaceMethods<NDTypeInterface>,
-            DeclareTypeInterfaceMethods<BaseMemRefTypeInterface>,
-            DeclareTypeInterfaceMethods<VPU_DistributedTypeInterface,
-                ["containsDistributedTypes", "getDistributedTypes", "changeShapeForExplicitDistribution",
-                 "changeShapeElemTypeForExplicitDistribution", "changeTypeComponentsForExplicitDistribution",
-                 "extractDenseTileForExplicitDistribution", "extractViewTileForExplicitDistribution"]>
+            DeclareTypeInterfaceMethods<BaseMemRefTypeInterface>
         ]
     > {
     let summary = "VPUIP Bounded Buffer Type";

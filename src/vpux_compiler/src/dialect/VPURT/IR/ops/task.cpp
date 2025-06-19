@@ -9,9 +9,11 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/types.hpp"
 
+#include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 #include "vpux/utils/core/format.hpp"
 
 using namespace vpux;
@@ -172,7 +174,10 @@ VPURT::TaskQueueType vpux::VPURT::getTaskQueueType(TaskOp taskOp, bool ignoreInd
         }
         auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(wrappedTaskOp);
         VPUX_THROW_WHEN(swKernelOp == nullptr, "Could not get SW kernel task");
-        queueType.id = swKernelOp.getTileIndex().value_or(0);
+        auto numTiles = VPU::getNumTiles(swKernelOp);
+        auto tileIndex = swKernelOp.getTileIndex().value_or(0);
+        auto listIndex = swKernelOp.getListIndex().value_or(0);
+        queueType.id = getShaveQueueIdEncoding(numTiles, tileIndex, listIndex);
     } else if (queueType.type == VPU::ExecutorKind::DMA_NN) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
         if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(wrappedTaskOp)) {

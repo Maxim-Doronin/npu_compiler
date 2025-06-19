@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/range.hpp"
@@ -346,6 +347,13 @@ IE::ExecutorResourceOp vpux::IE::getAvailableExecutor(mlir::ModuleOp mainModule,
     return mainModule.lookupSymbol<IE::ExecutorResourceOp>(executorAttr);
 }
 
+mlir::LogicalResult vpux::IE::ExecutorResourceOp::verify() {
+    if (getCount() <= 0) {
+        return errorAt(*this, "Number of executor units should be a positive integer, while it is {0}", getCount());
+    }
+    return mlir::success();
+}
+
 //
 // TileResourceOp
 //
@@ -372,6 +380,13 @@ bool vpux::IE::TileResourceOp::hasAvailableMemory(mlir::SymbolRefAttr memSpace) 
 
 IE::MemoryResourceOp vpux::IE::TileResourceOp::getAvailableMemory(mlir::SymbolRefAttr memSpace) {
     return lookupSymbol<IE::MemoryResourceOp>(memSpace);
+}
+
+mlir::LogicalResult vpux::IE::TileResourceOp::verify() {
+    if (getCount() <= 0) {
+        return errorAt(*this, "Number of executor units should be a positive integer, while it is {0}", getCount());
+    }
+    return mlir::success();
 }
 
 //

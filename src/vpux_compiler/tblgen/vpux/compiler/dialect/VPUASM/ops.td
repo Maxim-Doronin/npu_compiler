@@ -85,9 +85,9 @@ def VPUASM_ConstBufferOp :
         VPUASM_Memory<"ConstBuffer",
             [
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getMemorySection", "getAlignmentRequirements"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-                DeclareOpInterfaceMethods<ELF_BufferLocationInterface>
+                DeclareOpInterfaceMethods<ELF_BufferLocationInterface, ["getMemorySection"]>
             ]
         > {
     let summary = "Constant R/O buffer symbolic declaration";
@@ -123,7 +123,7 @@ def VPUASM_DeclareBufferOp :
             [
                 DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-                DeclareOpInterfaceMethods<ELF_BufferLocationInterface>
+                DeclareOpInterfaceMethods<ELF_BufferLocationInterface, ["getMemorySection"]>
             ]
         > {
     let summary = "RunTime dynamic R/W buffer symbolic declaration";
@@ -145,7 +145,7 @@ def VPUASM_DeclareTaskBufferOp :
             [
                 DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getMemoryOffset", "setMemoryOffset", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-                DeclareOpInterfaceMethods<ELF_BufferLocationInterface>,
+                DeclareOpInterfaceMethods<ELF_BufferLocationInterface, ["getMemorySection"]>,
                 VPUASM_IndexedTaskInterface
             ]
         > {
@@ -380,7 +380,7 @@ def VPUASM_ManagedMappedInferenceOp :
         OptionalAttr<SymbolRefArrayOfArraysAttr>:$dmaTasks,
         OptionalAttr<SymbolRefAttr>:$workItems,
         OptionalAttr<SymbolRefAttr>:$barrierTasks,
-        OptionalAttr<SymbolRefAttr>:$bootstrapTasks,
+        OptionalAttr<SymbolRefAttr>:$bootstrapBarriers,
         SymbolRefAttr:$nnrtConfig,
         OptionalAttr<SymbolRefAttr>:$barrierConfigurationTasks,
         OptionalAttr<SymbolRefAttr>:$numOfBarrierReprogrammings,
@@ -389,7 +389,7 @@ def VPUASM_ManagedMappedInferenceOp :
         I64Attr:$workItemsCount,
         I64Attr:$barrierCount,
         IntAttr:$final_barrier_id,
-        I64Attr:$bootstrapTasksCount,
+        I64Attr:$bootstrapBarriersCount,
         I64Attr:$bootsrapWorkItemsCount,
         I64Attr:$barrierConfigurationTasksCount,
         I64Attr:$barriersReprogrammingCount,
@@ -409,7 +409,7 @@ def VPUASM_ManagedMappedInferenceOp :
         `dmas`  $dmaTasks
         `workItems` `(` $workItems `)`
         `barrierTasks` `(` $barrierTasks `)`
-        (`bootstrapTasks` `(` $bootstrapTasks^ `)`)?
+        (`bootstrapBarriers` `(` $bootstrapBarriers^ `)`)?
         `nnrtConfig` `(` $nnrtConfig `)`
         `mappedInferenceVersion` `(` $mappedInferenceVersion `)`
         (`barrierConfigurationTasks` `(` $barrierConfigurationTasks^ `)`)?
@@ -721,6 +721,7 @@ def VPUASM_ShaveStackFrameOp :
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySizeCached", "getAlignmentRequirements"]>,
                 DeclareOpInterfaceMethods<ELF_PredefinedPurposeMemoryOpInterface>,
+                DeclareOpInterfaceMethods<ELF_BufferLocationInterface, ["getMemorySection"]>
             ]
         > {
     let summary = "Declaration of Act Shave stack frames buffers";
@@ -944,7 +945,8 @@ def VPUASM_DPUVariantOp :
         OptionalAttr<IntAttr>:$workload_id,
         UnitAttr:$spr_lut_read,
         UnitAttr:$pallet_lut_read,
-        UnitAttr:$force_inv_read
+        UnitAttr:$force_inv_read,
+        OptionalAttr<I64ArrayAttr>:$variant_primitive_id // IDs for variant primitives A and B
     );
 
     let assemblyFormat = [{
@@ -1010,6 +1012,7 @@ def VPUASM_DPUInvariantOp :
         OptionalAttr<SymbolRefAttr>:$output,
         OptionalAttr<SymbolRefAttr>:$output_sparsity_map,
         OptionalAttr<SymbolRefAttr>:$profiling_data,
+        OptionalAttr<SymbolRefAttr>:$dynamic_sequence_length,
 
         OptionalAttr<SymbolRefAttr>:$max_per_xy,
         OptionalAttr<SymbolRefAttr>:$min_per_xy,
@@ -1040,6 +1043,7 @@ def VPUASM_DPUInvariantOp :
         OptionalAttr<IntAttr>:$output_se_size,
         UnitAttr:$is_permute_quantize,
         UnitAttr:$is_small_kernel_optimized,
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig,
 
         UI64Attr:$start_after,
         UI64Attr:$clean_after,

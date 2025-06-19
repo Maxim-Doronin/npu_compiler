@@ -17,5 +17,6 @@ InputTiling DetectionOutputSortOpInputTilingOnShave(VPUIP::SwKernelOp swKernelOp
 
 OutputTiling GRUSequenceOutputTiling(const vpux::TileInfo& firstOutputTile);
 OutputTiling lstmSequenceOutputTiling(const vpux::TileInfo& firstOutputTile);
+OutputTiling DynamicQuantizeOutputTiling(const vpux::TileInfo& firstOutputTile);
 
 }  // namespace vpux::VPU

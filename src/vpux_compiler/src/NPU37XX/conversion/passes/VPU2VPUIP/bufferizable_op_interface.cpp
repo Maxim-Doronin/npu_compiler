@@ -27,6 +27,7 @@ void registerConvertOpBufferizableOpInterfaces(mlir::DialectRegistry& registry) 
 
 void vpux::arch37xx::registerBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
     vpux::registerConstDeclareBufferizableOpInterfaces(registry);
+    vpux::registerCoreBufferizableOpInterfaces(registry);
     vpux::registerFuncAndReturnBufferizableOpInterfaces(registry);
     vpux::registerSoftwareLayerBufferizableOpInterfaces(registry);
     vpux::registerVpuNceBufferizableOpInterfaces(registry);

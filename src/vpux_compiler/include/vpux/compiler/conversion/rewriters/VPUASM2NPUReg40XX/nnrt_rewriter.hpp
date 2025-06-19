@@ -14,8 +14,8 @@ namespace vpuasm2npureg40xx {
 
 class NNRTConfigRewriter final : public mlir::OpRewritePattern<VPUASM::NNrtConfigOp> {
 public:
-    NNRTConfigRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<VPUASM::NNrtConfigOp>(ctx), _log(log) {
+    NNRTConfigRewriter(mlir::MLIRContext* ctx, Logger log, ELF::SymbolReferenceMap& symRefMap)
+            : mlir::OpRewritePattern<VPUASM::NNrtConfigOp>(ctx), _log(log), _symRefMap(symRefMap) {
         setDebugName("NNRTConfig_VPUASM2NPUReg40XXRewriter");
     }
 
@@ -24,6 +24,7 @@ public:
 
 private:
     Logger _log;
+    ELF::SymbolReferenceMap& _symRefMap;
 };
 }  // namespace vpuasm2npureg40xx
 }  // namespace vpux

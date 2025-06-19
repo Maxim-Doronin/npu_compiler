@@ -30,10 +30,8 @@ mlir::LogicalResult BarrierRewriter::matchAndRewrite(VPUASM::ConfigureBarrierOp 
     barrierConfigDescriptor.write<Fields::consumer_count_>(origOp.getConsumerCount());
     barrierConfigDescriptor.write<Fields::real_id_>(origOp.getId());
 
-    auto barrierConfigDescriptorAttr =
-            VpuBarrierCountConfigAttr::get(rewriter.getContext(), std::move(barrierConfigDescriptor));
     rewriter.create<NPUReg40XX::ConfigureBarrierOp>(origOp->getLoc(), origOp.getSymNameAttr(),
-                                                    barrierConfigDescriptorAttr);
+                                                    std::move(barrierConfigDescriptor));
 
     rewriter.eraseOp(origOp);
 

@@ -97,6 +97,13 @@ mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir:
         return mlir::failure();
     }
 
+    // Can't fold TileOp if the layer has precision convert like from fp16 to fp32
+    auto userInType = mlir::cast<vpux::NDTypeInterface>(outputUserOp->getOperand(0).getType());
+    auto userOutType = mlir::cast<vpux::NDTypeInterface>(outputUserOp->getResult(0).getType());
+    if (userInType.getElementType() != userOutType.getElementType()) {
+        return mlir::failure();
+    }
+
     // Can't fold TileOp if the layer has post operation
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(outputUserOp)) {
         if (layerWithPostOp.getPostOp() != nullptr) {

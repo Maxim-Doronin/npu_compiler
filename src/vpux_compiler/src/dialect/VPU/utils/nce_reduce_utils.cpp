@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -35,13 +36,7 @@ bool vpux::VPU::isNCEReduceSupported(mlir::Operation* op, LogCb logCb) {
 }
 
 bool vpux::VPU::isReduceOpSupportedOnNCE(mlir::Operation* op) {
-    auto module = getModuleOp(op);
-    auto pipelineOptionOp = module.lookupSymbol<IE::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS);
-    VPUX_THROW_WHEN(pipelineOptionOp == nullptr, "Failed to find PipelineOptions to fetch ReduceOpSupported");
-
-    auto attrValue = pipelineOptionOp.lookupSymbol<IE::OptionOp>(REDUCE_SUPPORTED);
-    VPUX_THROW_WHEN(attrValue == nullptr, "Failed to find ReduceOpSupported IE.OptionOp attribute");
-    return static_cast<bool>(attrValue.getOptionValue());
+    return VPU::getConstraint(op, REDUCE_SUPPORTED);
 }
 
 VPUIP::NCETaskType vpux::VPU::configureNCEReduceTaskType(VPU::NCEReduceOp origOp) {

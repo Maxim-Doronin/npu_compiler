@@ -21,6 +21,7 @@ add_npu_library(npu_compiler_conversion
         npu_compiler_dialect_npureg40xx
         npu_compiler_dialect_elfnpu37xx
         npu_compiler_dialect_vpurt
+        MLIRMathTransforms
     PUBLIC
         mlir-dependencies
     SYSTEM_INCLUDES

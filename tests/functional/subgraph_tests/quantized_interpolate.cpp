@@ -6,6 +6,8 @@
 
 #include "common_test_utils/node_builders/fake_quantize.hpp"
 
+#include "openvino/op/interpolate.hpp"
+
 using namespace ov::test;
 namespace {
 

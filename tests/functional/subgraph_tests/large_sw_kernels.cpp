@@ -7,10 +7,14 @@
 
 #include "common_test_utils/node_builders/constant.hpp"
 
+#include "openvino/op/minimum.hpp"
+#include "openvino/op/mish.hpp"
+#include "openvino/op/scatter_update.hpp"
+
 namespace ov::test {
 using LargeMishTestParams = std::tuple<ov::Shape>;
 
-class LargeMishTest_NPU3720 : public VpuOv2LayerTest, public testing::WithParamInterface<LargeMishTestParams> {
+class LargeMishTestCommon : public VpuOv2LayerTest, public testing::WithParamInterface<LargeMishTestParams> {
     void SetUp() override {
         auto inputShape = std::get<ov::Shape>(GetParam());
         init_input_shapes({ov::test::InputShape{{}, std::vector<ov::Shape>{inputShape}}});
@@ -40,29 +44,22 @@ public:
     };
 };
 
-TEST_P(LargeMishTest_NPU3720, SW) {
+TEST_P(LargeMishTestCommon, NPU3720_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU3720);
 }
 
-INSTANTIATE_TEST_SUITE_P(smoke_LargeMishInDDR, LargeMishTest_NPU3720,
-                         ::testing::Values(LargeMishTestParams{
-                                 {1, 64, 32, 514}  // in_shape
-                         }),
-                         LargeMishTest_NPU3720::getTestCaseName);
-
-class LargeMishTest_NPU4000 : public LargeMishTest_NPU3720 {};
-
-TEST_P(LargeMishTest_NPU4000, HW) {
+TEST_P(LargeMishTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
 
-INSTANTIATE_TEST_SUITE_P(smoke_LargeMishInDDR, LargeMishTest_NPU4000,
+INSTANTIATE_TEST_SUITE_P(smoke_LargeMishInDDR, LargeMishTestCommon,
                          ::testing::Values(LargeMishTestParams{
                                  {1, 64, 32, 514}  // in_shape
                          }),
-                         LargeMishTest_NPU3720::getTestCaseName);
+                         LargeMishTestCommon::getTestCaseName);
+
 class TwoMishTest_NPU3720 : public VpuOv2LayerTest, public testing::WithParamInterface<LargeMishTestParams> {
     void SetUp() override {
         auto inputShape = std::get<ov::Shape>(GetParam());
@@ -115,7 +112,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_TwoMishInDDR, TwoMishTest_NPU4000,
                                  {1, 32, 32, 514}  // in_shape
                          }),
                          TwoMishTest_NPU3720::getTestCaseName);
-class TwoScatterUpdateTest_NPU3720 : public VpuOv2LayerTest, public testing::WithParamInterface<LargeMishTestParams> {
+class TwoScatterUpdateTestCommon : public VpuOv2LayerTest, public testing::WithParamInterface<LargeMishTestParams> {
     void SetUp() override {
         auto inputShape = std::get<ov::Shape>(GetParam());
         init_input_shapes({ov::test::InputShape{{}, std::vector<ov::Shape>{inputShape}}});
@@ -150,27 +147,19 @@ public:
     };
 };
 
-TEST_P(TwoScatterUpdateTest_NPU3720, SW) {
+TEST_P(TwoScatterUpdateTestCommon, NPU3720_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU3720);
 }
 
-INSTANTIATE_TEST_SUITE_P(smoke_TwoScatterUpdateInDDR, TwoScatterUpdateTest_NPU3720,
-                         ::testing::Values(LargeMishTestParams{
-                                 {1, 64, 32, 514}  // in_shape
-                         }),
-                         TwoScatterUpdateTest_NPU3720::getTestCaseName);
-
-class TwoScatterUpdateTest_NPU4000 : public TwoScatterUpdateTest_NPU3720 {};
-
-TEST_P(TwoScatterUpdateTest_NPU4000, HW) {
+TEST_P(TwoScatterUpdateTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
 
-INSTANTIATE_TEST_SUITE_P(smoke_TwoScatterUpdateInDDR, TwoScatterUpdateTest_NPU4000,
+INSTANTIATE_TEST_SUITE_P(smoke_TwoScatterUpdateInDDR, TwoScatterUpdateTestCommon,
                          ::testing::Values(LargeMishTestParams{
                                  {1, 64, 32, 514}  // in_shape
                          }),
-                         TwoScatterUpdateTest_NPU3720::getTestCaseName);
+                         TwoScatterUpdateTestCommon::getTestCaseName);
 }  // namespace ov::test

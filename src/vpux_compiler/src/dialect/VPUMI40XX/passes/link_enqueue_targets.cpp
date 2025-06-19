@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 
 namespace vpux::VPUMI40XX {
 #define GEN_PASS_DECL_LINKENQUEUETARGETS
@@ -31,6 +32,7 @@ private:
 
 void LinkEnqueueTargetsPass::safeRunOnFunc() {
     auto netFunc = getOperation();
+    bool fifoPerShaveEngineEnabled = VPU::isFifoPerShaveEngineEnabled(netFunc);
 
     for (auto enqueue : netFunc.getOps<VPURegMapped::EnqueueOp>()) {
         if (enqueue.getStart() == enqueue.getEnd()) {
@@ -44,7 +46,7 @@ void LinkEnqueueTargetsPass::safeRunOnFunc() {
             continue;
         }
 
-        if (enqueue.getTaskType() != VPURegMapped::TaskType::ActKernelInvocation) {
+        if (enqueue.getTaskType() != VPURegMapped::TaskType::ActKernelInvocation || fifoPerShaveEngineEnabled) {
             while (end != start) {
                 end.linkToPreviousTask();
                 end = end.getPreviousTask();

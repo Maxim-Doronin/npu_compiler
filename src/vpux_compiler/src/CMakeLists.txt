@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2024 Intel Corporation.
+# Copyright (C) 2023-2025 Intel Corporation.
 # SPDX-License-Identifier: Apache 2.0
 #
 
@@ -19,6 +19,7 @@ add_subdirectory(conversion)
 add_subdirectory(ShaveCodeGen)
 add_subdirectory(dialect/const)
 add_subdirectory(dialect/core)
+add_subdirectory(dialect/config)
 add_subdirectory(dialect/net)
 add_subdirectory(dialect/ELFNPU37XX)
 add_subdirectory(dialect/IE)

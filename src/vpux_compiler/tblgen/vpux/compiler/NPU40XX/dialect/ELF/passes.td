@@ -66,14 +66,6 @@ def SetOpOffsets : PassBase<"set-elf-op-offsets", "vpux::FunctionPass"> {
     let dependentDialects = [
         "vpux::ELF::ELFDialect"
     ];
-
-    let options = [
-        Option<
-            "computeTaskBufferOffsets", "compute-task-buffer-offsets",
-            "bool", "false",
-            "Flag which enables/disables the computation of offsets for TaskBufferOps"
-        >
-    ];
 }
 
 //
@@ -187,6 +179,46 @@ def AddABIVersion : PassBase<"add-abi-version", "vpux::FunctionPass"> {
 
     let dependentDialects = [
         "vpux::ELF::ELFDialect",
+    ];
+}
+
+//
+// SetCMXSymbolValue
+//
+
+def SetCMXSymbolValue : PassBase<"set-cmx-symbol", "vpux::ModulePass"> {
+    let summary = "Set cmx symbol value pass";
+
+    let description = [{
+        Set CMX symbol value that are known at compile time. Note that the values used
+        in this pass are also used in HostParsedInference_4000 (from the elf library). Any change
+        to the values from this pass or values from the elf library should be duplicated in order to
+        ensure the same behavior. The symbols will be later used in another pass to apply relocations for known symbols.
+    }];
+
+    let constructor = "vpux::ELF::createSetCMXSymbolValuePass()";
+
+        let options = [
+        Option<
+            "workspaceAddr", "cmx-workspace-addr",
+            "uint64_t", "0",
+            "CMX workspace start address."
+        >,
+        Option<
+            "workspaceSize", "cmx-workspace-size",
+            "uint64_t", "0",
+            "CMX workspace size."
+        >,
+        Option<
+            "metadataAddr", "cmx-metadata-addr",
+            "uint64_t", "0",
+            "CMX metadata start address."
+        >,
+        Option<
+            "metadataSize", "cmx-metadata-size",
+            "uint64_t", "0",
+            "CMX metadata size."
+        >
     ];
 }
 

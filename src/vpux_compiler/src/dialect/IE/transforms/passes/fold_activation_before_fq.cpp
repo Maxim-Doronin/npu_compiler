@@ -49,8 +49,8 @@ mlir::LogicalResult FoldReLUBeforeFQ::matchAndRewrite(IE::ReLUOp reluOp, mlir::P
         }
 
         auto levels = fakeQuantOp.getLevels();
-        // Maximum number of levels that exceeds I8/U8 storage type
-        if (!levels.has_value() || *levels > MAX_LEVELS) {
+        // Maximum number of levels that exceeds I8/U8 storage type. TODO: E#169022 adjust logic for INT16 quant levels.
+        if (!levels.has_value() || *levels > QuantizationLevels::QUANT_LEVELS_8BIT) {
             return mlir::failure();
         }
 

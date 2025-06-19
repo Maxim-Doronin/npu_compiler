@@ -5,6 +5,14 @@
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/convert.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/power.hpp"
+#include "openvino/op/reduce_mean.hpp"
+#include "openvino/op/sqrt.hpp"
+
 using namespace ov::test::utils;
 using namespace ov::test;
 namespace ov::test::subgraph {
@@ -96,8 +104,6 @@ TEST_P(FuseRMSTestCommon, NPU3720_HW) {
 TEST_P(FuseRMSTestCommon, NPU4000_HW) {
     abs_threshold = 0.11f;
     setDefaultHardwareMode();
-    // TODO E####-159644
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 namespace {

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-to-scale-shift %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ConvertAddToScaleShift
 func.func @ConvertAddToScaleShift(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %bias = const.Declare tensor<1x3x1x1xf16> = dense<2.0> : tensor<1x3x1x1xf16>
@@ -557,4 +558,40 @@ func.func @CopyInputChainIncludingReshape(%arg0: tensor<64x3x300x300xf16>) -> (t
     // CHECK:       [[FQ_COPY:%.+]] = IE.FakeQuantize([[WEIGHTS_COPY]], [[CONST_LOW]], [[CONST_HIGH]], [[CONST_LOW]], [[CONST_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x1x1xf16>
     // CHECK:       [[ADD:%.+]] = IE.ScaleShift([[INPUT1]], [[FQ_COPY]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<64x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<64x3x300x300xf16>
     // CHECK:       return [[TRANSPOSE]], [[ADD]]
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertMultiplyToScaleShiftWithHSplatWeights
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<1x2400x12x2xf16>
+func.func @ConvertMultiplyToScaleShiftWithHSplatWeights(%arg0: tensor<1x2400x12x2xf16>) -> tensor<1x2400x12x2xf16> {
+    %weights = const.Declare tensor<1x1x12x1xf16> = dense<0.17> : tensor<1x1x12x1xf16> isSplat
+    %0 = IE.Multiply(%arg0, %weights)
+        { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
+        tensor<1x2400x12x2xf16>, tensor<1x1x12x1xf16> -> tensor<1x2400x12x2xf16>
+
+    return %0 : tensor<1x2400x12x2xf16>
+
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x2400x1x1xf16> = dense<1.700440e-01> : tensor<1x1x12x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 1]>, #const.Broadcast<1 : i64, 2400 : i64>]
+    // CHECK:       [[SCALESHIFT:%.+]] = IE.ScaleShift([[INPUT]], [[WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x2400x12x2xf16>, tensor<1x2400x1x1xf16> -> tensor<1x2400x12x2xf16>
+
+    // CHECK:       return [[SCALESHIFT]]
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertMultiplyToScaleShiftWithWSplatWeights
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<1x2400x12x2xf16>
+func.func @ConvertMultiplyToScaleShiftWithWSplatWeights(%arg0: tensor<1x2400x12x2xf16>) -> tensor<1x2400x12x2xf16> {
+    %weights = const.Declare tensor<1x1x1x2xf16> = dense<0.17> : tensor<1x1x1x2xf16> isSplat
+    %0 = IE.Multiply(%arg0, %weights)
+        { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
+        tensor<1x2400x12x2xf16>, tensor<1x1x1x2xf16> -> tensor<1x2400x12x2xf16>
+
+    return %0 : tensor<1x2400x12x2xf16>
+
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x2400x1x1xf16> = dense<1.700440e-01> : tensor<1x1x1x2xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 1]>, #const.Broadcast<1 : i64, 2400 : i64>]
+    // CHECK:       [[SCALESHIFT:%.+]] = IE.ScaleShift([[INPUT]], [[WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x2400x12x2xf16>, tensor<1x2400x1x1xf16> -> tensor<1x2400x12x2xf16>
+
+    // CHECK:       return [[SCALESHIFT]]
 }

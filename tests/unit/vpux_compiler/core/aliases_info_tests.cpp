@@ -551,10 +551,10 @@ TEST(MLIR_AliasesInfo, CallOp) {
     constexpr StringLiteral inputIR = R"(
         module @TwoFunctions {
             func.func @foo1(%arg0: memref<1x8x60x60xf16>, %arg1: memref<1x4x60x60xf16>, %arg2: memref<1x2x60x60xf16>) -> (memref<1x4x60x60xf16>, memref<1x2x60x60xf16>) {
-                %0 = memref.subview %arg0[0, 0, 0, 0][1, 4, 60, 60][1, 1, 1, 1] : memref<1x8x60x60xf16> to memref<1x4x60x60xf16>
-                memref.copy %0, %arg1 : memref<1x4x60x60xf16> to  memref<1x4x60x60xf16>
-                %1 = memref.subview %arg0[0, 0, 0, 0][1, 2, 60, 60][1, 1, 1, 1] : memref<1x8x60x60xf16> to memref<1x2x60x60xf16>
-                memref.copy %1, %arg2 : memref<1x2x60x60xf16> to  memref<1x2x60x60xf16>
+                %0 = memref.subview %arg0[0, 0, 0, 0][1, 4, 60, 60][1, 1, 1, 1] : memref<1x8x60x60xf16> to memref<1x4x60x60xf16, strided<[28800, 3600, 60, 1]>>
+                memref.copy %0, %arg1 : memref<1x4x60x60xf16, strided<[28800, 3600, 60, 1]>> to  memref<1x4x60x60xf16>
+                %1 = memref.subview %arg0[0, 0, 0, 0][1, 2, 60, 60][1, 1, 1, 1] : memref<1x8x60x60xf16> to memref<1x2x60x60xf16, strided<[28800, 3600, 60, 1]>>
+                memref.copy %1, %arg2 : memref<1x2x60x60xf16, strided<[28800, 3600, 60, 1]>> to  memref<1x2x60x60xf16>
                 return %arg1, %arg2 : memref<1x4x60x60xf16>, memref<1x2x60x60xf16>
             }
 

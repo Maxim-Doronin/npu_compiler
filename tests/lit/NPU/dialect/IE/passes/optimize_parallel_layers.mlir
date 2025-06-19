@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-parallel-layers %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @MergeParallelMultiplyLayers
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1x512xf16>
 func.func @MergeParallelMultiplyLayers(%arg0: tensor<1x1x512xf16>) -> (tensor<1x1x256xf16>, tensor<1x1x256xf16>) {
@@ -123,41 +124,6 @@ func.func @MergeParallelMultiplyLayersSlicedOnInnerNonTrivialDim(%arg0: tensor<1
     // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[OUT_RESHAPE]] [0, 0, 0] [1, 1536, 1] : tensor<1x1536x2xf16> to tensor<1x1536x1xf16>
 
     // CHECK:       return [[SLICE_0]], [[SLICE_1]] : tensor<1x1536x1xf16>, tensor<1x1536x1xf16>
-}
-
-// -----
-
-// CHECK-LABEL: @DoNotMergeParallelMultiplyLayersWithAddAfter
-// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1x512xf16>
-func.func @DoNotMergeParallelMultiplyLayersWithAddAfter(%arg0: tensor<1x1x512xf16>) -> (tensor<1x1x256xf16>, tensor<1x1x256xf16>) {
-    %cst_0 = const.Declare tensor<1x1x1xf16> = dense<0.2> : tensor<1x1x1xf32> isSplat, [#const.CastElemType<f16>]
-    %cst_1 = const.Declare tensor<1x1x1xf16> = dense<0.3> : tensor<1x1x1xf32> isSplat, [#const.CastElemType<f16>]
-    %cst_2 = const.Declare tensor<1x1x256xf16> = dense<1.0> : tensor<1x1x256xf32> isSplat, [#const.CastElemType<f16>]
-    %cst_3 = const.Declare tensor<1x1x256xf16> = dense<2.0> : tensor<1x1x256xf32> isSplat, [#const.CastElemType<f16>]
-
-    %0 = IE.Slice %arg0 [0, 0, 0] [1, 1, 256] : tensor<1x1x512xf16> to tensor<1x1x256xf16>
-    %1 = IE.Multiply(%0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x1xf16> -> tensor<1x1x256xf16>
-    %2 = IE.Add(%1, %cst_2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x256xf16> -> tensor<1x1x256xf16>
-
-    %3 = IE.Slice %arg0 [0, 0, 256] [1, 1, 256] : tensor<1x1x512xf16> to tensor<1x1x256xf16>
-    %4 = IE.Multiply(%3, %cst_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x1xf16> -> tensor<1x1x256xf16>
-    %5 = IE.Add(%4, %cst_3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x256xf16> -> tensor<1x1x256xf16>
-
-    return %2, %5: tensor<1x1x256xf16>, tensor<1x1x256xf16>
-
-    // CHECK:       [[CONST_0:%.+]] = const.Declare tensor<1x1x1xf16> = dense<2.000000e-01>
-    // CHECK:       [[CONST_1:%.+]] = const.Declare tensor<1x1x1xf16> = dense<3.000000e-01>
-    // CHECK:       [[CONST_2:%.+]] = const.Declare tensor<1x1x256xf16> = dense<1.000000e+00>
-    // CHECK:       [[CONST_3:%.+]] = const.Declare tensor<1x1x256xf16> = dense<2.000000e+00>
-
-    // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0] [1, 1, 256] : tensor<1x1x512xf16> to tensor<1x1x256xf16>
-    // CHECK:       [[MULTIPLY_0:%.+]] = IE.Multiply([[SLICE_0]], [[CONST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x1xf16> -> tensor<1x1x256xf16>
-    // CHECK:       [[ADD_0:%.+]] = IE.Add([[MULTIPLY_0]], [[CONST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x256xf16> -> tensor<1x1x256xf16>
-    // CHECK:       [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 0, 256] [1, 1, 256] : tensor<1x1x512xf16> to tensor<1x1x256xf16>
-    // CHECK:       [[MULTIPLY_1:%.+]] = IE.Multiply([[SLICE_1]], [[CONST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x1xf16> -> tensor<1x1x256xf16>
-    // CHECK:       [[ADD_1:%.+]] = IE.Add([[MULTIPLY_1]], [[CONST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x256xf16> -> tensor<1x1x256xf16>
-    // CHECK:       return [[ADD_0]], [[ADD_1]] : tensor<1x1x256xf16>, tensor<1x1x256xf16>
-
 }
 
 // -----
@@ -346,6 +312,204 @@ func.func @MergeParallelTanhLayers(%arg0: tensor<1x1536x2xf16>) -> (tensor<1x153
     // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[TANH]] [0, 0, 0] [1, 1536, 1] : tensor<1x1536x2xf16> to tensor<1x1536x1xf16>
 
     // CHECK:       return [[SLICE_0]], [[SLICE_1]] : tensor<1x1536x1xf16>, tensor<1x1536x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @MergeParallelMulAddLayers
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x2xf16>
+func.func @MergeParallelMulAddLayers(%arg0: tensor<1620x9x9x2xf16>) -> (tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+
+    return %4, %5 : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>
+
+    // CHECK:    [[CST4:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST3:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST2:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST1:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+
+    // CHECK:    [[RESHAPED_INPUT:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1620, 9, 9, 2, 1]} : tensor<1620x9x9x2xf16> -> tensor<1620x9x9x2x1xf16>
+    // CHECK:    [[CONCAT1:%.+]] = IE.Concat([[CST1]], [[CST2]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x1x1x1x1xf16>, tensor<1x1x1x1x1xf16> -> tensor<1x1x1x2x1xf16>
+
+    // CHECK:    [[MULTIPLY:%.+]] = IE.Multiply([[RESHAPED_INPUT]], [[CONCAT1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2x1xf16>, tensor<1x1x1x2x1xf16> -> tensor<1620x9x9x2x1xf16>
+
+    // CHECK:    [[RESHAPE1:%.+]] = IE.Reshape([[MULTIPLY]]) {shape_value = [1620, 9, 9, 2]} : tensor<1620x9x9x2x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[RESHAPE2:%.+]] = IE.Reshape([[RESHAPE1]]) {shape_value = [1620, 9, 9, 2, 1]} : tensor<1620x9x9x2xf16> -> tensor<1620x9x9x2x1xf16>
+    // CHECK:    [[CONCAT2:%.+]] = IE.Concat([[CST3]], [[CST4]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x1x1x1x1xf16>, tensor<1x1x1x1x1xf16> -> tensor<1x1x1x2x1xf16>
+
+    // CHECK:    [[ADD:%.+]] = IE.Add([[RESHAPE2]], [[CONCAT2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2x1xf16>, tensor<1x1x1x2x1xf16> -> tensor<1620x9x9x2x1xf16>
+
+    // CHECK:    [[RESHAPE3:%.+]] = IE.Reshape([[ADD]]) {shape_value = [1620, 9, 9, 2]} : tensor<1620x9x9x2x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE3]] [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE3]] [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+
+    // CHECK:    return [[SLICE0]], [[SLICE1]] : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @MergeParallelMulAddLayersWithUnsortedOrder
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x2xf16>
+func.func @MergeParallelMulAddLayersWithUnsortedOrder(%arg0: tensor<1620x9x9x2xf16>) -> (tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+
+    return %4, %5 : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>
+
+    // CHECK:    [[CST3:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST4:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST1:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST2:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+
+    // CHECK:    [[RESHAPED_INPUT:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1620, 9, 9, 2, 1]} : tensor<1620x9x9x2xf16> -> tensor<1620x9x9x2x1xf16>
+    // CHECK:    [[CONCAT1:%.+]] = IE.Concat([[CST2]], [[CST1]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x1x1x1x1xf16>, tensor<1x1x1x1x1xf16> -> tensor<1x1x1x2x1xf16>
+
+    // CHECK:    [[MULTIPLY:%.+]] = IE.Multiply([[RESHAPED_INPUT]], [[CONCAT1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2x1xf16>, tensor<1x1x1x2x1xf16> -> tensor<1620x9x9x2x1xf16>
+
+    // CHECK:    [[RESHAPE1:%.+]] = IE.Reshape([[MULTIPLY]]) {shape_value = [1620, 9, 9, 2]} : tensor<1620x9x9x2x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[RESHAPE2:%.+]] = IE.Reshape([[RESHAPE1]]) {shape_value = [1620, 9, 9, 2, 1]} : tensor<1620x9x9x2xf16> -> tensor<1620x9x9x2x1xf16>
+    // CHECK:    [[CONCAT2:%.+]] = IE.Concat([[CST4]], [[CST3]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x1x1x1x1xf16>, tensor<1x1x1x1x1xf16> -> tensor<1x1x1x2x1xf16>
+
+    // CHECK:    [[ADD:%.+]] = IE.Add([[RESHAPE2]], [[CONCAT2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2x1xf16>, tensor<1x1x1x2x1xf16> -> tensor<1620x9x9x2x1xf16>
+
+    // CHECK:    [[RESHAPE3:%.+]] = IE.Reshape([[ADD]]) {shape_value = [1620, 9, 9, 2]} : tensor<1620x9x9x2x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE3]] [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE3]] [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+
+    // CHECK:    return [[SLICE1]], [[SLICE0]] : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @MergeParallelMulAddLayersWithDiffInputIdx
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x2xf16>
+func.func @MergeParallelMulAddLayersWithDiffInputIdx(%arg0: tensor<1620x9x9x2xf16>) -> (tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %1 = IE.Multiply(%cst1, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1xf16>, tensor<1620x9x9x1xf16> -> tensor<1620x9x9x1xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+
+    return %4, %5 : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>
+
+    // CHECK:    [[CST3:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST4:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST1:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+    // CHECK:    [[CST2:%.+]] = const.Declare tensor<1x1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1, 1]>, #const.CastElemType<f16>]
+
+    // CHECK:    [[RESHAPED_INPUT:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1620, 9, 9, 2, 1]} : tensor<1620x9x9x2xf16> -> tensor<1620x9x9x2x1xf16>
+    // CHECK:    [[CONCAT1:%.+]] = IE.Concat([[CST2]], [[CST1]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x1x1x1x1xf16>, tensor<1x1x1x1x1xf16> -> tensor<1x1x1x2x1xf16>
+
+    // CHECK:    [[MULTIPLY:%.+]] = IE.Multiply([[RESHAPED_INPUT]], [[CONCAT1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2x1xf16>, tensor<1x1x1x2x1xf16> -> tensor<1620x9x9x2x1xf16>
+
+    // CHECK:    [[RESHAPE1:%.+]] = IE.Reshape([[MULTIPLY]]) {shape_value = [1620, 9, 9, 2]} : tensor<1620x9x9x2x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[RESHAPE2:%.+]] = IE.Reshape([[RESHAPE1]]) {shape_value = [1620, 9, 9, 2, 1]} : tensor<1620x9x9x2xf16> -> tensor<1620x9x9x2x1xf16>
+    // CHECK:    [[CONCAT2:%.+]] = IE.Concat([[CST4]], [[CST3]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x1x1x1x1xf16>, tensor<1x1x1x1x1xf16> -> tensor<1x1x1x2x1xf16>
+
+    // CHECK:    [[ADD:%.+]] = IE.Add([[RESHAPE2]], [[CONCAT2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2x1xf16>, tensor<1x1x1x2x1xf16> -> tensor<1620x9x9x2x1xf16>
+
+    // CHECK:    [[RESHAPE3:%.+]] = IE.Reshape([[ADD]]) {shape_value = [1620, 9, 9, 2]} : tensor<1620x9x9x2x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE3]] [0, 0, 0, 1] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE3]] [0, 0, 0, 0] [1620, 9, 9, 1] : tensor<1620x9x9x2xf16> to tensor<1620x9x9x1xf16>
+
+    // CHECK:    return [[SLICE1]], [[SLICE0]] : tensor<1620x9x9x1xf16>, tensor<1620x9x9x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotMergeParallelMulAddLayersWithOverlap
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x3xf16>
+func.func @NotMergeParallelMulAddLayersWithOverlap(%arg0: tensor<1620x9x9x3xf16>) -> (tensor<1620x9x9x2xf16>, tensor<1620x9x9x2xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 1] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+
+    return %4, %5 : tensor<1620x9x9x2xf16>, tensor<1620x9x9x2xf16>
+
+    // CHECK:    [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK:    [[CST0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK:    [[CST1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK:    [[CST2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    // CHECK:    [[MULTIPLY0:%.+]] = IE.Multiply([[SLICE0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 1] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    // CHECK:    [[MULTIPLY1:%.+]] = IE.Multiply([[SLICE1]], [[CST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+
+    // CHECK:    [[ADD0:%.+]] = IE.Add([[MULTIPLY0]], [[CST1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[ADD1:%.+]] = IE.Add([[MULTIPLY1]], [[CST2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+
+    // CHECK:    return [[ADD0]], [[ADD1]] : tensor<1620x9x9x2xf16>, tensor<1620x9x9x2xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotMergeParallelMulAddLayersWithDiffSize
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1620x9x9x3xf16>
+func.func @NotMergeParallelMulAddLayersWithDiffSize(%arg0: tensor<1620x9x9x3xf16>) -> (tensor<1620x9x9x2xf16>, tensor<1620x9x9x1xf16>) {
+    %cst1 = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst2 = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst3 = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst4 = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    %1 = IE.Multiply(%0, %cst1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %2 = IE.Slice %arg0 [0, 0, 0, 2] [1620, 9, 9, 1] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x1xf16>
+    %3 = IE.Multiply(%2, %cst2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+    %4 = IE.Add(%1, %cst3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    %5 = IE.Add(%3, %cst4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+
+    return %4, %5 : tensor<1620x9x9x2xf16>, tensor<1620x9x9x1xf16>
+
+    // CHECK:    [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK:    [[CST0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK:    [[CST1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+    // CHECK:    [[CST2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1620, 9, 9, 2] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x2xf16>
+    // CHECK:    [[MULTIPLY0:%.+]] = IE.Multiply([[SLICE0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 2] [1620,  9, 9, 1] : tensor<1620x9x9x3xf16> to tensor<1620x9x9x1xf16>
+    // CHECK:    [[MULTIPLY1:%.+]] = IE.Multiply([[SLICE1]], [[CST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+
+    // CHECK:    [[ADD0:%.+]] = IE.Add([[MULTIPLY0]], [[CST1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x2xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x2xf16>
+    // CHECK:    [[ADD1:%.+]] = IE.Add([[MULTIPLY1]], [[CST2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1620x9x9x1xf16>, tensor<1x1x1x1xf16> -> tensor<1620x9x9x1xf16>
+
+    // CHECK:    return [[ADD0]], [[ADD1]] : tensor<1620x9x9x2xf16>, tensor<1620x9x9x1xf16>
 }
 
 // -----

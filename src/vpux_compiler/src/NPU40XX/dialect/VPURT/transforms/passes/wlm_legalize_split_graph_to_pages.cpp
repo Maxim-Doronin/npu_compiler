@@ -47,10 +47,11 @@ void WlmLegalizeSplitGraphToPagesPass::safeRunOnFunc() {
     barrierPagesSplitHandler.initializeForLegalization();
 
     if (barrierPagesSplitHandler.isSplitToPagesValid()) {
+        barrierInfo.clearAttributes();
         return;
     }
 
-    _log.info("Schedule needs to be legalized for barrier page split");
+    _log.trace("Schedule needs to be legalized for barrier page split");
     barrierPagesSplitHandler.legalizeScheduleForBarrierPagesSplit();
 
     // Verify if legalization was successful and split is valid afterwards

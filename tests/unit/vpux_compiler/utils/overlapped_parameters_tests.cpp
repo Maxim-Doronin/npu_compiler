@@ -206,12 +206,12 @@ llvm::StringLiteral poolwith2NCEInterpConsumers = R"(
             %sparseMap1 = const.Declare tensor<1x96x62x62xi1> = dense<1> : tensor<1x96x62x62xi1>
 
             %storageElement0 = VPU.StorageElementTable {
-                dataElemType = i32, seDepth = 1, seSize = 96, dataShape = [1, 96, 20, 20],
+                dataElemType = i32, seDepth = 1, seSize = [96], dataShape = [1, 96, 20, 20],
                 seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                 scale = [1.0, 1.0, 2.0, 2.0]>}
                     -> tensor<1x1x41x41xi32, {order = #NHWC}>
             %storageElement1 = VPU.StorageElementTable {
-                dataElemType = i32, seDepth = 1, seSize = 96, dataShape = [1, 96, 20, 20],
+                dataElemType = i32, seDepth = 1, seSize = [96], dataShape = [1, 96, 20, 20],
                 seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                 scale = [1.0, 1.0, 3.0, 3.0]>}
                     -> tensor<1x1x62x62xi32, {order = #NHWC}>
@@ -279,7 +279,7 @@ llvm::StringLiteral poolWithNCEInterpAndConvConsumers = R"(
 
             %sparseMap0 = const.Declare tensor<1x96x41x41xi1> = dense<1> : tensor<1x96x41x41xi1>
             %storageElement0 = VPU.StorageElementTable {
-                dataElemType = i32, seDepth = 1, seSize = 96, dataShape = [1, 96, 20, 20],
+                dataElemType = i32, seDepth = 1, seSize = [96], dataShape = [1, 96, 20, 20],
                 seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                 scale = [1.0, 1.0, 2.0, 2.0]>}
                     -> tensor<1x1x41x41xi32, {order = #NHWC}>

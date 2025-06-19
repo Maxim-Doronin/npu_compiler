@@ -39,6 +39,7 @@ uint32_t getMVN1SumOutputHeight(VPU::MVN1SumOp op) {
 
     auto module = op.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto numCluster = IE::getTileExecutor(module).getCount();
+    VPUX_THROW_WHEN(numCluster <= 0, "Number of clusters should be a positive integer, while it is {0}", numCluster);
     const auto numActShave = IE::getTotalNumOfEngines(op, VPU::ExecutorKind::SHAVE_ACT);
     const auto numActShavePerCluster = static_cast<int64_t>(numActShave / numCluster);
 
@@ -76,6 +77,10 @@ mlir::FailureOr<OutputTiling> findNumOfTiles(VPU::MVN1SumOp op, bool enablePrefe
 
     auto module = op.getOperation()->getParentOfType<mlir::ModuleOp>();
     auto numClusters = IE::getTileExecutor(module).getCount();
+    if (numClusters <= 0) {
+        return mlir::failure();
+    }
+
     auto newInShape = Shape(inShape);
 
     // Restrict max-search to {W, H}, since with 'internal_reshape' feature,

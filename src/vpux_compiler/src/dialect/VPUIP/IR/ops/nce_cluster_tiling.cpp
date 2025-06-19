@@ -151,14 +151,6 @@ void vpux::VPUIP::NCEClusterTilingOp::build(mlir::OpBuilder& builder, mlir::Oper
                 type = SparseBufferType::get(dataType, smType, seType, sparseType.getIsWeights(),
                                              sparseType.getSparsityCompression(), sparseType.getSeAttr());
             }
-        } else if (auto boundedType = mlir::dyn_cast<vpux::VPUIP::BoundedBufferType>(type)) {
-            if (auto distributedDataType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(boundedType.getData())) {
-                mlir::MemRefType dataType = distributedDataType.getCompactType();
-                mlir::MemRefType dynamicShapeType =
-                        mlir::cast<vpux::VPUIP::DistributedBufferType>(boundedType.getDynamicShape()).getCompactType();
-
-                type = vpux::VPUIP::BoundedBufferType::get(dataType, dynamicShapeType);
-            }
         }
 
         bodyBlock.addArgument(type, operand.getLoc());

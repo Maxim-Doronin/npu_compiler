@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <llvm/ADT/SetOperations.h>
@@ -91,7 +92,33 @@ VPURT::TaskQueueType vpux::BarrierInfo::getTaskQueueType(size_t taskInd) const {
     return taskQueueTypeIt->first;
 }
 
-std::optional<size_t> vpux::BarrierInfo::getPrevTaskOnFifo(size_t taskInd) const {
+SmallVector<VPURT::TaskQueueType> vpux::BarrierInfo::getNonEmptyTaskQueueTypes() const {
+    VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "Task queue map not initialized");
+    SmallVector<VPURT::TaskQueueType> taskQueueTypes;
+    for (auto taskQueueType : _taskQueueTypeMap) {
+        if (!taskQueueType.second.any()) {
+            continue;
+        }
+        taskQueueTypes.push_back(taskQueueType.first);
+    }
+    return taskQueueTypes;
+}
+
+size_t vpux::BarrierInfo::getLastTaskForQueueType(VPURT::TaskQueueType taskQueueType) const {
+    VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "Task queue map not initialized");
+    auto taskQueueTypeMapIt = _taskQueueTypeMap.find(taskQueueType);
+    VPUX_THROW_WHEN(taskQueueTypeMapIt == _taskQueueTypeMap.end(),
+                    "Task queue map not initialized for executor {0}:{1}", stringifyEnum(taskQueueType.type).data(),
+                    taskQueueType.id);
+
+    auto lastTaskInd = taskQueueTypeMapIt->second.find_last();
+    VPUX_THROW_WHEN(lastTaskInd == -1, "No task for queue type {0}:{1}", stringifyEnum(taskQueueType.type).data(),
+                    taskQueueType.id);
+
+    return static_cast<size_t>(lastTaskInd);
+}
+
+std::optional<size_t> vpux::BarrierInfo::getPrevTaskOnSameQueue(size_t taskInd) const {
     VPUX_THROW_UNLESS(getNumOfTasks() > taskInd, "Task index '{0}' out of range", taskInd);
     VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "Task queue map not initialized");
 
@@ -105,7 +132,7 @@ std::optional<size_t> vpux::BarrierInfo::getPrevTaskOnFifo(size_t taskInd) const
     return (prevTaskInd == -1) ? std::nullopt : std::optional<size_t>{prevTaskInd};
 }
 
-std::optional<size_t> vpux::BarrierInfo::getNextTaskOnFifo(size_t taskInd) const {
+std::optional<size_t> vpux::BarrierInfo::getNextTaskOnSameQueue(size_t taskInd) const {
     VPUX_THROW_UNLESS(getNumOfTasks() > taskInd, "Task index '{0}' out of range", taskInd);
     VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "Task queue map not initialized");
 
@@ -122,7 +149,7 @@ std::optional<size_t> vpux::BarrierInfo::getNextTaskOnFifo(size_t taskInd) const
 // Return the closest previous task on the same queue that has a wait barrier
 // Example:  Bar0 -> Op0 -> Op1 -> Op2
 //  When called for Op2 it would return Op0 as Op0 has wait barrier
-std::optional<size_t> vpux::BarrierInfo::getPrevTaskOnFifoWithWaitBar(size_t taskInd) const {
+std::optional<size_t> vpux::BarrierInfo::getPrevTaskOnSameQueueWithWaitBar(size_t taskInd) const {
     VPUX_THROW_UNLESS(getNumOfTasks() > taskInd, "Task index '{0}' out of range", taskInd);
     VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "Task queue map not initialized");
 
@@ -418,13 +445,13 @@ SmallVector<size_t> vpux::BarrierInfo::getBarriersForTaskBlock(size_t blockInd, 
     if (updateBarriers) {
         for (auto taskInd = blockStartInd; taskInd <= blockEndInd; ++taskInd) {
             for (auto barIdx : _taskUpdateBarriers[taskInd]) {
-                barrierInd.set(barIdx);
+                barrierInd.set(static_cast<unsigned>(barIdx));
             }
         }
     } else {
         for (auto taskInd = blockStartInd; taskInd <= blockEndInd; ++taskInd) {
             for (auto barIdx : _taskWaitBarriers[taskInd]) {
-                barrierInd.set(barIdx);
+                barrierInd.set(static_cast<unsigned>(barIdx));
             }
         }
     }
@@ -2488,6 +2515,15 @@ size_t vpux::BarrierInfo::getBarrierLatestProducer(size_t barInd) {
     return *std::max_element(barProducers.begin(), barProducers.end());
 }
 
+size_t vpux::BarrierInfo::getBarriersLatestProducer(const TaskSet& barriers) {
+    size_t latestTaskInd = 0;
+    llvm::for_each(barriers, [&](auto barInd) {
+        latestTaskInd = std::max(latestTaskInd, getBarrierLatestProducer(barInd));
+    });
+
+    return latestTaskInd;
+};
+
 size_t vpux::BarrierInfo::getBarrierEarliestConsumer(size_t barInd) {
     auto barConsumers = getBarrierConsumers(barInd);
     if (barConsumers.empty()) {
@@ -2495,6 +2531,15 @@ size_t vpux::BarrierInfo::getBarrierEarliestConsumer(size_t barInd) {
     }
     return *std::min_element(barConsumers.begin(), barConsumers.end());
 }
+
+size_t vpux::BarrierInfo::getBarriersEarliestConsumer(const TaskSet& barriers) {
+    size_t earliestTaskInd = std::numeric_limits<size_t>::max();
+    llvm::for_each(barriers, [&](auto barInd) {
+        earliestTaskInd = std::min(earliestTaskInd, getBarrierEarliestConsumer(barInd));
+    });
+
+    return earliestTaskInd;
+};
 
 unsigned vpux::BarrierInfo::createBarrierDependenciesImpliedByFIFO(
         size_t blockIdx, std::optional<mlir::DenseSet<vpux::VPU::ExecutorKind>> executorKind) {
@@ -2555,7 +2600,6 @@ unsigned vpux::BarrierInfo::createBarrierDependenciesImpliedByFIFO(
 }
 
 unsigned vpux::BarrierInfo::createBarrierDependenciesBetweenExecutionGroups(size_t blockIdx,
-                                                                            vpux::VPU::ExecutorKind executorKind,
                                                                             ExecutionGroupListMap& executionGroups) {
     // This method requires task queue map built with buildTaskQueueTypeMap()
     VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "TaskQueueTypeMap has not been created");
@@ -2580,19 +2624,8 @@ unsigned vpux::BarrierInfo::createBarrierDependenciesBetweenExecutionGroups(size
     // build task control map for current block and all executor kinds
     auto [taskControlMapFifo, controlMapOffset] = buildTaskControlMap(blockIdx, /* considerTaskFifoDependency */ true);
 
-    auto hasExecutorKind = [&](vpux::VPU::ExecutorKind executorKind) {
-        for (auto [queue, _] : executionGroups) {
-            if (queue.type == executorKind) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    VPUX_THROW_UNLESS(hasExecutorKind(executorKind), "Execution groups map is not initialized for {0}", executorKind);
-
     // Insert barrier between execution groups when required
-    size_t newBarriersCount = 0;
+    unsigned newBarriersCount = 0;
     for (auto [queue, fifoExecGroups] : executionGroups) {
         if (fifoExecGroups.size() <= 1) {
             continue;  // No dependencies need to be created if there are no groups or all tasks fit into a single
@@ -2733,13 +2766,33 @@ void vpux::BarrierInfo::initializeTaskQueueTypeMap(const mlir::DenseSet<vpux::VP
             break;
         }
 
-        case VPU::ExecutorKind::DPU:
-        case VPU::ExecutorKind::SHAVE_ACT: {
+        case VPU::ExecutorKind::DPU: {
             auto numClusters = IE::getTileExecutor(module).getCount();
             for (auto clusterId : irange(numClusters)) {
                 taskQueueType.id = clusterId;
                 llvm::BitVector taskList(checked_cast<uint32_t>(getNumOfTasks()));
                 _taskQueueTypeMap.insert(std::make_pair(taskQueueType, taskList));
+            }
+            break;
+        }
+
+        case VPU::ExecutorKind::SHAVE_ACT: {
+            auto tileOp = IE::getTileExecutor(module);
+            VPUX_THROW_UNLESS(tileOp != nullptr, "Expected tileOp executor in order to query {0} executor.", execKind);
+
+            auto numClusters = tileOp.getCount();
+            auto numExecutorsPerTile = [&] {
+                return VPU::isFifoPerShaveEngineEnabled(_func)
+                               ? static_cast<size_t>(tileOp.getSubExecutor(execKind).getCount())
+                               : static_cast<size_t>(1);
+            }();
+
+            for (auto clusterId : irange(numClusters)) {
+                for (auto shaveId : irange(numExecutorsPerTile)) {
+                    taskQueueType.id = getShaveQueueIdEncoding(numClusters, clusterId, shaveId);
+                    llvm::BitVector taskList(checked_cast<uint32_t>(getNumOfTasks()));
+                    _taskQueueTypeMap.insert(std::make_pair(taskQueueType, taskList));
+                }
             }
             break;
         }

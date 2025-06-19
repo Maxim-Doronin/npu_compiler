@@ -43,8 +43,10 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "eltwise_min",
                                                                  "eltwise_max",
                                                                  "eltwise_greater",
+                                                                 "eltwise_greater_equal",
                                                                  "eltwise_less",
                                                                  "eltwise_equal",
+                                                                 "eltwise_not_equal",
                                                                  "eltwise_select",
                                                                  "eltwise_and",
                                                                  "activation_sin",
@@ -84,9 +86,11 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "rope",
                                                                  "sdpa",
                                                                  "random_uniform",
-                                                                 "grid_sample"};
+                                                                 "grid_sample",
+                                                                 "roll",
+                                                                 "reorder"};
 
-const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {"mvn1", "lstm_cell", "lstm_sequence"};
+const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {"mvn1", "lstm_cell", "lstm_sequence", "reorder"};
 
 const SmallVector<std::string_view> SW_KERNELS_SUPPORTING_SHAVE_BALANCING = {
         "softmax",     "eltwise_mul", "activation_sin", "activation_cos", "activation_swish", "activation_clamp",
@@ -167,6 +171,10 @@ void initSwKernel(vpux::VPUIP::SwKernelOp swKernelOp, mlir::ValueRange inputs, m
 
 void initSwKernel(VPUIP::SwKernelOp swKernelOp, VPUIP::SwKernelRun swKernelRunOp, const vpux::Logger& log);
 
+// This is used to convert map to a format used by Swkernels. For general purpose
+// reverse permutation use mlir::inversePermutation.
+SmallVector<int64_t> reversePermutation(mlir::AffineMap map);
+
 SmallString getSwKernelEntryName(VPUIP::SwKernelOp swKernelOp);
 mlir::ModuleOp getVPUSWModule(mlir::ModuleOp module, const Logger& log);
 bool isActivationSwKernelOp(VPUIP::SwKernelOp swKernelOp);
@@ -192,6 +200,8 @@ bool isCacheOpTaskType(std::optional<::mlir::SymbolRefAttr> kernelTaskType, bool
 bool isCacheOpTaskType(mlir::SymbolRefAttr kernelTaskType, bool includePrefetch = true);
 
 bool isCacheHandlingOp(VPUIP::SwKernelOp swKernelOp);
+
+bool isJitKernelOp(VPUIP::SwKernelOp swKernelOp);
 
 mlir::SmallVector<mlir::Value> getDDRBuffers(mlir::ValueRange buffers);
 bool hasInputsInDDR(VPUIP::SwKernelOp swKernelTask);

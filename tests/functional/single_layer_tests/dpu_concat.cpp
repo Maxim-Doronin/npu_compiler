@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <openvino/opsets/opset1.hpp>
-#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset1_decl.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
 #include <vpu_ov2_layer_test.hpp>
+
+#include "openvino/op/concat.hpp"
 
 using namespace ov::test;
 namespace {
@@ -33,12 +35,12 @@ protected:
     }
 };
 
-TEST_F(DpuConcatLayerTest, NPU3720) {
+TEST_F(DpuConcatLayerTest, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_F(DpuConcatLayerTest, NPU4000) {
+TEST_F(DpuConcatLayerTest, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }

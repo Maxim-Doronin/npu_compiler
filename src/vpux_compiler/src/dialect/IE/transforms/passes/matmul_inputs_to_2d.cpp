@@ -39,7 +39,7 @@ namespace {
 
 // To explicitly control the patterns exec order to assure dependency
 // benefitLevels[0] is highest benefit level and represent the relative pattern is the first one to run
-const uint32_t levelCount = 2;
+const uint32_t levelCount = 3;
 SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(levelCount);
 
 //
@@ -56,6 +56,7 @@ public:
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 public:
+    class SwapInputsConverter;
     class ReshapeNDInputConverter;
     class MatMulOpConverter;
 
@@ -342,6 +343,95 @@ mlir::LogicalResult MatMulInputsTo2dPass::ReshapeNDInputConverter::matchAndRewri
 }
 
 //
+// SwapInputsConverter
+//
+
+/*
+Swap input1 with input2 when input1 is 2D after invalid dimensions removed and dimensions of input2 are bigger than 2D
+For example:
+    IE.MatMul(input1, input2) {transpose_b} : tensor<1x1x32x64xf32>, tensor<1x6336x1x64xf32> -> tensor<1x6336x32x1xf32>
+-->
+    IE.MatMul(input2, input1) {transpose_b} : tensor<1x6336x1x64xf32>, tensor<32x64xf32> -> tensor<1x6336x1x32xf32>
+
+Then using ReshapeNDInputConverter pattern to convert the new input1 to 2D as:
+    IE.MatMul(input1, input2) {transpose_b} : tensor<6336x64xf32>, tensor<32x64xf32> -> tensor<6336x32xf32>
+*/
+class MatMulInputsTo2dPass::SwapInputsConverter final : public mlir::OpRewritePattern<IE::MatMulOp> {
+public:
+    SwapInputsConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::MatMulOp>(ctx, benefit), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::MatMulOp matmulOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult MatMulInputsTo2dPass::SwapInputsConverter::matchAndRewrite(IE::MatMulOp matmulOp,
+                                                                               mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), matmulOp->getName(), matmulOp->getLoc());
+    auto ctx = rewriter.getContext();
+
+    auto transposeA = matmulOp.getTransposeA();
+    auto transposeB = matmulOp.getTransposeB();
+    auto input1Shape = getShape(matmulOp.getInput1());
+    auto input2Shape = getShape(matmulOp.getInput2());
+
+    auto adjustTo2DShape = [](ShapeRef origShape) -> std::optional<Shape> {
+        if (origShape.size() == 1) {
+            return std::nullopt;
+        }
+
+        auto batchSize = std::accumulate(origShape.begin(), origShape.end() - 2, 1, std::multiplies<int64_t>());
+        if (batchSize != 1) {
+            return std::nullopt;
+        }
+
+        return Shape{origShape[Dim(origShape.size() - 2)], origShape[Dim(origShape.size() - 1)]};
+    };
+
+    auto newIn1ShapeValue = adjustTo2DShape(input1Shape);
+    if (!newIn1ShapeValue.has_value()) {
+        return mlir::failure();
+    }
+    auto newIn1Shape = newIn1ShapeValue.value();
+
+    // When both input1 and input2 can be reshaped to 2D, matmulOp can directly be rewrited by ReshapeNDInputConverter
+    auto inShape2Size = input2Shape.size();
+    if (inShape2Size <= 2 || adjustTo2DShape(input2Shape).has_value()) {
+        return mlir::failure();
+    }
+
+    const auto dimToCheck = transposeB ? input2Shape[Dim(inShape2Size - 2)] : input2Shape[Dim(inShape2Size - 1)];
+    if (dimToCheck != 1) {
+        return mlir::failure();
+    }
+
+    auto layerWithPostOp = mlir::cast<IE::LayerWithPostOpInterface>(matmulOp.getOperation());
+    if (layerWithPostOp) {
+        const auto postOp = layerWithPostOp.getPostOp();
+        if (postOp != nullptr && !postOp.isChannelAgnostic()) {
+            return mlir::failure();
+        }
+    }
+
+    auto newTransposeB = transposeA ? false : true;
+    auto newTransposeA = transposeB ? false : true;
+
+    auto in2ReshapeOp = rewriter.create<IE::ReshapeOp>(matmulOp->getLoc(), matmulOp.getInput1(), nullptr, false,
+                                                       getIntArrayAttr(ctx, newIn1Shape));
+
+    auto newMatMulOp = rewriter.create<IE::MatMulOp>(matmulOp->getLoc(), matmulOp.getInput2(), in2ReshapeOp.getOutput(),
+                                                     newTransposeA, newTransposeB, matmulOp.getPostOpAttr());
+
+    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(matmulOp, newMatMulOp.getOutput(), nullptr, false,
+                                               getIntArrayAttr(ctx, getShape(matmulOp.getOutput())));
+    return mlir::success();
+}
+
+//
 // safeRunOnFunc
 //
 
@@ -350,9 +440,11 @@ void MatMulInputsTo2dPass::safeRunOnFunc() {
     auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<ReshapeNDInputConverter>(&ctx, benefitLevels[0], _log, _enableGroupedMatMul);
-    patterns.add<MatMulOpConverter>(&ctx, benefitLevels[1], _log, _enableGroupedMatMul);
+    patterns.add<SwapInputsConverter>(&ctx, benefitLevels[0], _log);
+    patterns.add<ReshapeNDInputConverter>(&ctx, benefitLevels[1], _log, _enableGroupedMatMul);
+    patterns.add<MatMulOpConverter>(&ctx, benefitLevels[2], _log, _enableGroupedMatMul);
     IE::ReshapeOp::getCanonicalizationPatterns(patterns, &ctx);
+
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }

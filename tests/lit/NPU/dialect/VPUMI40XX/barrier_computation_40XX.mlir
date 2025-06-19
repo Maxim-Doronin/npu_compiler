@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -525,5 +525,52 @@ func.func @main(%arg0: memref<1x1x2x1000xf16>, %arg1: memref<1x1x2x1000xf16>) ->
     //CHECK-SAME:             updates([[BAR0]] : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0)
     //CHECK: [[DMA3:%.*]] = VPUMI40XX.NNDMA
     //CHECK-SAME:              start_after(0) clean_after(0)
+}
+}
+
+// -----
+
+module @TestCleanAfterSettingInCaseMultUpdBars attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+IE.ExecutorResource 1 of @DMA_NN
+IE.TileResource 6 of @NCE at 6.000000e+02 MHz
+net.NetworkInfo entryPoint : @main inputsInfo :  {
+    DataInfo "inputCNN" : tensor<1x1x2x1000xf16>
+} outputsInfo :  {
+    DataInfo "outputCNN" : tensor<1x1x2x1000xf16>
+}
+
+func.func @main(%arg0: memref<1x1x2x1000xf16>, %arg1: memref<1x1x2x1000xf16>) -> memref<1x1x2x1000xf16> {
+
+    %buf1 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x2x1000xf16, @DDR>
+    %buf2 = VPURT.DeclareBuffer <DDR> <4000> -> memref<1x1x2x1000xf16, @DDR>
+
+    %bar0 = VPUMI40XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <0,-1> -> !VPURegMapped.Index<0:0:0>
+    %bar1 = VPUMI40XX.ConfigureBarrier {consumer_count=2:ui8, producer_count=1:ui8 } <1,-1> -> !VPURegMapped.Index<0:0:1>
+    %bar2 = VPUMI40XX.ConfigureBarrier {consumer_count=1:ui8, isFinalBarrier, producer_count=3:ui8 } <2,-1> -> !VPURegMapped.Index<0:0:2>
+
+    %dma0_0 = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%buf1 : memref<1x1x2x1000xf16, @DDR>) outputs(%buf2 : memref<1x1x2x1000xf16, @DDR>) updates(%bar0, %bar1 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+
+    %dma1_0 = VPUMI40XX.NNDMA {port = 1 : i64} inputs(%buf1 : memref<1x1x2x1000xf16, @DDR>) outputs(%buf2 : memref<1x1x2x1000xf16, @DDR>) waits(%bar0 : !VPURegMapped.Index<0:0:0>) updates(%bar2 : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<1:0:0>
+
+    %dma0_1 = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%buf1 : memref<1x1x2x1000xf16, @DDR>) outputs(%buf2 : memref<1x1x2x1000xf16, @DDR>) waits(%bar1 : !VPURegMapped.Index<0:0:1>) updates(%bar2 : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+
+    %dma0_2 = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%buf1 : memref<1x1x2x1000xf16, @DDR>) outputs(%buf2 : memref<1x1x2x1000xf16, @DDR>) waits(%bar1 : !VPURegMapped.Index<0:0:1>) updates(%bar2 : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
+
+    return %arg1 : memref<1x1x2x1000xf16>
+
+    //CHECK: [[BAR0:%.*]] = VPUMI40XX.ConfigureBarrier
+    //CHECK: [[DMA0_0:%.*]] = VPUMI40XX.NNDMA
+    //CHECK-NOT:              start_after(2) clean_after(1)
+    //CHECK-SAME:             start_after(2) clean_after(0)
+    //CHECK-SAME:             !VPURegMapped.Index<0:0:0>
+    //CHECK: [[DMA1_0:%.*]] = VPUMI40XX.NNDMA
+    //CHECK-SAME:             start_after(3) clean_after(2)
+    //CHECK-SAME:             !VPURegMapped.Index<1:0:0>
+    //CHECK: [[DMA0_1:%.*]] = VPUMI40XX.NNDMA
+    //CHECK-SAME:             start_after(3) clean_after(2)
+    //CHECK-SAME:             !VPURegMapped.Index<0:0:1>
+    //CHECK: [[DMA0_2:%.*]] = VPUMI40XX.NNDMA
+    //CHECK-SAME:              start_after(3) clean_after(2)
+    //CHECK-SAME:             !VPURegMapped.Index<0:0:2>
 }
 }

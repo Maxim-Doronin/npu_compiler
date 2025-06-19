@@ -12,8 +12,16 @@
 
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include <openvino/core/type/element_type.hpp>
-#include <openvino/opsets/opset3.hpp>
-#include <openvino/opsets/opset4.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+#include <openvino/opsets/opset4_decl.hpp>
+
+#include "openvino/op/convert.hpp"
+#include "openvino/op/gather.hpp"
+#include "openvino/op/non_zero.hpp"
+#include "openvino/op/scatter_nd_update.hpp"
+#include "openvino/op/shape_of.hpp"
+#include "openvino/op/strided_slice.hpp"
+#include "openvino/op/transpose.hpp"
 
 using namespace ov::test;
 using namespace ov::test::utils;
@@ -102,7 +110,7 @@ TEST_P(InternalDynamicShapesNPUTest, NPU3720_HW_TestKindSubgraph) {
     run(Platform::NPU3720);
 }
 
-const std::vector<ov::test::InputShape> inShapes = {staticShape(1, 3, 3)};
+const std::vector<ov::test::InputShape> inShapes = {generateTestShape(1, 3, 3)};
 
 INSTANTIATE_TEST_SUITE_P(smoke_InternalDynamicShapes, InternalDynamicShapesNPUTest, ::testing::ValuesIn(inShapes),
                          InternalDynamicShapesNPUTest::getTestCaseName);

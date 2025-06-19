@@ -38,7 +38,8 @@ public:
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
 private:
     void safeRunOnFunc() final;
@@ -48,8 +49,9 @@ private:
     VPU::ActivationSparsityProfile _sparsityProfile{VPU::ActivationSparsityProfile::S0};
 };
 
-mlir::LogicalResult OptimizeSparsifyDesparsifyPairsPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult OptimizeSparsifyDesparsifyPairsPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --convert-nce-interpolate-to-dw --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @InterpAssignedSOHAsDwConv
@@ -17,7 +18,7 @@ func.func @InterpAssignedSOHAsDwConv(%arg0: tensor<1x96x10x10xf16, {order = #NHW
     %weights_table = const.Declare tensor<96x1x1x4xsi32> = dense<1> : tensor<96x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x96x22x22xi1> = dense<1> : tensor<1x96x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 96, dataShape = [1, 96, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [96], dataShape = [1, 96, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 96, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -56,7 +57,7 @@ func.func @InterpAssignedSOHAsDwConv(%arg0: tensor<1x96x10x10xf16, {order = #NHW
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 96, 10, 10]
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
     // CHECK-SAME:           scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 96, 22, 22]>
-    // CHECK-SAME:       seDepth = 1 : i64, seSize = 96 : i64
+    // CHECK-SAME:       seDepth = 1 : i64, seSize = [96]
     // CHECK-SAME:      } -> tensor<1x1x22x22xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG0]], [[INPUT_SM]], [[INPUT_SE]])
 
@@ -92,7 +93,7 @@ func.func @InterpAssignedSOKAsDwConv(%arg0: tensor<1x96x10x10x!inElemType, {orde
     %weights_table = const.Declare tensor<96x1x1x4xsi32> = dense<1> : tensor<96x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x96x22x22xi1> = dense<1> : tensor<1x96x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = !inElemType, seDepth = 1, seSize = 96, dataShape = [1, 96, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = !inElemType, seDepth = 1, seSize = [96], dataShape = [1, 96, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 96, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -132,7 +133,7 @@ func.func @InterpAssignedSOKAsDwConv(%arg0: tensor<1x96x10x10x!inElemType, {orde
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = [[IN_TYPE]], dataShape = [1, 96, 10, 10],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
     // CHECK-SAME:           scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 96, 22, 22]>
-    // CHECK-SAME:       seDepth = 6 : i64, seSize = 16 : i64
+    // CHECK-SAME:       seDepth = 6 : i64, seSize = [16, 16, 16, 16, 16, 16]
     // CHECK-SAME:      } -> tensor<1x6x22x22xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG0]], [[INPUT_SM]], [[INPUT_SE]])
 
@@ -158,7 +159,7 @@ func.func @InterpAssignedClusteringAsDwConv(%arg0: tensor<1x96x10x10xf16, {order
     %weights_table = const.Declare tensor<96x1x1x4xsi32> = dense<1> : tensor<96x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x96x22x22xi1> = dense<1> : tensor<1x96x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 96, dataShape = [1, 96, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [96], dataShape = [1, 96, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 96, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -198,7 +199,7 @@ func.func @InterpAssignedClusteringAsDwConv(%arg0: tensor<1x96x10x10xf16, {order
     // CHECK-SAME:      {dataElemType = f16, dataShape = [1, 96, 10, 10],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
     // CHECK-SAME:           scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 96, 22, 22]>
-    // CHECK-SAME:       seDepth = 1 : i64, seSize = 96 : i64
+    // CHECK-SAME:       seDepth = 1 : i64, seSize = [96]
     // CHECK-SAME:      } -> tensor<1x1x22x22xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG0]], [[INPUT_SM]], [[INPUT_SE]])
 
@@ -224,7 +225,7 @@ func.func @InterpAssignedHKSwitchAsDwConv(%arg0: tensor<1x32x10x10xf16, {order =
     %weights_table = const.Declare tensor<32x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x32x22x22xi1> = dense<1> : tensor<1x32x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 32, dataShape = [1, 32, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [32], dataShape = [1, 32, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -265,7 +266,7 @@ func.func @InterpAssignedHKSwitchAsDwConv(%arg0: tensor<1x32x10x10xf16, {order =
     // CHECK-SAME:      {dataElemType = f16, dataShape = [1, 32, 10, 10],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
     // CHECK-SAME:           scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 22, 22]>
-    // CHECK-SAME:       seDepth = 1 : i64, seSize = 32 : i64
+    // CHECK-SAME:       seDepth = 1 : i64, seSize = [32]
     // CHECK-SAME:      } -> tensor<1x1x22x22xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG0]], [[INPUT_SM]], [[INPUT_SE]])
 
@@ -295,7 +296,7 @@ func.func @SingleClusterInterpAsDwConv(%arg0: tensor<1x64x10x10x!inElemType, {or
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x22x22xi1> = dense<1> : tensor<1x64x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = !inElemType, seDepth = 1, seSize = 64, dataShape = [1, 64, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = !inElemType, seDepth = 1, seSize = [64], dataShape = [1, 64, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -334,7 +335,7 @@ func.func @SingleClusterInterpAsDwConv(%arg0: tensor<1x64x10x10x!inElemType, {or
     // CHECK-SAME:      {dataElemType = [[IN_TYPE]], dataShape = [1, 64, 10, 10],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
     // CHECK-SAME:          scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 22, 22]>
-    // CHECK-SAME:       seDepth = 1 : i64, seSize = 64 : i64
+    // CHECK-SAME:       seDepth = 1 : i64, seSize = [64]
     // CHECK-SAME:      } -> tensor<1x1x22x22xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG0]], [[INPUT_SM]], [[INPUT_SE]])
 
@@ -355,7 +356,7 @@ func.func @SingleClusterInterpNotSupportedChannel(%arg0: tensor<1x128x10x10xf16,
     %weights_table = const.Declare tensor<128x1x1x4xsi32> = dense<1> : tensor<128x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x128x22x22xi1> = dense<1> : tensor<1x128x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 128, dataShape = [1, 128, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [128], dataShape = [1, 128, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 128, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -398,7 +399,7 @@ func.func @SingleClusterInterpNotSupportedWorkloadWithOptimization(%arg0: tensor
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x22x22xi1> = dense<1> : tensor<1x64x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 64, dataShape = [1, 64, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [64], dataShape = [1, 64, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -443,7 +444,7 @@ func.func @SOKInterpTooManyTilesNeeded(%arg0: tensor<1x512x10x10xf16, {order = #
     %weights_table = const.Declare tensor<512x1x1x4xsi32> = dense<1> : tensor<512x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x512x22x22xi1> = dense<1> : tensor<1x512x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 512, dataShape = [1, 512, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [512], dataShape = [1, 512, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 512, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -488,7 +489,7 @@ func.func @SOHInterpTooManyTilesNeeded(%arg0: tensor<1x128x10x10xf16, {order = #
     %weights_table = const.Declare tensor<128x1x1x4xsi32> = dense<1> : tensor<128x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x128x22x22xi1> = dense<1> : tensor<1x128x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 128, dataShape = [1, 128, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [128], dataShape = [1, 128, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
                                     scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 128, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -535,7 +536,7 @@ func.func @SOKInterpNotSupportedWorkload(%arg0: tensor<1x64x10x10xf16, {order = 
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x30x30xi1> = dense<1> : tensor<1x64x30x30xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 64, dataShape = [1, 64, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [64], dataShape = [1, 64, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 3.0, 3.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 30, 30]>
     } -> tensor<1x1x30x30xi32, {order = #NHWC}>

@@ -21,6 +21,12 @@ mlir::LogicalResult vpux::IE::ClampOp::verify() {
         return errorAt(*this, "Per-axis quantized type is not supported. Got: {0}", inElemType);
     }
 
+    const auto minVal = getMinAttr().getValueAsDouble();
+    const auto maxVal = getMaxAttr().getValueAsDouble();
+    if (minVal > maxVal) {
+        return errorAt(*this, "ClampOp {0} has invalid minAttr {1} and maxAttr {2}", getLoc(), minVal, maxVal);
+    }
+
     return mlir::success();
 }
 
@@ -72,8 +78,15 @@ mlir::LogicalResult ConvertAttrToFP16::matchAndRewrite(IE::ClampOp origOp, mlir:
         return mlir::failure();
     }
 
-    const auto newMin = std::max(minVal, checked_cast<double>(std::numeric_limits<vpux::type::float16>::lowest()));
-    const auto newMax = std::min(maxVal, checked_cast<double>(std::numeric_limits<vpux::type::float16>::max()));
+    const auto lowestF16 = checked_cast<double>(std::numeric_limits<vpux::type::float16>::lowest());
+    const auto maxF16 = checked_cast<double>(std::numeric_limits<vpux::type::float16>::max());
+    if (minVal > maxF16 || maxVal < lowestF16) {
+        Logger::global().warning("ClampOp operation at location {0} has a value range from {1} to {2}, which exceeds "
+                                 "the FP16 data range. The output values are adjusted to fp16_lowest or fp16_max.",
+                                 origOp.getLoc(), minVal, maxVal);
+    }
+    const auto newMin = std::clamp(minVal, lowestF16, maxF16);
+    const auto newMax = std::clamp(maxVal, lowestF16, maxF16);
     const auto minAttr = getFPAttr(origOp.getContext(), newMin);
     const auto maxAttr = getFPAttr(origOp.getContext(), newMax);
 

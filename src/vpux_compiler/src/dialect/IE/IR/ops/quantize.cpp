@@ -25,10 +25,11 @@ mlir::LogicalResult vpux::IE::QuantizeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = mlir::cast<mlir::ShapedType>(quantize.getInput().getType());
+    const auto inType = mlir::cast<mlir::RankedTensorType>(quantize.getInput().getType());
     const auto dstElemType = quantize.getDstElemType();
+    const auto outDesc = getTensorAttr(inType);
 
-    inferredReturnShapes.emplace_back(inType.getShape(), dstElemType);
+    inferredReturnShapes.emplace_back(inType.getShape(), dstElemType, outDesc);
     return mlir::success();
 }
 
@@ -49,7 +50,7 @@ mlir::quant::QuantizedType extractQuantizedType(mlir::Value operand) {
 
 mlir::OpFoldResult vpux::IE::QuantizeOp::fold(FoldAdaptor adaptor) {
     auto operands = adaptor.getOperands();
-    if (auto ephemeral = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (auto ephemeral = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         const auto cst = static_cast<Const::ContentAttr>(ephemeral);
         const auto quantType = extractQuantizedType(getOutput());
 

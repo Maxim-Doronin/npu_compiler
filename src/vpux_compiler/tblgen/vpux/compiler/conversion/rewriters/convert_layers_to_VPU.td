@@ -287,6 +287,22 @@ def RewriteFakeQuantize :
         >;
 
 //
+// IE.FakeConvert -> VPU.FakeConvert
+//
+
+def createFakeConvertOp :
+        NativeCodeCall<[{
+            $_builder.create<vpux::VPU::FakeConvertOp>(
+                $_loc, $0, $1, $2.size() == 1 ? $2[0] : nullptr, $3)
+        }]>;
+
+def RewriteFakeConvert :
+        Pat<
+            (IE_FakeConvertOp $input, $scale, $shift, $dst_type),
+            (createFakeConvertOp $input, $scale, $shift, $dst_type)
+        >;
+
+//
 // IE.MaxPool -> VPU.MaxPool
 //
 
@@ -922,16 +938,6 @@ def RewriteDequantize :
         Pat<
             (IE_DequantizeOp $input, $dstElemType),
             (createDequantizeOp $input, $dstElemType)
-        >;
-
-//
-// IE.DynamicQuantize -> VPU.DynamicQuantize
-//
-
-def RewriteDynamicQuantize :
-        Pat<
-            (IE_DynamicQuantizeOp $input, $min, $max),
-            (VPU_DynamicQuantizeOp $input, $min, $max)
         >;
 
 //

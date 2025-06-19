@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --pad-dynamic-inputs %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @MaxPool
@@ -509,4 +510,52 @@ func.func @NoStridedSliceAfterStaticSubgraph(
 
     return %RESHAPE_OUT : tensor<1x?x3x8xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 3, 8]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:   [[RESHAPE_OUT]] : tensor<1x?x3x8xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 3, 8]> : tensor<4xsi64>, order = #NCHW}>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+{-#
+  dialect_resources: {
+    builtin: {
+      ov: "0x1000000000000000",
+      ov_2: "0x10000000000000AB"
+    }
+  }
+#-}
+
+// CHECK-LABEL: @PadTwoDynamicInputsSubgraph
+func.func @PadTwoDynamicInputsSubgraph(
+    %IN: tensor<1x?xsi64, {bounds = #const.OpaqueI64Elements<[1, 64]> : tensor<2xsi64>, order = #NC}>
+) -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>  {
+  %cst = const.Declare tensor<1xsi64> = dense<128> : tensor<1xsi64>
+  %cst_0 = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
+  %cst_1 = const.Declare tensor<2x128xf32> = dense_resource<ov_2> : tensor<2x128xf32>
+  %cst_2 = const.Declare tensor<8x128xf32> = dense_resource<ov> : tensor<8x128xf32>
+  %0 = IE.Gather(%cst_2, %IN) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<8x128xf32>, tensor<1x?xsi64, {bounds = #const.OpaqueI64Elements<[1, 64]> : tensor<2xsi64>, order = #NC}> -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>
+  %1 = IE.Gather(%cst_1, %IN) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<2x128xf32>, tensor<1x?xsi64, {bounds = #const.OpaqueI64Elements<[1, 64]> : tensor<2xsi64>, order = #NC}> -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>
+  %2 = IE.Add(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>, tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }> -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>
+  %3 = IE.ShapeOf(%0) {dstElemType = si64} : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }> -> tensor<3xsi64>
+  %4 = IE.Slice %3 [1] [1] : tensor<3xsi64> to tensor<1xsi64>
+  %5 = IE.Concat(%cst_0, %4, %cst) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<3xsi64>
+  %6 = IE.DynamicReshape(%2, %5) {output_bounds = [1, 64, 128], output_shape = [1, -9223372036854775808, 128]} : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>, tensor<3xsi64> -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>
+  return %6 : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW }>
+
+  // CHECK:   [[IN:%.+]]: tensor<1x?xsi64, {bounds = #const.OpaqueI64Elements<[1, 64]> : tensor<2xsi64>, order = #NC}>
+  // CHECK:   [[CST:%.+]] = const.Declare tensor<1xsi64> = dense<128> : tensor<1xsi64>
+  // CHECK:   [[CST_0:%.+]] = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
+  // CHECK:   [[CST_1:%.+]] = const.Declare tensor<2x128xf32> = dense_resource<ov_2> : tensor<2x128xf32>
+  // CHECK:   [[CST_2:%.+]] = const.Declare tensor<8x128xf32> = dense_resource<ov> : tensor<8x128xf32>
+  // CHECK:   [[GATHER_0:%.+]] = IE.Gather([[CST_2]], [[IN]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<8x128xf32>, tensor<1x?xsi64, {bounds = #const.OpaqueI64Elements<[1, 64]> : tensor<2xsi64>, order = #NC}> -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW}>
+  // CHECK:   [[GATHER_1:%.+]] = IE.Gather([[CST_1]], [[IN]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<2x128xf32>, tensor<1x?xsi64, {bounds = #const.OpaqueI64Elements<[1, 64]> : tensor<2xsi64>, order = #NC}> -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW}>
+  // CHECK:   [[EXPAND_0:%.+]] = IE.DynamicExpand([[GATHER_0]]) : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW}> -> tensor<1x64x128xf32>
+  // CHECK:   [[EXPAND_1:%.+]] = IE.DynamicExpand([[GATHER_1]]) : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW}> -> tensor<1x64x128xf32>
+  // CHECK:   [[ADD:%.+]] = IE.Add([[EXPAND_0]], [[EXPAND_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x128xf32>, tensor<1x64x128xf32> -> tensor<1x64x128xf32>
+  // CHECK:   [[SHAPE_OF:%.+]] = IE.ShapeOf([[GATHER_0]]) {dstElemType = si64} : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW}> -> tensor<3xsi64>
+  // CHECK:   [[SLICE:%.+]] = IE.Slice [[SHAPE_OF]] [1] [1] : tensor<3xsi64> to tensor<1xsi64>
+  // CHECK:   [[CONCAT:%.+]] = IE.Concat([[CST_0]], [[SLICE]], [[CST]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<3xsi64>
+  // CHECK:   [[RESHAPE_OUT:%.+]] = IE.DynamicReshape([[ADD]], [[CONCAT]]) {output_bounds = [1, 64, 128], output_shape = [1, -9223372036854775808, 128]} : tensor<1x64x128xf32>, tensor<3xsi64> -> tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW}>
+  // CHECK:   return [[RESHAPE_OUT]] : tensor<1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128]> : tensor<3xsi64>, order = #CHW}>
 }

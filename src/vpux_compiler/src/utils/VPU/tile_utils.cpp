@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -411,6 +411,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     if (auto nceMatmulOp = mlir::dyn_cast<VPU::NCEMatMulOp>(op)) {
         return getTileDistributions(nceMatmulOp, siblingsAnalysis, outTile, inputTiles);
     }
+    if (auto nceReduceOp = mlir::dyn_cast<VPU::NCEReduceOp>(op)) {
+        return getTileDistributionsCommon(nceReduceOp.getOperation(), siblingsAnalysis, outTile, inputTiles);
+    }
 
     auto tileConf = inputTiles.has_value() ? inputTiles.value() : vpux::backInferEltwiseTile(op, outTile);
 
@@ -547,7 +550,7 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
     }
 
     VPUX_THROW_UNLESS(inTiles.size() == origOp->getOperands().size(),
-                      "Unexpected SW inputTile size '{0}' and Op operands size '{1}'", inTiles.size(),
+                      "Unexpected inputTile size '{0}' and Op operands size '{1}'", inTiles.size(),
                       origOp->getOperands().size());
 
     for (const auto& input : origOp->getOperands() | indexed) {
@@ -631,6 +634,9 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(mlir::Operation* op, const TileI
     if (auto permuteOp = mlir::dyn_cast<VPU::NCEPermuteOp>(op)) {
         return getTileTypes(permuteOp, outTile, inputTiles);
     }
+    if (auto reduceOp = mlir::dyn_cast<VPU::NCEReduceOp>(op)) {
+        return getTileTypesCommon(reduceOp, outTile, inputTiles);
+    }
     if (auto gatherOp = mlir::dyn_cast<VPU::GatherOp>(op)) {
         return getTileTypesCommon(gatherOp, outTile, inputTiles);
     }
@@ -653,7 +659,7 @@ Byte getRequiredCMXForWeight(VPU::NCEConvolutionOp convOp, const vpux::TileInfo&
     const auto lastFilterTileType = tileTypes[1];
     const auto outputTileType = tileTypes[2];
     const auto OC = outputTileType.getShape()[Dims4D::Act::C];
-    return getRequiredCMXSizeForNCEOps({lastFilterTileType}, OC);
+    return getRequiredCMXSizeForNCEOps({lastFilterTileType}, OC, countElementsPerOutputChannelInWeightTable(convOp));
 }
 
 Byte getRequiredCMXForWeight(VPU::NCEMatMulOp matMulOp, const vpux::TileInfo& tiling,
@@ -691,7 +697,8 @@ Byte getRequiredCMX(VPU::NCEConvolutionOp convOp, const SmallVector<NDTypeInterf
     const auto lastFilterTileType = tileTypes[1];
     const auto lastOutputTileType = tileTypes[2];
     const auto OC = lastOutputTileType.getShape()[Dims4D::Act::C];
-    return getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC);
+    return getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC,
+                                       countElementsPerOutputChannelInWeightTable(convOp));
 }
 
 Byte getRequiredCMX(VPU::NCEConvolutionOp convOp,
@@ -701,7 +708,8 @@ Byte getRequiredCMX(VPU::NCEConvolutionOp convOp,
     const auto lastFilterTileType = tileDistributions[1];
     const auto lastOutputTileType = tileDistributions[2];
     const auto OC = lastOutputTileType.first.getShape()[Dims4D::Act::C];
-    return getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC);
+    return getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC,
+                                       countElementsPerOutputChannelInWeightTable(convOp));
 }
 
 Byte getRequiredCMX(VPU::NCEConvolutionOp convOp, const vpux::TileInfo& tiling,
@@ -861,13 +869,8 @@ Byte getRequiredCMX(VPU::NCEMaxPoolOp poolOp, const SmallVector<NDTypeInterface>
     VPUX_THROW_WHEN(tileTypes.size() < 2, "Incorrect types {0} for {1}", tileTypes.size(), poolOp);
     auto inputType = tileTypes[0];
     auto outputType = tileTypes[1];
-    auto kernelSize = poolOp.getKernelSize();
-    auto kernelStrides = poolOp.getStrides();
     const auto inputShape = inputType.getShape();
     const auto IC = inputShape[Dims4D::Act::C];
-
-    const auto kernelSizeVals = Shape(parseIntArrayAttr<int64_t>(kernelSize));
-    const auto kernelStridesVals = Shape(parseIntArrayAttr<int64_t>(kernelStrides));
 
     return getRequiredCMXSizeForNCEOps({inputType, outputType}, IC);
 }
@@ -877,13 +880,8 @@ Byte getRequiredCMX(VPU::NCEMaxPoolOp poolOp,
     VPUX_THROW_WHEN(tileDistributions.size() < 2, "Incorrect types {0} for {1}", tileDistributions.size(), poolOp);
     auto inputType = tileDistributions[0];
     auto outputType = tileDistributions[1];
-    auto kernelSize = poolOp.getKernelSize();
-    auto kernelStrides = poolOp.getStrides();
     const auto inputShape = inputType.first.getShape();
     const auto IC = inputShape[Dims4D::Act::C];
-
-    const auto kernelSizeVals = Shape(parseIntArrayAttr<int64_t>(kernelSize));
-    const auto kernelStridesVals = Shape(parseIntArrayAttr<int64_t>(kernelStrides));
 
     return getRequiredCMXSizeForNCEOps({std::move(inputType), std::move(outputType)}, IC);
 }
@@ -917,13 +915,8 @@ Byte getRequiredCMX(VPU::NCEAveragePoolOp poolOp, const SmallVector<NDTypeInterf
     VPUX_THROW_WHEN(tileTypes.size() < 2, "Incorrect types {0} for {1}", tileTypes.size(), poolOp);
     auto inputType = tileTypes[0];
     auto outputType = tileTypes[1];
-    auto kernelSize = poolOp.getKernelSize();
-    auto kernelStrides = poolOp.getStrides();
     const auto inputShape = inputType.getShape();
     const auto IC = inputShape[Dims4D::Act::C];
-
-    const auto kernelSizeVals = Shape(parseIntArrayAttr<int64_t>(kernelSize));
-    const auto kernelStridesVals = Shape(parseIntArrayAttr<int64_t>(kernelStrides));
 
     return getRequiredCMXSizeForNCEOps({inputType, outputType}, IC);
 }
@@ -933,13 +926,8 @@ Byte getRequiredCMX(VPU::NCEAveragePoolOp poolOp,
     VPUX_THROW_WHEN(tileDistributions.size() < 2, "Incorrect types {0} for {1}", tileDistributions.size(), poolOp);
     auto inputType = tileDistributions[0];
     auto outputType = tileDistributions[1];
-    auto kernelSize = poolOp.getKernelSize();
-    auto kernelStrides = poolOp.getStrides();
     const auto inputShape = inputType.first.getShape();
     const auto IC = inputShape[Dims4D::Act::C];
-
-    const auto kernelSizeVals = Shape(parseIntArrayAttr<int64_t>(kernelSize));
-    const auto kernelStridesVals = Shape(parseIntArrayAttr<int64_t>(kernelStrides));
 
     return getRequiredCMXSizeForNCEOps({std::move(inputType), std::move(outputType)}, IC);
 }
@@ -947,6 +935,34 @@ Byte getRequiredCMX(VPU::NCEAveragePoolOp poolOp,
 Byte getRequiredCMX(VPU::NCEAveragePoolOp poolOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
     return getRequiredCMX(poolOp, getTileDistributions(poolOp.getOperation(), tiling, inputTiles));
+}
+
+Byte getRequiredCMX(VPU::NCEReduceOp reduceOp, const SmallVector<NDTypeInterface>& tileTypes) {
+    VPUX_THROW_WHEN(tileTypes.size() < 2, "Incorrect types {0} for VPU.NCE.ReduceOp at loc {1}", tileTypes.size(),
+                    reduceOp.getLoc());
+    auto inputType = tileTypes[0];
+    auto outputType = tileTypes[1];
+    const auto inputShape = inputType.getShape();
+    const auto IC = inputShape[Dims4D::Act::C];
+
+    return getRequiredCMXSizeForNCEOps({inputType, outputType}, IC);
+}
+
+Byte getRequiredCMX(VPU::NCEReduceOp reduceOp,
+                    const std::vector<std::pair<NDTypeInterface, TensorDistributionMap>>& tileDistributions) {
+    VPUX_THROW_WHEN(tileDistributions.size() < 2, "Incorrect types {0} for VPU.NCE.ReduceOp at loc {1}",
+                    tileDistributions.size(), reduceOp.getLoc());
+    auto inputType = tileDistributions[0];
+    auto outputType = tileDistributions[1];
+    const auto inputShape = inputType.first.getShape();
+    const auto IC = inputShape[Dims4D::Act::C];
+
+    return getRequiredCMXSizeForNCEOps({std::move(inputType), std::move(outputType)}, IC);
+}
+
+Byte getRequiredCMX(VPU::NCEReduceOp reduceOp, const vpux::TileInfo& tiling,
+                    const std::optional<InputTiling>& inputTiles) {
+    return getRequiredCMX(reduceOp, getTileDistributions(reduceOp.getOperation(), tiling, inputTiles));
 }
 
 Byte getEltwiseRequiredCMX(mlir::Operation* op, const SmallVector<NDTypeInterface>& tileTypes) {
@@ -1098,6 +1114,9 @@ Byte getRequiredCMXForWeight(mlir::Operation* op, const vpux::TileInfo& tiling,
             .Case<VPU::NCEMatMulOp>([&](VPU::NCEMatMulOp matmulOp) {
                 return getRequiredCMXForWeight(matmulOp, tiling, inputTiles);
             })
+            .Case<VPU::NCEReduceOp>([&](VPU::NCEReduceOp /*origOp*/) {
+                return Byte(0);
+            })
             .Default([](mlir::Operation* unknownOp) -> Byte {
                 VPUX_THROW("Operation CMX check '{0}' at '{1}' is not implemented", unknownOp->getName(),
                            unknownOp->getLoc());
@@ -1155,6 +1174,9 @@ Byte getRequiredCMX(mlir::Operation* op, const vpux::TileInfo& tiling, Logger lo
             .Case<VPU::NCEMatMulOp>([&](VPU::NCEMatMulOp origOp) {
                 return getRequiredCMX(origOp, tiling, inputTiles);
             })
+            .Case<VPU::NCEReduceOp>([&](VPU::NCEReduceOp origOp) {
+                return getRequiredCMX(origOp, tiling, inputTiles);
+            })
             .Default([&](mlir::Operation* defaultOp) -> Byte {
                 log.trace("getRequiredCMX is not implemented for op {0}, use default function and ignore parent tiling",
                           defaultOp->getName());
@@ -1194,6 +1216,9 @@ Byte getRequiredCMX(mlir::Operation* op, const SmallVector<NDTypeInterface>& typ
             .Case<VPU::NCEPermuteOp>([&](VPU::NCEPermuteOp origOp) {
                 return getRequiredCMX(origOp, types);
             })
+            .Case<VPU::NCEReduceOp>([&](VPU::NCEReduceOp origOp) {
+                return getRequiredCMX(origOp, types);
+            })
             .Default([&](mlir::Operation* defaultOp) -> Byte {
                 return getRequiredCMXSizeForDefaultOps(defaultOp);
             });
@@ -1219,18 +1244,19 @@ Byte getRequiredCMXSize(ArrayRef<std::pair<NDTypeInterface, TensorDistributionMa
     return requiredCMX;
 }
 
-Byte getRequiredCMXSizeForNCEOps(ArrayRef<vpux::NDTypeInterface> operands, int64_t numChannels) {
+Byte getRequiredCMXSizeForNCEOps(ArrayRef<vpux::NDTypeInterface> operands, int64_t numChannels,
+                                 int64_t elemsPerOutputChannel) {
     auto requiredCMX = getRequiredCMXSize(operands);
 
-    requiredCMX += numChannels * VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC * 4_Byte;
+    requiredCMX += numChannels * elemsPerOutputChannel * 4_Byte;
 
     return requiredCMX;
 }
 
 Byte getRequiredCMXSizeForNCEOps(ArrayRef<std::pair<NDTypeInterface, TensorDistributionMap>> operands,
-                                 int64_t numChannels) {
+                                 int64_t numChannels, int64_t elemsPerOutputChannel) {
     auto requiredCMX = getRequiredCMXSize(operands);
-    requiredCMX += numChannels * VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC * 4_Byte;
+    requiredCMX += numChannels * elemsPerOutputChannel * 4_Byte;
 
     return requiredCMX;
 }
@@ -1388,6 +1414,17 @@ OutputTiling getUniqueShapeTilingCandidates(mlir::Operation* op, const OutputTil
             .Default([&](mlir::Operation*) -> OutputTiling {
                 return origTiles;
             });
+}
+
+int64_t countElementsPerOutputChannelInWeightTable(VPU::NCEConvolutionOp convOp) {
+    bool isNewWeightTable = convOp.getWeightsTable() == nullptr;
+    int64_t numberOfNewWeightTables = isNewWeightTable ? (convOp.getWeightTableScale() == nullptr ? 0 : 1) +
+                                                                 (convOp.getWeightTableBias() == nullptr ? 0 : 1)
+                                                       : 0;
+    int64_t elemsPerChannel =
+            isNewWeightTable ? VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC * numberOfNewWeightTables
+                             : VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC;
+    return elemsPerChannel;
 }
 
 bool canSWLayerBeEvenlyUnrolled(mlir::Operation* op, const OutputTiling& tiles, Dim targetDim, Logger) {

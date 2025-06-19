@@ -11,7 +11,10 @@ This document is written on the basis of discussions taken as part of the task o
 
 ![NPU compilation pipeline](images/compilation_flow.png)
 
-Regardless of the device version, the compilation flow has the same appearance at the dialect level. These dialects represent different levels of detail. The IR is lowered from high level abstractions to more detailed representation step-by-step during compilation. The compilation pipeline consists of the "atomic“ passes. Each pass in compilation pipeline must represent one single transformation to reach one specific goal (either IR adaptation or IR optimization).
+Regardless of the device version, the compilation flow has the same appearance at the dialect level. These dialects represent different levels of de
+tail. The IR is lowered from high level abstractions to more detailed representation step-by-step during compilation. The compilation pipeline consis
+ts of the "atomic“ passes. Each pass in compilation pipeline must represent one single transformation to reach one specific goal (either IR adaptatio
+n or IR optimization).
 
 It is also necessary to describe the dependence of dialects from an architectural point of view:
 
@@ -439,3 +442,15 @@ void MyDialect::initialize() {
 ```
 
 Note: If no dispatched inliner interface is provided via `registerDispatchedInlinerInterface`, a fallback implementation which mirrors `mlir/lib/Dialect/Func/Extensions/InlinerExtension.cpp` is used! For a lot of use-cases this is enough as the default inlining behaviour is the desired one.
+
+## Weights Separation
+
+### Monolithic Mode
+
+The main motivation of the Monolithic mode is to align as much as possible with "real" weights separation but keeping `@init()` and `@main()` in the same blob and thus being able to use the current CI infrastructure. This eases the debugging of compilation, accuracy and inference issues (IMD).
+
+A rough sketch of the Monolithic WS pipeline looks like this:
+
+<img src="images/ws-monolithic-compilation-flow.png" alt="drawing" width="400"/>
+
+Up until `IntroduceInitFunctionPass`, we have the normal IR structure with a single `@main(...) -> (...)` function. This pass then creates the `@init(...) -> (...)` function. The pass strips away the transformations from `const.Declare` operations and converts them into `IE`-dialect operations in `@init`. The `WSInit` pipeline is then executed only on the `@init` function. After that, the `UnpackNestedModulesPass`, together with the `InlinerPass`, converts the multiple nested functions back into a single network function. Then, the default hardware `VPUIP` pipeline is executed.

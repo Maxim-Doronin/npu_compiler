@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-gather-elements-to-gather %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ConvertGatherElementsOnHAndTileToGather
 // CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x1x5376x80xf16>, [[INPUT1:%.+]]: tensor<1x1x300x1xsi32>)
 func.func @ConvertGatherElementsOnHAndTileToGather(%arg0: tensor<1x1x5376x80xf16>,

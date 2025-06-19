@@ -4,6 +4,10 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/transpose.hpp"
+
 namespace ov::test {
 
 class ReshapeWithTransposeTest_NPU3720 :

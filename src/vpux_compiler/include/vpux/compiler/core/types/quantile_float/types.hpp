@@ -1,10 +1,11 @@
 // Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-
+#pragma once
 #include <mlir/IR/OpImplementation.h>
 #include <mlir/IR/Types.h>
 #include "vpux/compiler/core/types/quantile_float/type_detail.hpp"
+#include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 
 using namespace mlir;
@@ -19,19 +20,30 @@ namespace type {
 
 class QuantileFloatType : public mlir::Type {
 public:
+    using ImplType = vpux::detail::QuantileFloatTypeStorage;
     using Type::Type;
 
-    /// Return the bitwidth of the storage type.
-    unsigned getWidth() const;
+    // Return the bitwidth of the storage type.
+    unsigned getStorageTypeIntegralWidth() const;
 
-    // Get NF4 instance.
-    static QuantileFloatType getNF4(mlir::MLIRContext* ctx, ArrayRef<double> quantiles = {});
+    // Get the underlying type used for to store raw values.
+    Type getStorageType() const;
+
+    // Get primitive expressed type of data in quantiles.
+    // Note that we may convert FP8 data to FP16 for storage,
+    // but we should treat its expressed type as FP8 rather than FP16.
+    Type getQuantileType() const;
 
     /// Return the quantile table of this float type.
     ArrayRef<double> getQuantiles() const;
 
     // Get a quantile float type with specified quantile table.
-    static QuantileFloatType getQuantileFloat(MLIRContext* ctx, unsigned bitWidth, ArrayRef<double> quantiles = {});
+    static QuantileFloatType get(MLIRContext* ctx, Type storageType, Type quantileType,
+                                 ArrayRef<double> quantiles = {});
+
+    // Get NF4 instance.
+    static QuantileFloatType getNF4(mlir::MLIRContext* ctx, Type storageType, Type quantileType,
+                                    ArrayRef<double> quantiles = {});
 
     /// Methods for support type inquiry through isa, cast, and dyn_cast.
     static bool classof(mlir::Type type);
@@ -53,12 +65,10 @@ private:
 
 public:
     using Base::Base;
-    static NF4Type get(mlir::MLIRContext* context, unsigned width, ArrayRef<double> quantiles);
+    static NF4Type get(mlir::MLIRContext* ctx, Type storageType, Type quantileType, ArrayRef<double> quantiles = {});
     static constexpr llvm::StringLiteral name = "nf4";
     static ArrayRef<double> getSpecQuantiles();
-
-    unsigned getWidth() const;
-    ArrayRef<double> getQuantiles() const;
+    static bool classof(mlir::Type type);
 };
 
 }  // namespace type

@@ -4,6 +4,7 @@
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --emit-bytecode --init-compiler="vpu-arch=%arch%" %s | vpux-opt --vpu-arch=%arch% | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -27,7 +28,7 @@ module @Test {
                 VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
             }
             ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-              "NPUReg40XX.DPUInvariant"() <{descriptor = #NPUReg40XX.DpuInvariantRegister<
+              NPUReg40XX.DPUInvariant descriptor = <
                 DpuInvariantRegister {
                   cmx_slice0_low_addr = UINT 0x4000000,
                   cmx_slice1_low_addr = UINT 0x4000000,
@@ -275,8 +276,9 @@ module @Test {
                   deprecated1_inv = UINT 0,
                   pad_3 = UINT 0,
                 } requires 11:4:10
-              >, input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, sym_name = "DPUInvariant_0", task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0}> : () -> ()
-              // CHECK: descriptor = #NPUReg40XX.DpuInvariantRegister<
+              > {input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, sym_name = "DPUInvariant_0", task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0}
+              }
+              // CHECK: NPUReg40XX.DPUInvariant descriptor = <
               // CHECK:  DpuInvariantRegister {
               // CHECK:    cmx_slice0_low_addr = UINT 0x4000000,
               // CHECK:    cmx_slice1_low_addr = UINT 0x4000000,
@@ -525,9 +527,9 @@ module @Test {
               // CHECK:    pad_3 = UINT 0,
               // CHECK:  } requires 11:4:10
               // CHECK: >
-            }
+
             ELF.CreateSection @text.variants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-              "NPUReg40XX.DPUVariant"() <{descriptor = #NPUReg40XX.DpuVariantRegister<
+              NPUReg40XX.DPUVariant descriptor = <
                 DpuVariantRegister {
                   invar_ptr {
                     UINT invar_ptr = 0,
@@ -753,8 +755,9 @@ module @Test {
                   deprecated1_var = UINT 0,
                   pad_7_1 = UINT 0,
                 } requires 11:4:10
-              >, invariant_task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, sym_name = "DPUVariant11", task_index = !VPURegMapped.Index<0:0:0>}> : () -> ()
-              // CHECK: descriptor = #NPUReg40XX.DpuVariantRegister<
+                > {invariant_task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, sym_name = "DPUVariant11", task_index = !VPURegMapped.Index<0:0:0>}
+              }
+              // CHECK: NPUReg40XX.DPUVariant descriptor = <
               // CHECK: DpuVariantRegister {
               // CHECK:   invar_ptr {
               // CHECK:     UINT invar_ptr = 0,
@@ -981,7 +984,7 @@ module @Test {
               // CHECK:   pad_7_1 = UINT 0,
               // CHECK: } requires 11:4:10
               // CHECK: >
-            }
+
             ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
                 ELF.Symbol @elfsym.builtin.data.nncmx0 of(@builtin.data.nncmx0) type(<STT_SECTION>) size(0) value(0)
                 ELF.Symbol @elfsym.builtin.tasks.DPUVariant0 of(@builtin.tasks.DPUVariant0) type(<STT_SECTION>) size(0) value(0)

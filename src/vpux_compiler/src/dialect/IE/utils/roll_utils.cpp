@@ -19,7 +19,7 @@ mlir::FailureOr<SmallVector<int64_t>> parseIntVector(mlir::Location loc, const m
 
     auto valueConst = value.getDefiningOp<Const::DeclareOp>();
     if (valueConst == nullptr) {
-        return errorAt(loc, "Only constant input is supported for interpolate attribute");
+        return errorAt(loc, "Only constant input is supported for roll attribute");
     }
 
     const auto valueContent = valueConst.getContent();

@@ -218,9 +218,9 @@ bool isExpandBetweenAdjacentConvLayers(IE::ConvolutionOp convOp, Logger log) {
     }
 
     auto isChildConvICAligned = getShape(childConv.getInput())[Dims4D::Act::C] % alignedInputChannel == 0;
-    auto isExpandBetween = !isChildConvICAligned && mlir::failed(getAdjustConvShapeParameters(
-                                                            childConv, childConv.getFilter(),
-                                                            Shape(getShape(childConv.getOutput())), std::move(log)));
+    auto isExpandBetween =
+            !isChildConvICAligned && mlir::failed(getAdjustConvShapeParameters(childConv, childConv.getFilter(),
+                                                                               getShape(childConv.getOutput()), log));
     return isExpandBetween;
 }
 
@@ -267,9 +267,9 @@ bool isSliceBetweenAdjacentConvLayers(IE::ConvolutionOp convOp, Logger log) {
     }
 
     auto isParentConvOCAligned = getShape(parentConv.getOutput())[Dims4D::Act::C] % alignedOutputChannel == 0;
-    auto isSliceBetween = !isParentConvOCAligned && mlir::failed(getAdjustConvShapeParameters(
-                                                            parentConv, parentConv.getFilter(),
-                                                            Shape(getShape(parentConv.getOutput())), std::move(log)));
+    auto isSliceBetween =
+            !isParentConvOCAligned && mlir::failed(getAdjustConvShapeParameters(parentConv, parentConv.getFilter(),
+                                                                                getShape(parentConv.getOutput()), log));
     return isSliceBetween;
 }
 
@@ -311,7 +311,7 @@ mlir::LogicalResult AdjustConvShape::matchAndRewrite(IE::ConvolutionOp convOp, m
     auto strides = Shape(parseIntArrayAttr<int64_t>(convOp.getStrides()));
 
     const auto adjustConvShapeParameters =
-            getAdjustConvShapeParameters(convOp, convOp.getFilter(), Shape(outNDInterface.getShape()), _log);
+            getAdjustConvShapeParameters(convOp, convOp.getFilter(), outNDInterface.getShape(), _log);
     if (mlir::failed(adjustConvShapeParameters)) {
         return mlir::failure();
     }
@@ -480,8 +480,12 @@ mlir::LogicalResult AdjustDWConvShape::matchAndRewrite(IE::GroupConvolutionOp or
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
 
     auto ctx = origOp->getContext();
-    if (!IE::groupConvIsEltwise(origOp, /*isConstFilter*/ false)) {
+    if (!IE::isEltwiseGroupConv(origOp, /*isConstFilter*/ false)) {
         return matchFailed(rewriter, origOp, "Not a valid groupConv");
+    }
+
+    if (getShape(origOp.getFilter()).totalSize() != 1) {
+        return matchFailed(rewriter, origOp, "Filter size need to be 1");
     }
 
     // Don't do the optimization if ODU permute exist
@@ -569,6 +573,8 @@ void AdjustConvolutionShapePass::safeRunOnFunc() {
     patterns.add<FoldConvStrideKernel>(&ctx, benefitLevels[0], _log);
     patterns.add<AdjustConvShape>(&ctx, benefitLevels[1], _log);
     patterns.add<AdjustDWConvShape>(&ctx, benefitLevels[1], _log);
+    IE::ConcatOp::getCanonicalizationPatterns(patterns, &ctx);
+
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }

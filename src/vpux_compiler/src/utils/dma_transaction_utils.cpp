@@ -3,8 +3,11 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/utils/dma_transaction_utils.hpp"
+#include <mlir/Support/LLVM.h>
+#include <cstdint>
 #include <vpux/compiler/core/attributes/strides.hpp>
+#include <vpux/compiler/dialect/VPUIP/utils/utils.hpp>
+#include <vpux/compiler/utils/dma_transaction_utils.hpp>
 #include <vpux/compiler/utils/types.hpp>
 
 namespace vpux {
@@ -110,14 +113,12 @@ namespace vpux {
 // Stride: [64, 4]
 //
 
-DMAPattern reduceDimsForDma(vpux::NDTypeInterface ndType) {
+DMAPattern reduceDimsForDma(SmallVector<int64_t> memShape, SmallVector<vpux::MemSize<vpux::MemType::Bit>> memStrides,
+                            int64_t elemSize) {
     // Get memory view of shape and strides
     // Store them all as bits so to handle sub byte types
-    auto memShape = to_small_vector(ndType.getMemShape());
-    auto memStrides = to_small_vector(ndType.getMemStrides());
 
     // Extend shape and strides to accommodate for element type size and batch stride
-    const auto elemSize = ndType.getElemTypeSize().count();
     memShape.push_back(elemSize);
     memStrides.insert(memStrides.begin(), memStrides.front() * memShape.front());
     auto innerMostIndex = memShape.size() - 1;
@@ -164,11 +165,11 @@ DMAPattern reduceDimsForDma(vpux::NDTypeInterface ndType) {
         std::copy(reducedBitDims.begin() + 1, reducedBitDims.end(), std::back_inserter(reducedBitDimsByteAligned));
     }
 
-    SmallVector<size_t> reducedDims;
+    SmallVector<int64_t> reducedDims;
     reducedDims.reserve(reducedBitDimsByteAligned.size());
     std::transform(reducedBitDimsByteAligned.begin(), reducedBitDimsByteAligned.end(), std::back_inserter(reducedDims),
                    [elemSize](const Bit& bitDim) {
-                       return checked_cast<size_t>(bitDim.count() / elemSize);
+                       return checked_cast<int64_t>(bitDim.count() / elemSize);
                    });
 
     // Innermost dim is special
@@ -183,7 +184,7 @@ DMAPattern reduceDimsForDma(vpux::NDTypeInterface ndType) {
     // Align all strides to byte size
     auto reducedStrides = to_small_vector(reducedBitStrides | vpux::transformed(alignToByteBoundary) |
                                           vpux::transformed([](auto bitStride) {
-                                              return checked_cast<size_t>(bitStride.template to<Byte>().count());
+                                              return checked_cast<int64_t>(bitStride.template to<Byte>().count());
                                           }));
 
     // Validate byte alignment for strides
@@ -203,7 +204,7 @@ void patchDimsForNPU37XX(DMAPattern& dmaPattern) {
     // NPU37XX hacks from here on
 
     // Re - accumulate the reduced shape dims, for NPU37XX purpose;
-    size_t accum = dmaPattern.dims.back();
+    int64_t accum = dmaPattern.dims.back();
     for (auto rIt = dmaPattern.dims.rbegin() + 1; rIt != dmaPattern.dims.rend(); ++rIt) {
         *rIt *= accum;
         accum = *rIt;
@@ -214,6 +215,121 @@ void patchDimsForNPU37XX(DMAPattern& dmaPattern) {
         dmaPattern.dims.erase(dmaPattern.dims.begin());
         dmaPattern.strides.erase(dmaPattern.strides.begin());
     }
+}
+
+DMATransaction getDMATransactionFromPermutation(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                                mlir::AffineMap mappingOrder, mlir::AffineMap loopOrder) {
+    return getDMATransactionFromPermutation(inType, outType, mappingOrder,
+                                            VPUIP::getSmallVectorFromAffineMap(loopOrder));
+}
+
+DMATransaction getDMATransactionFromPermutation(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                                mlir::AffineMap mappingOrder, mlir::SmallVector<int64_t> loopOrder) {
+    DMATransaction dmaTransaction;
+
+    auto ctx = inType.getContext();
+
+    // Mapping order maps out logical dims to in logical dims
+    // This mapping allows to find the in logical dim corresponding to a given out logical dim
+
+    // Define explicit vars to avoid confusion
+    // Mapping to find out logical dim based on given in logical dim
+    auto mappingLogicalInToOut = VPUIP::getSmallVectorFromAffineMap(mlir::inversePermutation(mappingOrder));
+    // Mapping to find in logical dim based on given out logical dim
+    auto mappingLogicalOutToIn = VPUIP::getSmallVectorFromAffineMap(mappingOrder);
+
+    // Dims order maps memory dims to logical dims
+
+    // Mapping to find logical dim corresponding to a given mem dim
+    auto inDimsOrderAffineMap = inType.getDimsOrder().toAffineMap(ctx);
+    auto outDimsOrderAffineMap = outType.getDimsOrder().toAffineMap(ctx);
+
+    // Define explicit vars to avoid confusion
+    // Mapping to find in mem dim based on given in logical dim
+    auto mappingInLogicalToMem = VPUIP::getSmallVectorFromAffineMap(mlir::inversePermutation(inDimsOrderAffineMap));
+    // Mapping to find in logical dim based on given in mem dim
+    auto mappingInMemToLogical = VPUIP::getSmallVectorFromAffineMap(inDimsOrderAffineMap);
+
+    // Mapping to find out mem dim based on given out logical dim
+    auto mappingOutLogicalToMem = VPUIP::getSmallVectorFromAffineMap(mlir::inversePermutation(outDimsOrderAffineMap));
+    // Mapping to find out logical dim based on given out mem dim
+    auto mappingOutMemToLogical = VPUIP::getSmallVectorFromAffineMap(outDimsOrderAffineMap);
+
+    // Original in and out mem dims and mem strides
+    auto inDims = to_small_vector(inType.getShape());
+    auto inStrides = to_small_vector(inType.getStrides());
+    auto inMemDims = to_small_vector(inType.getMemShape());
+    auto inMemStrides = to_small_vector(inType.getMemStrides());
+    auto outDims = to_small_vector(outType.getShape());
+    auto outStrides = to_small_vector(outType.getStrides());
+    auto outMemDims = to_small_vector(outType.getMemShape());
+    auto outMemStrides = to_small_vector(outType.getMemStrides());
+
+    // Permuted (i.e. after applying in to out permutation and loop order) mem dims and mem strides
+    auto inPermutedMemDims = inMemDims;
+    auto inPermutedMemStrides = inMemStrides;
+    auto outPermutedMemDims = outMemDims;
+    auto outPermutedMemStrides = outMemStrides;
+
+    auto loopOrderVec(std::move(loopOrder));
+
+    // All sizes here should be equal, but for now just check against inMemDims size
+    VPUX_THROW_WHEN(loopOrderVec.size() != inMemDims.size(), "Partial iteration over input is not supported");
+
+    for (auto index : irange(inType.getRank())) {
+        // Get in logical dim to process
+        auto inLogicalDimIndex = loopOrderVec[index];
+        // Get in memory dim to process
+        auto inMemDimIndex = mappingInLogicalToMem[inLogicalDimIndex];
+
+        // Paranoia checks
+        VPUX_THROW_WHEN(inDims[inLogicalDimIndex] != inMemDims[inMemDimIndex],
+                        "Mismatch between logical dim size and mem dim size");
+        VPUX_THROW_WHEN(inStrides[inLogicalDimIndex] != inMemStrides[inMemDimIndex],
+                        "Mismatch between logical dim stride and mem dim stride");
+
+        // Get mem dim and stride for current in logical dim
+        inPermutedMemDims[index] = inMemDims[inMemDimIndex];
+        inPermutedMemStrides[index] = inMemStrides[inMemDimIndex];
+
+        // Get corresponding out logical dim
+        auto outLogicalDimIndex = mappingLogicalInToOut[inLogicalDimIndex];
+
+        // Map out logical dim to out memory dim
+        auto outMemDimIndex = mappingOutLogicalToMem[outLogicalDimIndex];
+
+        // Paranoia checks
+        VPUX_THROW_WHEN(outDims[outLogicalDimIndex] != outMemDims[outMemDimIndex],
+                        "Mismatch between logical dim size and mem dim size");
+        VPUX_THROW_WHEN(outStrides[outLogicalDimIndex] != outMemStrides[outMemDimIndex],
+                        "Mismatch between logical dim stride and mem dim stride");
+
+        outPermutedMemDims[index] = outMemDims[outMemDimIndex];
+        outPermutedMemStrides[index] = outMemStrides[outMemDimIndex];
+
+        VPUX_THROW_WHEN(inPermutedMemDims[index] != outPermutedMemDims[index], "Dim size mismatch");
+    }
+
+    dmaTransaction.inputs.push_back(reduceDimsForDma(std::move(inPermutedMemDims), std::move(inPermutedMemStrides),
+                                                     inType.getElemTypeSize().count()));
+
+    dmaTransaction.outputs.push_back(reduceDimsForDma(std::move(outPermutedMemDims), std::move(outPermutedMemStrides),
+                                                      outType.getElemTypeSize().count()));
+
+    return dmaTransaction;
+}
+
+std::tuple<SmallVector<int64_t>, SmallVector<Bit>, int64_t> getTypeInfo(NDTypeInterface type) {
+    auto elemSize = type.getElemTypeSize().count();
+    auto memShape = to_small_vector(type.getMemShape());
+    if (memShape.empty()) {
+        memShape.push_back(1);
+    }
+    auto memStrides = to_small_vector(type.getMemStrides());
+    if (memStrides.empty()) {
+        memStrides.push_back(Bit(elemSize));
+    }
+    return {memShape, memStrides, elemSize};
 }
 
 }  // namespace vpux

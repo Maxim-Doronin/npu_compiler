@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -113,8 +114,6 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                         auto bestStrategy = _costModel.getOptimalLayerStrategy(
                                 mlir::cast<VPU::ClusteredOpInterface>(origOp.getOperation()));
                         setLayerStrategy(bestStrategy, origOp.getOperation());
-                    } else if (DimsOrder::fromValue(origOp.getInput()) == DimsOrder::NCHW) {
-                        setLayerStrategy(VPU::MultiClusterStrategy::Clustering, origOp.getOperation());
                     } else {
                         VPUX_THROW("Unsupported input layout {0} to convolution ",
                                    DimsOrder::fromValue(origOp.getInput()));
@@ -163,16 +162,39 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                             mlir::cast<VPU::ClusteredOpInterface>(origOp.getOperation()));
                     setLayerStrategy(bestStrategy, origOp.getOperation());
                 })
+                .Case<NCEReduceOp>([&](NCEReduceOp origOp) {
+                    const auto inputBatch = getShape(origOp.getInput())[Dims4D::Act::N];
+                    if (inputBatch > VPU::NCEInvariant::SUPPORTED_BATCH_SIZE) {
+                        const auto isSOBSupported =
+                                origOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverBatch, _numTiles);
+                        VPUX_THROW_WHEN(!isSOBSupported,
+                                        "NCEReduceOp has unsupported batch size and cannot be assigned SOB strategy");
+                        setLayerStrategy(VPU::MultiClusterStrategy::SplitOverBatch, origOp.getOperation());
+                    } else {
+                        auto bestStrategy = _costModel.getOptimalLayerStrategy(
+                                mlir::cast<VPU::ClusteredOpInterface>(origOp.getOperation()));
+                        setLayerStrategy(bestStrategy, origOp.getOperation());
+                    }
+                })
                 .Case<SWOpInterface>([&](SWOpInterface origOp) {
                     if (!enableMultiClusterForSWLayer) {
                         return;
                     }
 
-                    auto inputShape = mlir::cast<vpux::NDTypeInterface>(origOp.getOperation()->getOperand(0).getType())
-                                              .getShape();
+                    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOperation()->getOperand(0).getType());
+
+                    auto inputShape = inputType.getShape();
                     auto outputShape =
                             mlir::cast<vpux::NDTypeInterface>(origOp.getOperation()->getResult(0).getType()).getShape();
 
+                    if (mlir::isa<VPU::SoftMaxOp>(origOp) && inputType.getRank() == 5) {
+                        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+                        if (clusteredOp != nullptr && clusteredOp.checkStrategyCompatibility(
+                                                              VPU::MultiClusterStrategy::SplitOverGroup, _numTiles)) {
+                            setLayerStrategy(VPU::MultiClusterStrategy::SplitOverGroup, origOp.getOperation());
+                        }
+                        return;
+                    }
                     // Non 4D Tensor or Tensor with larger batch size cannot be tiled properly.
                     // [E90039]MC support for Non 4D Tensor.
                     std::optional<VPU::MultiClusterStrategy> bestStrategy;
@@ -286,11 +308,24 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                     };
 
                     const auto isSplitOverChannelPreferred = [&](VPU::NCEPermuteOp permuteOp) {
-                        // Check if permute can use multi clusters
+                        // Check if permute can use multi clusters with channel alignment
                         const auto outputShape = getShape(permuteOp.getOutput());
-                        const auto numClusters = VPU::getOptimalNumClusters(permuteOp, outputShape,
-                                                                            VPU::MultiClusterStrategy::SplitOverKernel);
+                        auto moduleOp = permuteOp->getParentOfType<mlir::ModuleOp>();
+                        const auto numClustersAvailableForCompilation = IE::getTileExecutor(moduleOp).getCount();
+                        const auto uniformDistributedSegments = VPU::isUniformDistributedSegmentsSupported(permuteOp);
+                        const auto numClusters = getNumberOfClustersForSOKToAvoidAlignment(
+                                outputShape[Dims4D::Act::C], numClustersAvailableForCompilation,
+                                uniformDistributedSegments);
+
                         if (numClusters <= 1) {
+                            return false;
+                        }
+                        auto inputClusteredOp =
+                                mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(permuteOp.getInput().getDefiningOp());
+                        // Check if the input op SOK strategy supported
+                        if (inputClusteredOp != nullptr &&
+                            !inputClusteredOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverKernel,
+                                                                         _numTiles)) {
                             return false;
                         }
                         auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(permuteOp.getOperation());
@@ -328,6 +363,9 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
     };
 
     _func.walk(callback);
+
+    _log.info("[MC Assign / greedy phase]");
+    _costModel.printNNCacheStatistics();
 }
 
 void StrategyManager::optimizeMulticlusterStrategy() {

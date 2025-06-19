@@ -4,8 +4,12 @@
 //
 
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/divide.hpp"
+#include "openvino/op/fake_quantize.hpp"
+#include "openvino/op/matmul.hpp"
 
 namespace ov::test::subgraph {
 

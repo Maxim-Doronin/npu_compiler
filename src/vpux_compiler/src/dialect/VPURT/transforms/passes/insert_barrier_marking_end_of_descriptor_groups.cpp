@@ -55,15 +55,14 @@ public:
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    void insertBarriersFortile(mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap,
-                               BarrierInfo& barrierInfo, const BlockRange& blockRange, size_t& numOfBarriersInserted,
-                               VPURT::TaskQueueType queueType, size_t iterTile = 0);
+    void insertBarriersForQueue(mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap,
+                                BarrierInfo& barrierInfo, const BlockRange& blockRange, size_t& numOfBarriersInserted,
+                                VPURT::TaskQueueType queueType);
     void insertUpdateBarriersForLastTask(mlir::OpBuilder& builder, ExecutionGroupList& executionGroupList,
                                          ExecutionGroup& executionGroup, BarrierInfo& barrierInfo,
-                                         const size_t& groupIdx, const BlockRange& blockRange, size_t iterTile);
+                                         const size_t& groupIdx, const BlockRange& blockRange, size_t queueId);
     void insertBarrierDependency(mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap,
-                                 VPU::ExecutorKind executorKind, BarrierInfo& barrierInfo, const size_t& maxTiles,
-                                 const BlockRange& blockRange, size_t& numOfBarriersInserted);
+                                 BarrierInfo& barrierInfo, const BlockRange& blockRange, size_t& numOfBarriersInserted);
     void legalizeScheduleForNonWlm(mlir::func::FuncOp netFunc);
 
 private:
@@ -104,8 +103,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::legalizeScheduleForNonWlm(m
 
         auto execGroups = getExecutionGroups(executorKind);
         for (size_t taskBlockIndex = 0; taskBlockIndex < barrierInfo.getControlGraphBlockCount(); ++taskBlockIndex) {
-            newBarriers += barrierInfo.createBarrierDependenciesBetweenExecutionGroups(taskBlockIndex, executorKind,
-                                                                                       execGroups);
+            newBarriers += barrierInfo.createBarrierDependenciesBetweenExecutionGroups(taskBlockIndex, execGroups);
         }
 
         if (newBarriers > 0) {
@@ -141,15 +139,15 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::legalizeScheduleForNonWlm(m
  * for tasks starting from the next task (task-index 6) and checks for either update
  * barriers or wait barriers.
  *
- * If a non DMA task on iterTile with either a wait or update barrier is found, it
+ * If a non DMA task on queueId with either a wait or update barrier is found, it
  * is returned; otherwise, the search continues. If no such task exists, the function returns `nullptr`.
  */
-VPURT::TaskOp getAdjacentTaskWithBarriers(BarrierInfo& barrierInfo, size_t currentTaskIdx, size_t iterTile) {
+VPURT::TaskOp getAdjacentTaskWithBarriers(BarrierInfo& barrierInfo, size_t currentTaskIdx, size_t queueId) {
     auto isNonDMAOnSpecificTile = [&](mlir::Operation* op) -> bool {
         auto taskOp = mlir::dyn_cast<VPURT::TaskOp>(op);
         if (taskOp != nullptr && taskOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
-            size_t queueId = VPURT::getTaskQueueType(taskOp, false).id;
-            if (queueId == iterTile) {
+            size_t taskQueueId = VPURT::getTaskQueueType(taskOp, false).id;
+            if (taskQueueId == queueId) {
                 return true;
             }
         }
@@ -204,7 +202,7 @@ VPURT::TaskOp getAdjacentTaskWithBarriers(BarrierInfo& barrierInfo, size_t curre
 
 void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertUpdateBarriersForLastTask(
         mlir::OpBuilder& builder, ExecutionGroupList& executionGroupList, ExecutionGroup& executionGroup,
-        BarrierInfo& barrierInfo, const size_t& groupIdx, const BlockRange& blockRange, size_t iterTile) {
+        BarrierInfo& barrierInfo, const size_t& groupIdx, const BlockRange& blockRange, size_t queueId) {
     auto nextExecutionGroup = executionGroupList[groupIdx + 1];
     auto newBarrierOp = createNewBarrier(builder, barrierInfo, nullptr, nullptr, nullptr);
 
@@ -213,7 +211,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertUpdateBarriersForLast
 
     // If we cannot insert dependency between task of consecutive groups use the next available task with barriers
     if (!inSameTaskBlock(producerTaskIdx, consumerTaskIdx, blockRange)) {
-        auto nextTaskWithUpdateBarriers = getAdjacentTaskWithBarriers(barrierInfo, producerTaskIdx, iterTile);
+        auto nextTaskWithUpdateBarriers = getAdjacentTaskWithBarriers(barrierInfo, producerTaskIdx, queueId);
         consumerTaskIdx = barrierInfo.getIndex(nextTaskWithUpdateBarriers);
     }
 
@@ -222,22 +220,20 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertUpdateBarriersForLast
 }
 
 void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarrierDependency(
-        mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap, VPU::ExecutorKind executorKind,
-        BarrierInfo& barrierInfo, const size_t& maxTiles, const BlockRange& blockRange, size_t& numOfBarriersInserted) {
-    VPURT::TaskQueueType queueType;
-    queueType.type = executorKind;
-    queueType.id = 0;
-
-    for (size_t iterTile = 0; iterTile < maxTiles; ++iterTile) {
-        queueType.id = iterTile;
-        insertBarriersFortile(builder, executionGroupListMap, barrierInfo, blockRange, numOfBarriersInserted, queueType,
-                              iterTile);
+        mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap, BarrierInfo& barrierInfo,
+        const BlockRange& blockRange, size_t& numOfBarriersInserted) {
+    for (auto& [queueType, executionGroup] : executionGroupListMap) {
+        if (queueType.type != VPU::ExecutorKind::SHAVE_ACT && queueType.type != VPU::ExecutorKind::DPU) {
+            continue;
+        }
+        insertBarriersForQueue(builder, executionGroupListMap, barrierInfo, blockRange, numOfBarriersInserted,
+                               queueType);
     }
 }
 
-void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersFortile(
+void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersForQueue(
         mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap, BarrierInfo& barrierInfo,
-        const BlockRange& blockRange, size_t& numOfBarriersInserted, VPURT::TaskQueueType queueType, size_t iterTile) {
+        const BlockRange& blockRange, size_t& numOfBarriersInserted, VPURT::TaskQueueType queueType) {
     auto executionGroupListForTile = executionGroupListMap[queueType];
 
     for (size_t groupIdx = 0; groupIdx < executionGroupListForTile.size(); ++groupIdx) {
@@ -248,7 +244,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersFortile(
         if (!lastTaskHasUpdateBarriers && groupIdx != executionGroupListForTile.size() - 1) {
             ++numOfBarriersInserted;
             insertUpdateBarriersForLastTask(builder, executionGroupListForTile, executionGroup, barrierInfo, groupIdx,
-                                            blockRange, iterTile);
+                                            blockRange, queueType.id);
         }
     }
 }
@@ -281,7 +277,6 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
     }
 
     mlir::OpBuilder builder(netFunc);
-    const auto tilesCount = static_cast<size_t>(IE::getTileExecutor(module).getCount());
 
     auto taskOps = netFunc.getOps<VPURT::TaskOp>();
     auto numOfTasks = static_cast<size_t>(std::distance(taskOps.begin(), taskOps.end()));
@@ -325,12 +320,10 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
 
     // Barrier Info will reorder the barriers later
     builder.setInsertionPoint(*taskOps.begin());
-    insertBarrierDependency(builder, listOfDPUExecutionGroups, VPU::ExecutorKind::DPU, barrierInfo, tilesCount,
-                            blockRange, numBarriersInsertedForDPUTasks);
+    insertBarrierDependency(builder, listOfDPUExecutionGroups, barrierInfo, blockRange, numBarriersInsertedForDPUTasks);
 
     auto listOfSWExecutionGroups = execGroupAnalysis.getActShvExecutionGroups();
-    insertBarrierDependency(builder, listOfSWExecutionGroups, VPU::ExecutorKind::SHAVE_ACT, barrierInfo, tilesCount,
-                            blockRange, numBarriersInsertedForSHVTasks);
+    insertBarrierDependency(builder, listOfSWExecutionGroups, barrierInfo, blockRange, numBarriersInsertedForSHVTasks);
 
     _log.info("Inserted '{0}' barriers for DPU group and '{1}' barriers for SHV group legalization",
               numBarriersInsertedForDPUTasks, numBarriersInsertedForSHVTasks);

@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/eye.hpp"
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/eye.hpp"
+#include "openvino/op/select.hpp"
 
 using namespace ov::test::utils;
 

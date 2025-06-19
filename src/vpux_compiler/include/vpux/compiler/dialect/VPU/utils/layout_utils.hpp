@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/utils/core/error.hpp"
 
 namespace vpux {
@@ -77,7 +78,7 @@ class LayoutInfoOpModelForHW final :
 public:
     void inferLayoutInfo(mlir::Operation* origOp, IE::LayerLayoutInfo& info, const bool seOpsEnabled,
                          const bool seExperimentalOpsEnabled) const {
-        if (!canBeExecutedOnNCE(origOp, seOpsEnabled, seExperimentalOpsEnabled)) {
+        if (!canBeExecutedOnNCE(origOp, seOpsEnabled)) {
             FallbackSWImplOpType::inferLayoutInfo(origOp, info, seOpsEnabled, seExperimentalOpsEnabled);
             return;
         }
@@ -90,17 +91,13 @@ public:
     }
 
 private:
-    static bool canBeExecutedOnNCE(mlir::Operation* op, const bool seOpsEnabled, const bool seExperimentalOpsEnabled) {
-        if (VPU::getCompilationMode(op) == VPU::CompilationMode::ReferenceSW) {
+    static bool canBeExecutedOnNCE(mlir::Operation* op, const bool seOpsEnabled) {
+        if (config::getCompilationMode(op) == config::CompilationMode::ReferenceSW) {
             // We are in reference SW compilation mode
             return false;
         }
 
-        if (!seExperimentalOpsEnabled && mlir::isa<IE::PadOp, IE::RollOp>(op)) {
-            return false;
-        }
-
-        if (!seOpsEnabled && mlir::isa<IE::SEOpInterface>(op) && !mlir::isa<IE::PadOp, IE::RollOp>(op)) {
+        if (!seOpsEnabled && mlir::isa<IE::SEOpInterface>(op) && !mlir::isa<IE::RollOp>(op)) {
             return false;
         }
 
@@ -317,6 +314,32 @@ public:
 
     mlir::LogicalResult verifyLayout(mlir::Operation* origOp) const {
         return VPU::verifySameInOutSpecificDimsOrder(origOp, {DimsOrder::NCHW});
+    }
+
+    IE::LayerLayoutInfo getLayoutInfo(mlir::Operation* origOp) const {
+        return IE::getLayoutInfo(origOp);
+    }
+};
+
+//
+// SameMultipleInOutDimsOrderOpModelForSW_NCHW_CHW_NCWH_CWH_NHWC_HWC_NWHC_WHC
+//
+
+class SameMultipleInOutDimsOrderOpModelForSW_NCHW_CHW_NCWH_CWH_NHWC_HWC_NWHC_WHC final :
+        public IE::LayoutInfoOpInterface::FallbackModel<
+                SameMultipleInOutDimsOrderOpModelForSW_NCHW_CHW_NCWH_CWH_NHWC_HWC_NWHC_WHC> {
+public:
+    static void inferLayoutInfo(mlir::Operation* /*op*/, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
+                                const bool /*seExperimentalOpsEnabled*/) {
+        VPU::inferSameMultipleInOutSpecificDimsOrder(
+                info, {DimsOrder::NCHW, DimsOrder::CHW, DimsOrder::NCWH, DimsOrder::CWH, DimsOrder::NHWC,
+                       DimsOrder::HWC, DimsOrder::NWHC, DimsOrder::WHC});
+    }
+
+    mlir::LogicalResult verifyLayout(mlir::Operation* origOp) const {
+        return VPU::verifySameMultipleInOutSpecificDimsOrder(
+                origOp, {DimsOrder::NCHW, DimsOrder::CHW, DimsOrder::NCWH, DimsOrder::CWH, DimsOrder::NHWC,
+                         DimsOrder::HWC, DimsOrder::NWHC, DimsOrder::WHC});
     }
 
     IE::LayerLayoutInfo getLayoutInfo(mlir::Operation* origOp) const {
@@ -641,7 +664,7 @@ public:
 
 private:
     static bool canBeExecutedOnNCE(mlir::Operation* op, const bool seExperimentalOpsEnabled) {
-        if (VPU::getCompilationMode(op) == VPU::CompilationMode::ReferenceSW) {
+        if (config::getCompilationMode(op) == config::CompilationMode::ReferenceSW) {
             // We are in reference SW compilation mode
             return false;
         }
@@ -689,11 +712,18 @@ public:
 
 class RollDimsOrderOpModelForHW final : public IE::LayoutInfoOpInterface::FallbackModel<RollDimsOrderOpModelForHW> {
 public:
-    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
+    static void inferLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
                                 const bool /*seTransposedConvEnabled*/) {
         info.setInput(0, DimsOrder::NHWC);
-        info.setInput(1, DimsOrder::C);
-        info.setInput(2, DimsOrder::C);
+
+        const auto shiftRank = static_cast<int64_t>(getShape(op->getOperand(1)).size());
+        if (shiftRank == 4) {
+            info.setInput(1, DimsOrder::NCHW);
+            info.setInput(2, DimsOrder::NCHW);
+        } else if (shiftRank == 1) {
+            info.setInput(1, DimsOrder::C);
+            info.setInput(2, DimsOrder::C);
+        }
 
         info.setOutput(0, DimsOrder::NHWC);
     }
@@ -723,8 +753,14 @@ public:
                            "dims as input",
                            outOrder);
         }
-        if (shiftOrder != DimsOrder::C || axesOrder != DimsOrder::C) {
-            return errorAt(op->getLoc(), "Operation shift/axes order is not as expected");
+        const auto shiftRank = static_cast<int64_t>(getShape(shift).size());
+        if (shiftRank == 4 && (shiftOrder != DimsOrder::NCHW || axesOrder != DimsOrder::NCHW)) {
+            return errorAt(op->getLoc(), "Operation shift order is not as expected. inL={0}, expectedInL=NCHW",
+                           shiftOrder);
+        }
+        if (shiftRank == 1 && (shiftOrder != DimsOrder::C || axesOrder != DimsOrder::C)) {
+            return errorAt(op->getLoc(), "Operation shift order is not as expected. inL={0}, expectedInL=C",
+                           shiftOrder);
         }
         return mlir::success();
     }

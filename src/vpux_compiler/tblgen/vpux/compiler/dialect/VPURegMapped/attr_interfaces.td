@@ -29,4 +29,30 @@ class DescriptorAttrBase<Dialect dialect, string descriptorType, string descript
     }];
 }
 
+class PropertyBase<string registerName, string attr, string dialect> : Property<registerName> {
+
+    let convertToAttribute = [{
+        }] # dialect # [{::}] # attr # [{::get($_ctxt, $_storage)
+    }];
+    let convertFromAttribute = [{
+        auto desc = mlir::cast<}] # dialect # [{::}] # attr # [{>($_attr).getRegMapped();
+        $_storage = desc;
+        return ::mlir::success();
+    }];
+
+    let writeToMlirBytecode = [{
+        $_writer.writeAttribute(}] # dialect # [{::}] # attr # [{::get($_ctxt, $_storage))
+    }];
+
+    let readFromMlirBytecode = [{
+        auto attr = }] # dialect # [{::}] # attr # [{::get(state.getContext(), prop.descriptor);
+        reader.readAttribute(attr);
+        prop.descriptor = attr.getRegMapped();
+    }];
+
+    let hashProperty = "hash_value($_storage)";
+    let storageType = registerName;
+}
+
+
 #endif

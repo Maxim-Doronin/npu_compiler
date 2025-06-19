@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" --outline-linalg-sw-layers | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, 0)>
 #map1 = affine_map<(d0, d1, d2, d3) -> (d1, 0, d3)>

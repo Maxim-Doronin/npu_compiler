@@ -3,9 +3,13 @@
 //
 
 #include <vpu_ov2_layer_test.hpp>
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 
 #include <vpux/utils/core/error.hpp>
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/depth_to_space.hpp"
 
 /*
       SUBGRAPH

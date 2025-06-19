@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-software-ops-precision --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @TopK_KeepSI32Precision
 func.func @TopK_KeepSI32Precision(%arg0: tensor<1x77xsi32>) -> (tensor<1x1xsi32>, tensor<1x1xsi32>) {
     %cst_K = const.Declare tensor<si64> = dense<1> : tensor<si64>

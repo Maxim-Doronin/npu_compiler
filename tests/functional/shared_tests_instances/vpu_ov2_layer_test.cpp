@@ -133,7 +133,7 @@ void VpuOv2LayerTest::run(const std::string_view platform) {
 void VpuOv2LayerTest::run() {
     summary.setDeviceName(targetDevice);
 
-    if (FuncTestUtils::SkipTestsConfig::currentTestIsDisabled()) {
+    if (ov::test::utils::current_test_is_disabled()) {
         summary.updateOPsStats(function, ov::test::utils::PassRate::Statuses::SKIPPED);
         GTEST_SKIP_("Disabled test due to configuration");
     }

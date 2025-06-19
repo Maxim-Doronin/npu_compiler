@@ -41,26 +41,24 @@ void WlmInsertDummyDmasInPagesPass::safeRunOnFunc() {
         return;
     }
 
-    SmallVector<VPURT::DeclareVirtualBarrierOp> firstBarOpPerPage;
+    const auto numBarriers =
+            numBarriersOpt.hasValue() ? numBarriersOpt.getValue() : VPUIP::getNumAvailableBarriers(func);
 
-    _log.trace("Scan all barriers and identify first barrier in each page");
-    int prevPage = -1;
-    func->walk([&](VPURT::DeclareVirtualBarrierOp barrierOp) {
-        auto pageOpt = barrierOp.getWlmPage();
-        VPUX_THROW_UNLESS(pageOpt.has_value(), "Barrier '{0}' doesn't have WLM page attribute", barrierOp->getLoc());
-        auto page = pageOpt.value();
+    auto& barrierInfo = getAnalysis<BarrierInfo>();
+    VPURT::BarrierPagesSplitHandler barrierPagesSplitHandler(barrierInfo, numBarriers, _log);
+    barrierPagesSplitHandler.initializeForLegalization();
+    auto dummyDmaInsertionDataVec = barrierPagesSplitHandler.getAndLegalizeDummyDmaInsertionData();
 
-        if (prevPage == -1 || ((page == prevPage + 1) && (firstBarOpPerPage.size() == static_cast<size_t>(page)))) {
-            firstBarOpPerPage.push_back(barrierOp);
-        }
+    if (dummyDmaInsertionDataVec.empty()) {
+        return;
+    }
 
-        prevPage = page;
-    });
+    _log.trace("Insert {0} dummy DMAs in pages", dummyDmaInsertionDataVec.size());
 
-    _log.trace("Check if each page has a DMA of each type");
-
-    // Keeps track of the last encountered page for each DMA type
-    DenseMap<VPURT::TaskQueueType, size_t> dmaTaskOpQueueLastPage;
+    // Retrieving dummy DMA data may introduce new dependencies which need to be updated in IR
+    // Recreate barrier info to have latest status of the IR
+    barrierPagesSplitHandler.updateIR();
+    barrierInfo = vpux::BarrierInfo{func};
 
     // Create dummy input and output buffer that will be needed for creating dummy DMAs
     mlir::OpBuilder builder(func);
@@ -71,72 +69,44 @@ void WlmInsertDummyDmasInPagesPass::safeRunOnFunc() {
     auto inCmxBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp, VPU::MemoryKind::CMX_NN);
     auto outBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
 
-    // Traverse all DMA operations and check if in any page there is missing DMA of given type
-    func->walk([&](VPURT::TaskOp taskOp) {
-        auto taskQueueType = VPURT::getTaskQueueType(taskOp, false);
-        if (taskQueueType.type != VPU::ExecutorKind::DMA_NN) {
-            return;
-        }
+    for (auto dummyDmaInsertionData : dummyDmaInsertionDataVec) {
+        auto pageInd = dummyDmaInsertionData.pageInd;
+        auto queueType = dummyDmaInsertionData.queueType;
+        auto insertionPointOp = barrierInfo.getTaskOpAtIndex(dummyDmaInsertionData.insertAfter);
+        auto port = getDMAPortFromEncodedId(queueType.id);
 
-        const auto attr = taskOp->getAttrOfType<mlir::IntegerAttr>(VPURT::wlmPageAttrName);
-        VPUX_THROW_UNLESS(attr != nullptr, "Get: attribute '{0}' was not set for '{1}' operation at '{2}'",
-                          VPURT::wlmPageAttrName, taskOp->getName(), taskOp->getLoc());
-        auto wlmPage = checked_cast<int>(attr.getValue().getZExtValue());
+        _log.trace("Insert new DMA[{0}][{1}] in page {2}", port, getDMAChannelTypeAsString(queueType.id, arch),
+                   pageInd);
 
-        int prevTaskPage = -1;
-        if (dmaTaskOpQueueLastPage.find(taskQueueType) != dmaTaskOpQueueLastPage.end()) {
-            // If this is not the first DMA of this type read previous task page
-            prevTaskPage = dmaTaskOpQueueLastPage[taskQueueType];
-        }
+        builder.setInsertionPointAfter(insertionPointOp);
 
-        // Store information on current DMA page
-        dmaTaskOpQueueLastPage[taskQueueType] = wlmPage;
+        auto inBuffer = (getDMAChannelTypeFromEncodedId(queueType.id, arch) == VPUIP::DmaChannelType::DDR)
+                                ? inDdrBuffer
+                                : inCmxBuffer;
+        auto dummyDmaOp = VPUIP::createSyncDMA(builder, inBuffer, outBuffer, port, {}, {},
+                                               "dummy_dma_fifo_completing_for_wlm_page");
+        dummyDmaOp.setWlmPage(pageInd);
 
-        if (wlmPage - prevTaskPage < 2) {
-            // If there is no missing page between two DMA operations of the same type, no dummy DMA is inserted
-            return;
-        }
+        auto dummyDmaOpTaskInd = barrierInfo.addNewTaskOp(dummyDmaOp);
 
-        _log.trace("Need to insert tasks on queue DMA[{0}][{1}]", getDMAPortFromEncodedId(taskQueueType.id),
-                   getDMAChannelTypeAsString(taskQueueType.id, arch));
+        llvm::for_each(dummyDmaInsertionData.waitBars, [&](auto waitBar) {
+            _log.nest().trace("wait bar {0}", waitBar);
+            barrierInfo.addConsumer(waitBar, dummyDmaOpTaskInd);
+        });
 
-        for (int pageInd = prevTaskPage + 1; pageInd < wlmPage; pageInd++) {
-            _log.nest().trace("Insert dummy DMA on page {0}", pageInd);
+        llvm::for_each(dummyDmaInsertionData.updateBars, [&](auto updateBar) {
+            _log.nest().trace("update bar {0}", updateBar);
+            barrierInfo.addProducer(updateBar, dummyDmaOpTaskInd);
+        });
+    }
+    barrierInfo.updateIR();
+    barrierInfo = vpux::BarrierInfo{func};
 
-            // Get barrier for given page and get all its users
-            // This will be needed to identify insertion point for dummy DMA which wil be placed
-            // after all producers and before first consumer of this barrier
-            auto firstBarrierOp = firstBarOpPerPage[pageInd];
-            auto barrier = firstBarrierOp.getBarrier();
-            // Get all barrier users what includes producer and consumer tasks
-            auto barOpUsersVec = to_small_vector(barrier.getUsers());
+    VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
 
-            // From barrier users remove all which update this barrier
-            barOpUsersVec.erase(llvm::remove_if(barOpUsersVec,
-                                                [&](auto op) {
-                                                    auto userTaskOp = mlir::cast<VPURT::TaskOp>(op);
-                                                    auto updateBars = userTaskOp.getUpdateBarriers();
-                                                    return llvm::find(updateBars, barrier) != updateBars.end();
-                                                }),
-                                barOpUsersVec.end());
+    barrierInfo.clearAttributes();
 
-            // Sort remaining users - tasks which wait on this barrier
-            llvm::sort(barOpUsersVec, [](mlir::Operation* op1, mlir::Operation* op2) {
-                return op1->isBeforeInBlock(op2);
-            });
-
-            // Use first task that waits on this barrier as an insertion point
-            // Put new dummy DMA before this task
-            builder.setInsertionPoint(barOpUsersVec[0]);
-
-            auto inBuffer = (getDMAChannelTypeFromEncodedId(taskQueueType.id, arch) == VPUIP::DmaChannelType::DDR)
-                                    ? inDdrBuffer
-                                    : inCmxBuffer;
-            auto dummyDmaOp = VPUIP::createSyncDMA(builder, inBuffer, outBuffer, 0, {barrier}, {},
-                                                   "dummy_dma_fifo_completing_for_wlm_page");
-            dummyDmaOp->setAttr(VPURT::wlmPageAttrName, getIntAttr(dummyDmaOp.getContext(), pageInd));
-        }
-    });
+    VPUX_THROW_UNLESS(VPURT::verifyBarrierSlots(func, _log), "Barrier slot count check failed");
 }
 }  // namespace
 

@@ -38,7 +38,6 @@ struct ODUConfig {
 };
 
 std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType);
-uint8_t getQuantZeroPoint(mlir::Type type);
 
 mlir::LogicalResult configureOutTensorSize(const Logger& log, ODUConfig::OutTensorSize& config,
                                            ODUPermuteDataMode permuteMode, const Strides& outStrides);
@@ -47,7 +46,7 @@ mlir::LogicalResult configureDataReuse(const Logger& log, ODUConfig::DataReuse& 
 mlir::LogicalResult configurePermuteMode(const Logger& log, ODUConfig::PermuteData& config,
                                          const DimsOrder& outDimsOrder);
 mlir::LogicalResult configureSparsity(const Logger&, ODUConfig::Sparsity& config, bool outSparsityEnabled,
-                                      uint8_t sparseValue);
+                                      NDTypeInterface outActType);
 mlir::LogicalResult configureSwizzleData(const Logger& log, ODUConfig::SwizzleData& config,
                                          std::optional<int64_t> outSwizzling);
 mlir::LogicalResult configureOutActivations(const Logger& log, ODUConfig::OutActivations& config,

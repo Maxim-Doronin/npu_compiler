@@ -57,7 +57,10 @@ mlir::LogicalResult MinMaxConverter<ConcreteOp>::matchAndRewrite(ConcreteOp orig
         _log.nest().trace("Failed to retrieve scalar operand");
         return mlir::failure();
     }
-    const auto scalarValue = scalarOrFail.value();
+    auto scalarValue = scalarOrFail.value();
+    double fp16Max = checked_cast<double>(std::numeric_limits<vpux::type::float16>::max());
+    double fp16Lowest = checked_cast<double>(std::numeric_limits<vpux::type::float16>::lowest());
+    scalarValue = std::clamp(scalarValue, fp16Lowest, fp16Max);
 
     auto ctx = origOp->getContext();
     mlir::FloatAttr clampMax;

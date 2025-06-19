@@ -203,7 +203,7 @@ mlir::SymbolRefAttr vpux::ELF::moveOpToSection(mlir::Operation* op, SectionMappe
         return {};
     }
 
-    auto signature = *maybeSignature;
+    const auto& signature = maybeSignature.value();
 
     auto createSection = [&](const ELF::SectionSignature& signature, bool memFootprint, size_t opAling) {
         if (memFootprint) {
@@ -216,6 +216,8 @@ mlir::SymbolRefAttr vpux::ELF::moveOpToSection(mlir::Operation* op, SectionMappe
 
             return mlir::cast<ELF::ElfSectionInterface>(sec.getOperation());
         } else {
+            VPUX_THROW_UNLESS(mlir::dyn_cast<ELF::BufferLocationInterface>(op),
+                              "Received op does not have type of BufferLocation!");
             auto sec = builder.create<ELF::LogicalSectionOp>(
                     builder.getUnknownLoc(),
                     signature.getName(),                                                 // llvm::StringRef secName
@@ -223,7 +225,6 @@ mlir::SymbolRefAttr vpux::ELF::moveOpToSection(mlir::Operation* op, SectionMappe
                     signature.getType(),                                                 // ELFVPUX40XX secType
                     signature.getFlags(),                                                // ELFVPUX40XX secFlags
                     mlir::dyn_cast<ELF::BufferLocationInterface>(op).getMemorySection()  // section location
-
             );
 
             return mlir::cast<ELF::ElfSectionInterface>(sec.getOperation());
@@ -271,4 +272,106 @@ void vpux::ELF::insertELFMain(mlir::func::FuncOp netFunc) {
     // as we've moved the whole function we also moved the terminator
     auto terminator = elf.getContent().front().getTerminator();
     terminator->moveAfter(elf.getOperation());
+}
+
+size_t vpux::ELF::getOpBinarySize(vpux::NDTypeInterface type) {
+    enum tensor_4d_index_t {
+        TENSOR_4D_INDEX_N,
+        TENSOR_4D_INDEX_C,
+        TENSOR_4D_INDEX_H,
+        TENSOR_4D_INDEX_W,
+
+        TENSOR_4D_INDEX_COUNT,
+    };
+
+    // auto contentType = content.getType();
+    auto memoryKind = type.getMemoryKind();
+    auto memShape = to_small_vector(type.getShape());
+    auto memStrides = to_small_vector(type.getStrides());
+    auto dimsOrder = type.getDimsOrder();
+    auto elementTypeSize = type.getElemTypeSize().count();
+    auto elementTypeSizeInByte = (elementTypeSize >= CHAR_BIT) ? (elementTypeSize / CHAR_BIT) : (elementTypeSize);
+    bool isNonZero4DTensor = false;
+
+    if (memShape.size() == 4) {
+        if (memShape[TENSOR_4D_INDEX_N] != 0 && memShape[TENSOR_4D_INDEX_C] != 0 && memShape[TENSOR_4D_INDEX_H] != 0 &&
+            memShape[TENSOR_4D_INDEX_W] != 0) {
+            isNonZero4DTensor = true;
+        }
+    }
+
+    // When the highest non-unitary dim is padded, the dma using that declare buffer won't actually write data to the
+    // padded region, so the strict span of the declare buffer (where data is actually being written) needs to use the
+    // unstrided size in the highest non-unitary dimension.
+    if (memoryKind == vpux::VPU::MemoryKind::DDR && isNonZero4DTensor && memShape.size() == memStrides.size() &&
+        elementTypeSize >= CHAR_BIT) {
+        if (dimsOrder == DimsOrder::NHWC) {
+            if (memShape[TENSOR_4D_INDEX_N] > 1) {
+                auto totalSize = memShape[TENSOR_4D_INDEX_N] *
+                                 ((memStrides[TENSOR_4D_INDEX_N].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
+                                 ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
+                                 ((memStrides[TENSOR_4D_INDEX_W].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
+                                 elementTypeSizeInByte;
+                return totalSize;
+            } else {
+                if (memShape[TENSOR_4D_INDEX_H] > 1) {
+                    auto totalSize =
+                            memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
+                            ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
+                            ((memStrides[TENSOR_4D_INDEX_W].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
+                            elementTypeSizeInByte;
+                    return totalSize;
+                } else {
+                    if (memShape[TENSOR_4D_INDEX_W] > 1) {
+                        auto totalSize =
+                                memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
+                                memShape[TENSOR_4D_INDEX_W] *
+                                ((memStrides[TENSOR_4D_INDEX_W].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
+                                elementTypeSizeInByte;
+                        return totalSize;
+                    } else {
+                        auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
+                                         memShape[TENSOR_4D_INDEX_W] * memShape[TENSOR_4D_INDEX_C] *
+                                         elementTypeSizeInByte;
+                        return totalSize;
+                    }
+                }
+            }
+        }
+        if (dimsOrder == DimsOrder::NCHW) {
+            if (memShape[TENSOR_4D_INDEX_N] > 1) {
+                auto totalSize = memShape[TENSOR_4D_INDEX_N] *
+                                 ((memStrides[TENSOR_4D_INDEX_N].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
+                                 ((memStrides[TENSOR_4D_INDEX_C].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
+                                 ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
+                                 elementTypeSizeInByte;
+                return totalSize;
+            } else {
+                if (memShape[TENSOR_4D_INDEX_C] > 1) {
+                    auto totalSize =
+                            memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
+                            ((memStrides[TENSOR_4D_INDEX_C].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
+                            ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
+                            elementTypeSizeInByte;
+                    return totalSize;
+                } else {
+                    if (memShape[TENSOR_4D_INDEX_H] > 1) {
+                        auto totalSize =
+                                memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
+                                memShape[TENSOR_4D_INDEX_H] *
+                                ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
+                                elementTypeSizeInByte;
+                        return totalSize;
+                    } else {
+                        auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
+                                         memShape[TENSOR_4D_INDEX_H] * memShape[TENSOR_4D_INDEX_W] *
+                                         elementTypeSizeInByte;
+                        return totalSize;
+                    }
+                }
+            }
+        }
+    }
+
+    return type.getTotalAllocSize().count();
 }

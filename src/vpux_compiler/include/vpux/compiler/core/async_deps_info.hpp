@@ -35,6 +35,7 @@ public:
     std::unordered_map<size_t, size_t> calculateOpInDegreeTable() const;
     std::unordered_map<size_t, size_t> calculateOpOutDegreeTable() const;
     uint32_t getIndex(mlir::async::ExecuteOp execOp) const;
+    size_t getExecOpCount() const;
 
 private:
     void setIndex(mlir::async::ExecuteOp execOp, uint64_t index);

@@ -240,7 +240,7 @@ CfgMap modelDebatchSuitableDefaultConfig;
 CfgMap modelNoLimitsDebatchSuitableConfig{
         {std::make_pair(ov::intel_npu::batch_compiler_mode_settings.name(),
                         "batch-compile-method=debatch debatcher-settings={model-ops-number-enable-threshold=0 "
-                        "max-batch-number-disable-limit=-1 }")}};
+                        "max-batch-number-disable-limit=-1}")}};
 CfgMap modelOpThresholdNotReachedDebatchSuitableConfig{
         {std::make_pair(ov::intel_npu::batch_compiler_mode_settings.name(),
                         "batch-compile-method=debatch debatcher-settings={model-ops-number-enable-threshold=0 "
@@ -324,13 +324,13 @@ const CfgMap coeffDeterminingConfigBatchEmpty;
 const CfgMap coeffDeterminingConfigBatchInAuto{{std::make_pair(ov::intel_npu::batch_mode.name(), "AUTO")}};
 const std::string turnOffDebatchDisableConditions{
         "batch-compile-method=debatch debatcher-settings={model-ops-number-enable-threshold=0 "
-        "max-batch-number-disable-limit=-1 }"};
+        "max-batch-number-disable-limit=-1}"};
 const CfgMap coeffDeterminingConfigBatchInCompiler{
         {std::make_pair(ov::intel_npu::batch_mode.name(), "COMPILER"),
          std::make_pair(ov::intel_npu::batch_compiler_mode_settings.name(), turnOffDebatchDisableConditions)}};
 const CfgMap coeffDeterminingConfigBatchInPlugin{{std::make_pair(ov::intel_npu::batch_mode.name(), "PLUGIN")}};
 const std::string predefinedDebatchCoefficients{
-        "batch-compile-method=debatch batch-unroll-settings={skip-unroll-batch=false} "
+        "batch-compile-method=debatch batch-unroll-settings=skip-unroll-batch=false "
         "debatcher-settings={debatcher-input-coefficients-partitions=[10-10], "
         "debatching-inlining-method=naive}  DEBATCHER-FIELD-FILLER=NOT-IMPORTANT_VALUE"};
 const CfgMap coeffDeterminingConfigBatchInCompilerWithOverridedCoefficients{
@@ -359,7 +359,7 @@ INSTANTIATE_TEST_SUITE_P(
                                                 IODescription(ov::PartialShape({2, 200}), {}),
                                                 IODescription(ov::PartialShape({300, 400}), {})}),
                                 coeffDeterminingConfigBatchInCompiler,
-                                "batch-compile-method=debatch batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-compile-method=debatch batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-1],[0-1],[0-1],[0-1],["
                                 "0-1],[0-1], debatching-inlining-method=naive}"),
                         AutoBatchCompilerDebatchCoefficientsDeterminingTestsParams(
@@ -367,7 +367,7 @@ INSTANTIATE_TEST_SUITE_P(
                                                 IODescription(ov::PartialShape({100, 200}), {}),
                                                 IODescription(ov::PartialShape({300, 400}), {})}),
                                 coeffDeterminingConfigBatchInCompiler,
-                                "batch-compile-method=debatch batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-compile-method=debatch batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-1],[0-1],[0-1],[0-1],["
                                 "0-1],[0-1], debatching-inlining-method=naive}"),
                         AutoBatchCompilerDebatchCoefficientsDeterminingTestsParams(
@@ -375,7 +375,7 @@ INSTANTIATE_TEST_SUITE_P(
                                                 IODescription(ov::PartialShape({100, 200}), ov::Layout{"NC"}),
                                                 IODescription(ov::PartialShape({300, 400}), ov::Layout{"NC"})}),
                                 coeffDeterminingConfigBatchInCompiler,
-                                "batch-compile-method=debatch batch-unroll-settings={skip-unroll-batch=false} "
+                                "batch-compile-method=debatch batch-unroll-settings=skip-unroll-batch=false "
                                 "debatcher-settings={debatcher-input-coefficients-partitions=[0-1],[0-1],[0-1],[0-1],["
                                 "0-1],[0-1], debatching-inlining-method=naive}"),
                         AutoBatchCompilerDebatchCoefficientsDeterminingTestsParams(

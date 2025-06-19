@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -35,10 +35,10 @@ elf::DType ELFNPU37XX::createDType(mlir::Type type) {
         return elf::DType::DType_FP16;
     } else if (type.isBF16()) {
         return elf::DType::DType_BFP16;
-    } else if (type.isFloat8E5M2()) {
-        return elf::DType::DType_FP8;
     } else if (type.isFloat8E4M3FN()) {
-        return elf::DType::DType_HF8;
+        return elf::DType::DType_F8E4M3FN;
+    } else if (type.isFloat8E5M2()) {
+        return elf::DType::DType_F8E5M2;
     } else if (type.isSignedInteger(CHAR_BIT * sizeof(int64_t))) {
         return elf::DType::DType_I64;
     } else if (type.isSignedInteger(CHAR_BIT * sizeof(int32_t))) {
@@ -138,10 +138,10 @@ elf::OVNodeType ELFNPU37XX::createOVNodeType(mlir::Type type) {
         return elf::OVNodeType::OVNodeType_F16;
     } else if (type.isBF16()) {
         return elf::OVNodeType::OVNodeType_BF16;
+    } else if (type.isFloat8E4M3FN()) {
+        return elf::OVNodeType::OVNodeType_F8E4M3FN;
     } else if (type.isFloat8E5M2()) {
         return elf::OVNodeType::OVNodeType_F8E5M2;
-    } else if (type.isFloat8E4M3FN()) {
-        return elf::OVNodeType::OVNodeType_F8E4M3;
     } else if (type.isSignedInteger(64)) {
         return elf::OVNodeType::OVNodeType_I64;
     } else if (type.isSignedInteger(32)) {
@@ -260,10 +260,10 @@ std::string stringifyOVNodeType(elf::OVNodeType val) {
         return "F16";
     case elf::OVNodeType::OVNodeType_BF16:
         return "BF16";
+    case elf::OVNodeType::OVNodeType_F8E4M3FN:
+        return "F8E4M3FN";
     case elf::OVNodeType::OVNodeType_F8E5M2:
         return "F8E5M2";
-    case elf::OVNodeType::OVNodeType_F8E4M3:
-        return "F8E4M3";
     case elf::OVNodeType::OVNodeType_I64:
         return "I64";
     case elf::OVNodeType::OVNodeType_I32:

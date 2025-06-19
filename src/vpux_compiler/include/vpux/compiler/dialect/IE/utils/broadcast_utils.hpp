@@ -14,8 +14,13 @@ namespace IE {
 
 SmallVector<int64_t> getBroadcastAxesNumpyBidirectional(ArrayRef<int64_t> inputShape, ArrayRef<int64_t> outputShape);
 SmallVector<int64_t> getBroadcastAxesExplicit(ArrayRef<int64_t> axesMapping, ArrayRef<int64_t> outputShape);
-mlir::Value createShapeConstForBroadCast(mlir::PatternRewriter& rewriter, mlir::MLIRContext* ctx, mlir::Location loc,
-                                         ShapeRef shape);
+
+mlir::Value createShapeConstForBroadcast(mlir::OpBuilder& rewriter, mlir::Location loc, ShapeRef shape);
+mlir::Value createBroadcast(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input, ShapeRef targetShape,
+                            mlir::Value axisMapping = nullptr, IE::BroadcastTypeAttr broadcastTypeAttr = nullptr);
+mlir::Value createDynamicBroadcast(mlir::OpBuilder& rewriter, mlir::Location loc, mlir::Value input, mlir::Value other,
+                                   mlir::Value axisMapping = nullptr,
+                                   IE::BroadcastTypeAttr broadcastTypeAttr = nullptr);
 
 /// Aligns shapes of two buffers by broadcasting across misaligned axes in order
 /// to allow 'X op Y' operation to behave correctly. This procedure could fail

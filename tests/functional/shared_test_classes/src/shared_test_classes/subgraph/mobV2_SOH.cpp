@@ -9,6 +9,9 @@
 #include "common_test_utils/node_builders/group_convolution.hpp"
 #include "common_test_utils/test_constants.hpp"
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/clamp.hpp"
+
 namespace ov {
 
 namespace test {

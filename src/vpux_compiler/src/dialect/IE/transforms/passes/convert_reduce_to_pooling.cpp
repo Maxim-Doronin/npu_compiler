@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -442,7 +443,7 @@ void ConvertReduceToPoolingPass::safeRunOnFunc() {
         // Check that axes are consecutive otherwise this conversion is not applicable
         llvm::SmallVector<int64_t> axes = {0};
         if (op->hasAttr("axes_value")) {
-            if (auto axesValue = op->getAttr("axes_value").dyn_cast_or_null<mlir::ArrayAttr>()) {
+            if (auto axesValue = mlir::dyn_cast_or_null<mlir::ArrayAttr>(op->getAttr("axes_value"))) {
                 axes = parseIntArrayAttr<int64_t>(axesValue);
             }
         } else {
@@ -475,7 +476,7 @@ void ConvertReduceToPoolingPass::safeRunOnFunc() {
                                    : vpux::IE::isPoolingKernelSizeValid(mergedDim, maxKernelSize);
         const auto dpuCompatible = isKernelSizeDpuCompatible && isDataTypeDpuCompatible;
 
-        const bool isHWCompilationMode = VPU::getCompilationMode(op) != VPU::CompilationMode::ReferenceSW;
+        const bool isHWCompilationMode = config::getCompilationMode(op) != config::CompilationMode::ReferenceSW;
 
         // Apply the conversion only if the resulting Pooling operation can run on DPU
         return !(dpuCompatible && isHWCompilationMode);

@@ -9,7 +9,6 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 #include "vpux/compiler/utils/wlm_legalization_utils.hpp"
-
 namespace vpux {
 
 ExecutionGroupAnalysis::ExecutionGroupAnalysis(mlir::func::FuncOp func)
@@ -40,12 +39,10 @@ ExecutionGroupAnalysis::ExecutionGroupAnalysis()
 }
 
 void ExecutionGroupAnalysis::createSWTaskExecutionGroups() {
-    VPURT::TaskQueueType queueType;
-    queueType.type = VPU::ExecutorKind::SHAVE_ACT;
-
-    for (size_t tile = 0; tile < _tilesCount; ++tile) {
-        queueType.id = tile;
-        auto tileSWQueue = _taskQueueTypeMap[queueType];
+    for (auto& [queueType, tileSWQueue] : _taskQueueTypeMap) {
+        if (queueType.type != VPU::ExecutorKind::SHAVE_ACT) {
+            continue;
+        }
 
         ExecutionGroup execGroup;
         uint32_t execGroupInvoCount = 0;
@@ -92,12 +89,10 @@ void ExecutionGroupAnalysis::createSWTaskExecutionGroups() {
 }
 
 void ExecutionGroupAnalysis::createDPUTaskExecutionGroups() {
-    VPURT::TaskQueueType queueType;
-    queueType.type = VPU::ExecutorKind::DPU;
-
-    for (size_t tile = 0; tile < _tilesCount; ++tile) {
-        queueType.id = tile;
-        auto tileDpuQueue = _taskQueueTypeMap[queueType];
+    for (auto& [queueType, tileDpuQueue] : _taskQueueTypeMap) {
+        if (queueType.type != VPU::ExecutorKind::DPU) {
+            continue;
+        }
 
         ExecutionGroup execGroup;
         uint32_t execGroupVariantCount = 0;

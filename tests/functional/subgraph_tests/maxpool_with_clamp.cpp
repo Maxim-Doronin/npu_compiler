@@ -6,6 +6,9 @@
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/clamp.hpp"
+#include "openvino/op/max_pool.hpp"
+
 using namespace ov;
 using namespace element;
 

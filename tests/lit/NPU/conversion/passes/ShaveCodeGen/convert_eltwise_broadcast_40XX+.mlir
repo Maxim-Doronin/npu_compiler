@@ -6,6 +6,7 @@
 // RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" \
 // RUN:     --convert-eltwise-layers-to-math | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 module @BroadcastMax {
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input0" : tensor<1x1x16x16xf16>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -425,7 +425,7 @@ class ShaveCodeGenEltwiseLayerTestF32Common : public ShaveCodeGenEltwiseLayerTes
     }
 };
 
-class ShaveCodeGenEltwiseIntegerLayerTest : public EltwiseLayerTest, virtual public VpuOv2LayerTest {};
+class ShaveCodeGenEltwiseIntegerLayerTest : public EltwiseIntegerLayerTest {};
 
 TEST_P(ShaveCodeGenEltwiseLayerTestCommon, NPU4000_SW) {
     abs_threshold = 0.6;
@@ -442,6 +442,7 @@ TEST_P(ShaveCodeGenEltwiseLayerTestF32Common, NPU4000_SW) {
 
 TEST_P(ShaveCodeGenEltwiseIntegerLayerTest, NPU4000_SW) {
     abs_threshold = 0.6;
+    setCommonSkipCompilationCallback(this);
     setShaveCodeGenMode();
     setMLIRCompilerType();
     run(Platform::NPU4000);
@@ -457,7 +458,10 @@ using namespace ov::test;
 //
 // Test supported Eltwise types
 //
-std::set<EltwiseTypes> scgEltwiseTypes = {EltwiseTypes::DIVIDE};
+
+// Add tests not enabled due to E#163155
+std::set<EltwiseTypes> scgEltwiseTypes = {EltwiseTypes::DIVIDE, EltwiseTypes::SQUARED_DIFF, EltwiseTypes::SUBTRACT,
+                                          EltwiseTypes::MULTIPLY};
 
 //
 // Scalar mode
@@ -526,7 +530,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_VectorShapesNDF32, ShaveCodeGenEltwiseLayerTestF3
 // Test Unsigned Integer data types
 //
 
-std::set<EltwiseTypes> scgEltwiseTypesUnsigned = {EltwiseTypes::DIVIDE};
+// Add tests not enabled due to E#163155
+std::set<EltwiseTypes> scgEltwiseTypesUnsigned = {EltwiseTypes::DIVIDE, EltwiseTypes::SUBTRACT, EltwiseTypes::MULTIPLY};
 
 const auto scgTypesParamsUnsigned = ::testing::Combine(
         ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShape)),

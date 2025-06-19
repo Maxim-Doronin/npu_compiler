@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 
 using namespace vpux;
 
@@ -22,6 +23,7 @@ vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(mlir::func::FuncOp fun
     _startBarrierIndex = getStartBarrierIndex(func);
     _barrierInfo.buildTaskQueueTypeMap();
     findShvTasksWithDpu();
+    _swFifosPerShaveEngineEnabled = VPU::isFifoPerShaveEngineEnabled(func);
 }
 
 vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(
@@ -378,7 +380,6 @@ void vpux::VPURT::EnqueueBarrierHandler::optimizeEnqueueIfPossible(std::optional
                                                                    std::optional<size_t> previousEnqBarOpt) {
     auto enqBar = enqBarOpt.value();
     auto prevTaskInd = previousTaskIndOpt.value();
-    auto prevEnqBar = previousEnqBarOpt.value();
 
     // First check if previous task runs after previous instance of wait barrier for currently
     // enqueued task is consumed. This way we know that when prev task runs, task wait barrier
@@ -419,9 +420,16 @@ void vpux::VPURT::EnqueueBarrierHandler::optimizeEnqueueIfPossible(std::optional
         }
     }
 
+    // If there are prev instances of barriers at depth N and previous enqueue is at bootstrap
+    // then enqueue barrier cannot be optimized
+    if (!previousEnqBarOpt.has_value() && !prevVids.empty()) {
+        return;
+    }
+
     // Perform dependency checks of task barriers at depth N and previous task enqueue barrier
     bool optimizationCanBePerformed = true;
     for (auto prevVid : prevVids) {
+        auto prevEnqBar = previousEnqBarOpt.value();
         if (prevVid == prevEnqBar) {
             continue;
         }
@@ -433,7 +441,8 @@ void vpux::VPURT::EnqueueBarrierHandler::optimizeEnqueueIfPossible(std::optional
 
     if (optimizationCanBePerformed) {
         _log.nest().trace("Enqueue can be optimized and merged with previous, orig enqueue: {0}, new enqueue: {1}",
-                          enqBar, prevEnqBar);
+                          enqBar,
+                          previousEnqBarOpt.has_value() ? std::to_string(previousEnqBarOpt.value()) : "BOOTSTRAP");
         enqBarOpt = previousEnqBarOpt;
     }
 
@@ -443,7 +452,8 @@ void vpux::VPURT::EnqueueBarrierHandler::optimizeEnqueueIfPossible(std::optional
 // If some previously enqueued op is enqueued at later barrier adjust the enqueue target
 // to be equal to that of previous enqueue
 mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnFifoState(
-        std::optional<size_t>& enqBarOpt, std::vector<std::optional<size_t>>& outstandingEnqueuesTaskIndexVec,
+        size_t taskInd, std::optional<size_t>& enqBarOpt,
+        std::vector<std::optional<size_t>>& outstandingEnqueuesTaskIndexVec,
         std::vector<std::optional<size_t>>& outstandingEnqueuesTaskWaitBarIndexVec, size_t outstandingEnquOpsCounter) {
     auto oldestTaskIndexOpt = outstandingEnqueuesTaskIndexVec[outstandingEnquOpsCounter];
     if (!oldestTaskIndexOpt.has_value()) {
@@ -472,6 +482,9 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnF
         return mlir::success();
     }
 
+    _log.nest().trace("Delay enqueue due to FIFO limit, orig enqueue: {0}, oldest task in FIFO: {1}", enqBar,
+                      oldestTaskIndex);
+
     // Check whole FIFO starting from the oldest till newest one
     // and see if this given task is guaranteed to execeute when
     // all users of enque barrier have completed, meaning enqueue barrier
@@ -483,6 +496,51 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnF
     //         |-> enqBarUser2 .....->|
     //
     auto fifoSize = outstandingEnqueuesTaskIndexVec.size();
+
+    auto checkIfCanDelayEnqueueAfterTask = [&](size_t delayAfterTaskIndex) {
+        _log.nest().trace("Check if task {0} (waits:{1}, updates:{2}) in FIFO is guaranteed to run after "
+                          "enqueue barrier {3}",
+                          delayAfterTaskIndex, to_small_vector(_barrierInfo.getWaitBarriers(delayAfterTaskIndex)),
+                          to_small_vector(_barrierInfo.getUpdateBarriers(delayAfterTaskIndex)), enqBar);
+
+        BarrierInfo::TaskSet delayAfterTaskIndexSet;
+        delayAfterTaskIndexSet.insert(delayAfterTaskIndex);
+        if (areTasksABeforeTasksB(enqBarConsumers, delayAfterTaskIndexSet)) {
+            return true;
+        }
+        return false;
+    };
+
+    auto getEnqueueBarForDelay = [&](size_t delayAfterTaskIndex, std::optional<size_t> delayAfterTaskIndexWaitBarOpt) {
+        auto newEnqBarOpt = delayAfterTaskIndexWaitBarOpt;
+        if (!newEnqBarOpt.has_value()) {
+            // If task that is at the start of the DMA descriptor FIFO doesn't have any wait barrier that
+            // could be used as a signal that such DMA has been popped from the FIFO by HW, check update barriers
+            // of this task or wait/update barriers of any subsequent DMAs in this FIFO
+            _log.nest().trace("Find enqueue barrier by checking wait/update barriers of subsequent DMAs");
+            std::optional<size_t> currTaskIndexOpt = delayAfterTaskIndex;
+            BarrierInfo::TaskSet barrierSet;
+            while (currTaskIndexOpt.has_value() && barrierSet.empty()) {
+                barrierSet = _barrierInfo.getWaitBarriers(currTaskIndexOpt.value());
+                auto updateBars = _barrierInfo.getUpdateBarriers(currTaskIndexOpt.value());
+                barrierSet.insert(updateBars.begin(), updateBars.end());
+                currTaskIndexOpt = _barrierInfo.getNextTaskOnSameQueue(currTaskIndexOpt.value());
+            }
+
+            VPUX_THROW_WHEN(barrierSet.empty(), "Did not find next task with any barrier");
+
+            newEnqBarOpt = *std::min_element(barrierSet.begin(), barrierSet.end());
+        }
+
+        VPUX_THROW_UNLESS(newEnqBarOpt.has_value(),
+                          "Was not able to find any barrier on task {0} or any subsequent tasks on this FIFO",
+                          delayAfterTaskIndex);
+        _log.nest().trace("Delay enqueue due to FIFO limit, orig enqueue: {0}, new enqueue: {1} to guarantee task "
+                          "{2} has popped from the FIFO",
+                          enqBar, newEnqBarOpt, delayAfterTaskIndex);
+        return newEnqBarOpt;
+    };
+
     for (size_t fifoEntryToCheck = 0; fifoEntryToCheck < fifoSize; fifoEntryToCheck++) {
         auto outstandingEnqueuesTaskIndexVecEntryIndex = (outstandingEnquOpsCounter + fifoEntryToCheck) % fifoSize;
         auto taskIndexInFifo = outstandingEnqueuesTaskIndexVec[outstandingEnqueuesTaskIndexVecEntryIndex];
@@ -491,39 +549,28 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnF
                           "Expected to have valid task in outstanding enqueue FIFO at index {0}",
                           outstandingEnqueuesTaskIndexVecEntryIndex);
 
-        BarrierInfo::TaskSet taskIndexInFifoSet;
-        taskIndexInFifoSet.insert(taskIndexInFifo.value());
-        if (areTasksABeforeTasksB(enqBarConsumers, taskIndexInFifoSet)) {
-            auto newEnqBarOpt = outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnqueuesTaskIndexVecEntryIndex];
-            if (!newEnqBarOpt.has_value()) {
-                // If task that is at the start of the DMA descriptor FIFO doesn't have any wait barrier that
-                // could be used as a signal that such DMA has been popped from the FIFO by HW, check update barriers
-                // of this task or wait/update barriers of any subsequent DMAs in this FIFO
-                _log.nest().trace("Find enqueue barrier by checking wait/update barriers of subsequent DMAs");
-                auto currTaskIndexOpt = taskIndexInFifo;
-                BarrierInfo::TaskSet barrierSet;
-                while (currTaskIndexOpt.has_value() && barrierSet.empty()) {
-                    barrierSet = _barrierInfo.getWaitBarriers(currTaskIndexOpt.value());
-                    auto updateBars = _barrierInfo.getUpdateBarriers(currTaskIndexOpt.value());
-                    barrierSet.insert(updateBars.begin(), updateBars.end());
-                    currTaskIndexOpt = _barrierInfo.getNextTaskOnFifo(currTaskIndexOpt.value());
-                }
-
-                VPUX_THROW_WHEN(barrierSet.empty(), "Did not find next task with any barrier");
-
-                newEnqBarOpt = *std::min_element(barrierSet.begin(), barrierSet.end());
-            }
-
-            VPUX_THROW_UNLESS(newEnqBarOpt.has_value(),
-                              "Was not able to find any barrier on task {0} or any subsequent tasks on this FIFO",
-                              taskIndexInFifo.value());
-            _log.nest().trace("Delay enqueue due to FIFO limit, orig enqueue: {0}, new enqueue: {1} to guarantee task "
-                              "{2} has popped from the FIFO",
-                              enqBar, newEnqBarOpt, taskIndexInFifo.value());
-            enqBarOpt = newEnqBarOpt;
+        if (checkIfCanDelayEnqueueAfterTask(taskIndexInFifo.value())) {
+            enqBarOpt = getEnqueueBarForDelay(
+                    taskIndexInFifo.value(),
+                    outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnqueuesTaskIndexVecEntryIndex]);
             return mlir::success();
         }
     }
+
+    // Check end FIFO next tasks
+    _log.nest().trace("Check last tasks in FIFO");
+    auto lastOutstandingEnqueuesTaskIndexVecEntryIndex = (outstandingEnquOpsCounter + fifoSize - 1) % fifoSize;
+    auto taskIndexInFifo = outstandingEnqueuesTaskIndexVec[lastOutstandingEnqueuesTaskIndexVecEntryIndex];
+    do {
+        if (checkIfCanDelayEnqueueAfterTask(taskIndexInFifo.value())) {
+            enqBarOpt = getEnqueueBarForDelay(
+                    taskIndexInFifo.value(),
+                    outstandingEnqueuesTaskWaitBarIndexVec[lastOutstandingEnqueuesTaskIndexVecEntryIndex]);
+            return mlir::success();
+        }
+
+        taskIndexInFifo = _barrierInfo.getNextTaskOnSameQueue(taskIndexInFifo.value());
+    } while (taskIndexInFifo.has_value() && taskIndexInFifo.value() < taskInd);
 
     // Could not reliably set and delay enqueue barrier due to fifo size of task
     // because of lack of dependencies between enqueue barrier and wait barriers of
@@ -546,7 +593,8 @@ std::optional<size_t> vpux::VPURT::EnqueueBarrierHandler::getNthPrevBarInstance(
 }
 
 mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::findInitialEnqWithLcaForGivenBarriers(
-        std::optional<size_t>& enqBarOpt, BarrierInfo::TaskSet& waitBarriers, BarrierInfo::TaskSet& updateBarriers) {
+        std::optional<size_t>& enqBarOpt, BarrierInfo::TaskSet& waitBarriers, BarrierInfo::TaskSet& updateBarriers,
+        size_t enqBarMin) {
     SmallVector<size_t> prevVids;
 
     // Enqueue barrier can be searched within a range of largest barrier index from prev
@@ -556,7 +604,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::findInitialEnqWithLcaFor
     // on same larger barrier, for example based on next barrier with same PID as theoretically
     // task could be enqueued on barrier with larer index then task barriers if they
     // are on parallel branches. This is less common but possible scenario.
-    size_t enqVidRangeMin = std::numeric_limits<size_t>::min();
+    size_t enqVidRangeMin = enqBarMin;
     size_t enqVidRangeMax = std::numeric_limits<size_t>::max();
 
     // For wait barriers get prev bar instance
@@ -582,12 +630,14 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::findInitialEnqWithLcaFor
         enqVidRangeMax = std::min(enqVidRangeMax, vid);
     }
 
+    _log.trace("Get initial enqueue from within range: {0} - {1}", enqVidRangeMin, enqVidRangeMax);
+
     if (prevVids.empty()) {
         enqBarOpt = std::nullopt;
         return mlir::success();
     }
 
-    if (prevVids.size() == 1) {
+    if (prevVids.size() == 1 && prevVids[0] >= enqVidRangeMin) {
         enqBarOpt = prevVids[0];
         return mlir::success();
     }
@@ -632,7 +682,8 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::findInitialEnqWithLcaFor
     return mlir::failure();
 }
 
-mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers() {
+mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers(
+        const mlir::DenseSet<vpux::VPU::ExecutorKind>& executorEnqAtBootstrap) {
     _tasksEnqBar.resize(_barrierInfo.getNumOfTasks());
 
     // Processed queue types
@@ -640,6 +691,15 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
 
     for (auto& [queueType, taskVec] : _taskQueueTypeMap) {
         _log.trace("Enqueue tasks for {0}:{1}", VPU::stringifyExecutorKind(queueType.type), queueType.id);
+
+        // Check if for given queue it is requested to enqueue all tasks at bootstrap
+        // In that case skip processing of this queue as default _tasksEnqBar value is nullopt = BOOTSTRAP
+        auto enqAllAtBootstrap = executorEnqAtBootstrap.contains(queueType.type);
+        if (enqAllAtBootstrap) {
+            _log.trace("Enqueue all tasks at bootstrap");
+            continue;
+        }
+
         std::optional<size_t> previousTaskWaitBarOpt;
         std::optional<size_t> previousEnqBarOpt;
         std::optional<size_t> previousTaskIndOpt;
@@ -664,12 +724,11 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
             // descriptor fetching
             supportEnqAtBootstrap = true;
         } else if (queueType.type == VPU::ExecutorKind::SHAVE_ACT) {
-            // This optimization is not supported for SHV tasks as it does not yet support linked lists
-            // Also there are 2 SHV engines in single cluster and compiler has no explicit control
-            // over which engine is going to be used as there is single FIFO. In that case
-            // algorithm cannot assume that ShaveTaskN blocks execution of ShaveTaskN+1
-            // Optimization enabling should be revisitied when E#111941 is done
-            optimizeAndMergeEnq = false;
+            // There are 2 SHV engines in single cluster and compiler has no explicit control
+            // over which engine is going to be used unless dedicated FIFOs per SHV engine feature is enabled. In such
+            // a case the algorithm cannot assume that ShaveTaskN blocks execution of ShaveTaskN+1. The optimization is
+            // enabled only when separate SW FIFOs per SHAVE engine are available.
+            optimizeAndMergeEnq &= _swFifosPerShaveEngineEnabled;
         }
 
         bool dpuEnqCheckForShv = queueType.type == VPU::ExecutorKind::DPU && !_shvTasksWithDpuPerTile.empty() &&
@@ -696,115 +755,137 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
             std::optional<size_t> enqBarOpt;
             std::optional<size_t> waitBarOpt;
 
-            // Initial enqueue proposal is previous wait barrier usage
-            // or null in case task doesn't have any barriers
-            if (taskBarriers.empty()) {
-                enqBarOpt = std::nullopt;
-            } else {
-                if (!waitBarriers.empty()) {
-                    waitBarOpt = *waitBarriers.begin();
-                    _log.trace("Task wait barrier: {0}", waitBarOpt.value());
+            size_t enqBarMin = std::numeric_limits<size_t>::min();
+            bool enqSearchLoopReiterate;
+            bool enqDelayedBasedOnFifo;
+
+            do {
+                enqSearchLoopReiterate = false;
+                enqDelayedBasedOnFifo = false;
+
+                // Initial enqueue proposal is previous wait barrier usage
+                // or null in case task doesn't have any barriers
+                if (taskBarriers.empty()) {
+                    enqBarOpt = std::nullopt;
+                } else {
+                    if (!waitBarriers.empty()) {
+                        waitBarOpt = *waitBarriers.begin();
+                        _log.trace("Task wait barrier: {0}", waitBarOpt.value());
+                    }
+                    if (mlir::failed(findInitialEnqWithLcaForGivenBarriers(enqBarOpt, waitBarriers, updateBarriers,
+                                                                           enqBarMin))) {
+                        _log.trace("Failed to find enqueue barrier using LCA for task {0}", taskInd);
+                        return mlir::failure();
+                    }
                 }
-                if (mlir::failed(findInitialEnqWithLcaForGivenBarriers(enqBarOpt, waitBarriers, updateBarriers))) {
-                    _log.trace("Failed to find enqueue barrier using LCA for task {0}", taskInd);
-                    return mlir::failure();
+
+                if (!enqBarOpt.has_value() && !supportEnqAtBootstrap) {
+                    // earliest barrier consumption event is at start barrier
+                    if (!_startBarrierIndex.has_value()) {
+                        _log.trace("Failed to set enqueue barrier for task {0} because of lack of start barrier",
+                                   taskInd);
+                        return mlir::failure();
+                    }
+                    enqBarOpt = _startBarrierIndex.value();
                 }
-            }
 
-            if (!enqBarOpt.has_value() && !supportEnqAtBootstrap) {
-                // earliest barrier consumption event is at start barrier
-                if (!_startBarrierIndex.has_value()) {
-                    _log.trace("Failed to set enqueue barrier for task {0} because of lack of start barrier", taskInd);
-                    return mlir::failure();
+                _log.trace("Initial enqueue proposal: {0}",
+                           (enqBarOpt.has_value() ? std::to_string(enqBarOpt.value()) : "BOOTSTRAP"));
+
+                // If current enqueue has no value, meaning enqueue at BOOTSTRAP and previous task
+                // was enqueued at some barrier then change enqueue to that barrier as execution of this
+                // task is nevertheless blocked and in that case they can be linked in single WorkItem task
+                if (previousEnqBarOpt.has_value() && !enqBarOpt.has_value()) {
+                    _log.nest().trace("Delay enqueue from BOOTSTRAP to that of previous task - {0}",
+                                      previousEnqBarOpt.value());
+                    enqBarOpt = previousEnqBarOpt;
                 }
-                enqBarOpt = _startBarrierIndex.value();
-            }
 
-            _log.trace("Initial enqueue proposal: {0}",
-                       (enqBarOpt.has_value() ? std::to_string(enqBarOpt.value()) : "BOOTSTRAP"));
-
-            // If current enqueue has no value, meaning enqueue at BOOTSTRAP and previous task
-            // was enqueued at some barrier then change enqueue to that barrier as execution of this
-            // task is nevertheless blocked and in that case they can be linked in single WorkItem task
-            if (previousEnqBarOpt.has_value() && !enqBarOpt.has_value()) {
-                _log.nest().trace("Delay enqueue from BOOTSTRAP to that of previous task - {0}",
-                                  previousEnqBarOpt.value());
-                enqBarOpt = previousEnqBarOpt;
-            }
-
-            // Check if enqueue needs to be delayed in case of DPU tasks that depend on SHV tasks which can submit a DPU
-            // In that case enqueue would need to be delayed
-            bool canOptimizeAndMergeEnqForThisTask = true;
-            if (dpuEnqCheckForShv) {
-                for (auto shvTaskInd : _shvTasksWithDpuPerTile[queueType.id]) {
-                    if (isDependencyFromTaskAToTaskB(shvTaskInd, taskInd)) {
-                        // DPU task depends on SHV. Check if DPU enq barrier is after SHV
-                        _log.trace("DPU task {0} with enqueue at {1} depends on SHV task {2} which submits DPU",
-                                   taskInd, enqBarOpt.value(), shvTaskInd);
-                        if (!isBarrierConsumptionAfterTaskCompletion(enqBarOpt.value(), shvTaskInd)) {
-                            // If enqueue is not after SHV task completion then delay it
-
-                            // TODO: Check on which barrier to delay. Currently it is guaranteed by previous
-                            // passes that SHV with DPU will have following sequence:
-                            //  .. -> SHV(DPU) -> BAR -> SyncDMA -> ...
-                            // In such case it is safe to delay on BAR barrier
-                            enqBarOpt = *_barrierInfo.getUpdateBarriers(shvTaskInd).begin();
-                            _log.trace("Delay enqueue of task {0} to {1} due to dependency on SHV task {2} which "
-                                       "submits DPU",
+                // Check if enqueue needs to be delayed in case of DPU tasks that depend on SHV tasks which can submit a
+                // DPU In that case enqueue would need to be delayed
+                bool canOptimizeAndMergeEnqForThisTask = true;
+                if (dpuEnqCheckForShv) {
+                    for (auto shvTaskInd : _shvTasksWithDpuPerTile[queueType.id]) {
+                        if (isDependencyFromTaskAToTaskB(shvTaskInd, taskInd)) {
+                            // DPU task depends on SHV. Check if DPU enq barrier is after SHV
+                            _log.trace("DPU task {0} with enqueue at {1} depends on SHV task {2} which submits DPU",
                                        taskInd, enqBarOpt.value(), shvTaskInd);
-                            // Task enqueue cannot be optimized if its enqueue has been delayed
-                            canOptimizeAndMergeEnqForThisTask = false;
+                            if (!isBarrierConsumptionAfterTaskCompletion(enqBarOpt.value(), shvTaskInd)) {
+                                // If enqueue is not after SHV task completion then delay it
+
+                                // TODO: Check on which barrier to delay. Currently it is guaranteed by previous
+                                // passes that SHV with DPU will have following sequence:
+                                //  .. -> SHV(DPU) -> BAR -> SyncDMA -> ...
+                                // In such case it is safe to delay on BAR barrier
+                                enqBarOpt = *_barrierInfo.getUpdateBarriers(shvTaskInd).begin();
+                                _log.trace("Delay enqueue of task {0} to {1} due to dependency on SHV task {2} which "
+                                           "submits DPU",
+                                           taskInd, enqBarOpt.value(), shvTaskInd);
+                                // Task enqueue cannot be optimized if its enqueue has been delayed
+                                canOptimizeAndMergeEnqForThisTask = false;
+                            }
                         }
                     }
                 }
-            }
 
-            if (previousEnqBarOpt.has_value() && enqBarOpt.has_value() && canOptimizeAndMergeEnqForThisTask) {
-                // Check if enqueue needs to be delayed because of previous enqueue happening later
-                if (optimizeAndMergeEnq) {
-                    delayEnqIfNeededBasedOnPrevEnq(enqBarOpt, previousEnqBarOpt);
-                }
-
-                // If enqueue barrier is different than previous then perform checks if
-                // consecutive enqueue optimization can be applied
-                if (optimizeAndMergeEnq && enqBarOpt.value() != previousEnqBarOpt.value()) {
-                    optimizeEnqueueIfPossible(enqBarOpt, waitBarriers, updateBarriers, previousTaskIndOpt,
-                                              previousEnqBarOpt);
-                }
-            }
-
-            // Check if there is any outstanding enqueue limit. If yes then in case
-            // there is any enqueue barrier check if it is different then prviously enqueued task
-            // If yes then that would be a different enqueue operation and would occupy FIFO
-            // This needs to be tracked and enqueued tasks might require to have enqueue delayed
-            // to not overflow the FIFO
-            if (outstandingEnqueueLimit > 0 && enqBarOpt.has_value()) {
-                if (!previousEnqBarOpt.has_value() || enqBarOpt.value() != previousEnqBarOpt.value()) {
-                    const auto res = delayEnqIfNeededBasedOnFifoState(enqBarOpt, outstandingEnqueuesTaskIndexVec,
-                                                                      outstandingEnqueuesTaskWaitBarIndexVec,
-                                                                      outstandingEnquOpsCounter);
-                    if (mlir::failed(res)) {
-                        _log.warning("Could not reliably set and delay enqueue barrier due to fifo size of task: {0}, "
-                                     "enqBar: {1}",
-                                     taskInd, enqBarOpt.value());
-                        return mlir::failure();
+                if (optimizeAndMergeEnq && enqBarOpt.has_value() && previousTaskIndOpt.has_value() &&
+                    canOptimizeAndMergeEnqForThisTask) {
+                    // Check if enqueue needs to be delayed because of previous enqueue happening later
+                    // TODO: This logic might no longer be needed since introduction of WorkItem link list
+                    if (previousEnqBarOpt.has_value()) {
+                        delayEnqIfNeededBasedOnPrevEnq(enqBarOpt, previousEnqBarOpt);
                     }
 
-                    outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnquOpsCounter] = waitBarOpt;
-                    outstandingEnqueuesTaskIndexVec[outstandingEnquOpsCounter] = taskInd;
-                    outstandingEnquOpsCounter = (outstandingEnquOpsCounter + 1) % outstandingEnqueueLimit;
+                    // If enqueue barrier is different than previous then perform checks if
+                    // consecutive enqueue optimization can be applied
+                    if (!previousEnqBarOpt.has_value() || enqBarOpt.value() != previousEnqBarOpt.value()) {
+                        optimizeEnqueueIfPossible(enqBarOpt, waitBarriers, updateBarriers, previousTaskIndOpt,
+                                                  previousEnqBarOpt);
+                    }
                 }
+
+                // Check if there is any outstanding enqueue limit. If yes then in case
+                // there is any enqueue barrier check if it is different then prviously enqueued task
+                // If yes then that would be a different enqueue operation and would occupy FIFO
+                // This needs to be tracked and enqueued tasks might require to have enqueue delayed
+                // to not overflow the FIFO
+                if (outstandingEnqueueLimit > 0 && enqBarOpt.has_value()) {
+                    if (!previousEnqBarOpt.has_value() || enqBarOpt.value() != previousEnqBarOpt.value()) {
+                        const auto res = delayEnqIfNeededBasedOnFifoState(
+                                taskInd, enqBarOpt, outstandingEnqueuesTaskIndexVec,
+                                outstandingEnqueuesTaskWaitBarIndexVec, outstandingEnquOpsCounter);
+                        if (mlir::failed(res)) {
+                            _log.info("Could not reliably set and delay enqueue barrier due to fifo size of task: {0}, "
+                                      "enqBar: {1}. Reiterate search for enqueue barrier",
+                                      taskInd, enqBarOpt.value());
+                            enqSearchLoopReiterate = true;
+                            enqBarMin = enqBarOpt.value() + 1;
+                        } else {
+                            enqDelayedBasedOnFifo = true;
+                        }
+                    }
+                }
+
+                // Check if enqueue barrier depends on the task to be enqueued. If yes then this is a deadlock
+                if (enqBarOpt.has_value() && isBarrierConsumptionDependantOnTaskStart(enqBarOpt.value(), taskInd)) {
+                    _log.info("Enqueue barrier {0} depends on the task to be enqueued {1}. Reiterate search for "
+                              "enqueue barrier",
+                              enqBarOpt.value(), taskInd);
+                    enqSearchLoopReiterate = true;
+                    enqBarMin = enqBarOpt.value() + 1;
+                }
+
+            } while (enqSearchLoopReiterate);
+
+            if (enqDelayedBasedOnFifo) {
+                outstandingEnqueuesTaskWaitBarIndexVec[outstandingEnquOpsCounter] = waitBarOpt;
+                outstandingEnqueuesTaskIndexVec[outstandingEnquOpsCounter] = taskInd;
+                outstandingEnquOpsCounter = (outstandingEnquOpsCounter + 1) % outstandingEnqueueLimit;
             }
 
             _tasksEnqBar[taskInd] = enqBarOpt;
             _log.trace("Enqueue task at {0}",
                        (enqBarOpt.has_value() ? std::to_string(enqBarOpt.value()) : "BOOTSTRAP"));
-
-            // Check if enqueue barrier depends on the task to be enqueued. If yes then this is a deadlock
-            if (enqBarOpt.has_value() && isBarrierConsumptionDependantOnTaskStart(enqBarOpt.value(), taskInd)) {
-                _log.warning("Enqueue barrier {0} depends on the task to be enqueued {1}", enqBarOpt.value(), taskInd);
-                return mlir::failure();
-            }
 
             previousEnqBarOpt = enqBarOpt;
             previousTaskIndOpt = taskInd;

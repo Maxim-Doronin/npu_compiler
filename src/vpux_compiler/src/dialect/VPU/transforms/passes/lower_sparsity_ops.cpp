@@ -349,7 +349,7 @@ mlir::LogicalResult rewriteSparsityOpWithConv(mlir::PatternRewriter& rewriter, m
     const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
     const auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(arch);
     const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(arch);
-    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp, arch);
+    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
 
     const auto adaptedOutElemType =
             VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
@@ -357,7 +357,7 @@ mlir::LogicalResult rewriteSparsityOpWithConv(mlir::PatternRewriter& rewriter, m
 
     auto weightsTableVec = VPU::createWeightsTableData(origOp->getOperand(0), adaptedOutElemType, filter,
                                                        /*bias=*/{}, OC, ppeConverter, biasConverter,
-                                                       /*constScale=*/nullptr, VPU::canAutopadOutput(origOp));
+                                                       /*constScale=*/nullptr, /*hasAutopad=*/false);
     auto weightsTable = VPU::createWeightsTableTensor(rewriter, origOp->getLoc(), weightsTableVec);
 
     auto stridesAttr = getIntArrayAttr(ctx, SmallVector<int64_t>({1, 1}));

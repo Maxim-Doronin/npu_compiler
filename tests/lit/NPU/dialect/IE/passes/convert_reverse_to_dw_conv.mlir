@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-reverse-to-dw-conv %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d3, d1, d2, d0)>
 
 // CHECK-LABEL: @ConvertReverseToGroupConvolutionWithAxesOfHW

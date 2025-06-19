@@ -119,14 +119,9 @@ void computeBasePtrs(VPUIP::StorageElementTableOp seTableOp, vpux::NDTypeInterfa
     const auto seAttr = seTableOp.getSeAttr().value_or(nullptr);
     const auto seSize = seTableOp.getSeSize();
     const auto seDepth = seTableOp.getSeDepth();
-    SmallVector<int64_t> seSizes;
-    if (auto uniformSeSize = mlir::dyn_cast<mlir::IntegerAttr>(seSize)) {
-        seSizes = SmallVector<int64_t>(seDepth, uniformSeSize.getValue().getSExtValue());
-    } else {
-        seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seSize));
-        VPUX_THROW_WHEN(seSizes.size() != checked_cast<size_t>(seDepth), "Expected {0} SE sizes, got {1}", seDepth,
-                        seSizes.size());
-    }
+    const auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seSize));
+    VPUX_THROW_WHEN(seSizes.size() != checked_cast<size_t>(seDepth), "Expected {0} SE sizes, got {1}", seDepth,
+                    seSizes.size());
 
     const auto numElements = outputNDType.getNumElements();
     std::vector<int32_t> basePtrs(numElements, 0);

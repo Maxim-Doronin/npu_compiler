@@ -31,9 +31,24 @@ std::optional<BatchCompilerOptionsAdapterView::Occurence> extractSubOption(StrOp
         return std::make_optional<BatchCompilerOptionsAdapterView::Occurence>(
                 BatchCompilerOptionsAdapterView::Occurence{namePos, subOption.getArgStr().size() + 1});
     }
+
     auto valuePos = strOptions.find(subOption, namePos);
+    if (valuePos == std::string::npos) {
+        return {};
+    }
+
+    // Include leading '{' and trailing '}' if it exists
+    auto subOptionSize = subOption.size();
+    if (valuePos > 0 && strOptions[valuePos - 1] == '{') {
+        valuePos--;
+        subOptionSize++;
+    }
+    if ((valuePos + subOptionSize) < strOptions.size() && strOptions[valuePos + subOptionSize] == '}') {
+        subOptionSize++;
+    }
+
     return std::make_optional<BatchCompilerOptionsAdapterView::Occurence>(
-            BatchCompilerOptionsAdapterView::Occurence{namePos, valuePos + subOption.size() - namePos});
+            BatchCompilerOptionsAdapterView::Occurence{namePos, valuePos + subOptionSize - namePos});
 }
 
 std::string cutOccurenceOutOfString(const std::optional<BatchCompilerOptionsAdapterView::Occurence>& occurence,
@@ -227,6 +242,12 @@ std::string DebatcherOptions::getDefaultOptions() {
     std::string ret;
     llvm::raw_string_ostream optionsPrinter(ret);
     DebatcherOptions{}.print(optionsPrinter);
+
+    // remove leading '{' and trailing '}'
+    if (ret.size() >= 2 && ret[0] == '{' and ret.back() == '}') {
+        ret = ret.substr(1, ret.size() - 2);
+    }
+
     return ret;
 }
 
@@ -245,11 +266,7 @@ std::unique_ptr<DebatcherOptions> DebatcherOptions::create(const BatchCompileOpt
                       options.batchCompileMethod.getArgStr(), options.batchCompileMethod,
                       options.batchUnrollCompileMethodSettings.getArgStr(), options.batchUnrollCompileMethodSettings);
     std::string settings = options.debatchCompileMethodSettings;
-    if (settings.size() >= 2) {
-        VPUX_THROW_UNLESS(settings[0] == '{' && settings[settings.size() - 1] == '}',
-                          "{0} must be shielded by '{' and '}'", options.debatchCompileMethodSettings.getArgStr());
-        settings = settings.substr(1, settings.size() - 2);
-    }
+
     return DebatcherOptions::createFromString(settings);
 }
 
@@ -270,6 +287,12 @@ std::string BatchUnrollOptions::getDefaultOptions() {
     std::string ret;
     llvm::raw_string_ostream optionsPrinter(ret);
     BatchUnrollOptions{}.print(optionsPrinter);
+
+    // remove leading '{' and trailing '}'
+    if (ret.size() >= 2 && ret[0] == '{' and ret.back() == '}') {
+        ret = ret.substr(1, ret.size() - 2);
+    }
+
     return ret;
 }
 
@@ -286,11 +309,7 @@ std::unique_ptr<BatchUnrollOptions> BatchUnrollOptions::create(const BatchCompil
                       options.batchCompileMethod.getArgStr(), options.batchCompileMethod,
                       options.debatchCompileMethodSettings.getArgStr(), options.debatchCompileMethodSettings);
     std::string settings = options.batchUnrollCompileMethodSettings;
-    if (settings.size() >= 2) {
-        VPUX_THROW_UNLESS(settings[0] == '{' && settings[settings.size() - 1] == '}',
-                          "{0} must be shielded by '{' and '}'", options.batchUnrollCompileMethodSettings.getArgStr());
-        settings = settings.substr(1, settings.size() - 2);
-    }
+
     return BatchUnrollOptions::createFromString(settings);
 }
 }  // namespace vpux

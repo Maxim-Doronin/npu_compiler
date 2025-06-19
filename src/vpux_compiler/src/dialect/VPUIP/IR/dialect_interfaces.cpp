@@ -409,27 +409,31 @@ CallOPPreInliner::ResourceDescriptor CallOPPreInliner::ResourceDescriptor::creat
     VPUX_THROW_UNLESS(debatchedAttr.has_value(), "CallOPPreInliner::apply expected an attribute: {0}",
                       DebatchedCallOpAttributeView::name());
     const DebatchedCallOpData& callOpData = debatchedAttr.value().getCallData();
-    log.debug("Procced with gathering all DDR buffer allocations to determine a device memory occupation range");
+    log.debug("Proceed with gathering all DDR buffer allocations to determine a device memory occupation range");
     std::map<size_t, size_t> allocationsOffsetSize;
-    for (mlir::Block& block : inlinedBlocks) {
-        for (auto& op : block.getOperations()) {
-            if (!mlir::isa<VPURT::DeclareBufferOp>(op)) {
-                continue;
-            }
+    try {
+        for (mlir::Block& block : inlinedBlocks) {
+            for (auto& op : block.getOperations()) {
+                if (!mlir::isa<VPURT::DeclareBufferOp>(op)) {
+                    continue;
+                }
 
-            auto declareOp = mlir::dyn_cast<VPURT::DeclareBufferOp>(op);
+                auto declareOp = mlir::dyn_cast<VPURT::DeclareBufferOp>(op);
 
-            auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(declareOp.getType());
-            if (ndType.getMemoryKind() != VPU::MemoryKind::DDR) {
-                continue;
+                auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(declareOp.getType());
+                if (ndType.getMemoryKind() != VPU::MemoryKind::DDR) {
+                    continue;
+                }
+                size_t offset = declareOp.getByteOffset();
+                int64_t shapeSize = calcTotalShapeSize(ndType.getShape());
+                int64_t memorySize = shapeSize * getElemTypeSize(ndType.getElementType()).to<Byte>().count();
+                allocationsOffsetSize.emplace(offset, memorySize);
             }
-            size_t offset = declareOp.getByteOffset();
-            int64_t shapeSize = calcTotalShapeSize(ndType.getShape());
-            int64_t memorySize = shapeSize * getElemTypeSize(ndType.getElementType()).to<Byte>().count();
-            allocationsOffsetSize.emplace(offset, memorySize);
         }
+    } catch (const std::exception& ex) {
+        log.debug("Cannot calculate DDR allocation due to exception: {1}", ex.what());
+        allocationsOffsetSize.clear();
     }
-
     if (allocationsOffsetSize.empty()) {
         log.debug("No DDR allocations, no any offset recalculation required");
         return ResourceDescriptor{std::move(commonFuncData), callOpData, {}};

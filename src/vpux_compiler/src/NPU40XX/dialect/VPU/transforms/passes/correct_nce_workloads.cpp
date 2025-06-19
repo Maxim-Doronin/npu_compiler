@@ -43,8 +43,10 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter40XX::getSupportedChannels(
     const auto hasSparseOutput = llvm::any_of(nceOps, [](mlir::Operation* op) {
         return mlir::isa<vpux::VPU::SparseTensorType>(op->getResult(0).getType());
     });
-    if ((std::find(supportedChannels.begin(), supportedChannels.end(), VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT) !=
-         supportedChannels.end()) &&
+    if ((std::find(supportedChannels.begin(), supportedChannels.end(),
+                   VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16) != supportedChannels.end() ||
+         std::find(supportedChannels.begin(), supportedChannels.end(),
+                   VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32) != supportedChannels.end()) &&
         nceOps.size() == 1 && isDepthwiseOp(*nceOps.begin()) && !hasSparseOutput) {
         auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(*nceOps.begin());
         const auto kernelSize = nceOp.getKernelSizeVal();
@@ -89,14 +91,18 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter40XX::getSupportedChannels(
             }
         }
 
-        auto workloadChannelsMeetRequirement = llvm::all_of(workloadsChannels, [&](const auto& channel) {
-            return channel % VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT == 0;
+        auto workloadChannelsMeetRequirement16 = llvm::all_of(workloadsChannels, [&](const auto& channel) {
+            return channel % VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16 == 0;
+        });
+        auto workloadChannelsMeetRequirement32 = llvm::all_of(workloadsChannels, [&](const auto& channel) {
+            return channel % VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32 == 0;
         });
 
-        size_t workloadNumInTotal = 0;
+        size_t workloadNumInTotal32 = 0;
         for (auto channel : workloadsChannels) {
-            workloadNumInTotal += (channel / VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT);
+            workloadNumInTotal32 += (channel / VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32);
         }
+        const auto workloadNumInTotal16 = workloadNumInTotal32 + 1;
 
         // This is a performance opt to use VPU_CHANNEL_SIZE_FOR_L1OPT as supportedChannels on 40XX
         // for DW ops with KX = 3 and SX = 1. Hardware has a specific support for that kind of workloads
@@ -111,9 +117,14 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter40XX::getSupportedChannels(
         // The latter is preferable since this way DPU tries to access storage element table for only one workload.
         const auto hasSparseInput = mlir::isa<VPU::SparseTensorType>(nceOp->getOperand(0).getType());
         const auto maxSlotsSum = VPUIP::getBarrierMaxVariantSum(nceOp);
-        if (KX == 3 && SX == 1 && workloadChannelsMeetRequirement && workloadNumInTotal < maxSlotsSum &&
-            !hasSparseInput) {
-            supportedChannels = {VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT};
+
+        if (KX == 3 && SX == 1 && !hasSparseInput) {
+            if (workloadNumInTotal32 < maxSlotsSum && workloadChannelsMeetRequirement32) {
+                supportedChannels = {VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32};
+            } else if (workloadNumInTotal16 < maxSlotsSum && workloadChannelsMeetRequirement16) {
+                supportedChannels = {VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32,
+                                     VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16};
+            }
         }
     }
 

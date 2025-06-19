@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -207,11 +207,30 @@ std::set<int64_t> UnrollDynamicDequantize::findAxes(IE::DynamicDequantizeOp orig
     return IE::findAxes(origOp);
 }
 
+bool isValidFullyConnectedOp(IE::FullyConnectedOp fcOp) {
+    if (fcOp == nullptr) {
+        return false;
+    }
+
+    auto outShape = getShape(fcOp.getOutput());
+    return outShape.size() == 2 && outShape[Dim(0)] == 1;
+}
+
+bool isValidAffineReshape(IE::AffineReshapeOp reshape) {
+    if (!reshape->hasOneUse()) {
+        return false;
+    }
+
+    const auto reshapeInputDims = getShape(reshape.getInput());
+    const auto reshapeOutputDims = getShape(reshape.getOutput());
+    return reshapeInputDims.size() == 3 && reshapeOutputDims.size() == 2;
+}
+
 bool UnrollDynamicDequantize::isBeneficialForUnroll(IE::DynamicDequantizeOp origOp) const {
     // Benefit when: KV cache model, the first dim is one.
     // For prefill mode, it's more performant to keep the op unrolled.
     if (!origOp->hasOneUse()) {
-        return true;
+        return false;
     }
 
     auto propagateTranspose = [](mlir::Operation* userOp) {
@@ -224,24 +243,19 @@ bool UnrollDynamicDequantize::isBeneficialForUnroll(IE::DynamicDequantizeOp orig
     auto user = propagateTranspose(*origOp->getUsers().begin());
 
     auto reshape = mlir::dyn_cast<IE::AffineReshapeOp>(user);
-    if (reshape == nullptr || !reshape->hasOneUse()) {
-        return true;
+    if (reshape == nullptr) {
+        auto fcOp = mlir::dyn_cast<IE::FullyConnectedOp>(user);
+        return isValidFullyConnectedOp(fcOp);
     }
 
-    const auto reshapeInputDims = getShape(reshape.getInput());
-    const auto reshapeOutputDims = getShape(reshape.getOutput());
-    if (reshapeInputDims.size() != 3 || reshapeOutputDims.size() != 2) {
-        return true;
+    if (!isValidAffineReshape(reshape)) {
+        return false;
     }
 
     user = propagateTranspose(*reshape->getUsers().begin());
 
-    auto matMul = mlir::dyn_cast<IE::FullyConnectedOp>(user);
-    if (matMul == nullptr) {
-        return true;
-    }
-    auto outShape = getShape(matMul.getOutput());
-    return outShape.size() == 2 && outShape[Dim(0)] == 1;
+    auto fcOp = mlir::dyn_cast<IE::FullyConnectedOp>(user);
+    return isValidFullyConnectedOp(fcOp);
 }
 
 class UnrollGroupQuantizePass final : public IE::impl::UnrollGroupQuantizeBase<UnrollGroupQuantizePass> {

@@ -5,6 +5,9 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/avg_pool.hpp"
+#include "openvino/op/convolution.hpp"
+
 namespace ov::test {
 
 class AvgPoolWithConvTestCommon :

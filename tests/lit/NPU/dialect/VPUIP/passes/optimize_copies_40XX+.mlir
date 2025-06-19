@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --optimize-copies %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
     IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -149,6 +150,39 @@ func.func @NotEraseCMX2CMXCopyAfterSubviewDueToCMXSizeLimitation(%data : memref<
   // CHECK:   [[ALLOC_GATHER:%.+]] = memref.alloc() : memref<16000x32xf16, [@CMX_NN, 0]>
   // CHECK:   [[GATHER_OUT:%.+]] = VPUIP.GatherDMA {channelType = 0 : i64, elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64} inputs([[DATA]] : memref<8000x32xf16>) indices([[INDICES_IN]] : memref<16000x1xi64, [@CMX_NN, 0]>) outputs([[ALLOC_GATHER]] : memref<16000x32xf16, [@CMX_NN, 0]>) -> memref<16000x32xf16, [@CMX_NN, 0]>
   // CHECK:   return [[GATHER_OUT]] : memref<16000x32xf16, [@CMX_NN, 0]>
+}
+
+// -----
+
+IE.TileResource 4 of @NCE at 1.700000e+03 MHz {
+    IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
+    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+}
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotRemoveClusterTilingCMXToCMXCopyDueToSubView
+func.func @NotRemoveClusterTilingCMXToCMXCopyDueToSubView()
+          -> (memref<1x2x28x50xf16, #NHWC, [@CMX_NN, 0]>) {
+    %0 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x16x28x48xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48]], compute_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]], memory_shapes = [[1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48]], memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]]}>
+
+    %1 = memref.alloc() : memref<1x2x28x50xf16, #NHWC, [@CMX_NN, 0]>
+
+    %2 = VPUIP.SubView %1 [0, 0, 0, 1] [1, 2, 28, 48] : memref<1x2x28x50xf16, #NHWC, [@CMX_NN, 0]> to memref<1x2x28x48xf16, {order = #NHWC, strides = [2800, 1, 100, 2]}, [@CMX_NN, 0]>
+
+    %3 = VPUIP.SubView %0 [0, 0, 0, 0] [1, 2, 28, 48] : !VPUIP.DistributedBuffer<1x16x28x48xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48]], compute_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]], memory_shapes = [[1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48]], memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]]}> to !VPUIP.DistributedBuffer<1x2x28x48xf16, {order = #NHWC, strides = [21504, 1, 768, 16]}, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48]], compute_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]], memory_shapes = [[1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48]], memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]]}>
+
+    %4 = VPUIP.Copy inputs(%3 : !VPUIP.DistributedBuffer<1x2x28x48xf16, {order = #NHWC, strides = [21504, 1, 768, 16]}, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48]], compute_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]], memory_shapes = [[1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48], [1, 2, 7, 48]], memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]]}>) outputs(%2 : memref<1x2x28x48xf16, {order = #NHWC, strides = [2800, 1, 100, 2]}, [@CMX_NN, 0]>) -> memref<1x2x28x48xf16, {order = #NHWC, strides = [2800, 1, 100, 2]}, [@CMX_NN, 0]>
+
+    %5 = VPUIP.ConcatView inputs(%4 : memref<1x2x28x48xf16, {order = #NHWC, strides = [2800, 1, 100, 2]}, [@CMX_NN, 0]>) outputs(%1 : memref<1x2x28x50xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x28x50xf16, #NHWC, [@CMX_NN, 0]>
+    return %5 : memref<1x2x28x50xf16, #NHWC, [@CMX_NN, 0]>
+
+    // CHECK: [[INPUT_BUFF:%.+]] = VPURT.AllocDistributed
+    // CHECK: [[OUT_SUBVIEW:%.+]] = VPUIP.SubView
+    // CHECK: [[IN_SUBVIEW:%.+]] = VPUIP.SubView
+    // CHECK: [[COPY:%.+]] = VPUIP.Copy
+    // CHECK: [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[COPY]]
+    // CHECK: return [[CONCAT]]
 }
 
 // -----

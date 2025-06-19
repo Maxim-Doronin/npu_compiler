@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/ctc_greedy_decoder_seq_len.hpp"
 #include <random>
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/ctc_greedy_decoder_seq_len.hpp"
 
 using namespace ov::test::utils;
 namespace ov {
@@ -125,8 +127,6 @@ TEST_P(CTCGreedyDecoderSeqLenLayerTestCommon, NPU3720_HW) {
 
 TEST_P(CTCGreedyDecoderSeqLenLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
-    // TODO E####-159644
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

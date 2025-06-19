@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -63,6 +64,9 @@ mlir::LogicalResult ConvertShuffleChannelsPass::ShuffleChannelsOpConverter::matc
     const auto outShape = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType()).getShape().raw();
     const auto axis = origOp.getAxis();
     const auto group = origOp.getGroup();
+    if (group <= 0) {
+        return matchFailed(rewriter, origOp, "Unsupported group size: {0}", group);
+    }
 
     // Compute 1st shape ( e.g. for inputShape = {N,C,H,W}, axis=1
     // => shape1 = {N, group, C / group, H * W} )

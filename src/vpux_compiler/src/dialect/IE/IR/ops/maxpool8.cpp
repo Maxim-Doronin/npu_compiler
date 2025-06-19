@@ -33,14 +33,15 @@ mlir::LogicalResult vpux::IE::MaxPool8Op::inferReturnTypeComponents(
     const auto windowDilations = parseIntArrayAttr<int64_t>(maxPool8.getDilations());
     const auto roundingType = maxPool8.getRoundingType();
 
-    const auto inType = mlir::cast<mlir::ShapedType>(maxPool8.getInput().getType()).getElementType();
-    const auto inShape = mlir::cast<mlir::ShapedType>(maxPool8.getInput().getType()).getShape();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(maxPool8.getInput().getType());
+    const auto inType = inputType.getElementType();
+    const auto inShape = ShapeInfo::fromNDType(inputType);
 
     auto outputShape = inferMaxPool8OutputShape(inShape, windowStrides, windowDilations, dataPaddingBelow,
                                                 dataPaddingAbove, windowShape, roundingType);
 
-    inferredReturnShapes.emplace_back(outputShape, inType);
-    inferredReturnShapes.emplace_back(outputShape, maxPool8.getIndexElementType());
+    inferredReturnShapes.emplace_back(outputShape.shape, inType);
+    inferredReturnShapes.emplace_back(outputShape.shape, maxPool8.getIndexElementType());
 
     return mlir::success();
 }

@@ -309,23 +309,32 @@ void reduceParallelControlFlows(std::map<VPURT::TaskQueueType, VPURT::TaskConfig
 
 class SimplifySchedulePass final : public VPURT::impl::SimplifyScheduleBase<SimplifySchedulePass> {
 public:
-    explicit SimplifySchedulePass(const bool shareWaitAndUpdateBarriersFlag, const bool reduceParallelControlFlowsFlag,
-                                  Logger log)
-            : _shareWaitAndUpdateBarriers(shareWaitAndUpdateBarriersFlag),
-              _reduceParallelControlFlows(reduceParallelControlFlowsFlag) {
+    explicit SimplifySchedulePass(const bool reduceParallelControlFlowsFlag,
+                                  std::optional<WorkloadManagementMode> workloadManagementMode, Logger log)
+            : _reduceParallelControlFlows(reduceParallelControlFlowsFlag),
+              _workloadManagementMode(workloadManagementMode) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     void safeRunOnFunc() final;
-    bool _shareWaitAndUpdateBarriers{true};
+    bool _shareWaitAndUpdateBarriers{false};
     bool _reduceParallelControlFlows{true};
+    std::optional<WorkloadManagementMode> _workloadManagementMode = std::nullopt;
 };
 
 void SimplifySchedulePass::safeRunOnFunc() {
     auto funcOp = getOperation();
+    _shareWaitAndUpdateBarriers = VPURT::isShareWaitAndUpdateBarriersNeeded(_workloadManagementMode);
+
+    auto shareWaitAndUpdateBarriers = shareWaitAndUpdateBarriersOpt.hasValue()
+                                              ? static_cast<bool>(shareWaitAndUpdateBarriersOpt.getValue())
+                                              : _shareWaitAndUpdateBarriers;
+    _log.trace("Sharing wait and update barriers: {0}", shareWaitAndUpdateBarriers);
+
     auto& barrierInfo = getAnalysis<BarrierInfo>();
     auto& cycleCostInfo = getAnalysis<CycleCostInfo>();
+    cycleCostInfo.resetNNCacheCounter();
 
     // If barrier order by producer, some task's wait barrier number is bigger than update barrier, but some functions
     // in this pass like resolveOutOfOrderDependencies and reduceParallelControlFlows need task's wait barrier number
@@ -341,7 +350,7 @@ void SimplifySchedulePass::safeRunOnFunc() {
     VPURT::orderExecutionTasksAndBarriers(funcOp, barrierInfo, _log);
 
     // 2. make execution fully controlled by barriers
-    if (_shareWaitAndUpdateBarriers) {
+    if (shareWaitAndUpdateBarriers) {
         const auto legalVariantCount = VPUIP::getBarrierMaxVariantCount(funcOp) / 2;
         barrierInfo.buildTaskQueueTypeMap();
         barrierInfo.shareWaitAndUpdateBarriers(legalVariantCount);
@@ -374,6 +383,9 @@ void SimplifySchedulePass::safeRunOnFunc() {
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
     barrierInfo.clearAttributes();
     VPURT::postProcessBarrierOps(funcOp);
+
+    _log.info("[SimplifySchedule phase]");
+    cycleCostInfo.printNNCacheStatistics(_log);
 }
 
 }  // namespace
@@ -382,8 +394,8 @@ void SimplifySchedulePass::safeRunOnFunc() {
 // createSimplifySchedulePass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPURT::createSimplifySchedulePass(const bool shareWaitAndUpdateBarriersFlag,
-                                                                    const bool reduceParallelControlFlowsFlag,
-                                                                    Logger log) {
-    return std::make_unique<SimplifySchedulePass>(shareWaitAndUpdateBarriersFlag, reduceParallelControlFlowsFlag, log);
+std::unique_ptr<mlir::Pass> vpux::VPURT::createSimplifySchedulePass(
+        const bool reduceParallelControlFlowsFlag, std::optional<WorkloadManagementMode> workloadManagementMode,
+        Logger log) {
+    return std::make_unique<SimplifySchedulePass>(reduceParallelControlFlowsFlag, workloadManagementMode, log);
 }

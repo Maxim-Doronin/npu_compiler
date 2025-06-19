@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -467,43 +467,44 @@ func.func @InterpSplitOverCNoCommonFactor(
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+!DistributedTensor0 = !VPU.DistributedTensor<
+    1x32x100x100xf16, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 2, 1],
+    num_clusters = 2 : i64
+}>
+
+!DistributedTensor1 = !VPU.DistributedTensor<
+    1x128x100x100xf16, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 2, 1],
+    num_clusters = 2 : i64
+}>
+
 // CHECK-LABEL:   @NoTilingClusterNCEConv
-// CHECK-SAME:          [[INPUT:%arg[0-9]]]: tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
-func.func @NoTilingClusterNCEConv(%arg0: tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>) -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}> {
+// CHECK-SAME:          [[INPUT:%arg[0-9]]]: !VPU.DistributedTensor<1x32x100x100xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+func.func @NoTilingClusterNCEConv(%arg0: !DistributedTensor0) -> !DistributedTensor1 {
     %weights = const.Declare tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}> = dense<1.000000e+00> : tensor<128x32x3x3xf16, {mem_space = @CMX_NN}>, [#const.Reorder<#NHWC>]
     %weights_table = const.Declare tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> = dense<10> : tensor<128x1x1x4xsi32, {mem_space = @CMX_NN}>
 
-    %0 = VPU.NCE.ClusterTiling (
-            %arg0 as %arg1: tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>,
-            %weights as %arg2: tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>,
-            %weights_table as %arg3: tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>)
-                -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-      %1 = VPU.NCE.Convolution(%arg1, %arg2, %arg3) {
+    %0 = VPU.NCE.Convolution(%arg0, %weights, %weights_table) {
                 pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                 rawFilterShape = [128, 32, 3, 3],
                 strides = [1, 1],
                 ppe = #VPU.PPEStub<>
-            } : tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
-      VPU.Yield %1
-    }
+            } : !DistributedTensor0, tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}> -> !DistributedTensor1
 
-    return %0 : tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
+    return %0 : !DistributedTensor1
 
     // CHECK-DAG:        [[WEIGHT_TABLE:%.+]] = const.Declare tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>
     // CHECK-DAG:        [[WEIGHTS:%.+]] = const.Declare tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
-    // CHECK:        [[CLUSTER_TILING:%.+]] = VPU.NCE.ClusterTiling (
-    // CHECK-SAME:          %arg0 as %arg1: tensor<1x32x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
-    // CHECK-SAME:          [[WEIGHTS]] as %arg2: tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>
-    // CHECK-SAME:          [[WEIGHT_TABLE]] as %arg3: tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>)
-    // CHECK-SAME:          -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
-    // CHECK:           [[NCE_CONV:%.*]] = VPU.NCE.Convolution(%arg1, %arg2, %arg3)
+    // CHECK:        [[NCE_CONV:%.*]] = VPU.NCE.Convolution([[INPUT]], [[WEIGHTS]], [[WEIGHT_TABLE]])
     // CHECK-SAME:              pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
     // CHECK-SAME:              strides = [1, 1]
-    // CHECK-SAME:              -> tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
-    // CHECK:           VPU.Yield [[NCE_CONV]]
+    // CHECK-SAME:              -> !VPU.DistributedTensor<1x128x100x100xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    // CHECK:         return [[CLUSTER_TILING]] : tensor<1x128x100x100xf16, {mem_space = @CMX_NN, order = #NHWC}>
+    // CHECK:         return [[NCE_CONV]] : !VPU.DistributedTensor<1x128x100x100xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 }
 
 // -----
@@ -2321,9 +2322,9 @@ func.func @NCEInterpNearestTileOverH(
           -> tensor<1x64x128x96xf16, {order = #NHWC}> {
     %sparsity_map = const.Declare tensor<1x64x128x96xi1> = dense<1> : tensor<1x64x128x96xi1>
     %se_table = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 64,
+        seSize = [64],
         dataShape = [1, 64, 64, 48],
         seAttr = #VPU.SEInterpolate<
             mode = <NEAREST>,
@@ -2371,22 +2372,22 @@ func.func @NCEInterpNearestTileOverH(
 
     // Tiled StorageElementTable ops
     // CHECK:               [[SET_TILE_0:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:              {dataElemType = i32,
+    // CHECK-SAME:              {dataElemType = f16,
     // CHECK-SAME:              dataShape = [1, 64, 32, 48],
     // CHECK-SAME:              seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:                  nearest_mode = <FLOOR>,
     // CHECK-SAME:                  offsets = [0, 0, 0, 0], sizes = [1, 64, 64, 96]>,
     // CHECK-SAME:              seDepth = 1 : i64,
-    // CHECK-SAME:              seSize = 64 : i64}
+    // CHECK-SAME:              seSize = [64]}
     // CHECK-SAME:          -> tensor<1x1x64x96xi32, {order = #NHWC}>
     // CHECK:               [[SET_TILE_1:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:              {dataElemType = i32,
+    // CHECK-SAME:              {dataElemType = f16,
     // CHECK-SAME:              dataShape = [1, 64, 32, 48],
     // CHECK-SAME:              seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:                  nearest_mode = <FLOOR>,
     // CHECK-SAME:                  offsets = [0, 0, 0, 0], sizes = [1, 64, 64, 96]>,
     // CHECK-SAME:              seDepth = 1 : i64,
-    // CHECK-SAME:              seSize = 64 : i64}
+    // CHECK-SAME:              seSize = [64]}
     // CHECK-SAME:          -> tensor<1x1x64x96xi32, {order = #NHWC}>
 
     // TILE 1
@@ -2456,9 +2457,9 @@ func.func @NCEInterpTileOverC(
           -> tensor<1x128x96x96xf16, {order = #NHWC}> {
     %sparsity_map = const.Declare tensor<1x128x96x96xi1> = dense<1> : tensor<1x128x96x96xi1>
     %se_table = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 128,
+        seSize = [128],
         dataShape = [1, 128, 48, 48],
         seAttr = #VPU.SEInterpolate<
             mode = <NEAREST>,
@@ -2503,13 +2504,13 @@ func.func @NCEInterpTileOverC(
     // Tile over C implies full input data for each tile
     // CHECK:       [[SM:%.+]] = const.Declare tensor<1x128x96x96xi1> = dense<true> : tensor<1x128x96x96xi1>
     // CHECK:       [[SE_TABLE:%.+]] = VPU.StorageElementTable {
-    // CHECK-SAME:    dataElemType = i32,
+    // CHECK-SAME:    dataElemType = f16,
     // CHECK-SAME:    dataShape = [1, 128, 48, 48],
     // CHECK-SAME:    seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:             nearest_mode = <FLOOR>,
     // CHECK-SAME:             offsets = [0, 0, 0, 0], sizes = [1, 128, 96, 96]>,
     // CHECK-SAME:    seDepth = 1 : i64,
-    // CHECK-SAME:    seSize = 128 : i64}
+    // CHECK-SAME:    seSize = [128]}
     // CHECK-SAME:    -> tensor<1x1x96x96xi32, {order = #NHWC}>
 
     // CHECK:       [[SPARSE_DATA:%.+]] = VPU.GroupSparseTensor([[DATA]], [[SM]], [[SE_TABLE]])
@@ -2579,9 +2580,9 @@ func.func @NCEInterpBilinearTileOverH(
           -> tensor<1x64x144x144xf16, {order = #NHWC}> {
     %sparsityMap = const.Declare tensor<1x64x144x144xi1> = dense<1> : tensor<1x64x144x144xi1>
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 64,
+        seSize = [64],
         dataShape = [1, 64, 48, 48],
         seAttr = #VPU.SEInterpolate<
             mode = <BILINEAR>,
@@ -2626,21 +2627,21 @@ func.func @NCEInterpBilinearTileOverH(
 
     // Tiled Storage Element Table operations
     // CHECK:       [[SET_TILE_0:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 24, 48],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 0, 0], sizes = [1, 64, 72, 144]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x72x144xi32, {order = #NHWC}>
 
     // CHECK:       [[SET_TILE_1:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 24, 48],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 0, 0], sizes = [1, 64, 72, 144]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x72x144xi32, {order = #NHWC}>
 
     // Tile 1 data
@@ -2705,9 +2706,9 @@ func.func @NCEInterpBilinearPytorchHalfPixelOddScalesTileOverH(
           -> tensor<1x64x144x144xf16, {order = #NHWC}> {
     %sparsityMap = const.Declare tensor<1x64x146x146xi1> = dense<1> : tensor<1x64x146x146xi1>
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 64,
+        seSize = [64],
         dataShape = [1, 64, 48, 48],
         seAttr = #VPU.SEInterpolate<
             mode = <BILINEAR>,
@@ -2752,21 +2753,21 @@ func.func @NCEInterpBilinearPytorchHalfPixelOddScalesTileOverH(
 
     // Tiled Storage Element Table operations
     // CHECK:       [[SET_TILE_0:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 25, 48],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 0, 0], sizes = [1, 64, 74, 146]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x74x146xi32, {order = #NHWC}>
 
     // CHECK:       [[SET_TILE_1:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 25, 48],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 3, 0], sizes = [1, 64, 74, 146]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x74x146xi32, {order = #NHWC}>
 
     // Tile 1 data
@@ -2831,9 +2832,9 @@ func.func @NCEInterpBilinearHalfPixelEvenScalesTileOverH(
           -> tensor<1x64x120x120xf16, {order = #NHWC}> {
     %sparsityMap = const.Declare tensor<1x64x122x122xi1> = dense<1> : tensor<1x64x122x122xi1>
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 64,
+        seSize = [64],
         dataShape = [1, 64, 60, 60],
         seAttr = #VPU.SEInterpolate<
             mode = <BILINEAR>,
@@ -2878,21 +2879,21 @@ func.func @NCEInterpBilinearHalfPixelEvenScalesTileOverH(
 
     // Tiled Storage Element Table operations
     // CHECK:       [[SET_TILE_0:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 31, 60],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 0, 0], sizes = [1, 64, 62, 122]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x62x122xi32, {order = #NHWC}>
 
     // CHECK:       [[SET_TILE_1:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 31, 60],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 2, 0], sizes = [1, 64, 62, 122]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x62x122xi32, {order = #NHWC}>
 
     // Tile 1 data
@@ -2957,9 +2958,9 @@ func.func @NCEInterpBilinearAlignCornersTileOverH(
           -> tensor<1x64x142x142xf16, {order = #NHWC}> {
     %sparsityMap = const.Declare tensor<1x64x144x144xi1> = dense<1> : tensor<1x64x144x144xi1>
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 64,
+        seSize = [64],
         dataShape = [1, 64, 48, 48],
         seAttr = #VPU.SEInterpolate<
             mode = <BILINEAR>,
@@ -3000,21 +3001,21 @@ func.func @NCEInterpBilinearAlignCornersTileOverH(
 
     // Tiled Storage Element Table operations
     // CHECK:       [[SET_TILE_0:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 25, 48],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 0, 0], sizes = [1, 64, 73, 144], initial_input_shape = [1, 64, 48, 48], initial_output_shape = [1, 64, 142, 142]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x73x144xi32, {order = #NHWC}>
 
     // CHECK:       [[SET_TILE_1:%.+]] = VPU.StorageElementTable
-    // CHECK-SAME:      {dataElemType = i32,
+    // CHECK-SAME:      {dataElemType = f16,
     // CHECK-SAME:       dataShape = [1, 64, 25, 48],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:          offsets = [0, 0, 2, 0], sizes = [1, 64, 73, 144], initial_input_shape = [1, 64, 48, 48], initial_output_shape = [1, 64, 142, 142]>,
     // CHECK-SAME:       seDepth = 1 : i64,
-    // CHECK-SAME:       seSize = 64 : i64}
+    // CHECK-SAME:       seSize = [64]}
     // CHECK-SAME:      -> tensor<1x1x73x144xi32, {order = #NHWC}>
 
     // Tile 1 data

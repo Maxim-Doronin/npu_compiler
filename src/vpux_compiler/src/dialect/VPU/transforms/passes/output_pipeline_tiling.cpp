@@ -244,6 +244,9 @@ void OutputPipelineTilingPass::safeRunOnFunc() {
         // Remove output pipelining attribute
         origOp->removeAttr(outputPipelining);
     });
+
+    _log.info("[OutputPipelineTiling phase]");
+    costModel->printNNCacheStatistics();
 }
 
 }  // namespace

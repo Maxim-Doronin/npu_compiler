@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,7 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @Convolution
-module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
@@ -413,7 +413,7 @@ module @AdjustMemorySpaceAndOptimizeSharedInputCopyForConcat1T {
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" tensorNames = ["input"] : tensor<1x3x128x128xf32>
   } outputsInfo : {

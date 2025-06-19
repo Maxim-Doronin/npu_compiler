@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -15,12 +15,14 @@
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/tiling_constraint_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/dilated_utils.hpp"
 #include "vpux/utils/core/error.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/IRMapping.h>
@@ -87,6 +89,8 @@ mlir::LogicalResult checkAndAlignActInputTiling(vpux::VPU::NCEOpInterface nceOp,
         return mlir::success();
     }
     log.trace("Inferred activation input tiling {0} is invalid for {1}", inputTiling.tiles[0], nceOp->getName());
+
+    log.nest().trace("Trying to increase tile size on the width dimension, up to the kernel width stride");
     auto stride = nceOp.getStridesVal()[Dims4D::Strides::X.ind()];  // get W side strides
     int64_t bias = 0;
     auto newInputActTiling = inputTiling.tiles[0];
@@ -98,11 +102,42 @@ mlir::LogicalResult checkAndAlignActInputTiling(vpux::VPU::NCEOpInterface nceOp,
         auto newInputActType = inType.extractDenseTile(newInputActTiling.offsets, newInputActTiling.shape);
         if (mlir::succeeded(nceOp.verifyInputType(newInputActType))) {
             inputTiling.tiles[0] = std::move(newInputActTiling);
-            log.trace("Input tiling is corrected to {0}", inputTiling.tiles[0]);
+            log.nest(2).trace("Input tiling is corrected to {0}", inputTiling.tiles[0]);
             return mlir::success();
         }
     }
-    VPUX_THROW("Cannot find aligned act input tiling for op {0} at {1}", nceOp->getName(), nceOp->getLoc());
+    log.nest(2).trace("Could not find aligned input tile by increasing the last dimension");
+
+    // It is possible for the input channels alignment to be different from the output channels alignment, if the
+    // autopad feature is enabled. For this reason, ensure the input tile still satisfies the alignment requirements of
+    // the operation
+    if (auto alignedOp = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(nceOp.getOperation())) {
+        const auto channelAlignment = alignedOp.getInputChannelAlignment();
+        const auto inChannelsTile = inputTiling.tiles[0].shape[Dims4D::Act::C];
+        if (inChannelsTile % channelAlignment != 0) {
+            log.nest().trace("Trying to align input tile channel dimension, based on alignment requirements");
+            const auto alignedInChannelsTile = alignValUp(inChannelsTile, channelAlignment);
+            if (alignedInChannelsTile > inType.getShape()[Dims4D::Act::C]) {
+                return errorAt(nceOp.getOperation(),
+                               "The aligned channel size ({0}) for the input tile of op '{1}' at '{2}' is larger than "
+                               "the actual input channel size {3}",
+                               alignedInChannelsTile, nceOp->getName(), nceOp->getLoc(),
+                               inType.getShape()[Dims4D::Act::C]);
+            }
+            auto newInputActTiling = inputTiling.tiles[0];
+            newInputActTiling.shape[Dims4D::Act::C] = alignedInChannelsTile;
+            auto newInputActType = inType.extractDenseTile(newInputActTiling.offsets, newInputActTiling.shape);
+            if (mlir::succeeded(nceOp.verifyInputType(newInputActType))) {
+                inputTiling.tiles[0] = std::move(newInputActTiling);
+                log.nest(2).trace("Input tiling is corrected to {0}", inputTiling.tiles[0]);
+                return mlir::success();
+            }
+            log.nest(2).trace("Could not find aligned input tile by aligning the channel dimension");
+        }
+    }
+
+    return errorAt(nceOp.getOperation(), "Cannot find aligned input tile for op {0} at {1}", nceOp->getName(),
+                   nceOp->getLoc());
 }
 
 SmallVector<mlir::Value> reifyTiles(VPU::TilingBuilderOpInterface origOp, const TileInfo& outputTile,
@@ -200,6 +235,11 @@ bool hasMultiBranches(mlir::Operation* op) {
     if (op->getResult(0).hasOneUse()) {
         return false;
     }
+
+    if (op->use_empty()) {
+        return false;
+    }
+
     // only one result but multiple users
     auto user1 = op->getResult(0).user_begin();
     for (auto remainUser : llvm::drop_begin(op->getResult(0).getUsers())) {
@@ -334,7 +374,8 @@ bool isLargeFilterOp(mlir::Operation* op, Logger log) {
                 Byte(static_cast<int64_t>(std::ceil(static_cast<double>(cmxTotalSize) * LARGE_CONST_THRESHOLD_RATIO)));
     } else if (findBlockArgFilter(filter)) {
         cmxThreshold = Byte(static_cast<int64_t>(
-                std::ceil(static_cast<double>(cmxTotalSize) * FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS)));
+                std::ceil(static_cast<double>(cmxTotalSize) *
+                          VPU::getConstraint<double>(op, VPU::FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS))));
     } else {
         return false;
     }
@@ -390,8 +431,10 @@ bool largeFilterPipelineConditionSatisfied(mlir::Operation* op, Logger log) {
 }
 
 std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bool enablePrefetchTiling, Logger log) {
-    if (mlir::isa<VPU::NCEClusterTilingOp>(op) || op->getParentOfType<VPU::NCEClusterTilingOp>()) {
-        return std::nullopt;
+    if (auto distributedIf = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(op->getResult(0).getType())) {
+        if (distributedIf.containsDistributedTypes()) {
+            return std::nullopt;
+        }
     }
 
     auto func = op->getParentOfType<mlir::func::FuncOp>();
@@ -627,7 +670,7 @@ std::optional<DimArr> getSEPConvTilingOrder(mlir::Operation* op) {
         return std::nullopt;
     }
 
-    auto seAttr = sparseInput.getSeAttr().dyn_cast_or_null<VPU::SERollAttr>();
+    auto seAttr = mlir::dyn_cast_or_null<vpux::VPU::SERollAttr>(sparseInput.getSeAttr());
     if (seAttr != nullptr) {
         return VPU::getRollSEPConvTilingOrder(seAttr);
     }

@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -74,17 +75,7 @@ mlir::LogicalResult vpux::IE::FakeQuantizeOp::inferReturnTypeComponents(
 
 mlir::LogicalResult vpux::IE::FakeQuantizeOp::reifyResultShapes(
         mlir::OpBuilder& builder, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
-    auto loc = getLoc();
-    auto input = getInput();
-    auto inputType = mlir::cast<mlir::RankedTensorType>(input.getType());
-    auto rank = inputType.getRank();
-
-    SmallVector<mlir::OpFoldResult> dims;
-    for (auto i : irange(rank)) {
-        dims.push_back(IE::reifyDim(builder, input, inputType, i, loc));
-    }
-
-    reifiedReturnShapes.emplace_back(std::move(dims));
+    reifiedReturnShapes.emplace_back(reifyTrivialTensor(builder, getInput(), getLoc()));
     return mlir::success();
 }
 

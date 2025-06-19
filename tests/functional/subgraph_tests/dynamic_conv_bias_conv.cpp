@@ -6,7 +6,10 @@
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/convolution.hpp"
 
 #include "pretty_test_arguments.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
@@ -102,9 +105,9 @@ TEST_P(DynamicConvBiasConvTest, NPU4000_HW_TestKindSubgraph) {
 }
 
 const std::vector<ov::test::InputShape> inShapes = {
-        generateShapes(1, 3, 32_Dyn, 16),      // dynamic H
-        generateShapes(1, 3, 16, 32_Dyn),      // dynamic W
-        generateShapes(1, 3, 32_Dyn, 32_Dyn),  // dynamic HW
+        generateTestShape(1, 3, 32_Dyn, 16),      // dynamic H
+        generateTestShape(1, 3, 16, 32_Dyn),      // dynamic W
+        generateTestShape(1, 3, 32_Dyn, 32_Dyn),  // dynamic HW
 };
 
 const std::vector<ov::element::Type> inPrecision = {ov::element::f32, ov::element::f16, ov::element::i32};

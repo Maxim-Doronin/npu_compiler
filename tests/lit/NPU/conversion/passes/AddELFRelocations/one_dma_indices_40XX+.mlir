@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
+// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
@@ -48,7 +49,7 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
         VPUASM.MappedInferenceVersion @MappedInferenceVersion_0_0(11 _ 4 _ 10)
       }
       ELF.CreateSection @program.mapped_inference aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-        VPUASM.MappedInference {elfMemOffsetAttrKey = 0 : ui64} @MappedInference : dmas([[@task.dma.0.0::@NNDMA_0_0_0]]) dmaCount([[1, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) invariantCount([0, 0, 0, 0, 0, 0]) variantCount([0, 0, 0, 0, 0, 0]) actKernelRangesCount([0, 0, 0, 0, 0, 0]) actKernelInvocationsCount([0, 0, 0, 0, 0, 0]) mediaCount(0) barrierCount(0) mappedInferenceVersion(@note.MappedInferenceVersion::@MappedInferenceVersion_0_0)
+        VPUASM.MappedInference {elfMemOffsetAttrKey = 0 : ui64} @MappedInference : dmas([[@task.dma.0.0::@NNDMA_0_0_0]]) dmaCount([[1, 0], [0, 0]]) invariantCount([0, 0, 0, 0, 0, 0]) variantCount([0, 0, 0, 0, 0, 0]) actKernelRangesCount([0, 0, 0, 0, 0, 0]) actKernelInvocationsCount([0, 0, 0, 0, 0, 0]) mediaCount(0) barrierCount(0) mappedInferenceVersion(@note.MappedInferenceVersion::@MappedInferenceVersion_0_0)
       }
       ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
         ELF.Symbol @elfsym.program.DMA.cmx.0.0 of(@program.DMA.cmx.0.0) type(<STT_SECTION>) size(0) value(0)

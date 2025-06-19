@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
@@ -65,7 +66,19 @@ int64_t getInputWorkloadSizeCh(NCEOpInterface nceOp, const int64_t outputSizeCh,
                                 fullInputChannels, outputSizeCh);
                 return fullInputChannels;
             })
-            .Case<NCEDepthConvolutionOp, NCEMaxPoolOp, NCEAveragePoolOp>([&](mlir::Operation* /*op*/) {
+            .Case<NCEDepthConvolutionOp, NCEMaxPoolOp, NCEAveragePoolOp>([&](mlir::Operation* op) {
+                if (auto alignedOp = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op)) {
+                    const auto inChannelAlignment = alignedOp.getInputChannelAlignment();
+                    if (outputSizeCh % inChannelAlignment == 0) {
+                        return outputSizeCh;
+                    }
+                    if (fullInputChannels % inChannelAlignment == 0) {
+                        return fullInputChannels;
+                    }
+                    VPUX_THROW("Cannot compute input workload channel size for op '{0}' at '{1}': workload output "
+                               "channel size is {2}, full input channel size is {3}",
+                               op->getName(), op->getLoc(), outputSizeCh, fullInputChannels);
+                }
                 return outputSizeCh;
             })
             .Case<NCECompressConvolutionOp>([&](mlir::Operation* /*op*/) {

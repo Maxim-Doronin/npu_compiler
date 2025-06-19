@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --matmul-inputs-to-2d="enable-grouped-matmul=true" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @MatMulInputsTo2dNotConverted
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<6x2x512xf32>
 func.func @MatMulInputsTo2dNotConverted(%arg0: tensor<6x2x512xf32>) -> tensor<6x2x40xf32> {

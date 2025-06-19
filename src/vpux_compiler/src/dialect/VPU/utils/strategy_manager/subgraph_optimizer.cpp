@@ -1,6 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// Copyright (C) 2022-2025 Intel Corporation.
 //
 // LEGAL NOTICE: Your use of this software and any required dependent software
 // (the "Software Package") is subject to the terms and conditions of
@@ -45,21 +44,15 @@ VPU::MultiClusterStrategy SubgraphOptimizer::getRollbackStrategy(VPU::ClusteredO
 bool SubgraphOptimizer::isStrategySOKLike(VPU::ClusteredOpInterface op) {
     auto strategy = getRollbackStrategy(op);
 
-    if (strategy == VPU::MultiClusterStrategy::SplitOverKernel || strategy == VPU::MultiClusterStrategy::Clustering ||
-        strategy == VPU::MultiClusterStrategy::HKSwitch) {
-        return true;
-    }
-    return false;
+    return strategy == VPU::MultiClusterStrategy::SplitOverKernel ||
+           strategy == VPU::MultiClusterStrategy::Clustering || strategy == VPU::MultiClusterStrategy::HKSwitch;
 }
 
 bool SubgraphOptimizer::isStrategySOHLike(VPU::ClusteredOpInterface op) {
     auto strategy = getRollbackStrategy(op);
 
-    if (strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
-        strategy == VPU::MultiClusterStrategy::SplitOverHeightOverlapped) {
-        return true;
-    }
-    return false;
+    return strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
+           strategy == VPU::MultiClusterStrategy::SplitOverHeightOverlapped;
 }
 
 bool SubgraphOptimizer::isValidStrategy(VPU::ClusteredOpInterface clusteredOp, VPU::MultiClusterStrategy strategy) {
@@ -281,6 +274,9 @@ double SubgraphOptimizer::getInputSpillingCostToMultiClusterLayer(VPU::Clustered
                 return getInputSpillingCostToMultiClusterLayer(origOp, origOp.getInput(), strategy, config);
             })
             .Case<NCEPermuteOp>([&](NCEPermuteOp origOp) {
+                return getInputSpillingCostToMultiClusterLayer(origOp, origOp.getInput(), strategy, config);
+            })
+            .Case<NCEReduceOp>([&](NCEReduceOp origOp) {
                 return getInputSpillingCostToMultiClusterLayer(origOp, origOp.getInput(), strategy, config);
             })
             .Case<SWOpInterface>([&](SWOpInterface swOp) {
@@ -958,6 +954,15 @@ void SubgraphOptimizer::optimizeStrategyAvoidSpillingOnSubgraph(VPU::ClusteredOp
     if (mlir::isa<VPU::NCEPermuteOp, VPU::NCEMatMulOp>(clusteredOp.getOperation())) {
         return;
     }
+
+    // Generic checks below  does not handle spilling on filter, making it generic causes regressions
+    // As a result we specifically handle it for Runtime Dequant cases. Details : E#162100
+    // Non-VF cost calculated here chooses misaligned strategy. This workaround can be removed when VF can
+    // align MC strategies itself. E#148750
+    if (alignStrategyWithParentRuntimeDequant(clusteredOp, _layerCostModel)) {
+        _log.debug("[Subgraph Optimizer] Set SOK to Runtime Dequant Convolution to fix weights spilling");
+    }
+
     if (!_layerCostModel.hasMultiClusterStrategy(clusteredOp) ||
         (!hasOutputSpillingToMultiClusterLayer(clusteredOp, _layerCostModel.getMultiClusterStrategyValue(clusteredOp),
                                                _configForFindingStartNode) &&
@@ -1367,4 +1372,7 @@ void SubgraphOptimizer::optimizeStrategyAvoidSpillingOnModel() {
         removeClusteringStrategyAvoidSpillingOnSubgraph(clusteredOp);
     };
     _func.walk<mlir::WalkOrder::PostOrder, mlir::ReverseIterator>(clusteringOptimizationCallBack);
+
+    _log.info("[MC Assign / subgraph phase]");
+    _layerCostModel.printNNCacheStatistics();
 }

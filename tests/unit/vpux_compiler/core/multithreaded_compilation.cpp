@@ -13,7 +13,13 @@
 
 #include <gtest/gtest.h>
 #include <openvino/openvino.hpp>
-#include <openvino/opsets/opset1.hpp>
+#include <openvino/opsets/opset1_decl.hpp>
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/softmax.hpp"
 
 #include <array>
 #include <fstream>

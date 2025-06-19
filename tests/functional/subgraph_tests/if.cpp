@@ -1,9 +1,15 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpu_ov2_layer_test.hpp>
+
+#include "openvino/op/cos.hpp"
+#include "openvino/op/if.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/power.hpp"
+#include "openvino/op/sin.hpp"
 
 using namespace ov;
 using namespace element;

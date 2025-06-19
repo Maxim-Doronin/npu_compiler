@@ -194,25 +194,6 @@ def AdjustDistributedTensorAroundOps : PassBase<"adjust-distributed-tensor-aroun
 }
 
 //
-// WrapDistributedOpsInNCEClusterTiling
-//
-
-def WrapDistributedOpsInNCEClusterTiling : PassBase<"wrap-distributed-ops-in-nceclustertiling", "vpux::FunctionPass"> {
-    let summary = "Wraps operations that have distributed types in NCEClusterTiling";
-
-    let description = [{
-        This pass finds operations that have distributed types as inputs or outputs and wraps them into NCEClusterTiling.
-        Only VPU.ClusteredOpInterface and VPU.Copy operations are covered, so that view-like operations can still use distributed types.
-    }];
-
-    let constructor = "vpux::VPU::createWrapDistributedOpsInNCEClusterTiling()";
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
 // Reorder IR to archive more efficient order for scheduler
 //
 
@@ -288,6 +269,11 @@ def MergeVfSubgraphs : PassBase<"merge-vertical-fusion-subgraphs", "vpux::Functi
         4. All operations in new region after merging fit in CMX when they are tiled for VF. In case they don't, number of tiles
         increases.
         5. Required CMX memory by constant weights shouldn't exceed the threshold to avoid spilling.
+
+        There are two versions of the VF merging implementation, referred to as v1 and v2. The differences in VF pipelining between
+        these versions are as follows:
+        1. v1 only enables pipelining for the pattern NCE -> SW -> NCE.
+        2. v2 supports generic pipelining for any subgraph that includes both DPU and ActShave executor
     }];
 
     let constructor = "vpux::VPU::createMergeVfSubgraphsPass()";
@@ -307,6 +293,17 @@ def MergeVfSubgraphs : PassBase<"merge-vertical-fusion-subgraphs", "vpux::Functi
             "tilingMode", "tiling-mode",
             "std::string", [{"PREFETCH"}],
             "[Optional] Set tiling mode as `ISOLATED` or `PREFETCH`. `PREFETCH` is set by default"
+        >,
+
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+            )}]
         >
     ];
 }
@@ -395,6 +392,16 @@ def VfTiling : PassBase<"vertical-fusion-tiling", "vpux::FunctionPass"> {
             "enableVerticalFusionPipelining", "enable-vertical-fusion-pipelining",
             "bool", "false",
             "Flag to enable vertical fusion pipelining"
+        >,
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+            )}]
         >
     ];
 }
@@ -1106,29 +1113,29 @@ def DetectionOutputDecomposition : PassBase<"detection-output-decomposition", "v
 
     let description = [{
         Replace DetectionOutput operation
-        ┌─────────�?   ┌────────────────�?  ┌──────────�?
+        ┌─────────┐   ┌────────────────┐  ┌──────────┐
         │BoxLogits│   │ClassPredictions│  │PriorBoxes│
         └────┬────┘   └───────┬────────┘  └─────┬────┘
              │                │                 │
-             │         ┌──────┴────────�?        │
+             │         ┌──────┴────────┐        │
              └─────────┤DetectionOutput├────────┘
                        └───────────────┘
 
         with a subgraph (Reshapes and MemPermutes are ommited)
-        ┌─────────�?  ┌──────────�?        ┌────────────────�?
+        ┌─────────┐  ┌──────────┐        ┌────────────────┐
         │BoxLogits│  │PriorBoxes│        │ClassPredictions│
         └───────┬─┘  └─┬────────┘        └───────┬────────┘
                 │      │                         │
-        ┌───────┴──────┴───────────�?  ┌──────────┴────────�?
+        ┌───────┴──────┴───────────┐  ┌──────────┴────────┐
         │DetectionOutputDecodeBoxes│  │DetectionOutputSort│
         └───────────────────────┬──┘  └──┬───┬───┬────────┘
                                 │        │   │   │
                                 │        │   │   │
-                             ┌──┴────────┴───┴───┴───�?
+                             ┌──┴────────┴───┴───┴───┐
                              │DetectionOutputNmsCaffe│
                              └─────────┬─┬─┬─────────┘
                                        │ │ │
-                          ┌────────────┴─┴─┴────────────�?
+                          ┌────────────┴─┴─┴────────────┐
                           │DetectionOutputCollectResults│
                           └─────────────────────────────┘
     }];
@@ -1180,6 +1187,7 @@ def TileLSTMSequence : PassBase<"tile-lstm-sequence", "vpux::FunctionPass"> {
     ];
 }
 
+
 //
 // ComputeInterpolateCoordinates
 //
@@ -1199,7 +1207,7 @@ def ComputeInterpolateCoordinates : PassBase<"compute-interpolate-coordinates", 
         multi-shave tiling more restrictive.
 
         This pass has to run after the Interpolate operation is tiled to fit
-        into CMX and before the operation is wrapped into NCEClusterTiling.
+        into CMX.
         Additionally, the interpolate operation must ensure that the constants
         calculated by this pass will also fit into CMX.
 
@@ -1344,6 +1352,14 @@ def OptimizeConcat : PassBase<"optimize-concat", "vpux::FunctionPass"> {
 
     let constructor = "vpux::VPU::createOptimizeConcatPass()";
 
+    let options = [
+        Option<
+            "optimizeOnlyOuterConcat", "optimize-only-outer-concat",
+            "bool", "false",
+            "Flag to check dimension and only optimize concat when the dimension is the highest."
+        >
+    ];
+
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
     ];
@@ -1415,6 +1431,11 @@ def SetupNpuConstraint : PassBase<"setup-npu-constraint", "vpux::ModulePass"> {
             "wlmRollback", "wlm-rollback",
             "bool", "false",
             "[Optional] Indicates that compilation might rollback to wlm-disabled pipeline"
+        >,
+        Option<
+            "enableSwKernelFifoPerShaveEngine", "enable-sw-kernel-fifo-per-shave-engine",
+            "bool", "",
+            "Enable separate SW kernel FIFO for each Shave engine"
         >
     ];
 
@@ -1603,6 +1624,33 @@ def SetupEnableExtraStaticShapeOps : PassBase<"setup-enable-extra-static-shape-o
             "bool", "true",
             "[Optional] Set ExtraStaticShapeOps to true/false"
         >,
+        Option<
+            "allowCustomValues", "allow-custom-values",
+            "bool", "",
+            "[Optional] Allows keep predefined values in IR"
+        >
+    ];
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
+// SetupTilingConstraint
+//
+
+def SetupTilingConstraint : PassBase<"setup-tiling-contraint", "vpux::ModulePass"> {
+    let summary = "Set tiling related constraint by arch in the model/IR";
+
+    let description = [{
+        Uses the PipelineOptionsOp structure from the IR so the constant could be exposed globally. The constraint includes:
+        - LargeFilterFragmentationThreshold: threshold to avoid memory fragmentation due to large filter size
+    }];
+
+    let constructor = "vpux::VPU::createSetupTilingConstraintPass()";
+
+    let options = [
         Option<
             "allowCustomValues", "allow-custom-values",
             "bool", "",
@@ -1839,6 +1887,37 @@ def SetupEnableFP16CompressedConv : PassBase<"setup-enable-fp16-compressed-conv"
 }
 
 //
+// SetupEnableVPUNNPreSplit
+//
+
+def SetupEnableVPUNNPreSplit : PassBase<"setup-vpunn-pre-split", "vpux::ModulePass"> {
+    let summary = "Enable VPUNN pre-split API and store it in the model/IR";
+
+    let description = [{
+        Use the pre-split VPUNN API for cost
+    }];
+
+    let constructor = "vpux::VPU::createSetupEnableVPUNNPreSplitPass()";
+
+    let options = [
+        Option<
+            "enableVPUNNPreSplit", "enable-vpunn-pre-split",
+            "bool", "false",
+            "Enable VPUNN pre-split API"
+        >,
+        Option<
+            "allowCustomValues", "allow-custom-values",
+            "bool", "",
+            "[Optional] Allows keep predefined values in IR"
+        >
+    ];
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
 // ConcatRepeatingBlocksOutlining
 //
 
@@ -2059,5 +2138,69 @@ def BoundedTensorsToDynamicDimsMask : PassBase<"bounded-tensors-to-dynamic-dims-
         "mlir::linalg::LinalgDialect",
 
         "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
+// SCF compute outlining
+//
+
+def ScfComputeOpsOutlining : PassBase<"scf-compute-ops-outlining", "vpux::ModulePass"> {
+    let summary = "Outlines operations from the bodies of scf dialect operations";
+
+    let description = [{
+        The host dynamism approach separates scheduling (host) and compute functions in the main function.
+        This pass moves all compute operations from the host main function into separate functions and
+        rewrites the main function to call these newly created compute functions.
+
+        The following function:
+
+        func.func @main (%arg0) {
+            %1 = scf.for ... {
+                %2 = tensor.extract_slice
+                %3 = scf.if %2 -> ... {
+                    %4 = VPU.OP1
+                    scf.yield
+                } else {
+                    %5 = VPU.OP2
+                    scf.yield
+                }
+                scf.yield
+            }
+        }
+
+        Will be outlined into:
+
+        func.func @compute_func0 (%arg) {
+            %0 = VPU.OP1
+            return %0
+        }
+
+        func.func @compute_func1 (%arg) {
+            %0 = VPU.OP2
+            return %0
+        }
+
+        func.func @main (%arg0) {
+            %1 = scf.for ... {
+                %2 = tensor.extract_slice
+                %3 = scf.if %2 -> ... {
+                    %4 = call @compute_func0
+                    scf.yield
+                } else {
+                    %5 = call @compute_func1
+                    scf.yield
+                }
+                scf.yield
+            }
+        }
+    }];
+
+    let constructor = "vpux::VPU::createScfComputeOpsOutliningPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect",
+        "mlir::scf::SCFDialect",
+        "mlir::tensor::TensorDialect"
     ];
 }

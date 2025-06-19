@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
 
@@ -34,7 +35,7 @@ void testSparsitySupport(llvm::StringLiteral inputIR, ArchKind arch, bool suppor
     ASSERT_TRUE(func != nullptr);
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = vpux::VPU::InitCompilerOptions(arch, vpux::VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = vpux::VPU::InitCompilerOptions(arch, vpux::config::CompilationMode::DefaultHW);
 
     vpux::VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 

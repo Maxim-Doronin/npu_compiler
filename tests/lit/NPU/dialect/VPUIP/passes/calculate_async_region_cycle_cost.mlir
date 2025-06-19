@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true ppe-version=IntPPE" --calculate-async-region-cycle-cost  %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 !MemRef1 = memref<1x128x64x32xf16, #NWHC>
 !Distributed0 = !VPUIP.DistributedBuffer<1x128x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
@@ -14,7 +15,7 @@
 !MemRef2 = memref<1x62x64x32xf16, {order = #NWHC, strides = [262144, 1, 128, 8192]}, @CMX_NN>
 
 // CHECK-LABEL: module @AddCycleCostForSWMultiCluster
-module @AddCycleCostForSWMultiCluster attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @AddCycleCostForSWMultiCluster attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
     IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
         IE.ExecutorResource 1 of @DPU
         IE.ExecutorResource 2 of @SHAVE_ACT
@@ -73,7 +74,7 @@ module @AddCycleCostForSWMultiCluster attributes {VPU.arch = #VPU.arch_kind<NPU3
 !MemRef2 = memref<4x2x12x16xf16, {order = #NHWC, strides = [1536, 1, 128, 8]}, [@CMX_NN, 0]>
 
 // CHECK-LABEL: module @AddCycleCostForSWSingleCluster
-module @AddCycleCostForSWSingleCluster attributes {VPU.arch = #VPU.arch_kind<NPU37XX>} {
+module @AddCycleCostForSWSingleCluster {
     IE.TileResource 1 of @NCE at 1.300000e+03 MHz {
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @SHAVE_NN

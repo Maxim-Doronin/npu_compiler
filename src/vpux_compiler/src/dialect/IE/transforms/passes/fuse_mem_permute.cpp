@@ -6,6 +6,8 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
+#include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -81,8 +83,39 @@ mlir::LogicalResult MemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp origOp,
     auto ctx = rewriter.getContext();
     const auto dstOrderMap = origOp.getDstOrder();
     const auto trivialMemPerm = getPermutationFromOrders(adjustedOrder, targetOrder, ctx);
-    auto newOutput = rewriter.createOrFold<IE::PermuteCastOp>(origOp.getLoc(), layerWithPermute->getResult(0),
-                                                              dstOrderMap, trivialMemPerm);
+
+    auto getDimMappingAttrValue = [&](auto inShape, auto outShape,
+                                      auto inOrder) -> std::optional<SmallVector<SmallVector<int64_t>>> {
+        const auto reassociationMap = vpux::IE::getReassociationMap(inShape, outShape);
+        if (mlir::failed(reassociationMap)) {
+            return std::nullopt;
+        }
+
+        const auto outputLayout = Const::inferAffineReshapeOutputLayout(
+                inOrder.toPermutation(), getIntArrayOfArray(ctx, reassociationMap.value()));
+
+        if (!outputLayout.has_value() || outputLayout.value() != DimsOrder::fromValue(origOp.getOutput())) {
+            return std::nullopt;
+        }
+
+        return reassociationMap.value();
+    };
+
+    mlir::Value newOutput;
+    auto ODULayerOutShape = getShape(layerWithPermute->getResult(0));
+    auto ODUOutOrder = DimsOrder::fromValue(layerWithPermute->getResult(0));
+    auto outputShape = getShape(origOp.getOutput());
+    auto dimMappingAttrValue = getDimMappingAttrValue(ODULayerOutShape, outputShape, ODUOutOrder);
+    // Cases like [1, 0, X, X] ->[0, 1, X, X] which changed by adjustedOrder can be affineReshaped to original outShape
+    // E#163862: runtime issue of maxpool+permuteCast than maxpool+affineReshape when DimN changed for some pattern
+    if (targetOrder.toPermutation()[1] == Dim(0) && dimMappingAttrValue.has_value()) {
+        newOutput = rewriter.createOrFold<IE::AffineReshapeOp>(origOp.getLoc(), layerWithPermute->getResult(0),
+                                                               getIntArrayOfArray(ctx, dimMappingAttrValue.value()),
+                                                               getIntArrayAttr(ctx, outputShape));
+    } else {
+        newOutput = rewriter.createOrFold<IE::PermuteCastOp>(origOp.getLoc(), layerWithPermute->getResult(0),
+                                                             dstOrderMap, trivialMemPerm);
+    }
 
     if (maybeQuantizeCastOp != nullptr) {
         newOutput = rewriter.createOrFold<IE::QuantizeCastOp>(

@@ -8,14 +8,19 @@
 // REQUIRES: arch-NPU37XX
 
 module @mainModule attributes { VPU.arch = #VPU.arch_kind<NPU37XX> } {
+  IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
+    IE.ExecutorResource 2 of @SHAVE_ACT
+    IE.ExecutorResource 1 of @DPU
+  }
 }
 
 // CHECK: module @mainModule attributes
-// CHECK: IE.PipelineOptions @Options
-// CHECK: IE.Option @VPU.BarrierMaxVariantSum : 256
-// CHECK: IE.Option @VPU.BarrierMaxVariantCount : 256
-// CHECK: IE.Option @VPU.MetadataMaxVariantCount : 256
-// CHECK: IE.Option @VPU.MetadataMaxInvariantCount : 32
-// CHECK: IE.Option @VPU.MetadataMaxKernelInvocationCount : 64
-// CHECK: IE.Option @VPU.MetadataMaxKernelRangeCount : 32
-// CHECK-NOT: IE.Option @VPU.MetadataMaxMediaCount : 4
+// CHECK: config.PipelineOptions @Options
+// CHECK: config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+// CHECK: config.Option @VPU.BarrierMaxVariantSum : 256
+// CHECK: config.Option @VPU.BarrierMaxVariantCount : 256
+// CHECK: config.Option @VPU.MetadataMaxVariantCount : 256
+// CHECK: config.Option @VPU.MetadataMaxInvariantCount : 32
+// CHECK: config.Option @VPU.MetadataMaxKernelInvocationCount : 64
+// CHECK: config.Option @VPU.MetadataMaxKernelRangeCount : 32
+// CHECK-NOT: config.Option @VPU.MetadataMaxMediaCount : 4

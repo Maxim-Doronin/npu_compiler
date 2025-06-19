@@ -70,24 +70,19 @@ bool SeSizeRewriter::updateSETableForUser(VPU::StorageElementTableOp origOp, mli
     auto inputShape = getShape(dwConv.getInput());
 
     auto origSeSizeAttr = origOp.getSeSize();
-    if (mlir::isa<mlir::ArrayAttr>(origSeSizeAttr)) {
-        nestedLog.trace("SeSize is an array.");
-        return false;
-    }
+    const auto origSeSizes = parseIntArrayAttr<int64_t>(origSeSizeAttr);
 
     // See @DWConvWithSEPChannelSliceWithDepth1 for example and explanation of scenario.
-    auto origSeSize = mlir::cast<mlir::IntegerAttr>(origSeSizeAttr).getValue().getSExtValue();
-    if (origSeSize == inputShape[Dims4D::Act::C]) {
+    if (origSeSizes.size() == 1 && origSeSizes.front() == inputShape[Dims4D::Act::C]) {
         nestedLog.trace("SeSize is equal to input channels size.");
         return false;
     }
 
-    nestedLog.trace("Updating seSize for {0}", origOp->getLoc());
     auto strategyAttr = dwConv.getMultiClusterStrategyAttr();
-    const auto [seDepth, seSizeAttr] = [&]() -> std::pair<int64_t, mlir::Attribute> {
+    const auto [seDepth, seSizeAttr] = [&]() -> std::pair<int64_t, mlir::ArrayAttr> {
         const auto seSize = inputShape[Dims4D::Act::C];
         if (strategyAttr == nullptr) {
-            return std::make_pair(1, getIntAttr(origOp.getContext(), seSize));
+            return std::make_pair(1, getIntArrayAttr(origOp.getContext(), SmallVector<int64_t>{seSize}));
         }
 
         const auto strategy = strategyAttr.getValue();
@@ -105,9 +100,15 @@ bool SeSizeRewriter::updateSETableForUser(VPU::StorageElementTableOp origOp, mli
             return std::make_pair(static_cast<int64_t>(seSizes.size()), getIntArrayAttr(origOp.getContext(), seSizes));
         }
 
-        return std::make_pair(1, getIntAttr(origOp.getContext(), seSize));
+        return std::make_pair(1, getIntArrayAttr(origOp.getContext(), SmallVector<int64_t>{seSize}));
     }();
 
+    if (seDepth == static_cast<int64_t>(origSeSizes.size()) && seSizeAttr == origSeSizeAttr) {
+        nestedLog.trace("SeSize is correct.");
+        return false;
+    }
+
+    nestedLog.trace("Updating seSize for {0}", origOp->getLoc());
     auto dataShapeAttr = getIntArrayAttr(origOp.getContext(), getShape(groupSparseTensor.getData()).raw());
     auto newStorageElementTableOp = rewriter.create<VPU::StorageElementTableOp>(
             origOp->getLoc(), dataShapeAttr, origOp.getDataElemTypeAttr(), seSizeAttr,

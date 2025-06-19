@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/attributes.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 
 // Generated
 #include <vpux/compiler/conversion/convert_layers_to_VPU.hpp.inc>
@@ -334,17 +335,16 @@ mlir::LogicalResult LSTMCellRewrite::matchAndRewrite(IE::LSTMCellOp origOp, mlir
 mlir::LogicalResult LSTMSequenceRewrite::matchAndRewrite(IE::LSTMSequenceOp origOp,
                                                          mlir::PatternRewriter& rewriter) const {
     const auto weights = origOp.getWeights();
-    const auto biases = origOp.getBiases();
-    if (weights || biases) {
+    if (weights) {
         return matchFailed(rewriter, origOp,
-                           "VPU::LSTMSequence does not support weights and biases; it should have been decomposed by "
+                           "VPU::LSTMSequence does not support weights; it should have been decomposed by "
                            "the DecomposeLSTMSequencePass.");
     }
-
     _log.trace("Found LSTMSequence Operation '{0}'", origOp->getLoc());
-    rewriter.replaceOpWithNewOp<VPU::LSTMSequenceOp>(
-            origOp, origOp.getInputData(), origOp.getInitialHiddenState(), origOp.getInitialCellState(),
-            origOp.getReccurenceWeights(), origOp.getSequenceLengthAttr(), origOp.getDirectionAttr(), nullptr);
+    rewriter.replaceOpWithNewOp<VPU::LSTMSequenceOp>(origOp, origOp.getInputData(), origOp.getInitialHiddenState(),
+                                                     origOp.getInitialCellState(), origOp.getReccurenceWeights(),
+                                                     origOp.getBiases(), origOp.getSequenceLengthAttr(),
+                                                     origOp.getDirectionAttr(), nullptr);
 
     return mlir::success();
 }
@@ -477,6 +477,18 @@ mlir::LogicalResult DynamicTileRewrite::matchAndRewrite(IE::DynamicTileOp origOp
     return mlir::success();
 }
 
+//
+// DynamicQuantizeRewrite
+//
+
+mlir::LogicalResult DynamicQuantizeRewrite::matchAndRewrite(IE::DynamicQuantizeOp origOp,
+                                                            mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found DynamicQuantizeOp Operation '{0}'", origOp->getLoc());
+
+    rewriter.replaceOpWithNewOp<VPU::DynamicQuantizeOp>(origOp, origOp.getInput(), origOp.getMin(), origOp.getMax());
+    return mlir::success();
+}
+
 namespace {
 
 //
@@ -505,6 +517,7 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     target.addLegalDialect<mlir::math::MathDialect>();
 
     target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp, mlir::func::CallOp>();
+    target.addLegalOp<Core::ReinterpretCastOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
 
@@ -530,6 +543,7 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     patterns.add<RandomUniformRewrite>(&ctx, _log);
     patterns.add<DynamicReshapeRewrite>(&ctx, _log);
     patterns.add<DynamicTileRewrite>(&ctx, _log);
+    patterns.add<DynamicQuantizeRewrite>(&ctx, _log);
     populateWithGenerated(patterns);
 
     if (mlir::failed(mlir::applyFullConversion(func, target, std::move(patterns)))) {

@@ -15,7 +15,7 @@ using namespace vpux;
 CycleCostInfo::CycleCostInfo(mlir::func::FuncOp func): _log(Logger::global().nest("cycle-cost-info", 0)) {
     auto module = func->getParentOfType<mlir::ModuleOp>();
     _archKind = VPU::getArch(module);
-    _costModel = VPU::createCostModel(_archKind);
+    _costModel = VPU::CostModelConfig::createCostModel(_archKind);
 
     _log.trace("Analyze cycle cost for Function '@{0}'", func.getName());
     _log = _log.nest();

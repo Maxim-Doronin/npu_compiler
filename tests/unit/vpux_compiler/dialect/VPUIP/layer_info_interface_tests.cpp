@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "common/utils.hpp"
 
@@ -64,7 +65,7 @@ TEST_F(MLIR_VPUIP_LayerInfo, AsyncLayerOpInterface) {
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
     auto initCompilerOptions =
-            vpux::VPU::InitCompilerOptions(vpux::VPU::ArchKind::NPU37XX, vpux::VPU::CompilationMode::ReferenceSW);
+            vpux::VPU::InitCompilerOptions(vpux::VPU::ArchKind::NPU37XX, vpux::config::CompilationMode::ReferenceSW);
 
     vpux::VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 

@@ -33,6 +33,8 @@ IE::ReorderOp insertReorderForOutput(mlir::Operation* op, mlir::Value output, Di
 void changeDimsOrder(mlir::Value value, DimsOrder newOrder, Logger log);
 
 mlir::FailureOr<AdjustConvShapeParams> getAdjustConvShapeParameters(IE::ConvolutionOp convOp, mlir::Value filter,
-                                                                    Shape outputShape, Logger _log);
+                                                                    ShapeRef outputShape, Logger _log);
+
+int64_t calculateAlignmentFactor(const vpux::NDTypeInterface sliceInType, const vpux::NDTypeInterface sliceOutType);
 
 }  // namespace vpux

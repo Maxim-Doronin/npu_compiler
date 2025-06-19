@@ -42,7 +42,7 @@ mlir::LogicalResult FuseUnrolledTypes::matchAndRewrite(VPU::UnrolledTypeOp origO
     }
     // The I/O types of this CopyOp chain should not contain Distributed types
     auto isDistributedType = [](mlir::Value val) {
-        auto distributedIf = val.getType().dyn_cast_or_null<VPU::DistributedTypeInterface>();
+        auto distributedIf = mlir::dyn_cast_or_null<VPU::DistributedTypeInterface>(val.getType());
         return distributedIf != nullptr && distributedIf.containsDistributedTypes();
     };
     if (isDistributedType(producerUnrolledOp.getInput()) || isDistributedType(producerUnrolledOp.getOutput()) ||

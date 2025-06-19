@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -79,12 +80,12 @@ bool isEltwiseOpWithLegalShapeCastNumber(mlir::Operation* eltwiseOp) {
     return shapeCastNumb == 0 || shapeCastNumb == 3;
 }
 
-mlir::Value createNewEltwiseOp(mlir::Value input1, mlir::Value input2, mlir::Type outType, mlir::Operation* eltwiseOp,
+mlir::Value createNewEltwiseOp(mlir::Value input1, mlir::Value input2, mlir::Operation* eltwiseOp,
                                mlir::PatternRewriter& rewriter) {
     mlir::IRMapping mapper;
     mapper.map(eltwiseOp->getOperands(), SmallVector<mlir::Value>{input1, input2});
     auto* newOp = rewriter.clone(*eltwiseOp, mapper);
-    newOp->getResult(0).setType(outType);
+    vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::SHAPE);
     return newOp->getResult(0);
 }
 
@@ -130,6 +131,7 @@ bool canBeFusedIntoPermuteCast(IE::PermuteQuantizeOp permuteQuantizeOp, mlir::Af
 
 bool isSupportedMemPermute(mlir::AffineMap memPerm, mlir::Type permuteOutType, mlir::Operation* eltwiseOp, Logger log) {
     const SmallVector<mlir::Value> branches = eltwiseOp->getOperands();
+    int64_t countInPermutationOp = 0;
     for (const auto& addInput : branches) {
         const auto inPermutationOp = getInputPermuteLikeOp(addInput);
         if (inPermutationOp != nullptr) {
@@ -142,10 +144,11 @@ bool isSupportedMemPermute(mlir::AffineMap memPerm, mlir::Type permuteOutType, m
                           inPermuteQuantizeOp.getLoc(), memPerm);
                 return false;
             }
+            countInPermutationOp++;
         }
     }
 
-    if ((getInputPermuteLikeOp(branches[0]) != nullptr) || (getInputPermuteLikeOp(branches[1]) != nullptr)) {
+    if (countInPermutationOp >= int64_t(1)) {
         // As long as one of the two inputs has PermuteLikeOp, the MemPermute should be propagated.
         // If one of the branches keeps a MemPermute, such MemPermute may be optimized in later passes.
         log.trace("MemPerm: {0} can be propagated", memPerm);
@@ -336,7 +339,7 @@ mlir::LogicalResult OptimizeEltwise::matchAndRewrite(IE::MemPermuteOp memPermute
 
         newAddInputs.push_back(inLayoutCastOp.getOutput());
     }
-    auto newEltwiseOp = createNewEltwiseOp(newAddInputs[0], newAddInputs[1], outType, eltwiseOp, rewriter);
+    auto newEltwiseOp = createNewEltwiseOp(newAddInputs[0], newAddInputs[1], eltwiseOp, rewriter);
 
     const auto nceOutLayout = DimsOrder::fromValue(memPermuteOp.getOutput());
     const auto orderOutAttr = mlir::AffineMapAttr::get(nceOutLayout.toAffineMap(ctx));
@@ -433,26 +436,35 @@ mlir::LogicalResult OptimizeShapeCastedEltwise::matchAndRewrite(IE::MemPermuteOp
     for (size_t inputIdx = 0; inputIdx < branches.size(); inputIdx++) {
         auto branchInput = branches[inputIdx];
 
+        mlir::Value newInput;
         if (getInputPermuteLikeOp(branchInput) == nullptr) {
             // Process branch without PermuteLike op.
-            const auto newOutput =
-                    processNonPermuteBranch(rewriter, memPermuteOp, branchInput, inputIdx, newAlignedShape);
-            newAddInputs.push_back(newOutput);
-            continue;
+            newInput = processNonPermuteBranch(rewriter, memPermuteOp, branchInput, inputIdx, newAlignedShape);
+        } else {
+            const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
+
+            const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "_mem_permute_{0}", inputIdx);
+            auto newMemPermuteOp =
+                    rewriter.create<IE::MemPermuteOp>(newMemPermuteLoc, inPermutationOp->getResult(0),
+                                                      memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
+
+            // the newMemPermuteOp's output mem shape has meet alignment requirement, so for the original pattern:
+            //     IE.MemPermute -> IE.ShapeCast -> IE.Add -> IE.ShapeCast -> IE.MemPermute
+            // the ShapeCast input will be replaced with PermuteCast:
+            //     IE.MemPermute -> IE.MemPermute -> IE.PermuteCast -> IE.Add -> ...
+            newInput = createNewInputWithAlignedShape(newMemPermuteOp, eltwiseOp, newAlignedShape.value()[inputIdx],
+                                                      rewriter);
         }
 
-        const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
+        if (newAlignedShape.value()[inputIdx][Dims4D::Act::N] != 1) {
+            auto newInputAlignedShape = getShape(newInput).raw();
+            SmallVector<int64_t> newInputShape = {1, newInputAlignedShape[1],
+                                                  newInputAlignedShape[0] * newInputAlignedShape[2],
+                                                  newInputAlignedShape[3]};
+            newInput = rewriter.createOrFold<IE::ShapeCastOp>(memPermuteOp.getLoc(), newInput,
+                                                              getIntArrayAttr(rewriter.getContext(), newInputShape));
+        }
 
-        const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "_mem_permute_{0}", inputIdx);
-        auto newMemPermuteOp = rewriter.create<IE::MemPermuteOp>(newMemPermuteLoc, inPermutationOp->getResult(0),
-                                                                 memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
-
-        // the newMemPermuteOp's output mem shape has meet alignment requirement, so for the original pattern:
-        //     IE.MemPermute -> IE.ShapeCast -> IE.Add -> IE.ShapeCast -> IE.MemPermute
-        // the ShapeCast input will be replaced with PermuteCast:
-        //     IE.MemPermute -> IE.MemPermute -> IE.PermuteCast -> IE.Add -> ...
-        auto newInput =
-                createNewInputWithAlignedShape(newMemPermuteOp, eltwiseOp, newAlignedShape.value()[inputIdx], rewriter);
         newAddInputs.push_back(newInput);
     }
     createNewOutputWithAlignedShape(memPermuteOp, eltwiseOp, newAlignedShape.value().back(), newAddInputs, rewriter);
@@ -482,17 +494,17 @@ void OptimizeShapeCastedEltwise::createNewOutputWithAlignedShape(IE::MemPermuteO
     // the ShapeCast output will be replaced with PermuteCast:
     //     IE.MemPermute -> IE.MemPermute -> IE.PermuteCast -> IE.Add -> IE.PermuteCast -> [IE.QuantCast]
     auto ctx = memPermuteOp->getContext();
-    auto outType = mlir::cast<vpux::NDTypeInterface>(eltwiseOp->getResult(0).getType());
-    auto newEltwiseOpType = outType.changeShape(newAlignedShape);
-    auto newEltwizeOp = createNewEltwiseOp(newInputs[0], newInputs[1], newEltwiseOpType, eltwiseOp, rewriter);
+    auto newEltOutValue = createNewEltwiseOp(newInputs[0], newInputs[1], eltwiseOp, rewriter);
 
-    auto memPermOutType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getResult().getType());
-    auto newOutPermuteCastType = memPermOutType.changeElemType(newEltwiseOpType.getElementType());
+    if (newAlignedShape[Dims4D::Act::N] != 1) {
+        newEltOutValue = rewriter.create<IE::ShapeCastOp>(memPermuteOp->getLoc(), newEltOutValue,
+                                                          getIntArrayAttr(ctx, newAlignedShape))
+                                 .getResult();
+    }
 
     auto dstOrder = memPermuteOp.getDstOrder();
     auto memPerm = mlir::AffineMap::getMultiDimIdentityMap(dstOrder.getNumDims(), ctx);
-    auto outCastOp = rewriter.create<IE::PermuteCastOp>(memPermuteOp->getLoc(), newOutPermuteCastType, newEltwizeOp,
-                                                        dstOrder, memPerm);
+    auto outCastOp = rewriter.create<IE::PermuteCastOp>(memPermuteOp->getLoc(), newEltOutValue, dstOrder, memPerm);
 
     auto quantizeCastOp = memPermuteOp.getInput().getDefiningOp<IE::QuantizeCastOp>();
     if (quantizeCastOp == nullptr) {
@@ -636,6 +648,104 @@ mlir::LogicalResult ExtractODUPermuteFromAdd::matchAndRewrite(IE::AddOp addOp, m
 }
 
 //
+// OptimizeIdentityPool
+//
+
+template <typename ConcreteOp>
+class OptimizeIdentityPool final : public mlir::OpRewritePattern<ConcreteOp> {
+public:
+    OptimizeIdentityPool(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<ConcreteOp>(ctx), _log(log) {
+    }
+
+private:
+    mlir::LogicalResult matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+// Propagate last permute in the chain:
+//      IE.MemPermute/PermuteQuantize -> IE.AvgPool/IE.MaxPool -> IE.MemPermute
+// This subgraph becomes:
+//      IE.MemPermute/PermuteQuantize -> IE.MemPermute ->
+//                    -> IE.ShapeCast -> IE.LayoutCast -> IE.AvgPool/IE.MaxPool -> IE.LayoutCast -> IE.ShapeCast
+// Two consecutive IE.MemPermute operations will be folded into one or removed
+template <typename ConcreteOp>
+mlir::LogicalResult OptimizeIdentityPool<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
+                                                                      mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got '{1}' at '{2}'", origOp->getName(), origOp->getLoc());
+
+    auto ctx = origOp.getContext();
+
+    if (!IE::isIdentityPooling(origOp) || !origOp->getResult(0).hasOneUse()) {
+        return matchFailed(_log, rewriter, origOp, "It is not identity pooling with single user");
+    }
+
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    if (inType.getDimsOrder() != outType.getDimsOrder()) {
+        return matchFailed(_log, rewriter, origOp, "IdentityPool has a different input and output dimension order");
+    }
+
+    auto memPermuteOp = mlir::dyn_cast<IE::MemPermuteOp>(*origOp->getResult(0).getUsers().begin());
+    if (!memPermuteOp) {
+        return matchFailed(_log, rewriter, origOp, "The user of identity pooling is not mempermute");
+    }
+
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outType.getElementType())) {
+        return matchFailed(_log, rewriter, origOp, "IdentityPool has per axis quant type");
+    }
+
+    if (!isSupportedMemPermute(memPermuteOp, origOp, _log.nest())) {
+        return matchFailed(_log, rewriter, origOp, "Input MemPermute is not supported");
+    }
+
+    auto createMemPermuteOp = [&](mlir::Location loc, mlir::Value input, mlir::AffineMap dstOrder,
+                                  mlir::AffineMap memPerm) {
+        return rewriter.create<IE::MemPermuteOp>(loc, input, dstOrder, memPerm).getResult();
+    };
+
+    auto createShapeCastOp = [&](mlir::Location loc, mlir::Value input, ShapeRef targetShape) {
+        return rewriter.createOrFold<IE::ShapeCastOp>(loc, input, getIntArrayAttr(ctx, targetShape.raw()));
+    };
+
+    auto createLayoutCastOp = [&](mlir::Location loc, mlir::Value input, mlir::AffineMap order) {
+        return rewriter.createOrFold<IE::LayoutCastOp>(loc, input, mlir::AffineMapAttr::get(order));
+    };
+
+    auto poolInput = origOp->getOperands()[0];
+    const auto inPermutationOp = getInputPermuteLikeOp(poolInput);
+
+    // Create Subgraph:
+    // IE.MemPermute/PermuteQuantize -> IE.MemPermute ->
+    //               -> IE.ShapeCast -> IE.LayoutCast -> IE.AvgPool/IE.MaxPool -> IE.LayoutCast -> IE.ShapeCast
+    auto newMemPermuteOp =
+            createMemPermuteOp(appendLoc(memPermuteOp.getLoc(), "_mem_permute"), inPermutationOp->getResult(0),
+                               memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
+
+    auto inshapeCast =
+            createShapeCastOp(appendLoc(memPermuteOp.getLoc(), "_in_shape_cast"), newMemPermuteOp, outType.getShape());
+
+    auto inLayoutCastOp = createLayoutCastOp(appendLoc(memPermuteOp.getLoc(), "_in_layout_cast"), inshapeCast,
+                                             DimsOrder::fromValue(poolInput).toAffineMap(ctx));
+
+    mlir::IRMapping mapper;
+    mapper.map(origOp->getOperands(), SmallVector<mlir::Value>{inLayoutCastOp});
+    auto* newPoolOp = rewriter.clone(*origOp, mapper);
+
+    auto outLayoutCastOp =
+            createLayoutCastOp(appendLoc(memPermuteOp.getLoc(), "_out_layout_cast"), newPoolOp->getResult(0),
+                               DimsOrder::fromValue(memPermuteOp.getOutput()).toAffineMap(ctx));
+
+    auto outshapeCast = createShapeCastOp(appendLoc(memPermuteOp.getLoc(), "_out_shape_cast"), outLayoutCastOp,
+                                          getShape(memPermuteOp.getResult()));
+
+    rewriter.replaceOp(memPermuteOp, outshapeCast);
+
+    return mlir::success();
+}
+
+//
 // PropagateMemPermuteThroughEltwisePass
 //
 
@@ -662,6 +772,8 @@ void PropagateMemPermuteThroughEltwisePass::safeRunOnFunc() {
     patterns.add<OptimizeShapeCastedEltwise>(&ctx, _log);
     patterns.add<SwapMemPermuteWithSoftmax>(&ctx, _log);
     patterns.add<ExtractODUPermuteFromAdd>(&ctx, _log);
+    patterns.add<OptimizeIdentityPool<IE::AvgPoolOp>>(&ctx, _log);
+    patterns.add<OptimizeIdentityPool<IE::MaxPoolOp>>(&ctx, _log);
     IE::PermuteCastOp::getCanonicalizationPatterns(patterns, &ctx);
 
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {

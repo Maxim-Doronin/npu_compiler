@@ -140,6 +140,10 @@ VpuTestEnvConfig::VpuTestEnvConfig() {
     if (auto var = std::getenv("IE_NPU_SINGLE_CLUSTER_MODE")) {
         IE_NPU_SINGLE_CLUSTER_MODE = envVarStrToBool("IE_NPU_SINGLE_CLUSTER_MODE", var);
     }
+
+    if (auto var = std::getenv("OV_NPU_TESTS_SKIP_CONFIG_FILE")) {
+        OV_NPU_TESTS_SKIP_CONFIG_FILE = var;
+    }
 }
 
 const VpuTestEnvConfig& VpuTestEnvConfig::getInstance() {

@@ -34,7 +34,7 @@ TEST_F(MLIR_ArgAllocationInfo, MultipleCallOps) {
                     IE.ExecutorResource 1 of @DPU
             }
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             net.NetworkInfo entryPoint : @main
             inputsInfo : {
@@ -126,7 +126,7 @@ TEST_F(MLIR_ArgAllocationInfo, MultipleCallOpsWithMultipleUses) {
                     IE.ExecutorResource 1 of @DPU
             }
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             net.NetworkInfo entryPoint : @main
             inputsInfo : {

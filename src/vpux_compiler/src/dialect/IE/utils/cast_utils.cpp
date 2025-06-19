@@ -19,25 +19,23 @@ mlir::LogicalResult isQuantizeCastValid(mlir::Location loc, mlir::Type srcType, 
                        dstBitSize);
     }
 
-    if (srcBitSize >= 16) {
-        return errorAt(loc, "Src and dst types must be low precision types or quantized types");
+    if (mlir::isa<FloatType>(srcType) || mlir::isa<FloatType>(dstType)) {
+        if (srcBitSize > 8 || dstBitSize > 8) {
+            return errorAt(
+                    loc, "Maximum low precision bit width is 8 for both src and dst types, but got src: {0}, dst: {0}",
+                    srcBitSize, dstBitSize);
+        }
+    } else if (mlir::isa<IntegerType>(srcType) || mlir::isa<IntegerType>(dstType)) {
+        if (srcBitSize > 16 || dstBitSize > 16) {
+            return errorAt(loc,
+                           "Maximum integer bit width is 16 for both src and dst types, but got src: {0}, dst: {1}",
+                           srcBitSize, dstBitSize);
+        }
     }
-
     // Admitting all cases except I1, as currently we're treating it as pure I1 data type
     // not requiring any quant cast
     if (srcBitSize < 2 || !isPowerOfTwo(srcBitSize)) {
         return errorAt(loc, "Src type bit size: {0} is not a power of two", srcBitSize);
-    }
-
-    if (!mlir::isa<mlir::quant::QuantizedType>(srcType) && !mlir::isa<mlir::quant::QuantizedType>(dstType)) {
-        return errorAt(loc, "Either src or dst type must be a quantized type");
-    }
-
-    if (mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType,
-                  type::QuantileFloatType>(srcType) !=
-        mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType,
-                  type::QuantileFloatType>(dstType)) {
-        return errorAt(loc, "Quantile types can only be casted to other quantile types");
     }
 
     if ((isFloat8(srcType) && srcType != mlir::cast<mlir::quant::QuantizedType>(dstType).getStorageType()) ||

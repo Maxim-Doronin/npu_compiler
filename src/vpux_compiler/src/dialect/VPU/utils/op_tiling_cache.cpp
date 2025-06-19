@@ -243,16 +243,18 @@ llvm::hash_code OpTilingCache::calculateOpHash(mlir::Operation* op, const std::o
     // If the tiling mode is PREFETCHING, the hash will also include the hash of the parent compute op since the parent
     // op will affect the decision of the tiling result.
     auto opHash = vpux::hashOperationForTiling(op);
-    if (dimOrder.has_value()) {
-        auto getDimArrHash = [](DimArrRef dimOrder) {
-            return llvm::hash_value(llvm::formatv("{0}", dimOrder).str());
-        };
-        opHash = llvm::hash_combine(opHash, getDimArrHash(dimOrder.value()));
-    }
+    hashOptionalContents(opHash, dimOrder, outputTiling);
+    return opHash;
+}
 
-    if (outputTiling.has_value()) {
-        opHash = llvm::hash_combine(opHash, llvm::hash_value(llvm::formatv("{0}", outputTiling.value()).str()));
+llvm::hash_code OpTilingCache::calculateOpHashIncludingTilingExcludingAttr(
+        mlir::Operation* op, mlir::StringRef excludedAttrName, const std::optional<DimArrRef>& dimOrder,
+        const std::optional<OutputTiling>& outputTiling) {
+    if (!op->hasAttr(excludedAttrName)) {
+        return calculateOpHash(op, dimOrder, outputTiling);
     }
+    auto opHash = hashOperationForTilingExcludingAttr(op, excludedAttrName);
+    hashOptionalContents(opHash, dimOrder, outputTiling);
     return opHash;
 }
 
@@ -301,6 +303,14 @@ llvm::hash_code OpTilingCache::calculateVPUNNLayerHash(const VPUNN::DPULayer& vp
     std::ostringstream layerStream;
     layerStream << vpunnLayer;
     layerStream << vpunnStrategy;
+    return llvm::hash_value(layerStream.str());
+}
+
+llvm::hash_code OpTilingCache::calculateVPUNNLayersHash(ArrayRef<VPUNN::DPULayer> vpunnLayers) {
+    std::ostringstream layerStream;
+    for (const auto& vpunnLayer : vpunnLayers) {
+        layerStream << vpunnLayer;
+    }
     return llvm::hash_value(layerStream.str());
 }
 

@@ -105,6 +105,8 @@ public:
     void setUnderSubgraphOpt(bool underSubgraphOpt);
 
     double static constexpr COST_MAX = std::numeric_limits<double>::infinity();
+    void resetNNCacheCounter();
+    void printNNCacheStatistics() const;
 
 private:
     // CostCache has two-levels mappings:
@@ -162,6 +164,16 @@ SmallVector<uint32_t> getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, VPU::MultiCl
                                          VPUNN::VPULayerStrategy vpunnStrategy,
                                          const std::shared_ptr<VPUNN::VPULayerCostModel>& vpunnCostModel, Logger log);
 
+/*
+ * Get DPU cost with LayersPreSplit L2 API
+ * Compiler splits per cluster before feeding into cost model
+ */
+SmallVector<uint32_t> getDPUCostForNCEOpPreSplit(VPU::NCEOpInterface nceOp, const OutputTiling& outTiles,
+                                                 const VPUIP::WorkloadCostParams& costParams,
+                                                 VPUNN::VPUTilingStrategy vpunnTilingStrategy,
+                                                 const std::shared_ptr<VPUNN::VPULayerCostModel>& vpunnCostModel,
+                                                 int64_t numDPU, Logger log);
+
 SmallVector<uint32_t> getPerTileWeightsDMACosts(
         VPU::NCEOpInterface nceOp, SiblingOpsAnalysis& siblingsAnalysis,
         ArrayRef<std::vector<std::pair<NDTypeInterface, TensorDistributionMap>>> tilesTypes,
@@ -194,6 +206,10 @@ size_t getNumNonConstantOperands(mlir::Operation* op);
 bool hasLayerWithMultipleInputs(mlir::Operation* op);
 
 bool isSingleBatchRequired(mlir::Operation* op);
+
+bool setSOKForRuntimeDequantConvolution(VPU::NCEOpInterface nceOp, LayerCostModel& costModel);
+
+bool alignStrategyWithParentRuntimeDequant(VPU::ClusteredOpInterface clusteredOp, LayerCostModel& costModel);
 
 }  // namespace VPU
 }  // namespace vpux

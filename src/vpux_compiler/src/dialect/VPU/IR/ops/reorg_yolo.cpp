@@ -9,6 +9,13 @@
 
 using namespace vpux;
 
+mlir::LogicalResult vpux::VPU::ReorgYoloOp::verify() {
+    if (getStride() <= 0) {
+        return errorAt(*this, "Stride should be a natural number, while it is {0}", getStride());
+    }
+    return mlir::success();
+}
+
 mlir::LogicalResult vpux::VPU::ReorgYoloOp::inferReturnTypes(mlir::MLIRContext* ctx,
                                                              std::optional<mlir::Location> optLoc,
                                                              mlir::ValueRange operands, mlir::DictionaryAttr attrs,
@@ -22,24 +29,25 @@ mlir::LogicalResult vpux::VPU::ReorgYoloOp::inferReturnTypes(mlir::MLIRContext* 
     }
 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(reorgYolo.getInput().getType());
+    auto stride = reorgYolo.getStride();
 
-    if (reorgYolo.getStride() <= 0) {
+    if (stride <= 0) {
         return errorAt(loc, "Stride should be a natural number");
     }
-    if (inType.getShape().raw()[2] % reorgYolo.getStride() != 0) {
+    if (inType.getShape().raw()[2] % stride != 0) {
         return errorAt(loc, "Input H should be divisible by stride.");
     }
-    if (inType.getShape().raw()[3] % reorgYolo.getStride() != 0) {
+    if (inType.getShape().raw()[3] % stride != 0) {
         return errorAt(loc, "Input W should be divisible by stride.");
     }
-    if (inType.getShape().raw()[1] < reorgYolo.getStride() * reorgYolo.getStride()) {
+    if (inType.getShape().raw()[1] < stride * stride) {
         return errorAt(loc, "Input C >= (stride*stride) is required.");
     }
 
     SmallVector<int64_t> outputShape{inType.getShape().raw()[0], inType.getShape().raw()[1]};
     for (size_t i = 2; i < inType.getShape().size(); i++) {
-        outputShape.push_back(inType.getShape().raw()[i] / reorgYolo.getStride());
-        outputShape[1] *= reorgYolo.getStride();
+        outputShape.push_back(inType.getShape().raw()[i] / stride);
+        outputShape[1] *= stride;
     }
 
     const auto outType = inType.changeShape(Shape(outputShape));

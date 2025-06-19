@@ -5,7 +5,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
-
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -121,7 +121,7 @@ mlir::LogicalResult ConvertInputToFP16::matchAndRewrite(IE::InterpolateOp op, ml
     const auto arch = VPU::getArch(op);
 
     // VPU4000-M2I does not support C-minor FP16
-    if (arch >= VPU::ArchKind::NPU40XX && (VPU::getCompilationMode(op) != VPU::CompilationMode::ReferenceSW)) {
+    if (arch >= VPU::ArchKind::NPU40XX && (config::getCompilationMode(op) != config::CompilationMode::ReferenceSW)) {
         return mlir::failure();
     }
 

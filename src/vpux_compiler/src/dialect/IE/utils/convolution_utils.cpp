@@ -83,7 +83,7 @@ mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, 
     return mlir::success();
 }
 
-bool groupConvIsEltwise(IE::GroupConvolutionOp convOp, bool isConstFilter) {
+bool isEltwiseGroupConv(IE::GroupConvolutionOp convOp, bool isConstFilter) {
     if (convOp == nullptr) {
         return false;
     }
@@ -97,8 +97,14 @@ bool groupConvIsEltwise(IE::GroupConvolutionOp convOp, bool isConstFilter) {
     const auto greaterThanOne = [](auto stride) {
         return stride > 1;
     };
-    auto stridesGreaterThanOne = llvm::any_of(parseIntArrayAttr<int64_t>(convOp.getStrides()), greaterThanOne);
+    const auto stridesGreaterThanOne = llvm::any_of(parseIntArrayAttr<int64_t>(convOp.getStrides()), greaterThanOne);
     if (stridesGreaterThanOne) {
+        return false;
+    }
+
+    const auto dilationsGreaterThanOne =
+            llvm::any_of(parseIntArrayAttr<int64_t>(convOp.getDilations()), greaterThanOne);
+    if (dilationsGreaterThanOne) {
         return false;
     }
 
@@ -126,7 +132,35 @@ bool groupConvIsEltwise(IE::GroupConvolutionOp convOp, bool isConstFilter) {
         });
     }
 
-    return filterShape.totalSize() == 1;
+    auto isSizeOneOrBroadCastFromOne = [&](mlir::Value input) {
+        if (getShape(input).totalSize() == 1) {
+            return true;
+        }
+
+        auto parent = input.getDefiningOp();
+        while (parent) {
+            if (mlir::isa<Const::DeclareOp>(parent)) {
+                return getShape(parent->getResult(0)).totalSize() == 1;
+            }
+            if (IE::isPureViewOp(parent) || mlir::isa<IE::ReorderOp>(parent)) {
+                parent = parent->getOperand(0).getDefiningOp();
+                continue;
+            }
+
+            if (mlir::isa<IE::BroadcastOp, IE::TileOp>(parent)) {
+                return getShape(parent->getOperand(0)).totalSize() == 1;
+            }
+            return false;
+        }
+
+        return false;
+    };
+
+    auto bias = convOp.getBias();
+    if (bias && !isSizeOneOrBroadCastFromOne(bias)) {
+        return false;
+    }
+    return isSizeOneOrBroadCastFromOne(convOp.getFilter());
 }
 
 //

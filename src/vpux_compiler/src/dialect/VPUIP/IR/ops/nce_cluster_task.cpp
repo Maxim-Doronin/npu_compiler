@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -220,11 +220,11 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
           weight_table_sp_ptr, weight_table_scale, weight_table_bias, weight_zero_points, spr_lookup_table,
           pallet_lookup_table, parent_input, parent_input_sparsity_map, parent_input_storage_element_table,
           parent_output, parent_output_sparsity_map, output_ITI_buff, output_buff, output_sparsity_map_buff,
-          profiling_data, max_per_xy, min_per_xy, min_max_per_tensor, taskTypeAttr, eltwiseType, kernel_size,
-          kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset,
-          input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size,
-          output_se_size, isPermuteQuantize, isSmallKernelOptimized,
-          /*profilingMetadata=*/nullptr, mpeEngineAttr);
+          profiling_data, /*dynamic_sequence_length=*/nullptr, max_per_xy, min_per_xy, min_max_per_tensor, taskTypeAttr,
+          eltwiseType, kernel_size, kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented,
+          out_channel_offset, input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace,
+          input_se_size, output_se_size, isPermuteQuantize, isSmallKernelOptimized,
+          /*profilingMetadata=*/nullptr, mpeEngineAttr, /*dynamicScaleConfig*/ nullptr);
 
     // The auto-generated builders don't populate the regions even if SizedRegion<1> is specified.
     for (auto& region : state.regions) {
@@ -663,7 +663,7 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
                 if (inputBatch != numClusters) {
                     return errorAt(op, "Got unsupported input batch '{0}' expected '{1}'", inputBatch, numClusters);
                 }
-            } else if (auto outputType = getOutput().getType().dyn_cast_or_null<VPUIP::DistributedBufferType>()) {
+            } else if (auto outputType = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(getOutput().getType())) {
                 const auto numClusters = outputType.getDistribution().getNumClusters().getInt();
                 if (inputBatch != numClusters) {
                     return errorAt(op, "Got unsupported input batch '{0}' expected '{1}'", inputBatch, numClusters);

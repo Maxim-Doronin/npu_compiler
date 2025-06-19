@@ -59,6 +59,48 @@ TileInfo getWeightsTableTile(ConcreteOp* origOp, const vpux::TileInfo& outputTil
     return weightsTableTile;
 }
 
+// Returns a ScaleTable tile required to produce the specific output tile
+template <typename ConcreteOp>
+TileInfo getScaleTableTile(ConcreteOp* origOp, const vpux::TileInfo& outputTile) {
+    const auto origScaleTable = origOp->getWeightTableScale();
+    VPUX_THROW_UNLESS(origScaleTable != nullptr, "The operation {0} doesn't have a ScaleTable", *origOp);
+
+    const auto origScaleTableShape = getShape(origScaleTable);
+    VPUX_THROW_UNLESS(origScaleTableShape[Dim(0)] == getShape(origOp->getOutput())[Dims4D::Act::C] &&
+                              origScaleTableShape[Dim(1)] == 1 && origScaleTableShape[Dim(2)] == 1 &&
+                              origScaleTableShape[Dim(3)] == VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC,
+                      "Unexpected ScaleTable shape notation or order: {0} with output shape of {1}"
+                      "\nProbably, we need to update this logic",
+                      origScaleTableShape, getShape(origOp->getOutput()));
+
+    // Each N-wise batch of the ScaleTable corresponds to its own output channel
+    TileInfo scaleTableTile(origScaleTableShape);
+    scaleTableTile.offsets[Dim(0)] = outputTile.offsets[Dims4D::Act::C];
+    scaleTableTile.shape[Dim(0)] = outputTile.shape[Dims4D::Act::C];
+    return scaleTableTile;
+}
+
+// Returns a BiasTable tile required to produce the specific output tile
+template <typename ConcreteOp>
+TileInfo getBiasTableTile(ConcreteOp* origOp, const vpux::TileInfo& outputTile) {
+    const auto origBiasTable = origOp->getWeightTableBias();
+    VPUX_THROW_UNLESS(origBiasTable != nullptr, "The operation {0} doesn't have a BiasTable", *origOp);
+
+    const auto origBiasTableShape = getShape(origBiasTable);
+    VPUX_THROW_UNLESS(origBiasTableShape[Dim(0)] == getShape(origOp->getOutput())[Dims4D::Act::C] &&
+                              origBiasTableShape[Dim(1)] == 1 && origBiasTableShape[Dim(2)] == 1 &&
+                              origBiasTableShape[Dim(3)] == VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC,
+                      "Unexpected BiasTable shape notation or order: {0} with output shape of {1}"
+                      "\nProbably, we need to update this logic",
+                      origBiasTableShape, getShape(origOp->getOutput()));
+
+    // Each N-wise batch of the BiasTable corresponds to its own output channel
+    TileInfo biasTableTile(origBiasTableShape);
+    biasTableTile.offsets[Dim(0)] = outputTile.offsets[Dims4D::Act::C];
+    biasTableTile.shape[Dim(0)] = outputTile.shape[Dims4D::Act::C];
+    return biasTableTile;
+}
+
 // Adjust paddings attributes for tiled input
 template <typename ConcreteOp>
 void adjustPaddings(ConcreteOp* op, const TilingInfo& inputTiling) {
@@ -153,11 +195,6 @@ mlir::LogicalResult isDistributedCastCompatible(T inDistributedType, T outDistri
     }
 
     return mlir::success();
-}
-
-template <typename T>
-T vpux::VPU::NCEClusterTilingOp::getInnerTaskOpOfType() {
-    return mlir::dyn_cast<T>(&getBody().front().front());
 }
 
 bool isNCEWithInt4Weights(mlir::Operation* op);

@@ -14,6 +14,7 @@ namespace IE {
 bool isLegalReorderAddPattern(IE::ReorderOp origOp);
 bool isLegalReorderAvgPoolPattern(IE::ReorderOp origOp);
 bool isBeneficialConvertToPermuteQuantize(ShapeRef shape);
+bool isLegalReorderLikeToPermuteQuantize(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType, Logger log);
 std::optional<SmallVector<int64_t>> getAdjustHW(int64_t alignment, int64_t width, int64_t height);
 bool isODUPermuteEffectiveForShape(const ShapeRef shape, const int64_t alignment);
 bool isShapeCompatibleWithODUPermute(const ShapeRef shape, const int64_t alignment);

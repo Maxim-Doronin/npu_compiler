@@ -54,12 +54,21 @@ TEST_F(AttributesPropertiesConversionTest, MissingRatioAttribute) {
             mlir::ArrayRef<mlir::NamedAttribute>{{builder->getStringAttr("name"), builder->getStringAttr("MyNodeName")},
                                                  {builder->getStringAttr("inputId"), builder->getI32IntegerAttr(123)}});
 
-    ASSERT_THROW(toProperties<net::SparsityInfoOp>(dict), vpux::Exception);
+    auto props = toProperties<net::SparsityInfoOp>(dict);
+
+    ASSERT_EQ(props.getName(), builder->getStringAttr("MyNodeName"));
+    ASSERT_EQ(props.getInputId(), builder->getI32IntegerAttr(123));
+    ASSERT_EQ(props.getRatio(), nullptr);
 }
 
 TEST_F(AttributesPropertiesConversionTest, EmptyDictionary) {
     auto dict = mlir::DictionaryAttr::get(ctx.get());
-    ASSERT_THROW(toProperties<net::SparsityInfoOp>(dict), vpux::Exception);
+
+    auto props = toProperties<net::SparsityInfoOp>(dict);
+
+    ASSERT_EQ(props.getName(), nullptr);
+    ASSERT_EQ(props.getInputId(), nullptr);
+    ASSERT_EQ(props.getRatio(), nullptr);
 }
 
 TEST_F(AttributesPropertiesConversionTest, NotDictionaryAttr) {

@@ -98,4 +98,10 @@ struct ReadOnlyDMARewriter : DMARewriterBase<VPUIP::ReadOnlyDMAOp> {
                                         mlir::ConversionPatternRewriter& rewriter) const override;
 };
 
+struct BarrierProgDMARewriter : DMARewriterBase<VPUIP::BarProgDMAOp> {
+    using DMARewriterBase::DMARewriterBase;
+    mlir::LogicalResult matchAndRewrite(VPUIP::BarProgDMAOp barProgDMAOp, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const override;
+};
+
 }  // namespace vpux::vpuip2vpumi40xx

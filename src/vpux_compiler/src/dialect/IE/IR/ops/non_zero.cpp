@@ -28,11 +28,11 @@ mlir::LogicalResult vpux::IE::NonZeroOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    auto inType = mlir::cast<NDTypeInterface>(nonZero.getInput().getType());
+    auto inType = mlir::cast<vpux::NDTypeInterface>(nonZero.getInput().getType());
     const auto inRank = inType.getRank();
     const auto outShape = Shape{inRank, mlir::ShapedType::kDynamic};
 
-    const auto numElements = details::calcTotalShapeSize(inType.getShape());
+    const auto numElements = inType.getNumElements();
     const auto bounds = Bounds{inRank, numElements};
 
     const auto typeComponents = TypeComponents()

@@ -4,8 +4,14 @@
 
 #include <ov_ops/rotary_positional_embeddings.hpp>
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/softmax.hpp"
 
 using namespace ov::test::utils;
 using namespace ov::test;

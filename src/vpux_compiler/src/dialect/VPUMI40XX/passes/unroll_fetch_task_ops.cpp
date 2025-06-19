@@ -125,7 +125,6 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             0,                            // allow_different_in_out_shapes
             nullptr,                      // indices
             nullptr,                      // enqueueBarrier
-            nullptr,                      // barProgDmaAtPage
             fetchTaskOp.getWlmPageAttr()  // wlmPageAttr
     );
     auto secondaryDma = rewriter.create<VPUMI40XX::NNDMAOp>(
@@ -146,21 +145,20 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             0,                            // allow_different_in_out_shapes
             nullptr,                      // indices
             nullptr,                      // enqueueBarrier
-            nullptr,                      // barProgDmaAtPage
             fetchTaskOp.getWlmPageAttr()  // wlmPageAttr
     );
 
     // the use of mapped inference is to be replaced with the FIRST dma.
     // the rest of the DMA's are to be replaced with the SECOND dma
-    rewriter.replaceOpWithIf(fetchTaskOp.getOperation(), mlir::ValueRange(primaryDma.getResult()),
-                             [](mlir::OpOperand& operand) {
-                                 return mlir::isa<VPUMI40XX::MappedInferenceOp>(operand.getOwner()) ||
-                                        mlir::isa<VPUMI40XX::OpRanges>(operand.getOwner());
-                             });
-    rewriter.replaceOpWithIf(fetchTaskOp.getOperation(), mlir::ValueRange(secondaryDma.getResult()),
-                             [](mlir::OpOperand& operand) {
-                                 return !mlir::isa<VPUMI40XX::MappedInferenceOp>(operand.getOwner());
-                             });
+    rewriter.replaceOpUsesWithIf(fetchTaskOp.getOperation(), mlir::ValueRange(primaryDma.getResult()),
+                                 [](mlir::OpOperand& operand) {
+                                     return mlir::isa<VPUMI40XX::MappedInferenceOp>(operand.getOwner()) ||
+                                            mlir::isa<VPUMI40XX::OpRanges>(operand.getOwner());
+                                 });
+    rewriter.replaceOpUsesWithIf(fetchTaskOp.getOperation(), mlir::ValueRange(secondaryDma.getResult()),
+                                 [](mlir::OpOperand& operand) {
+                                     return !mlir::isa<VPUMI40XX::MappedInferenceOp>(operand.getOwner());
+                                 });
 
     rewriter.eraseOp(fetchTaskOp.getOperation());
 

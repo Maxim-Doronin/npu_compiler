@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -16,7 +16,7 @@
 
 !qtype = !quant.uniform<u8:f32, 1.000000e+00>
 
-module @dual_tile attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @dual_tile attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   net.NetworkInfo
     entryPoint : @main
     inputsInfo : {

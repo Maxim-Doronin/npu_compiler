@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-to-mixed-precision %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 !qElemType = !quant.uniform<u8:f16, 1.1534313725490195:128>
 
 func.func @MixedPrecisionConv(%arg0: tensor<1x16x1x1xf16>) -> tensor<1x16x1x1xf16> {

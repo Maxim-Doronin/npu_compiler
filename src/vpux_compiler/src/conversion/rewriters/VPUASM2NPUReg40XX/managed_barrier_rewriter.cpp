@@ -39,11 +39,9 @@ mlir::LogicalResult ManagedBarrierRewriter::matchAndRewrite(VPUASM::ManagedBarri
     taskBarrierMapDescriptor.write<Fields::tb_work_item_idx>(workItemRegVal);
     taskBarrierMapDescriptor.write<Fields::tb_enqueue_count>(enqueueCount);
 
-    auto taskBarrierMapDescriptorAttr =
-            VpuTaskBarrierMapAttr::get(rewriter.getContext(), std::move(taskBarrierMapDescriptor));
-
     rewriter.create<NPUReg40XX::ManagedBarrierOp>(origOp.getLoc(), origOp.getSymNameAttr(),
-                                                  taskBarrierMapDescriptorAttr);
+                                                  std::move(taskBarrierMapDescriptor));
+
     rewriter.eraseOp(origOp);
 
     return mlir::success();

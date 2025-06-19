@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --wrap-in-vertical-fusion %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 func.func @WrapNCETiledTask(%arg0: tensor<1x32x256x256xf16, {order = #NHWC}>, %wt: tensor<32x1x1x4xsi32>, %weights: tensor<32x32x3x3xf16, {order = #NHWC}>) -> tensor<1x32x256x256xf16, {order = #NHWC}> {
@@ -80,13 +81,32 @@ func.func @WrapSwish(%arg0: tensor<1x32x176x176xf16>) -> tensor<1x32x176x176xf16
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0043085547638874429:24>
 
-func.func @WrapDepthToSapce(%arg0: tensor<1x128x180x270xf16, {order = #NHWC}>) -> tensor<1x8x720x1080xf16, {order = #NHWC}> {
+// CHECK-LABEL: @WrapDepthToSpaceBF
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x64x128x128x!qElemType, {order = #NHWC}>
+func.func @WrapDepthToSpaceBF(%arg0: tensor<1x64x128x128x!qElemType, {order = #NHWC}>) -> tensor<1x16x256x256x!qElemType, {order = #NHWC}> {
+    %2 = VPU.DepthToSpace(%arg0) {
+        block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, tilingStrategy = [1, 1, 1, 1]} : tensor<1x64x128x128x!qElemType, {order = #NHWC}> -> tensor<1x16x256x256x!qElemType, {order = #NHWC}>
+    return %2 : tensor<1x16x256x256x!qElemType, {order = #NHWC}>
+
+    // CHECK:  VPU.VerticalFusion ([[INPUT]] as [[INNER_INPUT:%.+]]: tensor<1x64x128x128x!qElemType, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x16x256x256x!qElemType, {order = #NHWC}> {
+    // CHECK:  VPU.DepthToSpace([[INNER_INPUT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x64x128x128x!qElemType, {order = #NHWC}> -> tensor<1x16x256x256x!qElemType, {order = #NHWC}>
+    // CHECK:    VPU.Yield
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @WrapDepthToSpaceDF
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x128x180x270xf16, {order = #NHWC}>
+func.func @WrapDepthToSpaceDF(%arg0: tensor<1x128x180x270xf16, {order = #NHWC}>) -> tensor<1x8x720x1080xf16, {order = #NHWC}> {
     %0 = VPU.DepthToSpace(%arg0) {block_size = 4 : i64, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, tilingStrategy = [1, 1, 15, 1]} : tensor<1x128x180x270xf16, {order = #NHWC}> -> tensor<1x8x720x1080xf16, {order = #NHWC}>
     return %0 : tensor<1x8x720x1080xf16, {order = #NHWC}>
 
-    //CHECK:  VPU.VerticalFusion (%arg0 as %arg1: tensor<1x128x180x270xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 15, 1]} -> tensor<1x8x720x1080xf16, {order = #NHWC}> {
-    //CHECK:  VPU.DepthToSpace(%arg1) {block_size = 4 : i64, mode = #IE.depth_to_space_mode<DEPTH_FIRST>} : tensor<1x128x180x270xf16, {order = #NHWC}> -> tensor<1x8x720x1080xf16, {order = #NHWC}>
+    //CHECK:  VPU.VerticalFusion ([[INPUT]] as [[INNER_INPUT:%.+]]: tensor<1x128x180x270xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 15, 1]} -> tensor<1x8x720x1080xf16, {order = #NHWC}> {
+    //CHECK:  VPU.DepthToSpace([[INNER_INPUT]]) {block_size = 4 : i64, mode = #IE.depth_to_space_mode<DEPTH_FIRST>} : tensor<1x128x180x270xf16, {order = #NHWC}> -> tensor<1x8x720x1080xf16, {order = #NHWC}>
     //CHECK:    VPU.Yield
 }
 
@@ -213,4 +233,30 @@ func.func @WrapPRelu(%arg0: tensor<1x16x448x392xf16, {order = #NHWC}>) -> tensor
     // CHECK:        VPU.VerticalFusion ([[INPUT]] as [[INNER_ARG1:[^:]+]]: tensor<1x16x448x392xf16, {order = #NHWC}>, [[CST]] as [[INNER_ARG2:[^:]+]]: tensor<1x16x1x1xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x16x448x392xf16, {order = #NHWC}> {
     // CHECK:            VPU.PRelu([[INNER_ARG1]], [[INNER_ARG2]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x16x448x392xf16, {order = #NHWC}>, tensor<1x16x1x1xf16, {order = #NHWC}> -> tensor<1x16x448x392xf16, {order = #NHWC}>
     // CHECK:            VPU.Yield
+}
+
+// -----
+
+//CHECK-LABEL: @WrapSWAdd
+//CHECK-SAME: [[INPUT0:%.+]]: tensor<1x32x1024x1024xf16>, [[INPUT1:%.+]]: tensor<1x1x1024x1024xf16>
+func.func @WrapSWAdd(%arg0: tensor<1x32x1024x1024xf16>, %arg1: tensor<1x1x1024x1024xf16>) -> tensor<1x32x1024x1024xf16> {
+    %0 = VPU.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, tilingStrategy = [1, 1, 49, 1]} : tensor<1x32x1024x1024xf16>, tensor<1x1x1024x1024xf16> -> tensor<1x32x1024x1024xf16>
+    return %0 : tensor<1x32x1024x1024xf16>
+
+    // CHECK: VPU.VerticalFusion ([[INPUT0]] as [[INNER_ARG0:[^:]+]]: tensor<1x32x1024x1024xf16>, [[INPUT1]] as [[INNER_ARG1:[^:]+]]: tensor<1x1x1024x1024xf16>) attributes {tilingStrategy = [1, 1, 49, 1]} -> tensor<1x32x1024x1024xf16>
+    // CHECK: VPU.Add([[INNER_ARG0]], [[INNER_ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x1024x1024xf16>, tensor<1x1x1024x1024xf16> -> tensor<1x32x1024x1024xf16>
+    // CHECK: VPU.Yield
+}
+
+// -----
+
+//CHECK-LABEL: @WrapSWSqrt
+//CHECK-SAME: [[INPUT:%.+]]: tensor<1x1024x1x14336xf16>
+func.func @WrapSWSqrt(%arg0: tensor<1x1024x1x14336xf16>) -> tensor<1x1024x1x14336xf16> {
+    %0 = VPU.Sqrt(%arg0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, tilingStrategy = [1, 16, 1, 1]} : tensor<1x1024x1x14336xf16> -> tensor<1x1024x1x14336xf16>
+    return %0 : tensor<1x1024x1x14336xf16>
+
+    // CHECK: VPU.VerticalFusion ([[INPUT]] as [[INNER_ARG:[^:]+]]: tensor<1x1024x1x14336xf16>) attributes {tilingStrategy = [1, 16, 1, 1]} -> tensor<1x1024x1x14336xf16>
+    // CHECK: VPU.Sqrt([[INNER_ARG]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x1024x1x14336xf16> -> tensor<1x1024x1x14336xf16>
+    // CHECK: VPU.Yield
 }

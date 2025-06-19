@@ -225,7 +225,7 @@ void ConvertWeightsToI8Pass::safeRunOnFunc() {
     mlir::TypeConverter typeConverter;
 
     typeConverter.addConversion([&](vpux::NDTypeInterface tensor) {
-        auto quantType = tensor.getElementType().dyn_cast_or_null<mlir::quant::QuantizedType>();
+        auto quantType = mlir::dyn_cast_or_null<mlir::quant::QuantizedType>(tensor.getElementType());
         if (!isLegalTensor(tensor)) {
             const auto newElemType = changeStorageTypeToI8(quantType);
             return tensor.changeElemType(newElemType);

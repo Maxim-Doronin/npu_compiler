@@ -25,7 +25,7 @@ enum DataType : uint32_t {
     NN_FP64,
     NN_FP32,
     NN_FP16,
-    NN_FP8,
+    NN_FP8,  // deprecated
     NN_U64,
     NN_U32,
     NN_U16,
@@ -43,6 +43,8 @@ enum DataType : uint32_t {
     NN_UNDEFINED,
     NN_U4,
     NN_NF4,
+    NN_BF8,  // f8E5M2
+    NN_HF8,  // f8E4M3
 };
 
 typedef uint64_t NDOrder;
@@ -104,6 +106,7 @@ struct MemRefData {
 #pragma pack(pop)
 #undef ALIGN_AS
 
+#ifdef __shave
 #ifdef __cplusplus
 static inline uint32_t getNumElem(const struct MemRefData& buff) {
     uint32_t n = 1;
@@ -156,7 +159,8 @@ static inline uint32_t countMemrefs(uint32_t layerParams, uint32_t maxCount) {
     return maxCount;
 }
 
-#endif
+#endif  // __cplusplus
+#endif  // __shave
 
 #ifdef __cplusplus
 }  // namespace sw_params

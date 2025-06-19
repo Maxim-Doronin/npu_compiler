@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -36,7 +36,8 @@ void vpux::arch37xx::buildLowerIE2VPUPipeline(mlir::OpPassManager& pm, Logger lo
 // LowerVPU2VPUIPSWKernel
 //
 
-void vpux::arch37xx::buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, bool enableInPlaceBufferization, Logger log) {
+void vpux::arch37xx::buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, bool enableInPlaceBufferization,
+                                                 bool useMemrefForHostFunctionBufferization, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
     pm.addPass(createAdjustDynamicOpsBeforeBufferizationPass());
@@ -45,9 +46,8 @@ void vpux::arch37xx::buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, bool e
         pm.addPass(createInPlaceBufferizationAnalyzePass());
     }
     pm.addPass(createOneShotBufferizeVPU2VPUIPPass());
-    pm.addPass(VPUIP::createWrapVPUIPOpsInNCEClusterTilingPass(log));
     pm.addPass(VPUIP::createUngroupBoundedBuffersAsFuncArgsPass(log));
-    pm.addPass(createAddBuffersForNetResults(log));
+    pm.addPass(createAddBuffersForNetResults(useMemrefForHostFunctionBufferization, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 }
 
@@ -79,7 +79,8 @@ void vpux::arch37xx::registerConversionPipeline() {
             "lower-VPU-to-VPUIP",
             "Performs full lowering from the VPU Dialect to VPUIP Dialect, SW operations are converted to SWKernelOp",
             [](mlir::OpPassManager& pm, const vpux::DefaultHWOptions37XX& options) {
-                vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization);
+                vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization,
+                                                            options.useMemrefForHostFunctionBufferization);
             });
 
     mlir::PassPipelineRegistration<>("lower-VPUIP-to-ELF",

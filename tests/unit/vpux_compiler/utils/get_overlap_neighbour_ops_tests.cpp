@@ -313,7 +313,7 @@ llvm::StringLiteral nceInterpAndConvConsumers = R"(
 
             %sparseMap = const.Declare tensor<1x96x57x55xi1> = dense<1> : tensor<1x96x57x55xi1>
             %storageElement = VPU.StorageElementTable {
-                dataElemType = i32, seDepth = 1, seSize = 144, dataShape = [1, 144, 28, 27],
+                dataElemType = i32, seDepth = 1, seSize = [144], dataShape = [1, 144, 28, 27],
                 seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                 scale = [1.0, 1.0, 2.0, 2.0]>}
                     -> tensor<1x1x57x55xi32, {order = #NHWC}>

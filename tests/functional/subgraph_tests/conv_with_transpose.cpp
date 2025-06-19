@@ -4,6 +4,9 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/transpose.hpp"
+
 namespace ov::test {
 
 class Conv2dWithTransposeTest_NPU3720 :

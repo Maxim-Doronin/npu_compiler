@@ -6,7 +6,6 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_config.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -85,10 +84,10 @@ void reorderOperations(ArrayRef<VPU::NCEOpInterface> operations) {
 
 void reorderOperationsInVFBlock(VPU::VerticalFusionOp vfOp) {
     SmallVector<mlir::Operation*, 4> computeOpsInBlock;
-    auto vfConfig = VFConfig(vfOp);
-    for (auto op : vfConfig.getVFOperations()) {
-        if (mlir::isa<VPU::NCEOpInterface, VPU::SWOpInterface>(op)) {
-            computeOpsInBlock.push_back(op);
+
+    for (auto& op : vfOp.getBody()->without_terminator()) {
+        if (mlir::isa<VPU::NCEOpInterface, VPU::SWOpInterface>(&op)) {
+            computeOpsInBlock.push_back(&op);
         }
     }
 

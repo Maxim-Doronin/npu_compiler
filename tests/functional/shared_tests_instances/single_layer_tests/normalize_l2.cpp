@@ -23,8 +23,6 @@ TEST_P(NormalizeL2LayerTestCommon, NPU3720_HW) {
 TEST_P(NormalizeL2LayerTestCommon, NPU4000_HW) {
     abs_threshold = 0.02;
     setDefaultHardwareMode();
-    // TODO E####-159644
-    VpuOv2LayerTest::setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 

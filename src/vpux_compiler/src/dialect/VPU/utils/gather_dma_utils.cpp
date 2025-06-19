@@ -10,6 +10,11 @@ namespace vpux::VPU {
 bool isLegalConvertToGatherDMA(VPU::GatherOp op, bool isElementTile, bool isIndicesTile, vpux::Logger log) {
     log.trace("Got Gather Op at {0}.", op->getLoc());
 
+    const auto outShape = getShape(op.getOutput());
+    if (outShape.isDynamic()) {
+        return false;
+    }
+
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     const auto indicesType = mlir::cast<vpux::NDTypeInterface>(op.getIndices().getType());
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
@@ -38,12 +43,12 @@ bool isLegalConvertToGatherDMA(VPU::GatherOp op, bool isElementTile, bool isIndi
     }
 
     const Bit elemOutSize = vpux::getElemTypeSize(outputType);
-    const size_t dma_element_size =
-            (outputType.getNumElements() / indicesType.getNumElements()) * elemOutSize.to<Byte>().count();
+    const size_t dma_element_size_in_bit =
+            (outputType.getNumElements() / indicesType.getNumElements()) * elemOutSize.count();
 
     const size_t GATHER_DMA_MAX_ELEMENT_SIZE_ARCH_BASED = VPU::getGatherDMAMaxElementSize(arch);
 
-    if (dma_element_size > GATHER_DMA_MAX_ELEMENT_SIZE_ARCH_BASED) {
+    if (dma_element_size_in_bit > GATHER_DMA_MAX_ELEMENT_SIZE_ARCH_BASED * CHAR_BIT) {
         return isElementTile;
     }
 

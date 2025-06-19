@@ -102,7 +102,7 @@ void AdaptLLVMFuncsForShavePass::adaptFuncForShave(mlir::SymbolRefAttr funcSym) 
             builder.create<mlir::LLVM::LLVMFuncOp>(funcOp.getLoc(), symName, entryFunTy, mlir::LLVM::Linkage::External,
                                                    /*dsoLocal=*/true, mlir::LLVM::CConv::C,
                                                    /*comdat=*/nullptr, attributes);
-    builder.setInsertionPointToStart(entryFun.addEntryBlock());
+    builder.setInsertionPointToStart(entryFun.addEntryBlock(builder));
 
     auto fullyEncompassingPtrArg = entryFun.getBlocks().front().getArgument(0);
 

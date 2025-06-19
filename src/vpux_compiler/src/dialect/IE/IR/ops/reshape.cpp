@@ -141,7 +141,7 @@ mlir::OpFoldResult vpux::IE::ReshapeOp::fold(FoldAdaptor adaptor) {
 
     VPUX_THROW_UNLESS(!operands.empty(), "Wrong number of operands : {0}", operands.size());
 
-    if (const auto attr = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (const auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         return static_cast<Const::ContentAttr>(attr).transform().reshape(vpux::getShape(getOutput())).get();
     }
 

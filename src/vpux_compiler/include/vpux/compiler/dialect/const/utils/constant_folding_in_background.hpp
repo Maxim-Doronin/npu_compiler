@@ -51,7 +51,7 @@ public:
             ArrayRef<TransformAttrInterface> transformations, TransformAttrInterface transformation);
 
 private:
-    std::shared_future<void> initFoldingListener(llvm::ThreadPool& threadPool);
+    std::shared_future<void> initFoldingListener(llvm::ThreadPoolInterface& threadPool);
     void stopFoldingListener();
     void processFoldingRequest(FoldingRequest&& foldingRequest, ConstantFoldingCache& cache);
 

@@ -310,6 +310,31 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::InterpolateOp 
     return mlir::success();
 }
 
+mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::SoftMaxOp origOp, Logger log) {
+    log.setName("NCEInvariant");
+
+    auto loc = origOp->getLoc();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    auto inputShape = inputType.getShape();
+    auto outputShape = outputType.getShape();
+
+    const auto IC = inputShape[Dims4D::Act::C];
+    const auto OC = outputShape[Dims4D::Act::C];
+    auto channelsInfo = mlir::cast<IE::AlignedChannelsOpInterface>(origOp.getOperation());
+    if (IC % channelsInfo.getInputChannelAlignment() != 0) {
+        log.trace("[{0}] SoftMax input channels '{1}' are not aligned", loc, IC);
+        return mlir::failure();
+    }
+    const auto outAlignment = channelsInfo.getOutputChannelAlignment();
+    if (OC % outAlignment != 0) {
+        log.trace("[{0}] SoftMax output channels '{1}' are not aligned", loc, OC);
+        return mlir::failure();
+    }
+
+    return mlir::success();
+}
+
 mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(VPU::NCEInterpolateOp, Logger) {
     // VPU.NCE operations guarantees that invariants
     return mlir::success();
@@ -525,6 +550,18 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     return getRequiredOperandsForPipeliningConvBased(origOp, tiling);
 }
 
+SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredOperandsForPipelining(
+        VPU::NCEReduceOp origOp, const OutputTiling& tiling) {
+    // The tiling strategy follows last-tile-not-biggest
+    // So just check the first two tiles are enough to make sure prefetchable
+    auto curTile = tiling[0];
+    auto nextTile = tiling[1];
+
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    return {curTileTypes[0], nextTileTypes[0]};
+}
+
 template <class ConcreteOp>
 int64_t getRequiredChannelSizeForPipeliningConvBased(ConcreteOp origOp, const OutputTiling& tiling) {
     auto curFilterShape = getTileDistributions(origOp, tiling[0])[1].first.getShape();
@@ -550,6 +587,12 @@ int64_t getRequiredChannelSizeForPipelining(VPU::NCECompressConvolutionOp origOp
 
 int64_t getRequiredChannelSizeForPipelining(VPU::NCEMatMulOp origOp, const OutputTiling& tiling) {
     return getRequiredChannelSizeForPipeliningConvBased(origOp, tiling);
+}
+
+int64_t getRequiredChannelSizeForPipelining(VPU::NCEReduceOp origOp, const OutputTiling& tiling) {
+    auto curInputShape = getTileDistributions(origOp, tiling[0])[0].first.getShape();
+    auto nextInputShape = getTileDistributions(origOp, tiling[1])[0].first.getShape();
+    return curInputShape[Dims4D::Act::C] + nextInputShape[Dims4D::Act::C];
 }
 
 template <class ConcreteOp>
@@ -909,6 +952,11 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyEltwisePipeliningCMX(mlir::
     return mlir::success();
 }
 
+mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyPipeliningCMX(VPU::NCEReduceOp origOp, const OutputTiling& tiling,
+                                                                   Logger log) {
+    return verifyPipeliningCMXConvBased(origOp, tiling, log);
+}
+
 mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyPipeliningCMX(VPU::AddOp origOp, const OutputTiling& tiling,
                                                                    Logger log) {
     return verifyEltwisePipeliningCMX(origOp.getOperation(), tiling, log);
@@ -1003,6 +1051,9 @@ vpux::VPUIP::NCEInvariant::getNCEOpsRequiredOperandsForPipelining(mlir::Operatio
                 return getRequiredOperandsForPipelining(op, tiling);
             })
             .Case<VPU::NCEMatMulOp>([&](VPU::NCEMatMulOp op) {
+                return getRequiredOperandsForPipelining(op, tiling);
+            })
+            .Case<VPU::NCEReduceOp>([&](VPU::NCEReduceOp op) {
                 return getRequiredOperandsForPipelining(op, tiling);
             })
             .Default([&](mlir::Operation* op) -> SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> {

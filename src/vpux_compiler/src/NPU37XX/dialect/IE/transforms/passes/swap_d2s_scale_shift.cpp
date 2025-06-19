@@ -78,9 +78,7 @@ mlir::LogicalResult SwapDepth2SpaceAndScaleShift::matchAndRewrite(IE::DepthToSpa
         auto broadcastShape = Shape({1, d2sInShape[Dims4D::Act::C], 1, 1});
         auto reshapeShape = Shape({1, d2sInShape[Dims4D::Act::C], 1, 1});
 
-        auto broadcastOp = rewriter.createOrFold<IE::BroadcastOp>(
-                loc, origValue, vpux::IE::createShapeConstForBroadCast(rewriter, ctx, loc, broadcastShape), nullptr,
-                IE::BroadcastTypeAttr::get(ctx, IE::BroadcastType::NUMPY));
+        auto broadcastOp = IE::createBroadcast(rewriter, loc, origValue, broadcastShape);
 
         return rewriter.createOrFold<IE::ReshapeOp>(loc, broadcastOp, nullptr, false,
                                                     getIntArrayAttr(ctx, ShapeRef(reshapeShape)));

@@ -36,3 +36,22 @@ add_npu_library(npu_compiler_npu37xx
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     INCLUDES
         $<TARGET_PROPERTY:openvino::npu_al,INTERFACE_INCLUDE_DIRECTORIES>)
+
+#
+# Embed VPUNN models for NPU37XX
+#
+
+find_package(Git REQUIRED)
+
+execute_process(
+    COMMAND ${GIT_EXECUTABLE} lfs pull
+    WORKING_DIRECTORY "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel")
+
+vpux_embed_bin_file(
+    SOURCE_FILE "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_2_7_159.vpunn"
+    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_data_2_7.hpp.inc"
+    VARIABLE_NAME "COST_MODEL_2_7")
+vpux_embed_bin_file(
+    SOURCE_FILE "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_2_7_159.fast.vpunn"
+    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_data_2_7_fast.hpp.inc"
+    VARIABLE_NAME "COST_MODEL_2_7_FAST")

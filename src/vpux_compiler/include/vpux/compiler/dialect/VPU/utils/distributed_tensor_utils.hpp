@@ -41,6 +41,7 @@ bool isSOCSegmentedNCEOp(mlir::Operation* op);
 bool inputProducersCompatible(mlir::Operation* op, mlir::DenseSet<mlir::Operation*> handledUsers = {});
 bool isSegmentedInputCompatible(mlir::Operation* op, mlir::DenseSet<mlir::Operation*> handledUsers = {});
 bool isSOKSegmentedOutputCompatible(mlir::Operation* op);
+bool hasDistributedTypesIO(mlir::Operation* op);
 int64_t getNumberOfClustersForSOKToAvoidAlignment(int64_t outputChannels, int64_t numClustersForCompilation,
                                                   bool uniformDistributedSegments = true);
 int64_t getNumberOfClustersForSpatialDim(int64_t outputSpatialDim, int64_t numClustersForCompilation,
@@ -177,6 +178,14 @@ vpux::NDTypeInterface getDistributedOutputTensorType(VPU::ClusteredOpInterface c
                                                      SiblingOpsAnalysis& siblingsAnalysis,
                                                      VPU::MultiClusterStrategy strategy,
                                                      const bool hasExplicitDistributedAttr);
+// Get distributed output type for clustered op and vf op
+vpux::NDTypeInterface getDistributedOutputType(mlir::Operation* op);
+
+// Get distributed input type for clustered op and vf op
+vpux::NDTypeInterface getDistributedInputType(mlir::Operation* op, mlir::Value operand);
+
+bool hasSpillDueToIncompatibleDistributionMode(VPU::DistributedTensorType distributedInType,
+                                               VPU::DistributedTensorType distributedOutType);
 
 bool isSegmentedOverlappedAxisSameAsSliceAxis(mlir::ArrayAttr numTiles, ArrayRef<int64_t> inputShape,
                                               ArrayRef<int64_t> sliceShape);
@@ -208,22 +217,6 @@ VPU::DistributedTensorType composeDistributedType(VPU::ClusteredOpInterface perm
 mlir::Operation* getNextCompressConv(mlir::Operation* nceOp);
 mlir::Type fuseOverlapParams(VPU::ClusteredOpInterface permuteOp, VPU::DistributedTensorType distType,
                              mlir::Operation* nextConv, bool enableExplicitDistributionInfoAttr = false);
-
-template <typename T, std::enable_if_t<std::is_same<VPU::NCEClusterTilingOp, T>::value, bool> = true>
-mlir::Value getDistributedOperandFromNCEClusterTiling(T clusterOp, mlir::Value innerOperand) {
-    if (innerOperand == nullptr) {
-        return nullptr;
-    }
-    auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(innerOperand);
-    if (blockArg == nullptr) {
-        return nullptr;
-    }
-    auto operandNum = blockArg.getArgNumber();
-    VPUX_THROW_UNLESS(operandNum < clusterOp.getNumOperands(),
-                      "Argument number '{0}' is out of range of operands for NCEClusterTiling op '{1}'", operandNum,
-                      clusterOp.getNumOperands());
-    return clusterOp.getOperand(operandNum);
-}
 
 SmallVector<int64_t> getNonOneDimInds(ArrayRef<int64_t> inputArray);
 

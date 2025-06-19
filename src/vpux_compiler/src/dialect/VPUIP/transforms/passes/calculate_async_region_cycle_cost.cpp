@@ -39,6 +39,8 @@ void CalculateAsyncRegionCycleCostPass::safeRunOnFunc() {
             execOp->setAttr(cycleCostAttrName, getIntAttr(execOp->getContext(), cycleCost));
         }
     });
+    _log.info("[CalculateAsyncRegionCycleCost phase]");
+    cycleCostInfo.printNNCacheStatistics(_log);
 }
 }  // namespace
 

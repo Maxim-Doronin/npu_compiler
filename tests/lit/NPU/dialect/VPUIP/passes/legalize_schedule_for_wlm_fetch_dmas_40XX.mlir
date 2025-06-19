@@ -12,12 +12,12 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @NoLegalizationDueToFIFOOrdering attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @NoLegalizationDueToFIFOOrdering attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -27,7 +27,7 @@ module @NoLegalizationDueToFIFOOrdering attributes {VPU.compilationMode = #VPU.c
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -128,12 +128,12 @@ module @NoLegalizationDueToFIFOOrdering attributes {VPU.compilationMode = #VPU.c
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @LegalizeWithJustDMAs attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @LegalizeWithJustDMAs attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -143,7 +143,7 @@ module @LegalizeWithJustDMAs attributes {VPU.compilationMode = #VPU.compilation_
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -247,12 +247,12 @@ module @LegalizeWithJustDMAs attributes {VPU.compilationMode = #VPU.compilation_
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @LegalizeGroupThreeWithSharedBarrier attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @LegalizeGroupThreeWithSharedBarrier attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -262,7 +262,7 @@ module @LegalizeGroupThreeWithSharedBarrier attributes {VPU.compilationMode = #V
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -365,12 +365,12 @@ module @LegalizeGroupThreeWithSharedBarrier attributes {VPU.compilationMode = #V
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @LegalizeGroupsWithBothSharedBarriers attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @LegalizeGroupsWithBothSharedBarriers attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -380,7 +380,7 @@ module @LegalizeGroupsWithBothSharedBarriers attributes {VPU.compilationMode = #
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -507,12 +507,12 @@ module @LegalizeGroupsWithBothSharedBarriers attributes {VPU.compilationMode = #
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @LegalizeWithJustDMAWithWaitingDMABeforeGrandParent attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @LegalizeWithJustDMAWithWaitingDMABeforeGrandParent attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -522,7 +522,7 @@ module @LegalizeWithJustDMAWithWaitingDMABeforeGrandParent attributes {VPU.compi
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -636,12 +636,12 @@ module @LegalizeWithJustDMAWithWaitingDMABeforeGrandParent attributes {VPU.compi
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @LegalizeWithBarrierAndDMAWithWaitingDMABeforeGrandParent attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @LegalizeWithBarrierAndDMAWithWaitingDMABeforeGrandParent attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -651,7 +651,7 @@ module @LegalizeWithBarrierAndDMAWithWaitingDMABeforeGrandParent attributes {VPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -761,12 +761,12 @@ module @LegalizeWithBarrierAndDMAWithWaitingDMABeforeGrandParent attributes {VPU
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @LegalizeGroupThreeWithSharedBarrierMultiTile attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @LegalizeGroupThreeWithSharedBarrierMultiTile attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -776,7 +776,7 @@ module @LegalizeGroupThreeWithSharedBarrierMultiTile attributes {VPU.compilation
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -933,12 +933,12 @@ module @LegalizeGroupThreeWithSharedBarrierMultiTile attributes {VPU.compilation
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @LegalizeWithoutAnyDMAPresent attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @LegalizeWithoutAnyDMAPresent attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -948,7 +948,7 @@ module @LegalizeWithoutAnyDMAPresent attributes {VPU.compilationMode = #VPU.comp
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {

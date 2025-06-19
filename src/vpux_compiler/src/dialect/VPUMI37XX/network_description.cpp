@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -32,14 +32,26 @@ namespace {
 
 ov::element::Type_t extractPrecisionFromDType(elf::DType dtype) {
     static const EnumMap<elf::DType, ov::element::Type_t> dataTypeMapping = {
-            {elf::DType::DType_FP64, ov::element::Type_t::f64},   {elf::DType::DType_FP32, ov::element::Type_t::f32},
-            {elf::DType::DType_FP16, ov::element::Type_t::f16},   {elf::DType::DType_U64, ov::element::Type_t::u64},
-            {elf::DType::DType_U32, ov::element::Type_t::u32},    {elf::DType::DType_U16, ov::element::Type_t::u16},
-            {elf::DType::DType_U8, ov::element::Type_t::u8},      {elf::DType::DType_U4, ov::element::Type_t::u4},
-            {elf::DType::DType_I64, ov::element::Type_t::i64},    {elf::DType::DType_I32, ov::element::Type_t::i32},
-            {elf::DType::DType_I16, ov::element::Type_t::i16},    {elf::DType::DType_I8, ov::element::Type_t::i8},
-            {elf::DType::DType_I4, ov::element::Type_t::i4},      {elf::DType::DType_BIN, ov::element::Type_t::u1},
-            {elf::DType::DType_BFP16, ov::element::Type_t::bf16}, {elf::DType::DType_I4X, ov::element::Type_t::nf4}};
+            {elf::DType::DType_FP64, ov::element::Type_t::f64},
+            {elf::DType::DType_FP32, ov::element::Type_t::f32},
+            {elf::DType::DType_FP16, ov::element::Type_t::f16},
+            {elf::DType::DType_U64, ov::element::Type_t::u64},
+            {elf::DType::DType_U32, ov::element::Type_t::u32},
+            {elf::DType::DType_U16, ov::element::Type_t::u16},
+            {elf::DType::DType_U8, ov::element::Type_t::u8},
+            {elf::DType::DType_U4, ov::element::Type_t::u4},
+            {elf::DType::DType_I64, ov::element::Type_t::i64},
+            {elf::DType::DType_I32, ov::element::Type_t::i32},
+            {elf::DType::DType_I16, ov::element::Type_t::i16},
+            {elf::DType::DType_I8, ov::element::Type_t::i8},
+            {elf::DType::DType_I4, ov::element::Type_t::i4},
+            {elf::DType::DType_BIN, ov::element::Type_t::u1},
+            {elf::DType::DType_BFP16, ov::element::Type_t::bf16},
+            {elf::DType::DType_I4X, ov::element::Type_t::nf4},
+            {elf::DType::DType_F8E4M3FN, ov::element::Type_t::f8e4m3},
+            {elf::DType::DType_F8E5M2, ov::element::Type_t::f8e5m2},
+            {elf::DType::DType_F8E8M0, ov::element::Type_t::f8e8m0},
+    };
 
     VPUX_THROW_WHEN(dataTypeMapping.count(dtype) == 0,
                     "Missing precision upon attempting to convert the value from ELF to OV format");
@@ -48,9 +60,9 @@ ov::element::Type_t extractPrecisionFromDType(elf::DType dtype) {
 }
 
 const EnumMap<elf::OVNodeType, ov::element::Type_t> mapElementTypeOV = {
-        {elf::OVNodeType::OVNodeType_UNDEFINED, ov::element::Type_t::undefined},
         {elf::OVNodeType::OVNodeType_DYNAMIC, ov::element::Type_t::dynamic},
-        {elf::OVNodeType::OVNodeType_BOOLEAN, ov::element::Type_t::boolean},
+        // In frontend signless 8-bit integer is used for BOOL
+        {elf::OVNodeType::OVNodeType_BOOLEAN, ov::element::Type_t::u8},
         {elf::OVNodeType::OVNodeType_BF16, ov::element::Type_t::bf16},
         {elf::OVNodeType::OVNodeType_F16, ov::element::Type_t::f16},
         {elf::OVNodeType::OVNodeType_F32, ov::element::Type_t::f32},
@@ -67,6 +79,9 @@ const EnumMap<elf::OVNodeType, ov::element::Type_t> mapElementTypeOV = {
         {elf::OVNodeType::OVNodeType_U32, ov::element::Type_t::u32},
         {elf::OVNodeType::OVNodeType_U64, ov::element::Type_t::u64},
         {elf::OVNodeType::OVNodeType_NF4, ov::element::Type_t::nf4},
+        {elf::OVNodeType::OVNodeType_F8E4M3FN, ov::element::Type_t::f8e4m3},
+        {elf::OVNodeType::OVNodeType_F8E5M2, ov::element::Type_t::f8e5m2},
+        {elf::OVNodeType::OVNodeType_F8E8M0, ov::element::Type_t::f8e8m0},
 };
 
 /**

@@ -80,7 +80,7 @@ void vpux::VPU::GRUSequenceLastPartOp::adjustAttrs(const TilingInfo& inputTiling
                       "seq_length dimension in input tile is incompatible with output tile, seq_length dimension of "
                       "input tile is {0}, but it's {1} in output tile",
                       inputTileInfo.shape[Dim(1)], outputYTile.shape[Dim(2)]);
-    auto origSeqLength = getSeqLengthAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+    auto origSeqLength = mlir::dyn_cast_or_null<mlir::IntegerAttr>(getSeqLengthAttr()).getValue().getSExtValue();
     auto tiledSeqLength = inputTileInfo.shape[Dim(2)];
     if (origSeqLength != tiledSeqLength) {
         const auto newSeqLength = getIntAttr(ctx, tiledSeqLength);
