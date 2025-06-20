@@ -139,6 +139,7 @@ mlir::SymbolRefAttr moveOpToSection(mlir::Operation* op, SectionMapper& sectionM
 mlir::SymbolRefAttr cloneSectionSymbol(mlir::SymbolRefAttr from, mlir::SymbolRefAttr to);
 
 void insertELFMain(mlir::func::FuncOp netFunc);
+size_t getOpBinarySize(vpux::NDTypeInterface type);
 
 }  // namespace ELF
 }  // namespace vpux

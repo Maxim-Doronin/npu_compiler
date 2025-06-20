@@ -21,8 +21,14 @@ using namespace vpux;
 namespace {
 void padInput(mlir::Operation* firstOp) {
     mlir::OpBuilder builder{firstOp};
-    auto expand = builder.create<IE::DynamicExpandOp>(appendLoc(firstOp->getLoc(), "expand"), firstOp->getOperand(0));
-    firstOp->setOperand(0, expand.getOutput());
+    for (unsigned i = 0; i < firstOp->getNumOperands(); ++i) {
+        auto operand = firstOp->getOperand(i);
+        if (IE::hasDynamicShapeAttr(operand)) {
+            auto expand = builder.create<IE::DynamicExpandOp>(
+                    appendLoc(firstOp->getLoc(), "_expand_" + std::to_string(i)), operand);
+            firstOp->setOperand(i, expand.getOutput());
+        }
+    }
 }
 
 SmallVector<mlir::Operation*> getDynamicOperations(mlir::Operation* op, Logger log) {
@@ -93,8 +99,7 @@ void traverseDynamicSubgraph(IE::DynamicReshapeOp dynReshape, Logger log) {
     std::for_each(dynamicOps.begin(), dynamicOps.end(), freezeOutputShape);
 
     nestedLog.debug("Adding dynamic padding to the input of the first op in chain.");
-    mlir::Operation* firstOp = dynamicOps.back();
-    padInput(firstOp);
+    std::for_each(dynamicOps.begin(), dynamicOps.end(), padInput);
 }
 
 class PadDynamicInputsPass final : public IE::impl::PadDynamicInputsBase<PadDynamicInputsPass> {

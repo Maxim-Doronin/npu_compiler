@@ -51,26 +51,18 @@ bool isValidCandidateForCMXConcat(mlir::Operation* maybeConcat) {
 
     bool isProducerOrConsumerSOH = false;
     for (const auto& producerConcat : concat->getOperands()) {
-        if (!mlir::isa_and_nonnull<VPU::NCEOpInterface, VPU::NCEClusterTilingOp>(producerConcat.getDefiningOp())) {
+        if (!mlir::isa_and_nonnull<VPU::NCEOpInterface>(producerConcat.getDefiningOp())) {
             return false;
         }
 
-        if (auto clusterTilingCopy = mlir::dyn_cast_or_null<VPU::NCEClusterTilingOp>(producerConcat.getDefiningOp())) {
-            auto copyOp = clusterTilingCopy.getInnerTaskOpOfType<VPU::CopyOp>();
-            if (!copyOp) {
-                return false;
-            }
-            auto clusterTilingNCE = clusterTilingCopy->getOperand(0).getDefiningOp<VPU::NCEClusterTilingOp>();
-            if (!clusterTilingNCE) {
-                return false;
-            }
-            auto nceOp = clusterTilingNCE.getInnerTaskOpOfType<VPU::NCEOpInterface>();
+        if (auto copyOp = mlir::dyn_cast<VPU::CopyOp>(producerConcat.getDefiningOp())) {
+            auto nceOp = copyOp->getOperand(0).getDefiningOp<VPU::NCEOpInterface>();
             if (!nceOp) {
                 return false;
             }
 
             auto distributedTensorType =
-                    mlir::dyn_cast<vpux::VPU::DistributedTensorType>(clusterTilingNCE.getResult(0).getType());
+                    mlir::dyn_cast<vpux::VPU::DistributedTensorType>(nceOp->getResult(0).getType());
             if (distributedTensorType == nullptr) {
                 return false;
             }
@@ -89,29 +81,21 @@ bool isValidCandidateForCMXConcat(mlir::Operation* maybeConcat) {
             continue;
         }
 
-        if (!mlir::isa_and_nonnull<VPU::NCEOpInterface, VPU::NCEClusterTilingOp>(consumerConcat)) {
+        if (!mlir::isa_and_nonnull<VPU::NCEOpInterface>(consumerConcat)) {
             return false;
         }
 
-        if (auto clusterTilingCopy = mlir::dyn_cast<VPU::NCEClusterTilingOp>(consumerConcat)) {
-            auto copyOp = clusterTilingCopy.getInnerTaskOpOfType<VPU::CopyOp>();
-            if (!copyOp) {
+        if (auto copyOp = mlir::dyn_cast<VPU::CopyOp>(consumerConcat)) {
+            if (!copyOp->hasOneUse()) {
                 return false;
             }
-            if (!clusterTilingCopy->hasOneUse()) {
-                return false;
-            }
-            auto clusterTilingNCE = mlir::dyn_cast_or_null<VPU::NCEClusterTilingOp>(*clusterTilingCopy->user_begin());
-            if (!clusterTilingNCE) {
-                return false;
-            }
-            auto nceOp = clusterTilingNCE.getInnerTaskOpOfType<VPU::NCEOpInterface>();
+            auto nceOp = mlir::dyn_cast_or_null<VPU::NCEOpInterface>(*copyOp->user_begin());
             if (!nceOp) {
                 return false;
             }
 
             auto distributedTensorType =
-                    mlir::dyn_cast<vpux::VPU::DistributedTensorType>(clusterTilingCopy.getResult(0).getType());
+                    mlir::dyn_cast<vpux::VPU::DistributedTensorType>(nceOp->getResult(0).getType());
             if (distributedTensorType == nullptr) {
                 return false;
             }

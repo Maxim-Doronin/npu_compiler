@@ -4,8 +4,17 @@
 #include <cmath>
 #include <ov_ops/rms.hpp>
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset6.hpp"
+#include "openvino/opsets/opset6_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/convert.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/fake_quantize.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/power.hpp"
+#include "openvino/op/reduce_sum.hpp"
+#include "openvino/op/sqrt.hpp"
 
 using namespace ov::test::utils;
 using namespace ov::test;

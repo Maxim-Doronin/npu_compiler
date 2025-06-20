@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -610,17 +610,14 @@ bool InputConcatPattern::insertNCEOperation() {
 
             const auto padAttr = VPU::getPaddingAttr(ctx, PadInfo(padBeginAttr, padEndAttr));
 
-            auto inputPaddingAttr = nceOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)
-                                            ? mlir::cast<mlir::ArrayAttr>(nceOp->getAttr(VPU::INPUT_PADDING_ATTR_NAME))
-                                            : nullptr;
-            auto outputPaddingAttr =
+            auto parentOutputPaddingAttr =
                     nceOp->hasAttr(VPU::OUTPUT_PADDING_ATTR_NAME)
                             ? mlir::cast<mlir::ArrayAttr>(nceOp->getAttr(VPU::OUTPUT_PADDING_ATTR_NAME))
                             : nullptr;
 
             return builder.create<VPU::NCEAveragePoolOp>(
                     loc, newOperandType, newOperands[0], kernelSizeAttr, stridesAttr, padAttr, ppeAttr,
-                    /*multi_cluster_strategyAttr=*/nullptr, outputPaddingAttr, inputPaddingAttr);
+                    /*multi_cluster_strategyAttr=*/nullptr, parentOutputPaddingAttr, parentOutputPaddingAttr);
         };
 
         mlir::Operation* newAvgPoolOp = nullptr;
@@ -642,6 +639,16 @@ bool InputConcatPattern::insertNCEOperation() {
             copyOutOp->setOperand(0, newAvgPoolOp->getResult(0));
         }
         _log.trace("Inserted an identity AvgPooling {0}", *newAvgPoolOp);
+
+        // If the nce operation is followed by another cmx-concat, insert AvgPooling to avoid spilling
+        for (auto& use : nceOp->getResult(0).getUses()) {
+            auto userOp = use.getOwner();
+            if (auto concatOp = mlir::dyn_cast<VPU::ConcatOp>(userOp)) {
+                auto avgPoolOp = createPoolFunc(builder, appendLoc(nceOp->getLoc(), "inserted_AVG_Pooling"),
+                                                nceOp->getResult(0));
+                use.set(avgPoolOp->getResult(0));
+            }
+        }
     }
 
     return true;

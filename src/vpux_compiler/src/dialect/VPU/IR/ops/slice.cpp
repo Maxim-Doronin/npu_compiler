@@ -127,7 +127,7 @@ mlir::OpFoldResult VPU::SliceOp::fold(FoldAdaptor adaptor) {
         return getSource();
     }
 
-    if (const auto origContent = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (const auto origContent = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         const auto offset = Shape(parseIntArrayAttr<int64_t>(getStaticOffsets()));
         const auto shape = Shape(parseIntArrayAttr<int64_t>(getStaticSizes()));
         return static_cast<Const::ContentAttr>(origContent).transform().subview(offset, shape).get();
@@ -146,27 +146,67 @@ class ComposeSlice final : public mlir::OpRewritePattern<VPU::SliceOp> {
 public:
     using OpRewritePattern::OpRewritePattern;
 
-    mlir::LogicalResult matchAndRewrite(VPU::SliceOp op, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(VPU::SliceOp origOp, mlir::PatternRewriter& rewriter) const final {
+        auto producerSliceOp = origOp.getSource().getDefiningOp<VPU::SliceOp>();
+        if (producerSliceOp == nullptr) {
+            return mlir::failure();
+        }
+
+        auto finalOffsets = parseIntArrayAttr<int64_t>(producerSliceOp.getStaticOffsets());
+        const auto secondOffsets = parseIntArrayAttr<int64_t>(origOp.getStaticOffsets());
+        for (auto i : irange(finalOffsets.size())) {
+            finalOffsets[i] += secondOffsets[i];
+        }
+
+        const auto finalOffsetsAttr = getIntArrayAttr(getContext(), finalOffsets);
+        const auto finalShapeAttr = origOp.getStaticSizes();
+        rewriter.replaceOpWithNewOp<VPU::SliceOp>(origOp, producerSliceOp.getSource(), finalOffsetsAttr,
+                                                  finalShapeAttr);
+
+        return mlir::success();
+    }
 };
 
-mlir::LogicalResult ComposeSlice::matchAndRewrite(VPU::SliceOp origOp, mlir::PatternRewriter& rewriter) const {
-    auto producerSliceOp = origOp.getSource().getDefiningOp<VPU::SliceOp>();
-    if (producerSliceOp == nullptr) {
-        return mlir::failure();
+// Remove redundant pairs of Expand->Slice operations which negate each other's effects For example:
+//
+// Case 1. Only expand at the end
+// [1, 16, 1, 1]
+//   -> Expand {pads_begin = [0, 0, 0, 0], pads_end = [15, 0, 0, 0]} -> [16, 16, 1, 1]
+//   -> Slice  {offsets =    [0, 0, 0, 0], sizes =    [1, 16, 1, 1]} -> [1, 16, 1, 1]
+//
+// Case 2. Expand on both sides
+// [1, 16, 1, 1]
+//   -> Expand {pads_begin = [4, 0, 0, 0], pads_end = [15, 0, 0, 0]} -> [20, 16, 1, 1]
+//   -> Slice  {offsets =    [4, 0, 0, 0], sizes =    [1, 16, 1, 1]} -> [1, 16, 1, 1]
+class RemoveRedundantExpandSlice final : public mlir::OpRewritePattern<VPU::SliceOp> {
+public:
+    using OpRewritePattern::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(VPU::SliceOp sliceOp, mlir::PatternRewriter& rewriter) const final {
+        auto expandOp = sliceOp.getSource().getDefiningOp<VPU::ExpandOp>();
+        if (expandOp == nullptr) {
+            return mlir::failure();
+        }
+
+        const auto origInputShape = getShape(expandOp.getInput());
+        const auto origOutputShape = getShape(sliceOp.getResult());
+        if (origInputShape != origOutputShape) {
+            return mlir::failure();
+        }
+
+        const auto expandPadsBegin = parseIntArrayAttr<int64_t>(expandOp.getPadsBegin());
+        const auto sliceOffsets = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
+        for (size_t i = 0; i < origInputShape.size(); ++i) {
+            if (sliceOffsets[i] - expandPadsBegin[i] != 0) {
+                return mlir::failure();
+            }
+        }
+
+        rewriter.replaceAllOpUsesWith(sliceOp, expandOp.getInput());
+
+        return mlir::success();
     }
-
-    auto finalOffsets = parseIntArrayAttr<int64_t>(producerSliceOp.getStaticOffsets());
-    const auto secondOffsets = parseIntArrayAttr<int64_t>(origOp.getStaticOffsets());
-    for (auto i : irange(finalOffsets.size())) {
-        finalOffsets[i] += secondOffsets[i];
-    }
-
-    const auto finalOffsetsAttr = getIntArrayAttr(getContext(), finalOffsets);
-    const auto finalShapeAttr = origOp.getStaticSizes();
-    rewriter.replaceOpWithNewOp<VPU::SliceOp>(origOp, producerSliceOp.getSource(), finalOffsetsAttr, finalShapeAttr);
-
-    return mlir::success();
-}
+};
 
 }  // namespace
 
@@ -176,4 +216,5 @@ mlir::LogicalResult ComposeSlice::matchAndRewrite(VPU::SliceOp origOp, mlir::Pat
 
 void vpux::VPU::SliceOp::getCanonicalizationPatterns(mlir::RewritePatternSet& results, mlir::MLIRContext* ctx) {
     results.add<ComposeSlice>(ctx);
+    results.add<RemoveRedundantExpandSlice>(ctx);
 }

@@ -139,6 +139,7 @@ mlir::LogicalResult convertDepthFirstOp(mlir::MLIRContext* ctx, IE::DepthToSpace
     }
 
     auto blockSize = d2sOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0, "Unsupported block size: {0}", blockSize);
 
     auto filterWidth = blockSize;
     auto filterHeight = blockSize;
@@ -223,8 +224,11 @@ mlir::LogicalResult ConvertDepth2SpaceToTransposedConv::matchAndRewrite(IE::Dept
     auto input = d2sOp.getInput();
     auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
 
-    auto blockSize = d2sOp.getBlockSize();
     auto mode = d2sOp.getMode();
+    auto blockSize = d2sOp.getBlockSize();
+    if (blockSize <= 0) {
+        return matchFailed(_log, rewriter, d2sOp, "Unsupported block size: {0}", blockSize);
+    }
 
     if (_benefitVerifier->isBeneficialConversion(_log, rewriter, d2sOp).failed()) {
         return matchFailed(_log, rewriter, d2sOp, "DepthToSpace is not beneficial as TransposedConv: '{0}'",

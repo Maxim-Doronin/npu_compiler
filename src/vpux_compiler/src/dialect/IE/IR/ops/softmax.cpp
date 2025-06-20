@@ -5,9 +5,9 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -62,17 +62,7 @@ mlir::OpFoldResult vpux::IE::SoftMaxOp::fold(FoldAdaptor) {
 
 mlir::LogicalResult vpux::IE::SoftMaxOp::reifyResultShapes(mlir::OpBuilder& builder,
                                                            mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
-    auto loc = getLoc();
-    auto input = getInput();
-    auto inputType = mlir::cast<mlir::RankedTensorType>(input.getType());
-    auto rank = inputType.getRank();
-
-    SmallVector<mlir::OpFoldResult> dims;
-    for (auto i : irange(rank)) {
-        dims.push_back(IE::reifyDim(builder, input, inputType, i, loc));
-    }
-
-    reifiedReturnShapes.emplace_back(std::move(dims));
+    reifiedReturnShapes.emplace_back(reifyTrivialTensor(builder, getInput(), getLoc()));
     return mlir::success();
 }
 

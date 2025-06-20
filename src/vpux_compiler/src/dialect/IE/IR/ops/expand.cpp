@@ -94,7 +94,7 @@ mlir::OpFoldResult vpux::IE::ExpandOp::fold(FoldAdaptor adaptor) {
         }
     }
 
-    if (const auto attr = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (const auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         const auto padsBefore = Shape(parseIntArrayAttr<int64_t>(getPadsBegin()));
         const auto padsAfter = Shape(parseIntArrayAttr<int64_t>(getPadsEnd()));
         return static_cast<Const::ContentAttr>(attr).transform().padWithZero(padsBefore, padsAfter).get();

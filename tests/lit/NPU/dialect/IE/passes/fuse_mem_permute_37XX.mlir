@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -765,4 +765,65 @@ func.func @MemPermuteAcrossQuantizeCast(%arg0: tensor<1x16x64x64xf16, {order = #
     // CHECK:       [[PERMUTE_CAST:%.*]] = IE.PermuteCast([[ADD]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x16x64x64x!qElemType1, {order = #NWCH}> -> tensor<1x64x64x16x!qElemType1, {order = #NHWC}>
     // CHECK:       [[QUANTIZE_CAST:%.*]] = IE.QuantizeCast([[PERMUTE_CAST]]) {dstElemType = !qElemType} : tensor<1x64x64x16x!qElemType1, {order = #NHWC}> -> tensor<1x64x64x16x!qElemType, {order = #NHWC}>
     // CHECK:       return [[QUANTIZE_CAST]] : tensor<1x64x64x16x!qElemType, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+#WNHC = affine_map<(d0, d1, d2, d3) -> (d3, d0, d2, d1)>
+
+// CHECK-LABEL: @MemPermuteToPoolAffineReshape
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x64x29x1xf16, {order = #NHWC}>
+func.func @MemPermuteToPoolAffineReshape(%arg0: tensor<1x64x29x1xf16, {order = #NHWC}>) -> tensor<64x29x1x1xf16, {order = #NHWC}> {
+   %0 = IE.MaxPool(%arg0) {
+        kernel_size = [1, 1],
+        pads_begin = [0, 0],
+        pads_end = [0, 0],
+        rounding_type = #IE.rounding_type<FLOOR>,
+        strides = [1, 1]
+    } : tensor<1x64x29x1xf16, {order = #NHWC}> -> tensor<1x64x29x1xf16, {order = #NHWC}>
+
+    %1 = IE.MemPermute(%0) {
+        dst_order = #NHWC,
+        mem_perm = #WNHC
+    } : tensor<1x64x29x1xf16, {order = #NHWC}> -> tensor<64x29x1x1xf16, {order = #NHWC}>
+
+    return %1 : tensor<64x29x1x1xf16, {order = #NHWC}>
+
+    // CHECK:                 [[POOL:%.+]] = IE.MaxPool([[INPUT]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x29x1xf16, {order = #NHWC}> -> tensor<1x64x29x1xf16, {order = #NCWH}>
+    // CHECK:                 [[AFFINE_RESHAPE:%.+]] = IE.AffineReshape([[POOL]])
+    // CHECK-SAME{LITERAL}:       {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [64, 29, 1, 1]} : tensor<1x64x29x1xf16, {order = #NCWH}> -> tensor<64x29x1x1xf16, {order = #NHWC}>
+    // CHECK:                 return     [[AFFINE_RESHAPE]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+#WNHC = affine_map<(d0, d1, d2, d3) -> (d3, d0, d2, d1)>
+#map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @NotMemPermuteToPoolAffineReshape
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x64x29x8xf16, {order = #NHWC}>
+func.func @NotMemPermuteToPoolAffineReshape(%arg0: tensor<1x64x29x8xf16, {order = #NHWC}>) -> tensor<64x29x1x8xf16, {order = #NHWC}> {
+   %0 = IE.MaxPool(%arg0) {
+        kernel_size = [1, 1],
+        pads_begin = [0, 0],
+        pads_end = [0, 0],
+        rounding_type = #IE.rounding_type<FLOOR>,
+        strides = [1, 1]
+    } : tensor<1x64x29x8xf16, {order = #NHWC}> -> tensor<1x64x29x8xf16, {order = #NHWC}>
+
+    %1 = IE.MemPermute(%0) {
+        dst_order = #NHWC,
+        mem_perm = #WNHC
+    } : tensor<1x64x29x8xf16, {order = #NHWC}> -> tensor<64x29x1x8xf16, {order = #NHWC}>
+
+    return %1 : tensor<64x29x1x8xf16, {order = #NHWC}>
+
+    // CHECK:                 [[POOL:%.+]] = IE.MaxPool([[INPUT]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x64x29x8xf16, {order = #NHWC}> -> tensor<1x64x29x8xf16, {order = #NCWH}>
+    // CHECK:                 [[PERMUTE_CAST:%.+]] = IE.PermuteCast([[POOL]])
+    // CHECK-SAME:                {dst_order = #NHWC, mem_perm = #map} : tensor<1x64x29x8xf16, {order = #NCWH}> -> tensor<64x29x1x8xf16, {order = #NHWC}>
+    // CHECK:                 return     [[PERMUTE_CAST]]
 }

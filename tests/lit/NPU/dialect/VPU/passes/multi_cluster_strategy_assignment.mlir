@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --multi-cluster-strategy-assignment %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @EltwiseAddAssignedSOHOverlapped
@@ -52,7 +53,7 @@ func.func @InterpolateNearestAssignedClustering(%input_data: tensor<1x16x1x1xf16
     %weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x16x2x2xi1> = dense<1> : tensor<1x16x2x2xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 16, dataShape = [1, 16, 1, 1],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [16], dataShape = [1, 16, 1, 1],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 16, 2, 2]>
     } -> tensor<1x1x2x2xi32, {order = #NHWC}>
@@ -110,7 +111,7 @@ func.func @InterpolateBilinearAssignedClustering(%input_data: tensor<1x16x1x1xf1
     %weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x16x3x3xi1> = dense<1> : tensor<1x16x3x3xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 16, dataShape = [1, 16, 1, 1],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [16], dataShape = [1, 16, 1, 1],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 16, 3, 3]>
     } -> tensor<1x1x3x3xi32, {order = #NHWC}>
@@ -875,6 +876,18 @@ func.func @GatherNDAssignedClustering(%arg0: tensor<1x1x1792x16xf16>, %arg1: ten
 
 // -----
 
+// CHECK-LABEL: @SoftMaxAssignedSplitOverGroup
+func.func @SoftMaxAssignedSplitOverGroup(%arg0: tensor<8x1x1x512x64xf16>) -> tensor<8x1x1x512x64xf16> {
+    %0 = VPU.SoftMax(%arg0) {axisInd = 4 : i64} : tensor<8x1x1x512x64xf16> -> tensor<8x1x1x512x64xf16>
+
+    return %0 : tensor<8x1x1x512x64xf16>
+
+    //CHECK:   [[ResultSoftMax:%.*]] = VPU.SoftMax(%arg0) {axisInd = 4 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverGroup>} : tensor<8x1x1x512x64xf16> -> tensor<8x1x1x512x64xf16>
+    //CHECK:   return [[ResultSoftMax]] : tensor<8x1x1x512x64xf16>
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL:   @ConvAssignedSplitOverHeight
@@ -889,6 +902,43 @@ func.func @ConvAssignedSplitOverHeight(%arg0: tensor<1x1504x375x4xf16, {order = 
     return %1 : tensor<1x64x375x4xf16, {order = #NHWC}>
 
     // CHECK:       [[CONV:%.+]] = VPU.NCE.Convolution
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 1.0:128>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ThreeConvolutionsAssignedSOH
+func.func @ThreeConvolutionsAssignedSOH(%input: tensor<1x128x92x92x!qElemType, {order = #NHWC}>) -> tensor<1x256x92x92x!qElemType, {order = #NHWC}> {
+    %weights1 = const.Declare tensor<256x128x3x3x!qElemType, {order = #NHWC}> = dense<128> : tensor<256x128x3x3xui8, {order = #NHWC}>
+    %weights_table1 = const.Declare tensor<256x1x1x4xsi32> = dense<1> : tensor<256x1x1x4xsi32>
+    %weights2 = const.Declare tensor<256x256x3x3x!qElemType, {order = #NHWC}> = dense<128> : tensor<256x256x3x3xui8, {order = #NHWC}>
+    %weights_table2 = const.Declare tensor<256x1x1x4xsi32> = dense<1> : tensor<256x1x1x4xsi32>
+    %weights3 = const.Declare tensor<256x256x3x3x!qElemType, {order = #NHWC}> = dense<128> : tensor<256x256x3x3xui8, {order = #NHWC}>
+    %weights_table3 = const.Declare tensor<256x1x1x4xsi32> = dense<1> : tensor<256x1x1x4xsi32>
+
+    %conv1 = VPU.NCE.Convolution(%input, %weights1, %weights_table1) {
+        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+        ppe = #VPU.PPEStub<>, rawFilterShape = [256, 128, 3, 3], strides = [1, 1]} :
+            tensor<1x128x92x92x!qElemType, {order = #NHWC}>, tensor<256x128x3x3x!qElemType, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x92x92x!qElemType, {order = #NHWC}>
+    %conv2 = VPU.NCE.Convolution(%conv1, %weights2, %weights_table2) {
+        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+        ppe = #VPU.PPEStub<>, rawFilterShape = [256, 256, 3, 3], strides = [1, 1]} :
+            tensor<1x256x92x92x!qElemType, {order = #NHWC}>, tensor<256x256x3x3x!qElemType, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x92x92x!qElemType, {order = #NHWC}>
+    %conv3 = VPU.NCE.Convolution(%conv2, %weights3, %weights_table3) {
+        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+        ppe = #VPU.PPEStub<>, rawFilterShape = [256, 256, 3, 3], strides = [1, 1]} :
+            tensor<1x256x92x92x!qElemType, {order = #NHWC}>, tensor<256x256x3x3x!qElemType, {order = #NHWC}>, tensor<256x1x1x4xsi32> -> tensor<1x256x92x92x!qElemType, {order = #NHWC}>
+
+    return %conv3 : tensor<1x256x92x92x!qElemType, {order = #NHWC}>
+
+    // CHECK:       VPU.NCE.Convolution
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+    // CHECK:       VPU.NCE.Convolution
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+    // CHECK:       VPU.NCE.Convolution
     // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
 }
 
@@ -1176,6 +1226,90 @@ func.func @GridSampleAssignedSplitOverKernel(%arg0: tensor<1x32x48x720xf16>, %ar
 
 // -----
 
+// CHECK-LABEL:   @GridSampleAssignedSplitOverHeightWithBatch
+// CHECK-SAME:    [[INPUT0:%.+]]: tensor<8x16x40x40xf16>
+// CHECK-SAME:    [[INPUT1:%.+]]: tensor<8x300x6x2xf16>
+func.func @GridSampleAssignedSplitOverHeightWithBatch(%arg0: tensor<8x16x40x40xf16>, %arg1: tensor<8x300x6x2xf16>) -> tensor<8x16x300x6xf16> {
+    %0 = VPU.GridSample(%arg0, %arg1) {mode = #IE.grid_sample_mode<BILINEAR>, padding_mode = #IE.grid_sample_padding_mode<ZEROS>} : tensor<8x16x40x40xf16>, tensor<8x300x6x2xf16> -> tensor<8x16x300x6xf16>
+    return %0 : tensor<8x16x300x6xf16>
+
+    // CHECK:       [[GRID_SAMPLE:%.+]] = VPU.GridSample([[INPUT0]], [[INPUT1]])
+    // CHECK-SAME:         {mode = #IE.grid_sample_mode<BILINEAR>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, padding_mode = #IE.grid_sample_padding_mode<ZEROS>}
+    // CHECK-SAME:         : tensor<8x16x40x40xf16>, tensor<8x300x6x2xf16> -> tensor<8x16x300x6xf16>
+
+    // CHECK:        return [[GRID_SAMPLE]] : tensor<8x16x300x6xf16>
+}
+
+// -----
+
+// CHECK-LABEL:   @GridSampleAssignedSplitOverBatch
+// CHECK-SAME:    [[INPUT0:%.+]]: tensor<8x16x40x40xf16>
+// CHECK-SAME:    [[INPUT1:%.+]]: tensor<8x1x6x2xf16>
+func.func @GridSampleAssignedSplitOverBatch(%arg0: tensor<8x16x40x40xf16>, %arg1: tensor<8x1x6x2xf16>) -> tensor<8x16x1x6xf16> {
+    %0 = VPU.GridSample(%arg0, %arg1) {mode = #IE.grid_sample_mode<BILINEAR>, padding_mode = #IE.grid_sample_padding_mode<ZEROS>} : tensor<8x16x40x40xf16>, tensor<8x1x6x2xf16> -> tensor<8x16x1x6xf16>
+    return %0 : tensor<8x16x1x6xf16>
+
+    // CHECK:       [[GRID_SAMPLE:%.+]] = VPU.GridSample([[INPUT0]], [[INPUT1]])
+    // CHECK-SAME:         {mode = #IE.grid_sample_mode<BILINEAR>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverBatch>, padding_mode = #IE.grid_sample_padding_mode<ZEROS>}
+    // CHECK-SAME:         : tensor<8x16x40x40xf16>, tensor<8x1x6x2xf16> -> tensor<8x16x1x6xf16>
+
+    // CHECK:        return [[GRID_SAMPLE]] : tensor<8x16x1x6xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @DynamicQuantizeAssignedSplitOverHeight
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1x1792x16xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeAssignedSplitOverHeight(%arg0: tensor<1x1x1792x16xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>) -> (tensor<1x1x1792x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+    %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) : tensor<1x1x1792x16xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1792x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x1x1792x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK:       [[OUTPUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[INPUT0]], [[INPUT1]], [[INPUT2]]) {
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+    // CHECK:       return [[OUTPUT]], [[SCALE]], [[ZP]] : tensor<1x1x1792x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
+// CHECK-LABEL: @DynamicQuantizeAssignedSplitOverKernel
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1792x1x16xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeAssignedSplitOverKernel(%arg0: tensor<1x1792x1x16xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>) -> (tensor<1x1792x1x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+    %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) : tensor<1x1792x1x16xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1792x1x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x1792x1x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK:       [[OUTPUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[INPUT0]], [[INPUT1]], [[INPUT2]]) {
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
+    // CHECK:       return [[OUTPUT]], [[SCALE]], [[ZP]] : tensor<1x1792x1x16xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
+// CHECK-LABEL: @DynamicQuantizeAssignedClustering
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1x1x1xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeAssignedClustering(%arg0: tensor<1x1x1x1xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>) -> (tensor<1x1x1x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+    %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) : tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x1x1x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK:       [[OUTPUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[INPUT0]], [[INPUT1]], [[INPUT2]]) {
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
+    // CHECK       return [[OUTPUT]], [[SCALE]], [[ZP]] : tensor<1x1x1x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
+// CHECK-LABEL: @DynamicQuantizeAssignedSplitOverWidth
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1x1x8192xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeAssignedSplitOverWidth(%arg0: tensor<1x1x1x8192xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>) -> (tensor<1x1x1x8192xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+    %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) : tensor<1x1x1x8192xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1x8192xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x1x1x8192xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK:       [[OUTPUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[INPUT0]], [[INPUT1]], [[INPUT2]]) {
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>
+    // CHECK       return [[OUTPUT]], [[SCALE]], [[ZP]] : tensor<1x1x1x8192xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
 // CHECK-LABEL:   @RandomUniformAssignNoStrategyWithNonZeroSeeds
 // CHECK-SAME:    [[INPUT0:%.+]]: tensor<1x1x1x1xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>
 func.func @RandomUniformAssignNoStrategyWithNonZeroSeeds(%arg0: tensor<1x1x1x1xf32>, %arg1: tensor<1x1x1x1xf32>) -> tensor<1x1x512x1024xf32> {
@@ -1204,4 +1338,101 @@ func.func @ReverseAssignedSplitOverBatch(%arg0: tensor<2x1x16x1xf16>) -> tensor<
     // CHECK-SAME:         multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverBatch>} :
     // CHECK-SAME:      tensor<2x1x16x1xf16> -> tensor<2x1x16x1xf16>
     // CHECK:        return [[REVERSE]] : tensor<2x1x16x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL:   @RollAssignedSplitOverHeight
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x77x256x96xf16>
+func.func @RollAssignedSplitOverHeight(%arg0: tensor<1x77x256x96xf16>) -> tensor<1x77x256x96xf16> {
+    %shift = const.Declare tensor<1x1x1x1xsi32> = dense<[3]> : tensor<1xsi64>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<si32>]
+    %axes = const.Declare tensor<1x1x1x1xsi32> = dense<[1]> : tensor<1xsi64>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<si32>]
+    %0 = VPU.Roll(%arg0, %shift, %axes) : tensor<1x77x256x96xf16>, tensor<1x1x1x1xsi32>, tensor<1x1x1x1xsi32> -> tensor<1x77x256x96xf16>
+    return %0 : tensor<1x77x256x96xf16>
+
+    // CHECK:       [[SHIFT:%.+]] = const.Declare tensor<1x1x1x1xsi32>
+    // CHECK:       [[AXES:%.+]] = const.Declare tensor<1x1x1x1xsi32>
+    // CHECK:       [[ROLL:%.+]] = VPU.Roll([[INPUT]], [[SHIFT]], [[AXES]]) {
+    // CHECK-SAME:         multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+    // CHECK:        return [[ROLL]] : tensor<1x77x256x96xf16>
+}
+
+// -----
+
+// CHECK-LABEL:   @RollAssignedClustering
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x77x133x96xf16>
+func.func @RollAssignedClustering(%arg0: tensor<1x77x133x96xf16>) -> tensor<1x77x133x96xf16> {
+    %shift = const.Declare tensor<1x1x1x2xsi32> = dense<[3,3]> : tensor<2xsi64>, [#const.Reshape<[1, 1, 1, 2]>, #const.CastElemType<si32>]
+    %axes = const.Declare tensor<1x1x1x2xsi32> = dense<[1,2]> : tensor<2xsi64>, [#const.Reshape<[1, 1, 1, 2]>, #const.CastElemType<si32>]
+    %0 = VPU.Roll(%arg0, %shift, %axes) : tensor<1x77x133x96xf16>, tensor<1x1x1x2xsi32>, tensor<1x1x1x2xsi32> -> tensor<1x77x133x96xf16>
+    return %0 : tensor<1x77x133x96xf16>
+
+    // CHECK:       [[SHIFT:%.+]] = const.Declare tensor<1x1x1x2xsi32>
+    // CHECK:       [[AXES:%.+]] = const.Declare tensor<1x1x1x2xsi32>
+    // CHECK:       [[ROLL:%.+]] = VPU.Roll([[INPUT]], [[SHIFT]], [[AXES]]) {
+    // CHECK-SAME:         multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
+    // CHECK:        return [[ROLL]] : tensor<1x77x133x96xf16>
+}
+
+// -----
+
+// CHECK-LABEL:   @ContinuousSWOpsSplitOverKernel
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x1x1x1xf16>, [[INPUT1:%.+]]: tensor<1x1x1x1xf16>, [[INPUT2:%.+]]: tensor<1x32x1024x1024xf16>, [[INPUT3:%.+]]: tensor<1x1x1024x1024xf16>)
+func.func @ContinuousSWOpsSplitOverKernel(%arg0: tensor<1x1x1x1xf16>, %arg1: tensor<1x1x1x1xf16>, %arg2: tensor<1x32x1024x1024xf16>, %arg3: tensor<1x1x1024x1024xf16>) -> tensor<1x32x1024x1024xf16> {
+    %426 = VPU.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
+    %427 = VPU.Multiply(%arg2, %426) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x1024x1024xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x1024x1024xf16>
+    %429 = VPU.Add(%427, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x1024x1024xf16>, tensor<1x1x1024x1024xf16> -> tensor<1x32x1024x1024xf16>
+    %430 = VPU.SoftMax(%429) {axisInd = 3 : i64} : tensor<1x32x1024x1024xf16> -> tensor<1x32x1024x1024xf16>
+
+    return %430 :  tensor<1x32x1024x1024xf16>
+
+    // CHEKC: [[MULTIPLY1:%.+]] = VPU.Multiply([[INPUT0]], [[INPUT1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1x1xf16>
+    // CHEKC: [[MULTIPLY2:%.+]] = VPU.Multiply([[INPUT2]], [[MULTIPLY1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x1024x1024xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x1024x1024xf16>
+    // CHEKC: [[ADD:%.+]] = VPU.Add([[MULTIPLY2]], [[INPUT3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x1024x1024xf16>, tensor<1x1x1024x1024xf16> -> tensor<1x32x1024x1024xf16>
+    // CHEKC: [[SOFTMAX:%.+]] = VPU.SoftMax([ADD]) {axisInd = 3 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x1024x1024xf16> -> tensor<1x32x1024x1024xf16>
+    // CHEKC: return [[SOFTMAX]]
+}
+
+// -----
+
+// CHECK-LABEL:   @GreaterEqualAssignedSplitOverKernel
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x1024x1x1xsi32>
+// CHECK-SAME:    [[INPUT_1:%.+]]: tensor<1x1x1x1xsi32>
+func.func @GreaterEqualAssignedSplitOverKernel(%arg0: tensor<1x1024x1x1xsi32>, %arg1: tensor<1x1x1x1xsi32>) -> tensor<1x1024x1x1xsi32> {
+    %0 = VPU.GreaterEqual(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024x1x1xsi32>, tensor<1x1x1x1xsi32> -> tensor<1x1024x1x1xsi32>
+    return %0 : tensor<1x1024x1x1xsi32>
+
+    // CHECK:        [[Result:%.+]] = VPU.GreaterEqual([[INPUT_0]], [[INPUT_1]]) {
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>}
+    // CHECK:        return [[Result]] : tensor<1x1024x1x1xsi32>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL:   @GreaterEqualAssignedSplitOverH
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x1x1024x1xsi32>
+// CHECK-SAME:    [[INPUT_1:%.+]]: tensor<1x1x1x1xsi32>
+func.func @GreaterEqualAssignedSplitOverH(%arg0: tensor<1x1x1024x1xsi32>, %arg1: tensor<1x1x1x1xsi32>) -> tensor<1x1x1024x1xsi32> {
+    %0 = VPU.GreaterEqual(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1xsi32>, tensor<1x1x1x1xsi32> -> tensor<1x1x1024x1xsi32>
+    return %0 : tensor<1x1x1024x1xsi32>
+
+    //CHECK:        [[Result:%.+]] = VPU.GreaterEqual([[INPUT_0]], [[INPUT_1]]) {
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>}
+    //CHECK:        return [[Result]] : tensor<1x1x1024x1xsi32>
+}
+
+// -----
+
+// CHECK-LABEL:   @GreaterEqualAssignedSplitOverWidth
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x1x1x1024xsi32>
+// CHECK-SAME:    [[INPUT_1:%.+]]: tensor<1x1x1x1xsi32>
+func.func @GreaterEqualAssignedSplitOverWidth(%arg0: tensor<1x1x1x1024xsi32>, %arg1: tensor<1x1x1x1xsi32>) -> tensor<1x1x1x1024xsi32> {
+    %0 = VPU.GreaterEqual(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1024xsi32>, tensor<1x1x1x1xsi32> -> tensor<1x1x1x1024xsi32>
+    return %0 : tensor<1x1x1x1024xsi32>
+
+    //CHECK:        [[Result:%.+]] = VPU.GreaterEqual([[INPUT_0]], [[INPUT_1]]) {
+    // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>}
+    //CHECK:        return [[Result]] : tensor<1x1x1x1024xsi32>
 }

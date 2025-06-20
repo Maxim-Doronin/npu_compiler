@@ -258,70 +258,76 @@ SmallVector<int64_t> MoveLayerBeforeSlice<ConcreteOp>::getNewSizes(IE::SliceOp s
 }
 
 //
-// MoveMultiplyBeforeSlice
+// MoveEltwiseBeforeSlice
 //
+template <typename EltwiseOp>
+class MoveEltwiseBeforeSlice final : public MoveLayerBeforeSlice<EltwiseOp> {
+    using MoveLayerBeforeSlice<EltwiseOp>::_log;
 
-class MoveMultiplyBeforeSlice final : public MoveLayerBeforeSlice<IE::MultiplyOp> {
 public:
-    MoveMultiplyBeforeSlice(mlir::MLIRContext* ctx, Logger log): MoveLayerBeforeSlice<IE::MultiplyOp>(ctx, log) {
+    MoveEltwiseBeforeSlice(mlir::MLIRContext* ctx, Logger log): MoveLayerBeforeSlice<EltwiseOp>(ctx, log) {
     }
 
 public:
-    bool isLegalTransformation(IE::SliceOp sliceOp, IE::MultiplyOp layerOp,
-                               ArrayRef<IE::MultiplyOp> siblingLayerOps) const override;
-    bool sameAttributes(IE::MultiplyOp layerOp, IE::MultiplyOp currLayerOp) const override;
-    mlir::Operation* createNewLayerOp(ArrayRef<IE::MultiplyOp> siblingLayerOps, IE::SliceOp sliceOp,
+    bool isLegalTransformation(IE::SliceOp sliceOp, EltwiseOp layerOp,
+                               ArrayRef<EltwiseOp> siblingLayerOps) const override;
+    bool sameAttributes(EltwiseOp layerOp, EltwiseOp currLayerOp) const override;
+    mlir::Operation* createNewLayerOp(ArrayRef<EltwiseOp> siblingLayerOps, IE::SliceOp sliceOp,
                                       mlir::PatternRewriter& rewriter) const override;
 
 private:
     mlir::Value permuteCastToIdentityOrder(mlir::Value input, mlir::PatternRewriter& rewriter) const;
 };
 
-bool MoveMultiplyBeforeSlice::isLegalTransformation(IE::SliceOp sliceOp, IE::MultiplyOp,
-                                                    ArrayRef<IE::MultiplyOp> siblingLayerOps) const {
+template <typename EltwiseOp>
+bool MoveEltwiseBeforeSlice<EltwiseOp>::isLegalTransformation(IE::SliceOp sliceOp, EltwiseOp,
+                                                              ArrayRef<EltwiseOp> siblingLayerOps) const {
     const auto sliceAxes = getSliceAxes(sliceOp);
     if (sliceAxes.size() != 1) {
         return false;
     }
 
-    // if all sliced MultiplyOp has AddOp after it, refuse to merge it to avoid breaking
-    // the following optimization for strided slice/concat
-    auto hasOneAddOpAfter = [](IE::MultiplyOp multiplyOp) {
-        if (!multiplyOp.getOutput().hasOneUse()) {
-            return false;
-        }
-        return mlir::dyn_cast_or_null<IE::AddOp>(*multiplyOp.getOutput().getUsers().begin()) != nullptr;
+    auto isCstAndSplat = [](mlir::Value value) {
+        auto cstOp = mlir::dyn_cast_or_null<Const::DeclareOp>(value.getDefiningOp());
+        return cstOp != nullptr && cstOp.getContentAttr().isSplat();
     };
-    if (llvm::all_of(siblingLayerOps, hasOneAddOpAfter)) {
-        return false;
-    }
+    auto getSourceSliceOp = [&](auto eltwiseOp) -> IE::SliceOp {
+        auto input1 = eltwiseOp.getInput1();
+        auto input2 = eltwiseOp.getInput2();
 
-    SmallVector<IE::SliceOp> sliceOps;
-    for (auto multiplyOp : siblingLayerOps) {
-        auto input2 = multiplyOp.getInput2();
-        auto input2Cst = input2.getDefiningOp<Const::DeclareOp>();
-        if (input2Cst == nullptr || !input2Cst.getContentAttr().isSplat()) {
-            return false;
+        IE::SliceOp inputSliceOp = nullptr;
+        auto slice1 = mlir::dyn_cast_or_null<IE::SliceOp>(input1.getDefiningOp());
+        auto slice2 = mlir::dyn_cast_or_null<IE::SliceOp>(input2.getDefiningOp());
+        if (slice1 != nullptr && isCstAndSplat(input2)) {
+            inputSliceOp = slice1;
+        } else if (slice2 != nullptr && isCstAndSplat(input1)) {
+            inputSliceOp = slice2;
         }
 
-        auto inputSliceOp = multiplyOp.getInput1().getDefiningOp<IE::SliceOp>();
+        return inputSliceOp;
+    };
+    // ensure all sibling eltwise ops has sliced source and get the sliceOp list
+    SmallVector<IE::SliceOp> sliceOps;
+    for (auto eltwiseOp : siblingLayerOps) {
+        auto inputSliceOp = getSourceSliceOp(eltwiseOp);
         if (inputSliceOp == nullptr) {
             return false;
         }
-
         sliceOps.push_back(inputSliceOp);
     }
 
     return isSourceFullySlicedWithoutIntervalOrOverlap(sliceOp.getSource(), sliceOps);
 }
 
-bool MoveMultiplyBeforeSlice::sameAttributes(IE::MultiplyOp layerOp, IE::MultiplyOp currLayerOp) const {
+template <typename EltwiseOp>
+bool MoveEltwiseBeforeSlice<EltwiseOp>::sameAttributes(EltwiseOp layerOp, EltwiseOp currLayerOp) const {
     return layerOp.getInput1().getType() == currLayerOp.getInput1().getType() &&
            layerOp.getInput2().getType() == currLayerOp.getInput2().getType();
 }
 
-mlir::Value MoveMultiplyBeforeSlice::permuteCastToIdentityOrder(mlir::Value input,
-                                                                mlir::PatternRewriter& rewriter) const {
+template <typename EltwiseOp>
+mlir::Value MoveEltwiseBeforeSlice<EltwiseOp>::permuteCastToIdentityOrder(mlir::Value input,
+                                                                          mlir::PatternRewriter& rewriter) const {
     const auto ctx = rewriter.getContext();
     const auto inputShape = getShape(input);
     const auto identityOrder = DimsOrder::fromNumDims(inputShape.size());
@@ -331,8 +337,10 @@ mlir::Value MoveMultiplyBeforeSlice::permuteCastToIdentityOrder(mlir::Value inpu
             mlir::AffineMap::getMultiDimIdentityMap(identityOrder.numDims(), ctx));
 }
 
-mlir::Operation* MoveMultiplyBeforeSlice::createNewLayerOp(ArrayRef<IE::MultiplyOp> siblingLayerOps,
-                                                           IE::SliceOp sliceOp, mlir::PatternRewriter& rewriter) const {
+template <typename EltwiseOp>
+mlir::Operation* MoveEltwiseBeforeSlice<EltwiseOp>::createNewLayerOp(ArrayRef<EltwiseOp> siblingLayerOps,
+                                                                     IE::SliceOp sliceOp,
+                                                                     mlir::PatternRewriter& rewriter) const {
     auto ctx = rewriter.getContext();
 
     auto firstMultiply = siblingLayerOps.front();
@@ -353,8 +361,6 @@ mlir::Operation* MoveMultiplyBeforeSlice::createNewLayerOp(ArrayRef<IE::Multiply
     targetShape[sliceDimPos] = targetShape[sliceDimPos] / checked_cast<int64_t>(siblingLayerOps.size());
     targetShape.insert(targetShape.begin() + sliceDimPos, checked_cast<int64_t>(siblingLayerOps.size()));
 
-    _log.trace("[{0}] Reshape source from {1} to {2}", this->getDebugName(), canonicalSourceShape, targetShape);
-
     auto newLhs = rewriter.create<IE::ReshapeOp>(appendLoc(source.getLoc(), "_reshape_for_lhs"), canonicalPermuteCast,
                                                  nullptr, false,
                                                  getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
@@ -366,10 +372,16 @@ mlir::Operation* MoveMultiplyBeforeSlice::createNewLayerOp(ArrayRef<IE::Multiply
 
         return offsetsA[sliceDim] < offsetsB[sliceDim];
     };
-    auto sortedSiblingLayerOps = SmallVector<IE::MultiplyOp>(siblingLayerOps.begin(), siblingLayerOps.end());
-    llvm::sort(sortedSiblingLayerOps, [&](IE::MultiplyOp a, IE::MultiplyOp b) {
-        auto sliceA = a.getInput1().getDefiningOp<IE::SliceOp>();
-        auto sliceB = b.getInput1().getDefiningOp<IE::SliceOp>();
+    auto sortedSiblingLayerOps = SmallVector<EltwiseOp>(siblingLayerOps.begin(), siblingLayerOps.end());
+    llvm::sort(sortedSiblingLayerOps, [&](EltwiseOp a, EltwiseOp b) {
+        auto sliceA = mlir::dyn_cast_or_null<IE::SliceOp>(a.getInput1().getDefiningOp());
+        if (sliceA == nullptr) {
+            sliceA = mlir::dyn_cast_or_null<IE::SliceOp>(a.getInput2().getDefiningOp());
+        }
+        auto sliceB = mlir::dyn_cast_or_null<IE::SliceOp>(b.getInput1().getDefiningOp());
+        if (sliceB == nullptr) {
+            sliceB = mlir::dyn_cast_or_null<IE::SliceOp>(b.getInput2().getDefiningOp());
+        }
         return compareSliceOps(sliceA, sliceB);
     });
     // Concat rhs
@@ -390,10 +402,10 @@ mlir::Operation* MoveMultiplyBeforeSlice::createNewLayerOp(ArrayRef<IE::Multiply
     auto newRhs =
             rewriter.create<IE::ConcatOp>(appendLoc(source.getLoc(), "_concat_for_rhs"), concatRhs, Dim(sliceDimPos));
 
-    // Create new MultiplyOp
+    // Create new eltwiseOp
     auto multiply =
-            rewriter.create<IE::MultiplyOp>(appendLoc(source.getLoc(), "_merged_mul"), newLhs, newRhs,
-                                            firstMultiply.getAutoBroadcastAttr(), nullptr, nullptr, nullptr, nullptr);
+            rewriter.create<EltwiseOp>(appendLoc(source.getLoc(), "_merged_eltwise"), newLhs, newRhs,
+                                       firstMultiply.getAutoBroadcastAttr(), nullptr, nullptr, nullptr, nullptr);
 
     // Reshape to the original source MemShape
     auto outputReshape =
@@ -406,8 +418,7 @@ mlir::Operation* MoveMultiplyBeforeSlice::createNewLayerOp(ArrayRef<IE::Multiply
             appendLoc(multiply.getLoc(), "_output_permute_cast"), outputReshape, dimsOrder.toAffineMap(ctx),
             mlir::AffineMap::getMultiDimIdentityMap(sourceShape.size(), ctx));
 
-    _log.trace("[{0}] Successfully merged parallel Multiply operations", this->getDebugName());
-
+    _log.trace("[{0}] Successfully merged parallel Eltwise operations", this->getDebugName());
     return outPermuteCast.getDefiningOp();
 }
 
@@ -1186,7 +1197,8 @@ void OptimizeParallelLayers::safeRunOnFunc() {
     auto func = getOperation();
 
     mlir::RewritePatternSet patternsWithSlice(&ctx);
-    patternsWithSlice.add<MoveMultiplyBeforeSlice>(&ctx, _log);
+    patternsWithSlice.add<MoveEltwiseBeforeSlice<IE::MultiplyOp>>(&ctx, _log);
+    patternsWithSlice.add<MoveEltwiseBeforeSlice<IE::AddOp>>(&ctx, _log);
     patternsWithSlice.add<MoveReshapeBeforeSlice>(&ctx, _log);
     patternsWithSlice.add<MoveFCBeforeSlice>(&ctx, _log);
     patternsWithSlice.add<MoveTanhBeforeSlice>(&ctx, _log);

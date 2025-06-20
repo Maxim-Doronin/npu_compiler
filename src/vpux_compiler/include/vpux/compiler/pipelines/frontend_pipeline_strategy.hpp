@@ -7,7 +7,7 @@
 
 #include "vpux/utils/logger/logger.hpp"
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "vpux/compiler/pipelines/dialect_pipeline_strategy.hpp"
 
@@ -21,15 +21,15 @@ namespace vpux {
 // So for example "CustomMode" here can setup different option values
 // for the IE dialect pipeline than "DefaultHW" mode:
 //
-//     auto strategy = _createPipelineStrategy(VPU::CompilationMode::DefaultHW);
+//     auto strategy = _createPipelineStrategy(config::CompilationMode::DefaultHW);
 //     strategy->buildIEPipeline(pm, _log);
 //     ..
 //     auto& nestedPm = pm.nest<mlir::ModuleOp>();
-//     auto nestedStrategy = _createPipelineStrategy(VPU::CompilationMode::CustomMode);
+//     auto nestedStrategy = _createPipelineStrategy(config::CompilationMode::CustomMode);
 //     nestedStrategy->buildIEPipeline(nestedPm, _log);
 //
 
-using StrategyFactoryFn = std::function<std::unique_ptr<IDialectPipelineStrategy>(VPU::CompilationMode)>;
+using StrategyFactoryFn = std::function<std::unique_ptr<IDialectPipelineStrategy>(config::CompilationMode)>;
 
 //
 // This factory is responsible for building a "frontend" pipeline.

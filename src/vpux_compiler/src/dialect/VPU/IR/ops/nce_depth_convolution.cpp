@@ -21,6 +21,7 @@
 #include "vpux/compiler/utils/dilated_utils.hpp"
 #include "vpux/compiler/utils/empty_node.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include <openvino/op/convolution.hpp>
 
@@ -245,12 +246,8 @@ mlir::LogicalResult vpux::VPU::NCEDepthConvolutionOp::inferReturnTypes(
         return errorAt(loc, "Non depthwize convolution case");
     }
 
-    // Adjust input shape to reuse helpers for standard convolution
-    auto inShape = getShape(op.getInput()).toValues();
-    inShape[Dims4D::Act::C] = 1;
-
     const auto windowStrides = parseIntArrayAttr<int64_t>(op.getStrides());
-    const auto windowDilations = ov::Strides({1, 1});
+    const auto windowDilations = SmallVector<int64_t>({1, 1});
 
     const auto padTop = op.getPad().getTop().getValue().getSExtValue();
     const auto padBottom = op.getPad().getBottom().getValue().getSExtValue();
@@ -260,22 +257,21 @@ mlir::LogicalResult vpux::VPU::NCEDepthConvolutionOp::inferReturnTypes(
     const auto dataPaddingBelow = ov::CoordinateDiff({padTop, padLeft});
     const auto dataPaddingAbove = ov::CoordinateDiff({padBottom, padRight});
 
-    const auto conv = ov::op::v1::Convolution(
-            std::make_shared<ov::op::v0::Parameter>(ov::element::i32, ov::Shape(inShape.begin(), inShape.end())),
-            std::make_shared<ov::op::v0::Parameter>(ov::element::i32,
-                                                    ov::Shape(filterShape.begin(), filterShape.end())),
-            ov::Strides(windowStrides.begin(), windowStrides.end()), dataPaddingBelow, dataPaddingAbove,
-            windowDilations);
-
-    const auto& outputShapeNG = conv.get_output_partial_shape(0);
-
-    auto outputShape = to_small_vector(outputShapeNG.get_shape() | transformed([](size_t val) {
-                                           return checked_cast<int64_t>(val);
-                                       }));
-
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto outputType =
-            mlir::RankedTensorType::get(outputShape, inputType.getElementType(), createTensorAttrFromType(inputType));
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
+
+    auto inShapeInfo = ShapeInfo::fromNDType(inputType);
+    auto filterShapeInfo = ShapeInfo::fromNDType(filterType);
+
+    // Adjust input shape to reuse helpers for standard convolution
+    inShapeInfo.shape[Dims4D::Act::C.ind()] = 1;
+    filterShapeInfo.shape = parseIntArrayAttr<int64_t>(op.getRawFilterShape());
+
+    auto shapeInfo = inferConvoutionOutputShapeInfo(inShapeInfo, filterShapeInfo, windowStrides, dataPaddingBelow,
+                                                    dataPaddingAbove, windowDilations);
+
+    auto outputType = mlir::RankedTensorType::get(shapeInfo.shape, inputType.getElementType(),
+                                                  createTensorAttrFromType(inputType));
 
     inferredReturnTypes.push_back(outputType);
     return mlir::success();
@@ -294,8 +290,14 @@ vpux::InputTiling vpux::VPU::NCEDepthConvolutionOp::backInferTileInfo(const vpux
     // This op incorporates bias values in WeightsTable
     const auto origBiasShape = ShapeRef();
 
+    // The NCE depthwise convolution only supports one channel per group, therefore the group can be determined
+    // based on the number of channels produced by the operation
+    // Note: the IDU and ODU padding requirements are independent for the DPU (e.g. input could be padded, while the
+    // output not), therefore the number of groups here is determined by the output channels here
+    const auto groups = origFilterShape[Dims4D::Filter::OC];
+
     auto inputTiling = backInferGroupConvTile(outputTile, origInputShape, origFilterShape, origBiasShape, getStrides(),
-                                              origPadding, origInputShape[Dims4D::Act::C]);
+                                              origPadding, groups);
     VPUX_THROW_UNLESS(mlir::succeeded(checkAndAlignActInputTiling(
                               mlir::cast<VPU::NCEOpInterface>(*this->getOperation()), inputTiling, log)),
                       "Failed to get an aligned act input tiling");

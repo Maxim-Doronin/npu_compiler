@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUASM-to-NPUReg40XX --convert-VPUIPDPU-to-NPUReg40XX --set-elf-op-offsets %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
@@ -88,54 +89,56 @@ module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 //CHECK: ELF.Main @elfMain
 
 //CHECK: ELF.CreateSection @text.Barriers
-//CHECK: "NPUReg40XX.ConfigureBarrier"
-//CHECK: sym_name = "ConfigureBarrier0"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 0 : ui64}
-//CHECK: "NPUReg40XX.ConfigureBarrier"
-//CHECK: sym_name = "ConfigureBarrier1"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 12 : ui64}
-//CHECK: "NPUReg40XX.ConfigureBarrier"
-//CHECK: sym_name = "ConfigureBarrier2"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 24 : ui64}
+//CHECK: NPUReg40XX.ConfigureBarrier descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 0 : ui64, sym_name = "ConfigureBarrier0"}
+//CHECK: NPUReg40XX.ConfigureBarrier descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 12 : ui64, sym_name = "ConfigureBarrier1"}
+//CHECK: NPUReg40XX.ConfigureBarrier descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 24 : ui64, sym_name = "ConfigureBarrier2"}
 
 //CHECK: ELF.CreateSection @text.nndma0
-//CHECK: "NPUReg40XX.NNDMA"
-//CHECK: sym_name = "NNDMA_0_0_0"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 0 : ui64}
-//CHECK: "NPUReg40XX.NNDMA"
-//CHECK: sym_name = "NNDMA_0_0_1"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 224 : ui64}
-//CHECK: "NPUReg40XX.NNDMA"
-//CHECK: sym_name = "NNDMA_0_0_2"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 448 : ui64}
-//CHECK: "NPUReg40XX.NNDMA"
-//CHECK: sym_name = "NNDMA_0_0_3"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 672 : ui64}
-//CHECK: "NPUReg40XX.NNDMA"
-//CHECK: sym_name = "NNDMA_0_0_4"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 896 : ui64}
-//CHECK: "NPUReg40XX.NNDMA"
-//CHECK: sym_name = "NNDMA_0_0_5"
-//CHECK-SAME:       {elfMemOffsetAttrKey = 1120 : ui64}
+//CHECK: NPUReg40XX.NNDMA descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 0 : ui64
+//CHECK:   sym_name = "NNDMA_0_0_0"}
+
+//CHECK: NPUReg40XX.NNDMA descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 224 : ui64
+//CHECK:   sym_name = "NNDMA_0_0_1"}
+
+//CHECK: NPUReg40XX.NNDMA descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 448 : ui64
+//CHECK:   sym_name = "NNDMA_0_0_2"}
+
+//CHECK: NPUReg40XX.NNDMA descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 672 : ui64
+//CHECK:   sym_name = "NNDMA_0_0_3"}
+
+//CHECK: NPUReg40XX.NNDMA descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 896 : ui64
+//CHECK:   sym_name = "NNDMA_0_0_4"}
+
+//CHECK: NPUReg40XX.NNDMA descriptor = <
+//CHECK:  > {elfMemOffsetAttrKey = 1120 : ui64
+//CHECK:   sym_name = "NNDMA_0_0_5"}
 
 //CHECK: ELF.CreateSection @text.invariants
-//CHECK: "NPUReg40XX.DPUInvariant"
-//CHECK:            sym_name = "DPUInvariant0"
-//CHECK-SAME:       elfMemOffsetAttrKey = 0
-//CHECK: "NPUReg40XX.DPUInvariant"
-//CHECK:            sym_name = "DPUInvariant1"
-//CHECK-SAME:       elfMemOffsetAttrKey = 352
+//CHECK: NPUReg40XX.DPUInvariant descriptor = <
+//CHECK:   > {elfMemOffsetAttrKey = 0 : ui64
+//CHECK:   sym_name = "DPUInvariant0"
+//CHECK: NPUReg40XX.DPUInvariant descriptor = <
+//CHECK:   > {elfMemOffsetAttrKey = 352 : ui64
+//CHECK:   sym_name = "DPUInvariant1"
 
 //CHECK: ELF.CreateSection @text.variants
-//CHECK: "NPUReg40XX.DPUVariant"
-//CHECK:            sym_name = "DPUVariant0"
-//CHECK-SAME:       task_index = !VPURegMapped.Index<0:0:0>
-//CHECK-SAME:       elfMemOffsetAttrKey = 0
-//CHECK: "NPUReg40XX.DPUVariant"
-//CHECK:            sym_name = "DPUVariant1"
-//CHECK-SAME:       task_index = !VPURegMapped.Index<0:0:1>
-//CHECK-SAME:        elfMemOffsetAttrKey = 224
-//CHECK: "NPUReg40XX.DPUVariant"
-//CHECK:            sym_name = "DPUVariant2"
-//CHECK-SAME:       task_index = !VPURegMapped.Index<0:0:2>
-//CHECK-SAME:       elfMemOffsetAttrKey = 672
+//CHECK: NPUReg40XX.DPUVariant descriptor = <
+//CHECK    > {elfMemOffsetAttrKey = 0 : ui64
+//CHECK:   sym_name = "DPUVariant0"
+//CHECK:   task_index = !VPURegMapped.Index<0:0:0>
+//CHECK: NPUReg40XX.DPUVariant descriptor = <
+//CHECK    > {elfMemOffsetAttrKey = 224 : ui64
+//CHECK:   sym_name = "DPUVariant1"
+//CHECK:   task_index = !VPURegMapped.Index<0:0:1>
+//CHECK: NPUReg40XX.DPUVariant descriptor = <
+//CHECK    > {elfMemOffsetAttrKey = 672 : ui64
+//CHECK:   sym_name = "DPUVariant2"
+//CHECK:   task_index = !VPURegMapped.Index<0:0:2>

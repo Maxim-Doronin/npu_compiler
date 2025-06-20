@@ -13,6 +13,17 @@
 
 namespace vpux::VPU {
 
+using MemPermuteConversionAttributes =
+        std::tuple<mlir::AffineMap /*identityLayout*/, MemShape /*inMemShape*/, mlir::AffineMap /*memPermute*/,
+                   mlir::AffineMap /*dstOrder*/, ShapeRef /*outShape*/>;
+
+/** @brief Returns the required permutation and shape for MemPermute conversion
+    Used to help when recreating MemPermute transformation by using ShapeCast,
+    LayoutCast and Transpose.
+*/
+MemPermuteConversionAttributes extractMemPermuteConversionAttributes(NDTypeInterface input,
+                                                                     Const::MemPermuteAttr memPermuteAttr);
+
 /** @brief Ensures function boundaries satisfy I/O requirements.
 
     Certain types (e.g. quantized) are not supported as network inputs /

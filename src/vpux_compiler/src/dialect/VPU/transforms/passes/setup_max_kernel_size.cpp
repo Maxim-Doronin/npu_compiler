@@ -3,14 +3,15 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include <cstddef>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/max_kernel_size_constant.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
+
+#include <cstddef>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_SETUPMAXKERNELSIZE
@@ -37,7 +38,8 @@ public:
     }
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnModule() final;
 
 private:
@@ -48,9 +50,9 @@ private:
     bool _allowCustomValues = false;
 };
 
-void addConstant(mlir::OpBuilder optionsBuilder, IE::PipelineOptionsOp pipelineOptionsOp, mlir::StringRef constantName,
-                 int64_t constantValue, bool allowCustomValues) {
-    auto hasPipelineOption = pipelineOptionsOp.lookupSymbol<IE::OptionOp>(constantName) != nullptr;
+void addConstant(mlir::OpBuilder optionsBuilder, config::PipelineOptionsOp pipelineOptionsOp,
+                 mlir::StringRef constantName, int64_t constantValue, bool allowCustomValues) {
+    auto hasPipelineOption = pipelineOptionsOp.lookupSymbol<config::OptionOp>(constantName) != nullptr;
     VPUX_THROW_WHEN(!allowCustomValues && hasPipelineOption,
                     "Kernel size constant is already defined, probably you run '--init-compiler' twice");
 
@@ -60,12 +62,13 @@ void addConstant(mlir::OpBuilder optionsBuilder, IE::PipelineOptionsOp pipelineO
     auto* ctx = optionsBuilder.getContext();
     mlir::IntegerType sizeType = mlir::IntegerType::get(ctx, sizeof(void*) * 8, mlir::IntegerType::Signed);
     const auto constantAttr = mlir::StringAttr::get(ctx, constantName);
-    optionsBuilder.create<IE::OptionOp>(optionsBuilder.getUnknownLoc(), constantAttr,
-                                        mlir::IntegerAttr::get(sizeType, constantValue));
+    optionsBuilder.create<config::OptionOp>(optionsBuilder.getUnknownLoc(), constantAttr,
+                                            mlir::IntegerAttr::get(sizeType, constantValue));
 }
 
-mlir::LogicalResult SetupMaxKernelSizePass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult SetupMaxKernelSizePass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

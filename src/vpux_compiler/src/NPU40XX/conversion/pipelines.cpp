@@ -54,9 +54,9 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
     // Currently only ELF backend is retriggered during rollback and IR after VPURT
     // needs to be left in a state suitable for nonWLM flow.
     if (backendCompilationOptions.workloadManagementEnable) {
-        if (backendCompilationOptions.workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO ||
-            backendCompilationOptions.workloadManagementMode == WorkloadManagementMode::PWLM_V2_PAGES) {
+        if (backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
             pm.addPass(VPURT::arch40xx::createFindWlmEnqueueBarrierPass(
+                    backendCompilationOptions.workloadManagementMode,
                     backendCompilationOptions.workloadManagementDmaFifoType == DMAFifoType::HW, log));
         } else {
             pm.addPass(VPURT::arch40xx::createOrderBarriersForWlmPass(log));
@@ -87,13 +87,18 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPUIPDPU::createExpandDPUConfigPass(log));
     pm.addPass(ELF::createUpdateELFSectionFlagsPass(log, backendCompilationOptions.enableShaveDDRAccessOptimization));
-    pm.addPass(createConvertVPUASM2NPUReg40XXPass(log, backendCompilationOptions.workloadManagementEnable));
+    pm.addPass(createConvertVPUASM2NPUReg40XXPass(log, backendCompilationOptions.modelIdentifier));
     pm.addPass(createConvertVPUIPDPU2NPUReg40XXPass(log, dpuDryRunMode));
 
     pm.addPass(VPURegMapped::createDeduceDynamicMappedInferenceVersionPass(log));
 
     pm.addPass(ELF::createHandleAlignmentRequirementsPass(log));
-    pm.addPass(ELF::createSetOpOffsetsPass(log, backendCompilationOptions.workloadManagementEnable));
+    pm.addPass(ELF::createSetOpOffsetsPass(log));
+
+    pm.addPass(ELF::createSetCMXSymbolValuePass(
+            log, npu40xx::nn_public::VPU_WORKSPACE_ADDR, npu40xx::nn_public::VPU_WORKSPACE_SIZE,
+            npu40xx::VPU_METADATA_STORAGE_START, npu40xx::nn_public::VPU_METADATA_SIZE));
+
     pm.addPass(ELF::createAddELFRelocationsPass(log));
     pm.addPass(ELF::createRemoveEmptyELFSectionsPass(log));
 }
@@ -125,17 +130,17 @@ void vpux::arch40xx::elfSubsetPipelineVPUMI(
         pm.addPass(VPUMI40XX::createNextSameIdAssignmentPass(log));
         pm.addPass(VPUMI40XX::createAddEnqueueOpsPass(workloadManagementMode, log));
         pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
-        if (workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO ||
-            workloadManagementMode == WorkloadManagementMode::PWLM_V2_PAGES) {
+        if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
             pm.addPass(VPUMI40XX::createAddBarrierConfigurationOps(workloadManagementMode,
                                                                    workloadManagementBarrierProgrammingMode, log));
         }
-        pm.addPass(VPUMI40XX::createAddBootstrapOpsPass(log));
+        pm.addPass(VPUMI40XX::createAddBootstrapBarriersPass(log));
+        pm.addPass(VPUMI40XX::createAddBootstrapWorkItemsPass(log));
+
         pm.addPass(VPUMI40XX::createSplitEnqueueOpsPass(log));
         pm.addPass(VPUMI40XX::createLinkEnqueueTargetsPass(log));
         pm.addPass(VPUMI40XX::createUnrollEnqueueOpsPass(log));
-        if (workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO ||
-            workloadManagementMode == WorkloadManagementMode::PWLM_V2_PAGES) {
+        if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
             pm.addPass(VPUMI40XX::createLinkEnqueueOpsForSameBarrierPass(log));
         }
         pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));
@@ -175,7 +180,8 @@ void vpux::arch40xx::registerConversionPipeline() {
             "lower-VPU-to-VPUIP",
             "Performs full lowering from the VPU Dialect to VPUIP Dialect, SW operations are converted to SWKernelOp",
             [](mlir::OpPassManager& pm, const vpux::DefaultHWOptions40XX& options) {
-                vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization);
+                vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization,
+                                                            options.useMemrefForHostFunctionBufferization);
             });
 
     mlir::PassPipelineRegistration<BackendCompilationOptions40XX>(

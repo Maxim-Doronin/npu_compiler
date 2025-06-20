@@ -768,7 +768,9 @@ mlir::LogicalResult SliceLargeConvRewriter::matchAndRewrite(IE::ConvolutionOp or
     _log.trace("[{0}] Got Convolution layer at '{1}'", getDebugName(), origOp->getLoc());
 
     const auto targetKernelSize = VPU::getMaxKernelSize(origOp);
-
+    if (targetKernelSize <= 0) {
+        return mlir::failure();
+    }
     if (!isLegalOpToConvert(origOp, targetKernelSize)) {
         return mlir::failure();
     }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -1164,7 +1164,7 @@ func.func @InterpolateNearestAssignedSOH(%input_data: tensor<1x64x10x10xf16, {or
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x20x20xi1> = dense<1> : tensor<1x64x20x20xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 64, dataShape = [1, 64, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [64], dataShape = [1, 64, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 20, 20]>
     } -> tensor<1x1x20x20xi32, {order = #NHWC}>
@@ -1222,7 +1222,7 @@ func.func @InterpolateNearestAssignedSOK(%input_data: tensor<1x256x5x10xf16, {or
     %weights_table = const.Declare tensor<256x1x1x4xsi32> = dense<1> : tensor<256x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x256x10x20xi1> = dense<1> : tensor<1x256x10x20xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 256, dataShape = [1, 256, 5, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [256], dataShape = [1, 256, 5, 10],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 256, 10, 20]>
     } -> tensor<1x1x10x20xi32, {order = #NHWC}>
@@ -1280,7 +1280,7 @@ func.func @InterpolateBilinearAssignedSOH(%input_data: tensor<1x64x20x20xf16, {o
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x41x41xi1> = dense<1> : tensor<1x64x41x41xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 64, dataShape = [1, 64, 10, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [64], dataShape = [1, 64, 10, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 64, 41, 41]>
     } -> tensor<1x1x41x41xi32, {order = #NHWC}>
@@ -1337,7 +1337,7 @@ func.func @InterpolateBilinearAssignedSOK(%input_data: tensor<1x256x5x10xf16, {o
     %weights_table = const.Declare tensor<256x1x1x4xsi32> = dense<1> : tensor<256x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x256x11x21xi1> = dense<1> : tensor<1x256x11x21xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 64, dataShape = [1, 64, 5, 10],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [64], dataShape = [1, 64, 5, 10],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 64, 11, 21]>
     } -> tensor<1x1x11x21xi32, {order = #NHWC}>
@@ -1392,7 +1392,7 @@ func.func @SparseTensorDataAlignmentCheckSOK(%arg0: tensor<1x64x5x5xf16, {order 
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x22x22xi1> = dense<1> : tensor<1x64x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 64, dataShape = [1, 64, 5, 5],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [64], dataShape = [1, 64, 5, 5],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 64, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -1447,7 +1447,7 @@ func.func @SparseTensorDataAlignmentCheckSOH(%arg0: tensor<1x16x5x5xf16, {order 
     %weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x16x22x22xi1> = dense<1> : tensor<1x16x22x22xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 16, dataShape = [1, 16, 5, 5],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [16], dataShape = [1, 16, 5, 5],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 16, 22, 22]>
     } -> tensor<1x1x22x22xi32, {order = #NHWC}>
@@ -1503,7 +1503,7 @@ func.func @SEPInterpolateAvoidTillingBug(%arg0: tensor<1x16x160x160xf16, {order 
     %weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x16x642x642xi1> = dense<1> : tensor<1x16x642x642xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 16, dataShape = [1, 16, 5, 5],
+    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [16], dataShape = [1, 16, 5, 5],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
                                     scale = [1.0, 1.0, 2.0, 2.0], offsets = [0, 0, 0, 0], sizes = [1, 16, 642, 642]>
     } -> tensor<1x1x642x642xi32, {order = #NHWC}>
@@ -2721,7 +2721,7 @@ func.func @SkipSubGraphOptimizationForINFCost(%input_data: tensor<1x128x72x72xf1
             factors = [1, 1],
             padding = [2, 2, 2, 2]>,
         seDepth = 1 : i64,
-        seSize = 64 : i64
+        seSize = [64]
     } -> tensor<1x1x147x147xi32, {order = #NHWC}>
     %input = VPU.GroupSparseTensor(%conv, %sparsityMap, %storageElement) {
         seAttr = #VPU.SEUpsampling<
@@ -2775,7 +2775,7 @@ func.func @SkipSubGraphOptimizationForINFCost(%input_data: tensor<1x128x72x72xf1
     // CHECK-SAME:        seAttr = #VPU.SEUpsampling<
     // CHECK-SAME:            factors = [1, 1],
     // CHECK-SAME:            padding = [2, 2, 2, 2]>,
-    // CHECK-SAME:            seDepth = 1 : i64, seSize = 64 : i64} -> tensor<1x1x147x147xi32, {order = #NHWC}>
+    // CHECK-SAME:            seDepth = 1 : i64, seSize = [64]} -> tensor<1x1x147x147xi32, {order = #NHWC}>
     // CHECK:        [[SPARSE_INPUT:%.+]] = VPU.GroupSparseTensor([[CONV]], [[SPARSITY_MAP]], [[SE_TBL]])
     // CHECK-SAME:        {seAttr = #VPU.SEUpsampling<
     // CHECK-SAME:            factors = [1, 1],

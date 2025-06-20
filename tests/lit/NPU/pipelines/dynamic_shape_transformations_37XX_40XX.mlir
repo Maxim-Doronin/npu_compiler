@@ -6,6 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --dynamic-shape-transformations %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
+
 #CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 !BoundedType = tensor<?x1x548xf16, {bounds = #const.OpaqueI64Elements<[32, 1, 548]> : tensor<3xsi64>, order = #CHW}>
 

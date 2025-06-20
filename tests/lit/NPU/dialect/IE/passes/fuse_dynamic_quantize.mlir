@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-dynamic-quantize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @FuseDQ
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x304x560xf32>
 func.func @FuseDQ(%arg0: tensor<1x304x560xf32>) -> (tensor<1x304x560xui8>, tensor<1xf32>, tensor<1xui8>) {

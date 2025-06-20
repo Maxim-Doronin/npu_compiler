@@ -172,3 +172,160 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, PartialSlicing) {
         ASSERT_EQ_SPLITS(actual, expected);
     }
 }
+
+constexpr llvm::StringLiteral INPUT_IR_SUBVIEWS = R"(
+{-#
+    dialect_resources: {
+        builtin: {
+            ov1: "0x10000000ABABABABCDCDCDCD",
+            ov2: "0x10000000ABABABABCDCDCDCD"
+        }
+    }
+#-}
+
+module @main {
+    func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %ov1_0 = const.Declare tensor<1x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+            [#const.Add<1.0>, #const.SubView<[0, 0], [1, 2]>]
+        %ov1_1 = const.Declare tensor<1x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+            [#const.Add<1.0>, #const.SubView<[1, 0], [1, 2]>]
+        %ov1_2 = const.Declare tensor<2x1xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+            [#const.Add<1.0>, #const.SubView<[0, 0], [2, 1]>]
+        %ov1_3 = const.Declare tensor<2x1xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+            [#const.Add<1.0>, #const.SubView<[0, 1], [2, 1]>]
+        // ov1 = 2 * 2 * f16 (subviews do not count)
+
+        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<ov2> : tensor<2x2xf16>,
+            [#const.Rescale<5.0>]
+        // ov2 = 2 * 2 * f16
+
+        return %arg0 : tensor<2x2xf16>
+    }
+})";
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SingleInit_SubView) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_SUBVIEWS, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto expected = extractSplits(module.get());
+    ASSERT_FALSE(expected.empty());
+
+    const auto tensorSize2x2xf16 = vpux::Byte(2 * 2 * sizeof(vpux::type::float16));
+    const auto justEnoughMemory =
+            /* ov1 input */ tensorSize2x2xf16 +
+            /* ov2 input */ tensorSize2x2xf16 +
+            /* ov1 output (single) */ tensorSize2x2xf16 +
+            /* ov2 output */ tensorSize2x2xf16;
+    auto allSlices = VPU::sliceAccordingToMemoryLimit(log, expected, justEnoughMemory);
+    ASSERT_EQ(allSlices.size(), 1);
+
+    auto& actual = allSlices.front();
+    ASSERT_EQ_SPLITS(actual, expected);
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SlicedInit_SubView) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_SUBVIEWS, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto splits = extractSplits(module.get());
+    ASSERT_FALSE(splits.empty());
+
+    const auto tensorSize2x2xf16 = vpux::Byte(2 * 2 * sizeof(vpux::type::float16));
+    const auto justEnoughMemory =
+            /* ov1 input */ tensorSize2x2xf16 +
+            /* ov2 input */ tensorSize2x2xf16 +
+            /* ov1 output (single) */ tensorSize2x2xf16 +
+            /* ov2 output */ tensorSize2x2xf16;
+    // subtract 1 to disallow single init
+    auto allSlices = VPU::sliceAccordingToMemoryLimit(log, splits, justEnoughMemory - vpux::Byte(1));
+    ASSERT_EQ(allSlices.size(), 2);
+
+    for (auto& actual : allSlices) {
+        ASSERT_FALSE(actual.empty());
+
+        const auto resourceName = getResourceName(actual.front().declareOp().getContentAttr().getBaseContent()).str();
+        auto expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
+            return getResourceName(x.declareOp().getContentAttr().getBaseContent()).str() == resourceName;
+        });
+
+        ASSERT_EQ_SPLITS(actual, expected);
+    }
+}
+
+constexpr llvm::StringLiteral INPUT_IR_REORDERS = R"(
+{-#
+    dialect_resources: {
+        builtin: {
+            ov1: "0x10000000ABABABABCDCDCDCD",
+            ov2: "0x10000000ABABABABCDCDCDCD"
+        }
+    }
+#-}
+
+#CN = affine_map<(d0, d1) -> (d1, d0)>
+
+module @main {
+    func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %ov1_0 = const.Declare tensor<1x2xf16, {order = #CN}> = dense_resource<ov1> : tensor<2x2xf16>,
+            [#const.Add<1.0>, #const.Reorder<#CN>, #const.SubView<[0, 0], [1, 2]>]
+        %ov1_1 = const.Declare tensor<1x2xf16, {order = #CN}> = dense_resource<ov1> : tensor<2x2xf16>,
+            [#const.Add<1.0>, #const.Reorder<#CN>, #const.SubView<[1, 0], [1, 2]>]
+        %ov1_2 = const.Declare tensor<2x1xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+            [#const.Add<1.0>, #const.PadWithZero<[0, 0], [0, 1]>, #const.SubView<[0, 0], [2, 1]>]
+        // ov1 with reorder = 2 * 2 * f16 + 2 * 3 * f16 (subviews do not count)
+
+        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<ov2> : tensor<2x2xf16>,
+            [#const.Rescale<5.0>]
+        // ov2 = 2 * 2 * f16
+
+        return %arg0 : tensor<2x2xf16>
+    }
+})";
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SingleInit_ReorderAndPad) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_REORDERS, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto expected = extractSplits(module.get());
+    ASSERT_FALSE(expected.empty());
+
+    const auto tensorSize2x2xf16 = vpux::Byte(2 * 2 * sizeof(vpux::type::float16));
+    const auto justEnoughMemory =
+            /* ov1 input */ tensorSize2x2xf16 +
+            /* ov2 input */ tensorSize2x2xf16 +
+            /* ov1 outputs */ tensorSize2x2xf16 + vpux::Byte(2 * 3 * sizeof(vpux::type::float16)) +
+            /* ov2 output */ tensorSize2x2xf16;
+    auto allSlices = VPU::sliceAccordingToMemoryLimit(log, expected, justEnoughMemory);
+    ASSERT_EQ(allSlices.size(), 1);
+
+    auto& actual = allSlices.front();
+    ASSERT_EQ_SPLITS(actual, expected);
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SlicedInit_ReorderAndPad) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_REORDERS, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto splits = extractSplits(module.get());
+    ASSERT_FALSE(splits.empty());
+
+    const auto tensorSize2x2xf16 = vpux::Byte(2 * 2 * sizeof(vpux::type::float16));
+    const auto justEnoughMemory =
+            /* ov1 input */ tensorSize2x2xf16 +
+            /* ov2 input */ tensorSize2x2xf16 +
+            /* ov1 outputs */ tensorSize2x2xf16 + vpux::Byte(2 * 3 * sizeof(vpux::type::float16)) +
+            /* ov2 output */ tensorSize2x2xf16;
+    auto allSlices = VPU::sliceAccordingToMemoryLimit(log, splits, justEnoughMemory - vpux::Byte(1));
+    ASSERT_EQ(allSlices.size(), 2);
+
+    for (auto& actual : allSlices) {
+        ASSERT_FALSE(actual.empty());
+
+        const auto resourceName = getResourceName(actual.front().declareOp().getContentAttr().getBaseContent()).str();
+        auto expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
+            return getResourceName(x.declareOp().getContentAttr().getBaseContent()).str() == resourceName;
+        });
+
+        ASSERT_EQ_SPLITS(actual, expected);
+    }
+}

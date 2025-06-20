@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/types.hpp"
@@ -62,7 +63,7 @@ public:
 
         mlir::PassManager pm(module->getName(), mlir::OpPassManager::Nesting::Implicit);
         auto initCompilerOptions =
-                VPU::InitCompilerOptions(vpux::VPU::ArchKind::NPU40XX, VPU::CompilationMode::DefaultHW);
+                VPU::InitCompilerOptions(vpux::VPU::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
 
         VPU::buildInitCompilerPipeline(pm, initCompilerOptions, log);
 

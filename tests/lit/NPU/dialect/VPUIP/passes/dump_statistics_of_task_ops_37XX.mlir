@@ -21,7 +21,6 @@ module @DumpOpsStatisticsTest {
 // CHECK:   Input size - 4.50 KB Output size - 4.50 KB
 // CHECK:   DDR heap size - 0 bytes
 // CHECK:   VPUIP tasks statistics:
-// CHECK:   VPUIP Tasks - 0 ops
 // CHECK:   Weights statistics
 // CHECK:     Total weights - count: 0, size: 0 bytes (no compression)
 // CHECK:   Const swizzling statistics:
@@ -351,7 +350,6 @@ module @DumpOpsStatisticsTest {
 // CHECK:   Input size - 9.00 KB Output size - 9.00 KB
 // CHECK:   DDR heap size - 13.50 KB
 // CHECK:   VPUIP tasks statistics:
-// CHECK:   VPUIP Tasks - 0 ops
 // CHECK:   Weights statistics
 // CHECK:     Total weights - count: 0, size: 0 bytes (no compression)
 // CHECK:   Const swizzling statistics:

@@ -31,7 +31,7 @@ private:
 void findWeightElementType(mlir::Operation* op, const Logger& log) {
     if (mlir::isa_and_nonnull<Const::DeclareOp>(op)) {
         const auto tensor = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
-        if (const auto quantType = tensor.getElementType().dyn_cast_or_null<mlir::quant::QuantizedType>()) {
+        if (const auto quantType = mlir::dyn_cast_or_null<mlir::quant::QuantizedType>(tensor.getElementType())) {
             log.trace("Weights constant(WAC) has quantized element type for NCE op - {0}", op->getLoc());
         }
     } else if (mlir::isa<mlir::BlockArgument>(op->getOperand(0))) {

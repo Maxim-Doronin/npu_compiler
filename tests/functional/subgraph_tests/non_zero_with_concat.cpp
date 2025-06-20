@@ -8,8 +8,12 @@
 #include <pretty_test_arguments.hpp>
 
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset1.hpp>
-#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset1_decl.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+
+#include "openvino/op/concat.hpp"
+#include "openvino/op/convert.hpp"
+#include "openvino/op/non_zero.hpp"
 
 using namespace ov::test;
 namespace {
@@ -98,7 +102,7 @@ TEST_P(NonZeroWithConcatTest, NPU4000_HW_TestKindSubgraph) {
 
 const std::vector<ov::element::Type> inputPrecision = {ov::element::i32};
 
-const std::vector<ov::test::InputShape> inShapes = {staticShape(4, 8)};
+const std::vector<ov::test::InputShape> inShapes = {generateTestShape(4, 8)};
 
 const std::vector<size_t> inputsNum = {
         2,

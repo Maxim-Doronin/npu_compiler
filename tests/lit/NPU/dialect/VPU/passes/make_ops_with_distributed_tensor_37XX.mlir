@@ -438,6 +438,150 @@ func.func @GatherNDClustering(%arg0: tensor<1x1x1792x16xf16>, %arg1: tensor<1x1x
 
 // -----
 
+// CHECK-LABEL: @DynamicQuantizeSOH
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1x667x400xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeSOH(%arg0: tensor<1x1x667x400xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>)
+-> (tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+     %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1x667x400xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK: [[DATA:%.+]] = VPU.UnrolledType([[INPUT0]] : tensor<1x1x667x400xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x667x400xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    // CHECK: [[MIN:%.+]] = VPU.UnrolledType([[INPUT1]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK: [[MAX:%.+]] = VPU.UnrolledType([[INPUT2]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[DATA]], [[MIN]], [[MAX]])
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x667x400xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x667x400xui8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUTPUT:%.+]] = VPU.UnrolledType([[OUT]]
+    // CHECK: !VPU.DistributedTensor<1x1x667x400xui8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x667x400xui8>
+    // CHECK: [[SCALEOUT:%.+]] = VPU.UnrolledType([[SCALE]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xf32>
+    // CHECK: [[ZPOUTPUT:%.+]] = VPU.UnrolledType([[ZP]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xui8>
+    // CHECK: return [[OUTPUT]], [[SCALEOUT]], [[ZPOUTPUT]] : tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
+// CHECK-LABEL: @DynamicQuantizeSOW
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1x667x400xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeSOW(%arg0: tensor<1x1x667x400xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>)
+-> (tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+     %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>} : tensor<1x1x667x400xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK: [[DATA:%.+]] = VPU.UnrolledType([[INPUT0]] : tensor<1x1x667x400xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x667x400xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+    // CHECK: [[MIN:%.+]] = VPU.UnrolledType([[INPUT1]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK: [[MAX:%.+]] = VPU.UnrolledType([[INPUT2]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[DATA]], [[MIN]], [[MAX]])
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x667x400xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x667x400xui8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUTPUT:%.+]] = VPU.UnrolledType([[OUT]]
+    // CHECK: !VPU.DistributedTensor<1x1x667x400xui8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x667x400xui8>
+    // CHECK: [[SCALEOUT:%.+]] = VPU.UnrolledType([[SCALE]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xf32>
+    // CHECK: [[ZPOUTPUT:%.+]] = VPU.UnrolledType([[ZP]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xui8>
+    // CHECK: return [[OUTPUT]], [[SCALEOUT]], [[ZPOUTPUT]] : tensor<1x1x667x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
+// CHECK-LABEL: @DynamicQuantizeSOC
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x667x400x1xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeSOC(%arg0: tensor<1x667x400x1xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>)
+-> (tensor<1x667x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+     %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x667x400x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x667x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x667x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK: [[DATA:%.+]] = VPU.UnrolledType([[INPUT0]] : tensor<1x667x400x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x667x400x1xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    // CHECK: [[MIN:%.+]] = VPU.UnrolledType([[INPUT1]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK: [[MAX:%.+]] = VPU.UnrolledType([[INPUT2]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[DATA]], [[MIN]], [[MAX]])
+    // CHECK-SAME: !VPU.DistributedTensor<1x667x400x1xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x667x400x1xui8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUTPUT:%.+]] = VPU.UnrolledType([[OUT]]
+    // CHECK: !VPU.DistributedTensor<1x667x400x1xui8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x667x400x1xui8>
+    // CHECK: [[SCALEOUT:%.+]] = VPU.UnrolledType([[SCALE]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xf32>
+    // CHECK: [[ZPOUTPUT:%.+]] = VPU.UnrolledType([[ZP]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xui8>
+    // CHECK: return [[OUTPUT]], [[SCALEOUT]], [[ZPOUTPUT]] : tensor<1x667x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
+// CHECK-LABEL: @DynamicQuantizeClustering
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x6x400x1xf32>, [[INPUT1:%.+]]: tensor<1x1x1x1xf32>, [[INPUT2:%.+]]: tensor<1x1x1x1xf32>
+func.func @DynamicQuantizeClustering(%arg0: tensor<1x6x400x1xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>)
+-> (tensor<1x6x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+     %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) {multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x6x400x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x6x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x6x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK: [[DATA:%.+]] = VPU.UnrolledType([[INPUT0]] : tensor<1x6x400x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x6x400x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK: [[MIN:%.+]] = VPU.UnrolledType([[INPUT1]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK: [[MAX:%.+]] = VPU.UnrolledType([[INPUT2]] : tensor<1x1x1x1xf32>)
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUT:%.+]], [[SCALE:%.+]], [[ZP:%.+]] = VPU.DynamicQuantize([[DATA]], [[MIN]], [[MAX]])
+    // CHECK-SAME: !VPU.DistributedTensor<1x6x400x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: -> !VPU.DistributedTensor<1x6x400x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: [[OUTPUT:%.+]] = VPU.UnrolledType([[OUT]]
+    // CHECK: !VPU.DistributedTensor<1x6x400x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x6x400x1xui8>
+    // CHECK: [[SCALEOUT:%.+]] = VPU.UnrolledType([[SCALE]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xf32>
+    // CHECK: [[ZPOUTPUT:%.+]] = VPU.UnrolledType([[ZP]]
+    // CHECK: !VPU.DistributedTensor<1x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK: -> tensor<1x1x1x1xui8>
+    // CHECK: return [[OUTPUT]], [[SCALEOUT]], [[ZPOUTPUT]] : tensor<1x6x400x1xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+}
+
+// -----
+
 // CHECK-LABEL:   func.func @GruGatesClustering(
 // CHECK-SAME:                                  %[[VAL_0:.*]]: tensor<1x1x2x768xf16>,
 // CHECK-SAME:                                  %[[VAL_1:.*]]: tensor<1x1x2x256xf16>,

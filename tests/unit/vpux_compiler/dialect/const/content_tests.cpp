@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -529,6 +529,37 @@ TEST_F(MLIR_ConstContentAttrTest, CopyTo_U8) {
     }
 }
 
+TEST_F(MLIR_ConstContentAttrTest, CopyTo_U2) {
+    const auto baseType =
+            mlir::RankedTensorType::get({4}, mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Unsigned));
+
+    const std::vector<uint8_t> vals = {0,   // 0x0 b'00
+                                       1,   // 0x1 b'01
+                                       2,   // 0x2 b'10
+                                       3};  // 0x3 b'11
+
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
+
+    Const::ContentSetup contentAttrSetup(baseType);
+    contentAttrSetup = contentAttrSetup.castElemType(mlir::IntegerType::get(&ctx, 2, mlir::IntegerType::Unsigned));
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
+    const auto content = contentAttr.fold();
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_FALSE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    const auto bufSizeBytes = checked_cast<size_t>(content.getType().getTotalAllocSize().count());
+    std::vector<uint8_t> tempBuf(bufSizeBytes);
+    content.copyTo(MutableArrayRef(reinterpret_cast<char*>(tempBuf.data()), bufSizeBytes));
+
+    const std::vector<uint8_t> expectedVals = {0xE4};  // b'1110_0100
+    EXPECT_EQ(expectedVals.size(), bufSizeBytes);
+    for (size_t i = 0; i < expectedVals.size(); ++i) {
+        EXPECT_EQ(expectedVals[i], tempBuf[i]);
+    }
+}
+
 TEST_F(MLIR_ConstContentAttrTest, CopyTo_I4) {
     const auto baseType = mlir::RankedTensorType::get({4}, mlir::IntegerType::get(&ctx, 8));
 
@@ -552,6 +583,36 @@ TEST_F(MLIR_ConstContentAttrTest, CopyTo_I4) {
     content.copyTo(MutableArrayRef(reinterpret_cast<char*>(tempBuf.data()), bufSizeBytes));
 
     const std::vector<uint8_t> expectedVals = {0x71, 0xFA};
+    EXPECT_EQ(expectedVals.size(), bufSizeBytes);
+    for (size_t i = 0; i < expectedVals.size(); ++i) {
+        EXPECT_EQ(expectedVals[i], tempBuf[i]);
+    }
+}
+
+TEST_F(MLIR_ConstContentAttrTest, CopyTo_I2) {
+    const auto baseType = mlir::RankedTensorType::get({4}, mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed));
+
+    const std::vector<int8_t> vals = {-2,  // 0x2 b'10
+                                      -1,  // 0x3 b'11
+                                      0,   // 0x0 b'00
+                                      1};  // 0x1 b'01
+
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
+
+    Const::ContentSetup contentAttrSetup(baseType);
+    contentAttrSetup = contentAttrSetup.castElemType(mlir::IntegerType::get(&ctx, 2, mlir::IntegerType::Signed));
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
+    const auto content = contentAttr.fold();
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_FALSE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    const auto bufSizeBytes = checked_cast<size_t>(content.getType().getTotalAllocSize().count());
+    std::vector<uint8_t> tempBuf(bufSizeBytes);
+    content.copyTo(MutableArrayRef(reinterpret_cast<char*>(tempBuf.data()), bufSizeBytes));
+
+    const std::vector<uint8_t> expectedVals = {0x4E};  // b'0100_1110
     EXPECT_EQ(expectedVals.size(), bufSizeBytes);
     for (size_t i = 0; i < expectedVals.size(); ++i) {
         EXPECT_EQ(expectedVals[i], tempBuf[i]);
@@ -632,6 +693,33 @@ TEST_F(MLIR_ConstContentAttrTest, Splat_CopyTo_U8) {
     }
 }
 
+TEST_F(MLIR_ConstContentAttrTest, Splat_CopyTo_U2) {
+    const auto baseType =
+            mlir::RankedTensorType::get({4}, mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Unsigned));
+
+    const std::vector<uint8_t> vals = {3};  // 0x2 b'11
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
+
+    Const::ContentSetup contentAttrSetup(baseType);
+    contentAttrSetup = contentAttrSetup.castElemType(mlir::IntegerType::get(&ctx, 2, mlir::IntegerType::Unsigned));
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
+    const auto content = contentAttr.fold();
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_TRUE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    const auto bufSizeBytes = checked_cast<size_t>(content.getType().getTotalAllocSize().count());
+    std::vector<uint8_t> tempBuf(bufSizeBytes);
+    content.copyTo(MutableArrayRef(reinterpret_cast<char*>(tempBuf.data()), bufSizeBytes));
+
+    const std::vector<uint8_t> expectedVals = {0xFF};  // b'1111_1111
+    EXPECT_EQ(expectedVals.size(), bufSizeBytes);
+    for (size_t i = 0; i < expectedVals.size(); ++i) {
+        EXPECT_EQ(expectedVals[i], tempBuf[i]);
+    }
+}
+
 TEST_F(MLIR_ConstContentAttrTest, Splat_CopyTo_I4) {
     const auto baseType = mlir::RankedTensorType::get({4}, mlir::IntegerType::get(&ctx, 8));
 
@@ -652,6 +740,32 @@ TEST_F(MLIR_ConstContentAttrTest, Splat_CopyTo_I4) {
     content.copyTo(MutableArrayRef(reinterpret_cast<char*>(tempBuf.data()), bufSizeBytes));
 
     const std::vector<uint8_t> expectedVals = {0xAA, 0xAA};
+    EXPECT_EQ(expectedVals.size(), bufSizeBytes);
+    for (size_t i = 0; i < expectedVals.size(); ++i) {
+        EXPECT_EQ(expectedVals[i], tempBuf[i]);
+    }
+}
+
+TEST_F(MLIR_ConstContentAttrTest, Splat_CopyTo_I2) {
+    const auto baseType = mlir::RankedTensorType::get({4}, mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed));
+
+    const std::vector<int8_t> vals = {-2};  // 0x2 b'10
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
+
+    Const::ContentSetup contentAttrSetup(baseType);
+    contentAttrSetup = contentAttrSetup.castElemType(mlir::IntegerType::get(&ctx, 2, mlir::IntegerType::Signed));
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
+    const auto content = contentAttr.fold();
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_TRUE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    const auto bufSizeBytes = checked_cast<size_t>(content.getType().getTotalAllocSize().count());
+    std::vector<uint8_t> tempBuf(bufSizeBytes);
+    content.copyTo(MutableArrayRef(reinterpret_cast<char*>(tempBuf.data()), bufSizeBytes));
+
+    const std::vector<uint8_t> expectedVals = {0xAA};  // b'1010_1010
     EXPECT_EQ(expectedVals.size(), bufSizeBytes);
     for (size_t i = 0; i < expectedVals.size(); ++i) {
         EXPECT_EQ(expectedVals[i], tempBuf[i]);

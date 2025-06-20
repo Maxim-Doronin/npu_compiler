@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --apply-tiling --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -1464,7 +1465,10 @@ func.func @DWConvWithSEPNoMC(%arg0: tensor<1x192x1x1xf16, {order = #NHWC}>) -> t
     %weights_table = const.Declare tensor<192x1x1x4xsi32> = dense<1> : tensor<192x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x192x2x2xi1> = dense<1> : tensor<1x192x2x2xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 18, seSize = 16, dataShape = [1, 192, 1, 1],
+    %storage_element = VPU.StorageElementTable {
+        dataElemType = f16, seDepth = 18,
+        seSize = [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16],
+        dataShape = [1, 192, 1, 1],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 192, 2, 2]>
     } -> tensor<1x18x2x2xi32, {order = #NHWC}>
@@ -1499,25 +1503,25 @@ func.func @DWConvWithSEPNoMC(%arg0: tensor<1x192x1x1xf16, {order = #NHWC}>) -> t
     // CHECK:     [[SE0:%.+]] = VPU.StorageElementTable
     // CHECK-SAME:   dataShape = [1, 64, 1, 1],
     // CHECK-SAME:   offsets = [0, 0, 0, 0], sizes = [1, 64, 2, 2]
-    // CHECK-SAME:   seDepth = 4 : i64, seSize = 16 : i64
+    // CHECK-SAME:   seDepth = 4 : i64, seSize = [16, 16, 16, 16]
     // CHECK-SAME:  -> tensor<1x4x2x2xi32, {order = #NHWC}>
 
     // CHECK:     [[SE1:%.+]] = VPU.StorageElementTable
     // CHECK-SAME:   dataShape = [1, 64, 1, 1],
     // CHECK-SAME:   offsets = [0, 0, 0, 0], sizes = [1, 64, 2, 2]
-    // CHECK-SAME:   seDepth = 4 : i64, seSize = 16 : i64
+    // CHECK-SAME:   seDepth = 4 : i64, seSize = [16, 16, 16, 16]
     // CHECK-SAME:  -> tensor<1x4x2x2xi32, {order = #NHWC}>
 
     // CHECK:     [[SE2:%.+]] = VPU.StorageElementTable
     // CHECK-SAME:   dataShape = [1, 32, 1, 1],
     // CHECK-SAME:   offsets = [0, 0, 0, 0], sizes = [1, 32, 2, 2]
-    // CHECK-SAME:   seDepth = 2 : i64, seSize = 16 : i64
+    // CHECK-SAME:   seDepth = 2 : i64, seSize = [16, 16]
     // CHECK-SAME:  -> tensor<1x2x2x2xi32, {order = #NHWC}>
 
     // CHECK:     [[SE3:%.+]] = VPU.StorageElementTable
     // CHECK-SAME:   dataShape = [1, 32, 1, 1],
     // CHECK-SAME:   offsets = [0, 0, 0, 0], sizes = [1, 32, 2, 2]
-    // CHECK-SAME:   seDepth = 2 : i64, seSize = 16 : i64
+    // CHECK-SAME:   seDepth = 2 : i64, seSize = [16, 16]
     // CHECK-SAME:  -> tensor<1x2x2x2xi32, {order = #NHWC}>
 
     // CHECK:      [[DATA3:%.+]] = VPU.Slice [[ARG0]] [0, 160, 0, 0] [1, 32, 1, 1]

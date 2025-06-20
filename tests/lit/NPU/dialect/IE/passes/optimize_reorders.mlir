@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-reorders %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -2458,4 +2459,174 @@ func.func @ReorderWithSwNotEqualHasChange(%arg0: tensor<1x1x1x1xf32, {order = #N
     // CHECK-DAG:       [[CST:%.+]]  = const.Declare tensor<1x1x1x1xf32, {order = #NHWC}> = dense<1.000000e+00> : tensor<1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.Reorder<#NHWC>]
     // CHECK:           [[NOT_EQUAL:%.+]] = IE.NotEqual([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1xf32, {order = #NHWC}>, tensor<1x1x1x1xf32, {order = #NHWC}> -> tensor<1x1x1x1xi8, {order = #NHWC}>
     // CHECK:           return [[NOT_EQUAL]] : tensor<1x1x1x1xi8, {order = #NHWC}>
+}
+
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ReorderWithGroupConvToLayoutCast
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x2x1152x96xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x1x1x1xf16, {order = #NHWC}>
+func.func @ReorderWithGroupConvToLayoutCast(%arg0: tensor<1x2x1152x96xf16>, %arg1: tensor<1x1x1x1xf16, {order = #NHWC}>) -> tensor<1x2x1152x96xf16> {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x2x1152x96xf16> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    %1 = IE.Tile(%arg1) {repeats_values = [1, 2, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1x1xf16, {order = #NHWC}>
+    %2 = IE.ShapeCast {shape = [2, 1, 1, 1]} inputs(%1 : tensor<1x2x1x1xf16, {order = #NHWC}>) -> tensor<2x1x1x1xf16, {order = #NHWC}>
+    %3 = IE.GroupConvolution(%0, %2) {dilations = [1, 1], groups = 2 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x1152x96xf16, {order = #NHWC}>, tensor<2x1x1x1xf16, {order = #NHWC}>-> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    %4 = IE.Reorder(%3) {dstOrder = #NCHW} : tensor<1x2x1152x96xf16, {order = #NHWC}> -> tensor<1x2x1152x96xf16>
+
+    return %4 : tensor<1x2x1152x96xf16>
+
+    // CHECK:        [[TILE:%.+]] = IE.Tile([[INPUT1]]) {repeats_values = [1, 2, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1x1xf16, {order = #NHWC}>
+    // CHECK:        [[SHAPECAST:%.+]] = IE.ShapeCast {shape = [2, 1, 1, 1]} inputs([[TILE]] : tensor<1x2x1x1xf16, {order = #NHWC}>) -> tensor<2x1x1x1xf16, {order = #NHWC}>
+    // CHECK:        [[IN_LAYOUTCAST:%.+]] = IE.LayoutCast([[INPUT0]]) {dst_order = #NHWC} : tensor<1x2x1152x96xf16> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    // CHECK:        [[GROUPCONV:%.+]] = IE.GroupConvolution([[IN_LAYOUTCAST]], [[SHAPECAST]]) {dilations = [1, 1], groups = 2 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x1152x96xf16, {order = #NHWC}>, tensor<2x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    // CHECK:        [[OUT_LAYOUTCAST:%.+]] = IE.LayoutCast([[GROUPCONV]]) {dst_order = #NCHW} : tensor<1x2x1152x96xf16, {order = #NHWC}> -> tensor<1x2x1152x96xf16>
+    // CHECK:        return [[OUT_LAYOUTCAST]] : tensor<1x2x1152x96xf16>
+}
+
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ReorderWithGroupConvToPermuteCast
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x32x1152x96xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x1x1x1xf16>
+func.func @ReorderWithGroupConvToPermuteCast(%arg0: tensor<1x32x1152x96xf16>, %arg1: tensor<1x1x1x1xf16>) -> tensor<1x32x1152x96xf16> {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x32x1152x96xf16> -> tensor<1x32x1152x96xf16, {order = #NHWC}>
+    %1 = IE.Tile(%arg1) {repeats_values = [32, 1, 1, 1]} : tensor<1x1x1x1xf16> -> tensor<32x1x1x1xf16>
+    %2 = IE.Reorder(%1) {dstOrder = #NHWC} : tensor<32x1x1x1xf16> -> tensor<32x1x1x1xf16, {order = #NHWC}>
+    %3 = IE.GroupConvolution(%0, %2) {dilations = [1, 1], groups = 32 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x32x1152x96xf16, {order = #NHWC}>, tensor<32x1x1x1xf16, {order = #NHWC}> -> tensor<1x32x1152x96xf16, {order = #NHWC}>
+    %4 = IE.Reorder(%3) {dstOrder = #NCHW} : tensor<1x32x1152x96xf16, {order = #NHWC}> -> tensor<1x32x1152x96xf16>
+
+    return %4 : tensor<1x32x1152x96xf16>
+
+    // CHECK:        [[IN_PERMUTECAST:%.+]] = IE.PermuteCast([[INPUT0]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x32x1152x96xf16> -> tensor<1x96x32x1152xf16, {order = #NHWC}>
+    // CHECK:        [[TILE:%.+]] = IE.Tile([[INPUT1]]) {repeats_values = [96, 1, 1, 1]} : tensor<1x1x1x1xf16> -> tensor<96x1x1x1xf16>
+    // CHECK:        [[REORDER:%.+]] = IE.Reorder([[TILE]]) {dstOrder = #NHWC} : tensor<96x1x1x1xf16> -> tensor<96x1x1x1xf16, {order = #NHWC}>
+    // CHECK:        [[GROUPCONV:%.+]] = IE.GroupConvolution([[IN_PERMUTECAST]], [[REORDER]]) {dilations = [1, 1], groups = 96 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x96x32x1152xf16, {order = #NHWC}>, tensor<96x1x1x1xf16, {order = #NHWC}> -> tensor<1x96x32x1152xf16, {order = #NHWC}>
+    // CHECK:        [[OUT_PERMUTECAST:%.+]] = IE.PermuteCast([[GROUPCONV]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x96x32x1152xf16, {order = #NHWC}> -> tensor<1x32x1152x96xf16>
+    // CHECK:        return [[OUT_PERMUTECAST]] : tensor<1x32x1152x96xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ReorderWithGroupConvToPermuteCastNoFilterTile
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1x1152x8xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x1x1x1xf16, {order = #NHWC}>
+func.func @ReorderWithGroupConvToPermuteCastNoFilterTile(%arg0: tensor<1x1x1152x8xf16>, %arg1: tensor<1x1x1x1xf16, {order = #NHWC}>) -> tensor<1x1x1152x8xf16> {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x1x1152x8xf16> -> tensor<1x1x1152x8xf16, {order = #NHWC}>
+    %1 = IE.GroupConvolution(%0, %arg1) {dilations = [1, 1], groups = 1 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x1x1152x8xf16, {order = #NHWC}>, tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x1x1152x8xf16, {order = #NHWC}>
+    %2 = IE.Reorder(%1) {dstOrder = #NCHW} : tensor<1x1x1152x8xf16, {order = #NHWC}> -> tensor<1x1x1152x8xf16>
+
+    return %2 : tensor<1x1x1152x8xf16>
+
+    // CHECK:        [[IN_PERMUTECAST:%.+]]  = IE.PermuteCast([[INPUT0]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x1x1152x8xf16> -> tensor<1x8x1x1152xf16, {order = #NHWC}>
+    // CHECK:        [[TILE:%.+]] = IE.Tile([[INPUT1]]) {repeats_values = [8, 1, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<8x1x1x1xf16, {order = #NHWC}>
+    // CHECK:        [[GROUPCONV:%.+]]  = IE.GroupConvolution([[IN_PERMUTECAST]], [[TILE]]) {dilations = [1, 1], groups = 8 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x8x1x1152xf16, {order = #NHWC}>, tensor<8x1x1x1xf16, {order = #NHWC}> -> tensor<1x8x1x1152xf16, {order = #NHWC}>
+    // CHECK:        [[OUT_PERMUTECAST:%.+]] = IE.PermuteCast([[GROUPCONV]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x8x1x1152xf16, {order = #NHWC}> -> tensor<1x1x1152x8xf16>
+  
+    // CHECK:        return [[OUT_PERMUTECAST]] : tensor<1x1x1152x8xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ReorderWithGroupConvWithConcat
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1x1x1xf16, {order = #NHWC}>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x2x1152x32xf16, {order = #NHWC}>
+// CHECK-SAME:  [[INPUT2:%.+]]: tensor<1x2x1152x64xf16>
+func.func @ReorderWithGroupConvWithConcat(%arg0: tensor<1x1x1x1xf16, {order = #NHWC}>, %arg1: tensor<1x2x1152x32xf16, {order = #NHWC}>, %arg2: tensor<1x2x1152x64xf16>) -> tensor<1x2x1152x96xf16> {
+
+    %0 = IE.Reorder(%arg1) {dstOrder = #NCHW} : tensor<1x2x1152x32xf16, {order = #NHWC}> -> tensor<1x2x1152x32xf16>
+    %1 = IE.Concat(%0, %arg2) {per_axis = #IE.Concat<axis = 3>} : tensor<1x2x1152x32xf16>, tensor<1x2x1152x64xf16> -> tensor<1x2x1152x96xf16>
+    %2 = IE.Reorder(%1) {dstOrder = #NHWC} : tensor<1x2x1152x96xf16> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    %3 = IE.Tile(%arg0) {repeats_values = [1, 2, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1x1xf16, {order = #NHWC}>
+    %4 = IE.ShapeCast {shape = [2, 1, 1, 1]} inputs(%3 : tensor<1x2x1x1xf16, {order = #NHWC}>) -> tensor<2x1x1x1xf16, {order = #NHWC}>
+    %5 = IE.GroupConvolution(%2, %4) {dilations = [1, 1], groups = 2 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x1152x96xf16, {order = #NHWC}>, tensor<2x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    %6 = IE.Reorder(%5) {dstOrder = #NCHW} : tensor<1x2x1152x96xf16, {order = #NHWC}> -> tensor<1x2x1152x96xf16>
+
+    return %6 : tensor<1x2x1152x96xf16>
+
+    // CHECK:        [[REORDER:%.+]] = IE.Reorder([[INPUT1]]) {dstOrder = #NCHW} : tensor<1x2x1152x32xf16, {order = #NHWC}> -> tensor<1x2x1152x32xf16>
+    // CHECK:        [[CONCAT:%.+]] = IE.Concat([[REORDER]], [[INPUT2]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x2x1152x32xf16>, tensor<1x2x1152x64xf16> -> tensor<1x2x1152x96xf16>
+    // CHECK:        [[TILE:%.+]] = IE.Tile([[INPUT0]]) {repeats_values = [1, 2, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1x1xf16, {order = #NHWC}>
+    // CHECK:        [[SHAPECAST:%.+]] = IE.ShapeCast {shape = [2, 1, 1, 1]} inputs([[TILE]] : tensor<1x2x1x1xf16, {order = #NHWC}>) -> tensor<2x1x1x1xf16, {order = #NHWC}>
+    // CHECK:        [[IN_LAYOUTCAST:%.+]] = IE.LayoutCast([[CONCAT]]) {dst_order = #NHWC} : tensor<1x2x1152x96xf16> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    // CHECK:        [[GROUPCONV:%.+]] = IE.GroupConvolution([[IN_LAYOUTCAST]], [[SHAPECAST]]) {dilations = [1, 1], groups = 2 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x2x1152x96xf16, {order = #NHWC}>, tensor<2x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    // CHECK:        [[OUT_LAYOUTCAST:%.+]] = IE.LayoutCast([[GROUPCONV]]) {dst_order = #NCHW} : tensor<1x2x1152x96xf16, {order = #NHWC}> -> tensor<1x2x1152x96xf16>
+    // CHECK:        return [[OUT_LAYOUTCAST]] : tensor<1x2x1152x96xf16>
+}
+
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotOptReorderWithGroupConvForBias
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x32x1152x96xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x1x1x1xf16, {order = #NHWC}>
+// CHECK-SAME:  [[INPUT2:%.+]]: tensor<1x32x1x1xf16, {order = #NHWC}>
+func.func @NotOptReorderWithGroupConvForBias(%arg0: tensor<1x32x1152x96xf16>, %arg1: tensor<1x1x1x1xf16, {order = #NHWC}>, %arg2: tensor<1x32x1x1xf16, {order = #NHWC}>) -> tensor<1x32x1152x96xf16> {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x32x1152x96xf16> -> tensor<1x32x1152x96xf16, {order = #NHWC}>
+    %1 = IE.Tile(%arg1) {repeats_values = [1, 32, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x32x1x1xf16, {order = #NHWC}>
+    %2 = IE.ShapeCast {shape = [32, 1, 1, 1]} inputs(%1 : tensor<1x32x1x1xf16, {order = #NHWC}>) -> tensor<32x1x1x1xf16, {order = #NHWC}>
+    %3 = IE.GroupConvolution(%0, %2, %arg2) {dilations = [1, 1], groups = 32 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x1152x96xf16, {order = #NHWC}>, tensor<32x1x1x1xf16, {order = #NHWC}>, tensor<1x32x1x1xf16, {order = #NHWC}> -> tensor<1x32x1152x96xf16, {order = #NHWC}>
+    %4 = IE.Reorder(%3) {dstOrder = #NCHW} : tensor<1x32x1152x96xf16, {order = #NHWC}> -> tensor<1x32x1152x96xf16>
+
+    return %4 : tensor<1x32x1152x96xf16>
+
+    // CHECK:        [[IN_REORDER:%.+]] = IE.Reorder([[INPUT0]])
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<i4:f16:1, {0.1,0.2}>
+
+// CHECK-LABEL: @NotOptReorderWithGroupConvForPerAxisQuant
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x2x1152x96xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x1x1x1xf16, {order = #NHWC}>
+func.func @NotOptReorderWithGroupConvForPerAxisQuant(%arg0: tensor<1x2x1152x96xf16>, %arg1: tensor<1x1x1x1xf16, {order = #NHWC}>) -> tensor<1x2x1152x96x!qElemType> {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x2x1152x96xf16> -> tensor<1x2x1152x96xf16, {order = #NHWC}>
+    %1 = IE.Tile(%arg1) {repeats_values = [1, 2, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1x1xf16, {order = #NHWC}>
+    %2 = IE.ShapeCast {shape = [2, 1, 1, 1]} inputs(%1 : tensor<1x2x1x1xf16, {order = #NHWC}>) -> tensor<2x1x1x1xf16, {order = #NHWC}>
+    %3 = IE.GroupConvolution(%0, %2) {dilations = [1, 1], groups = 2 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x2x1152x96xf16, {order = #NHWC}>, tensor<2x1x1x1xf16, {order = #NHWC}> -> tensor<1x2x1152x96x!qElemType, {order = #NHWC}>
+    %4 = IE.Reorder(%3) {dstOrder = #NCHW} : tensor<1x2x1152x96x!qElemType, {order = #NHWC}> -> tensor<1x2x1152x96x!qElemType>
+
+    return %4 : tensor<1x2x1152x96x!qElemType>
+
+    // CHECK:        [[IN_REORDER:%.+]] = IE.Reorder([[INPUT0]])
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotOptReorderWithGroupConvForPerChannelPostOp
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x32x1152x96xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x1x1x1xf16, {order = #NHWC}>
+func.func @NotOptReorderWithGroupConvForPerChannelPostOp(%arg0: tensor<1x32x1152x96xf16>, %arg1: tensor<1x1x1x1xf16, {order = #NHWC}>) -> tensor<1x32x1152x96xf16> {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x32x1152x96xf16> -> tensor<1x32x1152x96xf16, {order = #NHWC}>
+    %1 = IE.Tile(%arg1) {repeats_values = [1, 32, 1, 1]} : tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x32x1x1xf16, {order = #NHWC}>
+    %2 = IE.ShapeCast {shape = [32, 1, 1, 1]} inputs(%1 : tensor<1x32x1x1xf16, {order = #NHWC}>) -> tensor<32x1x1x1xf16, {order = #NHWC}>
+    %3 = IE.GroupConvolution(%0, %2) {dilations = [1, 1], groups = 32 : i64, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.PRelu<negative_slope=[1.000000e-01, 2.000000e-01]>, strides = [1, 1]} : tensor<1x32x1152x96xf16, {order = #NHWC}>, tensor<32x1x1x1xf16, {order = #NHWC}> -> tensor<1x32x1152x96xf16, {order = #NHWC}>
+    %4 = IE.Reorder(%3) {dstOrder = #NCHW} : tensor<1x32x1152x96xf16, {order = #NHWC}> -> tensor<1x32x1152x96xf16>
+
+    return %4 : tensor<1x32x1152x96xf16>
+
+    // CHECK:        [[IN_REORDER:%.+]] = IE.Reorder([[INPUT0]])
 }

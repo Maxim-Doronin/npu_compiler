@@ -5,10 +5,9 @@
 
 #include <mlir/IR/BuiltinTypes.h>
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/utils.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
-#include "vpux/compiler/core/profiling.hpp"
-#include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
+#include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/utils/ELF/utils.hpp"
 
 #include <npu_40xx_nnrt.hpp>
 #include <optional>
@@ -20,28 +19,15 @@ using namespace npu40xx;
 // NNrtConfigOp
 //
 
-void vpux::NPUReg40XX::NNrtConfigOp::serializeCached(elf::writer::BinaryDataSection<uint8_t>& binDataSection,
-                                                     ELF::SymbolReferenceMap& symRefMap) {
-    auto moduleOp = getOperation()->getParentOfType<mlir::ModuleOp>();
-    bool isActShaveProfilingEnabled =
-            vpux::getProfilingSection(moduleOp, profiling::ExecutorType::ACTSHAVE).has_value();
+void vpux::NPUReg40XX::NNrtConfigOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
+    auto nnrtCfg = getProperties().getDescriptor();
 
-    std::optional<uint64_t> stackSize;
-    if (getActShaveStacks().has_value()) {
-        auto stackRef = symRefMap.lookupSymbol(mlir::dyn_cast<mlir::SymbolRefAttr>(*getActShaveStacks()->begin()));
-        auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stackRef);
-        stackSize = stackOp.getStackSize();
-    }
-    // NPU4 does not have stack frames provided by compiler
-    // they are resolved by shave driver when initialized.
+    VPUX_THROW_UNLESS(sizeof(nn_public::VpuNNRTConfig) == nnrtCfg.size(),
+                      "HW VpuNNRTConfig size {0} != regMapped representation size {1}.",
+                      sizeof(nn_public::VpuNNRTConfig), nnrtCfg.size());
 
-    npu40xx::nn_public::VpuNNRTConfig nnrtConfig = {};
-    NPUReg40XX::fillNNrtConfig<NPUReg40XX::ActShaveRtOp>(nnrtConfig.shv_rt_configs, getOperation(), getActShaveRt(),
-                                                         stackSize, isActShaveProfilingEnabled,
-                                                         getIsActKernelInvocations(), std::nullopt);
-
-    auto ptrCharTmp = reinterpret_cast<uint8_t*>(&nnrtConfig);
-    binDataSection.appendData(ptrCharTmp, getBinarySize(VPU::ArchKind::NPU40XX));
+    auto serializedDescriptor = nnrtCfg.getStorage();
+    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(VPU::ArchKind::NPU40XX));
 }
 
 size_t vpux::NPUReg40XX::NNrtConfigOp::getBinarySize(VPU::ArchKind) {
@@ -127,10 +113,18 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::NNrtConfigOp::getRelocationIn
     return relocs;
 }
 
-elf::Version NPUReg40XX::NNrtConfigOp::getVersion() {
-    // PV version of VpuNNShaveRuntimeConfigs.
-    // Don't expect this to be changed as it is fixed
-    auto returnVersion = elf::Version(NNRT_API_UD2024_44_MAJOR_VERSION, NNRT_API_UD2024_44_MINOR_VERSION,
-                                      NNRT_API_UD2024_44_PATCH_VERSION);
-    return returnVersion;
+void vpux::NPUReg40XX::NNrtConfigOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr sym_name,
+                                           mlir::UnitAttr isActKernelInvocations, mlir::SymbolRefAttr actShaveRt,
+                                           mlir::ArrayAttr actShaveStacks, mlir::SymbolRefAttr dmaHwpBase,
+                                           mlir::SymbolRefAttr hwpWorkpointCfg,
+                                           vpux::NPUReg40XX::Descriptors::VpuNNRTConfig&& descriptor) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = sym_name;
+    props.isActKernelInvocations = isActKernelInvocations;
+    props.actShaveRt = actShaveRt;
+    props.actShaveStacks = actShaveStacks;
+    props.dmaHwpBase = dmaHwpBase;
+    props.hwpWorkpointCfg = hwpWorkpointCfg;
+    props.descriptor = std::move(descriptor);
 }

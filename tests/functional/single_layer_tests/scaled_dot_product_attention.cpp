@@ -4,7 +4,7 @@
 //
 
 #include <openvino/core/dimension.hpp>
-#include <openvino/opsets/opset14.hpp>
+#include <openvino/opsets/opset14_decl.hpp>
 #include <openvino/pass/manager.hpp>
 #include <transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp>
 
@@ -15,11 +15,11 @@
 
 namespace ov::test {
 
-PRETTY_PARAM(Batch, int64_t);            // N
-PRETTY_PARAM(SourceSeqLen, int64_t);     // S
-PRETTY_PARAM(TargetSeqLen, int64_t);     // L
-PRETTY_PARAM(QKEmbeddingSize, int64_t);  // E
-PRETTY_PARAM(VEmbeddingSize, int64_t);   // Ev
+PRETTY_PARAM(Batches, std::vector<BoundedDim>);  // N, ...
+PRETTY_PARAM(SourceSeqLen, BoundedDim);          // S
+PRETTY_PARAM(TargetSeqLen, BoundedDim);          // L
+PRETTY_PARAM(QKEmbeddingSize, BoundedDim);       // E
+PRETTY_PARAM(VEmbeddingSize, BoundedDim);        // Ev
 PRETTY_PARAM(IsCasual, bool);
 PRETTY_PARAM(HasAttentionMask, bool);
 PRETTY_PARAM(HasScale, bool);
@@ -28,17 +28,23 @@ PRETTY_PARAM(InputType, ov::element::Type);
 
 namespace {
 
-std::vector<InputShape> generateInputShapes(Batch batch, SourceSeqLen sourceSeqLen, TargetSeqLen targetSeqLen,
-                                            QKEmbeddingSize qkEmbeddingSize, VEmbeddingSize vEmbeddingSize,
-                                            HasAttentionMask hasAttentionMask) {
-    auto qShape = generateShapes(batch, targetSeqLen, qkEmbeddingSize);
-    auto kShape = generateShapes(batch, sourceSeqLen, qkEmbeddingSize);
-    auto vShape = generateShapes(batch, sourceSeqLen, vEmbeddingSize);
+std::vector<InputShape> generateInputShapes(const Batches& batches, SourceSeqLen sourceSeqLen,
+                                            TargetSeqLen targetSeqLen, QKEmbeddingSize qkEmbeddingSize,
+                                            VEmbeddingSize vEmbeddingSize, HasAttentionMask hasAttentionMask) {
+    auto qDims = combine<BoundedDim>(batches, targetSeqLen, qkEmbeddingSize);
+    auto qShape = generateTestShape(qDims);
+
+    auto kDims = combine<BoundedDim>(batches, sourceSeqLen, qkEmbeddingSize);
+    auto kShape = generateTestShape(kDims);
+
+    auto vDims = combine<BoundedDim>(batches, sourceSeqLen, vEmbeddingSize);
+    auto vShape = generateTestShape(vDims);
 
     auto inputShapes = std::vector<InputShape>{qShape, kShape, vShape};
 
     if (hasAttentionMask) {
-        auto attentionMaskShape = generateShapes(batch, targetSeqLen, sourceSeqLen);
+        auto attensionMaskDims = combine<BoundedDim>(batches, targetSeqLen, sourceSeqLen);
+        auto attentionMaskShape = generateTestShape(attensionMaskDims);
         inputShapes.push_back(attentionMaskShape);
     }
 
@@ -81,7 +87,7 @@ protected:
                                              targetInputStaticShapes[2]};
         if (hasScale) {
             shapes.push_back(hasAttentionMask ? targetInputStaticShapes[3] : ov::Shape{});
-            shapes.push_back(ov::Shape{1});  // emplace_back leads to incorrect results
+            shapes.push_back(ov::Shape{1});  // NOLINT emplace_back leads to incorrect results
         } else if (hasAttentionMask) {
             shapes.push_back(targetInputStaticShapes[3]);
         }
@@ -98,7 +104,7 @@ public:
 // Cross Attention test class
 //
 
-using SdpAttentionLayerTestParams = std::tuple<Batch, SourceSeqLen, TargetSeqLen, QKEmbeddingSize, VEmbeddingSize,
+using SdpAttentionLayerTestParams = std::tuple<Batches, SourceSeqLen, TargetSeqLen, QKEmbeddingSize, VEmbeddingSize,
                                                IsCasual, HasAttentionMask, HasScale, InputType>;
 
 class SdpAttentionLayerTest :
@@ -106,14 +112,14 @@ class SdpAttentionLayerTest :
         public SdpAttentionLayerTestCommon {
 protected:
     void SetUp() override {
-        const auto& [batch, sourceSeqLen, targetSeqLen, qkEmbeddingSize, vEmbeddingSize, isCasual, hasAttentionMask,
+        const auto& [batches, sourceSeqLen, targetSeqLen, qkEmbeddingSize, vEmbeddingSize, isCasual, hasAttentionMask,
                      hasScale, inputType] = GetParam();
 
         this->hasAttentionMask = hasAttentionMask;
         this->hasScale = hasScale;
 
-        const auto inputShapes = generateInputShapes(batch, sourceSeqLen, targetSeqLen, qkEmbeddingSize, vEmbeddingSize,
-                                                     hasAttentionMask);
+        const auto inputShapes = generateInputShapes(batches, sourceSeqLen, targetSeqLen, qkEmbeddingSize,
+                                                     vEmbeddingSize, hasAttentionMask);
 
         init_input_shapes(inputShapes);
 
@@ -146,18 +152,18 @@ protected:
 // Self Attention test class
 //
 
-PRETTY_PARAM(SequenceLength, int64_t);  // S == L
-PRETTY_PARAM(EmbeddingSize, int64_t);   // E == Ev
+PRETTY_PARAM(SequenceLength, BoundedDim);  // S == L
+PRETTY_PARAM(EmbeddingSize, BoundedDim);   // E == Ev
 
 using SelfAttentionTestParams =
-        std::tuple<Batch, SequenceLength, EmbeddingSize, IsCasual, HasAttentionMask, HasScale, InputType>;
+        std::tuple<Batches, SequenceLength, EmbeddingSize, IsCasual, HasAttentionMask, HasScale, InputType>;
 
 class SelfAttentionLayerTest :
         public testing::WithParamInterface<SelfAttentionTestParams>,
         public SdpAttentionLayerTestCommon {
 protected:
     void SetUp() override {
-        const auto& [batch, sequenceLength, embeddingSize, isCasual, hasAttentionMask, hasScale, inputType] =
+        const auto& [batches, sequenceLength, embeddingSize, isCasual, hasAttentionMask, hasScale, inputType] =
                 GetParam();
 
         this->hasAttentionMask = hasAttentionMask;
@@ -168,8 +174,8 @@ protected:
         auto qkEmbeddingSize = QKEmbeddingSize{embeddingSize};
         auto vEmbeddingSize = VEmbeddingSize{embeddingSize};
 
-        const auto inputShapes = generateInputShapes(batch, sourceSeqLen, targetSeqLen, qkEmbeddingSize, vEmbeddingSize,
-                                                     hasAttentionMask);
+        const auto inputShapes = generateInputShapes(batches, sourceSeqLen, targetSeqLen, qkEmbeddingSize,
+                                                     vEmbeddingSize, hasAttentionMask);
 
         init_input_shapes(inputShapes);
 
@@ -229,7 +235,7 @@ const std::vector<InputType> inputPrecision = {ov::element::f16};
 //
 
 INSTANTIATE_TEST_SUITE_P(smoke, SelfAttentionLayerTest,
-                         ::testing::Combine(::testing::Values(Batch{8}),                              // 12, 16
+                         ::testing::Combine(::testing::Values(Batches{8}),                            // 12, 16
                                             ::testing::Values(SequenceLength{512}),                   // 1k, 2k, 4k, 8k
                                             ::testing::Values(EmbeddingSize{64}),                     // 128, 256
                                             ::testing::ValuesIn(std::vector<IsCasual>{true, false}),  //
@@ -244,7 +250,7 @@ INSTANTIATE_TEST_SUITE_P(smoke, SelfAttentionLayerTest,
 //
 
 INSTANTIATE_TEST_SUITE_P(smoke, SdpAttentionLayerTest,
-                         ::testing::Combine(::testing::Values(Batch{8}),                //
+                         ::testing::Combine(::testing::Values(Batches{8}),              //
                                             ::testing::Values(SourceSeqLen{512}),       //
                                             ::testing::Values(TargetSeqLen{256}),       //
                                             ::testing::Values(QKEmbeddingSize{64}),     //
@@ -253,6 +259,22 @@ INSTANTIATE_TEST_SUITE_P(smoke, SdpAttentionLayerTest,
                                             ::testing::Values(HasAttentionMask{true}),  //
                                             ::testing::Values(HasScale{true}),          //
                                             ::testing::ValuesIn(inputPrecision)         //
+                                            ),
+                         PrintTestCaseName());
+
+//
+// Dynamic SelfAttentionTests
+//
+
+// [Tracking number: E#160081]
+INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_Dynamic, SelfAttentionLayerTest,
+                         ::testing::Combine(::testing::Values(Batches{16_Dyn, 12}),                           //
+                                            ::testing::Values(SequenceLength{512_Dyn}),                       //
+                                            ::testing::Values(EmbeddingSize{64}),                             //
+                                            ::testing::ValuesIn(std::vector<IsCasual>{true, false}),          //
+                                            ::testing::ValuesIn(std::vector<HasAttentionMask>{true, false}),  //
+                                            ::testing::ValuesIn(std::vector<HasScale>{true, false}),          //
+                                            ::testing::ValuesIn(inputPrecision)                               //
                                             ),
                          PrintTestCaseName());
 

@@ -254,7 +254,8 @@ void TileLSTMSequence::tileBidirectionalLSTMSequence(VPU::LSTMSequenceOp op, mli
 
         auto newLSTMSequenceOp = rewriter.create<VPU::LSTMSequenceOp>(
                 appendLoc(loc, "_tile_{0}", 1), newLstmSequenceInput, hiddenState, cellState, op.getReccurenceWeights(),
-                getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(), op.getMultiClusterStrategyAttr());
+                op.getBiases(), getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(), op.getUseDpuAttr(),
+                op.getMultiClusterStrategyAttr());
 
         const auto [newOutputHiddenValuesForward, newOutputHiddenValuesReverse] =
                 splitOnDim(newLSTMSequenceOp.getOutputHiddenValues(), 1);
@@ -321,8 +322,8 @@ void TileLSTMSequence::tileForwardOrReverseLSTMSequence(VPU::LSTMSequenceOp op, 
 
         auto newLSTMSequenceOp = rewriter.create<VPU::LSTMSequenceOp>(
                 appendLoc(loc, "_tile_{0}", 1), newLstmSequenceInput, newHiddenState, newCellState,
-                op.getReccurenceWeights(), getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(),
-                op.getMultiClusterStrategyAttr());
+                op.getReccurenceWeights(), op.getBiases(), getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(),
+                op.getUseDpuAttr(), op.getMultiClusterStrategyAttr());
 
         outputHiddenValuesVec.push_back(newLSTMSequenceOp.getOutputHiddenValues());
         newHiddenState = newLSTMSequenceOp.getOutputHiddenState();

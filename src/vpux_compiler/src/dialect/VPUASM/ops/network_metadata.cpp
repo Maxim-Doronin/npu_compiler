@@ -21,7 +21,6 @@ void vpux::VPUASM::NetworkMetadataOp::serialize(elf::writer::BinaryDataSection<u
     auto nBarrs = VPUIP::getNumAvailableBarriers(operation);
     metadata.mResourceRequirements.nn_barriers_ = nBarrs;
     metadata.mResourceRequirements.nn_slice_count_ = VPUIP::getNumTilesUsed(mainModule);
-
     metadata.mResourceRequirements.nn_slice_length_ =
             checked_cast<uint32_t>(IE::getAvailableMemory(mainModule, vpux::VPU::MemoryKind::CMX_NN).getByteSize());
 

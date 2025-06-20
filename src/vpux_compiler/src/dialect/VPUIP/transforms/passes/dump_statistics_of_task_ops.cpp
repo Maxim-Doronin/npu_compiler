@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -9,11 +9,14 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/utils/abstract_tree.hpp"
+#include "vpux/compiler/utils/statistics_collection.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/profiling/common.hpp"
 
 #include <functional>
 #include <map>
+#include <memory>
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_DUMPSTATISTICSOFTASKOPSPASS
@@ -25,9 +28,6 @@ using namespace vpux;
 
 namespace {
 
-using IsSpecificOpFunc = std::function<bool(mlir::Operation*)>;
-using RemainderHandlerFunc = std::function<std::string(mlir::Operation*)>;
-
 //
 // Declare utility functions
 //
@@ -35,71 +35,48 @@ using RemainderHandlerFunc = std::function<std::string(mlir::Operation*)>;
 std::string convertBytesToReadableSize(uint64_t);
 bool printDMASizes(const std::string&, const uint64_t&);
 
-class SpecificCategoryCounter {
+class SpecificCategoryCounter final : public utils::OpCounter {
 public:
-    using CounterPtr = std::shared_ptr<SpecificCategoryCounter>;
-    using CountersVec = std::vector<CounterPtr>;
+    using utils::OpCounter::OpCounter;
 
-    SpecificCategoryCounter(const std::string& category, IsSpecificOpFunc predicate,
-                            const CountersVec& nestedCounters = {},
-                            std::optional<RemainderHandlerFunc> maybeRemainderHandler = std::nullopt)
-            : _category(category),
-              _predicate(std::move(predicate)),
-              _nestedCounters(nestedCounters),
-              _count(0),
-              _size(0),
-              _maybeRemainderHandler(std::move(maybeRemainderHandler)) {
-    }
-
-    bool count(mlir::Operation* op) {
-        if (!_predicate(op)) {
+    bool record(mlir::Operation* op) override {
+        if (!utils::OpCounter::record(op)) {
             return false;
         }
 
-        ++_count;
         if (mlir::isa_and_nonnull<VPUIP::DMATypeOpInterface>(op)) {
             auto opType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
             _size += opType.getCompactAllocSize().count();
         }
-        bool counted = false;
-        for (auto& nestedCounter : _nestedCounters) {
-            counted |= nestedCounter->count(op);
-        }
-        if (!counted && _maybeRemainderHandler.has_value()) {
-            ++_remainderCounter[_maybeRemainderHandler.value()(op)];
-        }
         return true;
     }
 
-    void printStatistics(vpux::Logger log) {
+    void printStatistics(const vpux::Logger& log) const override {
+        if (_count == 0) {
+            return;
+        }
         if (printDMASizes(_category, _size)) {
             log.info("{0} - {1} ops : Size - {2}", _category, _count, convertBytesToReadableSize(_size));
         } else {
             log.info("{0} - {1} ops", _category, _count);
         }
-        log = log.nest();
-        for (auto& nestedCounter : _nestedCounters) {
-            if (nestedCounter->_count) {
-                nestedCounter->printStatistics(log);
-            }
-        }
-        for (auto& remainder : _remainderCounter) {
-            log.info("{0} - {1} ops", remainder.first, remainder.second);
-        }
-        log = log.unnest();
     }
 
 private:
-    std::string _category;
-    IsSpecificOpFunc _predicate;
-    CountersVec _nestedCounters;
-    size_t _count;
-    uint64_t _size;
-    std::optional<RemainderHandlerFunc> _maybeRemainderHandler;
-    std::map<std::string, size_t> _remainderCounter{};
+    uint64_t _size{0};
 };
 
-using CountersVec = SpecificCategoryCounter::CountersVec;
+using CountersNode = utils::OpCounterTree::Node;
+using CountersVec = std::vector<CountersNode>;
+
+// Dummy wrapper around SpecificCategoryCounter that produces a Tree::Node{counter}
+CountersNode makeCounterNode(const std::string& category, utils::OpCounter::IsOperationSuitable predicate,
+                             CountersVec&& nestedCounters = {},
+                             utils::OpCounter::HandleUnrecognizedCounter handler = {}) {
+    return {std::unique_ptr<utils::OpCounter>(
+                    new SpecificCategoryCounter(category, std::move(predicate), std::move(handler))),
+            std::move(nestedCounters)};
+}
 
 //
 // Utility Functions
@@ -166,12 +143,13 @@ bool isLocContainsStr(mlir::Location loc, const std::string& substr) {
 }
 
 CountersVec getSpillCounter(const std::string& category) {
+    CountersVec res;
     if (category != "DDR2CMX" && category != "CMX2DDR") {
-        return {};
+        return res;
     }
     const auto spillCategory = category == "DDR2CMX" ? "SPILL_READ" : "SPILL_WRITE";
     const auto targetSubstr = category == "DDR2CMX" ? SPILL_READ_OP_NAME_SUFFIX : SPILL_WRITE_OP_NAME_SUFFIX;
-    return {std::make_shared<SpecificCategoryCounter>(spillCategory, [=](mlir::Operation* op) {
+    res.push_back(makeCounterNode(spillCategory, [=](mlir::Operation* op) {
         if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(op->getLoc())) {
             const auto locations = fusedLoc.getLocations();
             for (auto it = std::rbegin(locations); it != std::rend(locations); ++it) {
@@ -185,7 +163,8 @@ CountersVec getSpillCounter(const std::string& category) {
             }
         }
         return false;
-    })};
+    }));
+    return res;
 }
 
 std::string getProfSuffix(const std::string& profCategory) {
@@ -194,7 +173,7 @@ std::string getProfSuffix(const std::string& profCategory) {
 
 void addProfilingCounters(CountersVec& counters, const std::string& category) {
     if (category == "REG2CMX") {
-        counters.push_back(std::make_shared<SpecificCategoryCounter>("Profiling Timestamp DMA", [](auto op) {
+        counters.push_back(makeCounterNode("Profiling Timestamp DMA", [](auto op) {
             if (auto dmaOp = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(op)) {
                 return dmaOp.getProfilingMetadata().has_value();
             }
@@ -203,14 +182,14 @@ void addProfilingCounters(CountersVec& counters, const std::string& category) {
         return;
     }
     if (category == "REG2DDR") {
-        counters.push_back(std::make_shared<SpecificCategoryCounter>("Profiling workpoint", [](auto op) {
+        counters.push_back(makeCounterNode("Profiling workpoint", [](auto op) {
             return isLocContainsStr(op->getLoc(), profiling::PROFILING_WORKPOINT_READ_ATTR);
         }));
         return;
     }
     if (category == "CMX2DDR") {
         CountersVec nestedProfCounters;
-        const static std::vector<std::pair<std::string, IsSpecificOpFunc>> profCounterCfgs = {
+        const static std::vector<std::pair<std::string, utils::OpCounter::IsOperationSuitable>> profCounterCfgs = {
                 {"DMA",
                  [](auto op) {
                      return isLocContainsStr(op->getLoc(), getProfSuffix("dma"));
@@ -227,35 +206,35 @@ void addProfilingCounters(CountersVec& counters, const std::string& category) {
                      return isLocContainsStr(op->getLoc(), getProfSuffix("m2i"));
                  }}};
         for (const auto& p : profCounterCfgs) {
-            nestedProfCounters.push_back(std::make_shared<SpecificCategoryCounter>(p.first, p.second));
+            nestedProfCounters.push_back(makeCounterNode(p.first, p.second));
         }
-        counters.push_back(std::make_shared<SpecificCategoryCounter>(
+        counters.push_back(makeCounterNode(
                 "Profiling buffer management",
                 [](auto op) {
                     return isLocContainsStr(op->getLoc(), profiling::PROFILING_CMX_2_DDR_OP_NAME);
                 },
-                nestedProfCounters));
+                std::move(nestedProfCounters)));
     }
     if (category == "DDR2DDR") {
         CountersVec nestedProfCounters;
-        const static std::vector<std::pair<std::string, IsSpecificOpFunc>> profCounterCfgs = {
+        const static std::vector<std::pair<std::string, utils::OpCounter::IsOperationSuitable>> profCounterCfgs = {
                 {"DMA", [](auto op) {
                      return isLocContainsStr(op->getLoc(), std::string("dma") + profiling::PROFILING_DDR_2_DDR_OP_NAME);
                  }}};
         for (const auto& p : profCounterCfgs) {
-            nestedProfCounters.push_back(std::make_shared<SpecificCategoryCounter>(p.first, p.second));
+            nestedProfCounters.push_back(makeCounterNode(p.first, p.second));
         }
-        counters.push_back(std::make_shared<SpecificCategoryCounter>(
+        counters.push_back(makeCounterNode(
                 "Profiling buffer management",
                 [](auto op) {
                     return isLocContainsStr(op->getLoc(), profiling::PROFILING_DDR_2_DDR_OP_NAME);
                 },
-                nestedProfCounters));
+                std::move(nestedProfCounters)));
     }
 }
 
 CountersVec getInnerCounters(const std::string& category) {
-    CountersVec counters = getSpillCounter(category);
+    auto counters = getSpillCounter(category);
     addProfilingCounters(counters, category);
     return counters;
 }
@@ -290,13 +269,13 @@ CountersVec getDMANestedCounters() {
     for (const auto& inputConf : configurations) {
         for (const auto& outputConf : configurations) {
             const auto category = inputConf.first + "2" + outputConf.first;
-            const auto nestedCounters = getInnerCounters(category);
-            counters.push_back(std::make_shared<SpecificCategoryCounter>(
+            auto nestedCounters = getInnerCounters(category);
+            counters.push_back(makeCounterNode(
                     category,
                     [=](auto op) {
                         return checkInputOutputMemSpace(op, inputConf.second, outputConf.second);
                     },
-                    nestedCounters));
+                    std::move(nestedCounters)));
         }
     }
     return counters;
@@ -308,15 +287,15 @@ void populateDMACounters(CountersVec&) {
 
 template <class DMAType, class... DMATypeArgs>
 void populateDMACounters(CountersVec& counters) {
-    RemainderHandlerFunc dmaRemainderHandler = [](mlir::Operation*) {
+    utils::OpCounter::HandleUnrecognizedCounter dmaRemainderHandler = [](mlir::Operation*) {
         return "Unknown memory space DMA";
     };
-    counters.push_back(std::make_shared<SpecificCategoryCounter>(
+    counters.push_back(makeCounterNode(
             DMAType::getOperationName().str(),
             [](mlir::Operation* op) {
                 return mlir::isa<DMAType>(op);
             },
-            getDMANestedCounters<DMAType>(), dmaRemainderHandler));
+            getDMANestedCounters<DMAType>(), std::move(dmaRemainderHandler)));
     populateDMACounters<DMATypeArgs...>(counters);
 }
 
@@ -328,81 +307,73 @@ CountersVec getDMACounters() {
     return dmaCounters;
 }
 
-SpecificCategoryCounter::CounterPtr getSWKernelsCounter() {
-    RemainderHandlerFunc swHandler = [](mlir::Operation* op) -> std::string {
+CountersNode getSWKernelsCounter() {
+    utils::OpCounter::HandleUnrecognizedCounter swHandler = [](mlir::Operation* op) -> std::string {
         if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(op)) {
             return swKernelOp.getKernelFunction().getLeafReference().str();
         }
         return "Not SwKernel";
     };
 
-    return std::make_shared<SpecificCategoryCounter>(
+    return makeCounterNode(
             VPUIP::SwKernelOp::getOperationName().str(),
             [](mlir::Operation* op) {
                 return mlir::isa<VPUIP::SwKernelOp>(op);
             },
-            CountersVec{}, swHandler);
+            CountersVec{}, std::move(swHandler));
 }
 
-SpecificCategoryCounter::CounterPtr getSparsityCounter() {
-    RemainderHandlerFunc remainedOpHandler = [](mlir::Operation*) {
+CountersNode getSparsityCounter() {
+    utils::OpCounter::HandleUnrecognizedCounter remainedOpHandler = [](mlir::Operation*) {
         return "Dense";
     };
 
-    auto sparseInputCounter = std::make_shared<SpecificCategoryCounter>(
-            "Sparse input",
-            [](mlir::Operation* op) {
-                if (auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op)) {
-                    bool hasSparseInput =
-                            nceOp.getInputSparsityMap() != nullptr || nceOp.getInputStorageElementTable() != nullptr;
-                    if (nceOp.getTaskType() == VPUIP::NCETaskType::ELTWISE) {
-                        hasSparseInput |= nceOp.getWeightsSparsityMap() != nullptr;
-                    }
-                    return hasSparseInput;
-                }
-                return false;
-            },
-            CountersVec{});
+    auto sparseInputCounter = makeCounterNode("Sparse input", [](mlir::Operation* op) {
+        if (auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op)) {
+            bool hasSparseInput =
+                    nceOp.getInputSparsityMap() != nullptr || nceOp.getInputStorageElementTable() != nullptr;
+            if (nceOp.getTaskType() == VPUIP::NCETaskType::ELTWISE) {
+                hasSparseInput |= nceOp.getWeightsSparsityMap() != nullptr;
+            }
+            return hasSparseInput;
+        }
+        return false;
+    });
 
-    auto sparseWeightsCounter = std::make_shared<SpecificCategoryCounter>(
-            "Sparse weights",
-            [](mlir::Operation* op) {
-                if (auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op)) {
-                    return nceOp.getWeightsSparsityMap() != nullptr;
-                }
-                return false;
-            },
-            CountersVec{});
+    auto sparseWeightsCounter = makeCounterNode("Sparse weights", [](mlir::Operation* op) {
+        if (auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op)) {
+            return nceOp.getWeightsSparsityMap() != nullptr;
+        }
+        return false;
+    });
 
-    auto sparseOutputCounter = std::make_shared<SpecificCategoryCounter>(
-            "Sparse output",
-            [](mlir::Operation* op) {
-                if (auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op)) {
-                    return nceOp.getOutputSparsityMap() != nullptr;
-                }
-                return false;
-            },
-            CountersVec{});
+    auto sparseOutputCounter = makeCounterNode("Sparse output", [](mlir::Operation* op) {
+        if (auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op)) {
+            return nceOp.getOutputSparsityMap() != nullptr;
+        }
+        return false;
+    });
 
-    CountersVec counters = {std::move(sparseInputCounter), std::move(sparseWeightsCounter),
-                            std::move(sparseOutputCounter)};
-    return std::make_shared<SpecificCategoryCounter>(
+    CountersVec counters;
+    counters.push_back(std::move(sparseInputCounter));
+    counters.push_back(std::move(sparseWeightsCounter));
+    counters.push_back(std::move(sparseOutputCounter));
+    return makeCounterNode(
             "NCETask Operations",
             [](mlir::Operation* op) {
                 return mlir::isa<VPUIP::NCEClusterTaskOp>(op);
             },
-            counters, remainedOpHandler);
+            std::move(counters), std::move(remainedOpHandler));
 }
 
-SpecificCategoryCounter::CounterPtr getM2ICounter() {
-    return std::make_shared<SpecificCategoryCounter>(VPUIP::M2ITaskOp::getOperationName().str(),
-                                                     [](mlir::Operation* op) {
-                                                         return mlir::isa<VPUIP::M2ITaskOp>(op);
-                                                     });
+CountersNode getM2ICounter() {
+    return makeCounterNode(VPUIP::M2ITaskOp::getOperationName().str(), [](mlir::Operation* op) {
+        return mlir::isa<VPUIP::M2ITaskOp>(op);
+    });
 }
 
-SpecificCategoryCounter populateCounters() {
-    RemainderHandlerFunc remainedOpHandler = [](mlir::Operation* op) {
+utils::OpCounterTree populateCounters() {
+    utils::OpCounter::HandleUnrecognizedCounter remainedOpHandler = [](mlir::Operation* op) {
         return op->getName().getIdentifier().str();
     };
 
@@ -411,13 +382,14 @@ SpecificCategoryCounter populateCounters() {
     counters.push_back(getSparsityCounter());
     counters.push_back(getM2ICounter());
 
-    SpecificCategoryCounter topLevelCounter(
+    CountersVec roots;
+    roots.push_back(makeCounterNode(
             "VPUIP Tasks",
             [](mlir::Operation* op) {
                 return mlir::isa<VPUIP::TaskOpInterface>(op);
             },
-            counters, remainedOpHandler);
-    return topLevelCounter;
+            std::move(counters), std::move(remainedOpHandler)));
+    return utils::OpCounterTree(std::move(roots));
 }
 
 class CompressionRateCounter {
@@ -677,14 +649,17 @@ void DumpStatisticsOfTaskOpsPass::safeRunOnFunc() {
     _log.info("DDR heap size - {0}", convertBytesToReadableSize(ddrHeapSize));
 
     func->walk([&](mlir::Operation* op) {
-        opStatisticsCounter.count(op);
+        utils::AddOpRecordVisitor collector(op);
+        opStatisticsCounter.apply(collector);
+
         barrierCounter.count(op);
         compressionCounter.count(op);
         constSwizzlingCounter.count(op);
     });
 
     _log.info("VPUIP tasks statistics:");
-    opStatisticsCounter.printStatistics(_log);
+    utils::PrintOpRecordVisitor printer(_log);
+    opStatisticsCounter.apply(printer);
     _log.info("Barrier statistics:");
     barrierCounter.printStatistics(_log);
     _log.info("Weights statistics:");

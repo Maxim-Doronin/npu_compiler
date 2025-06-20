@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true compilation-mode=DefaultHW" --compute-halo-region-for-dpu-task-op %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -1508,7 +1509,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 ]>
 
 // CHECK-LABEL: @SOK_ODUPermute
-module @SOK_ODUPermute attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @SOK_ODUPermute attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
 
 net.NetworkInfo
     entryPoint : @main

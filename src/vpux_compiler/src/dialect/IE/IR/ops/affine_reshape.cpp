@@ -85,26 +85,15 @@ mlir::LogicalResult vpux::IE::AffineReshapeOp::verify() {
 //
 
 mlir::OpFoldResult vpux::IE::AffineReshapeOp::fold(FoldAdaptor adaptor) {
-    auto operands = adaptor.getOperands();
+    // This op is view-like, which means that if input and output type are equal, it's a no-op.
     auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     if (inputType == outputType) {
         return getInput();
     }
 
-    VPUX_THROW_UNLESS(!operands.empty(), "Wrong number of operands : {0}", operands.size());
-
-    if (const auto ephemeral = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
-        const auto attr = static_cast<Const::ContentAttr>(ephemeral);
-        const auto inputElemType =
-                inputType.getElementType().dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>();
-        const auto outputElemType =
-                outputType.getElementType().dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>();
-        if (inputElemType && outputElemType && isQuantizedDimensionPermutation(inputElemType, outputElemType)) {
-            const auto newShape = outputType.getShape();
-            return attr.transform().changeShapeAndElemType(newShape, outputElemType).get();
-        }
-        return attr.transform().reshape(getShape(getOutput())).get();
+    if (const auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(adaptor.getInput()); attr != nullptr) {
+        return attr.transform().affineReshape(getDimMappingAttr(), getShapeValue()).get();
     }
 
     return nullptr;

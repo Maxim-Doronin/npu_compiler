@@ -35,7 +35,7 @@ TEST_F(MLIRThreadPool, ParallelFor_1d) {
         SmallVector<int64_t> expected(numElements, bias);
 
         const auto runMLIRLoop1D = [&](const int64_t numThreads, LoopExecPolicy policy) {
-            llvm::ThreadPool threadPool(llvm::optimal_concurrency(numThreads));
+            llvm::StdThreadPool threadPool(llvm::optimal_concurrency(numThreads));
             ctx.disableMultithreading();
             ctx.setThreadPool(threadPool);
             SmallVector<int64_t> result(numElements, 0);
@@ -68,7 +68,7 @@ TEST_F(MLIRThreadPool, ParallelFor_2d) {
         SmallVector<SmallVector<int64_t>> expected(dims[0], SmallVector<int64_t>(dims[1], bias));
 
         const auto runMLIRLoop2D = [&](const int64_t numThreads, LoopExecPolicy policy) {
-            llvm::ThreadPool threadPool(llvm::optimal_concurrency(numThreads));
+            llvm::StdThreadPool threadPool(llvm::optimal_concurrency(numThreads));
             ctx.disableMultithreading();
             ctx.setThreadPool(threadPool);
             SmallVector<SmallVector<int64_t>> result(dims[0], SmallVector<int64_t>(dims[1], 0));
@@ -102,7 +102,7 @@ TEST_F(MLIRThreadPool, ParallelFor_3d) {
                 dims[0], SmallVector<SmallVector<int64_t>>(dims[1], SmallVector<int64_t>(dims[2], bias)));
 
         const auto runMLIRLoop1D = [&](const int64_t numThreads, LoopExecPolicy policy) {
-            llvm::ThreadPool threadPool(llvm::optimal_concurrency(numThreads));
+            llvm::StdThreadPool threadPool(llvm::optimal_concurrency(numThreads));
             ctx.disableMultithreading();
             ctx.setThreadPool(threadPool);
             SmallVector<SmallVector<SmallVector<int64_t>>> result(
@@ -146,7 +146,7 @@ TEST_F(MLIRThreadPool, ParallelFor_4d) {
                         dims[1], SmallVector<SmallVector<int64_t>>(dims[2], SmallVector<int64_t>(dims[3], bias))));
 
         const auto runMLIRLoop1D = [&](const int64_t numThreads, LoopExecPolicy policy) {
-            llvm::ThreadPool threadPool(llvm::optimal_concurrency(numThreads));
+            llvm::StdThreadPool threadPool(llvm::optimal_concurrency(numThreads));
             ctx.disableMultithreading();
             ctx.setThreadPool(threadPool);
             SmallVector<SmallVector<SmallVector<SmallVector<int64_t>>>> result(

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @MatMulTransposeInputsTransposeAllTrue
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<256x166xf32>
 func.func @MatMulTransposeInputsTransposeAllTrue(%arg0: tensor<256x166xf32>, %arg1: tensor<256x256xf32>) -> tensor<166x256xf32> {

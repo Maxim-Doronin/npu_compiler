@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -515,6 +515,38 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
                 "Failed to unroll incompatible cluster distributions: {0} and {1}", inputDistType, outputDistType);
     }
 
+    auto isZeroOffsetWeightTableDMA = [&]() -> bool {
+        if (auto task = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(*dmaOp.getOutputBuff().user_begin())) {
+            if (task.getIsZeroOffsetWeightsTableAttr()) {
+                if (task.getWeightTable() != dmaOp.getOutputBuff()) {
+                    return false;
+                }
+                if (!mlir::isa_and_nonnull<Const::DeclareOp>(dmaOp.getInput().getDefiningOp())) {
+                    return false;
+                }
+                if (outputDistType == nullptr) {
+                    return false;
+                }
+                if (outputDistType.getDistribution() == nullptr) {
+                    return false;
+                }
+                const auto tilingScheme = parseIntArrayAttr<int64_t>(outputDistType.getDistribution().getNumTiles());
+                const auto tileAxis = vpux::VPU::getDistributedTilingAxis(tilingScheme);
+                auto computeShapes = VPU::arrayAttrToVecOfShapes(outputDistType.getDistribution().getComputeShapes());
+                auto firstTiledSize = computeShapes.begin()->raw()[tileAxis];
+                bool hasUnevenTileSize =
+                        std::find_if(computeShapes.begin(), computeShapes.end(), [&](Shape tileShape) -> bool {
+                            return tileShape.raw()[tileAxis] != firstTiledSize;
+                        });
+                if (hasUnevenTileSize && outputDistType.getShape().size() == DimsGroups5D::Filter::numDims) {
+                    return false;
+                }
+                return true;
+            }
+        }
+        return false;
+    };
+
     const auto inputDistMode = inputDistType != nullptr ? inputDistType.getDistribution().getMode().getValue()
                                                         : VPU::DistributionMode::NONE;
     const auto outputDistMode = outputDistType != nullptr ? outputDistType.getDistribution().getMode().getValue()
@@ -526,8 +558,10 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
                     dmaOp, inputDistMode, outputDistMode);
 
     builder.setInsertionPointAfter(vpurtTask);
-
-    if (unrollingType == UnrollingType::SEGMENTED) {
+    if ((unrollingType != UnrollingType::DUPLICATED) && isZeroOffsetWeightTableDMA()) {
+        _log.nest().trace("Unrolling with DUPLICATED mode for zero offset weight table DMA");
+        unrollZeroOffsetWeightTableDMA(loc, vpurtTask, builder);
+    } else if (unrollingType == UnrollingType::SEGMENTED) {
         _log.nest().trace("Unrolling with SEGMENDTED or OVERLAPPED mode");
         unrollSegmentedOrOverlapped(loc, vpurtTask, builder, isDataOverlapped);
     } else if (unrollingType == UnrollingType::DUPLICATED) {
@@ -690,8 +724,8 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
                    originOutShape);
     }
 
-    // If ClusterTiling DMA only has distributedType on one side and the distributedType is not memory contiguous with
-    // the tiling, per-cluster DMA will need stride access on the non-distributed side.
+    // If ClusterTiling DMA only has distributedType on one side and the distributedType is not memory contiguous
+    // with the tiling, per-cluster DMA will need stride access on the non-distributed side.
     if (inputDistType == nullptr && !isMemoryContiguousWithTiling(outputDistType)) {
         useParentTensorStridesForInput = true;
     }
@@ -743,8 +777,8 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
                               "Output operand type must have NN_CMX memory space. Got: {0}",
                               outputType.getMemoryKind());
 
-            // DMA engine has one common setup across all tiles. If one of clusters don't meet it, we can't fuse them
-            // It can be solved with use of larger configuration, see E#148923
+            // DMA engine has one common setup across all tiles. If one of clusters don't meet it, we can't fuse
+            // them It can be solved with use of larger configuration, see E#148923
             if (clusterId == numClusters - 1 || perClusterShapes[clusterId] != perClusterShapes[clusterId + 1]) {
                 fuseWithNext = false;
             }
@@ -821,7 +855,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
             // would destroy swizzled data content
             // 0                          Parent Buffer                                         25088
             // |---------------------------------------------------------------------------------|
-            // 0              Adjusted Parent Buffer (sizeAlignment numClusters x 512)                          26624
+            // 0              Adjusted Parent Buffer (sizeAlignment numClusters x 512) 26624
             // |-------------------------------------------------------------------------------------------------|
             //
             //                           Offsets without swizzling alignment
@@ -832,10 +866,10 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
             // 0                 6272 + 384           12544 + (384 + 384)      18816 + (384 + 384 + 384)       26624
             // |----------------------|---------------------|------------------------|---------------------------|
             //
-            // Offset for next cluster takes in account all the extra bytes added to per cluster buffer for swizzling
-            // Total alloc size already takes this alignment into consideration
-            // Same needs to be taken into account in case of compression, where compression buffer size has additional
-            // reserved space requirement
+            // Offset for next cluster takes in account all the extra bytes added to per cluster buffer for
+            // swizzling Total alloc size already takes this alignment into consideration Same needs to be taken
+            // into account in case of compression, where compression buffer size has additional reserved space
+            // requirement
             if (isSwizzSpill) {
                 newType = vpux::updateSwizzlingSchemeBasedOnDistributedType(refDistType, newType);
             }
@@ -905,8 +939,8 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
     const auto newInTypes = getNewTypes(inputType, innerInputType, useParentTensorStridesForInput);
     const auto newOutTypes = getNewTypes(outputType, innerOutputType, useParentTensorStridesForOutput);
 
-    // This is the requirement for DMA load balancing pass. Technically it can works with any number of ports, but now
-    // only 2 is supported
+    // This is the requirement for DMA load balancing pass. Technically it can works with any number of ports, but
+    // now only 2 is supported
     VPUX_THROW_WHEN(_dmaPortCount > 2, "Too much DMA ports");
     // Split one of DMAs to load balance on DMA ports if needed
     const bool isDmaSplitRequired = numClusters % _dmaPortCount != 0;
@@ -1035,6 +1069,107 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollDuplicated(mlir::Location lo
 
     auto newInputOperand = getInputOperand(input);
     auto newOutputOperand = getOutputOperand(output);
+
+    const auto newDMAOp = wrapIntoTaskOp(dmaOp, vpurtTask, loc, newInputOperand, newOutputOperand,
+                                         dmaOp.getPortAttribute().getInt(), builder);
+
+    _log.trace("Insert new DMA op: '{0}'", newDMAOp);
+}
+
+void VPUIP::ClusterPerElementDMABaseRewriter::unrollZeroOffsetWeightTableDMA(mlir::Location loc,
+                                                                             VPURT::TaskOp vpurtTask,
+                                                                             mlir::OpBuilder& builder) const {
+    auto dmaOp = vpurtTask.getInnerTaskOpOfType<VPUIP::DMATypeOpInterface>();
+    VPUX_THROW_WHEN(dmaOp == nullptr, "Inner task is not DMA op");
+
+    const auto input = dmaOp.getInput();
+    const auto output = dmaOp.getOutputBuff();
+
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
+
+    const auto inputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(input.getType());
+    const auto outputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
+    VPUX_THROW_UNLESS(inputDistType != nullptr || outputDistType != nullptr,
+                      "One of operands must have DistributedBuffer type");
+
+    const auto distributionAttr =
+            inputDistType != nullptr ? inputDistType.getDistribution() : outputDistType.getDistribution();
+
+    const size_t numClusters = checked_cast<size_t>(distributionAttr.getNumClusters().getInt());
+    const auto numTiles = parseIntArrayAttr<int64_t>(distributionAttr.getNumTiles());
+
+    const auto originInShape = inputType.getShape();
+    const auto originOutShape = outputType.getShape();
+
+    VPUX_THROW_UNLESS(originInShape.size() == numTiles.size() && originOutShape.size() == numTiles.size(),
+                      "Input shape size '{0}', output shape size '{1}' and tiles array size '{1}' are mismatch",
+                      originInShape.size(), originOutShape.size(), numTiles.size());
+
+    const auto perClusterShapes = inputDistType != nullptr ? inputDistType.getPerClusterMemoryShapes()
+                                                           : outputDistType.getPerClusterMemoryShapes();
+
+    VPUX_THROW_UNLESS(perClusterShapes.size() == numClusters, "Number of shapes '{0}' and clusters '{1}' are mismatch",
+                      perClusterShapes.size(), numClusters);
+
+    const auto perClusterShapeOffsets = inputDistType != nullptr ? inputDistType.getPerClusterMemoryShapeOffsets()
+                                                                 : outputDistType.getPerClusterMemoryShapeOffsets();
+
+    VPUX_THROW_UNLESS(perClusterShapeOffsets.size() == numClusters,
+                      "Number of shape offsets '{0}' and clusters '{1}' are mismatch", perClusterShapeOffsets.size(),
+                      numClusters);
+
+    const auto getNewInputOperand = [&](size_t clusterId, mlir::Value operand) -> mlir::Value {
+        if (auto cst = operand.getDefiningOp<Const::DeclareOp>()) {
+            VPUX_THROW_UNLESS(outputType.getMemoryKind() == VPU::MemoryKind::CMX_NN,
+                              "Output operand type must have NN_CMX memory space. Got: {0}",
+                              outputType.getMemoryKind());
+
+            mlir::OpBuilder::InsertionGuard guard(builder);
+            builder.setInsertionPointAfter(operand.getDefiningOp());
+
+            auto subviewOp = builder.createOrFold<VPUIP::SubViewOp>(loc, cst, perClusterShapeOffsets[clusterId].raw(),
+                                                                    perClusterShapes[clusterId].raw());
+
+            return subviewOp;
+        }
+        VPUX_THROW("Unsupported zero offset weight table DMA case.");
+    };
+
+    const auto getOutputOperand = [&](mlir::Value output, mlir::Value newInputOperand) -> mlir::Value {
+        const auto outputDistType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
+        if (outputDistType == nullptr) {
+            return output;
+        }
+
+        auto newInputType = mlir::dyn_cast<NDTypeInterface>(newInputOperand.getType());
+        auto distribution = outputDistType.getDistribution();
+        auto newDistribution = VPU::getNonOverlappedDistributedAttr(
+                newInputType.getShape(),
+                VPU::DistributionModeAttr::get(output.getContext(), VPU::DistributionMode::DUPLICATED),
+                distribution.getNumTiles(), distribution.getNumClusters(), distribution.getAlignment(),
+                distribution.getUniformDistributedSegments(), output.getContext());
+
+        auto weightsType = VPUIP::DistributedBufferType::get(
+                outputDistType.getContext(), newInputType.getShape().raw(), outputDistType.getElementType(),
+                outputDistType.getLayout(), outputDistType.getMemSpace(), newDistribution);
+
+        auto outDeclBuff = output.getDefiningOp<VPURT::DeclareBufferOp>();
+        VPUX_THROW_UNLESS(outDeclBuff != nullptr, "Can't get output buffer");
+
+        const auto numClusters = outputDistType.getDistribution().getNumClusters().getInt();
+        SmallVector<int64_t> clusters(numClusters);
+        std::iota(clusters.begin(), clusters.end(), 0);
+
+        return VPURT::createOp<VPURT::DeclareBufferOp>(builder, outDeclBuff, loc, weightsType,
+                                                       VPURT::BufferSection::CMX_NN, getIntArrayAttr(_ctx, clusters),
+                                                       outDeclBuff.getByteOffset(), outDeclBuff.getSwizzlingKeyAttr());
+    };
+
+    builder.setInsertionPointAfter(vpurtTask);
+
+    auto newInputOperand = getNewInputOperand(0, input);
+    auto newOutputOperand = getOutputOperand(output, newInputOperand);
 
     const auto newDMAOp = wrapIntoTaskOp(dmaOp, vpurtTask, loc, newInputOperand, newOutputOperand,
                                          dmaOp.getPortAttribute().getInt(), builder);

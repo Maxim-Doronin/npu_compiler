@@ -5,11 +5,14 @@
 #include <common_test_utils/node_builders/activation.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/avg_pool.hpp"
+
 namespace ov::test {
 
 struct AvgPoolWithActivationTestParams {
     utils::ActivationTypes activationType;
     float threshold;
+    float swishBeta;
 };
 
 class AvgPoolWithActivationTest :
@@ -43,7 +46,7 @@ class AvgPoolWithActivationTest :
     }
 
     void SetUp() override {
-        auto& [activationType, threshold] = GetParam();
+        auto& [activationType, threshold, swishBeta] = GetParam();
         abs_threshold = threshold;
 
         const auto inShape = ov::Shape{1, 16, 16, 256};
@@ -56,7 +59,7 @@ class AvgPoolWithActivationTest :
                                                              ov::Shape{0, 0}, ov::Shape{1, 1}, true);
         const auto activation = activationType == utils::Swish
                                         ? utils::make_activation(avgPool->output(0), ov::element::f16, activationType,
-                                                                 ov::Shape{}, {1.f})
+                                                                 ov::Shape{}, {swishBeta})
                                         : utils::make_activation(avgPool->output(0), ov::element::f16, activationType);
 
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(activation)};
@@ -70,13 +73,15 @@ public:
         std::ostringstream result;
         result << "TestKind" << ov::test::utils::testKind(__FILE__) << sep;
         result << "ActivationType=" << obj.param.activationType;
+        result << sep << "SwishBeta=" << obj.param.swishBeta;
         return result.str();
     }
 };
 
 const std::vector<AvgPoolWithActivationTestParams> activations = {
 
-        {utils::Tanh, 0.0001f}, {utils::Sigmoid, 0.0001f}, {utils::Swish, 0.00014f}, {utils::Gelu, 0.00013f}};
+        {utils::Tanh, 0.0001f, 0.0f},   {utils::Sigmoid, 0.0001f, 0.0f}, {utils::Gelu, 0.00013f, 0.0f},
+        {utils::Swish, 0.00014f, 1.0f}, {utils::Swish, 0.00014f, 1.7f},  {utils::Swish, 0.00014f, 10.0f}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_AvgPoolWithActivation, AvgPoolWithActivationTest, ::testing::ValuesIn(activations),
                          AvgPoolWithActivationTest::getTestCaseName);

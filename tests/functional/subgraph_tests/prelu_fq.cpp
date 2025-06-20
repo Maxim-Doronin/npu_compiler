@@ -5,11 +5,13 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
-#include <openvino/opsets/opset1.hpp>
-#include <openvino/opsets/opset3.hpp>
-#include <openvino/opsets/opset7.hpp>
+#include <openvino/opsets/opset1_decl.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+#include <openvino/opsets/opset7_decl.hpp>
 
 #include "common_test_utils/node_builders/fake_quantize.hpp"
+
+#include "openvino/op/prelu.hpp"
 
 namespace ov::test {
 

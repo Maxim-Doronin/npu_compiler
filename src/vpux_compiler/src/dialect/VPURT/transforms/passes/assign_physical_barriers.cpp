@@ -195,7 +195,7 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
         // Use old round-robin method of assigning physical barriers
         if (wlmFlag) {
             if (_workloadManagementMode.has_value() &&
-                _workloadManagementMode.value() == WorkloadManagementMode::PWLM_V2_PAGES) {
+                _workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES) {
                 _log.trace("Assign barriers using WLM page approach");
                 if (mlir::failed(barrierSim.simulateBarriersForWlmPageApproach(_log.nest(), numBarriers))) {
                     _log.error("Barrier simulation (with WLM page) failed with {0} barriers", numBarriers);

@@ -6,11 +6,9 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/utils.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
-#include "vpux/compiler/core/profiling.hpp"
-#include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
+#include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/utils/ELF/utils.hpp"
 
 #include <npu_40xx_nnrt.hpp>
 
@@ -21,97 +19,15 @@ using namespace npu40xx;
 // MappedInferenceOp
 //
 
-void vpux::NPUReg40XX::MappedInferenceOp::serializeCached(elf::writer::BinaryDataSection<uint8_t>& binDataSection,
-                                                          ELF::SymbolReferenceMap& symRefMap) {
-    // E#156570
-    auto moduleOp = getOperation()->getParentOfType<mlir::ModuleOp>();
-    bool isActShaveProfilingEnabled =
-            vpux::getProfilingSection(moduleOp, profiling::ExecutorType::ACTSHAVE).has_value();
+void vpux::NPUReg40XX::MappedInferenceOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
+    auto mappedInference = getProperties().getDescriptor();
 
-    nn_public::VpuMappedInference mi = {};
+    VPUX_THROW_UNLESS(sizeof(nn_public::VpuMappedInference) == mappedInference.size(),
+                      "HW VpuMappedInference size {0} != regMapped representation size {1}.",
+                      sizeof(nn_public::VpuMappedInference), mappedInference.size());
 
-    auto mpiVersionRef = symRefMap.lookupSymbol(getMappedInferenceVersion());
-    auto mpiVersionOp = mlir::cast<NPUReg40XX::MappedInferenceVersionOp>(mpiVersionRef);
-
-    mi.vpu_nnrt_api_ver = VPU_CONCAT_NNRT_API_VER(mpiVersionOp.getMajor(), mpiVersionOp.getMinor());
-
-    mi.barrier_configs.count = getBarrierCount();
-    mi.media_tasks.count = getMediaCount();
-
-    auto dmaDDRCountVec = parseIntArrayAttr<int64_t>(getDmaDDRCount());
-    size_t totalDDRDmaCount = 0;
-    VPUX_THROW_WHEN(dmaDDRCountVec.size() > nn_public::VPU_MAX_DMA_ENGINES, "Too many DMA DDR lists");
-    for (size_t listIdx = 0; listIdx < dmaDDRCountVec.size(); ++listIdx) {
-        mi.dma_tasks_ddr_[listIdx].count = dmaDDRCountVec[listIdx];
-        totalDDRDmaCount += mi.dma_tasks_ddr_[listIdx].count;
-    }
-
-    auto dmaCMXCountVec = parseIntArrayAttr<int64_t>(getDmaCMXCount());
-    size_t totalCMXDmaCount = 0;
-    VPUX_THROW_WHEN(dmaCMXCountVec.size() > nn_public::VPU_MAX_DMA_ENGINES, "Too many DMA CMX lists");
-    for (size_t listIdx = 0; listIdx < dmaCMXCountVec.size(); ++listIdx) {
-        mi.dma_tasks_cmx_[listIdx].count = dmaCMXCountVec[listIdx];
-        totalCMXDmaCount += mi.dma_tasks_cmx_[listIdx].count;
-    }
-
-    auto invariantCountVec = parseIntArrayAttr<int64_t>(getInvariantCount());
-    VPUX_THROW_WHEN(invariantCountVec.size() > nn_public::VPU_MAX_TILES, "Too many Invariant lists");
-    for (size_t listIdx = 0; listIdx < invariantCountVec.size(); ++listIdx) {
-        mi.invariants[listIdx].count = invariantCountVec[listIdx];
-    }
-
-    auto variantCountVec = parseIntArrayAttr<int64_t>(getVariantCount());
-    VPUX_THROW_WHEN(variantCountVec.size() > nn_public::VPU_MAX_TILES, "Too many Variant lists");
-    for (size_t listIdx = 0; listIdx < variantCountVec.size(); ++listIdx) {
-        mi.variants[listIdx].count = variantCountVec[listIdx];
-    }
-
-    auto actKernelRangesCountVec = parseIntArrayAttr<int64_t>(getActKernelRangesCount());
-    VPUX_THROW_WHEN(actKernelRangesCountVec.size() > nn_public::VPU_MAX_TILES, "Too many ActKernelRange lists");
-    for (size_t listIdx = 0; listIdx < actKernelRangesCountVec.size(); ++listIdx) {
-        mi.act_kernel_ranges[listIdx].count = actKernelRangesCountVec[listIdx];
-    }
-
-    auto actKernelInvocationsCountVec = parseIntArrayAttr<int64_t>(getActKernelInvocationsCount());
-    VPUX_THROW_WHEN(actKernelInvocationsCountVec.size() > nn_public::VPU_MAX_TILES, "Too many ActKernelInvo lists");
-    for (size_t listIdx = 0; listIdx < actKernelInvocationsCountVec.size(); ++listIdx) {
-        mi.act_kernel_invocations[listIdx].count = actKernelInvocationsCountVec[listIdx];
-    }
-
-    std::optional<uint64_t> stackSize;
-    if (getActShaveStacks().has_value()) {
-        auto stackRef = symRefMap.lookupSymbol(mlir::dyn_cast<mlir::SymbolRefAttr>(*getActShaveStacks()->begin()));
-        auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stackRef);
-        stackSize = stackOp.getStackSize();
-    }
-    // NPU4 does not have stack frames provided by compiler
-    // they are resolved by shave driver when initialized.
-
-    auto isActKernelInvocations = getActKernelInvocationsCount().size() > 0;
-    NPUReg40XX::fillNNrtConfig<NPUReg40XX::ActShaveRtOp>(mi.shv_rt_configs, getOperation(), getActShaveRt(), stackSize,
-                                                         isActShaveProfilingEnabled, isActKernelInvocations,
-                                                         std::nullopt);
-
-    if (getManagedMappedInference().has_value()) {
-        mi.managed_inference.count = 1;
-    }
-
-    // Look only at the DMA tasks belonging to the first (and only) DMA engine
-    std::tie(mi.task_storage_counts_.dma_ddr_count, mi.task_storage_counts_.dma_cmx_count) =
-            VPUMI40XX::compute_dma_split(totalDDRDmaCount, totalCMXDmaCount);
-    auto archKind = VPU::ArchKind::NPU40XX;
-    mi.task_storage_counts_.dpu_invariant_count =
-            VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::DPUInvariant, archKind);
-    mi.task_storage_counts_.dpu_variant_count =
-            VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::DPUVariant, archKind);
-    mi.task_storage_counts_.act_range_count =
-            VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::ActKernelRange, archKind);
-    mi.task_storage_counts_.act_invo_count =
-            VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::ActKernelInvocation, archKind);
-    mi.task_storage_counts_.media_count = VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::M2I, archKind);
-
-    auto ptrCharTmp = reinterpret_cast<uint8_t*>(&mi);
-    binDataSection.appendData(ptrCharTmp, getBinarySize(archKind));
+    auto serializedDescriptor = mappedInference.getStorage();
+    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(VPU::ArchKind::NPU40XX));
 }
 
 size_t vpux::NPUReg40XX::MappedInferenceOp::getBinarySize(VPU::ArchKind) {
@@ -401,10 +317,47 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::MappedInferenceOp::getRelocat
     return relocs;
 }
 
-elf::Version NPUReg40XX::MappedInferenceOp::getVersion() {
-    // PV version of Mapped inference.
-    // Don't expect this to be changed as it is fixed
-    auto returnVersion = elf::Version(NNRT_API_UD2024_44_MAJOR_VERSION, NNRT_API_UD2024_44_MINOR_VERSION,
-                                      NNRT_API_UD2024_44_PATCH_VERSION);
-    return returnVersion;
+void NPUReg40XX::MappedInferenceOp::setVersion(const elf::Version& version) {
+    auto descriptor = getProperties().getDescriptor();
+    const auto serializedVersion = VPU_CONCAT_NNRT_API_VER(version.getMajor(), version.getMinor());
+    descriptor.write<NPUReg40XX::Fields::miVpuNNRTApiVer>(serializedVersion);
+    getProperties().setDescriptor(descriptor);
+}
+
+void vpux::NPUReg40XX::MappedInferenceOp::build(
+        mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr sym_name, mlir::ArrayAttr dmaCount,
+        mlir::ArrayAttr dmaDDRCount, mlir::ArrayAttr dmaCMXCount, mlir::ArrayAttr invariantCount,
+        mlir::ArrayAttr variantCount, mlir::ArrayAttr actKernelRangesCount, mlir::ArrayAttr actKernelInvocationsCount,
+        mlir::IntegerAttr mediaCount, mlir::IntegerAttr barrierCount, mlir::SymbolRefAttr mappedInferenceVersion,
+        mlir::SymbolRefAttr actShaveRt, mlir::ArrayAttr actShaveStacks, mlir::SymbolRefAttr dmaHwpBase,
+        mlir::SymbolRefAttr hwpWorkpointCfg, mlir::SymbolRefAttr managedMappedInference, mlir::ArrayAttr dmaTasks,
+        mlir::ArrayAttr invariantTasks, mlir::ArrayAttr variantTasks, mlir::ArrayAttr actKernelRanges,
+        mlir::ArrayAttr actKernelInvocations, mlir::SymbolRefAttr mediaTasks, mlir::SymbolRefAttr barrierTasks,
+        vpux::NPUReg40XX::Descriptors::VpuMappedInference&& descriptor) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = sym_name;
+    props.mappedInferenceVersion = mappedInferenceVersion;
+    props.dmaCount = dmaCount;
+    props.dmaDDRCount = dmaDDRCount;
+    props.dmaCMXCount = dmaCMXCount;
+    props.invariantCount = invariantCount;
+    props.variantCount = variantCount;
+    props.actKernelRangesCount = actKernelRangesCount;
+    props.actKernelInvocationsCount = actKernelInvocationsCount;
+    props.mediaCount = mediaCount;
+    props.barrierCount = barrierCount;
+    props.actShaveRt = actShaveRt;
+    props.actShaveStacks = actShaveStacks;
+    props.dmaHwpBase = dmaHwpBase;
+    props.hwpWorkpointCfg = hwpWorkpointCfg;
+    props.managedMappedInference = managedMappedInference;
+    props.dmaTasks = dmaTasks;
+    props.invariantTasks = invariantTasks;
+    props.variantTasks = variantTasks;
+    props.actKernelRanges = actKernelRanges;
+    props.actKernelInvocations = actKernelInvocations;
+    props.mediaTasks = mediaTasks;
+    props.barrierTasks = barrierTasks;
+    props.descriptor = std::move(descriptor);
 }

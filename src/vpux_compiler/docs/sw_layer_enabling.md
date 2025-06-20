@@ -264,7 +264,7 @@ mlir::LogicalResult vpux::IE::SigmoidOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = sigmoid.getInput().getType().cast<mlir::ShapedType>();
+    const auto inType = mlir::cast<mlir::ShapedType>(sigmoid.getInput().getType());
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
 
     return mlir::success();
@@ -470,7 +470,7 @@ mlir::LogicalResult ConvolutionExpansion::matchAndRewrite(IE::ConvolutionOp orig
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(origOp->getLoc(), newInput, newFilter, newBias, newStrides,
                                                         newPadsBegin, newPadsEnd, newDilations, origOp.post_opAttr());
 
-    const auto outputShape = origOp.output().getType().cast<mlir::ShapedType>().getShape();
+    const auto outputShape = mlir::cast<mlir::ShapedType>(origOp.output().getType()).getShape();
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
 
     // Replace old IE::ConvolutionOp with a new IE::ConvolutionOp + IE::ReshapeOp
@@ -509,7 +509,7 @@ void ConvertConv1DToConv2DPass::safeRunOnFunc() {
 
     // Illegal ops will be converted (legalized)
     const auto isLegalConvOp = [&](IE::ConvolutionOp conv) {
-        const auto inputShape = conv.input().getType().cast<mlir::ShapedType>().getShape();
+        const auto inputShape = mlir::cast<mlir::ShapedType>(conv.input().getType()).getShape();
         return inputShape.size() != 3;
     };
 

@@ -251,7 +251,7 @@ std::optional<bool> VPU::isSEPConvCompatibleWithClusterStrategy(VPU::NCEConvolut
         return std::nullopt;
     }
 
-    auto seAttr = sparseInput.getSeAttr().dyn_cast_or_null<VPU::SERollAttr>();
+    auto seAttr = mlir::dyn_cast_or_null<vpux::VPU::SERollAttr>(sparseInput.getSeAttr());
     if (seAttr != nullptr) {
         return VPU::isRollSEPConvCompatibleWithClusterStrategy(seAttr, strategy);
     }
@@ -259,8 +259,8 @@ std::optional<bool> VPU::isSEPConvCompatibleWithClusterStrategy(VPU::NCEConvolut
 }
 
 mlir::LogicalResult vpux::VPU::verifyConvUtil(mlir::Location loc, mlir::Operation* op, ShapeRef filterShape,
-                                              ShapeRef kernelStrides, PaddingAttr padAttr, ShapeRef weightsTableShape,
-                                              mlir::Value output) {
+                                              ShapeRef kernelStrides, PaddingAttr padAttr,
+                                              std::optional<ShapeRef> weightsTableShape, mlir::Value output) {
     const auto logCb = [loc](const formatv_object_base& msg) {
         std::ignore = errorAt(loc, "{0}", msg.str());
     };
@@ -289,8 +289,8 @@ mlir::LogicalResult vpux::VPU::verifyConvUtil(mlir::Location loc, mlir::Operatio
 
     const auto expectedWeightsTableShape = VPU::NCESparsity::inferWeightsTableShape(OC);
 
-    if (weightsTableShape != expectedWeightsTableShape) {
-        return errorAt(loc, "Got wrong shape for 'weightsTable' '{0}', expected '{1}'", weightsTableShape,
+    if (weightsTableShape.has_value() && weightsTableShape.value() != expectedWeightsTableShape) {
+        return errorAt(loc, "Got wrong shape for 'weightsTable' '{0}', expected '{1}'", weightsTableShape.value(),
                        expectedWeightsTableShape);
     }
 

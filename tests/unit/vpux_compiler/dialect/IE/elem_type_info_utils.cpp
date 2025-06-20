@@ -87,12 +87,12 @@ TEST_F(MLIR_IE_ElemTypeInfoUtils, inferElemTypeTranspose) {
             const auto map = mlir::AffineMap::getPermutationMap(order, &ctx);
             const auto outType = vpux::IE::inferElemTypeTranspose(map, inputElemType);
             ASSERT_NE(outType, nullptr);
-            const auto perAxisQType = outType.dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>();
+            const auto perAxisQType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(outType);
             ASSERT_NE(perAxisQType, nullptr);
 
             const auto outShapeVec = transposeShape(inShapeVec, order);
             const auto tensorType = mlir::RankedTensorType::get(outShapeVec, perAxisQType);
-            const auto ndType = tensorType.dyn_cast_or_null<vpux::NDTypeInterface>();
+            const auto ndType = mlir::dyn_cast_or_null<vpux::NDTypeInterface>(tensorType);
             ASSERT_NE(ndType, nullptr);
             EXPECT_TRUE(vpux::validateQuantElemType(mlir::UnknownLoc::get(&ctx), ndType).succeeded());
         }

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --propagate-affine-reshape %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #CNHW = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
 
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
@@ -1687,9 +1688,9 @@ func.func @NotSwapAffineReshapeConvertSubByte(%arg0 : tensor<1x1280x1x1xi1>) -> 
 
 #map1 = affine_map<(d0, d1, d2, d3) -> (d1, d3, d0, d2)>
 
-// CHECK-LABEL: @NotPropagateAffineReshapePermuteCastDueToCMXConcat
+// CHECK-LABEL: @PropagateAffineReshapePermuteCastCMXConcat
 // CHECK-SAME:     [[INPUT:%arg[0-9]]]: tensor<1x32x16x4xf16, {order = #NHWC}>
-func.func @NotPropagateAffineReshapePermuteCastDueToCMXConcat(%arg0 : tensor<1x32x16x4xf16, {order = #NHWC}>) -> tensor<1x2x64x64xf16> {
+func.func @PropagateAffineReshapePermuteCastCMXConcat(%arg0 : tensor<1x32x16x4xf16, {order = #NHWC}>) -> tensor<1x2x64x64xf16> {
     %cst_0 = const.Declare tensor<64x32x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<64x32x1x1xf16, {order = #NHWC}>, [#const.Reorder<#NHWC>]
 
     %13 = IE.Convolution(%arg0, %cst_0) {
@@ -1748,12 +1749,6 @@ func.func @NotPropagateAffineReshapePermuteCastDueToCMXConcat(%arg0 : tensor<1x3
     // CHECK-SAME:              strides = [1, 1]
     // CHECK-SAME:              } : tensor<1x32x16x4xf16, {order = #NHWC}>, tensor<64x32x1x1xf16, {order = #NHWC}> -> tensor<1x64x16x4xf16, {order = #NHWC}>
 
-    // CHECK: [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV0]])
-    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 64, 64, 1]} : tensor<1x64x16x4xf16, {order = #NHWC}> -> tensor<1x64x64x1xf16, {order = #NHWC}>
-
-    // CHECK: [[PERMUTECAST1:%.+]] = IE.PermuteCast([[RESHAPE1]])
-    // CHECK-SAME{LITERAL}:     {dst_order = #NCHW, mem_perm = #map} : tensor<1x64x64x1xf16, {order = #NHWC}> -> tensor<64x64x1x1xf16>
-
     // CHECK: [[CONV1:%.+]] = IE.Convolution([[INPUT]], [[CST]]) {
     // CHECK-SAME:              dilations = [1, 1],
     // CHECK-SAME:              pads_begin = [0, 0],
@@ -1762,22 +1757,19 @@ func.func @NotPropagateAffineReshapePermuteCastDueToCMXConcat(%arg0 : tensor<1x3
     // CHECK-SAME:              strides = [1, 1]
     // CHECK-SAME:              } : tensor<1x32x16x4xf16, {order = #NHWC}>, tensor<64x32x1x1xf16, {order = #NHWC}> -> tensor<1x64x16x4xf16, {order = #NHWC}>
 
-    // CHECK: [[RESHAPE2:%.+]] = IE.AffineReshape([[CONV1]])
-    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 64, 64, 1]} : tensor<1x64x16x4xf16, {order = #NHWC}> -> tensor<1x64x64x1xf16, {order = #NHWC}>
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]]) {per_axis = #IE.Concat<axis = 0 : i64>}
+    // CHECK:                  tensor<1x64x16x4xf16, {order = #NHWC}>, tensor<1x64x16x4xf16, {order = #NHWC}> -> tensor<2x64x16x4xf16, {order = #NHWC}>
 
-    // CHECK: [[PERMUTECAST2:%.+]] = IE.PermuteCast([[RESHAPE2]])
-    // CHECK-SAME{LITERAL}:     {dst_order = #NCHW, mem_perm = #map} : tensor<1x64x64x1xf16, {order = #NHWC}> -> tensor<64x64x1x1xf16>
+    // CHECK: [[RESHAPE1:%.+]] = IE.AffineReshape([[CONCAT]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [2, 64, 64, 1]} : tensor<2x64x16x4xf16, {order = #NHWC}> -> tensor<2x64x64x1xf16, {order = #NHWC}>
 
-    // CHECK: [[RESHAPE3:%.+]] = IE.AffineReshape([[PERMUTECAST1]])
-    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 64, 64]} : tensor<64x64x1x1xf16> -> tensor<1x1x64x64xf16>
+    // CHECK: [[PERMUTECAST:%.+]] = IE.PermuteCast([[RESHAPE1]])
+    // CHECK-SAME{LITERAL}:     {dst_order = #NCHW, mem_perm = #NCHW} : tensor<2x64x64x1xf16, {order = #NHWC}> -> tensor<2x64x1x64xf16>
 
-    // CHECK: [[RESHAPE4:%.+]] = IE.AffineReshape([[PERMUTECAST2]])
-    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 64, 64]} : tensor<64x64x1x1xf16> -> tensor<1x1x64x64xf16>
+    // CHECK: [[RESHAPE2:%.+]] = IE.AffineReshape([[PERMUTECAST]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1], [2], [3], [3]], shape_value = [1, 2, 64, 64]} : tensor<2x64x1x64xf16> -> tensor<1x2x64x64xf16>
 
-    // CHECK: [[CONCAT:%.+]] = IE.Concat([[RESHAPE3]], [[RESHAPE4]])
-    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x64x64xf16>, tensor<1x1x64x64xf16> -> tensor<1x2x64x64xf16>
-
-    // CHECK:      return [[CONCAT]] : tensor<1x2x64x64xf16>
+    // CHECK:      return [[RESHAPE2]] : tensor<1x2x64x64xf16>
 }
 
 // -----

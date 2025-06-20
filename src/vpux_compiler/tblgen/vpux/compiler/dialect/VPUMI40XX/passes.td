@@ -154,7 +154,7 @@ def AddEnqueueOps : PassBase<"add-enqueue-ops", "vpux::FunctionPass"> {
 
     let options = [
         Option<
-            "enableWlmVpurtEnqueueOpt", "enable-wlm-vpurt-enqueue",
+            "enablePredefinedEnqueueOpt", "enable-predefined-enqueue",
             "bool", "false",
             "Enable usage of predefined enqueue targets from VPURT"
         >
@@ -229,13 +229,19 @@ def LinkEnqueueOpsForSameBarrier : PassBase<"link-enqueue-ops-for-same-barrier",
     let constructor = "vpux::VPUMI40XX::createLinkEnqueueOpsForSameBarrierPass()";
 }
 
-def AddBootstrapOps : PassBase<"add-bootstrap-ops", "vpux::FunctionPass"> {
-    let summary = [{ Add Bootstrap Ops}];
-    let description = [{Previously we initialize and used barriers on FW in fixed order
-                        from 0 to MAX_BARRIER.
-                        Bootstrap operation allow us start barriers in any order}];
+def AddBootstrapBarriers : PassBase<"add-bootstrap-barriers", "vpux::FunctionPass"> {
+    let summary = [{ Add Bootstrap Barriers}];
+    let description = [{Set the initial barriers to be used during inference, we set the first BootstrapOp and a count 
+                        of how bootstrap barriers. Bootstrap operation allow us start barriers in any order}];
 
-    let constructor = "vpux::VPUMI40XX::createAddBootstrapOpsPass()";
+    let constructor = "vpux::VPUMI40XX::createAddBootstrapBarriersPass()";
+}
+
+def AddBootstrapWorkItems : PassBase<"add-bootstrap-work-items", "vpux::FunctionPass"> {
+    let summary = [{ Add Bootstrap WorkItems}];
+    let description = [{Set the bootstrap work items in the blob, these WorkiIems are enqueued by FW directly without a consumer interrupt}];
+
+    let constructor = "vpux::VPUMI40XX::createAddBootstrapWorkItemsPass()";
 }
 
 def NextSameIdAssignment : PassBase<"next-same-id-assignment", "vpux::FunctionPass"> {
@@ -271,7 +277,7 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
     let summary = "Prepare information and ops for initial barrier configuration";
 
     let constructor = "vpux::VPUMI40XX::createAddBarrierConfigurationOps()";
-    
+
     let description = [{
         This pass creates the barrier configuration constants and DMAs to help RT program the barriers during inference
         WorkloadManagementBarrierProgrammingMode::LEGACY
@@ -341,8 +347,13 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             Producer Count: 1, Producer Interrupt: 1, Consumer Count: 1, Consumer Interrupt: 0
 
         WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED
-            This mode does everything done at WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED plus creates DMAs in the schedule at right place 
+            This mode does everything done at WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED plus creates DMAs in the schedule at right place
             which will push barrier configurations to FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR register. In this case runtime doesn't need to program any barriers
+
+            In full Workload Management mode, it is recommended to enable the consumer interrupt on at least one barrier per page to maintain inference activity. 
+            This mechanism allows the firmware to send periodic heartbeat refresh to the host, indicating that the inference is still running. To reduce interrupt overhead, 
+            the consumer interrupt is typically set only on the first barrier within each page, though less frequent signaling may still be sufficient depending on system requirements.
+
     }];
 
     let options = [
@@ -355,9 +366,9 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
                 "Runtime handles barrier programming independently"),
             clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED, "NO_BARRIER_DMAS_SCHEDULED",
                 "Compiler only creates constants to aid runtime in barrier programming"),
-            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED, "INITIAL_BARRIER_DMAS_SCHEDULED", 
+            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED, "INITIAL_BARRIER_DMAS_SCHEDULED",
                 "Compiler creates DMA to program initial barrier and constant to aid runtime in barrier programming"),
-            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED, "ALL_BARRIER_DMAS_SCHEDULED", 
+            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED, "ALL_BARRIER_DMAS_SCHEDULED",
                 "Compiler creates DMAs to program all barriers")
           )}]
         >

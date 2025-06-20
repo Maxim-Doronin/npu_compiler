@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-precision-to-i32 --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @GatherConvertIndices
 func.func @GatherConvertIndices(%arg0: tensor<100xf16>) -> tensor<10xf16> {
   %0 = const.Declare tensor<10xsi64> = dense<1> : tensor<10xsi64>

@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file --dispatched-inliner %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 module @InlineSingleFunctionWithDifferentArgumentOffsets {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz
 

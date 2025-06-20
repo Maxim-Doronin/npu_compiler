@@ -96,7 +96,10 @@ void RecomputeSparsityPtrsPass::safeRunOnFunc() {
         }
 
         const auto weightsTable = nceOp.getWeightsTableOperand();
-        VPUX_THROW_UNLESS(weightsTable != nullptr, "Missing weights table for operation with sparse weights");
+        if (weightsTable == nullptr) {
+            return;
+        }
+
         auto weightsTableConstOp = weightsTable.getDefiningOp<Const::DeclareOp>();
         if (weightsTableConstOp == nullptr) {
             return;

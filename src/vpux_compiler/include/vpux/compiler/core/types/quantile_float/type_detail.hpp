@@ -1,7 +1,7 @@
 // Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-
+#pragma once
 #include <mlir/IR/TypeSupport.h>
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -13,18 +13,24 @@ namespace detail {
 
 /// Quantile float Type Storage and Uniquing.
 struct QuantileFloatTypeStorage : public mlir::TypeStorage {
-    unsigned width;
+    Type storageType;
+    Type quantileType;
     const double* quantilesElements;
     size_t quantilesParamsSize;
 
     struct KeyTy {
-        KeyTy(unsigned width, ArrayRef<double> quantiles): width(width), quantiles(quantiles) {
+        KeyTy(Type storageType, Type quantileType, ArrayRef<double> quantiles)
+                : storageType(storageType), quantileType(quantileType), quantiles(quantiles) {
         }
 
-        unsigned width;
+        Type storageType;
+        Type quantileType;
         ArrayRef<double> quantiles;
-        unsigned getWidth() const {
-            return width;
+        Type getStorageType() const {
+            return storageType;
+        }
+        Type getQuantileType() const {
+            return quantileType;
         }
         ArrayRef<double> getQuantiles() const {
             return quantiles;
@@ -32,7 +38,8 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
 
         template <typename T, typename U>
         static bool genericIsEqual(const T& lhs, const U& rhs) {
-            return lhs.getWidth() == rhs.getWidth() && lhs.getQuantiles() == rhs.getQuantiles();
+            return lhs.getStorageType() == rhs.getStorageType() && lhs.getQuantileType() == rhs.getQuantileType() &&
+                   lhs.getQuantiles() == rhs.getQuantiles();
         }
 
         bool operator==(const KeyTy& other) const {
@@ -43,7 +50,7 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
             int64_t* quantilesCast = llvm::bit_cast<int64_t*>(quantiles.data());
             ArrayRef<int64_t> quantilesBits(quantilesCast, quantiles.size());
             return static_cast<unsigned>(llvm::hash_combine(
-                    llvm::hash_combine_range(quantilesBits.begin(), quantilesBits.end()), static_cast<int64_t>(width)));
+                    llvm::hash_combine_range(quantilesBits.begin(), quantilesBits.end()), storageType, quantileType));
         }
     };
 
@@ -52,7 +59,10 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
     }
 
     QuantileFloatTypeStorage(const KeyTy& key, ArrayRef<double> quantiles)
-            : width(key.width), quantilesElements(quantiles.data()), quantilesParamsSize(quantiles.size()) {
+            : storageType(key.storageType),
+              quantileType(key.quantileType),
+              quantilesElements(quantiles.data()),
+              quantilesParamsSize(quantiles.size()) {
     }
 
     static QuantileFloatTypeStorage* construct(TypeStorageAllocator& allocator, KeyTy key) {
@@ -68,8 +78,12 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
         return ArrayRef<double>(quantilesElements, quantilesParamsSize);
     }
 
-    unsigned getWidth() const {
-        return width;
+    Type getStorageType() const {
+        return storageType;
+    }
+
+    Type getQuantileType() const {
+        return quantileType;
     }
 };
 

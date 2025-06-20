@@ -47,18 +47,41 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
         variantTasks[variantTask.index()] = variantTaskName;
     }
 
-    llvm::SmallVector<mlir::Attribute> actKernelRanges(op.getActKernelRanges().size());
-    for (auto actKernelRange : llvm::enumerate(op.getActKernelRanges())) {
-        auto actKernelRangeName = findSym(actKernelRange.value());
+    // ActKernelRanges and ActKernelInvocations attributes are 2-D arrays containing respective counts for each tile and
+    // each shave in that tile. For any given tile, the new attributes of the rewritten MappedInferenceOp
+    // (ActKernelRanges and ActKernelInvocations) will contain only the information on counts stored at index 0,
+    // corresponding to SHAVE0 for that tile. This is because for the non-WLM flow, dedicated SW FIFOs are not
+    // supported, hence only 0'th index may contain non-zero values, and relevant FW headers (act_kernel_ranges and
+    // act_kernel_invocations) are linear structures that only contain counts per tile. Therefore, it is not needed to
+    // further propagate the per-shave information. For the WLM flow, the content of these attributes is irrelevant at
+    // this point of compilation as WLM flow uses ManagedMappedInference structure.
 
-        actKernelRanges[actKernelRange.index()] = actKernelRangeName;
+    mlir::SmallVector<int64_t> rangeCount(op.getActKernelRangesCount().size(), 0);
+    for (auto actKernRangeCountPerTile : llvm::enumerate(op.getActKernelRangesCount())) {
+        auto countsPerTile = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(actKernRangeCountPerTile.value()));
+        rangeCount[actKernRangeCountPerTile.index()] = countsPerTile[0];
     }
 
-    llvm::SmallVector<mlir::Attribute> actKernelInvocations(op.getActKernelInvocations().size());
-    for (auto actKernelInvocation : llvm::enumerate(op.getActKernelInvocations())) {
-        auto actKernelInvocationName = findSym(actKernelInvocation.value());
+    mlir::SmallVector<int64_t> invoCount(op.getActKernelInvocationsCount().size(), 0);
+    for (auto actKernInvoCountPerTile : llvm::enumerate(op.getActKernelInvocationsCount())) {
+        auto countsPerTile = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(actKernInvoCountPerTile.value()));
+        invoCount[actKernInvoCountPerTile.index()] = countsPerTile[0];
+    }
 
-        actKernelInvocations[actKernelInvocation.index()] = actKernelInvocationName;
+    llvm::SmallVector<mlir::Attribute> actKernelRanges;
+    for (auto actKernelRangesPerTile : llvm::enumerate(op.getActKernelRanges())) {
+        if (rangeCount[actKernelRangesPerTile.index()]) {
+            auto actKernelRangeName = findSym(actKernelRangesPerTile.value().front());
+            actKernelRanges.emplace_back(actKernelRangeName);
+        }
+    }
+
+    llvm::SmallVector<mlir::Attribute> actKernelInvocations;
+    for (auto actKernelInvoPerTile : llvm::enumerate(op.getActKernelInvocations())) {
+        if (invoCount[actKernelInvoPerTile.index()]) {
+            auto actKernelInvocationName = findSym(actKernelInvoPerTile.value().front());
+            actKernelInvocations.emplace_back(actKernelInvocationName);
+        }
     }
 
     llvm::SmallVector<mlir::Attribute> actShaveStacks(op.getActShaveStacks().size());
@@ -78,8 +101,10 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
     mlir::ArrayAttr invariantTasksAttr = invariantTasks.size() ? mlir::ArrayAttr::get(ctx, invariantTasks) : nullptr;
     mlir::ArrayAttr variantTasksAttr = variantTasks.size() ? mlir::ArrayAttr::get(ctx, variantTasks) : nullptr;
     mlir::ArrayAttr actKernelRangesAttr = actKernelRanges.size() ? mlir::ArrayAttr::get(ctx, actKernelRanges) : nullptr;
+    mlir::ArrayAttr actKernelRangesCountAttr = rewriter.getI64ArrayAttr(ArrayRef(rangeCount));
     mlir::ArrayAttr actKernelInvocationsAttr =
             actKernelInvocations.size() ? mlir::ArrayAttr::get(ctx, actKernelInvocations) : nullptr;
+    mlir::ArrayAttr actKernelInvoCountAttr = rewriter.getI64ArrayAttr(ArrayRef(invoCount));
     mlir::SymbolRefAttr mediaTasksAttr = op.getMediaTasks() ? findSym(op.getMediaTasks()) : nullptr;
     mlir::SymbolRefAttr barrierTasksAttr = op.getBarrierTasks() ? findSym(op.getBarrierTasks()) : nullptr;
     mlir::SymbolRefAttr actShaveRtAttr = op.getActShaveRt() ? findSym(op.getActShaveRt()) : nullptr;
@@ -99,8 +124,8 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
             op.getLoc(), symName, dmasAttr, invariantTasksAttr, variantTasksAttr, actKernelRangesAttr,
             actKernelInvocationsAttr, mediaTasksAttr, barrierTasksAttr, actShaveRtAttr, actShaveStacksAttr,
             managedMPISymRef, op.getDmaCountAttr(), op.getInvariantCountAttr(), op.getVariantCountAttr(),
-            op.getActKernelRangesCountAttr(), op.getActKernelInvocationsCountAttr(), op.getMediaCountAttr(),
-            op.getBarrierCountAttr(), dmaHwpBase, workpointCfg, mappedInferenceVersion);
+            actKernelRangesCountAttr, actKernelInvoCountAttr, op.getMediaCountAttr(), op.getBarrierCountAttr(),
+            dmaHwpBase, workpointCfg, mappedInferenceVersion);
     mapper[result] = moveOpToSection(newOp.getOperation(), *_sectionMap, rewriter);
     if (newOp.getManagedMappedInference().has_value()) {
         newOp.setManagedMappedInferenceAttr(
@@ -145,9 +170,9 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
         if (op.getWorkItemCount().has_value()) {
             workItemCount = op.getWorkItemCount().value();
         }
-        auto bootstrapTasksCount = 0;
-        if (op.getBootstrapTasksCount().has_value()) {
-            bootstrapTasksCount = op.getBootstrapTasksCount().value();
+        auto bootstrapBarriersCount = 0;
+        if (op.getBootstrapBarriersCount().has_value()) {
+            bootstrapBarriersCount = op.getBootstrapBarriersCount().value();
         }
         auto finalBarrierId = 0;
         if (op.getFinalBarrierId().has_value()) {
@@ -155,7 +180,8 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
         }
 
         auto bootstrapWorkItemTasksCount = op.getBootsrapWorkItemsCount().value_or(0);
-        mlir::SymbolRefAttr bootstrapItems = op.getBootstrapTasks() ? findSym(op.getBootstrapTasks()) : nullptr;
+        mlir::SymbolRefAttr bootstrapBarriers =
+                op.getBootstrapBarriers() ? findSym(op.getBootstrapBarriers()) : nullptr;
 
         auto fillBits = [](uint8_t numberOfElements) {
             return static_cast<uint8_t>((1 << numberOfElements) - 1);
@@ -184,11 +210,13 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
         uint8_t dma_from_ddr_used = fillBits(activeDmaDDR);
         uint8_t dma_from_cmx_used = fillBits(activeDMACMX);
 
-        auto actKernelRangesCountVec = parseIntArrayAttr<int64_t>(op.getActKernelRangesCount());
+        auto actKernelRangesCountVec = parseIntArrayOfArrayAttr<int64_t>(op.getActKernelRangesCount());
         uint8_t activeShaves = 0;
-        for (size_t tileIdx = 0; tileIdx < actKernelRangesCountVec.size(); ++tileIdx) {
-            if (actKernelRangesCountVec[tileIdx] > 0) {
-                activeShaves++;
+        for (const auto& rangeCountPerTile : actKernelRangesCountVec) {
+            for (const auto& rangeCountPerList : rangeCountPerTile) {
+                if (rangeCountPerList > 0) {
+                    activeShaves++;
+                }
             }
         }
 
@@ -213,12 +241,12 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
                 VPURegMapped::WorkloadManagementBarrierProgrammingMode::LEGACY);
 
         auto managedMPI = rewriter.create<VPUASM::ManagedMappedInferenceOp>(
-                op.getLoc(), managedMPISymName, managedDmasAttr, workItems, barrierTasksAttr, bootstrapItems,
+                op.getLoc(), managedMPISymName, managedDmasAttr, workItems, barrierTasksAttr, bootstrapBarriers,
                 nnRtConfigSymRef, barrierConfigurationDescs, barriersReprogrammings, op.getDmaCountAttr(),
-                workItemCount, op.getBarrierCount(), finalBarrierId, bootstrapTasksCount, bootstrapWorkItemTasksCount,
-                barrierConfigurationCount, barrierReprogrammingCount, barrierConfigurationStride, actshv_used, dpu_used,
-                media_used, dma_from_ddr_used, dma_from_cmx_used, mappedInferenceVersion,
-                workloadManagementBarrierProgrammingMode, _disableDmaSwFifo);
+                workItemCount, op.getBarrierCount(), finalBarrierId, bootstrapBarriersCount,
+                bootstrapWorkItemTasksCount, barrierConfigurationCount, barrierReprogrammingCount,
+                barrierConfigurationStride, actshv_used, dpu_used, media_used, dma_from_ddr_used, dma_from_cmx_used,
+                mappedInferenceVersion, workloadManagementBarrierProgrammingMode, _disableDmaSwFifo);
         moveOpToSection(managedMPI.getOperation(), *_sectionMap, rewriter);
 
         managedMPI.setNnrtConfigAttr(

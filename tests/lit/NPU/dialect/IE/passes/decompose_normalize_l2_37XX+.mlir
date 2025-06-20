@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --decompose-normalize-l2 %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @DecomposeNormalizeL2
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x8x24x64xf16>)
 func.func @DecomposeNormalizeL2(%arg0: tensor<1x8x24x64xf16>) -> tensor<1x8x24x64xf16> {

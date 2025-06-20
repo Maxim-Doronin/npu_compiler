@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-f16-to-f32-convert-on-dpu %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @FoldConvertIntoConv
 // CHECK-SAME: ([[INPUT:%.+]]: tensor<1x8x128x128xf16, {order = #NHWC}>)
@@ -141,6 +142,28 @@ func.func @NotFoldConvertNotDPUParentOp(%arg0: tensor<1x2x128x64xf16, {order = #
   // CHECK:       [[SOFTMAX:%.+]] = IE.SoftMax([[INPUT]])
   // CHECK-SAME:    -> tensor<1x2x128x64xf16, {order = #NHWC}>
   // CHECK-NEXT:  [[RET:%.+]] = IE.Convert([[SOFTMAX]]) {dstElemType = f32}
+  // CHECK-SAME:    -> tensor<1x2x128x64xf32, {order = #NHWC}>
+  // CHECK:       return [[RET]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotFoldConvertNotDPUParentOp
+// CHECK-SAME: ([[INPUT:%.+]]: tensor<1x10000x128x128xf16, {order = #NHWC}>)
+func.func @NotFoldConvertNotDPUParentOp(%arg0: tensor<1x10000x128x128xf16, {order = #NHWC}>) -> tensor<1x2x128x64xf32, {order = #NHWC}> {
+  %cst = const.Declare tensor<2x10000x1x2xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<2x10000x1x2xf16>, [#const.Reorder<#NHWC>]
+  %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 2]}
+    : tensor<1x10000x128x128xf16, {order = #NHWC}>, tensor<2x10000x1x2xf16, {order = #NHWC}> -> tensor<1x2x128x64xf16, {order = #NHWC}>
+  %1 = IE.Convert(%0) {dstElemType = f32} : tensor<1x2x128x64xf16, {order = #NHWC}> -> tensor<1x2x128x64xf32, {order = #NHWC}>
+  return %1 : tensor<1x2x128x64xf32, {order = #NHWC}>
+
+  // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare tensor<2x10000x1x2xf16, {order = #NHWC}>
+  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT]], [[CST_WEIGHTS]])
+  // CHECK-SAME:        -> tensor<1x2x128x64xf16, {order = #NHWC}>
+
+  // CHECK-NEXT:  [[RET:%.+]] = IE.Convert([[CONV_RET]]) {dstElemType = f32}
   // CHECK-SAME:    -> tensor<1x2x128x64xf32, {order = #NHWC}>
   // CHECK:       return [[RET]]
 }

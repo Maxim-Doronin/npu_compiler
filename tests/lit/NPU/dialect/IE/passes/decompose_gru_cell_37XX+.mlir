@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --decompose-gru-cell %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: func.func @DecomposeGRUCellLinearBeforeResetTrue(
 // CHECK-SAME:      [[INPUT_DATA:%.+]]: tensor<1x768xf16>,
 // CHECK-SAME:      [[INITIAL_HIDDEN_STATE:%.+]]: tensor<1x768xf16>) -> tensor<1x768xf16> {

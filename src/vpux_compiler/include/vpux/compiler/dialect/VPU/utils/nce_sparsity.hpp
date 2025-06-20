@@ -549,14 +549,13 @@ std::vector<T> getZeroPointOnlyTable(int64_t OC, mlir::Type weightsElemType, boo
     mlir::Type storageType = mlir::cast<mlir::quant::QuantizedType>(weightsElemType).getStorageType();
 
     if (std::is_same_v<T, uint8_t>) {
-        VPUX_THROW_UNLESS((storageType.isUnsignedInteger(8) && !isZeroPoint4Bit) ||
-                                  (storageType.isUnsignedInteger(4) && isZeroPoint4Bit),
+        VPUX_THROW_UNLESS(storageType.isUnsignedInteger(8) || (storageType.isUnsignedInteger(4) && isZeroPoint4Bit),
                           "The storage type of the quantized weightsElemType {0} has to be the same as the type of the "
                           "zero points",
                           storageType);
     } else if (std::is_same_v<T, int8_t>) {
         VPUX_THROW_UNLESS(
-                ((storageType.isSignedInteger(8) || storageType.isSignlessInteger(8)) && !isZeroPoint4Bit) ||
+                ((storageType.isSignedInteger(8) || storageType.isSignlessInteger(8))) ||
                         ((storageType.isSignedInteger(4) || storageType.isSignlessInteger(4)) && isZeroPoint4Bit),
                 "The storage type of the quantized weightsElemType {0} has to be the same as the type of the "
                 "zero points",
@@ -575,13 +574,17 @@ std::vector<int32_t> patchWeightsTableSparsityPtrs(const std::vector<std::int32_
                                                    const int32_t sparsityPtrOffset, const int32_t sparsityPtrStep,
                                                    std::optional<int64_t> origOC = std::nullopt);
 
-Shape inferWeightsTableShape(int64_t OC);
-Shape inferWeightsTablesNewFormatShape(int64_t OC);
+// newFormat should be set to true only if the split weight table format is used, which consists of 5 tables that
+// replace the legacy weight table: data pointer table, sparsity pointer table, scale table, bias table and per-channel
+// zero-point table. In this case, this function returns the same shape for each of these tables, having only one value
+// for each output channel.
+Shape inferWeightsTableShape(int64_t OC, bool newFormat = false);
 Shape inferWeightsSparsityMapShape(ShapeRef dataShape);
 
 mlir::FailureOr<SmallVector<double>> getRescaledBias(const Const::ContentAttr& biasAttr, mlir::Type inElemType,
                                                      mlir::Type filterElemType, int64_t OC);
 
+double getSparsityRatio(vpux::NDTypeInterface weightsType, int64_t compressedSize);
 double getSparsityRatio(vpux::NDTypeInterface weightsType, ArrayRef<int64_t> numNonSparseElemsPerOC);
 
 bool isSparsifiableWeightsOperand(mlir::Value operand);

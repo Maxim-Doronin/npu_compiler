@@ -36,5 +36,6 @@ void vpux::IE::arch37xx::registerElemTypeInfoOpInterfaces(mlir::DialectRegistry&
         IE::TransposeOp::attachInterface<ElemTypeInfoTransposeOpModel>(*ctx);
         IE::UnsqueezeOp::attachInterface<PerTensorElemTypeInfoOpModel>(*ctx);
         IE::UpsamplingOp::attachInterface<PerTensorElemTypeInfoOpModel>(*ctx);
+        IE::PadOp::attachInterface<PerTensorElemTypeInfoOpModel>(*ctx);
     });
 }

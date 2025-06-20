@@ -4,15 +4,9 @@
 //
 
 #include "vpux/compiler/utils/VPU/function_outlining_splitter.hpp"
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
-#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
-#include "vpux/utils/core/dense_map.hpp"
-#include "vpux/utils/core/error.hpp"
 
 using namespace vpux;
 
@@ -24,10 +18,8 @@ namespace {
 
 class VFOutliningSplitter {
 public:
-    VFOutliningSplitter(size_t numInstanceThreshold, size_t verticalFusionTileThreshold, Logger log)
-            : _numInstanceThreshold(numInstanceThreshold),
-              _verticalFusionTileThreshold(verticalFusionTileThreshold),
-              _log(log) {
+    VFOutliningSplitter(size_t verticalFusionTileThreshold, Logger log)
+            : _verticalFusionTileThreshold(verticalFusionTileThreshold), _log(log) {
     }
     SmallVector<OutliningInstance> getOutliningInstances(mlir::func::FuncOp mainFunction);
 
@@ -53,11 +45,6 @@ private:
 private:
     mlir::DenseSet<mlir::Operation*> _outlinedOperations;
     // Thresholds for outlining, avoid creating very small functions
-#if defined(__clang__)
-    [[maybe_unused]] size_t _numInstanceThreshold;
-#else
-    size_t _numInstanceThreshold;
-#endif
     size_t _verticalFusionTileThreshold;
     Logger _log;
 };
@@ -96,6 +83,14 @@ bool isConstOperandOp(mlir::Operation* op) {
 }
 
 bool VFOutliningSplitter::isProcessInputOp(mlir::Operation* op) {
+    if (op == nullptr) {
+        return false;
+    }
+
+    if (mlir::isa<VPU::SliceOp>(op)) {
+        return isProcessInputOp(op->getOperand(0).getDefiningOp());
+    }
+
     if (isConstOperandOp(op)) {
         return true;
     }
@@ -106,19 +101,13 @@ bool VFOutliningSplitter::isProcessInputOp(mlir::Operation* op) {
 
     if (auto tryOp = trySearchForRootOp(op)) {
         // Do no add 'ViewOp -> Return' to current outlining instance
-        if (mlir::isa<mlir::func::ReturnOp>(tryOp)) {
-            return false;
-        }
-        return true;
+        return !mlir::isa<mlir::func::ReturnOp>(tryOp);
     }
 
     // TODO: E#140556 generic view ops
     if (mlir::isa<VPU::SliceOp>(op)) {
         // Only add 'BlockArg -> Slice' to current outlining instance
-        if (mlir::isa<mlir::BlockArgument>(op->getOperand(0))) {
-            return true;
-        }
-        return false;
+        return mlir::isa<mlir::BlockArgument>(op->getOperand(0));
     }
 
     return false;
@@ -445,7 +434,7 @@ vpux::VPU::FunctionOutlinerVerticalFusion::FunctionOutlinerVerticalFusion(size_t
 SmallVector<OutliningInstance> vpux::VPU::FunctionOutlinerVerticalFusion::getOutliningTargets(
         mlir::func::FuncOp mainFunction) {
     _log.debug("Searching for outlining targets with a vertical fusion split strategy");
-    VFOutliningSplitter vfSplitter(_numInstanceThreshold, _verticalFusionTileThreshold, _log);
+    VFOutliningSplitter vfSplitter(_verticalFusionTileThreshold, _log);
     const auto outliningInstances = vfSplitter.getOutliningInstances(mainFunction);
     if (outliningInstances.size() < _numInstanceThreshold) {
         return {};

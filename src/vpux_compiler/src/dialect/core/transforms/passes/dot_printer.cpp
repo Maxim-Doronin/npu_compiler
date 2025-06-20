@@ -40,7 +40,8 @@ public:
     }
 
 public:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
 public:
     void processModule(mlir::ModuleOp module);
@@ -71,8 +72,9 @@ private:
     std::shared_ptr<llvm::Regex> _passNameFilter;
 };
 
-mlir::LogicalResult PrintDotPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult PrintDotPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 
@@ -180,7 +182,7 @@ void vpux::addDotPrinter(mlir::PassManager& pm, StringRef options) {
     std::string split;
     while (std::getline(ss, split, ',')) {
         std::unique_ptr<PrintDotPass> printer = std::make_unique<PrintDotPass>();
-        VPUX_THROW_WHEN(mlir::failed(printer->initializeOptions(split)), "Failed to initialize options");
+        VPUX_THROW_WHEN(mlir::failed(printer->initializeOptions(split, nullptr)), "Failed to initialize options");
 
         instr->addPrinter(std::move(printer));
     }

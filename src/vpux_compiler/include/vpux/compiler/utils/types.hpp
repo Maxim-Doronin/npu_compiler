@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -44,6 +44,7 @@ mlir::IntegerType getInt16Type(mlir::MLIRContext* ctx);
 mlir::IntegerType getInt32Type(mlir::MLIRContext* ctx);
 mlir::IntegerType getInt64Type(mlir::MLIRContext* ctx);
 
+mlir::IntegerType getSInt2Type(mlir::MLIRContext* ctx);
 mlir::IntegerType getSInt4Type(mlir::MLIRContext* ctx);
 mlir::IntegerType getSInt8Type(mlir::MLIRContext* ctx);
 mlir::IntegerType getSInt16Type(mlir::MLIRContext* ctx);

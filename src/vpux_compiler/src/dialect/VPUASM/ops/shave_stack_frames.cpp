@@ -25,10 +25,15 @@ vpux::ELF::SectionFlagsAttr vpux::VPUASM::ShaveStackFrameOp::getPredefinedMemory
 }
 
 std::optional<ELF::SectionSignature> vpux::VPUASM::ShaveStackFrameOp::getSectionSignature() {
-    return ELF::SectionSignature(vpux::ELF::generateSignature("shave", "stack"), ELF::SectionFlagsAttr::SHF_ALLOC,
+    return ELF::SectionSignature(vpux::ELF::generateSignature("shave", "stack"),
+                                 ELF::SectionFlagsAttr::SHF_ALLOC | ELF::SectionFlagsAttr::SHF_WRITE,
                                  ELF::SectionTypeAttr::SHT_NOBITS);
 }
 
 bool vpux::VPUASM::ShaveStackFrameOp::hasMemoryFootprint() {
     return false;
+}
+
+vpux::VPURT::BufferSection VPUASM::ShaveStackFrameOp::getMemorySection() {
+    return VPURT::BufferSection::DDR;
 }

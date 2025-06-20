@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -132,7 +132,7 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
     // For overlapped input, the Swkernel's attr need to be updated according to its input/output tiles
     const auto kernelEntryName = getSwKernelEntryName(swTask);
     auto needUpdateAttrs = inDistributionMode == VPU::DistributionMode::OVERLAPPED ||
-                           kernelEntryName == "lstm_sequence" ||
+                           kernelEntryName == "lstm_sequence" || kernelEntryName == "lstm_dpu" ||
                            (inDistributionMode == VPU::DistributionMode::SEGMENTED && kernelEntryName == "gatherND");
 
     if (needUpdateAttrs) {
@@ -211,6 +211,8 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
         swKernelInputDynamicShapesMap = to_small_vector(fullInputShapesMap);
         swKernelOutputDynamicShapesMap = to_small_vector(fullOutputShapesMap);
     }
+
+    auto listIndexAttr = swTask.getListIndexAttr();
     for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
         const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
         mlir::Value profilingData = nullptr;
@@ -235,7 +237,7 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
                                                                                outputTiles[clusterId], _log.nest())
                                        : taskArgs;
         for (auto& arg : newArgs) {
-            const auto typedAttr = arg.dyn_cast_or_null<mlir::TypedAttr>();
+            const auto typedAttr = mlir::dyn_cast_or_null<mlir::TypedAttr>(arg);
             const auto type = typedAttr != nullptr ? typedAttr.getType() : mlir::NoneType::get(_ctx);
             inputTypes.push_back(type);
         }
@@ -274,6 +276,10 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
                     swTask.getStridesAttr());
         }();
         updateSwProfilingMetadata(newTask, swTask.getProfilingMetadataAttr(), clusterId);
+        // update listIndex attribute
+        if (swTask.getListIndex().has_value()) {
+            newTask.setListIndexAttr(listIndexAttr);
+        }
 
         initSwKernel(newTask, inputBuffs[clusterId], outputBuffs[clusterId], newArgs, _log.nest());
 

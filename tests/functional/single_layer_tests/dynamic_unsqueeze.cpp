@@ -3,13 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <openvino/op/parameter.hpp>
 #include <pretty_test_arguments.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
 #include <common/print_test_case_name.hpp>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset13.hpp>
+#include <openvino/opsets/opset13_decl.hpp>
+
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/unsqueeze.hpp"
 
 namespace ov::test {
 
@@ -42,7 +44,7 @@ protected:
 
         const auto indicesValues = static_cast<std::vector<int>>(indices);
         const auto indicesShape = ov::Shape{indicesValues.size()};
-        const auto indicesPartialShape = staticShape(indicesShape);
+        const auto indicesPartialShape = generateTestShape(indicesShape);
 
         init_input_shapes({inputShape, indicesPartialShape});
 
@@ -70,7 +72,7 @@ TEST_P(DynamicUnsqueezeLayerTest, NPU4000_HW) {
     run(Platform::NPU4000);
 }
 
-const std::vector<BoundedShape> inShapes = {boundedShape(1, 1, 10)};
+const std::vector<BoundedShape> inShapes = {generateTestShape(1, 1, 10)};
 const std::vector<Indices> indices = {Indices({3})};
 const std::vector<InputType> inputPrecision = {ov::element::f16};
 

@@ -14,10 +14,10 @@
 
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 
-#include "vpux/compiler/options_mapper.hpp"
 #include "vpux/compiler/pipelines/options_setup.hpp"
 
 using namespace vpux;
@@ -28,38 +28,46 @@ namespace {
 // OptionsSetup37XX
 //
 
-class DefaultHWSetup37XX : public DefaultHWSetupBase<DefaultHWOptions37XX> {
+class DefaultHWSetup37XX : public OptionsSetupBase<DefaultHWSetup37XX, DefaultHWOptions37XX> {
 public:
-    using Base = DefaultHWSetupBase<DefaultHWOptions37XX>;
+    using Base = OptionsSetupBase<DefaultHWSetup37XX, DefaultHWOptions37XX>;
     using Base::Base;
 };
 
-class ShaveCodeGenSetup37XX : public OptionsSetup<ShaveCodeGenSetup37XX, DefaultHWOptions37XX> {
+class ShaveCodeGenSetup37XX : public OptionsSetupBase<ShaveCodeGenSetup37XX, DefaultHWOptions37XX> {
 public:
-    using Base = OptionsSetup<ShaveCodeGenSetup37XX, DefaultHWOptions37XX>;
+    using Base = OptionsSetupBase<ShaveCodeGenSetup37XX, DefaultHWOptions37XX>;
     using Base::Base;
-    friend Base;
+    // Expose setupOptionsImpl() to OptionsSetup
+    friend Base::Base;
 
 private:
-    // Note: must be static as we call ConcreteModel::setupOptionsImpl() from the ctor of base class
     static void setupOptionsImpl(DefaultHWOptions37XX& options, const intel_npu::Config& config) {
-        options.locationsVerificationMode =
-                "off";  // E#154882 Ensure standard VPUX passes compatibility with ShaveCodeGen path
-        options.enableProfiling = config.get<intel_npu::PERF_COUNT>();
-        options.enableShaveKernelTiling = false;
-        options.enableOptimizeCopies =
-                false;  // E#154882 Ensure standard VPUX passes compatibility with ShaveCodeGen path
+        Base::setupOptionsImpl(options, config);
+
+        // E#154882 Ensure standard VPUX passes compatibility with ShaveCodeGen path
+        overwriteIfUnset(options.locationsVerificationMode, "off");
+        overwriteIfUnset(options.enableProfiling, config.get<intel_npu::PERF_COUNT>());
+        overwriteIfUnset(options.enableShaveKernelTiling, false);
+        // E#154882 Ensure standard VPUX passes compatibility with ShaveCodeGen path
+        overwriteIfUnset(options.enableOptimizeCopies, false);
     }
 };
 
-class ReferenceSWSetup37XX : public ReferenceSwSetupBase<ReferenceSWOptions37XX> {
+class ReferenceSWSetup37XX : public OptionsSetupBase<ReferenceSWSetup37XX, ReferenceSWOptions37XX> {
 public:
-    using Base = ReferenceSwSetupBase<ReferenceSWOptions37XX>;
+    using Base = OptionsSetupBase<ReferenceSWSetup37XX, ReferenceSWOptions37XX>;
+    using Base::Base;
+};
+
+class WSMonolithicSetup37XX final : public WSMonolithicSetupBase<WSMonolithicSetup37XX, DefaultHWOptions37XX> {
+public:
+    using Base = WSMonolithicSetupBase<WSMonolithicSetup37XX, DefaultHWOptions37XX>;
     using Base::Base;
 };
 
 //
-// DialectPipelineStrategy37XX: [DefaultHW, ShaveCodeGen]
+// DialectPipelineStrategy37XX
 //
 
 template <class OptionsContainerType, class Enable = void>
@@ -91,7 +99,8 @@ public:
 
     void buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, Logger log) override {
         vpux::arch37xx::buildLowerVPU2VPUIPPipeline(
-                pm, _optionsContainer->getPipelineOptions().enableInPlaceBufferization, log);
+                pm, _optionsContainer->getPipelineOptions().enableInPlaceBufferization,
+                _optionsContainer->getPipelineOptions().useMemrefForHostFunctionBufferization, log);
     }
 
     void buildVPUIPPipeline(mlir::OpPassManager& pm, Logger log) override {
@@ -157,8 +166,7 @@ public:
         pm.addPass(IE::createConvertNceOpsTo4DPass(log));
         pm.addPass(IE::createConvertShapeTo4DPass(log));
         pm.addPass(mlir::createCanonicalizerPass(grc));
-        pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableExperimentalSEPtrsOperations),
-                                                    log));
+        pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableSEPtrsOperations), log));
         pm.addPass(IE::createConvertGRNToNormalizeL2Pass(log));
         pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
         IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
@@ -186,7 +194,9 @@ public:
         pm.addPass(VPU::arch37xx::createDecomposeMVNPass(log));
         pm.addPass(VPU::createAddSwOpAuxiliaryBufferPass(log));
 
-        pm.addPass(VPU::createTilingStrategyAssignmentPass(/*enablePrefetchTiling=*/false, false, "true", log));
+        pm.addPass(VPU::createTilingStrategyAssignmentPass(
+                /*enablePrefetchTiling=*/false, /*enableVPUNNCostForTiling*/ false,
+                /*enableShaveDDRAccessOptimization*/ "true", log));
         pm.addPass(VPU::arch37xx::createApplyTilingMVN1SumPass(/*enablePrefetchTiling=*/false, log));
         pm.addPass(VPU::createApplyTilingPass(/*enableSCFTiling=*/false, log));
         pm.addPass(VPU::createComputeInterpolateCoordinatesPass(/*enableExplicitDistributionInfoAttr*/ false, log));
@@ -194,7 +204,8 @@ public:
         pm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
 
         // Lowering to VPUIP
-        vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization, log);
+        vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization,
+                                                    /*useMemrefForHostFunctionBufferization*/ false, log);
 
         // Level 2 : Abstract RunTime
 
@@ -257,17 +268,20 @@ private:
 // createDialectPipelineStrategy37XX
 //
 
-std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy37XX(VPU::CompilationMode compilationMode,
-                                                                                  const intel_npu::Config& config) {
+std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy37XX(
+        config::CompilationMode compilationMode, const intel_npu::Config& config) {
     switch (compilationMode) {
-    case VPU::CompilationMode::DefaultHW: {
+    case config::CompilationMode::DefaultHW: {
         return std::make_unique<DialectPipelineStrategy37XX<DefaultHWSetup37XX>>(config);
     }
-    case VPU::CompilationMode::ShaveCodeGen: {
+    case config::CompilationMode::ShaveCodeGen: {
         return std::make_unique<DialectPipelineStrategy37XX<ShaveCodeGenSetup37XX>>(config);
     }
-    case VPU::CompilationMode::ReferenceSW: {
+    case config::CompilationMode::ReferenceSW: {
         return std::make_unique<DialectPipelineStrategy37XX<ReferenceSWSetup37XX>>(config);
+    }
+    case config::CompilationMode::WSMonolithic: {
+        return std::make_unique<DialectPipelineStrategy37XX<WSMonolithicSetup37XX>>(config);
     }
     default:
         VPUX_THROW("Unsupported compilation mode '{0}'", compilationMode);
@@ -278,14 +292,16 @@ std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy37X
 // createDialectPipelineStrategy37XX [lit-tests]
 //
 
-template <class OptionsType>
+template <>
 std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy37XX(
-        const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options) {
-    auto wrapper = std::make_unique<OptionsWrapper<OptionsType>>(initCompilerOptions, options);
-    return std::make_unique<DialectPipelineStrategy37XX<OptionsWrapper<OptionsType>>>(std::move(wrapper));
+        const VPU::InitCompilerOptions* initCompilerOptions, const DefaultHWOptions37XX* options) {
+    auto wrapper = std::make_unique<DefaultHWSetup37XX>(initCompilerOptions, options);
+    return std::make_unique<DialectPipelineStrategy37XX<DefaultHWSetup37XX>>(std::move(wrapper));
 }
 
-template std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy37XX(
-        const VPU::InitCompilerOptions*, const DefaultHWOptions37XX*);
-template std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy37XX(
-        const VPU::InitCompilerOptions*, const ReferenceSWOptions37XX*);
+template <>
+std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy37XX(
+        const VPU::InitCompilerOptions* initCompilerOptions, const ReferenceSWOptions37XX* options) {
+    auto wrapper = std::make_unique<ReferenceSWSetup37XX>(initCompilerOptions, options);
+    return std::make_unique<DialectPipelineStrategy37XX<ReferenceSWSetup37XX>>(std::move(wrapper));
+}

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUMI40XX-to-VPUASM="workload-management-enable=true" %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
@@ -32,7 +33,7 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
       module @DmaProfilingReservedMemory {
@@ -46,7 +47,7 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilat
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
@@ -75,7 +76,7 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilat
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
       module @DmaProfilingReservedMemory {
@@ -89,7 +90,7 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilat
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
@@ -153,7 +154,7 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilat
     %43 = VPUMI40XX.Bootstrap inputs(%22 : <0:0:4>) -> !VPURegMapped.Index<0:0:4>
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
-    %44 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapTasks(%39 : !VPURegMapped.Index<0:0:0>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([0]) actKernelInvocationsCount([0]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapTasksCount(5) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
+    %44 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%39 : !VPURegMapped.Index<0:0:0>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapBarriersCount(5) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
     ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
@@ -178,7 +179,7 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilat
 //CHECK-SAME: managedMappedInference(@program.mapped_inference::@MappedInference_managed)
 //CHECK{LITERAL}: VPUASM.ManagedMappedInference @MappedInference_managed
 //CHECK-SAME: workItems(@program.workItem::@[[Enqueue0]])
-//CHECK-SAME: bootstrapTasks(@program.bootstrap::@Bootstrap_0_0)
+//CHECK-SAME: bootstrapBarriers(@program.bootstrap::@Bootstrap_0_0)
 //CHECK-SAME: nnrtConfig(@program.nnrt_config::@MappedInference_nnrtConfigManaged)
 //CHECK-SAME: actshv_used = 0
 //CHECK-SAME: dma_from_cmx_used = 1
@@ -192,15 +193,15 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilat
 // -----
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @BarrierProgramming attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.FP16CompressedConv : false
-    IE.Option @VPU.ReduceSupported : false
-    IE.Option @VPU.AutoPaddingODU : false
-    IE.Option @VPU.AutoPaddingIDU : false
-    IE.Option @VPU.BarrierMaxVariantSum : 64
-    IE.Option @VPU.BarrierMaxVariantCount : 128
-    IE.Option @VPU.MaxKernelSize : 11
+module @BarrierProgramming attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.FP16CompressedConv : false
+    config.Option @VPU.ReduceSupported : false
+    config.Option @VPU.AutoPaddingODU : false
+    config.Option @VPU.AutoPaddingIDU : false
+    config.Option @VPU.BarrierMaxVariantSum : 64
+    config.Option @VPU.BarrierMaxVariantCount : 128
+    config.Option @VPU.MaxKernelSize : 11
   }
   IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
@@ -215,7 +216,7 @@ module @BarrierProgramming attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.c
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
@@ -282,7 +283,7 @@ module @BarrierProgramming attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.c
 
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
-    %173 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapTasks(%39 : !VPURegMapped.Index<0:0:0>) barrierConfigurationTasks(%barDescs : memref<1xui8>) numOfBarrierReprogrammings(%barStrides : memref<16xui32>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([0]) actKernelInvocationsCount([0]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapTasksCount(5) barrierConfigurationTasksCount(128) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
+    %173 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%39 : !VPURegMapped.Index<0:0:0>) barrierConfigurationTasks(%barDescs : memref<1xui8>) numOfBarrierReprogrammings(%barStrides : memref<16xui32>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapBarriersCount(5) barrierConfigurationTasksCount(128) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
     ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }

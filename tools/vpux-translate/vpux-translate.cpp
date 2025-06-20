@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/import.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
@@ -185,8 +186,8 @@ mlir::OwningOpRef<mlir::ModuleOp> importELF(llvm::SourceMgr& sourceMgr, mlir::ML
 //
 
 mlir::LogicalResult exportELF(mlir::ModuleOp module, llvm::raw_ostream& output) {
-    auto compilationMode = VPU::getCompilationMode(module.getOperation());
-    if (compilationMode == VPU::CompilationMode::ShaveCodeGen) {
+    auto compilationMode = config::getCompilationMode(module.getOperation());
+    if (compilationMode == config::CompilationMode::ShaveCodeGen) {
         ShaveBinaryResources::loadElfData(module);
     }
 

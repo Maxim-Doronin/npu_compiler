@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -66,7 +66,7 @@ const auto smoke_DepthToSpaceBS4 = ::testing::Combine(
         ::testing::Values(DepthToSpace::DepthToSpaceMode::DEPTH_FIRST), ::testing::Values(4),
         ::testing::Values(DEVICE_NPU));
 
-const auto DepthToSpaceBS5_with_large_height =
+const auto DepthToSpaceBS2_with_large_height =
         ::testing::Combine(::testing::Values(static_shapes_to_test_representation({ov::Shape{1, 4, 300, 3}})),
                            ::testing::ValuesIn(inputPrecisions), ::testing::ValuesIn(modes), ::testing::Values(2),
                            ::testing::Values(DEVICE_NPU));
@@ -84,6 +84,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_DepthToSpace_with_tiling, DepthToSpaceLayerTestCo
                          DepthToSpaceLayerTestCommon::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_DepthToSpace_with_large_height, DepthToSpaceLayerTestCommon,
-                         DepthToSpaceBS5_with_large_height, DepthToSpaceLayerTestCommon::getTestCaseName);
+                         DepthToSpaceBS2_with_large_height, DepthToSpaceLayerTestCommon::getTestCaseName);
 
 }  // namespace

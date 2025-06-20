@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --inline %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // Note: This test checks if UnifiedFuncInlinerInterface uses the fallback implementation.
 module @FuncCallOpFallback {
     func.func private @foo(%arg: tensor<f32>) -> tensor<f32> {

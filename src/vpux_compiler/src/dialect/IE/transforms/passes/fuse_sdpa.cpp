@@ -143,15 +143,14 @@ bool isAdaptiveStripping(mlir::Value output, mlir::Value& input1, mlir::Value& i
 void createSDPA(mlir::Operation* op, mlir::Value inputQ, mlir::Value inputK, mlir::Value inputV, mlir::Value mask,
                 IE::TransposeOp transposeK = nullptr) {
     auto builder = mlir::OpBuilder(op);
+    mlir::Value sdpaKInput = inputK;
     if (transposeK) {
         auto transposedKOp = builder.create<IE::TransposeOp>(appendLoc(op->getLoc(), "_transposed_k"), inputK, nullptr,
                                                              transposeK.getOrderValueAttr());
-        auto sdpaOp = builder.create<IE::SDPAOp>(appendLoc(op->getLoc(), "_sdpa"), inputQ, transposedKOp, inputV, mask);
-        op->replaceAllUsesWith(sdpaOp);
-    } else {
-        auto sdpaOp = builder.create<IE::SDPAOp>(appendLoc(op->getLoc(), "_sdpa"), inputQ, inputK, inputV, mask);
-        op->replaceAllUsesWith(sdpaOp);
+        sdpaKInput = transposedKOp.getOutput();
     }
+    auto sdpaOp = builder.create<IE::SDPAOp>(appendLoc(op->getLoc(), "_sdpa"), inputQ, sdpaKInput, inputV, mask);
+    op->replaceAllUsesWith(sdpaOp);
 }
 
 mlir::Operation* getScaleOp(mlir::Operation* op) {

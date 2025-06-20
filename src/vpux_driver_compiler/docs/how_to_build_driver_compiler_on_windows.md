@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-Before you start to build Driver Compiler targets, please ensure that you have installed the necessary components. After installation, please make sure they are available from system enviroment path.
+Before you start to build Driver Compiler targets, please ensure that you have installed the necessary components. After installation, please make sure they are available from system environment path.
 
 - Hardware:
     - Minimum requirements: 40 GB of disk space.
@@ -43,22 +43,27 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
 
     cd C:\Users\Local_Admin\workspace (Just an example, you should use your own path.)
     git clone https://github.com/openvinotoolkit/npu_compiler
-    cd npu_compiler
+    cd applications.ai.vpu-accelerators.vpux-plugin
     git checkout -b master origin/master (Just an example, you could use your own branch/tag/commit.)
     git submodule update --init --recursive
 
-    set OPENVINO_HOME=C:\Users\Local_Admin\workspace\openvino (need change to your own path)
-    set NPU_PLUGIN_HOME=C:\Users\Local_Admin\workspace\npu_compiler (need change to your own path)
+    set OPENVINO_HOME=C:\Users\Local_Admin\workspace\openvino (need to change to your own path)
+    set NPU_PLUGIN_HOME=C:\Users\Local_Admin\workspace\applications.ai.vpu-accelerators.vpux-plugin (need to change to your own path)
     ```
     </details>
     
     > Notice: Please place the cloned repositories in the shortest possible path.
+
+    > Notice: If you encounter the `filename too long` issue when cloning a repo, please use the command `git config --global core.longpaths true` in Git Bash.
+
+    > Notice: To enable the long path feature on windows, please open the `Registry Editor` by pressing `win + R` and typing `regedit`. Navigate to `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem, then find or create a DWORD (32-bit) value named `LongPathsEnabled`, and set its value to 1.
+    Follow these [steps](./imgs/long_path_enable.png) to complete the process.
     
 2. Create build folder and run build commands:
 
     2.1 Build instructions
     
-    Before build with the following instructions, please make sure `OPENVINO_HOME` and `NPU_PLUGIN_HOME` enviroment variables have been set.
+    Before building with the following instructions, please make sure `OPENVINO_HOME` and `NPU_PLUGIN_HOME` environment variables have been set.
 
     <details>
     <summary>Executed in x64 Native Tools Command Prompt for VS XXXX</summary>
@@ -229,7 +234,7 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
     <details>
     <summary>2.3.2 Use different TBB version</summary>
 
-    If you wish to build with system TBB, you need install TBB in your local system first and then use `-DENABLE_SYSTEM_TBB=ON` option to instead of `-DENABLE_SYSTEM_TBB=OFF` option.
+    If you wish to build with system TBB, you need to install TBB in your local system first and then use `-DENABLE_SYSTEM_TBB=ON` option instead of `-DENABLE_SYSTEM_TBB=OFF` option.
 
     If you wish to build with a specific version of TBB, you can download it from [oneTBB Project] and unzip its release package. Then use the `-DENABLE_SYSTEM_TBB=OFF -DTBBROOT=C:\Users\Local_Admin\workspace\path\to\downloaded\tbb` option to build.
     
@@ -239,7 +244,7 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
     <details>
     <summary>2.3.3 Do not use TBB</summary>
 
-    If you wish to build without TBB (which will result in a slower build process), you need change `-D THREADING=TBB` to `-D THREADING=SEQ`. More info about SEQ mode, please refer to this [file](https://github.com/openvinotoolkit/openvino/blob/master/docs/dev/cmake_options_for_custom_compilation.md#options-affecting-binary-size).
+    If you wish to build without TBB (which will result in a slower build process), you need to change `-D THREADING=TBB` to `-D THREADING=SEQ`. For more information about SEQ mode, please refer to this [file](https://github.com/openvinotoolkit/openvino/blob/master/docs/dev/cmake_options_for_custom_compilation.md#options-affecting-binary-size).
 
     </details>
 

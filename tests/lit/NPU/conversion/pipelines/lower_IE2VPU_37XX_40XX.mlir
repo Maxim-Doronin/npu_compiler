@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -109,4 +109,15 @@ func.func @DynamicExpandU8(%arg0: tensor<1x3x?x?xui8, {bounds = #const.OpaqueI64
     // CHECK-NOT:   IE.DynamicExpand
     // CHECK:       [[DynamicExpand:%.+]] = VPU.DynamicExpand([[ARG0]]) : tensor<1x3x?x?xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x3x20x20xui8>
     // CHECK:       return [[DynamicExpand]] : tensor<1x3x20x20xui8>
+}
+
+// -----
+
+// CHECK: func.func @ReinterpretCast([[ARG0:%.+]]: tensor<1x1000xf16>) -> tensor<2x1000xi8> {
+func.func @ReinterpretCast(%arg0: tensor<1x1000xf16>) -> tensor<2x1000xi8> {
+    %0 = Core.ReinterpretCast(%arg0) : tensor<1x1000xf16> -> tensor<2x1000xi8>
+    return %0 : tensor<2x1000xi8>
+
+    // CHECK:  [[VAR0:%.+]] = Core.ReinterpretCast([[ARG0]]) : tensor<1x1000xf16> -> tensor<2x1000xi8>
+    // CHECK:  return [[VAR0]]
 }

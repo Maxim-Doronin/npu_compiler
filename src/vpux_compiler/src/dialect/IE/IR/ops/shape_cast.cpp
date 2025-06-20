@@ -42,10 +42,10 @@ mlir::OpFoldResult vpux::IE::ShapeCastOp::fold(FoldAdaptor adaptor) {
     }
 
     VPUX_THROW_UNLESS(!operands.empty(), "Wrong number of operands : {0}", operands.size());
-    if (inputType.getElementType().dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>()) {
+    if (mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(inputType.getElementType())) {
         return nullptr;
     }
-    if (const auto attr = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (const auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         return static_cast<Const::ContentAttr>(attr).transform().reshape(outputType.getShape()).get();
     }
 

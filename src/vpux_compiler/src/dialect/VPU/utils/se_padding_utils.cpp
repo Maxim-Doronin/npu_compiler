@@ -13,6 +13,10 @@ using namespace VPU;
 
 namespace {
 
+// Empirical threshold based on profiling traces and based on RTL simulations.
+// VPUNN CostModel does not currently model differences in performance coming from SEP usage.
+constexpr int64_t SEP_PAD_IC_NUM_PERF_THRESHOLD = 32;
+
 bool isSupportedSEPPadImpl(mlir::Operation* op, NDTypeInterface inputType, NDTypeInterface outputType,
                            IE::PadMode padMode, mlir::ArrayAttr padsBeginAttr, mlir::ArrayAttr padsEndAttr,
                            mlir::FloatAttr padValueAttr, LogCb logCb, bool checkLayout, bool checkChannelAlignment,
@@ -59,6 +63,13 @@ bool isSupportedSEPPadImpl(mlir::Operation* op, NDTypeInterface inputType, NDTyp
     const Shape newInputShape{inputShape[Dims4D::Act::N], inputShape[Dims4D::Act::C], newY, newX};
     inputType = inputType.changeShape(newInputShape);
 
+    // SEP PadOp will get fused into the next Convolution, if that exists, or it will be converted
+    // into a 1x1 Convolution, input sparsity will be enabled and storage element pointers will be used.
+    // E-163345 shows that the overhead of storage element table reads from CMX will bring a significant performance
+    // regression when Conv Input Channel number is low.
+    if (newInputShape[Dims4D::Act::C] <= SEP_PAD_IC_NUM_PERF_THRESHOLD) {
+        return false;
+    }
     auto weightShape =
             Shape(SmallVector<int64_t>{inputShape[Dims4D::Act::C], inputShape[Dims4D::Act::C], /*KY=*/1, /*KX=*/1});
     mlir::Type elemType = mlir::Float16Type::get(ctx);

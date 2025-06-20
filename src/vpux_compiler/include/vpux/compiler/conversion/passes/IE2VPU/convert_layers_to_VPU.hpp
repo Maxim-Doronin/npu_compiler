@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -390,6 +390,23 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::DynamicTileOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// DynamicQuantizeRewrite
+//
+
+class DynamicQuantizeRewrite final : public mlir::OpRewritePattern<IE::DynamicQuantizeOp> {
+public:
+    DynamicQuantizeRewrite(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::DynamicQuantizeOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::DynamicQuantizeOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;

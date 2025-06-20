@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -28,6 +28,7 @@ class ActivationLayerTest_HW_FP32 : public ActivationLayerTest_FP32 {};
 
 class ShaveCodeGenActivationLayerTest_FP16_Profiling : public ActivationLayerTestCommon {};
 class ShaveCodeGenActivationLayerTest_FP16 : public ActivationLayerTestCommon {};
+class ShaveCodeGenActivationLayerTest_Integer : public ActivationLayerTestCommon {};
 
 // 3720
 // SW
@@ -91,6 +92,11 @@ TEST_P(ShaveCodeGenActivationLayerTest_FP16_Profiling, NPU4000) {
     run(Platform::NPU4000);
 }
 
+TEST_P(ShaveCodeGenActivationLayerTest_Integer, NPU4000) {
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
+    run(Platform::NPU4000);
+}
 }  // namespace test
 }  // namespace ov
 
@@ -165,8 +171,15 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
         {Clamp, {{-1.0f, 1.0f}}},
 };
 
+const std::vector<ov::element::Type> integerNetPrecisions = {ov::element::i32};
+
 const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenActivationTypes = {
-        {Cos, {{1.0f}}}, {Exp, {{1.0f}}}, {Log, {{1.0f}}}  // We can insert other layers also
+        {Cos, {{1.0f}}},         {Exp, {{1.0f}}},  {Log, {{1.0f}}},       {Sin, {{1.0f}}},
+        {Erf, {{1.0f}}},         {Sqrt, {{1.0f}}}, {RoundHalfToEven, {}}, {RoundHalfAwayFromZero, {}},
+        {Clamp, {{-1.0f, 1.0f}}}};
+
+const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenIntActivationTypes = {
+        {Clamp, {{-1.0f, 1.0f}}},
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenActivationProfilingTypes = {
@@ -243,6 +256,11 @@ const auto basicShaveCodeGenCases = ::testing::Combine(
         ::testing::ValuesIn(static_shapes_param_transform(ov::test::utils::combineParams(basic))),
         ::testing::Values(DEVICE_NPU));
 
+const auto basicShaveCodeGenIntCases = ::testing::Combine(
+        ::testing::ValuesIn(::combineParams(shaveCodeGenIntActivationTypes)), ::testing::ValuesIn(integerNetPrecisions),
+        ::testing::ValuesIn(static_shapes_param_transform(ov::test::utils::combineParams(basic))),
+        ::testing::Values(DEVICE_NPU));
+
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Activation, ActivationLayerTest_SW_FP16, basicCases,
                          ActivationLayerTest::getTestCaseName);
 
@@ -260,6 +278,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Activation_Test_Cos0_ShaveCodeGen_Profi
                          ShaveCodeGenActivationLayerTest_FP16_Profiling, basicCosCases,
                          ActivationLayerTest::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Activation_Test_Int_ShaveCodeGen, ShaveCodeGenActivationLayerTest_Integer,
+                         basicShaveCodeGenIntCases, ActivationLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Activation_Test_ShaveCodeGen, ShaveCodeGenActivationLayerTest_FP16,
                          basicShaveCodeGenCases, ActivationLayerTest::getTestCaseName);
 

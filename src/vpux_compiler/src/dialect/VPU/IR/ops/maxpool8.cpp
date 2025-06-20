@@ -34,12 +34,11 @@ mlir::LogicalResult vpux::VPU::MaxPool8Op::inferReturnTypes(mlir::MLIRContext* c
     const auto roundingType = maxPool8.getRoundingType();
 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(maxPool8.getInput().getType());
-    const auto inShape = inType.getShape().raw();
 
-    const auto shapeI64 = inferMaxPool8OutputShape(inShape, windowStrides, windowDilations, dataPaddingBelow,
-                                                   dataPaddingAbove, windowShape, roundingType);
+    const auto shapeI64 = inferMaxPool8OutputShape(ShapeInfo::fromNDType(inType), windowStrides, windowDilations,
+                                                   dataPaddingBelow, dataPaddingAbove, windowShape, roundingType);
 
-    const auto outType = inType.changeShape(Shape(shapeI64));
+    const auto outType = inType.changeShape(Shape(shapeI64.shape));
     inferredReturnTypes.push_back(outType);
 
     const auto outType1 = outType.changeElemType(maxPool8.getIndexElementType());

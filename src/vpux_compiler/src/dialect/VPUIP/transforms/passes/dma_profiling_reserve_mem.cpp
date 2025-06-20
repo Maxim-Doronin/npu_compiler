@@ -47,6 +47,7 @@ void DMATaskProfilingReserveMemPass::safeRunOnModule() {
 
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
+    VPUX_THROW_UNLESS(dmaPortCount > 0, "DMA port count should be > 0; it is: {0}", dmaPortCount);
     VPUX_THROW_UNLESS((VPUIP::HW_DMA_PROFILING_MAX_BUFFER_SIZE % dmaPortCount) == 0,
                       "Reserved memory for DMA profiling cannot be equally split between ports");
 

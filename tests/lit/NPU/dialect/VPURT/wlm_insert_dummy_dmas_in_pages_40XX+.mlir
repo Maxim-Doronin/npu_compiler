@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --wlm-insert-dummy-dmas-in-pages %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --wlm-insert-dummy-dmas-in-pages="num-barriers=4" %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
@@ -29,21 +30,21 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     // _______      DMA0[0]
     //               |
     //              bar0(0)
-    //               |          <- Page 0 needs to have DMA1 task inserted
-    //  Page0       DMA0[1]        as there is DMA1 task in Page2
+    //               |
+    //  Page0       DMA0[1]
     //               |
     //              bar1(0)
     //              /   \
     // _______ DMA0[2]  DPU[0]
     //            |  \   |
-    //            |    \ |      <- Page 1 needs to have DMA1 task inserted
-    //  Page1  bar2(1)  bar3(1)    as there is DMA1 task in Page2
-    //            |      |
-    // _______   DPU[2]  DPU[1]
-    //             \    /
-    //              bar4(2)
-    //               |
-    //  Page2       DPU[3]
+    //            |    \ |
+    //  Page1  bar2(1)  bar3(1) <- Page 1 needs to have DMA1 task inserted
+    //            |      |         as there is DMA1 task in Page2. Inserting this DMA
+    // _______   DPU[2]  DPU[1]    will allow to enqueue DMA1[0] task at bootstrap, without
+    //             \    /          dummyDMA, DMA1[0] would execute prematurely in Page0 which
+    //              bar4(2)        will use same physical barriers as Page2
+    //               |             Also DMA0 needs to be added as this DMA FIFO is used for
+    //  Page2       DPU[3]         inserting enqueue DMAs in later passes
     //               |
     //              bar5(2)
     //               |
@@ -110,11 +111,39 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
 
     VPURT.Task waits(%bar5: !VPURT.Barrier) updates(%bar6: !VPURT.Barrier) wlmPage(2)
     {
-         VPUIP.NNDMA {port = 1 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA {port = 1 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     return %buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
 
+
+    // Simple subgraph with page split after inserting dummyDMAs:
+    //
+    // _______      DMA0[0]
+    //               |
+    //              bar0(0)
+    //               |
+    //  Page0       DMA0[1]
+    //               |
+    //              bar1(0)
+    //              /   \
+    // _______ DMA0[2]   DPU[0]
+    //            |    \    |
+    //            |      \  |
+    //  Page1  bar2(1)     bar3(1) -------
+    //            |       /     \         \
+    // _______   DPU[2] DPU[1]  dummyDMA0  dummyDMA1
+    //             \    /      /        __/
+    //              bar4(2)   /      __/
+    //               |       /    __/
+    //  Page2       DPU[3]  /  __/
+    //               |     /__/
+    //              bar5(2)
+    //               |
+    // _______      DMA1[0]
+    //               |
+    //  Page3       bar6(3)
+    // _______
 
 
     // CHECK:   [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier {isStartBarrier, wlmPage = 0 : i64} -> !VPURT.Barrier
@@ -126,15 +155,32 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     // CHECK:   [[BAR6:%.+]] = VPURT.DeclareVirtualBarrier {isFinalBarrier, wlmPage = 3 : i64} -> !VPURT.Barrier
 
     // CHECK:   VPURT.Task updates([[BAR0]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+
     // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) wlmPage(0) {
+    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+
     // CHECK:   VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]], [[BAR3]] : !VPURT.Barrier, !VPURT.Barrier) wlmPage(0) {
+    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+
     // CHECK:   VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK:   VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier) wlmPage(1) {
-    // CHECK:   VPURT.Task waits([[BAR2]] : !VPURT.Barrier) wlmPage(1) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
+
+    // CHECK:   VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier) wlmPage(1) {
+    // CHECK-NEXT: VPUIP.SyncDMA {port = 1 : i64}
+
+    // CHECK:   VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier) wlmPage(1) {
     // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+
+    // CHECK:   VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier) wlmPage(1) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
+
     // CHECK:   VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier) wlmPage(1) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
+
     // CHECK:   VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier) wlmPage(2) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
+
     // CHECK:   VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier) wlmPage(2) {
+    // CHECK-NEXT: VPUIP.NNDMA {port = 1 : i64}
 }

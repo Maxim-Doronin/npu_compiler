@@ -97,7 +97,7 @@ private:
 mlir::LogicalResult CleanupFQRewriter::matchAndRewrite(IE::FakeQuantizeOp fqOp, mlir::PatternRewriter& rewriter) const {
     auto levels = fqOp.getLevels();
     // Maximum number of levels that exceeds I8/U8 storage type
-    if (!levels.has_value() || *levels > MAX_LEVELS) {
+    if (!levels.has_value() || *levels > QuantizationLevels::QUANT_LEVELS_8BIT) {
         return mlir::failure();
     }
 

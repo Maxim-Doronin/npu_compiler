@@ -138,12 +138,16 @@ mlir::Value buildWeightsConst(mlir::OpBuilder& builder, mlir::Location loc, mlir
                     /*expressedType=*/mlir::Float16Type::get(ctx),
                     /*scale=*/scale, /*zeroPoint=*/zeroPoint, /*storageTypeMin=*/qInputElemType.getStorageTypeMin(),
                     /*storageTypeMax=*/qInputElemType.getStorageTypeMax());
-
-        } else if (qInputElemType.getStorageType().isInteger(8)) {
-            filterElemType = mlir::quant::UniformQuantizedType::get(
-                    0, getUInt8Type(ctx), mlir::Float16Type::get(ctx), scale, zeroPoint,
-                    std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
-
+        } else if (qInputElemType.getStorageType().isInteger(8) || qInputElemType.getStorageType().isInteger(16)) {
+            if (qInputElemType.isSigned()) {
+                filterElemType = mlir::quant::UniformQuantizedType::get(
+                        mlir::quant::QuantizationFlags::Signed, getSInt8Type(ctx), mlir::Float16Type::get(ctx), scale,
+                        zeroPoint, std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max());
+            } else {
+                filterElemType = mlir::quant::UniformQuantizedType::get(
+                        0, getUInt8Type(ctx), mlir::Float16Type::get(ctx), scale, zeroPoint,
+                        std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+            }
         } else {
             VPUX_THROW("Unsupported quantized storage type: {0}", qInputElemType.getStorageType());
         }
@@ -224,6 +228,7 @@ void foldSingleConstant(Const::DeclareOp& origOp) {
         // Final design to also include a mechanism to FREEZE constants
         // from accepting future transformations due to the fact of packed
         // sub byte values stored, which would require an unpacking and a repacking
+        // TODO: #-164571 Remove Const::ChangeShapeAndElemType if possible.
         origOp.getProperties().content = Const::ContentAttr::get(
                 denseAttr, Const::ContentSetup(denseAttr.getType())
                                    .changeShapeAndElemType(origType.getShape(), origType.getElementType()));

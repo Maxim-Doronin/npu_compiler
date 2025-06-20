@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie %s | FileCheck %s --strict-whitespace
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie="enable-grouped-matmul=false convert-avg-pool-to-dw-conv=true" %s | FileCheck %s --strict-whitespace
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @FuseConstDivideToMatMul
 module @FuseConstDivideToMatMul {
     net.NetworkInfo entryPoint : @main
@@ -36,28 +37,19 @@ module @FuseConstDivideToMatMul {
 
         // CHECK: [[CONV0:%.+]] = IE.Convolution
         // CHECK-SAME: static_scale = 0.135375977 : f32
-        // CHECK: [[CONV0_RESHAPE:%.+]] = IE.AffineReshape([[CONV0]])
-        // CHECK-SAME: -> tensor<1x64x64x1xf16, {order = #NHWC}>
-        // CHECK: [[CONV0_PERMUTE:%.+]] = IE.PermuteCast([[CONV0_RESHAPE]])
-
         // CHECK: [[CONV1:%.+]] = IE.Convolution
         // CHECK-SAME: static_scale = 0.135375977 : f32
-        // CHECK: [[CONV1_RESHAPE:%.+]] = IE.AffineReshape([[CONV1]])
-        // CHECK-SAME: -> tensor<1x64x64x1xf16, {order = #NHWC}>
-        // CHECK: [[CONV1_PERMUTE:%.+]] = IE.PermuteCast([[CONV1_RESHAPE]])
-
         // CHECK: [[CONV2:%.+]] = IE.Convolution
         // CHECK-SAME: static_scale = 0.135375977 : f32
-        // CHECK: [[CONV2_RESHAPE:%.+]] = IE.AffineReshape([[CONV2]])
-        // CHECK-SAME: -> tensor<1x64x64x1xf16, {order = #NHWC}>
-        // CHECK: [[CONV2_PERMUTE:%.+]] = IE.PermuteCast([[CONV2_RESHAPE]])
 
+        // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]])
 
-        // CHECK: [[CONV0_RES:%.+]] = IE.AffineReshape([[CONV0_PERMUTE]])
-        // CHECK: [[CONV1_RES:%.+]] = IE.AffineReshape([[CONV1_PERMUTE]])
-        // CHECK: [[CONV2_RES:%.+]] = IE.AffineReshape([[CONV2_PERMUTE]])
-        // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0_RES]], [[CONV1_RES]], [[CONV2_RES]])
-        // CHECK-NEXT: return [[CONCAT]]
+        // CHECK: [[RESHAPE:%.+]] = IE.AffineReshape([[CONCAT]])
+        // CHECK-SAME: -> tensor<3x64x64x1xf16, {order = #NHWC}>
+        // CHECK: [[PERMUTE:%.+]] = IE.PermuteCast([[RESHAPE]])
+        // CHECK: [[OUT_RES:%.+]] = IE.AffineReshape([[PERMUTE]])
+
+        // CHECK-NEXT: return [[OUT_RES]]
     }
 }
 
@@ -259,8 +251,8 @@ net.NetworkInfo
         %0 = IE.StridedSlice(%arg0) {begin_mask = [0, 0, 0, 0], begins_attr = [0, 0, 0, 1], ellipsis_mask = [0, 0, 0, 0], end_mask = [0, 0, 0, 0], ends_attr = [1, 3, 640, 640], new_axis_mask = [0, 0, 0, 0], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [0, 0, 0, 0], strides_attr = [1, 1, 1, 2]} : tensor<1x3x640x640xf16, {order = #NHWC}> -> tensor<1x3x640x320xf16, {order = #NHWC}>
         return %0 : tensor<1x3x640x320xf16, {order = #NHWC}>
 
-        // CHECK: [[CST_0:%.+]] = const.Declare tensor<48x48x1x1xf16, {order = #NHWC}> = dense_resource<__elided__> : tensor<48x48x1x1xf16, {order = #NHWC}>
-        // CHECK: [[CST_1:%.+]] = const.Declare tensor<1x3x640x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x3x640x1xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
+        // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<48x48x1x1xf16, {order = #NHWC}> = dense_resource<__elided__> : tensor<48x48x1x1xf16, {order = #NHWC}>
+        // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x3x640x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x3x640x1xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
         // CHECK: [[SLICE:%.+]] = IE.Slice [[ARG0]] [0, 0, 0, 1] [1, 3, 640, 639] : tensor<1x3x640x640xf16, {order = #NHWC}> to tensor<1x3x640x639xf16, {order = #NHWC}>
         // CHECK: [[CONCAT:%.+]] = IE.Concat([[SLICE]], [[CST_1]])
         // CHECK-SAME{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 639]]}
@@ -495,7 +487,7 @@ module @GroupMatMulI4Weights {
         // CHECK-SAME:       #const.CastElemType<f16>, #const.Transpose<#HWC>,
         // CHECK-SAME:       #const.Reshape<[1, 2048, 1, 8192]>,
         // CHECK-SAME:       #const.CastElemType<!qElemType>, #const.Transpose<#NWHC>,
-        // CHECK-SAME:       #const.Reshape<[8192, 2048, 1, 1]>, #const.Reorder<#NHWC>]
+        // CHECK-SAME:       #const.AffineReshape<{{\[\[}}0], [0], [0], [1, 2, 3]], [8192, 2048, 1, 1]>, #const.Reorder<#NHWC>]
 
         // CHECK:       [[WEIGHTS_GRP1:%.+]] = const.Declare tensor<8192x2048x1x1x!qElemType, {order = #NHWC}>
         // CHECK-SAME:      dense_resource<splat_blob> : tensor<8192x2x2048xsi4>
@@ -503,7 +495,7 @@ module @GroupMatMulI4Weights {
         // CHECK-SAME:       #const.CastElemType<f16>, #const.Transpose<#HWC>,
         // CHECK-SAME:       #const.Reshape<[1, 2048, 1, 8192]>,
         // CHECK-SAME:       #const.CastElemType<!qElemType>, #const.Transpose<#NWHC>,
-        // CHECK-SAME:       #const.Reshape<[8192, 2048, 1, 1]>, #const.Reorder<#NHWC>]
+        // CHECK-SAME:       #const.AffineReshape<{{\[\[}}0], [0], [0], [1, 2, 3]], [8192, 2048, 1, 1]>, #const.Reorder<#NHWC>]
 
         // CHECK:    [[VAL0:%.+]] = IE.AffineReshape([[ARG0]])
         // CHECK-SAME:         : tensor<1x1x4096xf32> -> tensor<1x1x1x4096xf32>

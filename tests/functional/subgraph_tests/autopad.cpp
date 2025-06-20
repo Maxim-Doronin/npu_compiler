@@ -5,6 +5,8 @@
 
 #include <gtest/gtest-param-test.h>
 #include <openvino/op/add.hpp>
+#include <openvino/op/avg_pool.hpp>
+#include <openvino/op/convolution.hpp>
 #include <openvino/op/max_pool.hpp>
 #include <openvino/op/reduce_mean.hpp>
 #include <openvino/op/reduce_sum.hpp>

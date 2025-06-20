@@ -1,24 +1,24 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --init-resources="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" %s | FileCheck %s --strict-whitespace
 // REQUIRES: arch-NPU37XX
 
-// CHECK: module @mode attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<ReferenceSW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>}
-module @mode attributes {VPU.compilationMode = #VPU.compilation_mode<ReferenceSW>} {
+// CHECK: module @mode attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<ReferenceSW>}
+module @mode attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>} {
 }
 
 // -----
 
-// CHECK: module @arch attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>}
+// CHECK: module @arch attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>}
 module @arch attributes {VPU.arch = #VPU.arch_kind<NPU37XX>} {
 }
 
 // -----
 
-// CHECK: module @executors attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>}
+// CHECK: module @executors attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>}
 module @executors {
     IE.ExecutorResource 5 of @DMA_NN
     IE.TileResource 5 of @NCE at 6.000000e+02 MHz
@@ -31,12 +31,12 @@ module @executors {
 // CHECK-DAG:    {{    }}IE.ExecutorResource 1 of @SHAVE_NN
 // CHECK-DAG:    {{    }}IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
 // CHECK-DAG:    {{    }}IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
-// CHECK-DAG:    {{  }}IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+// CHECK-DAG:    {{  }}IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
 
 // -----
 
-// CHECK: module @memory attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>}
+// CHECK: module @memory attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>}
 module @memory {
     IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
         IE.MemoryResource 5 bytes of @CMX_NN_FragmentationAware

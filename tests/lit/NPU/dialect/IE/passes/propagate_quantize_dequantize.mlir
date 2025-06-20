@@ -100,7 +100,7 @@ func.func @PropagateDequantTransposeWithQuantizeDimChanged(%arg0: tensor<256x128
   return %5 : tensor<256x4x1x1xf16>
 
   //CHECK: [[CONST:%.*]] = const.Declare tensor<4x128x1x1x!qElemType> = dense<1.000000e+00>
-  //CHECK-SAME: : tensor<128x4xf16>, [#const.Reshape<[1, 128, 1, 4]>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reshape<[1, 1, 128, 4]>, #const.Transpose<#NCWH>, #const.ChangeShapeAndElemType<[4, 128, 1, 1], !qElemType>]
+  //CHECK-SAME: : tensor<128x4xf16>, [#const.Reshape<[1, 128, 1, 4]>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.AffineReshape<{{\[\[}}0, 1], [2], [2], [3]], [1, 1, 128, 4]>, #const.Transpose<#NCWH>, #const.AffineReshape<{{\[\[}}0], [0], [0], [1, 2, 3]], [4, 128, 1, 1]>]
   //CHECK: [[VAL1:%.*]] = IE.Dequantize([[CONST]]) {dstElemType = f16} : tensor<4x128x1x1x!qElemType> -> tensor<4x128x1x1xf16>
   //CHECK: [[VAL2:%.*]] = IE.Convolution(%arg0, [[VAL1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<256x128x1x1xf16>, tensor<4x128x1x1xf16> -> tensor<256x4x1x1xf16>
   //CHECK: return [[VAL2]] : tensor<256x4x1x1xf16>
@@ -194,7 +194,7 @@ func.func @PropagateDequantConstPerAxisReshape() -> tensor<3x1x1x1xf16> {
 
   return %3 : tensor<3x1x1x1xf16>
 
-  //CHECK: [[CONST:%.*]] =  const.Declare tensor<3x1x1x1x!qElemType> = dense<1.000000e+00> : tensor<1x3x1x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.ChangeShapeAndElemType<[3, 1, 1, 1], !qElemType>]
+  //CHECK: [[CONST:%.*]] =  const.Declare tensor<3x1x1x1x!qElemType> = dense<1.000000e+00> : tensor<1x3x1x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.AffineReshape<{{\[\[}}0], [0], [1], [2, 3]], [3, 1, 1, 1]>]
   //CHECK: [[DEQUANT:%.*]] = IE.Dequantize([[CONST]]) {dstElemType = f16} : tensor<3x1x1x1x!qElemType> -> tensor<3x1x1x1xf16>
   //CHECK: [[ADD:%.*]] = IE.Add
   //CHECK: return [[ADD]] : tensor<3x1x1x1xf16>
@@ -1492,7 +1492,7 @@ func.func @PropagateDequantAffinereshape(%arg0: tensor<1x1x1x32xui8>) -> tensor<
     %8 = IE.Quantize(%7) {dstElemType = !qElemType2} : tensor<1x64x1x1xf16> -> tensor<1x64x1x1x!qElemType2>
     %9 = IE.QuantizeCast(%8) {dstElemType = ui8} : tensor<1x64x1x1x!qElemType2> -> tensor<1x64x1x1xui8>
     return %9 : tensor<1x64x1x1xui8>
-    // CHECK: [[CONST:%.*]] = const.Declare tensor<64x32x1x1x!qElemType> = dense<1> : tensor<1x1x32x64xui8>, [#const.CastElemType<f32>, #const.CastElemType<f16>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reshape<[1, 32, 1, 64]>, #const.Transpose<#NWHC>, #const.ChangeShapeAndElemType<[64, 32, 1, 1], !qElemType>]
+    // CHECK: [[CONST:%.*]] = const.Declare tensor<64x32x1x1x!qElemType> = dense<1> : tensor<1x1x32x64xui8>, [#const.CastElemType<f32>, #const.CastElemType<f16>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.AffineReshape<{{\[\[}}0], [0], [1, 2], [3]], [1, 32, 1, 64]>, #const.Transpose<#NWHC>, #const.AffineReshape<{{\[\[}}0], [0], [0], [1, 2, 3]], [64, 32, 1, 1]>]
     // CHECK: [[AFFINERESHAPE:%.+]] = IE.AffineReshape([[INPUT]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [1, 32, 1, 1]} : tensor<1x1x1x32xui8> -> tensor<1x32x1x1xui8>
     // CHECK: [[DEQUANT1:%.+]] = IE.Dequantize([[CONST]]) {dstElemType = f16} : tensor<64x32x1x1x!qElemType> -> tensor<64x32x1x1xf16>

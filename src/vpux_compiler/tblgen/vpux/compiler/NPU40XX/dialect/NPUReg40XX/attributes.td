@@ -51,23 +51,39 @@ def NPUReg40XX_TaskType :
 def NPUReg40XX_TaskTypeAttr : NPUReg40XX_EnumAttr<NPUReg40XX_TaskType, "task_type">;
 
 def DMADescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::DMARegister", "DMARegister"> {}
+def DmaDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::DMARegister", "DMARegisterAttr", "NPUReg40XX"> {}
 
 def DPUInvariantDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::DpuInvariantRegister", "DpuInvariantRegister"> {}
+def DPUInvariantDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::DpuInvariantRegister", "DpuInvariantRegisterAttr", "NPUReg40XX"> {}
 
 def DPUVariantDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::DpuVariantRegister", "DpuVariantRegister"> {}
+def DPUVariantDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::DpuVariantRegister", "DpuVariantRegisterAttr", "NPUReg40XX"> {}
 
 def ActKernelInvocationDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuActKernelInvocation", "VpuActKernelInvocation"> {}
+def ActKernelInvocationDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuActKernelInvocation", "VpuActKernelInvocationAttr", "NPUReg40XX"> {}
 
 def ActKernelRangeDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuActKernelRange", "VpuActKernelRange"> {}
+def ActKernelRangeDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuActKernelRange", "VpuActKernelRangeAttr", "NPUReg40XX"> {}
 
 def M2IDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuMediaTask", "VpuMediaTask"> {}
+def M2IDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuMediaTask", "VpuMediaTaskAttr", "NPUReg40XX"> {}
 
 def ConfigureBarrierDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuBarrierCountConfig", "VpuBarrierCountConfig"> {}
+def ConfigureBarrierDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuBarrierCountConfig", "VpuBarrierCountConfigAttr", "NPUReg40XX"> {}
 
 def TaskBarrierMapDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuTaskBarrierMap", "VpuTaskBarrierMap"> {}
+def TaskBarrierMapDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuTaskBarrierMap", "VpuTaskBarrierMapAttr", "NPUReg40XX"> {}
 
 def ManagedMappedInferenceDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuManagedMappedInference", "VpuManagedMappedInference"> {}
+def MMIDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuManagedMappedInference", "VpuManagedMappedInferenceAttr", "NPUReg40XX"> {}
 
 def WorkItemDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::WorkItem", "WorkItem"> {}
+def WorkItenDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::WorkItem", "WorkItemAttr", "NPUReg40XX"> {}
+
+def MappedInferenceDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuMappedInference", "VpuMappedInference"> {}
+def MIDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuMappedInference", "VpuMappedInferenceAttr", "NPUReg40XX"> {}
+
+def NNRTCfgDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuNNRTConfig", "VpuNNRTConfig"> {}
+def NNRTCfgDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuNNRTConfig", "VpuNNRTConfigAttr", "NPUReg40XX"> {}
 
 #endif  // VPUX_COMPILER_DIALECT_NPUReg40XX_ATTRIBUTES

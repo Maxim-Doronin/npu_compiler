@@ -575,10 +575,10 @@ def ConvertToSpatialOp : PassBase<"convert-to-spatial-op", "vpux::FunctionPass">
             "Flag which identifies whether M2I is enabled. If no, the conversion can be applied to Interpolate"
         >,
         Option<
-            "seExperimentalOpsEnabled", "se-experimental-ops-enabled",
+            "seOpsEnabled", "se-ops-enabled",
             "bool", "false",
-            "This flag identifies whether SE Roll is enabled. If yes, the conversion can be applied to Roll"
-        >
+            "Flag to identify whether operations that can be executed using the Storage Element hardware feature are enabled"
+        >,
     ];
 }
 
@@ -628,6 +628,25 @@ def SplitBilinerIntoHAndW : PassBase<"split-bilinear-into-H-and-W", "vpux::Funct
     }];
 
     let constructor = "vpux::IE::createSplitBilinerIntoHAndWPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+
+}
+
+//
+// SplitInterpolateAxes
+//
+
+def SplitInterpolateAxes : PassBase<"split-interpolate-axes", "vpux::FunctionPass"> {
+    let summary = "Split interpolate axes to separate interpolate operations";
+
+    let description = [{
+        This pass is specifically designed for the 5D interpolation case, focusing on scaling across three axes. It transforms the interpolation operation by splitting it into two separate operations. Each operation targets different axes, allowing for independent scaling and processing of these axes (the first operation scales one axis, while the second operation scales the next two axes).
+    }];
+
+    let constructor = "vpux::IE::createSplitInterpolateAxesPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -1953,7 +1972,7 @@ def HandleU16FakeQuantize : PassBase<"handle-u16-fake-quantize", "vpux::Function
     let summary = "Handle U16 FakeQuantize";
 
     let description = [{
-        The pass is a part of `InitialTransformations` pipeline.
+        The pass is a part of `InitialTransformations` pipeline. The pass works differently on some architectures depending on the supported quantization levels.
 
         This pass do the following transformations to U16 FakeQuantize:
         1. In case enableU16FQToScaleShiftConversion is true and the FakeQuantize has in_low != out_low or in_high != out_high it is replaced with a ScaleShift op.
@@ -2186,7 +2205,6 @@ def ConsolidateWeightsDequantization : PassBase<"consolidate-weights-dequantize"
     ];
 }
 
-
 //
 // SwapFakeQuantWithReshapeAndStridedSlice
 //
@@ -2390,15 +2408,39 @@ def FuseFQAndMul : PassBase<"fuse-fq-and-mul", "vpux::FunctionPass"> {
     let summary = "Fuse Mul into FakeQuantize if it's a const weight";
 
     let description = [{
-        The pass is a part of `LowPrecision` pipeline.
+        The pass is a part of `InitialTransformations` pipeline.
 
-        Fuse Mul into FakeQuantize if it's a const weight.
+             data  in_L in_H out_L out_H
+               |    |    |     |     |
+               |    |    |     |     |                data  in_L  in_H  out_L * C  out_H * C
+               v    v    v     v     v                  |    |     |        |          |
+             +-------------------------+                |    |     |        |          |
+             |       FakeQuantize      |                v    v     v        v          v
+             +-------------------------+             +------------------------------------+
+                          |                =====>    |            FakeQuantize            |
+                          v                          +------------------------------------+
+                     +----------+                                      |
+                     | Multiply | <--- C                               v
+                     +----+-----+
+                          |
+                          v
+
+        Fuse Mul into FakeQuantize when the fused FakeQuantize is per-tensor or per-channel
+        regardless of whether the input of FakeQuantize is constant or not
     }];
 
     let constructor = "vpux::IE::createFuseFQAndMulPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
+    ];
+
+    let options = [
+        Option<
+            "fuseFQAndMulWithNonConstInput", "fuse-fq-and-mul-with-non-const-input",
+            "bool", "false",
+            "Flag to enable or disable the fusion of FQ and Multiply when the FQ has a non-constant input"
+        >
     ];
 }
 
@@ -2526,6 +2568,27 @@ def FuseQuantizedOps : PassBase<"fuse-quantized-ops", "vpux::FunctionPass"> {
             "bool", "false",
             "This flag identifies operations that are still a work in progress and can be executed using the Storage Element hardware feature."
         >
+    ];
+}
+
+//
+// ConvertToPalletizationLUT
+//
+
+def ConvertToPalletizationLUT: PassBase<"convert-to-pallet-lut", "vpux::FunctionPass"> {
+    let summary = "Convert quantized sub-byte datatypes to a palletized LUT with float quantile type";
+
+    let description = [{
+        The pass is a part of `LowPrecision` pipeline.
+        This pass detects quantized types in certain conditions and converts them to a float LUT representation by
+        fully subtracting the zero point. Depending on the activation type the LUT quantileType chosen can be either fp16 or fp8.
+        This pass is not present in NPU37XX pipeline because palletization is not implemented in NPU37XX.
+    }];
+
+    let constructor = "vpux::IE::createConvertToPalletizationLUT()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
     ];
 }
 
@@ -2689,18 +2752,20 @@ def SwapViewOpAndClamp : PassBase<"swap-viewop-and-clamp", "vpux::FunctionPass">
 }
 
 //
-// FuseConvertWithQuantize
+// FuseOpWithQuantize
 //
 
-def FuseConvertWithQuantize : PassBase<"fuse-convert-with-quantize", "vpux::FunctionPass"> {
+def FuseOpWithQuantize : PassBase<"fuse-op-with-quantize", "vpux::FunctionPass"> {
     let summary = "Fuse Convert with Quantize into QuantCast operation";
 
     let description = [{
         Pass detects pattern Convert(i8/ui8 -> FP16) -> Quantize(FP16 -> !quant.uniform<...>)
         and fuses it into single QuantCast(i8/ui8 -> !quant.uniform<...>) operation.
+        And also convert Quantize -> Dequantize-> Multiply(with Const) to
+        Quantize -> quantizeCast(fuse with multiply const) -> Dequantize.
     }];
 
-    let constructor = "vpux::IE::createFuseConvertWithQuantizePass()";
+    let constructor = "vpux::IE::createFuseOpWithQuantizePass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -3164,21 +3229,28 @@ def PropagateTranspose : PassBase<"propagate-transpose", "vpux::FunctionPass"> {
 }
 
 //
-// PropagateFqThroughConcat
+// PropagateDequantThroughConcat
 //
 
-def PropagateFqThroughConcat : PassBase<"propagate-fq-through-concat", "vpux::FunctionPass"> {
-    let summary = "Propagate FakeQuantize operation through Concat";
+def PropagateDequantThroughConcat : PassBase<"propagate-dequant-through-concat", "vpux::FunctionPass"> {
+    let summary = "Propagate Dequant operation through Concat";
 
     let description = [{
-        `ConvertPadToConcat` adds a `Concat` operation which does not propagate `FakeQuantize` operation.
+        Dequant is not propagated through Concat in PropagateQuantizeDequantize pass
+        if it has only one quantized input and non-quantized constants.
+        Such Concat is usually introduced to add padding (either from Pad or for Convolution).
 
-        1. Check if such `Concat` operation has one and only one quantized input
-        2. Fetch quantization parameters
-        3. Apply them to every single `Concat` input and output
+        This pass applies when the following conditions are met
+        1. Concat operation has one and only one quantized input
+        2. Quantization is per-tensor
+        3. Concat has only one output
+            This is needed in case if there was convolution with big kernel. Such convolution is
+            splitted into multiple ones and such case doesn't support further dequantize propagation.
+            So if we propagate dequantize through such concat, we may end up having many dequantize layers
+            and performance regression as a result.
     }];
 
-    let constructor = "vpux::IE::createPropagateFqThroughConcatPass()";
+    let constructor = "vpux::IE::createPropagateDequantThroughConcatPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -3995,14 +4067,16 @@ def LogOpOptimizations : PassBase<"log-op-optimizations", "vpux::FunctionPass"> 
 }
 
 //
-// ConvertMemPermuteToPoolPass
+// ConvertMemPermuteToOpPass
 //
 
-def ConvertMemPermuteToPoolPass : PassBase<"convert-mem-permute-to-pool", "vpux::FunctionPass"> {
-    let summary = "Converts an `IE.MemPermute` operation to an `IE.MaxPool` operation";
+def ConvertMemPermuteToOpPass : PassBase<"convert-mem-permute-to-op", "vpux::FunctionPass"> {
+    let summary = "Converts an `IE.MemPermute` operation to an `IE.PermuteQuantize` or `IE.MaxPool` operation";
 
     let description = [{
-        Replace an `IE.MemPermute` operation with a chain of
+        Prioritize converting `NCHW-NHWC IE.Reorder`-like `IE.MemPermute` to `IE.PermuteQuantize` as `NCE.Permute` is more performant than `NCE.MaxPool`.
+
+        Then replace remaining `IE.MemPermute` operation with a chain of
         ```
             IE.ShapeCast (reinterpret mem_perm) -> IE.LayoutCast (to NHWC) -> IE.MaxPool (ODU permute) -> IE.LayoutCast (to dst_order) -> IE.ShapeCast
         ```
@@ -4018,7 +4092,7 @@ def ConvertMemPermuteToPoolPass : PassBase<"convert-mem-permute-to-pool", "vpux:
         * IE.MemPermute (NCWH input, NHWC dst_order, NWHC mem_perm)
     }];
 
-    let constructor = "vpux::IE::createConvertMemPermuteToPoolPass()";
+    let constructor = "vpux::IE::createConvertMemPermuteToOpPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -4310,16 +4384,16 @@ def FuseScalesToAccumulate : PassBase<"fuse-scales-to-accumulate", "vpux::Functi
     ];
 }
 
-def MoveMultiplyPostOp : PassBase<"move-multiply-post-op", "vpux::FunctionPass"> {
-    let summary = "Move`IE.Multiply` post op";
+def MoveMultiplyDividePostOp : PassBase<"move-multiply-divide-post-op", "vpux::FunctionPass"> {
+    let summary = "Move `IE.Multiply` and `IE.Divide` post op";
 
     let description = [{
-        This transformation takes the following subgraph like move muliply post matmul:
+        This transformation takes the following subgraph like move multiply and divide post matmul:
         ```
                                         (1x32x1024x80)      (1x1x1x1)
                                             \               /
-                        (1x32x1x80)   IE.Multiply (1x32x1024x80)
-                            \            /
+                      (1x32x1x80)       IE.Multiply/IE.Divide (1x32x1024x80)
+                            \                    /
                             IE.Matmul(1x32x1x1024)
         ```
         To:
@@ -4328,15 +4402,15 @@ def MoveMultiplyPostOp : PassBase<"move-multiply-post-op", "vpux::FunctionPass">
                             \            /
                             IE.Matmul(1x32x1x1024)     (1x1x1x1)
                                     \                   /
-                                    IE.Multiply (1x32x1x1024)
+                          IE.Multiply/IE.Divide (1x32x1x1024)
         ```
-        If matmul output size is smaller than input, after swap multiply with matmul, we will
-        reduce the computation of multiply. For above case, 80 times saving.
+        If matmul output size is smaller than input, after swap multiply and divide with matmul, we will
+        reduce the computation of multiply and divide. For above case, 80 times saving.
         The pass also did some other optimization like move multiply post gather or concat for
         llm optimization.
     }];
 
-    let constructor = "vpux::IE::createMoveMultiplyPostOpPass()";
+    let constructor = "vpux::IE::createMoveMultiplyDividePostOpPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -5129,6 +5203,69 @@ def ApplyDynamicBoundaryCorrection : PassBase<"apply-dynamic-boundary-correction
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
+}
+
+//
+// ReassociateMultiply
+//
+
+def ReassociateMultiply : PassBase<"reassociate-multiply", "vpux::FunctionPass"> {
+    let summary = "Reassociate multiply ops to reduce FLOPS";
+
+    let description = [{
+
+        1x32x1024x1024      1x32x1x1                            1x32x1x1        1x1x1x1
+                \          /                                        \        /
+                  Multiply       1x1x1x1   =>   1x32x1024x1024       Multiply
+                      \         /                           \       /
+                        Multiply                             Multiply
+    }];
+
+    let constructor = "vpux::IE::createReassociateMultiplyPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// ConsolidateNF4WeightsPattern
+//
+
+def ConsolidateNF4WeightsPattern : PassBase<"consolidate-nf4-weights-pattern", "vpux::FunctionPass"> {
+    let summary = "Convert nf4 weights patten with GatherOp to QuantizeCast. Note that only uint4 type weights are supported.";
+
+    let description = [{
+
+                           Const(uint4 weights)
+                                  |                         QuantizeCast
+                    Const(LUT)  Convert               =>         |
+                         \      /                          Convert (optional)
+                          Gather
+                            |
+                    Convert (optional)
+
+    }];
+
+    let constructor = "vpux::IE::createConsolidateNF4WeightsPatternPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+def DumpStatisticsOfIeOps : PassBase<"dump-statistics-of-ie-ops", "vpux::ModulePass"> {
+    let summary = "Reports operations found in IE dialect IR";
+
+    let description = [{
+        This pass analyzes the IE dialect operations and reports statistics on
+        various operations found.
+
+        Note that the main user of this pass at the moment is weights
+        separation, in particular, a pass is used to analyze the init schedule.
+    }];
+
+    let constructor = "vpux::IE::createDumpStatisticsOfIeOpsPass()";
 }
 
 #endif

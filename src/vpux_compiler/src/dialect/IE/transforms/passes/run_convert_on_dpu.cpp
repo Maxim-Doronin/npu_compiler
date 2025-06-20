@@ -86,6 +86,8 @@ void RunF16ToF32ConvertOnDPUPass::safeRunOnFunc() {
 
         const auto inputShape = getShape(parentOp->getOperand(0));
         // This will cause an error, because of EnsureNCEOpsSizeRequirementsPass.
+        // This can be unrolled into Convs -> FP32 -> Eltwise Add.
+        // FP32 input is not supported.
         if (inputShape[Dims4D::Act::C] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
             continue;
         }

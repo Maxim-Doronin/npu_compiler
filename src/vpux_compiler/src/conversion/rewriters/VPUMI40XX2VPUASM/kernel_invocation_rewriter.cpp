@@ -58,5 +58,10 @@ mlir::FailureOr<SymbolizationResult> KernelInvocationRewriter::symbolize(
     return SymbolizationResult(newOp);
 }
 
+llvm::SmallVector<mlir::FlatSymbolRefAttr> KernelInvocationRewriter::getSymbolicNames(
+        VPUMI40XX::ActKernelInvocationOp op, size_t) {
+    return getSymbolicNamesByTileListValue(op);
+}
+
 }  // namespace vpumi40xx2vpuasm
 }  // namespace vpux

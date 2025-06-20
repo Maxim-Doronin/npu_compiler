@@ -5,24 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-divide-to-multiply --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
-!qElemType = !quant.uniform<u8:f16, 0.01013327205882353>
 
-// CHECK-LABEL: @DoNotConvertNonConstDivide
-// CHECK-SAME: ([[ARG:%.+]]: tensor<1x12x512x512xf16>) -> tensor<1x12x512x512xf16>
-func.func @DoNotConvertNonConstDivide(%arg: tensor<1x12x512x512xf16>) -> tensor<1x12x512x512xf16> {
-    %divisor = const.Declare tensor<1x1x1x1x!qElemType> = dense<2> : tensor<1x1x1x1xui8>, [#const.CastElemType<!qElemType>]
-    %nonCst = IE.Dequantize(%divisor) {dstElemType = f16} : tensor<1x1x1x1x!qElemType> -> tensor<1x1x1x1xf16>
-    %0 = IE.Divide(%arg, %nonCst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
-        : tensor<1x12x512x512xf16>, tensor<1x1x1x1xf16> -> tensor<1x12x512x512xf16>
-    return %0 : tensor<1x12x512x512xf16>
-
-    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x1x1x1x!qElemType>
-    // CHECK: [[NON_CONST:%.+]] = IE.Dequantize([[CONST]])
-    // CHECK: [[DIVIDE:%.+]] = IE.Divide([[ARG]], [[NON_CONST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
-    // CHECK: return [[DIVIDE]]
-}
-
-// -----
 
 // CHECK-LABEL: @DoNotConvertIntegerDivide
 // CHECK-SAME: ([[ARG:%.+]]: tensor<1x12x512x512xsi32>) -> tensor<1x12x512x512xsi32>
@@ -301,4 +284,64 @@ func.func @ConvertMultipleDivideOpsWithQuantizedDivisor_NotSecondInput(%arg0: te
     // CHECK:           [[DIVIDE:%.+]] = IE.Divide([[FAKE_QUANTIZE1]], [[ARG0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK:           [[MULTIPLY:%.+]] = IE.Multiply([[ARG1]], [[FAKE_QUANTIZE0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK:           return [[DIVIDE]], [[MULTIPLY]]
+}
+
+// -----
+
+// CHECK-LABEL: @NonConstDivisorConvert
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<1x12x512x512xf32>, [[ARG1:%.+]]: tensor<1x1x1x1xf32>) -> tensor<1x12x512x512xf32>
+func.func @NonConstDivisorConvert(%arg0: tensor<1x12x512x512xf32>, %arg1: tensor<1x1x1x1xf32>) -> tensor<1x12x512x512xf32> {
+    %0 = IE.Divide(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<1x12x512x512xf32>, tensor<1x1x1x1xf32> -> tensor<1x12x512x512xf32>
+    return %0 : tensor<1x12x512x512xf32>
+
+    // CHECK: [[CST:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
+    // CHECK: [[DIVIDE:%.+]] = IE.Divide([[CST]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1x1xf32>
+
+    // CHECK: [[MULTIPLY:%.+]] = IE.Multiply([[ARG0]], [[DIVIDE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x12x512x512xf32>, tensor<1x1x1x1xf32> -> tensor<1x12x512x512xf32>
+    // CHECK:   return   [[MULTIPLY]]
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertForDividendIsSmall
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<1x1x1x512xf32>, [[ARG1:%.+]]: tensor<1x1x1x1xf32>) -> tensor<1x1x1x512xf32>
+func.func @NotConvertForDividendIsSmall(%arg0: tensor<1x1x1x512xf32>, %arg1: tensor<1x1x1x1xf32>) -> tensor<1x1x1x512xf32> {
+    %0 = IE.Divide(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<1x1x1x512xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1x512xf32>
+    return %0 : tensor<1x1x1x512xf32>
+
+    // CHECK: [[DIVIDE:%.+]] = IE.Divide
+    // CHECK:   return   [[DIVIDE]]
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertWhenDivisorNeedsBroadcast
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<1x1x8192x2048xf16>, [[ARG1:%.+]]: tensor<1x1x8192x1xf16>) -> tensor<1x1x8192x2048xf16>
+func.func @ConvertWhenDivisorNeedsBroadcast(%arg0: tensor<1x1x8192x2048xf16>, %arg1: tensor<1x1x8192x1xf16>) -> tensor<1x1x8192x2048xf16> {
+    %0 = IE.Divide(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<1x1x8192x2048xf16>, tensor<1x1x8192x1xf16> -> tensor<1x1x8192x2048xf16>
+
+    return %0 : tensor<1x1x8192x2048xf16>
+
+    // CHECK: [[CST:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK: [[DIVIDE:%.+]] = IE.Divide([[CST]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf16>, tensor<1x1x8192x1xf16> -> tensor<1x1x8192x1xf16>
+
+    // CHECK: [[MULTIPLY:%.+]] = IE.Multiply([[ARG0]], [[DIVIDE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x8192x2048xf16>, tensor<1x1x8192x1xf16> -> tensor<1x1x8192x2048xf16>
+    // CHECK:   return   [[MULTIPLY]]
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertForSmallDivideOutputRatio
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<1x151x1x768xf16>, [[ARG1:%.+]]: tensor<1x151x1x1xf16>) -> tensor<1x151x1x768xf16>
+func.func @NotConvertForSmallDivideOutputRatio(%arg0: tensor<1x151x1x768xf16>, %arg1: tensor<1x151x1x1xf16>) -> tensor<1x151x1x768xf16> {
+    %0 = IE.Divide(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<1x151x1x768xf16>, tensor<1x151x1x1xf16> -> tensor<1x151x1x768xf16>
+
+    return %0 : tensor<1x151x1x768xf16>
+
+    // CHECK: [[DIVIDE:%.+]] = IE.Divide
+    // CHECK:   return   [[DIVIDE]]
 }

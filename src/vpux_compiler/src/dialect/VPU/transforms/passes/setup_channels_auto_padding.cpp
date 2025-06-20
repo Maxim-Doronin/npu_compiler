@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -37,7 +37,8 @@ public:
     }
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnModule() final;
 
 private:
@@ -50,9 +51,9 @@ private:
     bool _allowCustomValues = false;
 };
 
-void addOption(mlir::OpBuilder optionsBuilder, IE::PipelineOptionsOp pipelineOptionsOp, mlir::StringRef optionName,
+void addOption(mlir::OpBuilder optionsBuilder, config::PipelineOptionsOp pipelineOptionsOp, mlir::StringRef optionName,
                size_t optionValue, bool allowCustomValues) {
-    auto hasPipelineOption = pipelineOptionsOp.lookupSymbol<IE::OptionOp>(optionName) != nullptr;
+    auto hasPipelineOption = pipelineOptionsOp.lookupSymbol<config::OptionOp>(optionName) != nullptr;
     VPUX_THROW_WHEN(!allowCustomValues && hasPipelineOption,
                     "ODU auto padding is already defined, probably you run '--init-compiler' twice");
 
@@ -61,12 +62,13 @@ void addOption(mlir::OpBuilder optionsBuilder, IE::PipelineOptionsOp pipelineOpt
     }
     auto* ctx = optionsBuilder.getContext();
     const auto constraintAttr = mlir::StringAttr::get(ctx, optionName);
-    optionsBuilder.create<IE::OptionOp>(optionsBuilder.getUnknownLoc(), constraintAttr,
-                                        mlir::BoolAttr::get(ctx, optionValue));
+    optionsBuilder.create<config::OptionOp>(optionsBuilder.getUnknownLoc(), constraintAttr,
+                                            mlir::BoolAttr::get(ctx, optionValue));
 }
 
-mlir::LogicalResult SetupChannelsAutoPaddingPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult SetupChannelsAutoPaddingPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

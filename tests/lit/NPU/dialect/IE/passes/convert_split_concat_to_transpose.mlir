@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-split-concat-to-transpose %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #map = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d1, d3, d4)>
 
 // CHECK-LABEL: @ConvertSplitAffineReshapeConcatToTranspose

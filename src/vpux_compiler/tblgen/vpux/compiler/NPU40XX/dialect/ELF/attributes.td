@@ -160,6 +160,7 @@ def ELF_RelocationType :
                 I64EnumAttrCase<"R_VPU_32_BIT_OR_B21_B26_UNSET_HIGH_16",                21>,
                 I64EnumAttrCase<"R_VPU_32_BIT_OR_B21_B26_UNSET_LOW_16",                 22>,
                 I64EnumAttrCase<"R_VPU_HIGH_27_BIT_OR",                                 23>,
+                I64EnumAttrCase<"R_VPU_LO_21_RSHIFT_2",                                 24>,
             ]
         > {
 }

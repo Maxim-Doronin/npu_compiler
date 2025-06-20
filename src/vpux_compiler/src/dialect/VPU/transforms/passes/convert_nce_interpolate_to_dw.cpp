@@ -56,11 +56,10 @@ namespace {
          channels in DEPTHWISE_WORKLOAD_SIZES that also meet L1aOpt workload reqs.
 */
 bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, VPU::ArchKind arch, Logger log) {
-    const auto inputType = mlir::cast<VPU::SparseTensorType>(origOp.getInput().getType());
-    const auto elemType = inputType.getElementType();
-
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto numChannels = outputType.getShape()[Dims4D::Act::C];
+    const auto inputType = mlir::cast<VPU::SparseTensorType>(origOp.getInput().getType());
+    const auto elemType = inputType.getElementType();
 
     auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(origOp.getOperation());
     const auto kernelSize = nceOpInterface.getKernelSizeVal();
@@ -226,10 +225,11 @@ mlir::Value createSparseInput(mlir::OpBuilder builder, VPU::NCEInterpolateOp ori
     // The downside is that Tiling pipeline will see more required memory than strictly necessary.
     const int64_t seSize = 16;
     const int64_t seDepth = inputShape[Dims4D::Act::C] / seSize;
+    const auto seSizeArr = SmallVector<int64_t>(seDepth, seSize);
     auto seTableOp = builder.create<VPU::StorageElementTableOp>(
             origSeTableOp->getLoc(), origSeTableOp.getDataShapeAttr(), origSeTableOp.getDataElemTypeAttr(),
-            mlir::cast<mlir::Attribute>(getIntAttr(builder, seSize)), getIntAttr(builder, seDepth),
-            origSeTableOp.getSeAttr().value(), nullptr, nullptr);
+            getIntArrayAttr(builder, seSizeArr), getIntAttr(builder, seDepth), origSeTableOp.getSeAttr().value(),
+            nullptr, nullptr);
 
     auto groupOp = builder.create<VPU::GroupSparseTensorOp>(origOp->getLoc(), data, sparsityMap, seTableOp.getOutput(),
                                                             origSeTableOp.getSeAttr().value());

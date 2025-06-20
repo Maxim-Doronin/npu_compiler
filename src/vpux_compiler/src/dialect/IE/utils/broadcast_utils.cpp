@@ -5,6 +5,10 @@
 
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
+
+#include <llvm/ADT/TypeSwitch.h>
 
 namespace vpux {
 namespace IE {
@@ -30,12 +34,59 @@ SmallVector<int64_t> getBroadcastAxesExplicit(ArrayRef<int64_t> axesMapping, Arr
     return broadcastAxes;
 }
 
-mlir::Value createShapeConstForBroadCast(mlir::PatternRewriter& rewriter, mlir::MLIRContext* ctx, mlir::Location loc,
-                                         ShapeRef shape) {
+mlir::Value createShapeConstForBroadcast(mlir::OpBuilder& rewriter, mlir::Location loc, ShapeRef shape) {
+    const auto ctx = rewriter.getContext();
     const auto shapeStorageType = mlir::RankedTensorType::get({static_cast<int64_t>(shape.size())}, getSInt64Type(ctx));
+
     return Const::createConst(rewriter, loc, shapeStorageType, shape.raw(), [&](Const::ContentSetup& setup) {
-        return setup.castElemType(getSInt32Type(rewriter.getContext()));
+        return setup.castElemType(getSInt32Type(ctx));
     });
+}
+
+mlir::Value createBroadcast(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input, ShapeRef targetShape,
+                            mlir::Value axisMapping, IE::BroadcastTypeAttr broadcastTypeAttr) {
+    const auto ctx = builder.getContext();
+    if (broadcastTypeAttr == nullptr) {
+        broadcastTypeAttr = IE::BroadcastTypeAttr::get(ctx, IE::BroadcastType::NUMPY);
+    }
+
+    auto targetShapeConst = createShapeConstForBroadcast(builder, appendLoc(loc, "shape"), targetShape);
+    return builder.createOrFold<IE::BroadcastOp>(loc, input, targetShapeConst, axisMapping, broadcastTypeAttr);
+}
+
+mlir::Value createDynamicBroadcast(mlir::OpBuilder& rewriter, mlir::Location loc, mlir::Value input, mlir::Value other,
+                                   mlir::Value axisMapping, IE::BroadcastTypeAttr broadcastTypeAttr) {
+    // Broadcasts the input to the dynamic shape of another value:
+    //  [input]  [other]
+    //     |        |
+    //     |     ShapeOf
+    //     |       /
+    // DynamicBroadcast
+
+    const auto ctx = rewriter.getContext();
+    if (broadcastTypeAttr == nullptr) {
+        broadcastTypeAttr = IE::BroadcastTypeAttr::get(ctx, IE::BroadcastType::NUMPY);
+    }
+
+    const auto targetType = mlir::cast<NDTypeInterface>(other.getType());
+
+    const auto shapeAttr = getIntArrayAttr(ctx, targetType.getShape());
+    const auto boundsAttr =
+            llvm::TypeSwitch<mlir::Type, mlir::ArrayAttr>(targetType)
+                    .Case<Core::BoundedTensorType>([&](const auto boundedTensor) {
+                        return getIntArrayAttr(ctx, boundedTensor.getBounds().raw());
+                    })
+                    .Default([](const auto type) {
+                        VPUX_THROW("Got static shaped type: {0}, a regular Broadcast could probably be used", type);
+                        return nullptr;
+                    });
+
+    const auto shapeDstElemType = getSInt32Type(ctx);
+    const auto targetShape =
+            rewriter.create<IE::ShapeOfOp>(appendLoc(loc, "shape_of"), other, shapeDstElemType).getOutput();
+
+    return rewriter.createOrFold<IE::DynamicBroadcastOp>(loc, input, targetShape, axisMapping, broadcastTypeAttr,
+                                                         shapeAttr, boundsAttr);
 }
 
 Const::ReshapeAttr makeReshape(mlir::MLIRContext* ctx, ShapeRef newShape) {

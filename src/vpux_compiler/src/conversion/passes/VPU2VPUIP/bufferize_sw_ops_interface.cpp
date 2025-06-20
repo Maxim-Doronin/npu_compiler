@@ -533,6 +533,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::AdaptiveAvgPoolOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AdaptiveAvgPoolOp>>(*ctx);
         VPU::AdaptiveMaxPoolOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AdaptiveMaxPoolOp>>(*ctx);
         VPU::FakeQuantizeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::FakeQuantizeOp>>(*ctx);
+        VPU::FakeConvertOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::FakeConvertOp>>(*ctx);
         VPU::QuantizeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::QuantizeOp>>(*ctx);
         VPU::DequantizeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DequantizeOp>>(*ctx);
         VPU::DynamicQuantizeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicQuantizeOp>>(*ctx);

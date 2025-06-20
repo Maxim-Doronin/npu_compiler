@@ -43,10 +43,15 @@ public:
 
     llvm::hash_code calculateOpHash(mlir::Operation* op, const std::optional<DimArrRef>& dimOrder = std::nullopt,
                                     const std::optional<OutputTiling>& outputTile = std::nullopt);
+    llvm::hash_code calculateOpHashIncludingTilingExcludingAttr(
+            mlir::Operation* op, mlir::StringRef excludedAttrName,
+            const std::optional<DimArrRef>& dimOrder = std::nullopt,
+            const std::optional<OutputTiling>& outputTile = std::nullopt);
     llvm::hash_code updateOpHashWithTilingMode(mlir::Operation* op, llvm::hash_code opHash, TilingMode mode);
 
     llvm::hash_code calculateVPUNNLayerHash(const VPUNN::DPULayer& vpunnLayer,
                                             const VPUNN::VPULayerStrategy& vpunnStrategy);
+    llvm::hash_code calculateVPUNNLayersHash(ArrayRef<VPUNN::DPULayer> vpunnLayer);
 
     llvm::hash_code calculateShapeAndDistributionHash(ShapeRef shape, const VPU::DistributionInfo& distribution);
 

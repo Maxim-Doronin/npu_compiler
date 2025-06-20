@@ -33,14 +33,14 @@ using namespace vpux;
         EXPECT_NEAR(unpackedClamp.second, refHigh, 1.0e-8);                                        \
     }
 
-#define EXPECT_INT_ATTR_ARRAY_EQ(act, ref)                                            \
-    {                                                                                 \
-        ASSERT_NE(act, nullptr);                                                      \
-        std::vector<int64_t> values(act.size());                                      \
-        llvm::transform(act, values.begin(), [](const auto attr) {                    \
-            return attr.template cast<mlir::IntegerAttr>().getValue().getSExtValue(); \
-        });                                                                           \
-        EXPECT_THAT(values, ::testing::Pointwise(::testing::Eq(), ref));              \
+#define EXPECT_INT_ATTR_ARRAY_EQ(act, ref)                                        \
+    {                                                                             \
+        ASSERT_NE(act, nullptr);                                                  \
+        std::vector<int64_t> values(act.size());                                  \
+        llvm::transform(act, values.begin(), [](const auto attr) {                \
+            return mlir::cast<mlir::IntegerAttr>(attr).getValue().getSExtValue(); \
+        });                                                                       \
+        EXPECT_THAT(values, ::testing::Pointwise(::testing::Eq(), ref));          \
     }
 
 #define EXPECT_FP_ATTR_ARRAY_NEAR(act, ref)                                        \
@@ -48,7 +48,7 @@ using namespace vpux;
         ASSERT_NE(act, nullptr);                                                   \
         std::vector<double> values(act.size());                                    \
         llvm::transform(act, values.begin(), [](const auto attr) {                 \
-            return attr.template cast<mlir::FloatAttr>().getValueAsDouble();       \
+            return mlir::cast<mlir::FloatAttr>(attr).getValueAsDouble();           \
         });                                                                        \
         EXPECT_THAT(values, testing::Pointwise(testing::DoubleNear(1.0e-8), ref)); \
     }

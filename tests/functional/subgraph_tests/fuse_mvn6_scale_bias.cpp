@@ -6,6 +6,10 @@
 #include "common_test_utils/test_enums.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/mvn.hpp"
+
 using namespace ov::test::utils;
 
 using ov::test::utils::InputLayerType;
@@ -121,13 +125,13 @@ public:
     }
 };
 
-TEST_P(FuseMvn6ScaleBiasTestCommon, NPU3720) {
+TEST_P(FuseMvn6ScaleBiasTestCommon, NPU3720_HW) {
     rel_threshold = 0.01;
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(FuseMvn6ScaleBiasTestCommon, NPU4000) {
+TEST_P(FuseMvn6ScaleBiasTestCommon, NPU4000_HW) {
     rel_threshold = 0.01;
     setDefaultHardwareMode();
     run(Platform::NPU4000);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -86,7 +86,7 @@ mlir::LogicalResult vpux::IE::MatMulOp::reifyResultShapes(mlir::OpBuilder& build
                                                           mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
     auto loc = getLoc();
 
-    auto outShape = IE::reifyMatMulTensors(builder, getInput1(), getInput2(), getTransposeA(), getTransposeB(), loc);
+    auto outShape = reifyMatMulTensors(builder, getInput1(), getInput2(), getTransposeA(), getTransposeB(), loc);
 
     if (mlir::failed(outShape)) {
         return outShape;

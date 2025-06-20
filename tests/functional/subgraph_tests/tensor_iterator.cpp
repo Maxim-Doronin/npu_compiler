@@ -5,6 +5,9 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/tensor_iterator.hpp"
+
 using namespace ov;
 using namespace element;
 

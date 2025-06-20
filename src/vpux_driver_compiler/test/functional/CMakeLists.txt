@@ -1,9 +1,9 @@
 #
 # Copyright (C) 2023-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
-# vpuxCompilerL0Test as test suit
+# vpuxCompilerL0Test as a test suite
 set(FUNCTIONAL_TARGET vpuxCompilerL0Test)
 set(FUNCTIONAL_SOURCES
     vcl_tests_common.cpp

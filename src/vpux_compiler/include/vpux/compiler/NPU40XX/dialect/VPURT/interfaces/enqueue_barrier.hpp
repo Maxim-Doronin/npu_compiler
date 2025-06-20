@@ -27,7 +27,8 @@ public:
                           bool optimizeAndMergeEnqFlag = true, const SmallVector<size_t>& shvTasksWithDpu = {},
                           Logger log = Logger::global());
 
-    mlir::LogicalResult calculateEnqueueBarriers();
+    mlir::LogicalResult calculateEnqueueBarriers(
+            const mlir::DenseSet<vpux::VPU::ExecutorKind>& executorEnqAtBootstrap = {});
     std::optional<size_t> getEnqueueBarrier(size_t taskInd);
     mlir::Value getEnqueueBarrier(VPURT::TaskOp taskOp);
 
@@ -51,7 +52,8 @@ private:
                                    std::optional<size_t> previousEnqBarOpt);
 
     mlir::LogicalResult delayEnqIfNeededBasedOnFifoState(
-            std::optional<size_t>& enqBarOpt, std::vector<std::optional<size_t>>& outstandingEnqueuesTaskIndexVec,
+            size_t taskInd, std::optional<size_t>& enqBarOpt,
+            std::vector<std::optional<size_t>>& outstandingEnqueuesTaskIndexVec,
             std::vector<std::optional<size_t>>& outstandingEnqueuesTaskWaitBarIndexVec,
             size_t outstandingEnquOpsCounter);
 
@@ -59,7 +61,7 @@ private:
 
     mlir::LogicalResult findInitialEnqWithLcaForGivenBarriers(std::optional<size_t>& enqBarOpt,
                                                               BarrierInfo::TaskSet& waitBarriers,
-                                                              BarrierInfo::TaskSet& updateBarriers);
+                                                              BarrierInfo::TaskSet& updateBarriers, size_t enqBarMin);
 
     BarrierInfo _barrierInfo;
     std::optional<size_t> _startBarrierIndex;
@@ -98,6 +100,7 @@ private:
 
     // Flag indicating if optimization for merging consecutive enqueues should be performed
     bool _optimizeAndMergeEnqFlag;
+    bool _swFifosPerShaveEngineEnabled = false;
 
     Logger _log;
 

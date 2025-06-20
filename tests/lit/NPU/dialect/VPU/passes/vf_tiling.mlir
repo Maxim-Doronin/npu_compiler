@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 !qElemType = !quant.uniform<u8:f16, 0.013744638480392157:128>
@@ -124,7 +125,7 @@ func.func @TileGroupSparseTensor(%arg0: tensor<1x32x24x30xf16, {order = #NHWC}>)
     %cst = const.Declare tensor<16x1x1x4xsi32> = dense<[[[[0, 0, 1065353216, 0]]], [[[256, 0, 1065353216, 0]]], [[[512, 0, 1065353216, 0]]], [[[768, 0, 1065353216, 0]]], [[[1024, 0, 1065353216, 0]]], [[[1280, 0, 1065353216, 0]]], [[[1536, 0, 1065353216, 0]]], [[[1792, 0, 1065353216, 0]]], [[[2048, 0, 1065353216, 0]]], [[[2304, 0, 1065353216, 0]]], [[[2560, 0, 1065353216, 0]]], [[[2816, 0, 1065353216, 0]]], [[[3072, 0, 1065353216, 0]]], [[[3328, 0, 1065353216, 0]]], [[[3584, 0, 1065353216, 0]]], [[[3840, 0, 1065353216, 0]]]]> : tensor<16x1x1x4xsi32>
     %cst_0 = const.Declare tensor<1x32x49x61xi1, {order = #NHWC}> = dense<1> : tensor<1x32x49x61xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     %cst_1 = const.Declare tensor<16x32x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x2x2xf16, {order = #NHWC}>
-    %0 = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = 32 : i64} -> tensor<1x1x49x61xi32, {order = #NHWC}>
+    %0 = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = [32]} -> tensor<1x1x49x61xi32, {order = #NHWC}>
     %1 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x32x24x30xf16, {order = #NHWC}>, %cst_0 as %arg2: tensor<1x32x49x61xi1, {order = #NHWC}>, %0 as %arg3: tensor<1x1x49x61xi32, {order = #NHWC}>, %cst_1 as %arg4: tensor<16x32x2x2xf16, {order = #NHWC}>, %cst as %arg5: tensor<16x1x1x4xsi32>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x16x48x60xf16, {order = #NHWC}> {
       %2 = VPU.GroupSparseTensor(%arg1, %arg2, %arg3) {seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>} -> !VPU.SparseTensor<data=tensor<1x32x24x30xf16, {order = #NHWC}>, sparsity_map=tensor<1x32x49x61xi1, {order = #NHWC}>, storage_element_table=tensor<1x1x49x61xi32, {order = #NHWC}>, #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>>
       %3 = VPU.NCE.Convolution(%2, %arg4, %arg5) {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [16, 32, 2, 2], strides = [1, 1]} : !VPU.SparseTensor<data=tensor<1x32x24x30xf16, {order = #NHWC}>, sparsity_map=tensor<1x32x49x61xi1, {order = #NHWC}>, storage_element_table=tensor<1x1x49x61xi32, {order = #NHWC}>, #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>>, tensor<16x32x2x2xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x48x60xf16, {order = #NHWC}>
@@ -132,7 +133,7 @@ func.func @TileGroupSparseTensor(%arg0: tensor<1x32x24x30xf16, {order = #NHWC}>)
     }
     return %1 : tensor<1x16x48x60xf16, {order = #NHWC}>
 
-    // CHECK: [[SET:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = 32 : i64} -> tensor<1x1x49x61xi32, {order = #NHWC}>
+    // CHECK: [[SET:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = [32]} -> tensor<1x1x49x61xi32, {order = #NHWC}>
     // CHECK: [[SLICE_ARG_0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 32, 12, 30]
     // CHECK: [[SLICE_CST_0:%.+]] = VPU.Slice %cst_0 [0, 0, 0, 0] [1, 32, 25, 61]
     // CHECK: [[SLICE_SET_0:%.+]] = VPU.Slice [[SET]] [0, 0, 0, 0] [1, 1, 25, 61]
@@ -151,6 +152,27 @@ func.func @TileGroupSparseTensor(%arg0: tensor<1x32x24x30xf16, {order = #NHWC}>)
     // CHECK: return [[CONCAT]] : tensor<1x16x48x60xf16, {order = #NHWC}>
 }
 
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @TileGroupSparseTensorWithOffset
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x32x24x30xf16, {order = #NHWC}>
+func.func @TileGroupSparseTensorWithOffset(%input: tensor<1x32x24x30xf16, {order = #NHWC}>) -> tensor<1x16x48x58xf16, {order = #NHWC}> {
+    %cst_weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<[[[[0, 0, 1065353216, 0]]], [[[256, 0, 1065353216, 0]]], [[[512, 0, 1065353216, 0]]], [[[768, 0, 1065353216, 0]]], [[[1024, 0, 1065353216, 0]]], [[[1280, 0, 1065353216, 0]]], [[[1536, 0, 1065353216, 0]]], [[[1792, 0, 1065353216, 0]]], [[[2048, 0, 1065353216, 0]]], [[[2304, 0, 1065353216, 0]]], [[[2560, 0, 1065353216, 0]]], [[[2816, 0, 1065353216, 0]]], [[[3072, 0, 1065353216, 0]]], [[[3328, 0, 1065353216, 0]]], [[[3584, 0, 1065353216, 0]]], [[[3840, 0, 1065353216, 0]]]]> : tensor<16x1x1x4xsi32>
+    %cst_weights = const.Declare tensor<16x32x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x2x2xf16, {order = #NHWC}>
+    %cst_sparsity_map = const.Declare tensor<1x32x49x59xi1, {order = #NHWC}> = dense<1> : tensor<1x32x49x59xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
+    %se_table = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1], offsets = [0, 0, 0, 2]>, seDepth = 1 : i64, seSize = [32]} -> tensor<1x1x49x59xi32, {order = #NHWC}>
+    %vf = VPU.VerticalFusion (%input as %vf_input: tensor<1x32x24x30xf16, {order = #NHWC}>, %cst_sparsity_map as %sparsity_map: tensor<1x32x49x59xi1, {order = #NHWC}>, %se_table as %vf_se_table: tensor<1x1x49x59xi32, {order = #NHWC}>, %cst_weights as %weights: tensor<16x32x2x2xf16, {order = #NHWC}>, %cst_weights_table as %weights_table: tensor<16x1x1x4xsi32>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x16x48x58xf16, {order = #NHWC}> {
+      %sparse_tensor = VPU.GroupSparseTensor(%vf_input, %sparsity_map, %vf_se_table) {seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1], offsets = [0, 0, 0, 2]>} -> !VPU.SparseTensor<data=tensor<1x32x24x30xf16, {order = #NHWC}>, sparsity_map=tensor<1x32x49x59xi1, {order = #NHWC}>, storage_element_table=tensor<1x1x49x59xi32, {order = #NHWC}>, #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1], offsets = [0, 0, 0, 2]>>
+      %conv = VPU.NCE.Convolution(%sparse_tensor, %weights, %weights_table) {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [16, 32, 2, 2], strides = [1, 1]} : !VPU.SparseTensor<data=tensor<1x32x24x30xf16, {order = #NHWC}>, sparsity_map=tensor<1x32x49x59xi1, {order = #NHWC}>, storage_element_table=tensor<1x1x49x59xi32, {order = #NHWC}>, #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1], offsets = [0, 0, 0, 2]>>, tensor<16x32x2x2xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x48x58xf16, {order = #NHWC}>
+      VPU.Yield %conv
+    }
+    return %vf : tensor<1x16x48x58xf16, {order = #NHWC}>
+
+    // CHECK-DAG: VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 32, 12, 30]
+    // CHECK-DAG: VPU.Slice [[INPUT]] [0, 0, 11, 0] [1, 32, 13, 30]
+}
 
 // -----
 
@@ -269,21 +291,27 @@ func.func @InterpAndAvgpoolPropagateAxis(%arg0: tensor<1x64x96x160xf16, {order =
     }
     return %0 : tensor<1x64x192x320xf16, {order = #NHWC}>
 
-    // CHECK: [[INTERP_0:%.+]] = VPU.Interpolate([[INPUT]])
+    // CHECK: [[SLICE_0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 64, 96, 33]
+    // CHECK: [[INTERP_0:%.+]] = VPU.Interpolate([[SLICE_0]])
     // CHECK: [[AVGPOOL_0:%.+]] = VPU.NCE.AveragePool([[INTERP_0]])
 
-    // CHECK: [[INTERP_1:%.+]] = VPU.Interpolate([[INPUT]])
+    // CHECK: [[SLICE_1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 31] [1, 64, 96, 34]
+    // CHECK: [[INTERP_1:%.+]] = VPU.Interpolate([[SLICE_1]])
     // CHECK: [[AVGPOOL_1:%.+]] = VPU.NCE.AveragePool([[INTERP_1]])
 
-    // CHECK: [[INTERP_2:%.+]] = VPU.Interpolate([[INPUT]])
+    // CHECK: [[SLICE_2:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 63] [1, 64, 96, 34]
+    // CHECK: [[INTERP_2:%.+]] = VPU.Interpolate([[SLICE_2]])
     // CHECK: [[AVGPOOL_2:%.+]] = VPU.NCE.AveragePool([[INTERP_2]])
 
-    // CHECK: [[INTERP_3:%.+]] = VPU.Interpolate([[INPUT]])
+    // CHECK: [[SLICE_3:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 95] [1, 64, 96, 34]
+    // CHECK: [[INTERP_3:%.+]] = VPU.Interpolate([[SLICE_3]])
     // CHECK: [[AVGPOOL_3:%.+]] = VPU.NCE.AveragePool([[INTERP_3]])
 
-    // CHECK: [[INTERP_4:%.+]] = VPU.Interpolate([[INPUT]])
+    // CHECK: [[SLICE_4:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 127] [1, 64, 96, 33]
+    // CHECK: [[INTERP_4:%.+]] = VPU.Interpolate([[SLICE_4]])
     // CHECK: [[AVGPOOL_4:%.+]] = VPU.NCE.AveragePool([[INTERP_4]])
 
     // CHECK: [[CONCAT:%.+]] = VPU.Concat
     // CHECK: return [[CONCAT]] : tensor<1x64x192x320xf16, {order = #NHWC}>
+
 }

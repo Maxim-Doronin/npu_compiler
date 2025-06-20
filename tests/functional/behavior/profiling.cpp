@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,10 @@
 
 #include "intel_npu/npu_private_properties.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/power.hpp"
+#include "openvino/op/softmax.hpp"
 
 #include <algorithm>
 #include <cstdio>

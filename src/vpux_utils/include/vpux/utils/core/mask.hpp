@@ -88,7 +88,7 @@ namespace llvm {
 template <>
 struct format_provider<vpux::Mask> final {
     static void format(const vpux::Mask& mask, llvm::raw_ostream& stream, StringRef style) {
-        llvm::detail::build_format_adapter(mask.asRange()).format(stream, style);
+        llvm::support::detail::build_format_adapter(mask.asRange()).format(stream, style);
     }
 };
 

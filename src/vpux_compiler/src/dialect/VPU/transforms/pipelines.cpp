@@ -74,9 +74,11 @@ void vpux::VPU::buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::In
     pm.addPass(VPU::createSetupPipelineOptionsPass(options, log));
     pm.addPass(VPU::createSetupMaxKernelSizePass(options, log));
     pm.addPass(VPU::createSetupNpuConstraintPass(options, log));
+    pm.addPass(VPU::createSetupTilingConstraintPass(options, log));
     pm.addPass(VPU::createSetupChannelsAutoPaddingPass(options, log));
     pm.addPass(VPU::createSetupIsReduceSupportedPass(options, log));
     pm.addPass(VPU::createSetupEnableFP16CompressedConvPass(options, log));
+    pm.addPass(VPU::createSetupEnableVPUNNPreSplitPass(options, log));
     pm.addPass(VPU::createSetupEnableSEPtrsOperationsPass(options, log));
     pm.addPass(VPU::createSetupEnableAdaptiveStrippingPass(options, log));
     pm.addPass(VPU::createSetupEnableExtraStaticShapeOpsPass(options, log));
@@ -156,7 +158,8 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
     // We call this as part of VF Pipeline, no need to call it here in such case
     if (!options.enableVerticalFusion) {
         pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                      options.readStrategyFromJson, readStrategyFileLocation, log));
+                                                      options.readStrategyFromJson, readStrategyFileLocation,
+                                                      options.dumpStrategyToLog, false, log));
     }
     pm.addPass(VPU::createEfficientIROrderPass(log));
     if (options.enableVerticalFusion) {
@@ -166,9 +169,10 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
     if (options.enableOutputPipelining) {
         pm.addPass(VPU::createOutputPipelineTilingPass(options.enablePrefetchTiling, log));
         // manual strategy debug configuration
-        pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                      options.readStrategyFromJson, readStrategyFileLocation,
-                                                      /*updateStrategyForOutputPipelining*/ true, log));
+        pm.addPass(VPU::createManualStrategyUtilsPass(
+                options.writeStrategyToJson, writeStrategyFileLocation, options.readStrategyFromJson,
+                readStrategyFileLocation, options.dumpStrategyToLog,
+                /*updateStrategyForOutputPipelining*/ true, /*contextId*/ "outputPipelining", log));
     }
 
     pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, log));
@@ -183,19 +187,20 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
 void vpux::VPU::buildVFPipeline(mlir::OpPassManager& pm, const VPU::TilingOptions& options, Logger log) {
     pm.addPass(VPU::createWrapVerticalFusionRegionPass(log));
     pm.addPass(VPU::createMoveViewOpsToVerticalFusionPass(log));
-    pm.addPass(
-            VPU::createMergeVfSubgraphsPass(options.enableVerticalFusionPipelining, options.enablePrefetchTiling, log));
+    pm.addPass(VPU::createMergeVfSubgraphsPass(options.enableVerticalFusionPipelining, options.enablePrefetchTiling,
+                                               options.workloadManagementMode, log));
     pm.addPass(VPU::createEfficientIROrderPass(log));
     pm.addPass(VPU::createUnrollUnusedVerticalFusionRegionPass(log));
     pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                  options.readStrategyFromJson, readStrategyFileLocation, log));
+                                                  options.readStrategyFromJson, readStrategyFileLocation,
+                                                  options.dumpStrategyToLog, false, log));
     // TODO: E#140041 enable profiling with function outlining
     if (options.enableVerticalFusionOutlining && (!options.enableProfiling || options.enableProfilingWithOutlining)) {
         pm.addPass(VPU::createVerticalFusionOutliningPass(options, log));
         const auto grc = getDefaultGreedyRewriteConfig();
         pm.addPass(mlir::createCanonicalizerPass(grc));
     }
-    pm.addPass(VPU::createVfTilingPass(options.enableVerticalFusionPipelining, log));
+    pm.addPass(VPU::createVfTilingPass(options.enableVerticalFusionPipelining, options.workloadManagementMode, log));
 }
 
 void vpux::VPU::buildSMPipeline(mlir::OpPassManager& pm, const vpux::MCAndTilingOptionsBase& options, Logger log) {
@@ -212,7 +217,8 @@ void vpux::VPU::buildSMPipeline(mlir::OpPassManager& pm, const vpux::MCAndTiling
     // We have already dumped the strategies in above pipeline
     if (!options.enableVerticalFusion) {
         pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                      options.readStrategyFromJson, readStrategyFileLocation, log));
+                                                      options.readStrategyFromJson, readStrategyFileLocation,
+                                                      options.dumpStrategyToLog, false, log));
     }
     pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));

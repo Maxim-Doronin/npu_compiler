@@ -88,9 +88,14 @@ public:
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    explicit IntroduceInitFunctionPass(const DefaultHWOptionsBase& options, const Logger& log) {
+    explicit IntroduceInitFunctionPass(const std::string& wsExtractionMode, const Logger& log) {
         Base::initLogger(log, Base::getArgumentName());
-        Base::copyOptionValuesFrom(options);
+        this->wsExtractionMode = wsExtractionMode;
+    }
+
+    explicit IntroduceInitFunctionPass(StringRef wsExtractionModeString, const Logger& log) {
+        Base::initLogger(log, Base::getArgumentName());
+        wsExtractionMode = wsExtractionModeString.str();
     }
 
     using InitResults = std::vector<std::tuple<VPU::ConstArg, mlir::Value>>;
@@ -442,6 +447,7 @@ IntroduceInitFunctionPass::SplitSlice IntroduceInitFunctionPass::collectSplitsAc
     constexpr auto noopSort = [](SmallVector<VPU::TransformationsSplit>&) {};
     // Note: sort once "globally" and do not sort while collecting splits.
     auto splits = VPU::collectMoveWorthyTransformationSplits(_log, tree, noopSort);
+    VPUX_THROW_WHEN(splits.empty(), "Cannot generate empty init schedule");
     sortSplits(splits);
 
     auto slicedSplits = VPU::sliceAccordingToMemoryLimit(_log, splits, _memoryLimit);
@@ -686,6 +692,8 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
         std::ignore = updateMainAndOutlinedFunctions(moduleOp, mainFuncOp, tree);
         initFuncOp.setPrivate();
         mainFuncOp.setPrivate();
+        // Don't let PackNestedModulesPass put @main into a submodule.
+        mainFuncOp->setAttr("do_not_nest", mlir::UnitAttr::get(&getContext()));
         buildWrapperOpForInitAndMain(netInfo, mainFuncOp, initFuncOp, initArgCache);
         break;
     }
@@ -708,7 +716,7 @@ std::unique_ptr<mlir::Pass> vpux::VPU::createIntroduceInitFunctionPass(const Log
     return std::make_unique<IntroduceInitFunctionPass>(log);
 }
 
-std::unique_ptr<mlir::Pass> vpux::VPU::createIntroduceInitFunctionPass(const DefaultHWOptionsBase& options,
+std::unique_ptr<mlir::Pass> vpux::VPU::createIntroduceInitFunctionPass(StringRef wsExtractionModeString,
                                                                        const Logger& log) {
-    return std::make_unique<IntroduceInitFunctionPass>(options, log);
+    return std::make_unique<IntroduceInitFunctionPass>(wsExtractionModeString, log);
 }

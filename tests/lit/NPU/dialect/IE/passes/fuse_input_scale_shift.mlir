@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" -mlir-print-elementsattrs-with-hex-if-larger=-1 --fuse-input-scale-shift --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK: func.func @SplatScales([[ARG0:%.+]]: tensor<1x3x224x224xf32>)
 func.func @SplatScales(%arg0: tensor<1x3x224x224xf32>) -> tensor<1x8x112x112xf32> {
     %scales = const.Declare tensor<1x3x1x1xf32> = dense<0.0174255371> : tensor<1x3x1x1xf32>

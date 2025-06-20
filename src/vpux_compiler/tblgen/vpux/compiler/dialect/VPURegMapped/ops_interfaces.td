@@ -151,7 +151,7 @@ def VPURegMapped_RegFieldVersion : OpInterface<"RegFieldVersion"> {
             "elf::Version",
             "getVersion", (ins), [{}],
             /*defaultImplementation=*/[{
-                auto returnVersion = $_op.getDescriptor().getRegMapped().getDescriptorVersion();
+                auto returnVersion = $_op.getProperties().getDescriptor().getDescriptorVersion();
                 VPUX_THROW_UNLESS(returnVersion.has_value(), "Descriptor does not have version attached.");
                 return returnVersion.value();
             }]

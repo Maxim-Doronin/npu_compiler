@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --optimize-concat-with-conv %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -38,4 +39,64 @@ func.func @main(%arg0: tensor<1x128x1x1xf16>, %arg1: tensor<1x128x1x1xf16>) -> t
     //CHECK:   [[RESHAPE2:%.+]] = IE.Reshape([[LAYOUTCAST2]]) {shape_value = [1, 128, 2, 1]} : tensor<1x64x4x1xf16> -> tensor<1x128x2x1xf16>
     //CHECK:   return [[RESHAPE2]] : tensor<1x128x2x1xf16>
 }
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @OptimizeConcatWithConvAndAdd
+// CHECK-SAME:     ([[INPUT0:%.+]]: tensor<1x2x272x480xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x1x272x480xf16, {order = #NHWC}>, [[INPUT2:%.+]]: tensor<1x1x272x480xf16, {order = #NHWC}>)
+func.func @OptimizeConcatWithConvAndAdd(%arg0: tensor<1x2x272x480xf16, {order = #NHWC}>, %arg1: tensor<1x1x272x480xf16, {order = #NHWC}>, %arg2: tensor<1x1x272x480xf16, {order = #NHWC}>) -> tensor<1x4x272x480xf16, {order = #NHWC}> {
+    %0 = IE.Concat(%arg0, %arg1, %arg2) {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]} : tensor<1x2x272x480xf16, {order = #NHWC}>, tensor<1x1x272x480xf16, {order = #NHWC}>, tensor<1x1x272x480xf16, {order = #NHWC}> -> tensor<1x4x272x480xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x4x272x480xf16, {order = #NHWC}>
+
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<4x1x1x1xf16, {order = #NHWC}> =
+    // CHECK-SAME{LITERAL}:    dense<[[[[0.000000e+00]]], [[[0.000000e+00]]], [[[0.000000e+00]]], [[[1.000000e+00]]]]> : tensor<4x1x1x1xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
+    // CHECK-DAG:       [[WEIGHTS_0:%.+]] = const.Declare tensor<4x1x1x1xf16, {order = #NHWC}> =
+    // CHECK-SAME{LITERAL}:    dense<[[[[0.000000e+00]]], [[[0.000000e+00]]], [[[1.000000e+00]]], [[[0.000000e+00]]]]> : tensor<4x1x1x1xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
+    // CHECK-DAG:       [[WEIGHTS_1:%.+]] = const.Declare tensor<4x2x1x1xf16, {order = #NHWC}> =
+    // CHECK-SAME{LITERAL}:    dense<[[[[1.000000e+00]], [[0.000000e+00]]], [[[0.000000e+00]], [[1.000000e+00]]], [[[0.000000e+00]], [[0.000000e+00]]], [[[0.000000e+00]], [[0.000000e+00]]]]> : tensor<4x2x1x1xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
+
+    //CHECK:   [[CONV_0:%.+]] = IE.Convolution([[INPUT0]], [[WEIGHTS_1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x2x272x480xf16, {order = #NHWC}>, tensor<4x2x1x1xf16, {order = #NHWC}> -> tensor<1x4x272x480xf16, {order = #NHWC}>
+    //CHECK:   [[CONV_1:%.+]] = IE.Convolution([[INPUT1]], [[WEIGHTS_0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x272x480xf16, {order = #NHWC}>, tensor<4x1x1x1xf16, {order = #NHWC}> -> tensor<1x4x272x480xf16, {order = #NHWC}>
+    //CHECK:   [[CONV_2:%.+]] = IE.Convolution([[INPUT2]], [[WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x272x480xf16, {order = #NHWC}>, tensor<4x1x1x1xf16, {order = #NHWC}> -> tensor<1x4x272x480xf16, {order = #NHWC}>
+
+    //CHECK:   [[ADD_0:%.+]] = IE.Add([[CONV_0]], [[CONV_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4x272x480xf16, {order = #NHWC}>, tensor<1x4x272x480xf16, {order = #NHWC}> -> tensor<1x4x272x480xf16, {order = #NHWC}>
+    //CHECK:   [[ADD_1:%.+]] = IE.Add([[ADD_0]], [[CONV_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4x272x480xf16, {order = #NHWC}>, tensor<1x4x272x480xf16, {order = #NHWC}> -> tensor<1x4x272x480xf16, {order = #NHWC}>
+
+    //CHECK:   return [[ADD_1]] : tensor<1x4x272x480xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotOptimizeConcatWithBigChannel
+// CHECK-SAME:     ([[INPUT0:%.+]]: tensor<1x6x272x480xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x6x272x480xf16, {order = #NHWC}>, [[INPUT2:%.+]]: tensor<1x6x272x480xf16, {order = #NHWC}>)
+func.func @NotOptimizeConcatWithBigChannel(%arg0: tensor<1x6x272x480xf16, {order = #NHWC}>, %arg1: tensor<1x6x272x480xf16, {order = #NHWC}>, %arg2: tensor<1x6x272x480xf16, {order = #NHWC}>) -> tensor<1x18x272x480xf16, {order = #NHWC}> {
+    %0 = IE.Concat(%arg0, %arg1, %arg2) {static_offsets = [[0, 0, 0, 0], [0, 6, 0, 0], [0, 12, 0, 0]]} : tensor<1x6x272x480xf16, {order = #NHWC}>, tensor<1x6x272x480xf16, {order = #NHWC}>, tensor<1x6x272x480xf16, {order = #NHWC}> -> tensor<1x18x272x480xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x18x272x480xf16, {order = #NHWC}>
+
+    //CHECK:   [[CONCAT:%.+]] = IE.Concat([[INPUT0]], [[INPUT1]], [[INPUT2]])
+
+    //CHECK:   return [[CONCAT]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotOptimizeConcatIfConvCannotShapeCasted
+// CHECK-SAME:     ([[INPUT0:%.+]]: tensor<1x1x256x480xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x4x256x480xf16, {order = #NHWC}>)
+func.func @NotOptimizeConcatIfConvCannotShapeCasted(%arg0: tensor<1x1x256x480xf16, {order = #NHWC}>, %arg1: tensor<1x4x256x480xf16, {order = #NHWC}>) -> tensor<1x5x256x480xf16, {order = #NHWC}> {
+    %0 = IE.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x256x480xf16, {order = #NHWC}>, tensor<1x4x256x480xf16, {order = #NHWC}> -> tensor<1x5x256x480xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x5x256x480xf16, {order = #NHWC}>
+
+    //CHECK:   [[CONCAT:%.+]] = IE.Concat([[INPUT0]], [[INPUT1]])
+
+    //CHECK:   return [[CONCAT]]
 }

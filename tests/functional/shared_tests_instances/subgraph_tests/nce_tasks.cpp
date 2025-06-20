@@ -5,6 +5,14 @@
 #include "shared_test_classes/subgraph/nce_tasks.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/avg_pool.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/fake_quantize.hpp"
+#include "openvino/op/group_conv.hpp"
+#include "openvino/op/max_pool.hpp"
+#include "openvino/op/reshape.hpp"
+
 namespace {
 
 std::shared_ptr<ov::Node> buildConv2d(const ov::Output<ov::Node>& param) {

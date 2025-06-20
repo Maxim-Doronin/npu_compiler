@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -53,7 +53,6 @@ TEST_P(SoftMaxLayerTestCommon, NPU4000_SW) {
 TEST_P(SoftMaxLayerTestCommon, NPU4000_HW) {
     abs_threshold = 1e-3;
     setDefaultHardwareMode();
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace ov::test
@@ -122,6 +121,20 @@ const auto params4D = testing::Combine(
 
 INSTANTIATE_TEST_SUITE_P(smoke_SoftMax4D, SoftMaxLayerTestCommon, params4D, SoftMaxLayerTestCommon::getTestCaseName);
 
+//
+// Input 5D
+//
+
+const std::vector<ov::Shape> inShapes5D = {{8, 1, 1, 512, 64}};
+const std::vector<size_t> axis5D = {0, 1, 2, 3, 4};
+
+const auto params5D = testing::Combine(
+        testing::ValuesIn(modelTypes), testing::ValuesIn(inputTypes), testing::ValuesIn(outputTypes),
+        testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes5D)), testing::ValuesIn(axis5D),
+        testing::Values(ov::test::utils::DEVICE_NPU), testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_SoftMax5D, SoftMaxLayerTestCommon, params5D, SoftMaxLayerTestCommon::getTestCaseName);
+
 const auto precommit_params4D = testing::Combine(
         testing::ValuesIn(modelTypes), testing::ValuesIn(inputTypes), testing::ValuesIn(outputTypes),
         testing::ValuesIn(ov::test::static_shapes_to_test_representation({{1, 2, 72, 10}})), testing::ValuesIn(axis4D),
@@ -150,7 +163,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_TilingSoftMax, SoftMaxLayerTestCommon, paramsTili
 //
 
 const std::vector<ov::test::InputShape> inShapesDynUseCase0 = {
-        generateShapes(32_Dyn, 1, 548),
+        generateTestShape(32_Dyn, 1, 548),
 };
 
 const std::vector<size_t> axisDynUseCase0 = {2};
@@ -168,33 +181,33 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_SoftMax_DynUseCase0, SoftMaxLayerTestCo
 //
 
 INSTANTIATE_TEST_SUITE_P(smoke_SoftMax_3D_DynSmoke_Axis2, SoftMaxLayerTestCommon,
-                         testing::Combine(testing::Values(ov::element::f16),                    // Model type
-                                          testing::Values(ov::element::f16),                    // In type
-                                          testing::Values(ov::element::f16),                    // Out type
-                                          testing::Values(generateShapes(32_Dyn, 32_Dyn, 64)),  // Shape
-                                          testing::Values(2),                                   // Axis
+                         testing::Combine(testing::Values(ov::element::f16),                       // Model type
+                                          testing::Values(ov::element::f16),                       // In type
+                                          testing::Values(ov::element::f16),                       // Out type
+                                          testing::Values(generateTestShape(32_Dyn, 32_Dyn, 64)),  // Shape
+                                          testing::Values(2),                                      // Axis
                                           testing::Values(ov::test::utils::DEVICE_NPU),
                                           testing::Values(ov::test::Config{})),
                          SoftMaxLayerTestCommon::getTestCaseName);
 
 // Hangs: E#145670
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_SoftMax_3D_DynSmoke_Axis1, SoftMaxLayerTestCommon,
-                         testing::Combine(testing::Values(ov::element::f16),                    // Model type
-                                          testing::Values(ov::element::f16),                    // In type
-                                          testing::Values(ov::element::f16),                    // Out type
-                                          testing::Values(generateShapes(32_Dyn, 32, 64_Dyn)),  // Shape
-                                          testing::Values(1),                                   // Axis
+                         testing::Combine(testing::Values(ov::element::f16),                       // Model type
+                                          testing::Values(ov::element::f16),                       // In type
+                                          testing::Values(ov::element::f16),                       // Out type
+                                          testing::Values(generateTestShape(32_Dyn, 32, 64_Dyn)),  // Shape
+                                          testing::Values(1),                                      // Axis
                                           testing::Values(ov::test::utils::DEVICE_NPU),
                                           testing::Values(ov::test::Config{})),
                          SoftMaxLayerTestCommon::getTestCaseName);
 
 // Hangs: E#145670
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_SoftMax_3D_DynSmoke_Axis0, SoftMaxLayerTestCommon,
-                         testing::Combine(testing::Values(ov::element::f16),                    // Model type
-                                          testing::Values(ov::element::f16),                    // In type
-                                          testing::Values(ov::element::f16),                    // Out type
-                                          testing::Values(generateShapes(32, 32_Dyn, 64_Dyn)),  // Shape
-                                          testing::Values(0),                                   // Axis
+                         testing::Combine(testing::Values(ov::element::f16),                       // Model type
+                                          testing::Values(ov::element::f16),                       // In type
+                                          testing::Values(ov::element::f16),                       // Out type
+                                          testing::Values(generateTestShape(32, 32_Dyn, 64_Dyn)),  // Shape
+                                          testing::Values(0),                                      // Axis
                                           testing::Values(ov::test::utils::DEVICE_NPU),
                                           testing::Values(ov::test::Config{})),
                          SoftMaxLayerTestCommon::getTestCaseName);

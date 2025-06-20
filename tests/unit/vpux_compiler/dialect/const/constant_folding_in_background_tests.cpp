@@ -95,8 +95,8 @@ TEST_P(ConstantFoldingInBackground, CompilationFlow) {
     const auto numFoldingThreads = GetParam();
 
     mlir::MLIRContext ctx(registry);
-    const size_t maxThreads = ctx.getThreadPool().getThreadCount();
-    llvm::ThreadPool newThreadPool(llvm::optimal_concurrency(std::max(2 * numFoldingThreads + 1, maxThreads)));
+    const size_t maxThreads = ctx.getThreadPool().getMaxConcurrency();
+    llvm::StdThreadPool newThreadPool(llvm::optimal_concurrency(std::max(2 * numFoldingThreads + 1, maxThreads)));
 
     ctx.disableMultithreading();
     ctx.setThreadPool(newThreadPool);
@@ -113,15 +113,17 @@ TEST_P(ConstantFoldingInBackground, MultipleCompilations) {
     const auto numFoldingThreads = GetParam();
 
     mlir::MLIRContext ctx1(registry);
-    const size_t maxThreadsCtx1 = ctx1.getThreadPool().getThreadCount();
-    llvm::ThreadPool newThreadPoolCtx1(llvm::optimal_concurrency(std::max(2 * numFoldingThreads + 1, maxThreadsCtx1)));
+    const size_t maxThreadsCtx1 = ctx1.getThreadPool().getMaxConcurrency();
+    llvm::StdThreadPool newThreadPoolCtx1(
+            llvm::optimal_concurrency(std::max(2 * numFoldingThreads + 1, maxThreadsCtx1)));
 
     ctx1.disableMultithreading();
     ctx1.setThreadPool(newThreadPoolCtx1);
 
     mlir::MLIRContext ctx2(registry);
-    const size_t maxThreadsCtx2 = ctx2.getThreadPool().getThreadCount();
-    llvm::ThreadPool newThreadPoolCtx2(llvm::optimal_concurrency(std::max(2 * numFoldingThreads + 1, maxThreadsCtx2)));
+    const size_t maxThreadsCtx2 = ctx2.getThreadPool().getMaxConcurrency();
+    llvm::StdThreadPool newThreadPoolCtx2(
+            llvm::optimal_concurrency(std::max(2 * numFoldingThreads + 1, maxThreadsCtx2)));
 
     ctx2.disableMultithreading();
     ctx2.setThreadPool(newThreadPoolCtx2);

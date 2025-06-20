@@ -60,8 +60,11 @@ mlir::LogicalResult ConvertSpace2DepthLayerPass::Space2DepthLayerConverter::matc
 
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto inputShape = inputType.getShape();
-    const auto blockSize = origOp.getBlockSize();
     const auto mode = origOp.getMode();
+    const auto blockSize = origOp.getBlockSize();
+    if (blockSize <= 0) {
+        return matchFailed(rewriter, origOp, "Unsupported block size: {0}", blockSize);
+    }
 
     // Should fail in frontend if input rank < 3
     auto spatialDims = checked_cast<size_t>(inputShape.size() - spatialDimIndex);

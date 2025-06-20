@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
+#include "vpux/compiler/core/force_link_macros.hpp"
+
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/setup_pipeline_options_utils.hpp"
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
@@ -18,12 +20,28 @@
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/ErrorHandling.h>
-
 #include <limits>
 
 using namespace vpux;
 
+// TODO: E#162744 remove this
+DEFINE_FORCE_LINK(WsUtils)
+
 namespace vpux::VPU {
+
+MemPermuteConversionAttributes extractMemPermuteConversionAttributes(NDTypeInterface input,
+                                                                     Const::MemPermuteAttr memPermuteAttr) {
+    const auto inOrder = input.getDimsOrder();
+    const auto inShape = input.getShape();
+
+    const auto identityLayout = DimsOrder::fromNumDims(input.getRank()).toAffineMap(input.getContext());
+    const auto inMemShape = inOrder.toMemoryOrder(inShape);
+    const auto memPermute = memPermuteAttr.getMemPerm().getAffineMap();
+    const auto dstOrder = memPermuteAttr.getDstOrder().getAffineMap();
+    const auto outShape = memPermuteAttr.inferOutputType(input).getShape();
+
+    return MemPermuteConversionAttributes{identityLayout, inMemShape, memPermute, dstOrder, outShape};
+}
 namespace {
 
 SmallVector<uint32_t> computeOrder(DimsOrder inOrder, DimsOrder outOrder) {
@@ -43,9 +61,10 @@ namespace ViewLikeUtils {
 bool isViewLike(NDTypeInterface inputType, Const::TransformAttrInterface t) {
     const auto ctx = inputType.getContext();
     return llvm::TypeSwitch<Const::TransformAttrInterface, bool>(t)
-            .Case<Const::ReshapeAttr, Const::SubViewAttr, Const::LayoutCastAttr>([](Const::TransformAttrInterface) {
-                return true;
-            })
+            .Case<Const::ReshapeAttr, Const::SubViewAttr, Const::LayoutCastAttr, Const::AffineReshapeAttr>(
+                    [](Const::TransformAttrInterface) {
+                        return true;
+                    })
             .Case([&](Const::MemPermuteAttr memPermute) {
                 const auto inOrder = inputType.getDimsOrder();
                 const auto inMemShape = inOrder.toMemoryOrder(inputType.getShape());
@@ -86,6 +105,10 @@ bool hasOnlyViewLikeTransformations(const Const::ContentAttr& contentAttr) {
 
 }  // namespace ViewLikeUtils
 
+namespace conversions {  // forward declarations
+bool isSupportedTransformation(Const::TransformAttrInterface t);
+}
+
 bool shouldProcessThisConstant(Const::DeclareOp constOp) {
     // preserve splats in @main - they (should be) cheap to work with.
     const auto contentAttr = constOp.getContentAttr();
@@ -110,7 +133,9 @@ bool shouldProcessThisConstant(Const::DeclareOp constOp) {
         return false;
     }
 
-    return true;
+    const bool hasOnlySupportedTransformations =
+            llvm::all_of(constOp.getContentAttr().getTransformations(), conversions::isSupportedTransformation);
+    return hasOnlySupportedTransformations;
 }
 
 /// Utilities related to converting const transformations to IR operations.
@@ -204,9 +229,34 @@ mlir::Value createAvgPoolForInterQuantizedConvert(mlir::OpBuilder& builder, mlir
         return builder.createOrFold<IE::ReshapeOp>(reshapeLoc, input, nullptr, false, newShapeAttr);
     };
 
+    const auto prepareZpsForAvgPool =
+            [&](int64_t inZeroPoint,
+                int64_t outZeroPoint) -> std::pair<mlir::Value, mlir::quant::UniformQuantizedType> {
+        auto normInQuantCast = builder.create<IE::QuantizeCastOp>(loc, value, normalizeQuantStorageType(inQType));
+
+        auto perTensorInQType = mlir::quant::UniformQuantizedType::get(
+                inQType.getFlags(), inQType.getStorageType(), inQType.getExpressedType(),
+                /*scale=*/1.0, /*zeroPoint=*/inZeroPoint, inQType.getStorageTypeMin(), inQType.getStorageTypeMax());
+
+        auto resultValue = builder.create<IE::QuantizeCastOp>(loc, normInQuantCast, perTensorInQType).getResult();
+        auto resultOutElemType = mlir::quant::UniformQuantizedType::get(
+                outQType.getFlags(), outQType.getStorageType(), outQType.getExpressedType(),
+                /*scale=*/1.0, /*zeroPoint=*/outZeroPoint, outQType.getStorageTypeMin(), outQType.getStorageTypeMax());
+
+        return std::pair<mlir::Value, mlir::quant::UniformQuantizedType>(resultValue, resultOutElemType);
+    };
+
+    const auto hasNegativeZp = [&]() -> bool {
+        auto zpIn = extractSingleZeroPoint(inQType);
+        auto zpOut = extractSingleZeroPoint(outQType);
+        VPUX_THROW_UNLESS(zpIn.has_value() && zpOut.has_value(), "Unsupported conversion: {0} -> {1}", inQType,
+                          outQType);
+        return zpIn.value() < 0 || zpOut.value() < 0;
+    }();
+
     auto avgOutElemType = outQType;
 
-    if (isSupportedPerAxis) {
+    if (isSupportedPerAxis || hasNegativeZp) {
         // Note: do what ConvertElemType does to restore the offset.
         const auto offset = Const::details::getValueRangeOffset(inQType, outQType);
         // Negative zero points are not supported - we do the following trick:
@@ -215,20 +265,8 @@ mlir::Value createAvgPoolForInterQuantizedConvert(mlir::OpBuilder& builder, mlir
         const auto isNegative = offset < 0;
         const int64_t inZeroPoint = isNegative ? -offset : 0;
         const int64_t outZeroPoint = isNegative ? 0 : offset;
-
         // convert per-axis case to per-tensor:
-        auto normInQuantCast = builder.create<IE::QuantizeCastOp>(loc, value, normalizeQuantStorageType(inQType));
-
-        auto perTensorInQType = mlir::quant::UniformQuantizedType::get(
-                inPerAxisQType.getFlags(), inPerAxisQType.getStorageType(), inPerAxisQType.getExpressedType(),
-                /*scale=*/1.0, /*zeroPoint=*/inZeroPoint, inPerAxisQType.getStorageTypeMin(),
-                inPerAxisQType.getStorageTypeMax());
-
-        value = builder.create<IE::QuantizeCastOp>(loc, normInQuantCast, perTensorInQType).getResult();
-        avgOutElemType = mlir::quant::UniformQuantizedType::get(
-                outPerAxisQType.getFlags(), outPerAxisQType.getStorageType(), outPerAxisQType.getExpressedType(),
-                /*scale=*/1.0, /*zeroPoint=*/outZeroPoint, outPerAxisQType.getStorageTypeMin(),
-                outPerAxisQType.getStorageTypeMax());
+        std::tie(value, avgOutElemType) = prepareZpsForAvgPool(inZeroPoint, outZeroPoint);
     }
 
     // Note: do reshape after per-axis to per-tensor conversion to eliminate the
@@ -260,7 +298,7 @@ mlir::Value createAvgPoolForInterQuantizedConvert(mlir::OpBuilder& builder, mlir
     }
     value = reshapeIfNecessary(appendLoc(value.getLoc(), "reshape_from_4d"), avgPool.getOutput(), avgPoolShape);
 
-    if (isSupportedPerAxis) {
+    if (isSupportedPerAxis || hasNegativeZp) {
         // convert per-tensor case to per-axis (restore the original type):
         auto normOutQuantCast =
                 builder.create<IE::QuantizeCastOp>(loc, value, normalizeQuantStorageType(avgOutElemType));
@@ -356,8 +394,28 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
             .Case<Const::LayoutCastAttr>([&](Const::LayoutCastAttr layoutCast) {
                 return builder.create<IE::LayoutCastOp>(loc, input, layoutCast.getDstOrder());
             })
-            .Case<Const::MemPermuteAttr>([&](Const::MemPermuteAttr memPermute) {
-                return builder.create<IE::MemPermuteOp>(loc, input, memPermute.getDstOrder(), memPermute.getMemPerm());
+            .Case<Const::MemPermuteAttr>([&](Const::MemPermuteAttr memPermute) -> mlir::Value {
+                const auto inType = mlir::cast<NDTypeInterface>(input.getType());
+                const auto [identityLayout, inMemShape, memPermuteMap, dstOrder, outShape] =
+                        extractMemPermuteConversionAttributes(inType, memPermute);
+
+                const auto memShapeAttr = getIntArrayAttr(builder.getContext(), inMemShape.raw());
+                auto memShapeCastOp =
+                        builder.create<IE::ShapeCastOp>(appendLoc(loc, "inMemShape"), input, memShapeAttr);
+
+                auto castToIdentityLayoutOp = builder.create<IE::LayoutCastOp>(
+                        appendLoc(memShapeCastOp.getLoc(), "identityLayout"), memShapeCastOp, identityLayout);
+
+                auto transpose = builder.create<IE::TransposeOp>(
+                        appendLoc(castToIdentityLayoutOp.getLoc(), "transpose"), castToIdentityLayoutOp,
+                        /*order=*/nullptr, mlir::AffineMapAttr::get(memPermuteMap));
+
+                const auto outShapeAttr = getIntArrayAttr(builder.getContext(), outShape.raw());
+                auto newOutShapeCastOp = builder.create<IE::ShapeCastOp>(
+                        appendLoc(transpose.getLoc(), "tranposedShape"), transpose, outShapeAttr);
+
+                return builder.create<IE::LayoutCastOp>(appendLoc(newOutShapeCastOp.getLoc(), "recreateLayout"),
+                                                        newOutShapeCastOp, dstOrder);
             })
             .Case<Const::PadWithZeroAttr>([&](Const::PadWithZeroAttr padWithZero) {
                 auto extractPadValue = [](mlir::Type type) {
@@ -408,6 +466,10 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
 
                 return builder.create<IE::ShapeCastOp>(loc, input, reshape.getShape());
             })
+            .Case<Const::AffineReshapeAttr>([&](Const::AffineReshapeAttr affineReshape) -> mlir::Value {
+                return builder.create<IE::AffineReshapeOp>(loc, input, affineReshape.getDimMapping(),
+                                                           affineReshape.getShapeValue());
+            })
             .Case<Const::ScalarMultInverseAttr>([&](Const::ScalarMultInverseAttr /*scalarMultInverse*/) -> mlir::Value {
                 const auto inverseLoc = appendLoc(loc, "_inverse");
                 SmallVector<int64_t> shapeRank = {1};
@@ -451,6 +513,17 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
             });
 }
 
+/// Returns an IE operation for the given constant transformation.
+bool isSupportedTransformation(Const::TransformAttrInterface t) {
+    // Note: this *has* to be aligned with createMatchingIeOperation and
+    // createMatchingVpuOperation (mostly with the former).
+    return mlir::isa<Const::AddAttr, Const::BroadcastAttr, Const::ChangeShapeAndElemTypeAttr, Const::CastElemTypeAttr,
+                     Const::ConvertElemTypeAttr, Const::DequantizeAttr, Const::QuantizeAttr, Const::LayoutCastAttr,
+                     Const::MemPermuteAttr, Const::PadWithZeroAttr, Const::ReorderAttr, Const::RescaleAttr,
+                     Const::ReshapeAttr, Const::ScalarMultInverseAttr, Const::SubViewAttr, Const::TransposeAttr,
+                     Const::SparsifyAttr, Const::AffineReshapeAttr>(t);
+}
+
 /// Returns a VPU operation for the given constant transformation.
 mlir::Value createMatchingVpuOperation(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input,
                                        Const::TransformAttrInterface t) {
@@ -466,6 +539,7 @@ mlir::Value createMatchingVpuOperation(mlir::OpBuilder& builder, mlir::Location 
 /// A simple dispatch around IE and VPU operation creation functions.
 mlir::Value createMatchingOperation(WeightsSeparationSchedule scheduleKind, mlir::OpBuilder& builder,
                                     mlir::Location loc, mlir::Value input, Const::TransformAttrInterface t) {
+    VPUX_THROW_UNLESS(isSupportedTransformation(t), "Found non-supported transformation {0}", t);
     switch (scheduleKind) {
     case WeightsSeparationSchedule::Init:
         return createMatchingIeOperation(builder, loc, input, t);
@@ -521,6 +595,7 @@ SmallVector<TransformationsSplit> collectMoveWorthySplitsUnstable(const Logger& 
     SmallVector<TransformationsSplit> splits;
     mainFunc.walk([&](Const::DeclareOp constOp) {
         if (!shouldProcessThisConstant(constOp)) {
+            log.trace("Constant is NOT used in init schedule: {0}", constOp);
             return;
         }
         splits.emplace_back(constOp);
@@ -538,11 +613,39 @@ SmallVector<TransformationsSplit> collectMoveWorthySplitsUnstable(const Logger& 
     return splits;
 }
 
+/// Helper utility that recognizes that duplicate transformation chains.
+struct InitBufferSizeCache {
+    mlir::DenseSet<llvm::hash_code> cache;  // caches transformation hashes
+
+    /// Returns the buffer size of the init-produced result exactly once for
+    /// every unique transformation chain.
+    vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x) {
+        const auto proj = x.take(WeightsSeparationSchedule::Init);
+        const auto hashCode = Const::ContentAttr::getTransformationHash(proj.transformations);
+        const bool firstOccurrence = cache.insert(hashCode).second;
+        // Note: return 0 if "already seen" - to not account for the same result
+        // multiple times.
+        return firstOccurrence ? detail::getResultBufferSizeForInit(x) : vpux::Byte(0);
+    }
+};
+
 template <typename Iterator>
 vpux::Byte getResultBufferSizeForInit(Iterator first, Iterator last) {
     vpux::Byte res(0);
+    // Note: when calculating the total buffer size of init results, one must
+    // ensure that "same" transformations are not accounted for more than once.
+    // Consider:
+    // ```cpp
+    //  %ov1_0 = const.Declare tensor<1x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+    //      [#const.Add<1.0>, #const.SubView<[0, 0], [1, 2]>]
+    //  %ov1_1 = const.Declare tensor<1x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+    //      [#const.Add<1.0>, #const.SubView<[1, 0], [1, 2]>]
+    // ```
+    // init will have *1* result (tensor<2x2xf16>) for *2* subviews (because
+    // subviews are part of main)
+    InitBufferSizeCache cache;
     for (; first != last; ++first) {
-        res += detail::getResultBufferSizeForInit(*first);
+        res += cache.getResultBufferSizeForInit(*first);
     }
     return res;
 }
@@ -791,6 +894,10 @@ SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const
     //
     // What this algorithm requires are "globally" sorted splits:
     assert(llvm::is_sorted(splits) && "Requires transformation splits to be globally sorted");
+    if (splits.empty()) {
+        return {};
+    }
+
     if (log.isActive(LogLevel::Trace)) {
         log.trace("Slicing the following constants:");
         for (const auto& split : splits) {

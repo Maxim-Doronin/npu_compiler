@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,8 +46,6 @@ TEST_P(DftLayerTestCommon, NPU3720) {
 TEST_P(DftLayerTestCommon, NPU4000) {
     abs_threshold = 0.2;
     setDefaultHardwareMode();
-    // TODO E####-159644
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test
@@ -73,7 +71,9 @@ const auto combine = [](const std::vector<std::vector<ov::Shape>>& inputShapes,
                         const std::vector<std::vector<int64_t>>& signalSizes) {
     return testing::Combine(testing::ValuesIn(static_shapes_to_test_representation(inputShapes)),
                             testing::ValuesIn(inputType), testing::ValuesIn(axes), testing::ValuesIn(signalSizes),
-                            testing::ValuesIn(opTypes), testing::Values(DEVICE_NPU));
+                            testing::ValuesIn(opTypes), testing::Values(DEVICE_NPU),
+                            testing::Values(utils::InputLayerType::CONSTANT),
+                            testing::Values(utils::InputLayerType::CONSTANT));
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_DFT_2d, DftLayerTestCommon,

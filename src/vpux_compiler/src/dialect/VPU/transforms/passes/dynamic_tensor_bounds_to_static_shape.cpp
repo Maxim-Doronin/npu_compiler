@@ -12,6 +12,9 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/range.hpp"
 
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -96,6 +99,15 @@ void BoundedTensorsToDynamicDimsMask::safeRunOnModule() {
     target.addDynamicallyLegalOp<mlir::func::ReturnOp>(isLegalOp);
     target.addDynamicallyLegalOp<mlir::func::CallOp>(isLegalOp);
     target.addLegalOp<mlir::ModuleOp>();
+    // TODO: The scf/affine/tensor dialects are explicitly marked as legal because, in the case of the HostCompile
+    // pipeline, this pass is executed on the main function, which contains host-side code as well. Ideally, this pass
+    // should not operate on the main function in the HostCompile pipeline. This will be refactored in the future.
+    // Track: E#168311
+    target.addLegalDialect<mlir::scf::SCFDialect>();
+    target.addLegalDialect<mlir::affine::AffineDialect>();
+    target.addLegalOp<mlir::tensor::ExtractSliceOp>();
+    target.addLegalOp<mlir::tensor::InsertSliceOp>();
+
     target.addDynamicallyLegalOp<mlir::func::FuncOp>([&](mlir::func::FuncOp funcOp) {
         return typeConverter.isSignatureLegal(funcOp.getFunctionType());
     });

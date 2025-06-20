@@ -33,62 +33,63 @@ namespace {
 
 class FuseFQAndMul final : public mlir::OpRewritePattern<IE::MultiplyOp> {
 public:
-    FuseFQAndMul(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::MultiplyOp>(ctx), _log(log) {
+    FuseFQAndMul(mlir::MLIRContext* ctx, Logger log, bool fuseFQAndMulWithNonConstInput)
+            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx),
+              _log(log),
+              _fuseFQAndMulWithNonConstInput(fuseFQAndMulWithNonConstInput) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MultiplyOp multiplyOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    bool isLegalToFuse(IE::MultiplyOp multiplyOp) const;
+
+private:
     Logger _log;
+    bool _fuseFQAndMulWithNonConstInput = false;
 };
 
-// This pass comes from the front-end ngrap pass. Openvion's mo will convert some FakeQuantizeOps on Weight in the
-// original model into FQ + ADD + MUL. This pass is used to merge these MULs into FQ, so only the case of const weight
-// FQ is handled. And currently, only per channel FQ is handled, because the FQ of per element is not yet supported
-// #E73317
-
-bool isLegalToFuse(IE::MultiplyOp multiplyOp) {
+bool FuseFQAndMul::isLegalToFuse(IE::MultiplyOp multiplyOp) const {
     bool lhsIsActivation = vpux::VPU::isEltwiseLhsActivation<IE::MultiplyOp>(multiplyOp);
 
     auto fakeQuantOp = lhsIsActivation ? multiplyOp.getInput1().getDefiningOp<IE::FakeQuantizeOp>()
                                        : multiplyOp.getInput2().getDefiningOp<IE::FakeQuantizeOp>();
-    if (fakeQuantOp == nullptr) {
+    if (fakeQuantOp == nullptr || !fakeQuantOp->hasOneUse()) {
         return false;
     }
-    if (!fakeQuantOp->hasOneUse()) {
-        return false;
-    }
-    auto constWeigthOp = fakeQuantOp.getInput().getDefiningOp<Const::DeclareOp>();
-    if (constWeigthOp == nullptr) {
+
+    auto constInputOp = fakeQuantOp.getInput().getDefiningOp<Const::DeclareOp>();
+    if (constInputOp == nullptr && !_fuseFQAndMulWithNonConstInput) {
         return false;
     }
 
     auto mulConstOp = lhsIsActivation ? multiplyOp.getInput2().getDefiningOp<Const::DeclareOp>()
                                       : multiplyOp.getInput1().getDefiningOp<Const::DeclareOp>();
 
-    if (mulConstOp == nullptr) {
+    auto outLowConst = fakeQuantOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
+    auto outHighConst = fakeQuantOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
+    if (mulConstOp == nullptr || outLowConst == nullptr || outHighConst == nullptr) {
         return false;
     }
 
-    auto mulConstShape = getShape(mulConstOp.getOutput());
-    auto mulOutputShape = getShape(multiplyOp.getOutput());
-
-    // Only handle per-channel weight case.
-    if (mulConstShape.size() > 0) {
-        const auto hasNonOneDimsExceptOC = [](ShapeRef dims) {
-            return std::any_of(dims.begin() + 1, dims.end(), [](const int64_t dim) {
-                return dim != 1;
-            });
-        };
-        if ((mulConstShape[Dims4D::Filter::OC] != 1 &&
-             mulConstShape[Dims4D::Filter::OC] != mulOutputShape[Dims4D::Filter::OC]) ||
-            hasNonOneDimsExceptOC(mulConstShape)) {
-            return false;
-        }
+    auto outLowConstShape = getShape(outLowConst.getOutput());
+    auto outHighConstShape = getShape(outHighConst.getOutput());
+    if (outLowConstShape != outHighConstShape) {
+        return false;
     }
 
-    return true;
+    const auto mulConstContent = mulConstOp.getContent();
+    if (mulConstContent.isSplat()) {
+        return true;
+    }
+
+    auto mulConstShape = getShape(mulConstOp.getOutput());
+    const auto mulNoneOneAxisCount = std::count_if(mulConstShape.begin(), mulConstShape.end(), [](auto size) {
+        return size > 1;
+    });
+
+    return (mulNoneOneAxisCount == 1) && (outHighConstShape.totalSize() == 1 || mulConstShape == outHighConstShape);
 }
 
 /*
@@ -112,45 +113,63 @@ mlir::LogicalResult FuseFQAndMul::matchAndRewrite(IE::MultiplyOp multiplyOp, mli
     if (!isLegalToFuse(multiplyOp)) {
         return mlir::failure();
     }
+
     bool lhsIsActivation = vpux::VPU::isEltwiseLhsActivation<IE::MultiplyOp>(multiplyOp);
 
     auto fakeQuantOp = lhsIsActivation ? multiplyOp.getInput1().getDefiningOp<IE::FakeQuantizeOp>()
                                        : multiplyOp.getInput2().getDefiningOp<IE::FakeQuantizeOp>();
     auto mulConstOp = lhsIsActivation ? multiplyOp.getInput2().getDefiningOp<Const::DeclareOp>()
                                       : multiplyOp.getInput1().getDefiningOp<Const::DeclareOp>();
-    auto mulConstShape = getShape(mulConstOp.getOutput());
 
-    auto mulConstVal = IE::getConst(mulConstOp);
-
-    auto inLowConst = fakeQuantOp.getInputLow().getDefiningOp<Const::DeclareOp>();
-    auto inHighConst = fakeQuantOp.getInputHigh().getDefiningOp<Const::DeclareOp>();
     auto outLowConst = fakeQuantOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
     auto outHighConst = fakeQuantOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
-    if (inLowConst == nullptr || inHighConst == nullptr || outLowConst == nullptr || outHighConst == nullptr) {
-        _log.trace("Got non constant parameters of FakeQuantize '{0}'", fakeQuantOp->getLoc());
-        return mlir::failure();
+
+    _log.trace("Fuse Mul '{0}' into FQ '{1}'", multiplyOp->getLoc(), fakeQuantOp->getLoc());
+
+    auto getConstContentVals = [](Const::Content constContent) {
+        return constContent.isSplat() ? SmallVector<float>{constContent.getSplatValue<float>()}
+                                      : SmallVector<float>(constContent.getValues<float>());
+    };
+
+    auto mulConstShape = Shape(getShape(mulConstOp.getOutput()));
+    auto outType = mlir::cast<NDTypeInterface>(outHighConst.getType());
+    auto newOutType = mulConstOp.getContent().isSplat() ? outType : outType.changeShape(mulConstShape);
+    const auto newOutRankedTensorType = mlir::cast<mlir::RankedTensorType>(newOutType);
+
+    Const::ContentAttr newOutLowContentAttr = nullptr;
+    Const::ContentAttr newOutHighContentAttr = nullptr;
+    auto mulConstVals = getConstContentVals(mulConstOp.getContent());
+    if (mulConstVals.size() == 1) {
+        const double scaleVal = mulConstVals.front();
+        newOutLowContentAttr = outLowConst.transformContentAttr().rescale(scaleVal).get();
+        newOutHighContentAttr = outHighConst.transformContentAttr().rescale(scaleVal).get();
+    } else {
+        auto outLowVals = getConstContentVals(outLowConst.getContent());
+        auto outHighVals = getConstContentVals(outHighConst.getContent());
+
+        auto fqOutValsCount = std::max(mulConstVals.size(), outLowVals.size());
+        SmallVector<float> newOutHighVals(fqOutValsCount);
+        SmallVector<float> newOutLowVals(fqOutValsCount);
+
+        for (size_t idx = 0; idx < fqOutValsCount; ++idx) {
+            auto outHighVal = outHighVals.size() == 1 ? outHighVals.front() : outHighVals[idx];
+            auto outLowVal = outLowVals.size() == 1 ? outLowVals.front() : outLowVals[idx];
+            auto mulConstVal = mulConstVals[idx];
+
+            newOutHighVals[idx] = outHighVal * mulConstVal;
+            newOutLowVals[idx] = outLowVal * mulConstVal;
+        }
+
+        newOutLowContentAttr =
+                Const::createFloatContentAttr(rewriter, fakeQuantOp.getLoc(), newOutRankedTensorType, newOutLowVals);
+        newOutHighContentAttr =
+                Const::createFloatContentAttr(rewriter, fakeQuantOp.getLoc(), newOutRankedTensorType, newOutHighVals);
     }
 
-    _log.trace("Fuse mul '{0}' into FQ '{1}'", multiplyOp->getLoc(), fakeQuantOp->getLoc());
-
-    const auto outLowContent = outLowConst.getContent();
-    auto outLowVals = SmallVector<float>(outLowContent.getValues<float>());
-    const auto outHighContent = outHighConst.getContent();
-    auto outHighVals = SmallVector<float>(outHighContent.getValues<float>());
-
-    auto fqOutValsCount = outLowVals.size();
-
-    for (size_t idx = 0; idx < fqOutValsCount; idx++) {
-        outHighVals[idx] *= mulConstShape[Dims4D::Filter::OC] == 1 ? mulConstVal[0] : mulConstVal[idx];
-        outLowVals[idx] *= mulConstShape[Dims4D::Filter::OC] == 1 ? mulConstVal[0] : mulConstVal[idx];
-    }
-
-    auto newOutHighConst =
-            Const::createFloatConst(rewriter, fakeQuantOp.getLoc(),
-                                    mlir::cast<mlir::RankedTensorType>(outHighConst.getType()), ArrayRef(outHighVals));
-    auto newOutLowConst =
-            Const::createFloatConst(rewriter, fakeQuantOp.getLoc(),
-                                    mlir::cast<mlir::RankedTensorType>(outLowConst.getType()), ArrayRef(outLowVals));
+    auto newOutLowConst = rewriter.create<Const::DeclareOp>(outLowConst.getLoc(), newOutRankedTensorType,
+                                                            std::move(newOutLowContentAttr));
+    auto newOutHighConst = rewriter.create<Const::DeclareOp>(outHighConst.getLoc(), newOutRankedTensorType,
+                                                             std::move(newOutHighContentAttr));
 
     rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(multiplyOp, fakeQuantOp.getInput(), fakeQuantOp.getInputLow(),
                                                     fakeQuantOp.getInputHigh(), newOutLowConst, newOutHighConst,
@@ -166,18 +185,36 @@ mlir::LogicalResult FuseFQAndMul::matchAndRewrite(IE::MultiplyOp multiplyOp, mli
 
 class FuseFQAndMulPass final : public IE::impl::FuseFQAndMulBase<FuseFQAndMulPass> {
 public:
-    explicit FuseFQAndMulPass(Logger log) {
+    explicit FuseFQAndMulPass(const bool fuseFQAndMulWithNonConstInput, Logger log)
+            : _fuseFQAndMulWithNonConstInput(fuseFQAndMulWithNonConstInput) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
+    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
+
 private:
     void safeRunOnFunc() final;
+    bool _fuseFQAndMulWithNonConstInput = false;
 };
+
+mlir::LogicalResult FuseFQAndMulPass::initialize(mlir::MLIRContext* ctx) {
+    if (mlir::failed(Base::initialize(ctx))) {
+        return mlir::failure();
+    }
+
+    // When this parameter has a value, it probably comes from LIT test.
+    // Override the default
+    if (fuseFQAndMulWithNonConstInput.hasValue()) {
+        _fuseFQAndMulWithNonConstInput = fuseFQAndMulWithNonConstInput.getValue();
+    }
+
+    return mlir::success();
+}
 
 void FuseFQAndMulPass::safeRunOnFunc() {
     auto& ctx = getContext();
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<FuseFQAndMul>(&ctx, _log);
+    patterns.add<FuseFQAndMul>(&ctx, _log, _fuseFQAndMulWithNonConstInput);
 
     auto func = getOperation();
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
@@ -187,6 +224,6 @@ void FuseFQAndMulPass::safeRunOnFunc() {
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::IE::createFuseFQAndMulPass(Logger log) {
-    return std::make_unique<FuseFQAndMulPass>(log);
+std::unique_ptr<mlir::Pass> vpux::IE::createFuseFQAndMulPass(const bool fuseFQAndMulWithNonConstInput, Logger log) {
+    return std::make_unique<FuseFQAndMulPass>(fuseFQAndMulWithNonConstInput, log);
 }

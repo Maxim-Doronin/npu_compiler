@@ -105,6 +105,8 @@ struct DebatchCoefficients {
     Shape apply(ShapeRef shape, size_t index) const;
     Shape apply(ShapeRef shape, const std::string& nodeName) const;
     size_t size() const;
+    std::optional<DebatchCoeffDescription> getCoefficient(size_t index) const;
+    std::optional<DebatchCoeffDescription> getCoefficient(const std::string& nodeName) const;
 
 private:
     std::multimap<std::string, DebatchCoeffDescription> orderedInputCoefficients;

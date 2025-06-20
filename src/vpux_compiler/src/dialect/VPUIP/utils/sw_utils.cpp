@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include <llvm/ADT/StringRef.h>
+#include <mlir/IR/AffineMap.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Support/LLVM.h>
 #include <optional>
@@ -12,6 +13,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/tiling_info.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/utils/core/range.hpp"
@@ -276,6 +278,19 @@ void initSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::ValueRange inputs, mlir::V
     }
 }
 
+SmallVector<int64_t> reversePermutation(mlir::AffineMap map) {
+    const auto origPerm = DimsOrder::fromAffineMap(map).toPermutation();
+    SmallVector<int64_t> revPerm(origPerm.size());
+    for (const auto srcInd : irange(origPerm.size())) {
+        const auto dstInd = origPerm[srcInd].ind();
+        const auto revSrcInd = origPerm.size() - 1 - srcInd;
+        const auto revDstInd = origPerm.size() - 1 - dstInd;
+        revPerm[revSrcInd] = revDstInd;
+    }
+
+    return revPerm;
+}
+
 void initSwKernel(VPUIP::SwKernelOp swKernelOp, VPUIP::SwKernelRun swKernelRunOp, const vpux::Logger& log) {
     auto& bodyRegion = swKernelOp.getBody();
     auto& swKernelBlock = bodyRegion.emplaceBlock();
@@ -340,6 +355,15 @@ void initSwKernel(VPUIP::SwKernelOp swKernelOp, VPUIP::SwKernelRun swKernelRunOp
 
         log.trace("create {0}th tile of SwKernelRun {1}", tileIdx, swKernelRunOp);
     }
+}
+
+bool isJitKernelOp(VPUIP::SwKernelOp swKernelOp) {
+    auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
+    auto kernelFunc = module.lookupSymbol<mlir::FunctionOpInterface>(swKernelOp.getKernelFunctionAttr());
+    if (kernelFunc == nullptr) {
+        return false;
+    }
+    return !kernelFunc.isExternal();
 }
 
 SmallString getSwKernelEntryName(VPUIP::SwKernelOp swKernelOp) {
@@ -608,11 +632,19 @@ InputTiling backInferRoPESwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
     TileInfo cosTile(getShape(inputs[1]));
     TileInfo sinTile(getShape(inputs[2]));
     auto inTile = outputTile;
-    // The number of channels for the Cosine and Sine operations can either match the input number of channels or be set
-    // to 1, depending on the specific requirements of the operation.
+    // The Cosine and Sine operations offer flexibility in channel configuration:
+    // - Channels: You can choose to match the input's number of channels or set it to 1
+    // - Height: Unlike channels, the height for Cosine and Sine operations can differ from the input height
     if (cosTile.shape[Dim(1)] > 1) {
-        cosTile = inTile;
-        sinTile = inTile;
+        if (cosTile.shape[Dim(2)] != inTile.shape[Dim(2)]) {
+            cosTile.shape[Dim(1)] = inTile.shape[Dim(1)];
+            sinTile.shape[Dim(1)] = inTile.shape[Dim(1)];
+            sinTile.offsets[Dim(1)] = inTile.offsets[Dim(1)];
+            cosTile.offsets[Dim(1)] = inTile.offsets[Dim(1)];
+        } else {
+            cosTile = inTile;
+            sinTile = inTile;
+        }
     } else {
         cosTile.shape[Dim(2)] = inTile.shape[Dim(2)];
         sinTile.shape[Dim(2)] = inTile.shape[Dim(2)];
@@ -1096,18 +1128,21 @@ InputTiling backInferLSTMSequenceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     const auto initialHiddenState = swKernelOp.getInputs()[1];
     const auto initialCellState = swKernelOp.getInputs()[2];
     const auto weightsHidden = swKernelOp.getInputs()[3];
-    const auto syncBuffer = swKernelOp.getInputs()[4];
+    const auto biases = swKernelOp.getInputs()[4];
+    const auto syncBuffer = swKernelOp.getInputs()[5];
 
     const auto inputDataShape = getShape(inputData);
     const auto initialHiddenStateShape = getShape(initialHiddenState);
     const auto initialCellStateShape = getShape(initialCellState);
     const auto weightsHiddenShape = getShape(weightsHidden);
+    const auto biasesShape = getShape(biases);
     const auto syncBufferShape = getShape(syncBuffer);
 
     TileInfo inputDataTile(inputDataShape);
     TileInfo initialHiddenStateTile(initialHiddenStateShape);
     TileInfo initialCellStateTile(initialCellStateShape);
     TileInfo weightsHiddenTile(weightsHiddenShape);
+    TileInfo biasesTile(biasesShape);
     TileInfo syncBufferTile(syncBufferShape);
 
     const auto batchSize = outputTile.shape[Dims4D::Act::N];
@@ -1133,9 +1168,12 @@ InputTiling backInferLSTMSequenceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     weightsHiddenTile.shape[Dims4D::Act::N] = numDirections;
     weightsHiddenTile.offsets[Dims4D::Act::N] = numDirectionsOffset;
 
-    const SmallVector<TileInfo> inputTiles = {std::move(inputDataTile), std::move(initialHiddenStateTile),
+    biasesTile.shape[Dims4D::Act::C] = numDirections;
+    biasesTile.offsets[Dims4D::Act::C] = numDirectionsOffset;
+
+    const SmallVector<TileInfo> inputTiles = {std::move(inputDataTile),        std::move(initialHiddenStateTile),
                                               std::move(initialCellStateTile), std::move(weightsHiddenTile),
-                                              std::move(syncBufferTile)};
+                                              std::move(biasesTile),           std::move(syncBufferTile)};
 
     log.trace("backInferLSTMCellSwKernelInputTile  outputTile '{0}'", outputTile);
     log.trace("backInferLSTMCellSwKernelInputTile  inputTiles '{0}'", inputTiles);
@@ -1168,6 +1206,60 @@ InputTiling backInferRandomUniformSwKernelInputTile(VPUIP::SwKernelOp swKernelOp
     }
 
     return TilingInfo{inputTiles};
+}
+
+InputTiling backInferRollSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile, Logger) {
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+
+    const auto shiftShape = getShape(swKernelOp.getInputs()[1]);
+    const auto axesShape = getShape(swKernelOp.getInputs()[2]);
+    TileInfo shiftTile(shiftShape);
+    TileInfo axesTile(axesShape);
+
+    return InputTiling{{outputTile, std::move(shiftTile), std::move(axesTile)}};
+}
+
+InputTiling backInferMemPermuteSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                                 Logger) {
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+    auto swKernelRun = *swKernelRuns.begin();
+    const auto reversedMemPermAttr = swKernelRun.getAttrs().value()[0];
+    // sw kernel uses reversed MemPerm reversing formula : newDim = maxDim - currentDim -1
+    // IF we want to get original dim : currentDim = maxDim -newDim -1 ( so same formula, we can reverse the
+    // reversedMemPerm)
+    const auto reversedMemPerm = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(reversedMemPermAttr));
+    auto ctx = swKernelOp->getContext();
+    const auto reversedAffineMapMemPerm = mlir::AffineMap::getPermutationMap(reversedMemPerm, ctx);
+    const auto originalMemPerm = reversePermutation(reversedAffineMapMemPerm);
+    // Logic below is same with transformations.cpp::prepareMemPermuteSwap, explained in more detail there.
+    const auto originalMemPermMap = mlir::AffineMap::getPermutationMap(originalMemPerm, ctx);
+
+    const auto inputLayoutMap =
+            mlir::cast<NDTypeInterface>(swKernelOp.getInputs()[0].getType()).getDimsOrder().toAffineMap(ctx);
+    const auto outputLayoutMap =
+            mlir::cast<NDTypeInterface>(swKernelOp.getOutputs()[0].getType()).getDimsOrder().toAffineMap(ctx);
+
+    auto reverseInputLayoutMap = mlir::inversePermutation(inputLayoutMap);
+
+    const auto mappingFromOutputToInputMemoryLayout = mlir::inversePermutation(originalMemPermMap);
+    const auto mappingOutputToInputLogicalLayout =
+            reverseInputLayoutMap.compose(mappingFromOutputToInputMemoryLayout).compose(outputLayoutMap);
+    const auto permutationOrder = DimsOrder::fromAffineMap(mappingOutputToInputLogicalLayout);
+
+    auto curTile = outputTile;
+
+    for (auto ind : irange(outputTile.shape.size())) {
+        const auto d = Dim(ind);
+        curTile.shape[permutationOrder.dimAt(d.ind())] = outputTile.shape[d];
+        curTile.axis[permutationOrder.dimAt(d.ind())] = outputTile.axis[d];
+        curTile.offsets[permutationOrder.dimAt(d.ind())] = outputTile.offsets[d];
+    }
+
+    return InputTiling{curTile};
 }
 
 InputTiling backInferMvn1SumSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile, Logger) {
@@ -1334,9 +1426,13 @@ InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const Small
         return backInferLSTMSequenceSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "random_uniform") {
         return backInferRandomUniformSwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "roll") {
+        return backInferRollSwKernelInputTile(swKernelOp, outputTile, log);
     } else if ((kernelEntryName == "detection_output_sort") && (arch == VPU::ArchKind::NPU37XX)) {
         return vpux::VPU::DetectionOutputSortOpInputTilingOnShave(swKernelOp, outputTile, tileId, outputTiles.size(),
                                                                   log);
+    } else if (kernelEntryName == "reorder") {
+        return backInferMemPermuteSwKernelInputTile(swKernelOp, outputTile, log);
     }
 
     SmallVector<TileInfo> inputTiles;
@@ -1371,7 +1467,7 @@ SmallVector<mlir::Attribute> getSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp sw
         return getInterpolateSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, inputTiling, outTile, log);
     } else if (kernelEntryName == "pad") {
         return getPadSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
-    } else if (kernelEntryName == "lstm_sequence") {
+    } else if ((kernelEntryName == "lstm_sequence") || (kernelEntryName == "lstm_dpu")) {
         return getLstmSequenceSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
     } else if (kernelEntryName == "gatherND") {
         return getGatherNDSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);

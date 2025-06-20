@@ -4,9 +4,13 @@
 //
 
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
 #include "vpux/utils/core/error.hpp"
+
+#include "openvino/op/convert.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/multiply.hpp"
 
 namespace ov::test::subgraph {
 using MatMulMixedPrecisionTestParams = std::tuple<ov::Shape, ov::Shape>;

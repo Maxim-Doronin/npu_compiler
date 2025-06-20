@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -535,7 +535,7 @@ func.func @BuildSubgraphWithViewLikeOp(%arg0: tensor<1x32x24x30xf16, {order = #N
       VPU.Yield %4
     }
     %cst = const.Declare tensor<16x32x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x2x2xf16, {order = #NHWC}>
-    %1 = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = 32 : i64} -> tensor<1x1x49x61xi32, {order = #NHWC}>
+    %1 = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = [32]} -> tensor<1x1x49x61xi32, {order = #NHWC}>
     %cst_0 = const.Declare tensor<1x32x49x61xi1, {order = #NHWC}> = dense<1> : tensor<1x32x49x61xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     %cst_1 = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %2 = VPU.VerticalFusion (%0 as %arg1: tensor<1x32x24x30xf16, {order = #NHWC}>, %cst_0 as %arg2: tensor<1x32x49x61xi1, {order = #NHWC}>, %1 as %arg3: tensor<1x1x49x61xi32, {order = #NHWC}>, %cst as %arg4: tensor<16x32x2x2xf16, {order = #NHWC}>, %cst_1 as %arg5: tensor<16x1x1x4xsi32>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x16x48x60xf16, {order = #NHWC}> {
@@ -545,7 +545,7 @@ func.func @BuildSubgraphWithViewLikeOp(%arg0: tensor<1x32x24x30xf16, {order = #N
     }
     return %2 : tensor<1x16x48x60xf16, {order = #NHWC}>
 
-    //CHECK:  [[SET:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = 32 : i64} -> tensor<1x1x49x61xi32, {order = #NHWC}>
+    //CHECK:  [[SET:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = [32]} -> tensor<1x1x49x61xi32, {order = #NHWC}>
     //CHECK:  VPU.VerticalFusion (%arg0 as %arg1: tensor<1x32x24x30xf16, {order = #NHWC}>, %cst_0 as %arg2: tensor<1x32x49x61xi1, {order = #NHWC}>, [[SET]] as %arg3: tensor<1x1x49x61xi32, {order = #NHWC}>, %cst_1 as %arg4: tensor<16x32x2x2xf16, {order = #NHWC}>, %cst as %arg5: tensor<16x1x1x4xsi32>)
     //CHECK-SAME: attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>, tilingStrategy = [1, 1, 2, 1]}
     //CHECK:  [[ELT:%.+]] = VPU.NCE.Eltwise(%arg1, %arg1)

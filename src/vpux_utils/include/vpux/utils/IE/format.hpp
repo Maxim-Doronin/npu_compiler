@@ -25,7 +25,7 @@ namespace llvm {
 template <>
 struct format_provider<ov::element::Type> final {
     static void format(const ov::element::Type& elemType, llvm::raw_ostream& stream, StringRef style) {
-        llvm::detail::build_format_adapter(elemType.get_type_name()).format(stream, style);
+        llvm::support::detail::build_format_adapter(elemType.get_type_name()).format(stream, style);
     }
 };
 
@@ -41,7 +41,7 @@ struct format_provider<ov::PartialShape> {
         std::ostringstream strm;
         strm << pshape;
 
-        llvm::detail::build_format_adapter(strm.str()).format(stream, style);
+        llvm::support::detail::build_format_adapter(strm.str()).format(stream, style);
     }
 };
 

@@ -4,6 +4,10 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/transpose.hpp"
+
 namespace ov::test {
 
 class MatMulWithTransposeTest_NPU3720 :

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vcl_tests_common.h"
@@ -10,6 +10,24 @@
 #include <regex>
 
 namespace VCLTestsUtils {
+
+uint8_t* allocateBlob(uint64_t size) {
+    uint8_t* ptr = static_cast<uint8_t*>(std::calloc(static_cast<size_t>(size), sizeof(uint8_t)));
+
+    if (ptr == nullptr) {
+        throw std::runtime_error("Memory allocation failed in allocateBlob!");
+    }
+
+    return ptr;
+}
+
+void deallocateBlob(uint8_t* ptr) {
+    if (ptr == nullptr) {
+        throw std::runtime_error("Pointer is nullptr in deallocateBlob!");
+    }
+
+    free(ptr);
+}
 
 vcl_result_t VCLTestsCommon::initModelData(const char* netName, const char* weightName) {
     vcl_result_t ret = VCL_RESULT_SUCCESS;

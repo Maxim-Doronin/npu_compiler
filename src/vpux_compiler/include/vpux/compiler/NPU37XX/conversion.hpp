@@ -27,7 +27,7 @@ std::unique_ptr<mlir::Pass> createConvertIEToVPUNCEPass(Logger log = Logger::glo
 void buildLowerIE2VPUPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 void buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 void buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, bool enableInPlaceBufferization,
-                                 Logger log = Logger::global());
+                                 bool useMemrefForHostFunctionBufferization, Logger log = Logger::global());
 
 //
 // Registration

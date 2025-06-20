@@ -101,6 +101,9 @@ private:
     // based on availability. Compiler needs to know this to correctly model
     // this parallelism as this is not modeled on TaskOp level
     mlir::DenseMap<VPU::ExecutorKind, int64_t> _numOfExecutorQueuesForWhichAssignmentIsAtInference;
+    // Flag to discriminate between legacy approach for assignment of ActShave engines (at inference time) and the
+    // approach with dedicated FIFOs for each engine with tasks assigned by the compiler.
+    bool _supportsDedicatedActShaveQueues = true;
     mlir::DenseMap<uint32_t, mlir::Operation*> _VIdToBarrierOpMap;
 
     Logger _log;

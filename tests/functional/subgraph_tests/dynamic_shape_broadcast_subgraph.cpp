@@ -10,8 +10,13 @@
 
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include <openvino/core/type/element_type.hpp>
-#include <openvino/opsets/opset1.hpp>
-#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset1_decl.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+
+#include "openvino/op/broadcast.hpp"
+#include "openvino/op/equal.hpp"
+#include "openvino/op/select.hpp"
+#include "openvino/op/shape_of.hpp"
 
 using namespace ov::test;
 using namespace ov::test::utils;
@@ -137,16 +142,16 @@ const std::vector<ov::op::BroadcastType> broadcastModes = {ov::op::BroadcastType
 //                |    Broadcast   |
 //                *----------------*
 const std::vector<std::vector<ov::test::InputShape>> inShapesShapeOfBroadcastDataStaticUnknownTargetShape = {
-        {staticShape(1), {{1, 4, ov::Dimension(1, 5)}, {{1, 4, 4}}}},
+        {generateTestShape(1), {{1, 4, ov::Dimension(1, 5)}, {{1, 4, 4}}}},
 
-        {staticShape(1, 1), {{1, 1, ov::Dimension(1, 5)}, {{1, 1, 3}}}},
+        {generateTestShape(1, 1), {{1, 1, ov::Dimension(1, 5)}, {{1, 1, 3}}}},
 
-        {staticShape(4, 1, 1), {{1, 4, ov::Dimension(1, 5), ov::Dimension(1, 5)}, {{1, 4, 2, 2}}}},
+        {generateTestShape(4, 1, 1), {{1, 4, ov::Dimension(1, 5), ov::Dimension(1, 5)}, {{1, 4, 2, 2}}}},
 
         /* E#151546 this case fails sporadically */
         /* {staticShape(1, 1, 1), {{ov::Dimension(1, 10), 1, ov::Dimension(1, 5)}, {{8, 1, 3}}}}, */
 
-        {staticShape(1, 16, 1, 1), {{1, 16, 1, ov::Dimension(1, 5)}, {{1, 16, 1, 3}}}}};
+        {generateTestShape(1, 16, 1, 1), {{1, 16, 1, ov::Dimension(1, 5)}, {{1, 16, 1, 3}}}}};
 
 //     *---------------*
 //     | Dynamic shape |

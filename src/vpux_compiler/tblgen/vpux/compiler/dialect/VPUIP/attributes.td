@@ -21,6 +21,12 @@ class VPUIP_I64EnumAttr <string name, string summary, list<I64EnumAttrCase> case
     let genSpecializedAttr = 0;
 }
 
+class VPUIP_I64BitEnumAttr <string name, string summary, list<I64BitEnumAttrCase> cases> :
+        I64BitEnumAttr<name, summary, cases> {
+    let cppNamespace = "vpux::VPUIP";
+    let genSpecializedAttr = 0;
+}
+
 class VPUIP_EnumAttr <EnumAttrInfo enumInfo, string name = "", list <Trait> traits = []> :
         EnumAttr<VPUIP_Dialect, enumInfo, name, traits> {
     let assemblyFormat = "`<`$value`>`";
@@ -376,6 +382,121 @@ def VPUIP_ObjectAttr : VPUIP_Attr<"Object"> {
     }];
     let parameters = (ins
         "mlir::StringAttr":$object
+    );
+}
+
+//
+// VPUIPInternalDataFlow
+//
+
+// This attribute is used to describe the internal data flow of an op while leaving its input and output operands untouched.
+// This is useful when the operands need to remain in their original form for other ops.
+// For example, a SpaceToDepthDMAOp with mode = BLOCKS_FIRST and block_size = 2
+//  - input: memref<1x4x2x12xf16, #NHWC>
+//  - output: memref<1x16x1x6xf16, #NHWC>
+// behaves internally like a permute DMA with
+//  - input: memref<1x4x1x2x6x2xf16, #map0>, where #map0 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d2, d3, d4, d5, d1)>
+//  - output: memref<1x2x2x4x1x6xf16, #map1> where #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d4, d5, d1, d2, d3)>
+//
+// The mapping order describes how each logical dim from the input maps to a logical dim from the output.
+// For the above example, we have
+//  - mappingOrder: #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d3, d5, d1, d2, d4)>
+//
+// The loop order describes the order in which the input logical dims should be iterated over.
+// For the above example, for a simple continuous iteration, we have
+//  - loopOrder: #map3 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
+
+def VPUIP_InternalDataFlow : VPUIP_Attr<"InternalDataFlow"> {
+    let description = [{
+        Attribute describing internal data flow of an Op.
+    }];
+
+    let parameters = (ins
+        "mlir::Type":$inputType,
+        "mlir::Type":$outputType,
+        "mlir::AffineMapAttr":$mappingOrder,    // Order representing the transpose from input to output
+        "mlir::AffineMapAttr":$loopOrder        // Order in which dimensions from input and output will be iterated over
+    );
+
+    let assemblyFormat = "`<` struct(params) `>`";
+}
+
+//
+// VPUIP_PhysicalBarrierRangeAttr
+//
+
+def VPUIP_PhysicalBarrierRangeAttr : VPUIP_Attr<"PhysicalBarrierRange"> {
+    let description = [{
+        "Represents a range of PIDs: [start, end]"
+    }];
+
+    let parameters = (ins
+        "mlir::IntegerAttr":$start,
+        "mlir::IntegerAttr":$end
+    );
+
+    let extraClassDeclaration = [{
+        /// Returns the number of PIDs in this range (inclusive).
+        int64_t getPidCount() const {
+            return getEnd().getInt() - getStart().getInt() + 1;
+        };
+
+        /// Returns the first PID in this range
+        int64_t getFirstPid() const {
+            return getStart().getInt();
+        };
+    }];
+
+    let assemblyFormat = "`<` $start `to` $end `>`";
+}
+
+def VPUIP_DynamicSkipMode :
+    VPUIP_I64EnumAttr<
+        "DynamicSkipMode",
+        "Dynamic skip mode",
+        [
+            I64EnumAttrCase<"DISABLED",  0>,
+            I64EnumAttrCase<"SPATIAL_ONLY", 1>,
+            I64EnumAttrCase<"SPATIAL_AND_OUTPUT_CHANNELS",  2>,
+            I64EnumAttrCase<"SPATIAL_AND_INPUT_CHANNELS",   3>
+        ]
+    > {
+}
+
+def VPUIP_DynamicSkipModeAttr : VPUIP_EnumAttr<VPUIP_DynamicSkipMode, "dynamic_skip_mode">;
+
+def VPUIP_DynamicAdjustMode :
+        VPUIP_I64BitEnumAttr<
+            "DynamicAdjustMode",
+            "Dynamic adjust mode",
+            [
+                I64BitEnumAttrCase<"DISABLED",          0x0>,
+                I64BitEnumAttrCase<"OUTPUT_CHANNELS",   0x1>,
+                I64BitEnumAttrCase<"INPUT_CHANNELS",    0x2>
+            ]
+        > {
+}
+
+def VPUIP_DynamicAdjustModeAttr : VPUIP_EnumAttr<VPUIP_DynamicAdjustMode, "dynamic_adjust_mode">;
+
+def VPUIP_DynamicScaleConfigAttr : VPUIP_Attr<"DynamicScaleConfig"> {
+    let description = [{
+        Config for NCE dynamic scaling of compute
+
+        dynamicSkipMode: config of how the tasks should be skipped; either on a invariant or variant basis
+        dynamicAdjustMode: config of how the tasks should be adjusted; mostly on a invariant level
+
+        ppeOverwriteData: if present, data which is still computed yet invalid, will be overwritten with
+        this pattern
+        invariantPrimitiveId: if present, use primitives and dynamic scaling feature on invariant level
+    }];
+
+    let parameters = (ins
+        "DynamicSkipModeAttr":$dynamicSkipMode,
+        "DynamicAdjustModeAttr":$dynamicAdjustMode,
+
+        OptionalParameter<"mlir::IntegerAttr">:$ppeOverwriteData,
+        OptionalParameter<"mlir::ArrayAttr">:$invariantPrimitiveId // IDs for invariant primitives A and B
     );
     let assemblyFormat = "`<` struct(params) `>`";
 }

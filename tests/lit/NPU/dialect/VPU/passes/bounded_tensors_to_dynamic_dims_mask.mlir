@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --bounded-tensors-to-dynamic-dims-mask %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @EmptyFunction
 // CHECK-SAME: [[ARG0:%.+]]: tensor<32x32x64xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[1, 1, 0]> : tensor<3xsi64>, order = #CHW}>
 func.func @EmptyFunction(%arg0: tensor<?x?x64xf16, {bounds = #const.OpaqueI64Elements<[32, 32, 64]> : tensor<3xsi64>, order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}>) -> tensor<?x?x64xf16, {bounds = #const.OpaqueI64Elements<[32, 32, 64]> : tensor<3xsi64>, order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>}> {

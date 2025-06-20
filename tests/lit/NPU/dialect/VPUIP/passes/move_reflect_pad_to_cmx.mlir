@@ -6,6 +6,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --move-reflect-pad-to-cmx %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 !qElemType = !quant.uniform<u8:f16, 0.0038406767097173954>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 

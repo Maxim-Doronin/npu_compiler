@@ -12,20 +12,21 @@ include "mlir/Dialect/Math/IR/MathOps.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 
-//
-// IE.Cos -> math.Cos
-//
+// The following utilities convert tensors to and from types that can be
+// directly used as linalg ops. The conversions keep the same memory
+// representation, so they will end up being no-ops.
 
-def createCosOp :
+def toLinalgLayout :
         NativeCodeCall<[{
-            $_builder.create<mlir::math::CosOp>($_loc, $0)
+           vpux::ShaveCodeGen::convertToLinalgValue($0, $_builder)
         }]>;
 
-def RewriteCos :
-        Pat<
-            (IE_CosOp $input),
-            (createCosOp $input)
-        >;
+def fromLinalgLayout :
+        NativeCodeCall<[{
+           vpux::ShaveCodeGen::convertFromLinalgValue($0, $1.getType(), $_builder)
+        }]>;
+
+// Utilities
 
 def createFastMathAttr :
         NativeCodeCall<[{
@@ -34,25 +35,19 @@ def createFastMathAttr :
                        static_cast<mlir::arith::FastMathFlags>($0.getValue().getLimitedValue()))
         }]>;
 
-//
-// IE.Log -> math.Log
-//
+// Conversion utility for unary operations.
+multiclass SCGUnary<Op in_op, Op out_op, Attr fmf> {
+   def _pat : Pat<(in_op $input),
+                  (fromLinalgLayout
+                      (out_op (toLinalgLayout $input),
+                              (createFastMathAttr fmf)),
+                      $input)>;
+}
 
-def RewriteLog :
-        Pat<
-            (IE_LogOp $input),
-            (Math_LogOp $input, (createFastMathAttr FASTMATH_APPROX_FUNC))
-        >;
+// Conversion patterns
 
-
-//
-// IE.Exp -> math.Exp
-//
-
-def RewriteExp :
-        Pat<
-            (IE_ExpOp $input),
-            (Math_ExpOp $input, (createFastMathAttr FASTMATH_APPROX_FUNC))
-        >;
+defm LogPat : SCGUnary<IE_LogOp, Math_LogOp, FASTMATH_APPROX_FUNC>;
+defm ExpPat : SCGUnary<IE_ExpOp, Math_ExpOp, FASTMATH_APPROX_FUNC>;
+defm SqrtPat : SCGUnary<IE_SqrtOp, Math_SqrtOp, FASTMATH_APPROX_FUNC>;
 
 #endif

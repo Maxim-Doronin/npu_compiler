@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg40XX/work_item_rewriter.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
@@ -29,6 +30,7 @@ mlir::LogicalResult WorkItemRewriter::matchAndRewrite(VPUASM::WorkItemOp origOp,
 
     uint64_t descPtrOffset = 0;
     TaskType workItemType;
+    auto listIndex = realTaskIndex.getListIdx();
 
     switch (origOp.getTaskType()) {
     case VPURegMapped::TaskType::DPUVariant:
@@ -41,6 +43,12 @@ mlir::LogicalResult WorkItemRewriter::matchAndRewrite(VPUASM::WorkItemOp origOp,
     case VPURegMapped::TaskType::ActKernelInvocation:
         workItemType = TaskType::KERNEL;
         descPtrOffset = static_cast<uint64_t>(VPUMI40XX::generateTileMask({realTaskIndex.getTileIdx()}));
+        // value 0 for Fields::wi_sub_unit is reserved for indicating to the RT that no dedicated Shave FIFO algorithm
+        // was used (it is also useful for backward compatibility reasons - old blobs). Therefore in case dedicated
+        // Shave FIFOs were assigned, increment the list index (and RT will decrement it on its side).
+        if (VPU::isFifoPerShaveEngineEnabled(origOp)) {
+            listIndex++;
+        }
         break;
     default:
         return origOp.emitOpError("Invalid workItem task type");
@@ -50,12 +58,12 @@ mlir::LogicalResult WorkItemRewriter::matchAndRewrite(VPUASM::WorkItemOp origOp,
     workItemDescriptor.write<Fields::desc_ptr>(descPtrOffset);
     workItemDescriptor.write<Fields::wi_type>(workItemType);
     workItemDescriptor.write<Fields::wi_unit>(realTaskIndex.getTileIdx());
-    workItemDescriptor.write<Fields::wi_sub_unit>(realTaskIndex.getListIdx());
+    workItemDescriptor.write<Fields::wi_sub_unit>(listIndex);
     workItemDescriptor.write<Fields::next_workitem_idx>(nextWorkItemIdxValue);
 
-    auto workItemDescriptorAttr = WorkItemAttr::get(rewriter.getContext(), std::move(workItemDescriptor));
     rewriter.create<NPUReg40XX::WorkItemOp>(origOp.getLoc(), origOp.getSymNameAttr(), origOp.getTaskTypeAttr(),
-                                            origOp.getFirstTaskAttr(), workItemDescriptorAttr);
+                                            origOp.getFirstTaskAttr(), std::move(workItemDescriptor));
+
     rewriter.eraseOp(origOp);
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
     return mlir::success();

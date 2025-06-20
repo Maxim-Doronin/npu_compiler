@@ -61,7 +61,8 @@ bool VPU::DequantizeOp::isOperationSplitOverKernelCompatible(ShapeRef outputShap
     auto numOfCluster = getNumTiles(*this);
     //  Currently dequantize is used for filters of convolutions which are tiled on OC for SOK
     auto OC = outputShape[Dims4D::Filter::OC];
-    return OC >= NCEInvariant::VPU_CHANNEL_ALIGNMENT * numOfCluster;
+    // Dequantize is tiled like a hardware op so alignment must be enforced after temporal/cluster tiling
+    return OC >= NCEInvariant::VPU_CHANNEL_ALIGNMENT * numOfCluster && OC % NCEInvariant::VPU_CHANNEL_ALIGNMENT == 0;
 }
 
 //
@@ -95,4 +96,21 @@ bool vpux::VPU::DequantizeOp::supportCycleCostCalculation() {
 
 bool vpux::VPU::DequantizeOp::isVFSupported() {
     return true;
+}
+
+//
+// TilingBuilderOpInterface
+//
+
+mlir::FailureOr<OutputTiling> vpux::VPU::DequantizeOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
+    // Even though Dequantize is a SW op, want to tile it like a NCE op to ensure better VF support.
+    return vpux::getHWLayerTilingStrategy(this->getOperation(), tilingMode, log);
+}
+
+vpux::InputTiling vpux::VPU::DequantizeOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger) {
+    return TilingInfo(outputTile);
+}
+
+void vpux::VPU::DequantizeOp::adjustAttrs(const TilingInfo& /*inputTiling*/, const TileInfo& /*outputTile*/) {
+    // Do nothing
 }

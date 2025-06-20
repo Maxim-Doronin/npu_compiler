@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --pack-nested-modules %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // Note: This test simulates a common use-case related to weight separation.
 module @InitAndWrapper {
     net.NetworkInfo entryPoint : @main_wrapper inputsInfo : {

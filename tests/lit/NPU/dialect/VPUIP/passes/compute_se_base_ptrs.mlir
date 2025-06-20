@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --mlir-print-elementsattrs-with-hex-if-larger=-1 --compute-se-base-ptrs %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -27,7 +28,7 @@
 func.func @SETableSingleCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !Output_CMX {
     %input_se = VPUIP.StorageElementTable {
                 dataShape = [1, 16, 3, 3], dataElemType = f16,
-                seSize = 16, seDepth = 1
+                seSize = [16], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se)
         -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR>
@@ -96,7 +97,7 @@ func.func @SETableSingleCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR
     // CHECK:       VPUIP.StorageElementTable {
     // CHECK-SAME:    basePtrs = dense<0> : tensor<9xi32>,
     // CHECK-SAME:    dataElemType = f16, dataShape = [1, 16, 3, 3],
-    // CHECK-SAME:    seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x3x3xi32, #NHWC>
 }
 
@@ -170,7 +171,7 @@ func.func @SETableSingleCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR
 func.func @SETableMultiCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !OutputDistributed {
     %input_se = VPUIP.StorageElementTable {
                 dataShape = [1, 16, 3, 3], dataElemType = f16,
-                seSize = 16, seDepth = 1
+                seSize = [16], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se)
         -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR>
@@ -232,7 +233,7 @@ func.func @SETableMultiCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR)
     // CHECK-SAME:                      0, 0, 0,
     // CHECK-SAME:                      1, 1, 1]> : tensor<9xi32>,
     // CHECK-SAME:    dataElemType = f16, dataShape = [1, 16, 3, 3],
-    // CHECK-SAME:    seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x3x3xi32, #NHWC>
 }
 
@@ -308,7 +309,7 @@ func.func @Interpolate(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !Out
                 dataShape = [1, 16, 3, 3], dataElemType = f16,
                 seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                             nearest_mode = <FLOOR>,  offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
-                seSize = 16, seDepth = 1
+                seSize = [16], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
@@ -385,7 +386,7 @@ func.func @Interpolate(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !Out
     // CHECK-SAME:                                scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:                                nearest_mode = <FLOOR>,
     // CHECK-SAME:                                offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
-    // CHECK-SAME:    seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x6x6xi32, #NHWC>
 }
 
@@ -461,7 +462,7 @@ func.func @InterpolateSESize(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -
                 dataShape = [1, 32, 3, 3], dataElemType = f16,
                 seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                             nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
-                seSize = 16, seDepth = 2
+                seSize = [16, 16], seDepth = 2
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
@@ -538,7 +539,7 @@ func.func @InterpolateSESize(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -
     // CHECK-SAME:                                scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:                                nearest_mode = <FLOOR>,
     // CHECK-SAME:                                offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
-    // CHECK-SAME:    seDepth = 2 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 2 : i64, seSize = [16, 16]
     // CHECK-SAME:  } -> memref<1x2x6x6xi32, #NHWC>
 }
 
@@ -614,7 +615,7 @@ func.func @InterpolateOutputOffsets(%input_data: !Input_DDR, %input_sm: !InputSM
                 dataShape = [1, 16, 3, 3], dataElemType = f16,
                 seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                             nearest_mode = <FLOOR>,  offsets = [0, 0, 1, 0], sizes = [1, 32, 4, 6]>,
-                seSize = 16, seDepth = 1
+                seSize = [16], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
@@ -689,7 +690,7 @@ func.func @InterpolateOutputOffsets(%input_data: !Input_DDR, %input_sm: !InputSM
     // CHECK-SAME:                                scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:                                nearest_mode = <FLOOR>,
     // CHECK-SAME:                                offsets = [0, 0, 1, 0], sizes = [1, 32, 4, 6]>,
-    // CHECK-SAME:    seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x4x6xi32, #NHWC>
 }
 
@@ -767,13 +768,13 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
                   dataShape = [1, 16, 4, 6], dataElemType = f16,
                   seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                               offsets = [0, 0, 0, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>,
-                  seSize = 16, seDepth = 1
+                  seSize = [16], seDepth = 1
               } -> !InputSE_DDR_Tile
     %input_se_1 = VPUIP.StorageElementTable {
                   dataShape = [1, 16, 4, 6], dataElemType = f16,
                   seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                               offsets = [0, 0, 3, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>,
-                  seSize = 16, seDepth = 1
+                  seSize = [16], seDepth = 1
               } -> !InputSE_DDR_Tile
 
     %input_sub_1 = VPUIP.SubView %input_data [0, 0, 2, 0] [1, 16, 4, 6]
@@ -941,7 +942,7 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     // CHECK-SAME:    seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
     // CHECK-SAME:                                scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:                                offsets = [0, 0, 0, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>,
-    // CHECK-SAME:    seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x11x20xi32, #NHWC, @DDR>
 
     // CHECK:       VPUIP.StorageElementTable {
@@ -962,7 +963,7 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     // CHECK-SAME:    seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
     // CHECK-SAME:                                scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:                                offsets = [0, 0, 3, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>,
-    // CHECK-SAME:    seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x11x20xi32, #NHWC, @DDR>
 }
 
@@ -1038,7 +1039,7 @@ func.func @InterpolateBilinearAlignCornersOutputOffsets(%input_data: !Input_DDR,
                 dataShape = [1, 16, 2, 2], dataElemType = f16,
                 seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                             offsets = [0, 0, 1, 1], sizes = [1, 16, 5, 5], initial_input_shape = [1, 16, 3, 3], initial_output_shape = [1, 16, 7, 7]>,
-                seSize = 16, seDepth = 1
+                seSize = [16], seDepth = 1
             } -> !InputSE_DDR
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
             seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
@@ -1114,6 +1115,6 @@ func.func @InterpolateBilinearAlignCornersOutputOffsets(%input_data: !Input_DDR,
     // CHECK-SAME:                                scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:                                offsets = [0, 0, 1, 1], sizes = [1, 16, 5, 5],
     // CHECK-SAME:                                initial_input_shape = [1, 16, 3, 3], initial_output_shape = [1, 16, 7, 7]>,
-    // CHECK-SAME:    seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x5x5xi32, #NHWC>
 }

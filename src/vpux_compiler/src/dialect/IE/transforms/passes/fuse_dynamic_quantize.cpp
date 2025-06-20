@@ -91,8 +91,8 @@ void FuseDynamicQuantizePass::safeRunOnFunc() {
 
     const auto createConvert = [&](mlir::OpBuilder& builder, mlir::Value newInput, mlir::Value origInput,
                                    mlir::Location loc) -> mlir::Value {
-        const auto newEltType = newInput.getType().cast<NDTypeInterface>().getElementType();
-        const auto origEltType = origInput.getType().cast<NDTypeInterface>().getElementType();
+        const auto newEltType = mlir::cast<NDTypeInterface>(newInput.getType()).getElementType();
+        const auto origEltType = mlir::cast<NDTypeInterface>(origInput.getType()).getElementType();
         if (newEltType == origEltType) {
             return newInput;
         }

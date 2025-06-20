@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --split-input-file --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @FoldTile
 func.func @FoldTile(%arg0: tensor<3x4x2xf32>) -> tensor<3x4x2xf32> {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 1, 1]} : tensor<3x4x2xf32> -> tensor<3x4x2xf32>

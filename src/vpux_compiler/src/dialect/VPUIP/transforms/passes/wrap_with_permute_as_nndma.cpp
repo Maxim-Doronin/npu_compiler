@@ -19,6 +19,7 @@
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/Operation.h>
@@ -33,6 +34,14 @@ namespace vpux::VPUIP {
 
 using namespace vpux;
 namespace {
+
+template <typename T = mlir::Operation*>
+T getTheOnlyUser(mlir::Operation* op) {
+    auto users = op->getUsers();
+    size_t usersSize = std::distance(users.begin(), users.end());
+    VPUX_THROW_WHEN(usersSize != 1, "Expected exactly one user");
+    return mlir::dyn_cast<T>(*users.begin());
+}
 
 vpux::NDTypeInterface changeShape(vpux::NDTypeInterface originType, ShapeRef shape, ShapeRef offset) {
     const auto elemType = originType.getElementType();
@@ -100,13 +109,13 @@ VPUIP::DistributedBufferType createDMADistributedTensorType(mlir::MLIRContext* c
 SmallVector<mlir::Operation*> getPureViewLikeOpChains(mlir::Operation* op) {
     VPUX_THROW_UNLESS(op->hasOneUse(), "Op has more than one uses at '{0}'", op->getLoc());
     SmallVector<mlir::Operation*> viewLikeOps;
-    auto user = *op->getUsers().begin();
-    while (user->hasOneUse()) {
+    auto user = getTheOnlyUser(op);
+    while (user != nullptr && user->hasOneUse()) {
         if (!mlir::isa<VPUIP::GenericReshapeOp, VPUIP::PermuteCastOp, VPUIP::ShapeCastOp>(user) && user->hasOneUse()) {
             break;
         }
         viewLikeOps.push_back(user);
-        user = *user->getUsers().begin();
+        user = getTheOnlyUser(user);
     }
     return viewLikeOps;
 }
@@ -157,7 +166,7 @@ bool checkPermutePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         return false;
     }
 
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
+    auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
     if (copyBackToDDROp == nullptr || !copyBackToDDROp->hasOneUse() ||
         vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
         return false;
@@ -170,24 +179,24 @@ bool checkPermutePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
 }
 
 // Check pattern 1: Copy(ddr->cmx) -> sw.kernel(memPermute) -> Copy (cmx-> ddr) -> Copy (ddr-> cmx)
-// Check pattern 2: Copy(ddr->cmx) -> sw.kernel(memPermute) -> Copy (cmx-> ddr) -> ClusterCopy (ddr-> cmx)
+// Check pattern 2: Copy(ddr->cmx) -> sw.kernel(memPermute) -> Copy (cmx-> ddr) -> DistributedCopy (ddr-> cmx)
 bool checkPermuteWithCopyPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
     if (!checkPermutePattern(swKernelOp, log)) {
         return false;
     }
 
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
+    auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
     VPUX_THROW_WHEN(vpux::VPUIP::hasDistributedOperand(copyBackToDDROp), "Copy back to DDR can't be distributed");
 
-    auto copyToNCEOp = *(copyBackToDDROp->getUsers().begin());
+    auto copyToNCEOp = getTheOnlyUser(copyBackToDDROp);
     if (vpux::VPUIP::hasDistributedOperand(copyToNCEOp)) {
-        // It is difficult to use the general method to fuse Permute the with next Cluster Copy Op
+        // It is difficult to use the general method to fuse Permute the with next Distributed Copy Op
         // which has the stride. For example, activation with NHWC layout, need tile at Channel.
         // It is necessary to check the split buffer is continuous.
-        const auto clusterOutput = VPUIP::getLayerOutputs(copyToNCEOp)[0];
-        const auto clusterOutputType = mlir::cast<vpux::NDTypeInterface>(clusterOutput.getType());
+        const auto distributedOutput = VPUIP::getLayerOutputs(copyToNCEOp)[0];
+        const auto distributedOutputType = mlir::cast<vpux::NDTypeInterface>(distributedOutput.getType());
 
-        if (!isSplitContinuousBufferType(mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(clusterOutputType))) {
+        if (!isSplitContinuousBufferType(mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(distributedOutputType))) {
             return false;
         }
         auto permuteInType = mlir::dyn_cast<vpux::NDTypeInterface>(swKernelOp.getOperand(0).getType());
@@ -201,10 +210,12 @@ bool checkPermuteWithCopyPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
 
         auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
         const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+        VPUX_THROW_WHEN(dmaPortNum <= 0, "Invalid number of DMA ports; should be > 0, but actual value is {0}",
+                        dmaPortNum);
 
         auto dmaSubShapes = VPUIP::getPermuteDMASubInputShapes(VPU::getArch(swKernelOp), permuteInType, permuteOutType,
                                                                memPerm, dmaPortNum, log);
-        // If fuse Permute with next Cluster Copy Op and PermuteDMA need unroll to severl Sub DMA tasks,
+        // If fuse Permute with next Distributed Copy Op and PermuteDMA need unroll to severl Sub DMA tasks,
         // Find a scenerior has regression. Need investigate the root cause and find a cost model for that.
         // For example: Shape size with 1x4420x1x2, mode is DUPLICATED.
         // It will be unrolled to 18 PermuteDMA with shape size 1x256x1x2 (17) + 1x68x1x2 (1)
@@ -214,7 +225,7 @@ bool checkPermuteWithCopyPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
 
         if (!VPUIP::doesPermuteDMATileDimSupportWrapInCluster(
                     permuteInType, permuteOutType, memPerm,
-                    mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(clusterOutputType), log)) {
+                    mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(distributedOutputType), log)) {
             return false;
         }
     }
@@ -228,8 +239,8 @@ bool checkPermuteWithCopyPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
     return childOutputType.getMemoryKind() == VPU::MemoryKind::CMX_NN;
 }
 
-// Check pattern: TilingCopy(CMX->DDR) -> Copy(DDR->CMX) -> sw.kernel(memPermute)
-bool checkTilingCopyWithPermutePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
+// Check pattern: DistributedCopy(CMX->DDR) -> Copy(DDR->CMX) -> sw.kernel(memPermute)
+bool checkDistributedCopyWithPermutePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
     log.trace("Got sw kernel op at {0}. Try to find permute pattern.", swKernelOp->getLoc());
     if (!checkPermuteWithoutCopyBackPattern(swKernelOp, log)) {
         return false;
@@ -315,14 +326,17 @@ bool isExpandOpWrapable(VPUIP::ExpandOp expandOp, Logger log) {
         return false;
     }
 
-    auto copyOutOp = *(expandOp->getUsers().begin());
+    auto copyOutOp = getTheOnlyUser(expandOp);
+    if (copyOutOp == nullptr) {
+        return false;
+    }
     if (vpux::VPUIP::hasDistributedOperand(copyOutOp)) {
-        // It is difficult to use the general method to fuse Expand the with next Cluster Copy Op
+        // It is difficult to use the general method to fuse Expand the with next Distributed Copy Op
         // which has the stride. For example, activation with NHWC layout, need tile at Channel.
         // It is necessary to check the split buffer is continuous.
-        const auto clusterOutput = VPUIP::getLayerOutputs(copyOutOp)[0];
-        const auto clusterOutputType = mlir::cast<VPUIP::DistributedBufferType>(clusterOutput.getType());
-        if (!isSplitContinuousBufferType(clusterOutputType)) {
+        const auto distributedOutput = VPUIP::getLayerOutputs(copyOutOp)[0];
+        const auto distributedOutputType = mlir::cast<VPUIP::DistributedBufferType>(distributedOutput.getType());
+        if (!isSplitContinuousBufferType(distributedOutputType)) {
             return false;
         }
     }
@@ -343,7 +357,7 @@ bool isExpandOpWrapable(VPUIP::ExpandOp expandOp, Logger log) {
 }
 
 // Check pattern 1: Expand(ddr->ddr) -> Copy (ddr->cmx) (U8 precision)
-// Check pattern 2: Expand(ddr->ddr) -> ClusterCopy (ddr->cmx) (U8 precision)
+// Check pattern 2: Expand(ddr->ddr) -> DistributedCopy (ddr->cmx) (U8 precision)
 bool checkExpandU8Pattern(VPUIP::ExpandOp expandOp, Logger log) {
     log.trace("Got ExpandOp at {0}. Try to find fuse pattern.", expandOp->getLoc());
 
@@ -393,24 +407,38 @@ bool checkExpandFP16Pattern(VPUIP::ExpandOp expandOp, Logger log) {
     // Legal Pattern: "Expand -> NceExceptConv x N -> Subview"
     //   Multiple non-conv NCE operations between Expand and Subview are supported
 
-    auto potentialCopyOrNceOp = *expandOp->getUsers().begin();
-    while (isCopyOpWithOneUser(potentialCopyOrNceOp) || isNceButNotConvOpWithOneUser(potentialCopyOrNceOp)) {
-        potentialCopyOrNceOp = *potentialCopyOrNceOp->getUsers().begin();
+    auto potentialCopyOrNceOperand = expandOp->getUses().begin();
+    while (isCopyOpWithOneUser(potentialCopyOrNceOperand->getOwner()) ||
+           isNceButNotConvOpWithOneUser(potentialCopyOrNceOperand->getOwner())) {
+        potentialCopyOrNceOperand = potentialCopyOrNceOperand->getOwner()->getUses().begin();
     }
 
     const auto expandInput = to_small_vector(getShape(expandOp.getInput()));
     const auto expandBegin = parseIntArrayAttr<int64_t>(expandOp.getPadsBegin());
 
-    auto subviewOp = mlir::dyn_cast<VPUIP::SubViewOp>(potentialCopyOrNceOp);
-    if (subviewOp == nullptr || subviewOp.getStaticStrides().has_value()) {
-        return false;
-    }
-
-    const auto staticOffsets = parseIntArrayAttr<int64_t>(subviewOp.getStaticOffsets());
-    const auto staticSizes = parseIntArrayAttr<int64_t>(subviewOp.getStaticSizes());
-    if (expandBegin[Dims4D::Act::C.ind()] != staticOffsets[Dims4D::Act::C.ind()] ||
-        staticSizes[Dims4D::Act::C.ind()] != expandInput[Dims4D::Act::C.ind()]) {
-        return false;
+    if (potentialCopyOrNceOperand->getOwner() != nullptr) {
+        auto subviewOp = mlir::dyn_cast<VPUIP::SubViewOp>(potentialCopyOrNceOperand->getOwner());
+        if (subviewOp != nullptr) {
+            if (subviewOp.getStaticStrides().has_value()) {
+                return false;
+            }
+            const auto staticOffsets = parseIntArrayAttr<int64_t>(subviewOp.getStaticOffsets());
+            const auto staticSizes = parseIntArrayAttr<int64_t>(subviewOp.getStaticSizes());
+            if (expandBegin[Dims4D::Act::C.ind()] != staticOffsets[Dims4D::Act::C.ind()] ||
+                staticSizes[Dims4D::Act::C.ind()] != expandInput[Dims4D::Act::C.ind()]) {
+                return false;
+            }
+        } else {
+            // In case there is no SubView operation, it is possible for the NCE op(s) to produce the channels unpadded
+            // directly
+            if (expandBegin[Dims4D::Act::C.ind()] != 0) {
+                return false;
+            }
+            const auto operandType = mlir::cast<NDTypeInterface>(potentialCopyOrNceOperand->get().getType());
+            if (operandType.getShape()[Dims4D::Act::C] != expandInput[Dims4D::Act::C.ind()]) {
+                return false;
+            }
+        }
     }
 
     return isExpandOpWrapable(expandOp, log);
@@ -419,7 +447,7 @@ bool checkExpandFP16Pattern(VPUIP::ExpandOp expandOp, Logger log) {
 // Check pattern 1: Expand (NCHW) -> Copy(ddr->cmx) -> sw.kernel(memPermute to NHWC) -> Copy (cmx-> ddr)
 //                   -> Copy (ddr-> cmx) (U8 precision)
 // Check pattern 2: Expand (NCHW) -> Copy(ddr->cmx) -> sw.kernel(memPermute to NHWC) -> Copy (cmx-> ddr)
-//                   -> ClusterCopy (ddr-> cmx) (U8 precision)
+//                   -> DistributedCopy (ddr-> cmx) (U8 precision)
 bool checkExpandWithPermutePattern(VPUIP::ExpandOp expandOp, Logger log) {
     log.trace("Got ExpandOp at {0}. Try to find fuse expand and permute pattern.", expandOp->getLoc());
 
@@ -435,20 +463,17 @@ bool checkExpandWithPermutePattern(VPUIP::ExpandOp expandOp, Logger log) {
     }
 
     auto expandUserOp = *(expandOp->getUsers().begin());
-    if (vpux::VPUIP::hasDistributedOperand(expandUserOp)) {
+    if (expandUserOp == nullptr || vpux::VPUIP::hasDistributedOperand(expandUserOp)) {
         return false;
     }
 
     auto expandCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(expandUserOp);
 
-    if (vpux::VPUIP::hasDistributedOperand(expandCopyOp)) {
-        return false;
-    }
-    if (expandCopyOp == nullptr || !expandOp->hasOneUse()) {
+    if (expandCopyOp == nullptr || !expandOp->hasOneUse() || vpux::VPUIP::hasDistributedOperand(expandCopyOp)) {
         return false;
     }
 
-    auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(*(expandCopyOp->getUsers().begin()));
+    auto swKernelOp = getTheOnlyUser<VPUIP::SwKernelOp>(expandCopyOp);
     if (swKernelOp == nullptr || !swKernelOp->hasOneUse()) {
         return false;
     }
@@ -481,7 +506,7 @@ bool checkSpaceToDepthWithPermutePattern(VPUIP::SwKernelOp s2dSwKernelOp, Logger
         return false;
     }
 
-    auto copyToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(s2dSwKernelOp->getUsers().begin()));
+    auto copyToDDROp = getTheOnlyUser<VPUIP::CopyOp>(s2dSwKernelOp);
     if (copyToDDROp == nullptr || !copyToDDROp->hasOneUse() || vpux::VPUIP::hasDistributedOperand(copyToDDROp)) {
         log.nest().trace("No copy to DDR after SpaceToDepth or copy has not exactly one use.");
         return false;
@@ -495,7 +520,7 @@ bool checkSpaceToDepthWithPermutePattern(VPUIP::SwKernelOp s2dSwKernelOp, Logger
         return false;
     }
 
-    auto copyToCMXOp = mlir::dyn_cast<VPUIP::CopyOp>(*(copyToDDROp->getUsers().begin()));
+    auto copyToCMXOp = getTheOnlyUser<VPUIP::CopyOp>(copyToDDROp);
     if (copyToCMXOp == nullptr || !copyToCMXOp->hasOneUse() || vpux::VPUIP::hasDistributedOperand(copyToCMXOp)) {
         log.nest().trace("No copy back to CMX after copy to DDR or copy has not exactly one use.");
         return false;
@@ -509,7 +534,7 @@ bool checkSpaceToDepthWithPermutePattern(VPUIP::SwKernelOp s2dSwKernelOp, Logger
         return false;
     }
 
-    auto permuteSwKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(*(copyToCMXOp->getUsers().begin()));
+    auto permuteSwKernelOp = getTheOnlyUser<VPUIP::SwKernelOp>(copyToCMXOp);
     if (permuteSwKernelOp == nullptr) {
         log.nest().trace("No permute found.");
         return false;
@@ -539,7 +564,7 @@ bool checkSpaceToDepthWithPermutePattern(VPUIP::SwKernelOp s2dSwKernelOp, Logger
     return true;
 }
 
-// Check pattern: sw.kernel(spaceToDepth) -> Copy (cmx-> ddr) -> ClusterCopy (ddr-> cmx)
+// Check pattern: sw.kernel(spaceToDepth) -> Copy (cmx-> ddr) -> DistributedCopy (ddr-> cmx)
 bool checkSpaceToDepthPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
     if (!VPUIP::isSpaceToDepthSwKernel(swKernelOp)) {
         return false;
@@ -560,9 +585,8 @@ bool checkSpaceToDepthPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         return false;
     }
 
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (copyBackToDDROp == nullptr || !copyBackToDDROp->hasOneUse() ||
-        vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
+    auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
+    if (!copyBackToDDROp->hasOneUse() || vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
         return false;
     }
 
@@ -573,17 +597,17 @@ bool checkSpaceToDepthPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         return false;
     }
 
-    auto user = *(copyBackToDDROp->getUsers().begin());
+    auto user = getTheOnlyUser(copyBackToDDROp);
     if (!vpux::VPUIP::hasDistributedOperand(user)) {
         return false;
     }
-    // It is difficult to use the general method to fuse Permute the with next Cluster Copy Op
+    // It is difficult to use the general method to fuse Permute the with next Distributed Copy Op
     // which has the stride. For example, activation with NHWC layout, need tile at Channel.
     // It is necessary to check the split buffer is continuous.
-    const auto clusterOutput = VPUIP::getLayerOutputs(user)[0];
-    const auto clusterOutputType = mlir::cast<VPUIP::DistributedBufferType>(clusterOutput.getType());
+    const auto distributedOutput = VPUIP::getLayerOutputs(user)[0];
+    const auto distributedOutputType = mlir::cast<VPUIP::DistributedBufferType>(distributedOutput.getType());
 
-    if (!isSplitContinuousBufferType(clusterOutputType)) {
+    if (!isSplitContinuousBufferType(distributedOutputType)) {
         return false;
     }
 
@@ -608,7 +632,7 @@ bool checkSpaceToDepthPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
 }
 
 // Check pattern 1: Copy(ddr->cmx) -> sw.kernel(PerAxisTile) -> Copy (cmx-> ddr) -> Copy (ddr-> cmx)
-// Check pattern 2: Copy(ddr->cmx) -> sw.kernel(PerAxisTile) -> Copy (cmx-> ddr) -> ClusterCopy (ddr-> cmx)
+// Check pattern 2: Copy(ddr->cmx) -> sw.kernel(PerAxisTile) -> Copy (cmx-> ddr) -> DistributedCopy (ddr-> cmx)
 bool checkPerAxisTilePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
     if (!VPUIP::isPerAxisTileSwKernel(swKernelOp)) {
         return false;
@@ -638,7 +662,7 @@ bool checkPerAxisTilePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         return false;
     }
 
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
+    auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
     if (copyBackToDDROp == nullptr || !copyBackToDDROp->hasOneUse() ||
         vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
         return false;
@@ -651,12 +675,15 @@ bool checkPerAxisTilePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         return false;
     }
 
-    auto copyToNCEOp = *(copyBackToDDROp->getUsers().begin());
+    auto copyToNCEOp = getTheOnlyUser(copyBackToDDROp);
+    if (copyToNCEOp == nullptr) {
+        return false;
+    }
     if (vpux::VPUIP::hasDistributedOperand(copyToNCEOp)) {
-        const auto clusterOutput = VPUIP::getLayerOutputs(copyToNCEOp)[0];
-        const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(clusterOutput.getType());
+        const auto distributedOutput = VPUIP::getLayerOutputs(copyToNCEOp)[0];
+        const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(distributedOutput.getType());
 
-        VPUX_THROW_UNLESS(distributedType != nullptr, "Can not get distributed type of Cluster Copy Op");
+        VPUX_THROW_UNLESS(distributedType != nullptr, "Can not get distributed type of Distributed Copy Op");
         if (!isSplitContinuousBufferType(distributedType)) {
             return false;
         }
@@ -665,8 +692,8 @@ bool checkPerAxisTilePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         VPUX_THROW_UNLESS(perAxisAttrs.has_value(), "Can not get PerAxisTile attribution");
         const auto repeateAxis = perAxisAttrs.value().axis;
 
-        // If PerAxisTile Op repeate Axis same with Cluster Copy Tiling Axis
-        // Should not fuse PerAxisTileDMA with Cluster Copy Op
+        // If PerAxisTile Op repeate Axis same with Distributed Copy Tiling Axis
+        // Should not fuse PerAxisTileDMA with Distributed Copy Op
         const auto distributionAttr = distributedType.getDistribution();
         if (distributionAttr.getNumTiles() != nullptr) {
             const auto isValidTile = [&](auto dim) {
@@ -691,90 +718,6 @@ bool checkPerAxisTilePattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
 
     const auto childOutputType = mlir::cast<vpux::NDTypeInterface>(childCopyOp.getOutput().getType());
     return childOutputType.getMemoryKind() == VPU::MemoryKind::CMX_NN;
-}
-
-//
-// FuseMemPermuteWithClusterCopy
-//
-
-// Copy(ddr->cmx)
-//      |
-// SW.kernel(memPermute)
-//      |                                 ->        Clustering Tiling PermuteDMA (ddr->cmx)
-// Copy (cmx->ddr)
-//      |
-// Clustering Ciling Copy (ddr->cmx)
-
-class FuseMemPermuteWithClusterCopy final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
-public:
-    FuseMemPermuteWithClusterCopy(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx), _log(log) {
-        setDebugName("FuseMemPermuteWithClusterCopy");
-    }
-
-    mlir::LogicalResult matchAndRewrite(VPUIP::SwKernelOp swkernelOp, mlir::PatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
-
-mlir::LogicalResult FuseMemPermuteWithClusterCopy::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
-                                                                   mlir::PatternRewriter& rewriter) const {
-    if (!checkPermuteWithCopyPattern(swKernelOp, _log)) {
-        return mlir::failure();
-    }
-
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (copyBackToDDROp == nullptr || vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
-        return mlir::failure();
-    }
-
-    auto user = *(copyBackToDDROp->getUsers().begin());
-    if (!vpux::VPUIP::hasDistributedOperand(user)) {
-        return mlir::failure();
-    }
-
-    _log.trace("Got Permute -> Cluster Copy pattern. MemPermute '{0}' at '{1}'", swKernelOp->getName(),
-               swKernelOp->getLoc());
-
-    // Check distribution mode
-    const auto clusterOutput = VPUIP::getLayerOutputs(user)[0];
-    const auto distributedType = mlir::cast<VPUIP::DistributedBufferType>(clusterOutput.getType());
-    if (distributedType == nullptr) {
-        return mlir::failure();
-    }
-
-    const auto distributionAttr = distributedType.getDistribution();
-    const auto mode = distributionAttr.getMode().getValue();
-    if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
-        !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
-        return mlir::failure();
-    }
-
-    auto memPerm = VPUIP::getMemPermFromSwKernel(swKernelOp).value();
-    if (memPerm == DimsOrder::NWHC.toAffineMap(rewriter.getContext())) {
-        _log.trace("MemPermute '{0}' can not be converted to PermuteDMAOp", memPerm);
-        return mlir::failure();
-    }
-
-    auto copyInCMXOp = swKernelOp.getOperand(0).getDefiningOp<VPUIP::CopyOp>();
-
-    if (vpux::VPUIP::hasDistributedOperand(copyInCMXOp)) {
-        return mlir::failure();
-    }
-
-    rewriter.setInsertionPointAfter(user);
-    rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(user, copyInCMXOp.getInput(), VPUIP::getLayerOutputs(user)[0],
-                                                     mlir::AffineMapAttr::get(memPerm), nullptr);
-
-    _log.nest().trace("Wrap MemPermute '{0}' at '{1}' with next Cluster Copy.", swKernelOp->getName(),
-                      swKernelOp->getLoc());
-
-    rewriter.eraseOp(copyBackToDDROp);
-    rewriter.eraseOp(swKernelOp);
-    rewriter.eraseOp(copyInCMXOp);
-
-    return mlir::success();
 }
 
 //
@@ -808,32 +751,48 @@ mlir::LogicalResult FuseMemPermuteWithCopy::matchAndRewrite(VPUIP::SwKernelOp sw
         return mlir::failure();
     }
 
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
+    auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
+    if (copyBackToDDROp == nullptr || vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
         return mlir::failure();
     }
-    auto childCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(*(copyBackToDDROp->getUsers().begin()));
-    if (childCopyOp == nullptr || vpux::VPUIP::hasDistributedOperand(childCopyOp)) {
+
+    auto childCopyOp = getTheOnlyUser<VPUIP::CopyOp>(copyBackToDDROp);
+    if (childCopyOp == nullptr) {
         return mlir::failure();
     }
 
     _log.trace("Got Permute -> Copy pattern. MemPermute '{0}' at '{1}'", swKernelOp->getName(), swKernelOp->getLoc());
 
-    auto copyInCMXOp = swKernelOp.getOperand(0).getDefiningOp<VPUIP::CopyOp>();
-    if (vpux::VPUIP::hasDistributedOperand(copyInCMXOp)) {
-        return mlir::failure();
+    // Check distribution mode
+    const auto distributedOutput = VPUIP::getLayerOutputs(childCopyOp)[0];
+    const auto distributedType = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(distributedOutput.getType());
+    if (distributedType != nullptr) {
+        const auto distributionAttr = distributedType.getDistribution();
+        const auto mode = distributionAttr.getMode().getValue();
+        if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
+            !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
+            return mlir::failure();
+        }
     }
+
     auto memPerm = VPUIP::getMemPermFromSwKernel(swKernelOp).value();
     if (memPerm == DimsOrder::NWHC.toAffineMap(rewriter.getContext())) {
         _log.trace("MemPermute '{0}' can not be converted to PermuteDMAOp", memPerm);
         return mlir::failure();
     }
 
+    auto copyInCMXOp = swKernelOp.getOperand(0).getDefiningOp<VPUIP::CopyOp>();
+
+    if (vpux::VPUIP::hasDistributedOperand(copyInCMXOp)) {
+        return mlir::failure();
+    }
+
     rewriter.setInsertionPointAfter(childCopyOp);
-    rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(childCopyOp, copyInCMXOp.getInput(), childCopyOp.getOutputBuff(),
+    rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(childCopyOp, copyInCMXOp.getInput(),
+                                                     VPUIP::getLayerOutputs(childCopyOp)[0],
                                                      mlir::AffineMapAttr::get(memPerm), nullptr);
 
-    _log.nest().trace("Wrap MemPermute '{0}' at '{1}' with next copy.", swKernelOp->getName(), swKernelOp->getLoc());
+    _log.nest().trace("Wrap MemPermute '{0}' at '{1}' with next Copy.", swKernelOp->getName(), swKernelOp->getLoc());
 
     rewriter.eraseOp(copyBackToDDROp);
     rewriter.eraseOp(swKernelOp);
@@ -843,71 +802,11 @@ mlir::LogicalResult FuseMemPermuteWithCopy::matchAndRewrite(VPUIP::SwKernelOp sw
 }
 
 //
-// FuseExpandWithClusterCopy
-//
-
-// Expand (U8)
-//      |                                 ->      Cluster Tiling ExpandDMA (ddr->cmx)
-// Cluster Tiling Copy (ddr->cmx)
-
-class FuseExpandWithClusterCopy final : public mlir::OpRewritePattern<VPUIP::ExpandOp> {
-public:
-    FuseExpandWithClusterCopy(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<VPUIP::ExpandOp>(ctx), _log(log) {
-        setDebugName("FuseExpandWithClusterCopy");
-    }
-
-    mlir::LogicalResult matchAndRewrite(VPUIP::ExpandOp expandOp, mlir::PatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
-
-mlir::LogicalResult FuseExpandWithClusterCopy::matchAndRewrite(VPUIP::ExpandOp expandOp,
-                                                               mlir::PatternRewriter& rewriter) const {
-    if (!checkExpandU8Pattern(expandOp, _log) && !checkExpandFP16Pattern(expandOp, _log)) {
-        return mlir::failure();
-    }
-
-    auto user = *(expandOp->getUsers().begin());
-
-    if (!vpux::VPUIP::hasDistributedOperand(user)) {
-        return mlir::failure();
-    }
-
-    _log.trace("Got Expand -> Cluster Copy pattern. Expand '{0}' at '{1}'", expandOp->getName(), expandOp->getLoc());
-
-    // check distribution mode
-    const auto clusterOutput = VPUIP::getLayerOutputs(user)[0];
-    const auto distributedType = mlir::dyn_cast<VPUIP::DistributedBufferType>(clusterOutput.getType());
-    if (distributedType == nullptr) {
-        return mlir::failure();
-    }
-
-    const auto distributionAttr = distributedType.getDistribution();
-    const auto mode = distributionAttr.getMode().getValue();
-    if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
-        !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
-        return mlir::failure();
-    }
-
-    rewriter.setInsertionPointAfter(user);
-    rewriter.replaceOpWithNewOp<VPUIP::ExpandDMAOp>(user, expandOp.getInput(), VPUIP::getLayerOutputs(user)[0],
-                                                    expandOp.getPadsBeginAttr(), expandOp.getPadsEndAttr(), nullptr);
-
-    _log.nest().trace("Wrap Expand '{0}' at '{1}' with next Cluster Copy.", expandOp->getName(), expandOp->getLoc());
-
-    rewriter.eraseOp(expandOp);
-
-    return mlir::success();
-}
-
-//
 // FuseExpandWithCopy
 //
 
 // Expand (U8)
-//      |                ->      ExpandDMA (ddr->cmx)
+//      |                                 ->      ExpandDMA (ddr->cmx)
 // Copy (ddr->cmx)
 
 class FuseExpandWithCopy final : public mlir::OpRewritePattern<VPUIP::ExpandOp> {
@@ -928,19 +827,25 @@ mlir::LogicalResult FuseExpandWithCopy::matchAndRewrite(VPUIP::ExpandOp expandOp
         return mlir::failure();
     }
 
+    auto copyOutOp = getTheOnlyUser(expandOp);
+
     _log.trace("Got Expand -> Copy pattern. Expand '{0}' at '{1}'", expandOp->getName(), expandOp->getLoc());
 
-    auto expandCopyOutOp = mlir::dyn_cast<VPUIP::CopyOp>(*(expandOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(expandCopyOutOp)) {
-        return mlir::failure();
-    }
-    if (expandCopyOutOp == nullptr) {
-        return mlir::failure();
+    // check distribution mode
+    const auto userOutput = VPUIP::getLayerOutputs(copyOutOp)[0];
+    const auto distributedType = mlir::dyn_cast<VPUIP::DistributedBufferType>(userOutput.getType());
+    if (distributedType != nullptr) {
+        const auto distributionAttr = distributedType.getDistribution();
+        const auto mode = distributionAttr.getMode().getValue();
+        if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
+            !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
+            return mlir::failure();
+        }
     }
 
-    rewriter.setInsertionPointAfter(expandCopyOutOp);
-    rewriter.replaceOpWithNewOp<VPUIP::ExpandDMAOp>(expandCopyOutOp, expandOp.getInput(),
-                                                    expandCopyOutOp.getOutputBuff(), expandOp.getPadsBeginAttr(),
+    rewriter.setInsertionPointAfter(copyOutOp);
+    rewriter.replaceOpWithNewOp<VPUIP::ExpandDMAOp>(copyOutOp, expandOp.getInput(),
+                                                    VPUIP::getLayerOutputs(copyOutOp)[0], expandOp.getPadsBeginAttr(),
                                                     expandOp.getPadsEndAttr(), nullptr);
 
     _log.nest().trace("Wrap Expand '{0}' at '{1}' with next Copy.", expandOp->getName(), expandOp->getLoc());
@@ -951,22 +856,22 @@ mlir::LogicalResult FuseExpandWithCopy::matchAndRewrite(VPUIP::ExpandOp expandOp
 }
 
 //
-// FusePerAxisTileWithClusterCopy
+// FusePerAxisTileWithCopy
 //
 
 // Copy(ddr->cmx)
 //      |
 // SW.kernel(PerAxisTile)
-//      |                                 ->        Clustering Tiling PerAxisTileDMA (ddr->cmx)
+//      |                      ->     VPUIP.PerAxisTileDMA(ddr->cmx)
 // Copy (cmx->ddr)
 //      |
-// Clustering Ciling Copy (ddr->cmx)
+// Copy (ddr->cmx)
 
-class FusePerAxisTileWithClusterCopy final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
+class FusePerAxisTileWithCopy final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
 public:
-    FusePerAxisTileWithClusterCopy(mlir::MLIRContext* ctx, Logger log)
+    FusePerAxisTileWithCopy(mlir::MLIRContext* ctx, Logger log)
             : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx), _log(log) {
-        setDebugName("FusePerAxisTileWithClusterCopy");
+        setDebugName("FusePerAxisTileWithCopy");
     }
 
     mlir::LogicalResult matchAndRewrite(VPUIP::SwKernelOp swkernelOp, mlir::PatternRewriter& rewriter) const final;
@@ -975,40 +880,35 @@ private:
     Logger _log;
 };
 
-mlir::LogicalResult FusePerAxisTileWithClusterCopy::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
-                                                                    mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult FusePerAxisTileWithCopy::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
+                                                             mlir::PatternRewriter& rewriter) const {
     if (!checkPerAxisTilePattern(swKernelOp, _log)) {
         return mlir::failure();
     }
 
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
-        return mlir::failure();
-    }
-    if (copyBackToDDROp == nullptr) {
+    auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
+    if (copyBackToDDROp == nullptr || vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
         return mlir::failure();
     }
 
-    auto user = *copyBackToDDROp->getUsers().begin();
-    if (!vpux::VPUIP::hasDistributedOperand(user)) {
+    auto copyOp = getTheOnlyUser<VPUIP::CopyOp>(copyBackToDDROp);
+    if (copyOp == nullptr) {
         return mlir::failure();
     }
 
-    _log.trace("Got PerAxisTile -> Cluster Copy pattern. PerAxisTile '{0}' at '{1}'", swKernelOp->getName(),
+    _log.trace("Got PerAxisTile -> Copy pattern. PerAxisTile '{0}' at '{1}'", swKernelOp->getName(),
                swKernelOp->getLoc());
 
     // Check distribution mode
-    const auto clusterOutput = vpux::VPUIP::getLayerOutputs(user)[0];
-    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(clusterOutput.getType());
-    if (distributedType == nullptr) {
-        return mlir::failure();
-    }
-
-    const auto distributionAttr = distributedType.getDistribution();
-    const auto mode = distributionAttr.getMode().getValue();
-    if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
-        !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
-        return mlir::failure();
+    const auto userOutput = vpux::VPUIP::getLayerOutputs(copyOp)[0];
+    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(userOutput.getType());
+    if (distributedType != nullptr) {
+        const auto distributionAttr = distributedType.getDistribution();
+        const auto mode = distributionAttr.getMode().getValue();
+        if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
+            !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
+            return mlir::failure();
+        }
     }
 
     auto perAxisTileAttrs = VPUIP::getPerAxisTileSwKernelAttr(swKernelOp);
@@ -1020,13 +920,12 @@ mlir::LogicalResult FusePerAxisTileWithClusterCopy::matchAndRewrite(VPUIP::SwKer
         return mlir::failure();
     }
 
-    rewriter.setInsertionPointAfter(user);
-    rewriter.replaceOpWithNewOp<VPUIP::PerAxisTileDMAOp>(user, copyInCMXOp.getInput(), VPUIP::getLayerOutputs(user)[0],
-                                                         perAxisTileAttrs.value().axis,
-                                                         perAxisTileAttrs.value().repeats, nullptr);
+    rewriter.setInsertionPointAfter(copyOp);
+    rewriter.replaceOpWithNewOp<VPUIP::PerAxisTileDMAOp>(
+            copyOp, copyInCMXOp.getInput(), VPUIP::getLayerOutputs(copyOp)[0], perAxisTileAttrs.value().axis,
+            perAxisTileAttrs.value().repeats, nullptr);
 
-    _log.nest().trace("Wrap PerAxisTile '{0}' at '{1}' with next Cluster Copy.", swKernelOp->getName(),
-                      swKernelOp->getLoc());
+    _log.nest().trace("Wrap PerAxisTile '{0}' at '{1}' with next Copy.", swKernelOp->getName(), swKernelOp->getLoc());
 
     rewriter.eraseOp(copyBackToDDROp);
     rewriter.eraseOp(swKernelOp);
@@ -1100,157 +999,6 @@ mlir::LogicalResult FuseExpandWithUpsampling::matchAndRewrite(VPUIP::ExpandOp or
 }
 
 //
-// FusePerAxisTileWithCopy
-//
-
-// Copy(ddr->cmx)
-//      |
-// SW.kernel(PerAxisTile)
-//      |                      ->     VPUIP.PerAxisTileDMA(ddr->cmx)
-// Copy (cmx->ddr)
-//      |
-// Copy (ddr->cmx)
-
-class FusePerAxisTileWithCopy final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
-public:
-    FusePerAxisTileWithCopy(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx), _log(log) {
-        setDebugName("FusePerAxisTileWithCopy");
-    }
-
-    mlir::LogicalResult matchAndRewrite(VPUIP::SwKernelOp swkernelOp, mlir::PatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
-
-mlir::LogicalResult FusePerAxisTileWithCopy::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
-                                                             mlir::PatternRewriter& rewriter) const {
-    if (!checkPerAxisTilePattern(swKernelOp, _log)) {
-        return mlir::failure();
-    }
-
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
-        return mlir::failure();
-    }
-    auto childCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(*(copyBackToDDROp->getUsers().begin()));
-    if (childCopyOp == nullptr || vpux::VPUIP::hasDistributedOperand(childCopyOp)) {
-        return mlir::failure();
-    }
-
-    _log.trace("Got PerAxisTile -> Copy pattern. PerAxisTile '{0}' at '{1}'", swKernelOp->getName(),
-               swKernelOp->getLoc());
-
-    auto copyInCMXOp = swKernelOp.getOperand(0).getDefiningOp<VPUIP::CopyOp>();
-    if (vpux::VPUIP::hasDistributedOperand(copyInCMXOp)) {
-        return mlir::failure();
-    }
-    auto perAxisTileAttrs = VPUIP::getPerAxisTileSwKernelAttr(swKernelOp);
-    VPUX_THROW_UNLESS(perAxisTileAttrs.has_value(),
-                      "Cannot extract perAxisTile attribute from perAxisTile SwKernel '{0}'.", swKernelOp.getLoc());
-
-    rewriter.setInsertionPointAfter(childCopyOp);
-    rewriter.replaceOpWithNewOp<VPUIP::PerAxisTileDMAOp>(childCopyOp, copyInCMXOp.getInput(),
-                                                         childCopyOp.getOutputBuff(), perAxisTileAttrs.value().axis,
-                                                         perAxisTileAttrs.value().repeats, nullptr);
-
-    _log.nest().trace("Wrap PerAxisTile '{0}' at '{1}' with next copy.", swKernelOp->getName(), swKernelOp->getLoc());
-
-    rewriter.eraseOp(copyBackToDDROp);
-    rewriter.eraseOp(swKernelOp);
-    rewriter.eraseOp(copyInCMXOp);
-
-    return mlir::success();
-}
-
-//
-// FuseExpandAndPermuteWithClusterCopy
-//
-
-// Expand (U8)
-//      |
-// Copy(ddr->cmx)
-//      |
-// SW.kernel(memPermute)          ->       Clustering Tiling PermuteDMA (ddr->cmx)
-//      |
-// Copy (cmx->ddr)
-//      |
-// Clustering Tiling Copy (ddr->cmx)
-
-class FuseExpandAndPermuteWithClusterCopy final : public mlir::OpRewritePattern<VPUIP::ExpandOp> {
-public:
-    FuseExpandAndPermuteWithClusterCopy(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<VPUIP::ExpandOp>(ctx), _log(log) {
-        setDebugName("FuseExpandAndPermuteWithClusterCopy");
-    }
-
-    mlir::LogicalResult matchAndRewrite(VPUIP::ExpandOp expandOp, mlir::PatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
-
-mlir::LogicalResult FuseExpandAndPermuteWithClusterCopy::matchAndRewrite(VPUIP::ExpandOp expandOp,
-                                                                         mlir::PatternRewriter& rewriter) const {
-    if (!checkExpandWithPermutePattern(expandOp, _log)) {
-        return mlir::failure();
-    }
-
-    auto expandCopyOutOp = mlir::dyn_cast<VPUIP::CopyOp>(*(expandOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(expandCopyOutOp)) {
-        return mlir::failure();
-    }
-    auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(*(expandCopyOutOp->getUsers().begin()));
-
-    auto permuteCopyOutOp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(permuteCopyOutOp)) {
-        return mlir::failure();
-    }
-    auto user = *(permuteCopyOutOp->getUsers().begin());
-    if (user == nullptr) {
-        return mlir::failure();
-    }
-
-    _log.trace("Got Expand -> permute -> Cluster Copy pattern. Expand '{0}' at '{1}'", expandOp->getName(),
-               expandOp->getLoc());
-
-    // check distribution mode
-    const auto clusterCopyOutput = VPUIP::getLayerOutputs(user)[0];
-    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(clusterCopyOutput.getType());
-    if (distributedType == nullptr) {
-        return mlir::failure();
-    }
-
-    const auto distributionAttr = distributedType.getDistribution();
-    const auto mode = distributionAttr.getMode().getValue();
-    if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
-        !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
-        return mlir::failure();
-    }
-
-    auto memPerm = VPUIP::getMemPermFromSwKernel(swKernelOp).value();
-    if (memPerm == DimsOrder::NWHC.toAffineMap(rewriter.getContext())) {
-        _log.trace("MemPermute '{0}' can not be converted to PermuteDMAOp", memPerm);
-        return mlir::failure();
-    }
-
-    rewriter.setInsertionPointAfter(user);
-    rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(user, expandOp.getInput(), VPUIP::getLayerOutputs(user)[0],
-                                                     mlir::AffineMapAttr::get(memPerm), nullptr);
-
-    _log.nest().trace("Wrap Expand '{0}' at '{1}' and MemPermute with next Cluster Copy.", expandOp->getName(),
-                      expandOp->getLoc());
-
-    rewriter.eraseOp(permuteCopyOutOp);
-    rewriter.eraseOp(swKernelOp);
-    rewriter.eraseOp(expandCopyOutOp);
-    rewriter.eraseOp(expandOp);
-
-    return mlir::success();
-}
-
-//
 // FuseExpandAndPermuteWithCopy
 //
 
@@ -1283,31 +1031,47 @@ mlir::LogicalResult FuseExpandAndPermuteWithCopy::matchAndRewrite(VPUIP::ExpandO
         return mlir::failure();
     }
 
-    auto expandCopyOutOp = mlir::dyn_cast<VPUIP::CopyOp>(*(expandOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(expandCopyOutOp)) {
+    auto expandCopyOutOp = getTheOnlyUser<VPUIP::CopyOp>(expandOp);
+    if (expandCopyOutOp == nullptr || vpux::VPUIP::hasDistributedOperand(expandCopyOutOp)) {
         return mlir::failure();
     }
-    auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(*(expandCopyOutOp->getUsers().begin()));
-
-    auto permuteCopyOutOp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(permuteCopyOutOp)) {
-        return mlir::failure();
-    }
-    auto childCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(*(permuteCopyOutOp->getUsers().begin()));
-    if (childCopyOp == nullptr || vpux::VPUIP::hasDistributedOperand(childCopyOp)) {
+    auto swKernelOp = getTheOnlyUser<VPUIP::SwKernelOp>(expandCopyOutOp);
+    if (swKernelOp == nullptr) {
         return mlir::failure();
     }
 
-    _log.trace("Got Expand -> Permute -> Copy pattern. Expand '{0}' at '{1}'", expandOp->getName(), expandOp->getLoc());
+    auto permuteCopyOutOp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
+    if (permuteCopyOutOp == nullptr || vpux::VPUIP::hasDistributedOperand(permuteCopyOutOp)) {
+        return mlir::failure();
+    }
+    auto childCopyOp = getTheOnlyUser(permuteCopyOutOp);
+    if (childCopyOp == nullptr) {
+        return mlir::failure();
+    }
 
-    rewriter.setInsertionPointAfter(childCopyOp);
+    _log.trace("Got Expand -> permute -> Copy pattern. Expand '{0}' at '{1}'", expandOp->getName(), expandOp->getLoc());
+
+    // check distribution mode
+    const auto userOutput = VPUIP::getLayerOutputs(childCopyOp)[0];
+    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(userOutput.getType());
+    if (distributedType != nullptr) {
+        const auto distributionAttr = distributedType.getDistribution();
+        const auto mode = distributionAttr.getMode().getValue();
+        if (mode != VPU::DistributionMode::SEGMENTED && mode != VPU::DistributionMode::OVERLAPPED &&
+            !VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED)) {
+            return mlir::failure();
+        }
+    }
+
     auto memPerm = VPUIP::getMemPermFromSwKernel(swKernelOp).value();
     if (memPerm == DimsOrder::NWHC.toAffineMap(rewriter.getContext())) {
         _log.trace("MemPermute '{0}' can not be converted to PermuteDMAOp", memPerm);
         return mlir::failure();
     }
 
-    rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(childCopyOp, expandOp.getInput(), childCopyOp.getOutputBuff(),
+    rewriter.setInsertionPointAfter(childCopyOp);
+    rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(childCopyOp, expandOp.getInput(),
+                                                     VPUIP::getLayerOutputs(childCopyOp)[0],
                                                      mlir::AffineMapAttr::get(memPerm), nullptr);
 
     _log.nest().trace("Wrap Expand '{0}' at '{1}' and MemPermute with next Copy.", expandOp->getName(),
@@ -1354,15 +1118,18 @@ mlir::LogicalResult FuseSpaceToDepthAndPermute::matchAndRewrite(VPUIP::SwKernelO
         return mlir::failure();
     }
 
-    auto s2dCopyOutOp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(s2dCopyOutOp)) {
+    auto s2dCopyOutOp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
+    if (s2dCopyOutOp == nullptr || vpux::VPUIP::hasDistributedOperand(s2dCopyOutOp)) {
         return mlir::failure();
     }
-    auto permuteCopyInOp = mlir::dyn_cast<VPUIP::CopyOp>(*(s2dCopyOutOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(permuteCopyInOp)) {
+    auto permuteCopyInOp = getTheOnlyUser<VPUIP::CopyOp>(s2dCopyOutOp);
+    if (permuteCopyInOp == nullptr || vpux::VPUIP::hasDistributedOperand(permuteCopyInOp)) {
         return mlir::failure();
     }
-    auto permuteSwKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(*(permuteCopyInOp->getUsers().begin()));
+    auto permuteSwKernelOp = getTheOnlyUser<VPUIP::SwKernelOp>(permuteCopyInOp);
+    if (permuteSwKernelOp == nullptr) {
+        return mlir::failure();
+    }
 
     const auto s2dInType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs().front().getType());
     const auto s2dOutType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOutputs().front().getType());
@@ -1403,14 +1170,14 @@ mlir::LogicalResult FuseSpaceToDepthAndPermute::matchAndRewrite(VPUIP::SwKernelO
 }
 
 //
-// WrapDepthToSpaceAsClusterNNDMA
+// WrapDepthToSpaceAsDistributedNNDMA
 //
 
 // Match this pattern to convert SWKernel DepthToSpace to
 // multi-cluster DepthToSpaceDMA.
 //
-//   --- (Optional if no cluster output) ---
-//   |        ClusterCopy(cmx->ddr)        |
+//   --- (Optional if no distributed output) ---
+//   |        DistributedCopy(cmx->ddr)        |
 //   |                 |                   |
 //   |           Copy(ddr->cmx)            |
 //   -----------       |         -----------
@@ -1420,14 +1187,14 @@ mlir::LogicalResult FuseSpaceToDepthAndPermute::matchAndRewrite(VPUIP::SwKernelO
 //   |                 |                   |
 //   |            [ShapeCast]              |
 //   |                 |                   |
-//   |        ClusterCopy(ddr->cmx)        |
-//   --- (Optional if no cluster input)  ---
+//   |        DistributedCopy(ddr->cmx)        |
+//   --- (Optional if no distributed input)  ---
 
-class WrapDepthToSpaceAsClusterNNDMA final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
+class WrapDepthToSpaceAsDistributedNNDMA final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
 public:
-    WrapDepthToSpaceAsClusterNNDMA(mlir::MLIRContext* ctx, Logger log)
+    WrapDepthToSpaceAsDistributedNNDMA(mlir::MLIRContext* ctx, Logger log)
             : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx), _log(log) {
-        setDebugName("WrapDepthToSpaceAsClusterNNDMA");
+        setDebugName("WrapDepthToSpaceAsDistributedNNDMA");
     }
 
     mlir::LogicalResult matchAndRewrite(VPUIP::SwKernelOp swkernelOp, mlir::PatternRewriter& rewriter) const final;
@@ -1466,7 +1233,7 @@ bool hasValidInputPerClusterShape(VPUIP::SwKernelOp swKernelOp, VPUIP::Distribut
     return std::none_of(inputShapes.begin(), inputShapes.end(), hasZeroDim);
 }
 
-bool WrapDepthToSpaceAsClusterNNDMA::isValidConversion(VPUIP::SwKernelOp swKernelOp) const {
+bool WrapDepthToSpaceAsDistributedNNDMA::isValidConversion(VPUIP::SwKernelOp swKernelOp) const {
     _log.trace("Checking DepthToSpaceAsMultiCluster pattern.");
 
     if (!VPUIP::isDepthToSpaceSwKernel(swKernelOp)) {
@@ -1501,7 +1268,7 @@ bool WrapDepthToSpaceAsClusterNNDMA::isValidConversion(VPUIP::SwKernelOp swKerne
     return true;
 }
 
-WrapDepthToSpaceAsClusterNNDMA::PatternType WrapDepthToSpaceAsClusterNNDMA::checkPattern(
+WrapDepthToSpaceAsDistributedNNDMA::PatternType WrapDepthToSpaceAsDistributedNNDMA::checkPattern(
         VPUIP::SwKernelOp swKernelOp) const {
     if (!isValidConversion(swKernelOp)) {
         return PatternType::NONE;
@@ -1527,10 +1294,10 @@ WrapDepthToSpaceAsClusterNNDMA::PatternType WrapDepthToSpaceAsClusterNNDMA::chec
             return false;
         }
 
-        const auto clusterOperand = isCopyIn ? input : output;
-        const auto clusterOperandType = mlir::cast<vpux::NDTypeInterface>(clusterOperand.getType());
-        return isSegmented(clusterOperandType) &&
-               isSplitContinuousBufferType(mlir::dyn_cast<VPUIP::DistributedBufferType>(clusterOperandType));
+        const auto distributedOperand = isCopyIn ? input : output;
+        const auto distributedOperandType = mlir::cast<vpux::NDTypeInterface>(distributedOperand.getType());
+        return isSegmented(distributedOperandType) &&
+               isSplitContinuousBufferType(mlir::dyn_cast<VPUIP::DistributedBufferType>(distributedOperandType));
     };
 
     const auto isValidCopyOp = [&](VPUIP::CopyOp copyOp, bool isCopyIn) {
@@ -1542,7 +1309,7 @@ WrapDepthToSpaceAsClusterNNDMA::PatternType WrapDepthToSpaceAsClusterNNDMA::chec
                            copyOutputType.getMemoryKind() == VPU::MemoryKind::DDR);
     };
 
-    const auto findInputClusterCopy = [&](VPUIP::SwKernelOp swKernelOp) -> mlir::Operation* {
+    const auto findInputDistributedCopy = [&](VPUIP::SwKernelOp swKernelOp) -> mlir::Operation* {
         auto copyInCMXOp = swKernelOp.getOperand(0).getDefiningOp<VPUIP::CopyOp>();
         if (vpux::VPUIP::hasDistributedOperand(copyInCMXOp)) {
             return nullptr;
@@ -1564,38 +1331,38 @@ WrapDepthToSpaceAsClusterNNDMA::PatternType WrapDepthToSpaceAsClusterNNDMA::chec
         return parent;
     };
 
-    const auto findOutputClusterCopy = [&](VPUIP::SwKernelOp swKernelOp) -> mlir::Operation* {
+    const auto findOutputDistributedCopy = [&](VPUIP::SwKernelOp swKernelOp) -> mlir::Operation* {
         if (!swKernelOp->hasOneUse()) {
             return nullptr;
         }
-        auto copyOutDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
+        auto copyOutDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
         if (copyOutDDROp == nullptr || !copyOutDDROp->hasOneUse() || vpux::VPUIP::hasDistributedOperand(copyOutDDROp) ||
             !isValidCopyOp(copyOutDDROp, false)) {
             return nullptr;
         }
-        auto user = *copyOutDDROp->getUsers().begin();
-        while (VPUIP::isPureViewOp(user)) {
-            if (!user->hasOneUse()) {
+        auto potentialViewLikeOp = getTheOnlyUser(copyOutDDROp);
+        while (VPUIP::isPureViewOp(potentialViewLikeOp)) {
+            if (!potentialViewLikeOp->hasOneUse()) {
                 return nullptr;
             }
-            user = *user->getUsers().begin();
+            potentialViewLikeOp = getTheOnlyUser(potentialViewLikeOp);
         }
-        if (!isValidDistributedCopyOp(user, false)) {
+        if (!isValidDistributedCopyOp(potentialViewLikeOp, false)) {
             return nullptr;
         }
-        return user;
+        return potentialViewLikeOp;
     };
 
-    const auto clusterCopyIn = findInputClusterCopy(swKernelOp);
-    const auto clusterCopyOut = findOutputClusterCopy(swKernelOp);
+    const auto distributedCopyIn = findInputDistributedCopy(swKernelOp);
+    const auto distributedCopyOut = findOutputDistributedCopy(swKernelOp);
 
-    if (clusterCopyIn == nullptr && clusterCopyOut == nullptr) {
+    if (distributedCopyIn == nullptr && distributedCopyOut == nullptr) {
         _log.nest().trace("Neither input nor output is in multicluster");
         return PatternType::NONE;
-    } else if (clusterCopyIn != nullptr && clusterCopyOut == nullptr) {
+    } else if (distributedCopyIn != nullptr && distributedCopyOut == nullptr) {
         _log.nest().trace("Found input in multicluster");
         return PatternType::INPUT;
-    } else if (clusterCopyIn == nullptr && clusterCopyOut != nullptr) {
+    } else if (distributedCopyIn == nullptr && distributedCopyOut != nullptr) {
         _log.nest().trace("Found output in multicluster");
         return PatternType::OUTPUT;
     } else {
@@ -1604,14 +1371,14 @@ WrapDepthToSpaceAsClusterNNDMA::PatternType WrapDepthToSpaceAsClusterNNDMA::chec
     }
 }
 
-mlir::LogicalResult WrapDepthToSpaceAsClusterNNDMA::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
-                                                                    mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult WrapDepthToSpaceAsDistributedNNDMA::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
+                                                                        mlir::PatternRewriter& rewriter) const {
     const auto patternType = checkPattern(swKernelOp);
     if (patternType == PatternType::NONE) {
         return mlir::failure();
     }
 
-    _log.trace("Found DepthToSpace at '{0}' with ClusterCopy pattern", swKernelOp->getLoc());
+    _log.trace("Found DepthToSpace at '{0}' with DistributedCopy pattern", swKernelOp->getLoc());
 
     auto ctx = swKernelOp.getContext();
     auto arch = VPU::getArch(swKernelOp.getOperation());
@@ -1631,14 +1398,14 @@ mlir::LogicalResult WrapDepthToSpaceAsClusterNNDMA::matchAndRewrite(VPUIP::SwKer
     const auto tileCount = getIntAttr(ctx, VPUIP::getNumTilesUsed(swKernelOp->getParentOfType<mlir::ModuleOp>()));
 
     const auto insertionPoint = patternType == PatternType::OUTPUT || patternType == PatternType::BOTH
-                                        ? *swKernelOp->getUsers().begin()
+                                        ? getTheOnlyUser(swKernelOp)
                                         : swKernelOp.getOperation();
     rewriter.setInsertionPointAfter(insertionPoint);
 
     SmallVector<mlir::Operation*> opsToErase;
 
     // If pattern is INPUT or BOTH, which means the input side is in multicluster,
-    // we need to create an input cluster copy before ClusterD2SDMAOp
+    // we need to create an input Distributed Copy before DistributedD2SDMAOp
     auto d2sInput = swKernelOp.getOperand(0);
     if (patternType == PatternType::INPUT || patternType == PatternType::BOTH) {
         auto inputCopyOp = d2sInput.getDefiningOp<VPUIP::CopyOp>();
@@ -1647,26 +1414,26 @@ mlir::LogicalResult WrapDepthToSpaceAsClusterNNDMA::matchAndRewrite(VPUIP::SwKer
         }
         VPUX_THROW_WHEN(inputCopyOp == nullptr, "Failed to get input copy of DepthToSpace");
         auto uniformDistributedSegments = VPU::isUniformDistributedSegmentsSupported(swKernelOp);
-        auto clusterCopyInAllocType = createDMADistributedTensorType(ctx, inputCopyOp.getOutput().getType(), tileCount,
-                                                                     arch, uniformDistributedSegments);
-        auto clusterCopyInAllocOp = rewriter.create<VPURT::AllocDistributed>(inputCopyOp.getLoc(),
-                                                                             clusterCopyInAllocType, nullptr, nullptr);
+        auto distributedCopyInAllocType = createDMADistributedTensorType(ctx, inputCopyOp.getOutput().getType(),
+                                                                         tileCount, arch, uniformDistributedSegments);
+        auto distributedCopyInAllocOp = rewriter.create<VPURT::AllocDistributed>(
+                inputCopyOp.getLoc(), distributedCopyInAllocType, nullptr, nullptr);
         opsToErase.push_back(inputCopyOp);
-        auto d2sCopyInOp = rewriter.create<VPUIP::CopyOp>(inputCopyOp.getLoc(), clusterCopyInAllocType,
-                                                          inputCopyOp.getInput(), clusterCopyInAllocOp.getBuffer());
+        auto d2sCopyInOp = rewriter.create<VPUIP::CopyOp>(inputCopyOp.getLoc(), distributedCopyInAllocType,
+                                                          inputCopyOp.getInput(), distributedCopyInAllocOp.getBuffer());
         d2sInput = d2sCopyInOp.getResult();
-        _log.nest().trace("Create new cluster copy-in op: {0}", d2sCopyInOp);
+        _log.nest().trace("Create new Distributed Copy-in op: {0}", d2sCopyInOp);
     }
 
     // If pattern is OUTPUT or BOTH, which means the output side is in multicluster,
-    // we need to create ClusterD2SDMAOp with a following output cluster copy
+    // we need to create DistributedD2SDMAOp with a following output Distributed Copy
     // Otherwise, when the pattern is INPUT, which means the output side is not in multicluster,
-    // we only need to create a ClusterD2SDMAOp
-    // The created ClusterD2SDMAOp will be unrolled according to its input/output type later in
+    // we only need to create a DistributedD2SDMAOp
+    // The created DistributedD2SDMAOp will be unrolled according to its input/output type later in
     // UnrollDepthToSpaceDMAPass
     if (patternType == PatternType::OUTPUT || patternType == PatternType::BOTH) {
-        auto outputCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(*swKernelOp->getUsers().begin());
-        if (vpux::VPUIP::hasDistributedOperand(outputCopyOp)) {
+        auto outputCopyOp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
+        if (outputCopyOp == nullptr || vpux::VPUIP::hasDistributedOperand(outputCopyOp)) {
             return mlir::failure();
         }
         VPUX_THROW_WHEN(outputCopyOp == nullptr, "Failed to get output copy of DepthToSpace");
@@ -1684,17 +1451,17 @@ mlir::LogicalResult WrapDepthToSpaceAsClusterNNDMA::matchAndRewrite(VPUIP::SwKer
                 rewriter.create<VPURT::AllocDistributed>(swKernelOp.getLoc(), d2sOutAllocType, nullptr, nullptr);
         auto d2sOp = rewriter.create<VPUIP::DepthToSpaceDMAOp>(swKernelOp.getLoc(), d2sInput, d2sOutAllocOp.getBuffer(),
                                                                blockSizeAttr, modeAttr, nullptr, paddedChannels);
-        _log.nest().trace("Create new cluster DepthToSpaceDMAOp: {0}", d2sOp);
+        _log.nest().trace("Create new distributed DepthToSpaceDMAOp: {0}", d2sOp);
         opsToErase.push_back(swKernelOp);
         // create output copy
         auto d2sCopyOutOp = rewriter.replaceOpWithNewOp<VPUIP::CopyOp>(
                 outputCopyOp, outputCopyOp.getOutputBuff().getType(), d2sOp.getResult(), outputCopyOp.getOutputBuff());
-        _log.nest().trace("Create new cluster copy-out op: {0}", d2sCopyOutOp);
+        _log.nest().trace("Create new Distributed Copy-out op: {0}", d2sCopyOutOp);
     } else {
         // create d2s
         auto d2sOp = rewriter.replaceOpWithNewOp<VPUIP::DepthToSpaceDMAOp>(
                 swKernelOp, d2sInput, d2sOutputBuff, blockSizeAttr, modeAttr, nullptr, paddedChannels);
-        _log.nest().trace("Create new cluster DepthToSpaceDMAOp: {0}", d2sOp);
+        _log.nest().trace("Create new distributed DepthToSpaceDMAOp: {0}", d2sOp);
     }
 
     while (!opsToErase.empty()) {
@@ -1707,20 +1474,20 @@ mlir::LogicalResult WrapDepthToSpaceAsClusterNNDMA::matchAndRewrite(VPUIP::SwKer
 }
 
 //
-// FuseSpaceToDepthWithClusterCopy
+// FuseSpaceToDepthWithDistributedCopy
 //
 
 // SW.kernel(spaceToDepth)
-//      |                                 ->        Clustering Tiling SpaceToDepthDMA (cmx->cmx)
+//      |                                 ->        Distributed SpaceToDepthDMA (cmx->cmx)
 // Copy (cmx->ddr)
 //      |
-// Clustering Ciling Copy (ddr->cmx)
+// Distributed Copy (ddr->cmx)
 
-class FuseSpaceToDepthWithClusterCopy final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
+class FuseSpaceToDepthWithDistributedCopy final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
 public:
-    FuseSpaceToDepthWithClusterCopy(mlir::MLIRContext* ctx, Logger log)
+    FuseSpaceToDepthWithDistributedCopy(mlir::MLIRContext* ctx, Logger log)
             : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx), _log(log) {
-        setDebugName("FuseSpaceToDepthWithClusterCopy");
+        setDebugName("FuseSpaceToDepthWithDistributedCopy");
     }
 
     mlir::LogicalResult matchAndRewrite(VPUIP::SwKernelOp swkernelOp, mlir::PatternRewriter& rewriter) const final;
@@ -1729,25 +1496,28 @@ private:
     Logger _log;
 };
 
-mlir::LogicalResult FuseSpaceToDepthWithClusterCopy::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
-                                                                     mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult FuseSpaceToDepthWithDistributedCopy::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
+                                                                         mlir::PatternRewriter& rewriter) const {
     _log.trace("Got SWKernel '{0}' at '{1}'.", swKernelOp->getName(), swKernelOp->getLoc());
     if (!checkSpaceToDepthPattern(swKernelOp, _log.nest())) {
         return mlir::failure();
     }
 
-    auto copyBackToDDROp = mlir::dyn_cast<VPUIP::CopyOp>(*(swKernelOp->getUsers().begin()));
-    if (vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
+    auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
+    if (copyBackToDDROp == nullptr || vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
         return mlir::failure();
     }
-    auto user = *(copyBackToDDROp->getUsers().begin());
+    auto copyOp = getTheOnlyUser<VPUIP::CopyOp>(copyBackToDDROp);
+    if (copyOp == nullptr) {
+        return mlir::failure();
+    }
 
-    _log.nest().trace("Got SpaceToDepth -> Cluster Copy pattern. SpaceToDepth '{0}' at '{1}'", swKernelOp->getName(),
-                      swKernelOp->getLoc());
+    _log.nest().trace("Got SpaceToDepth -> Distributed Copy pattern. SpaceToDepth '{0}' at '{1}'",
+                      swKernelOp->getName(), swKernelOp->getLoc());
 
     // Check distribution mode
-    const auto clusterOutput = VPUIP::getLayerOutputs(user)[0];
-    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(clusterOutput.getType());
+    const auto distributedOutput = VPUIP::getLayerOutputs(copyOp)[0];
+    const auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(distributedOutput.getType());
     if (distributedType == nullptr) {
         return mlir::failure();
     }
@@ -1763,11 +1533,11 @@ mlir::LogicalResult FuseSpaceToDepthWithClusterCopy::matchAndRewrite(VPUIP::SwKe
         return mlir::failure();
     }
 
-    rewriter.setInsertionPointAfter(user);
+    rewriter.setInsertionPointAfter(copyOp);
     rewriter.replaceOpWithNewOp<VPUIP::SpaceToDepthDMAOp>(
-            user, swKernelOp.getOperand(0), VPUIP::getLayerOutputs(user)[0], blockSizeAttr, modeAttr, nullptr);
+            copyOp, swKernelOp.getOperand(0), VPUIP::getLayerOutputs(copyOp)[0], blockSizeAttr, modeAttr, nullptr);
 
-    _log.nest().trace("Wrap SpaceToDepth '{0}' at '{1}' with next Cluster Copy.", swKernelOp->getName(),
+    _log.nest().trace("Wrap SpaceToDepth '{0}' at '{1}' with next Distributed Copy.", swKernelOp->getName(),
                       swKernelOp->getLoc());
 
     rewriter.eraseOp(copyBackToDDROp);
@@ -1777,21 +1547,21 @@ mlir::LogicalResult FuseSpaceToDepthWithClusterCopy::matchAndRewrite(VPUIP::SwKe
 }
 
 //
-// FuseClusterCopyWithMemPermute
+// FuseDistributedCopyWithMemPermute
 //
 
-// Duplicated Tiling Copy(cmx->ddr)
+// Duplicated Distributed Copy(cmx->ddr)
 //              |
-//         Copy(ddr->cmx)                ->        Clustering Tiling PermuteDMA (cmx->cmx)
+//         Copy(ddr->cmx)                ->        Distributed PermuteDMA (cmx->cmx)
 //              |
 //         SW.kernel(memPermute)
 //              |
 
-class FuseClusterCopyWithMemPermute final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
+class FuseDistributedCopyWithMemPermute final : public mlir::OpRewritePattern<VPUIP::SwKernelOp> {
 public:
-    FuseClusterCopyWithMemPermute(mlir::MLIRContext* ctx, Logger log)
+    FuseDistributedCopyWithMemPermute(mlir::MLIRContext* ctx, Logger log)
             : mlir::OpRewritePattern<VPUIP::SwKernelOp>(ctx), _log(log) {
-        setDebugName("FuseClusterCopyWithMemPermute");
+        setDebugName("FuseDistributedCopyWithMemPermute");
     }
 
 public:
@@ -1801,13 +1571,13 @@ private:
     Logger _log;
 };
 
-mlir::LogicalResult FuseClusterCopyWithMemPermute::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
-                                                                   mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult FuseDistributedCopyWithMemPermute::matchAndRewrite(VPUIP::SwKernelOp swKernelOp,
+                                                                       mlir::PatternRewriter& rewriter) const {
     if (VPUIP::hasBoundedBuffers(swKernelOp) || VPUIP::hasUngroupedBoundedBuffers(swKernelOp)) {
         return mlir::failure();
     }
 
-    if (!checkTilingCopyWithPermutePattern(swKernelOp, _log)) {
+    if (!checkDistributedCopyWithPermutePattern(swKernelOp, _log)) {
         return mlir::failure();
     }
     auto copyInCMXOp = swKernelOp.getOperand(0).getDefiningOp<VPUIP::CopyOp>();
@@ -1836,22 +1606,22 @@ mlir::LogicalResult FuseClusterCopyWithMemPermute::matchAndRewrite(VPUIP::SwKern
 }
 
 //
-// FuseClusterMemPermuteWithViewLikeOps
+// FuseDistributedMemPermuteWithViewLikeOps
 //
 
-//  Cluster Tiling PermuteDMA (cmx->cmx)
+//  Distributed PermuteDMA (cmx->cmx)
 //              |
-//          ViewLikeOp                          Clustering Tiling PermuteDMA (cmx->cmx)
+//          ViewLikeOp                          Distributed PermuteDMA (cmx->cmx)
 //              |                       ->                 |
 //         Copy (cmx->ddr)                              ViewLikeOp
 //              |
-// Duplicated Tiling Copy (ddr->cmx)
+// Duplicated Distributed Copy (ddr->cmx)
 
-class FuseClusterMemPermuteWithViewLikeOps final : public mlir::OpRewritePattern<VPUIP::PermuteDMAOp> {
+class FuseDistributedMemPermuteWithViewLikeOps final : public mlir::OpRewritePattern<VPUIP::PermuteDMAOp> {
 public:
-    FuseClusterMemPermuteWithViewLikeOps(mlir::MLIRContext* ctx, Logger log)
+    FuseDistributedMemPermuteWithViewLikeOps(mlir::MLIRContext* ctx, Logger log)
             : mlir::OpRewritePattern<VPUIP::PermuteDMAOp>(ctx), _log(log) {
-        setDebugName("FuseClusterMemPermuteWithViewLikeOps");
+        setDebugName("FuseDistributedMemPermuteWithViewLikeOps");
     }
 
 public:
@@ -1865,7 +1635,7 @@ private:
     Logger _log;
 };
 
-VPU::DistributionInfoAttr FuseClusterMemPermuteWithViewLikeOps::getDuplicatedDistribution(
+VPU::DistributionInfoAttr FuseDistributedMemPermuteWithViewLikeOps::getDuplicatedDistribution(
         ShapeRef shape, VPU::DistributionInfoAttr origDistribution, mlir::MLIRContext* ctx) const {
     const auto distrModeAttr = VPU::DistributionModeAttr::get(ctx, VPU::DistributionMode::DUPLICATED);
     if (!isDistributedAttrWithExplicitShapesAndOffsets(origDistribution)) {
@@ -1878,16 +1648,16 @@ VPU::DistributionInfoAttr FuseClusterMemPermuteWithViewLikeOps::getDuplicatedDis
                                                 nullptr, origDistribution.getUniformDistributedSegments(), ctx);
 }
 
-mlir::LogicalResult FuseClusterMemPermuteWithViewLikeOps::matchAndRewrite(VPUIP::PermuteDMAOp permuteOp,
-                                                                          mlir::PatternRewriter& rewriter) const {
-    _log.trace("FuseClusterMemPermuteWithViewLikeOps: Found PermuteDMAOp {0}", permuteOp);
+mlir::LogicalResult FuseDistributedMemPermuteWithViewLikeOps::matchAndRewrite(VPUIP::PermuteDMAOp permuteOp,
+                                                                              mlir::PatternRewriter& rewriter) const {
+    _log.trace("FuseDistributedMemPermuteWithViewLikeOps: Found PermuteDMAOp {0}", permuteOp);
     if (!permuteOp->hasOneUse()) {
         return mlir::failure();
     }
     auto viewLikeOps = getPureViewLikeOpChains(permuteOp);
 
     // check copy op after viewLikeOps
-    auto userOp = viewLikeOps.empty() ? *permuteOp->getUsers().begin() : *viewLikeOps.back()->getUsers().begin();
+    auto userOp = viewLikeOps.empty() ? getTheOnlyUser(permuteOp) : *viewLikeOps.back()->getUsers().begin();
     auto copyOp = mlir::dyn_cast<VPUIP::CopyOp>(userOp);
     if (copyOp == nullptr || !copyOp->hasOneUse() || vpux::VPUIP::hasDistributedOperand(copyOp)) {
         return mlir::failure();
@@ -1898,26 +1668,28 @@ mlir::LogicalResult FuseClusterMemPermuteWithViewLikeOps::matchAndRewrite(VPUIP:
         return mlir::failure();
     }
 
-    // check tiling copy op
-    auto user = mlir::dyn_cast<VPUIP::CopyOp>(*copyOp->getUsers().begin());
-    if (user == nullptr || !vpux::VPUIP::hasDistributedOperand(user)) {
+    // check distributed copy op
+    auto childCopyOp = getTheOnlyUser<VPUIP::CopyOp>(copyOp);
+    if (childCopyOp == nullptr || !vpux::VPUIP::hasDistributedOperand(childCopyOp)) {
         return mlir::failure();
     }
-    const auto tilingCopyOutType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(user->getResult(0).getType());
-    auto outDistribution = tilingCopyOutType.getDistribution();
+    const auto distributedCopyOutType =
+            mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(childCopyOp->getResult(0).getType());
+    auto outDistribution = distributedCopyOutType.getDistribution();
     auto mode = outDistribution.getMode().getValue();
-    if (tilingCopyOutType.getMemoryKind() != VPU::MemoryKind::CMX_NN || mode != VPU::DistributionMode::DUPLICATED) {
+    if (distributedCopyOutType.getMemoryKind() != VPU::MemoryKind::CMX_NN ||
+        mode != VPU::DistributionMode::DUPLICATED) {
         return mlir::failure();
     }
 
-    const auto outReqs = StrideReqs::compact(tilingCopyOutType.getRank());
-    if (!outReqs.checkStrides(tilingCopyOutType)) {
+    const auto outReqs = StrideReqs::compact(distributedCopyOutType.getRank());
+    if (!outReqs.checkStrides(distributedCopyOutType)) {
         _log.trace("Skip complex case: output is strided");
         return mlir::failure();
     }
 
-    // create new Cluster Tiling PermuteDMA with distributed output
-    rewriter.setInsertionPointAfter(user);
+    // create new Distributed PermuteDMA with distributed output
+    rewriter.setInsertionPointAfter(childCopyOp);
     auto memPerm = permuteOp.getMemPermAttr();
     const auto ctx = permuteOp->getContext();
     const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(permuteOp.getOutput().getType());
@@ -1926,14 +1698,14 @@ mlir::LogicalResult FuseClusterMemPermuteWithViewLikeOps::matchAndRewrite(VPUIP:
     const auto order = mlir::AffineMapAttr::get(outType.getDimsOrder().toAffineMap(ctx));
     auto permuteDistribution = getDuplicatedDistribution(outShape, outDistribution, ctx);
     auto newPermuteDistributedOutType = VPUIP::DistributedBufferType::get(
-            ctx, outShape.raw(), outElemType, order, tilingCopyOutType.getMemSpace(), permuteDistribution);
+            ctx, outShape.raw(), outElemType, order, distributedCopyOutType.getMemSpace(), permuteDistribution);
 
     auto newAlloc = rewriter.create<VPURT::AllocDistributed>(permuteOp->getLoc(), newPermuteDistributedOutType, nullptr,
                                                              nullptr);
 
     auto newPermuteOp = rewriter.create<VPUIP::PermuteDMAOp>(permuteOp->getLoc(), VPUIP::getLayerInputs(permuteOp)[0],
                                                              newAlloc, memPerm, nullptr);
-    _log.trace("create new cluster tiling permute op {0}", newPermuteOp);
+    _log.trace("create new distributed permute op {0}", newPermuteOp);
 
     // create new view like ops
     auto newOutput = newPermuteOp->getResult(0);
@@ -1949,7 +1721,7 @@ mlir::LogicalResult FuseClusterMemPermuteWithViewLikeOps::matchAndRewrite(VPUIP:
         auto viewLikeDistribution = getDuplicatedDistribution(viewLikeOutShape, outDistribution, ctx);
         auto newViewLikeOutType =
                 VPUIP::DistributedBufferType::get(ctx, viewLikeOutShape.raw(), viewLikeElemType, viewLikeOutOrder,
-                                                  tilingCopyOutType.getMemSpace(), viewLikeDistribution);
+                                                  distributedCopyOutType.getMemSpace(), viewLikeDistribution);
         newViewLikeOp->getResult(0).setType(newViewLikeOutType);
         newOutput = newViewLikeOp->getResult(0);
 
@@ -1957,25 +1729,25 @@ mlir::LogicalResult FuseClusterMemPermuteWithViewLikeOps::matchAndRewrite(VPUIP:
         rewriter.eraseOp(viewLikeOp);
     }
 
-    // There are instances where the tilingCopyOutType can have the alignment attribute set.
+    // There are instances where the distributedCopyOutType can have the alignment attribute set.
     // However, given that this pass currently applies just for DUPLICATED mode, it is safe to discard
     // the attribute. Alternatively, it could be tried to propagate the alignment up, but propagation
     // through GenericReshape/ShapeCast ops is not trivial.
     auto newOutputDistributedType = mlir::cast<vpux::VPUIP::DistributedBufferType>(newOutput.getType());
-    if (tilingCopyOutType != newOutputDistributedType) {
-        if (VPU::isDistributedCastCompatible(newOutputDistributedType, tilingCopyOutType).failed()) {
-            _log.trace("View op's output type incompatible with consumer NCE.ClusterTiling input type: output = {0}, "
+    if (distributedCopyOutType != newOutputDistributedType) {
+        if (VPU::isDistributedCastCompatible(newOutputDistributedType, distributedCopyOutType).failed()) {
+            _log.trace("View op's output type incompatible with consumer input type: output = {0}, "
                        "input = {1}",
-                       newOutputDistributedType, tilingCopyOutType);
+                       newOutputDistributedType, distributedCopyOutType);
             return mlir::failure();
         }
 
         auto distributedCastOp =
-                rewriter.create<VPUIP::DistributedCastOp>(permuteOp->getLoc(), tilingCopyOutType, newOutput);
+                rewriter.create<VPUIP::DistributedCastOp>(permuteOp->getLoc(), distributedCopyOutType, newOutput);
         newOutput = distributedCastOp->getResult(0);
     }
 
-    rewriter.replaceOp(user, newOutput);
+    rewriter.replaceOp(childCopyOp, newOutput);
     rewriter.eraseOp(copyOp);
     rewriter.eraseOp(permuteOp);
     return mlir::success();
@@ -2004,20 +1776,16 @@ void WrapWithPermuteAsNNDMAPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<FuseExpandAndPermuteWithClusterCopy>(&ctx, _log);
     patterns.add<FuseExpandAndPermuteWithCopy>(&ctx, _log);
-    patterns.add<FuseExpandWithClusterCopy>(&ctx, _log);
     patterns.add<FuseExpandWithCopy>(&ctx, _log);
     patterns.add<FuseExpandWithUpsampling>(&ctx, _log);
-    patterns.add<FuseMemPermuteWithClusterCopy>(&ctx, _log);
     patterns.add<FuseMemPermuteWithCopy>(&ctx, _log);
-    patterns.add<FuseClusterCopyWithMemPermute>(&ctx, _log);
-    patterns.add<FuseClusterMemPermuteWithViewLikeOps>(&ctx, _log);
-    patterns.add<FusePerAxisTileWithClusterCopy>(&ctx, _log);
+    patterns.add<FuseDistributedCopyWithMemPermute>(&ctx, _log);
+    patterns.add<FuseDistributedMemPermuteWithViewLikeOps>(&ctx, _log);
     patterns.add<FusePerAxisTileWithCopy>(&ctx, _log);
     patterns.add<FuseSpaceToDepthAndPermute>(&ctx, _log);
-    patterns.add<FuseSpaceToDepthWithClusterCopy>(&ctx, _log);
-    patterns.add<WrapDepthToSpaceAsClusterNNDMA>(&ctx, _log);
+    patterns.add<FuseSpaceToDepthWithDistributedCopy>(&ctx, _log);
+    patterns.add<WrapDepthToSpaceAsDistributedNNDMA>(&ctx, _log);
 
     auto func = getOperation();
     if (mlir::failed(applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {

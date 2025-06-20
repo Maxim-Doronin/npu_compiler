@@ -82,7 +82,7 @@ void vpux::loop_1d(LoopExecPolicy policy, mlir::MLIRContext* ctx, int64_t dim0, 
 
     auto& threadPool = ctx->getThreadPool();
     llvm::ThreadPoolTaskGroup tasksGroup(threadPool);
-    const auto availableThreads = threadPool.getThreadCount();
+    const auto availableThreads = threadPool.getMaxConcurrency();
     SmallVector<int64_t> dims = {dim0};
 
     int64_t threadsToUse = 0;
@@ -118,7 +118,7 @@ void vpux::loop_2d(LoopExecPolicy policy, mlir::MLIRContext* ctx, int64_t dim0, 
 
     auto& threadPool = ctx->getThreadPool();
     llvm::ThreadPoolTaskGroup tasksGroup(threadPool);
-    const auto availableThreads = threadPool.getThreadCount();
+    const auto availableThreads = threadPool.getMaxConcurrency();
     SmallVector<int64_t> dims = {dim0, dim1};
 
     int64_t threadsToUse = 0;
@@ -158,7 +158,7 @@ void vpux::loop_3d(LoopExecPolicy policy, mlir::MLIRContext* ctx, int64_t dim0, 
 
     auto& threadPool = ctx->getThreadPool();
     llvm::ThreadPoolTaskGroup tasksGroup(threadPool);
-    const auto availableThreads = threadPool.getThreadCount();
+    const auto availableThreads = threadPool.getMaxConcurrency();
     SmallVector<int64_t> dims = {dim0, dim1, dim2};
 
     int64_t threadsToUse = 0;
@@ -202,7 +202,7 @@ void vpux::loop_4d(LoopExecPolicy policy, mlir::MLIRContext* ctx, int64_t dim0, 
 
     auto& threadPool = ctx->getThreadPool();
     llvm::ThreadPoolTaskGroup tasksGroup(threadPool);
-    const auto availableThreads = threadPool.getThreadCount();
+    const auto availableThreads = threadPool.getMaxConcurrency();
     SmallVector<int64_t> dims = {dim0, dim1, dim2, dim3};
 
     int64_t threadsToUse = 0;

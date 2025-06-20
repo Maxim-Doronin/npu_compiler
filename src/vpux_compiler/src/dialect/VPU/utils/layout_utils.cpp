@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/factories/shave_controls_dpu.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 
 using namespace vpux;
@@ -37,7 +38,7 @@ void vpux::VPU::inferReduceLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& 
     if (op->getNumOperands() > 1) {
         axesVec = parseIntArrayAttr<int64_t>(vpux::IE::getIntArrayAttrValue(op->getOperand(1)));
     } else if (op->hasAttr(axes_value)) {
-        if (auto axesValue = op->getAttr(axes_value).dyn_cast_or_null<mlir::ArrayAttr>()) {
+        if (auto axesValue = mlir::dyn_cast_or_null<mlir::ArrayAttr>(op->getAttr(axes_value))) {
             axesVec = parseIntArrayAttr<int64_t>(axesValue);
         }
     }
@@ -67,7 +68,7 @@ mlir::LogicalResult vpux::VPU::verifyReduceLayoutInfo(mlir::Operation* op) {
         if (op->getNumOperands() > 1) {
             axesVec = parseIntArrayAttr<int64_t>(vpux::IE::getIntArrayAttrValue(op->getOperand(1)));
         } else if (op->hasAttr(axes_value)) {
-            if (auto axesValue = op->getAttr(axes_value).dyn_cast_or_null<mlir::ArrayAttr>()) {
+            if (auto axesValue = mlir::dyn_cast_or_null<mlir::ArrayAttr>(op->getAttr(axes_value))) {
                 axesVec = parseIntArrayAttr<int64_t>(axesValue);
             }
         }
@@ -351,7 +352,7 @@ mlir::LogicalResult vpux::VPU::verifySameMultipleInOutSpecificDimsOrder(mlir::Op
 
 void vpux::VPU::inferAffineReshapeLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& info) {
     const auto dimMapping = op->hasAttr(dim_mapping) ? op->getAttr(dim_mapping) : nullptr;
-    const auto dimMappingAttr = dimMapping.dyn_cast_or_null<mlir::ArrayAttr>();
+    const auto dimMappingAttr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(dimMapping);
     const auto inOrder = info.getInput(0);
     const auto inPermutation = inOrder.toPermutation();
     const auto outPermutation = Const::inferAffineReshapeOutputLayout(inPermutation, dimMappingAttr);
@@ -375,7 +376,7 @@ mlir::LogicalResult vpux::VPU::verifyAffineReshapeLayoutInfo(mlir::Operation* op
     const auto outOrder = DimsOrder::fromValue(output);
 
     const auto dimMapping = op->hasAttr(dim_mapping) ? op->getAttr(dim_mapping) : nullptr;
-    const auto dimMappingAttr = dimMapping.dyn_cast_or_null<mlir::ArrayAttr>();
+    const auto dimMappingAttr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(dimMapping);
 
     const auto inPermutation = inOrder.toPermutation();
     const auto outPermutation = Const::inferAffineReshapeOutputLayout(inPermutation, dimMappingAttr);
@@ -477,24 +478,36 @@ void vpux::VPU::inferLSTMSequenceLayoutInfo(mlir::Operation* op, IE::LayerLayout
     if (lstmSequenceOp.getWeights()) {
         info.setInput(ind++, DimsOrder::NWHC);  // weights
     }
-    info.setInput(ind++, DimsOrder::NWHC);  // recurrenceWeights
+    // recurrenceWeights order. It depends by lower-level implementation.
+    auto useDpu = VPU::getShaveControlsDpu(VPU::getArch(op));
+    useDpu = useDpu ? VPU::LSTMSequenceOp::isSupported(lstmSequenceOp, useDpu) : useDpu;
+    auto recurrenceWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NWHC;
+    info.setInput(ind++, recurrenceWeightsOrder);
     if (lstmSequenceOp.getBiases()) {
-        info.setInput(ind++, DimsOrder::NCWH);  // biases
+        auto biasesWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NCWH;
+        info.setInput(ind++, biasesWeightsOrder);  // biases
     }
 }
 
 mlir::LogicalResult vpux::VPU::verifyLSTMSequenceLayoutInfo(mlir::Operation* op) {
     auto lstmSequenceOp = mlir::dyn_cast<VPU::LSTMSequenceOp>(op);
     VPUX_THROW_UNLESS(lstmSequenceOp, "Expected a VPU::LSTMSequenceOp, got {0}", op);
-
+    auto useDpu = lstmSequenceOp.getUseDpuAttr() ? lstmSequenceOp.getUseDpuAttr().getValue() : false;
+    auto recurrenceWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NWHC;
+    // optional input order check
+    if (lstmSequenceOp.getBiases()) {
+        auto biasesWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NCWH;
+        if (DimsOrder::fromValue(lstmSequenceOp.getBiases()) != biasesWeightsOrder) {
+            return mlir::failure();
+        }
+    }
     if (DimsOrder::fromValue(lstmSequenceOp.getInputData()) != DimsOrder::NCHW ||
         DimsOrder::fromValue(lstmSequenceOp.getInitialHiddenState()) != DimsOrder::NCHW ||
         DimsOrder::fromValue(lstmSequenceOp.getInitialCellState()) != DimsOrder::NCHW ||
-        DimsOrder::fromValue(lstmSequenceOp.getReccurenceWeights()) != DimsOrder::NWHC ||
+        DimsOrder::fromValue(lstmSequenceOp.getReccurenceWeights()) != recurrenceWeightsOrder ||
         DimsOrder::fromValue(lstmSequenceOp.getSyncBuffer()) != DimsOrder::NCHW) {
         return mlir::failure();
     }
-
     return mlir::success();
 }
 
@@ -662,7 +675,7 @@ DimsOrder vpux::VPU::inferUnsqueezeOutputLayout(const DimArr& inPerm, const Smal
 
 void vpux::VPU::inferSqueezeUnsqueezeLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& info) {
     const auto axesValue = op->hasAttr(axes_value) ? op->getAttr(axes_value) : nullptr;
-    const auto axesValueAttr = axesValue.dyn_cast_or_null<mlir::ArrayAttr>();
+    const auto axesValueAttr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(axesValue);
     const auto axes =
             axesValueAttr != nullptr ? parseIntArrayAttr<int64_t>(axesValueAttr) : mlir::SmallVector<int64_t>{};
     const auto inOrder = info.getInput(0);

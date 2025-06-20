@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 
 #include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -61,6 +62,14 @@ public:
 
     inline VPU::ArchKind getArchKind() const {
         return _archKind;
+    }
+
+    void resetNNCacheCounter() {
+        _costModel->getPreloadedCacheCounter().reset();
+    }
+
+    void printNNCacheStatistics(Logger& log) const {
+        log.info("[NN Cache statistics]  {0}", _costModel->getPreloadedCacheCounter().printString());
     }
 
 private:

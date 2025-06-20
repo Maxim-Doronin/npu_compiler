@@ -22,8 +22,8 @@ public:
     }
 
 public:
-    void notifyOperationInserted(mlir::Operation* op) final;
-    void notifyBlockCreated(mlir::Block* block) final;
+    void notifyOperationInserted(mlir::Operation* op, mlir::OpBuilder::InsertPoint previous) final;
+    void notifyBlockInserted(mlir::Block* block, mlir::Region* previous, mlir::Region::iterator previousIt) final;
 
 private:
     Logger _log;

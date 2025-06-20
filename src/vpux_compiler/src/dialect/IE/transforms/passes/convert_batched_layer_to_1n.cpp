@@ -10,9 +10,9 @@
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
@@ -372,13 +372,10 @@ void GroupConvLayerConverter::reshapeForGroupConv(IE::GroupConvolutionOp groupCo
     const auto filter = groupConvOp.getFilter();
     auto targetConstShape = Shape(getShape(filter));
     targetConstShape[Dims4D::Filter::OC] = group;
-    auto targetShapeConst =
-            vpux::IE::createShapeConstForBroadCast(rewriter, ctx, groupConvOp->getLoc(), targetConstShape);
-    auto newFilter = rewriter.create<IE::BroadcastOp>(groupConvOp->getLoc(), filter, targetShapeConst,
-                                                      /*axes_mapping*/ nullptr,
-                                                      IE::BroadcastTypeAttr::get(ctx, IE::BroadcastType::NUMPY));
+    auto newFilter = IE::createBroadcast(rewriter, takeOpLoc(groupConvOp, "filter"), filter, targetConstShape);
+
     auto newGroupConvOp = rewriter.create<IE::GroupConvolutionOp>(
-            groupConvOp->getLoc(), inShapeCast.getResult(), newFilter.getOutput(), groupConvOp.getBias(),
+            groupConvOp->getLoc(), inShapeCast.getResult(), newFilter, groupConvOp.getBias(),
             groupConvOp.getStridesAttr(), groupConvOp.getPadsBeginAttr(), groupConvOp.getPadsEndAttr(),
             groupConvOp.getDilationsAttr(), getIntAttr(ctx, group), groupConvOp.getPostOpAttr(),
             groupConvOp.getClampAttr(), groupConvOp.getOutputPaddingAttr(), groupConvOp.getInputPaddingAttr());
@@ -474,8 +471,8 @@ bool isLegalEltwiseOp(ConcreteOp op) {
 
     return static_cast<bool>(!isShapeRankEq4(op->getOperand(1)) || isEqualToOne(op->getOperand(0), Dims4D::Act::N) ||
                              !isShapeRankEq4(op->getOperand(0)) ||
-                             !IE::isBroadcastable(inShape1[Dims4D::Act::N] * inShape1[Dims4D::Act::C],
-                                                  inShape2[Dims4D::Act::N] * inShape2[Dims4D::Act::C]) ||
+                             !isBroadcastable(inShape1[Dims4D::Act::N] * inShape1[Dims4D::Act::C],
+                                              inShape2[Dims4D::Act::N] * inShape2[Dims4D::Act::C]) ||
                              hasPerAxisQuantization);
 };
 

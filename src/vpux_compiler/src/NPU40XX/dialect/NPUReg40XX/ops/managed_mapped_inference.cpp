@@ -19,7 +19,7 @@ using namespace npu40xx;
 //
 
 void vpux::NPUReg40XX::ManagedMappedInferenceOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto managedMpiDescriptor = getDescriptor().getRegMapped();
+    auto managedMpiDescriptor = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuManagedMappedInference) == managedMpiDescriptor.size(),
                       "HW VpuManagedMappedInference size {0} != regMapped representation size {1}.",
@@ -49,7 +49,7 @@ size_t getSymRefOffsetForReloc(NPUReg40XX::ManagedMappedInferenceOp op, mlir::Sy
                offsetof(nn_public::VpuTaskReference<nn_public::VpuWorkItem>, address);
     }
 
-    if (ref == op.getBootstrapTasksAttr()) {
+    if (ref == op.getBootstrapBarriersAttr()) {
         return offsetof(nn_public::VpuManagedMappedInference, initial_barriers) +
                offsetof(nn_public::VpuTaskReference<uint32_t>, address);
     }
@@ -95,10 +95,10 @@ std::vector<ELF::RelocationInfo> NPUReg40XX::ManagedMappedInferenceOp::getReloca
                             "barriersTasks for managed mapped inference reloc");
     }
 
-    if (auto bootstrapTasks = getBootstrapTasks().value_or(nullptr)) {
-        relocs.emplace_back(bootstrapTasks, targetSection, getSymRefOffsetForReloc(thisMMI, bootstrapTasks),
-                            ELF::RelocationType::R_VPU_64, ELF::getOffsetOfSymRef(symRefMap, bootstrapTasks),
-                            "bootstrapTasks for managed mapped inference reloc");
+    if (auto bootstrapBarriers = getBootstrapBarriers().value_or(nullptr)) {
+        relocs.emplace_back(bootstrapBarriers, targetSection, getSymRefOffsetForReloc(thisMMI, bootstrapBarriers),
+                            ELF::RelocationType::R_VPU_64, ELF::getOffsetOfSymRef(symRefMap, bootstrapBarriers),
+                            "bootstrapBarriers for managed mapped inference reloc");
     }
 
     if (auto nnrtConfig = getNnrtConfig()) {
@@ -123,11 +123,28 @@ std::vector<ELF::RelocationInfo> NPUReg40XX::ManagedMappedInferenceOp::getReloca
 }
 
 void NPUReg40XX::ManagedMappedInferenceOp::setVersion(const elf::Version& version) {
-    auto descriptor = getDescriptor().getRegMapped();
+    auto descriptor = getProperties().getDescriptor();
     const auto serializedVersion = VPU_CONCAT_NNRT_API_VER(version.getMajor(), version.getMinor());
     descriptor.write<NPUReg40XX::Fields::MMI_vpu_nnrt_api_ver>(serializedVersion);
+    getProperties().setDescriptor(descriptor);
+}
 
-    auto managedMappedInferenceDescriptorAttr =
-            NPUReg40XX::VpuManagedMappedInferenceAttr::get(getContext(), std::move(descriptor));
-    setDescriptorAttr(managedMappedInferenceDescriptorAttr);
+void vpux::NPUReg40XX::ManagedMappedInferenceOp::build(
+        mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName, mlir::SymbolRefAttr nnrtConfig,
+        mlir::SymbolRefAttr mappedInferenceVersion, mlir::ArrayAttr dmaTasks, mlir::SymbolRefAttr workItems,
+        mlir::SymbolRefAttr barrierTasks, mlir::SymbolRefAttr bootstrapBarriers,
+        mlir::SymbolRefAttr barrierConfigurationTasks, mlir::SymbolRefAttr numOfBarrierReprogrammings,
+        vpux::NPUReg40XX::Descriptors::VpuManagedMappedInference&& descriptor) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.nnrtConfig = nnrtConfig;
+    props.mappedInferenceVersion = mappedInferenceVersion;
+    props.dmaTasks = dmaTasks;
+    props.workItems = workItems;
+    props.barrierTasks = barrierTasks;
+    props.bootstrapBarriers = bootstrapBarriers;
+    props.barrierConfigurationTasks = barrierConfigurationTasks;
+    props.numOfBarrierReprogrammings = numOfBarrierReprogrammings;
+    props.descriptor = std::move(descriptor);
 }

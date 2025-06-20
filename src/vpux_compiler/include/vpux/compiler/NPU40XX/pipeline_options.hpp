@@ -16,10 +16,23 @@ namespace vpux {
 //
 
 struct ReferenceSWOptions40XX final :
+        public PublicOptions,
         public ReferenceSWOptions<ReferenceSWOptions40XX>,
         public vpux::BatchCompileOptionsAdapter {
     ReferenceSWOptions40XX(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
     }
+    ReferenceSWOptions40XX(VPU::ArchKind arch)
+            : PublicOptions(arch), vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
+    }
+
+    static std::unique_ptr<ReferenceSWOptions40XX> createFromString(StringRef options, VPU::ArchKind arch) {
+        auto result = std::make_unique<ReferenceSWOptions40XX>(arch);
+        if (mlir::failed(result->parseFromString(options))) {
+            return nullptr;
+        }
+        return result;
+    }
+
     BoolOption enableConvertFFTToConv{*this, "convert-fft-to-conv", llvm::cl::desc("Enable convert-fft-to-conv pass"),
                                       llvm::cl::init(false)};
     BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
@@ -38,9 +51,17 @@ struct DefaultHWOptions40XX final :
         VPU::arch40xx::DefaultHWOptions,
         VPUIP::arch40xx::DefaultHWOptions,
         mlir::PassPipelineOptions<DefaultHWOptions40XX> {
-    // Due to multiple inheritance, 'DefaultHWOptions40XX' has multiple definitions of 'createFromString' method
-    // here we assume that we are interested in a "final" method that includes parameters from all parent classes
-    using mlir::PassPipelineOptions<DefaultHWOptions40XX>::createFromString;
+    DefaultHWOptions40XX() = default;
+    DefaultHWOptions40XX(VPU::ArchKind arch): PublicOptions(arch) {
+    }
+
+    static std::unique_ptr<DefaultHWOptions40XX> createFromString(StringRef options, VPU::ArchKind arch) {
+        auto result = std::make_unique<DefaultHWOptions40XX>(arch);
+        if (mlir::failed(result->parseFromString(options))) {
+            return nullptr;
+        }
+        return result;
+    }
 };
 
 //
@@ -53,6 +74,8 @@ struct BackendCompilationOptions40XX final : public BackendCompilationOptionsBas
 // BackendCompilationOptions40XX
 //
 
-void setupPWLMCompilationParams(int optimizationLevel, DefaultHWOptions40XX& compilationOptions, bool useWlm);
+void setupParamsAccordingToOptimizationLevel(int optimizationLevel, DefaultHWOptions40XX& compilationOptions,
+                                             bool useWlm);
+void setupPWLMParams(DefaultHWOptions40XX& compilationOptions);
 
 }  // namespace vpux

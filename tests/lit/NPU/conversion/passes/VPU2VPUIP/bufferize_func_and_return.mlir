@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK: func.func @SingleInput({{[^:]+}}: memref<1x1x1x1000xf16>)
 func.func @SingleInput(%input: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
     %output = VPU.SoftMax(%input) {axisInd = 3, padSize = 3} : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
@@ -168,4 +169,15 @@ module @Convolution {
         // CHECK: [[FOO2_RES:%.+]] = call @foo2([[FOO1_RES]]#0) : (memref<1x4x60x60xf16>) -> memref<1x4x60x60xf16>
         // CHECK: return [[FOO2_RES]], [[FOO1_RES]]#1 : memref<1x4x60x60xf16>, memref<1x2x60x60xf16>
     }
+}
+
+// -----
+
+// CHECK: func.func @ReinterpretCast([[ARG0:%.+]]: memref<1x1000xf16>) -> memref<2x1000xi8> {
+func.func @ReinterpretCast(%arg0: tensor<1x1000xf16>) -> tensor<2x1000xi8> {
+    %0 = Core.ReinterpretCast(%arg0) : tensor<1x1000xf16> -> tensor<2x1000xi8>
+    return %0 : tensor<2x1000xi8>
+
+    // CHECK:  [[VAR0:%.+]] = Core.ReinterpretCast([[ARG0]]) : memref<1x1000xf16> -> memref<2x1000xi8>
+    // CHECK:  return [[VAR0]] : memref<2x1000xi8>
 }

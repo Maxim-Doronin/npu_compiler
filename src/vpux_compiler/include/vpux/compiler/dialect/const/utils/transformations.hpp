@@ -96,6 +96,31 @@ std::pair<optimization::TransformAttrPos, bool> moveReshapeBefore(
         SmallVector<Const::TransformAttrInterface>& transformations, optimization::TransformAttrPos& currPos,
         NDTypeInterface baseType);
 
+/** @brief: Ensures Reorder and MemPermute transformations are last.
+
+    Move Reorder and Mempermute transformations at the end of the list by swapping the newly added transformations
+    until they reach the position before Reorder and Mempermute. These 2 transformations might affect the layout.
+    Weights separation prefers the default layout for Init compilation to avoid discrepancy with the default pipeline,
+    since there is no logic to handle non default layout before AdjustLayout pipeline. For quantized types the axis must
+    be modified in case of a preceding MemPermute which might modify the shape.
+
+    Example:
+    Reshape, MemPermute, CastElemType, Add => Reshape, CastElemType, Add, MemPermute
+
+    @param transformations list of transformations
+    @param currPos current position of a transformation that might be swapped with previous ones
+    @param baseType original data type
+
+    @note at the moment in the context of WS, SubView shouldn't be moved from its insertion point
+
+    @return if optimization has been applied: returns the new position of the newly added transformation and true;
+    otherwise returns the current position and false
+ */
+
+std::pair<optimization::TransformAttrPos, bool> moveAttributeBeforeLayoutTransformations(
+        SmallVector<Const::TransformAttrInterface>& transformations, optimization::TransformAttrPos& currPos,
+        NDTypeInterface baseType);
+
 //
 // memPermuteTransformation
 //

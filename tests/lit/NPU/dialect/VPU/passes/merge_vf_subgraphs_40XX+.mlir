@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --merge-vertical-fusion-subgraphs %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 !qElemType = !quant.uniform<u8:f16, 0.013744638480392157:128>
@@ -507,6 +508,31 @@ func.func @BuildMultiplySoftmaxSubgraph(%arg0: tensor<1x4x160x160xf16, {order = 
 
 // -----
 
+// CHECK-LABEL: @BuildSWAddSoftmaxSubgraph
+// CHECK-SAME:      [[INPUT0:%.+]]: tensor<1x32x16x16xf16>, [[INPUT1:%.+]]: tensor<1x1x16x16xf16>
+func.func @BuildSWAddSoftmaxSubgraph(%arg0: tensor<1x32x16x16xf16>, %arg1: tensor<1x1x16x16xf16>) -> tensor<1x32x16x16xf16> {
+
+    %0 = VPU.VerticalFusion (%arg0 as %arg22: tensor<1x32x16x16xf16>, %arg1 as %arg23: tensor<1x1x16x16xf16>) attributes {tilingStrategy = [1, 1, 4, 1]} -> tensor<1x32x16x16xf16> {
+      %570 = VPU.Add(%arg22, %arg23) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x16x16xf16>, tensor<1x1x16x16xf16> -> tensor<1x32x16x16xf16>
+      VPU.Yield %570
+    }
+    %1 = VPU.VerticalFusion (%0 as %arg22: tensor<1x32x16x16xf16>) attributes {tilingStrategy = [1, 1, 3, 1]} -> tensor<1x32x16x16xf16> {
+      %570 = VPU.SoftMax(%arg22) {axisInd = 3 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x16x16xf16> -> tensor<1x32x16x16xf16>
+      VPU.Yield %570
+    }
+
+    return %1: tensor<1x32x16x16xf16>
+
+    // CHECK: [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion ([[INPUT0]] as [[INNER_ARG0:[^:]+]]: tensor<1x32x16x16xf16>, [[INPUT1]] as [[INNER_ARG1:[^:]+]]: tensor<1x1x16x16xf16>) attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>, tilingStrategy = [1, 1, 4, 1]} -> tensor<1x32x16x16xf16> {
+    // CHECK: [[ADD:%.+]] = VPU.Add([[INNER_ARG0]], [[INNER_ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x16x16xf16>, tensor<1x1x16x16xf16> -> tensor<1x32x16x16xf16>
+    // CHECK: [[SOFTMAX:%.+]] = VPU.SoftMax([[ADD]]) {axisInd = 3 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x32x16x16xf16> -> tensor<1x32x16x16xf16>
+    // CHECK:  VPU.Yield [[SOFTMAX]]
+
+    // CHECK: return [[VERTICAL_FUSION]]
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 !qElemType = !quant.uniform<u8:f16, 0.0094078685723099058:128>
@@ -583,7 +609,7 @@ func.func @NotBuildNotPipelinedSubgraph(%arg0: tensor<1x128x32x64xf16, {order = 
     %cst_2 = const.Declare tensor<128x1x1x4xsi32> = dense<1> : tensor<128x1x1x4xsi32>
     %cst_3 = const.Declare tensor<128x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<128x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
-    %set = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 128, 32, 64], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [2, 2, 2, 2]>, seDepth = 1 : i64, seSize = 128 : i64} -> tensor<1x1x67x131xi32, {order = #NHWC}>
+    %set = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 128, 32, 64], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [2, 2, 2, 2]>, seDepth = 1 : i64, seSize = [128]} -> tensor<1x1x67x131xi32, {order = #NHWC}>
     %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x128x32x64xf16, {order = #NHWC}>, %cst_3 as %arg2: tensor<128x16x1x1xf16, {order = #NHWC}>, %cst_2 as %arg3: tensor<128x1x1x4xsi32>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x128x32x64xf16, {order = #NHWC}> {
       %2 = VPU.NCE.DepthConvolution(%arg1, %arg2, %arg3) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [128, 1, 1, 1], strides = [1, 1]} -> tensor<1x128x32x64xf16, {order = #NHWC}>
       VPU.Yield %2

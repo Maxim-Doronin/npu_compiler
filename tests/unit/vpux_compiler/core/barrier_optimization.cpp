@@ -699,12 +699,13 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig(mlir::MLIRContext* ctx
     constexpr llvm::StringLiteral inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-            IE.PipelineOptions @Options {
-            IE.Option @VPU.ReduceSupported : false
-            IE.Option @VPU.AutoPaddingODU : false
-            IE.Option @VPU.BarrierMaxVariantSum : 64
-            IE.Option @VPU.BarrierMaxVariantCount : 128
+        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+            config.PipelineOptions @Options {
+            config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+            config.Option @VPU.ReduceSupported : false
+            config.Option @VPU.AutoPaddingODU : false
+            config.Option @VPU.BarrierMaxVariantSum : 64
+            config.Option @VPU.BarrierMaxVariantCount : 128
             }
             IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -714,7 +715,7 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig(mlir::MLIRContext* ctx
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             module @VPU.SW {
                 func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE }
@@ -831,12 +832,13 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig2(mlir::MLIRContext* ct
     constexpr llvm::StringLiteral inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-            IE.PipelineOptions @Options {
-            IE.Option @VPU.ReduceSupported : false
-            IE.Option @VPU.AutoPaddingODU : false
-            IE.Option @VPU.BarrierMaxVariantSum : 64
-            IE.Option @VPU.BarrierMaxVariantCount : 128
+        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+            config.PipelineOptions @Options {
+            config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+            config.Option @VPU.ReduceSupported : false
+            config.Option @VPU.AutoPaddingODU : false
+            config.Option @VPU.BarrierMaxVariantSum : 64
+            config.Option @VPU.BarrierMaxVariantCount : 128
             }
             IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -846,7 +848,7 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig2(mlir::MLIRContext* ct
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             func.func @main(%arg0: memref<1x3x64x64xf16, @DDR>, %arg1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR> {
                 %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -928,12 +930,13 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig3(mlir::MLIRContext* ct
     constexpr llvm::StringLiteral inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-            IE.PipelineOptions @Options {
-            IE.Option @VPU.ReduceSupported : false
-            IE.Option @VPU.AutoPaddingODU : false
-            IE.Option @VPU.BarrierMaxVariantSum : 64
-            IE.Option @VPU.BarrierMaxVariantCount : 128
+        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+            config.PipelineOptions @Options {
+            config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+            config.Option @VPU.ReduceSupported : false
+            config.Option @VPU.AutoPaddingODU : false
+            config.Option @VPU.BarrierMaxVariantSum : 64
+            config.Option @VPU.BarrierMaxVariantCount : 128
             }
             IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -943,7 +946,7 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig3(mlir::MLIRContext* ct
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             func.func @main(%arg0: memref<1x3x64x64xf16, @DDR>, %arg1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR> {
                 %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -1141,12 +1144,13 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig6(
     constexpr llvm::StringLiteral inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-            IE.PipelineOptions @Options {
-            IE.Option @VPU.ReduceSupported : false
-            IE.Option @VPU.AutoPaddingODU : false
-            IE.Option @VPU.BarrierMaxVariantSum : 64
-            IE.Option @VPU.BarrierMaxVariantCount : 128
+        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+            config.PipelineOptions @Options {
+            config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+            config.Option @VPU.ReduceSupported : false
+            config.Option @VPU.AutoPaddingODU : false
+            config.Option @VPU.BarrierMaxVariantSum : 64
+            config.Option @VPU.BarrierMaxVariantCount : 128
             }
             IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -1156,7 +1160,7 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig6(
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             func.func @main(%arg0: memref<1x3x64x64xf16, @DDR>, %arg1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR> {
                 %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -1254,12 +1258,12 @@ SmallVector<size_t> variableGraphSplitBlockSizeNPU40XXconfig(
     constexpr llvm::StringLiteral inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-            IE.PipelineOptions @Options {
-            IE.Option @VPU.ReduceSupported : false
-            IE.Option @VPU.AutoPaddingODU : false
-            IE.Option @VPU.BarrierMaxVariantSum : 64
-            IE.Option @VPU.BarrierMaxVariantCount : 128
+        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+            config.PipelineOptions @Options {
+            config.Option @VPU.ReduceSupported : false
+            config.Option @VPU.AutoPaddingODU : false
+            config.Option @VPU.BarrierMaxVariantSum : 64
+            config.Option @VPU.BarrierMaxVariantCount : 128
             }
             IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -1269,7 +1273,7 @@ SmallVector<size_t> variableGraphSplitBlockSizeNPU40XXconfig(
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             module @VPU.SW {
                 func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE }
@@ -1781,12 +1785,12 @@ void parallelWaitBarriersIRconfig(mlir::MLIRContext* ctx, mlir::OwningOpRef<mlir
     constexpr llvm::StringLiteral inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
-            IE.PipelineOptions @Options {
-            IE.Option @VPU.ReduceSupported : false
-            IE.Option @VPU.AutoPaddingODU : false
-            IE.Option @VPU.BarrierMaxVariantSum : 64
-            IE.Option @VPU.BarrierMaxVariantCount : 128
+        module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+            config.PipelineOptions @Options {
+            config.Option @VPU.ReduceSupported : false
+            config.Option @VPU.AutoPaddingODU : false
+            config.Option @VPU.BarrierMaxVariantSum : 64
+            config.Option @VPU.BarrierMaxVariantCount : 128
             }
             IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -1796,7 +1800,7 @@ void parallelWaitBarriersIRconfig(mlir::MLIRContext* ctx, mlir::OwningOpRef<mlir
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
             module @VPU.SW {
                 func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE }

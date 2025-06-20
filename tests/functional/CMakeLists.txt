@@ -12,6 +12,9 @@ set(EXCLUDED_FUNC_TESTS_DIR "")
 set(OPTIONAL_FUNC_TESTS_INCLUDES "")
 set(OPTIONAL_FUNC_TESTS_LIBS "")
 
+set(SKIP_CONFIG "skip_tests.xml")
+set(SKIP_CONFIG_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/${SKIP_CONFIG})
+
 ov_add_test_target(
     NAME ${TARGET_NAME}
     ROOT ${CMAKE_CURRENT_SOURCE_DIR}
@@ -69,38 +72,30 @@ if(MSVC)
     )
 endif()
 
-set(SKIP_TESTS_CONFIG_SRC "skip_tests_config.cpp")
-set(PRIVATE_NPU_SKIP_TESTS_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/${SKIP_TESTS_CONFIG_SRC}")
-set(OV_NPU_SKIP_TESTS_CONFIG_DIR "${OpenVINO_SOURCE_DIR}/src/plugins/intel_npu/tests/functional/shared_tests_instances")
-set(OV_BUILD_DIR "${OpenVINODeveloperPackage_DIR}")
-
-message(STATUS "Copying ${PRIVATE_NPU_SKIP_TESTS_CONFIG} to ${OV_NPU_SKIP_TESTS_CONFIG_DIR}")
-
-# Replace `skip_tests_config.cpp` from private tests to openvino tests
-file(COPY "${PRIVATE_NPU_SKIP_TESTS_CONFIG}" DESTINATION "${OV_NPU_SKIP_TESTS_CONFIG_DIR}")
-
-# Force touch the new copied file to update its last access, so it won't be ignored in forced rebuild
-file(TOUCH "${OV_NPU_SKIP_TESTS_CONFIG_DIR}/${SKIP_TESTS_CONFIG_SRC}")
-
-# Force rebuild `ov_npu_func_tests` target, if this isn't a static build
-if (NOT(${OV_BUILD_DIR} MATCHES "build-modules"))
-    execute_process(COMMAND "${CMAKE_COMMAND}" "--build" "${OpenVINODeveloperPackage_DIR}" "--config" "${CMAKE_BUILD_TYPE}" "--target" "ov_npu_func_tests"
-                    COMMAND_ECHO STDOUT
-                    COMMAND_ERROR_IS_FATAL ANY)
-endif()
-
 install(TARGETS ${TARGET_NAME}
         RUNTIME DESTINATION tests
         COMPONENT ${VPUX_TESTS_COMPONENT}
         EXCLUDE_FROM_ALL
 )
 
-# TODO: Remove duplication E#31024
-install(TARGETS ${TARGET_NAME}
-        RUNTIME DESTINATION tests
-        COMPONENT tests
+# Copies tests skip config to installed package
+install(FILES ${SKIP_CONFIG_PATH}
+        DESTINATION tests
+        COMPONENT ${VPUX_TESTS_COMPONENT}
         EXCLUDE_FROM_ALL
 )
+
+# For developer builds we need to find the output folder of compiled binaries
+get_target_property(EXE_LOCATION ${TARGET_NAME} RUNTIME_OUTPUT_DIRECTORY)
+
+if(EXE_LOCATION)
+    # Copy tests skip config to binary output folder
+    configure_file(
+        ${SKIP_CONFIG_PATH}
+        ${EXE_LOCATION}/${SKIP_CONFIG}
+        COPYONLY
+    )
+endif()
 
 if(ENABLE_DEVELOPER_BUILD AND UNIX)
     # add npuFuncTest improved with gtest-parallel to ctest

@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --align-scales %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @AlignConcatScales
 func.func @AlignConcatScales(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
@@ -724,8 +725,8 @@ func.func @AlignAllFQ(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x3x4xf16>, %a
 
 // CHECK-LABEL: @AlignSliceWithClampAdaptiveStrippingFalse
 module {
-IE.PipelineOptions @Options {
-    IE.Option @VPU.EnableAdaptiveStripping : false
+config.PipelineOptions @Options {
+    config.Option @VPU.EnableAdaptiveStripping : false
 }
 
 func.func @AlignSliceWithClampAdaptiveStrippingFalse(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
@@ -753,8 +754,8 @@ func.func @AlignSliceWithClampAdaptiveStrippingFalse(%arg0: tensor<1x16x8x8xf16>
 
 // CHECK-LABEL: @NotAlignSliceWithClampAdaptiveStrippingTrue
 module {
-IE.PipelineOptions @Options {
-    IE.Option @VPU.EnableAdaptiveStripping : true
+config.PipelineOptions @Options {
+    config.Option @VPU.EnableAdaptiveStripping : true
 }
 
 func.func @NotAlignSliceWithClampAdaptiveStrippingTrue(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {

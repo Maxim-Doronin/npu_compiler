@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -70,6 +70,10 @@ VPU::DistributionMode getSWInputTensorDistributionMode(VPU::TopKOp op, VPU::Mult
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::RandomUniformOp randomUniformOp,
                                                        VPU::MultiClusterStrategy strategy,
                                                        vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::RollOp rollOp, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::DynamicQuantizeOp dqOp, VPU::MultiClusterStrategy strategy,
+                                                       vpux::NDTypeInterface inputType);
 
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ClusteredOpInterface clusteredOp,
                                               int64_t numClustersAvailableForCompilation,
@@ -129,5 +133,10 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::TopKOp op, int64_t numCluster
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::RandomUniformOp randomUniformOp,
                                               int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::RollOp rollOp, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::DynamicQuantizeOp op, int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
+
 }  // namespace VPU
 }  // namespace vpux

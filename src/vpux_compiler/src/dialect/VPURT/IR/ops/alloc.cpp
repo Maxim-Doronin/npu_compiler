@@ -8,5 +8,5 @@
 using namespace vpux;
 
 void vpux::VPURT::Alloc::getEffects(SmallVectorImpl<MemoryEffect>& effects) {
-    effects.emplace_back(mlir::MemoryEffects::Allocate::get(), getBuffer());
+    effects.emplace_back(mlir::MemoryEffects::Allocate::get(), mlir::cast<mlir::OpResult>(getBuffer()));
 }

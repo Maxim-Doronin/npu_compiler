@@ -75,10 +75,10 @@ std::optional<int64_t> getZeroPoint(IE::FakeQuantizeOp fqOp) {
             inLowConst.getContentAttr(), inHighConst.getContentAttr(), fqOp.getLevels(), fqOp.getLowFpType(),
             realElemType, Const::hasNegativeValues(inLowConst.getContent()), fqOp.getLoc(), fqOp.getAutoBroadcast());
 
-    if (auto uniformQuantType = quantizeElemType.dyn_cast_or_null<mlir::quant::UniformQuantizedType>()) {
+    if (auto uniformQuantType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(quantizeElemType)) {
         return uniformQuantType.getZeroPoint();
     } else if (auto uniformQuantPerAxisType =
-                       quantizeElemType.dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>()) {
+                       mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(quantizeElemType)) {
         auto zeroPoints = uniformQuantPerAxisType.getZeroPoints();
         const auto isSameZeroPoint =
                 std::adjacent_find(zeroPoints.begin(), zeroPoints.end(), std::not_equal_to<>()) == zeroPoints.end();

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dma-task-profiling-reserve-mem="dma-profiling=true" %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 module @SimpleGraph {
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x16x4x4xf16>

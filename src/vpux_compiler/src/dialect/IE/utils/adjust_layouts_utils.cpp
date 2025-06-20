@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -58,7 +59,7 @@ void changeDimsOrder(mlir::Value val, DimsOrder newOrder, Logger log) {
 }
 
 mlir::FailureOr<vpux::AdjustConvShapeParams> getAdjustConvShapeParameters(IE::ConvolutionOp convOp, mlir::Value filter,
-                                                                          Shape outputShape, Logger _log) {
+                                                                          ShapeRef outputShape, Logger _log) {
     auto inNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(convOp.getInput().getType());
     auto inDimOrder = inNDInterface.getDimsOrder();
     auto outNDInterface = mlir::dyn_cast<vpux::NDTypeInterface>(convOp.getOutput().getType());
@@ -155,7 +156,7 @@ mlir::FailureOr<vpux::AdjustConvShapeParams> getAdjustConvShapeParameters(IE::Co
     //
     auto realInFactor = std::lcm(strides[Dims4D::Strides::X], borrowIn);
 
-    if (maybePaddedInputShape[Dims4D::Act::W] % realInFactor) {
+    if (realInFactor == 0 || maybePaddedInputShape[Dims4D::Act::W] % realInFactor != 0) {
         _log.trace("Don't have factor {0} in input DimW", realInFactor);
         return mlir::failure();
     }
@@ -285,6 +286,21 @@ mlir::FailureOr<vpux::AdjustConvShapeParams> getAdjustConvShapeParameters(IE::Co
     newParamsAfterAdjust.padNum = padNum;
 
     return newParamsAfterAdjust;
+}
+
+int64_t calculateAlignmentFactor(const vpux::NDTypeInterface sliceInType, const vpux::NDTypeInterface sliceOutType) {
+    const auto channelAlignment = VPU::NCEInvariant::getAlignment(sliceInType.getElementType());
+
+    const auto sliceInShape = sliceInType.getShape();
+    const auto sliceOutShape = sliceOutType.getShape();
+
+    int64_t factor = 1;
+    while (factor * sliceInShape[Dims4D::Act::C] % channelAlignment != 0 ||
+           factor * sliceOutShape[Dims4D::Act::C] % channelAlignment != 0) {
+        factor++;
+    }
+
+    return factor;
 }
 
 }  // namespace vpux

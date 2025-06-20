@@ -96,6 +96,7 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
     auto sprLookupTable = convertOrExtractBuffer(rewriter, adaptor.getSprLookupTable(), tileIndex);
     auto palletLookupTable = convertOrExtractBuffer(rewriter, adaptor.getPalletLookupTable(), tileIndex);
     auto taskTypeAttr = adaptor.getTaskTypeAttr();
+    auto dynamicSequenceLength = convertOrExtractBuffer(rewriter, adaptor.getDynamicSequenceLength(), tileIndex);
 
     auto invariant = rewriter.create<VPUMI40XX::DPUInvariantOp>(
             origOp.getLoc(), indexWithOnlyTileSet,
@@ -108,20 +109,21 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
             weightTableDataPtr, weightTableSpPtr, weightTableScale, weightTableBias, weightZeroPoints, sprLookupTable,
             palletLookupTable, convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff()),
             convertOrUnrollBuffer(rewriter, adaptor.getOutputSparsityMapBuff()), adaptor.getProfilingData(),
-            adaptor.getMaxPerXy(), adaptor.getMinPerXy(), adaptor.getMinMaxPerTensor(), taskTypeAttr,
-            adaptor.getEltwiseTypeAttr(), mpeModeAttr, adaptor.getMpeEngineAttr(), adaptor.getKernelSizeAttr(),
-            adaptor.getKernelStridesAttr(), adaptor.getKernelPaddingAttr(), adaptor.getIsContinuedAttr(),
-            adaptor.getCmSpPatternAttr(), adaptor.getInputChannelsCompressionAttr(),
+            dynamicSequenceLength, adaptor.getMaxPerXy(), adaptor.getMinPerXy(), adaptor.getMinMaxPerTensor(),
+            taskTypeAttr, adaptor.getEltwiseTypeAttr(), mpeModeAttr, adaptor.getMpeEngineAttr(),
+            adaptor.getKernelSizeAttr(), adaptor.getKernelStridesAttr(), adaptor.getKernelPaddingAttr(),
+            adaptor.getIsContinuedAttr(), adaptor.getCmSpPatternAttr(), adaptor.getInputChannelsCompressionAttr(),
             adaptor.getIsZeroOffsetWeightsTableAttr(), adaptor.getOutChannelOffsetAttr(), adaptor.getIsSuperdenseAttr(),
             adaptor.getIsInplaceAttr(), adaptor.getInputSeSizeAttr(), adaptor.getOutputSeSizeAttr(),
             adaptor.getIsPermuteQuantizeAttr(), adaptor.getIsSmallKernelOptimizedAttr(),
             adaptor.getProfilingMetadataAttr(),
-            mlir::ValueRange(),          // waitBarriers
-            mlir::ValueRange(),          // updateBarriers
-            zeroUI64Attr,                // startAfter
-            zeroUI64Attr,                // cleanAfter
-            nullptr,                     // enqueueBarrier
-            origTaskOp.getWlmPageAttr()  // wlmPageAttr
+            mlir::ValueRange(),           // waitBarriers
+            mlir::ValueRange(),           // updateBarriers
+            zeroUI64Attr,                 // startAfter
+            zeroUI64Attr,                 // cleanAfter
+            nullptr,                      // enqueueBarrier
+            origTaskOp.getWlmPageAttr(),  // wlmPageAttr
+            adaptor.getDynamicScaleConfigAttr()
 
     );
 
@@ -135,7 +137,8 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
                 weightTableBias, weightZeroPoints, taskTypeAttr, dpuTask.getInStartAttr(), dpuTask.getInEndAttr(),
                 dpuTask.getOutStartAttr(), dpuTask.getOutEndAttr(), dpuTask.getPadAttr(), mpeModeAttr,
                 mlir::IntegerAttr::get(getUInt64Type(ctx), tileIndex), dpuTask.getHaloRegionsAttr(),
-                dpuTask.getWorkloadIdAttr(), sprLutRead, palletLutRead, forceInvRead, origTaskOp.getWlmPageAttr());
+                dpuTask.getWorkloadIdAttr(), sprLutRead, palletLutRead, forceInvRead, origTaskOp.getWlmPageAttr(),
+                dpuTask.getVariantPrimitiveIdAttr());
     };
 
     auto dpuTasksIt = dpuTasks.begin();

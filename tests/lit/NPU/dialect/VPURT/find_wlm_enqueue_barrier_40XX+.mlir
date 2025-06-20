@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --find-wlm-enqueue-barrier %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 func.func @EnqueueTargetAssign() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
@@ -51,20 +52,20 @@ func.func @EnqueueTargetAssign() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> 
 
     VPURT.Task updates(%bar0: !VPURT.Barrier)
     {
-         VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
 
     VPURT.Task waits(%bar0: !VPURT.Barrier)
                updates(%bar1: !VPURT.Barrier)
     {
-         VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar1: !VPURT.Barrier)
                updates(%bar2: !VPURT.Barrier)
     {
-         VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar1: !VPURT.Barrier)
@@ -114,7 +115,7 @@ func.func @EnqueueTargetAssign() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> 
     VPURT.Task waits(%bar5: !VPURT.Barrier)
                updates(%bar6: !VPURT.Barrier)
     {
-         VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
 
@@ -129,11 +130,19 @@ func.func @EnqueueTargetAssign() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> 
     // CHECK:   [[BAR6:%.+]] = VPURT.ConfigureBarrier<2> {isFinalBarrier} -> !VPURT.Barrier
 
     // CHECK:   VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NNDMA
     // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NNDMA
     // CHECK:   VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NNDMA
     // CHECK:   VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) enqueueTarget([[BAR0]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
     // CHECK:   VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier) enqueueTarget([[BAR0]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
     // CHECK:   VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier) enqueueTarget([[BAR0]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
     // CHECK:   VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier) enqueueTarget([[BAR0]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NCEClusterTask
     // CHECK:   VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier) enqueueTarget([[BAR1]] : !VPURT.Barrier) {
+    // CHECK-NEXT: VPUIP.NNDMA
 }

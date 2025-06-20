@@ -6,7 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/interfaces/vf_axis_increment.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vf_axis_increment.hpp"
 
 namespace vpux {
 namespace VPU {

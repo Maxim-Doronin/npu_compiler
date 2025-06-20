@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -115,48 +116,14 @@ mlir::LogicalResult MoveViewOpUp::matchAndRewrite(VPUIP::SubViewOp origSubViewOp
     // SETable
     mlir::Value newSETableValue = nullptr;
     if (seTableOp != nullptr) {
-        auto seTableOffsets = subViewOffsets;
-        auto seTableSizes = subViewSizes;
-        seTableOffsets[Dims4D::Act::N.ind()] = 0;
-        seTableSizes[Dims4D::Act::N.ind()] = 1;
+        const auto seDepth = getShape(seTableOp.getOutput())[Dims4D::Act::C];
+        const auto [seTableOffsets, seTableSizes] = VPU::getUpdatedSliceOffsetsAndShapesForSETable(
+                seDepth, seTableOp.getSeSize(), subViewOffsets, subViewSizes);
+        auto seTableSliceOp = rewriter.create<VPUIP::SubViewOp>(origSubViewOp.getLoc(), seTableOp.getOutput(),
+                                                                getIntArrayAttr(ctx, seTableOffsets),
+                                                                getIntArrayAttr(ctx, seTableSizes));
 
-        if (auto seSize = mlir::dyn_cast<mlir::IntegerAttr>(seTableOp.getSeSize())) {
-            const auto uniformSeSize = seSize.getValue().getSExtValue();
-            const auto seSliceOffset = std::div(subViewOffsets[Dims4D::Act::C.ind()], uniformSeSize);
-            VPUX_THROW_WHEN(seSliceOffset.rem != 0, "Slice over channels offset is not aligned with SE size");
-            seTableOffsets[Dims4D::Act::C.ind()] = seSliceOffset.quot;
-
-            const auto seSliceSize = std::div(subViewSizes[Dims4D::Act::C.ind()], uniformSeSize);
-            VPUX_THROW_WHEN(seSliceSize.rem != 0, "Slice over channels size is not aligned with SE size");
-            seTableSizes[Dims4D::Act::C.ind()] = seSliceSize.quot;
-
-            auto seTableSliceOp = rewriter.create<VPUIP::SubViewOp>(origSubViewOp.getLoc(), seTableOp.getOutput(),
-                                                                    getIntArrayAttr(ctx, seTableOffsets),
-                                                                    getIntArrayAttr(ctx, seTableSizes));
-            newSETableValue = seTableSliceOp.getResult();
-        } else {
-            auto seSizes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(seTableOp.getSeSize()));
-
-            auto offsetRange = irange(seSizes.size());
-            auto offsetIter = llvm::find_if(offsetRange, [&](auto idx) {
-                auto sum = std::accumulate(seSizes.begin(), seSizes.begin() + idx, 0);
-                return sum == subViewOffsets[Dims4D::Act::C.ind()];
-            });
-            VPUX_THROW_WHEN(offsetIter == offsetRange.end(), "Slice over channels offset is not aligned with SE size");
-            seTableOffsets[Dims4D::Act::C.ind()] = *offsetIter;
-            auto sizeRange = irange(*offsetIter, seSizes.size());
-            auto sizeIter = llvm::find_if(sizeRange, [&](auto idx) {
-                auto sum = std::accumulate(seSizes.begin() + *offsetIter, seSizes.begin() + idx, 0);
-                return sum == subViewSizes[Dims4D::Act::C.ind()];
-            });
-            VPUX_THROW_WHEN(sizeIter == sizeRange.end(), "Slice over channels size is not aligned with SE size");
-            seTableSizes[Dims4D::Act::C.ind()] = *sizeIter - *offsetIter;
-            auto seTableSliceOp = rewriter.create<VPUIP::SubViewOp>(origSubViewOp.getLoc(), seTableOp.getOutput(),
-                                                                    getIntArrayAttr(ctx, seTableOffsets),
-                                                                    getIntArrayAttr(ctx, seTableSizes));
-
-            newSETableValue = seTableSliceOp.getResult();
-        }
+        newSETableValue = seTableSliceOp.getResult();
     }
 
     auto newOp = rewriter.replaceOpWithNewOp<VPUIP::GroupSparseBufferOp>(

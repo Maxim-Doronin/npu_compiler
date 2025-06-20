@@ -39,7 +39,8 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
 private:
     Logger _log;
@@ -56,8 +57,9 @@ private:
     BarrierInfo::TaskSet legalizeBarrierConsumers(VPURT::BarrierOpInterface barrierOp, BarrierInfo& barrierInfo);
 };
 
-mlir::LogicalResult ComputeTaskStrippingPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult ComputeTaskStrippingPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

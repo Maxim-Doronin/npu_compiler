@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --constant-folding --mlir-print-elementsattrs-with-hex-if-larger=-1 %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 !qElemType = !quant.uniform<u8:f16, 0.0039215686274509803>
 #YXOI = affine_map<(d0, d1, d2, d3) -> (d2, d3, d0, d1)>
 
@@ -431,7 +432,7 @@ func.func @ConstFoldI4() -> memref<1x4x1x1x!qElemType, #YXOI> {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-!quantileFloatType = !QuantileFloat.quantileFloat<4, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+!quantileFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
 !qElemType = !quant.quantile<u4:f16:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}:0.07874348958333334>
 
 // CHECK-LABEL: @ConstFoldNF4
@@ -723,38 +724,6 @@ func.func @FoldFusedWeightWithMajorityOfF16Type() -> memref<1x1x1x384xf16> {
 
 // -----
 
-func.func @FP16OverflowNegative() -> tensor<1x2x2x2xf16> {
-    %0 = const.Declare tensor<1x2x2x2xf16> = dense<-100000.0> : tensor<1x2x2x2xf16>
-    return %0 : tensor<1x2x2x2xf16>
-
-    // CHECK: [[CST:%*]] = const.Declare tensor<1x2x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<-6.550400e+04> : tensor<1x2x2x2xf16>
-}
-
-// -----
-
-func.func @FP16OverflowPositive() -> tensor<1x2x2x2xf16> {
-    %0 = const.Declare tensor<1x2x2x2xf16> = dense<100000.0> : tensor<1x2x2x2xf16>
-    return %0 : tensor<1x2x2x2xf16>
-
-    // CHECK: [[CST:%*]] = const.Declare tensor<1x2x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<6.550400e+04> : tensor<1x2x2x2xf16>
-}
-
-// -----
-
-// E#160872: float16 non-splats behave *differently* from splats...
-
-func.func @FP16Overflow_NonSplat() -> tensor<2xf16> {
-    %0 = const.Declare tensor<2xf16> = dense<[-100000.0, 100000.0]> : tensor<2xf16>
-    return %0 : tensor<2xf16>
-
-    // DISABLED-CHECK: [[CST:%*]] = const.Declare tensor<2xf16>
-    // DISABLED-CHECK-SAME{LITERAL}: dense<[-6.550400e+04, 6.550400e+04]> : tensor<2xf16>
-}
-
-// -----
-
 !qElemType = !quant.uniform<ui8:f16, 0.5>
 
 // CHECK-LABEL: @QuantizeSplat
@@ -898,6 +867,104 @@ func.func @SI4ConvertElemTypeConstFoldNonSplat() -> tensor<2x4xsi8> {
   dialect_resources: {
     builtin: {
       blob: "0x1000000087A9CB0D"
+    }
+  }
+#-}
+
+// -----
+
+// CHECK-LABEL: @SI2ConvertElemTypeConstFoldSplat
+func.func @SI2ConvertElemTypeConstFoldSplat() -> tensor<2x4xsi8> {
+    %cst = const.Declare tensor<2x4xsi8> =
+        dense_resource<blob> : tensor<2x4xsi2>,
+        [
+            #const.ConvertElemType<si8>
+        ]
+
+    return %cst : tensor<2x4xsi8>
+
+    // CHECK:   [[CST:%.+]] = const.Declare tensor<2x4xsi8> = dense<-2> : tensor<2x4xsi8>
+    // CHECK:   return [[CST]]
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      blob: "0x10000000AAAA"
+    }
+  }
+#-}
+
+// -----
+
+// CHECK-LABEL: @SI2ConvertElemTypeConstFoldNonSplat
+func.func @SI2ConvertElemTypeConstFoldNonSplat() -> tensor<2x4xsi8> {
+    %cst = const.Declare tensor<2x4xsi8> =
+        dense_resource<blob> : tensor<2x4xsi2>,
+        [
+            #const.ConvertElemType<si8>
+        ]
+
+    return %cst : tensor<2x4xsi8>
+
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<2x4xsi8>
+    // CHECK-SAME{LITERAL}:     = dense<[[1, 0, -1, -2], [-1, -2, 1, 0]]> : tensor<2x4xsi8>
+    // CHECK:               return [[CST]]
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      blob: "0x10000000B11B"
+    }
+  }
+#-}
+
+// -----
+
+// CHECK-LABEL: @U2ConvertElemTypeConstFoldSplat
+func.func @U2ConvertElemTypeConstFoldSplat() -> tensor<2x4xui8> {
+    %cst = const.Declare tensor<2x4xui8> =
+        dense_resource<blob> : tensor<2x4xui2>,
+        [
+            #const.ConvertElemType<ui8>
+        ]
+
+    return %cst : tensor<2x4xui8>
+
+    // CHECK:   [[CST:%.+]] = const.Declare tensor<2x4xui8> = dense<2> : tensor<2x4xui8>
+    // CHECK:   return [[CST]]
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      blob: "0x10000000AAAA"
+    }
+  }
+#-}
+
+// -----
+
+// CHECK-LABEL: @U2ConvertElemTypeConstFoldNonSplat
+func.func @U2ConvertElemTypeConstFoldNonSplat() -> tensor<2x4xui8> {
+    %cst = const.Declare tensor<2x4xui8> =
+        dense_resource<blob> : tensor<2x4xui2>,
+        [
+            #const.ConvertElemType<ui8>
+        ]
+
+    return %cst : tensor<2x4xui8>
+
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<2x4xui8>
+    // CHECK-SAME{LITERAL}:     = dense<[[1, 0, 3, 2], [3, 2, 1, 0]]> : tensor<2x4xui8>
+    // CHECK:               return [[CST]]
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      blob: "0x10000000B11B"
     }
   }
 #-}

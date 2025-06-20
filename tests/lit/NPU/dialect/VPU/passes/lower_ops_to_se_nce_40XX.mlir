@@ -31,7 +31,7 @@ func.func @InterpolateNearestLargeChannels(%input: tensor<1x144x3x3xf16, {order 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 144, 3, 3],
     // CHECK-SAME:      seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:               scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 144 : i64}
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [144]}
     // CHECK-SAME:      -> tensor<1x1x6x6xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x144x6x6xi1, {order = #NHWC}> =
     // CHECK-SAME:      dense<1> : tensor<1x144x6x6xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -86,7 +86,7 @@ func.func @InterpolateBilinearAsymmetricLargeChannels(%input: tensor<1x144x3x3xf
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 144, 3, 3],
     // CHECK-SAME:      seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:               scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 144 : i64}
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [144]}
     // CHECK-SAME:      -> tensor<1x1x7x7xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x144x7x7xi1, {order = #NHWC}> =
     // CHECK-SAME:      dense<1> : tensor<1x144x7x7xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -140,7 +140,7 @@ func.func @InterpolateBilinearHalfPixelLargeChannels(%input: tensor<1x144x3x3xf1
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 144, 3, 3],
     // CHECK-SAME:      seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <HALF_PIXEL>,
     // CHECK-SAME:               scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 144 : i64}
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [144]}
     // CHECK-SAME:      -> tensor<1x1x8x8xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x144x8x8xi1, {order = #NHWC}> =
     // CHECK-SAME:      dense<1> : tensor<1x144x8x8xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -194,7 +194,7 @@ func.func @InterpolateBilinearPytorchHalfPixelLargeChannels(%input: tensor<1x144
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 144, 3, 3],
     // CHECK-SAME:      seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>,
     // CHECK-SAME:               scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 144 : i64}
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [144]}
     // CHECK-SAME:      -> tensor<1x1x8x8xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x144x8x8xi1, {order = #NHWC}> =
     // CHECK-SAME:      dense<1> : tensor<1x144x8x8xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -249,7 +249,7 @@ func.func @InterpolateBilinearAlignCornersWithLargeChannels(%input: tensor<1x144
     // CHECK-SAME:      seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>,
     // CHECK-SAME:               scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
     // CHECK-SAME:               initial_input_shape = [1, 144, 3, 3], initial_output_shape = [1, 144, 7, 7]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 144 : i64}
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [144]}
     // CHECK-SAME:      -> tensor<1x1x9x9xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x144x9x9xi1, {order = #NHWC}> =
     // CHECK-SAME:      dense<1> : tensor<1x144x9x9xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]

@@ -8,7 +8,9 @@
 
 #include <common/print_test_case_name.hpp>
 #include <common_test_utils/ov_tensor_utils.hpp>
-#include <openvino/opsets/opset13.hpp>
+#include <openvino/opsets/opset13_decl.hpp>
+
+#include "openvino/op/concat.hpp"
 
 namespace ov::test {
 
@@ -74,7 +76,7 @@ TEST_P(DynamicConcatLayerTest, NPU4000_HW) {
 }
 
 const std::vector<std::vector<BoundedShape>> inShapes = {
-        {generateShapes(1, 1, 640_Dyn, 128), generateShapes(1, 1, 640_Dyn, 128)}};
+        {generateTestShape(1, 1, 640_Dyn, 128), generateTestShape(1, 1, 640_Dyn, 128)}};
 const std::vector<Axis> axis = {1};
 const std::vector<InputType> inputPrecision = {ov::element::f16};
 

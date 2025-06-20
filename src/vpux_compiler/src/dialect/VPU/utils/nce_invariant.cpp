@@ -195,6 +195,31 @@ Byte vpux::VPU::NCEInvariant::getWeightsTableSize(int64_t OC) {
     return OC * WEIGHT_TABLE_NUM_ELEMENTS_PER_OC * 4_Byte;
 }
 
+// OC can be used to represent a number of output channels that is different from the number of output channels in op
+// (e.g. when a new output type will be used)
+mlir::FailureOr<SmallVector<Byte>> vpux::VPU::NCEInvariant::getWeightsTableSize(int64_t OC, mlir::Operation* op) {
+    if (!mlir::isa<VPU::NCEConvolutionOp>(op)) {
+        return mlir::failure();
+    }
+
+    auto convOp = mlir::cast<VPU::NCEConvolutionOp>(op);
+
+    bool isNewWeightTable = convOp.getWeightsTable() == nullptr;
+    if (!isNewWeightTable) {
+        return SmallVector<Byte>{getWeightsTableSize(OC)};
+    }
+
+    SmallVector<Byte> newWeightTables{};
+    if (convOp.getWeightTableScale()) {
+        newWeightTables.push_back(OC * 4_Byte);
+    }
+    if (convOp.getWeightTableBias()) {
+        newWeightTables.push_back(OC * 4_Byte);
+    }
+
+    return newWeightTables;
+}
+
 //
 // Common utility for AvgPool, MaxPool, Eltwise and DWConv
 //
@@ -285,16 +310,16 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Lo
 
 bool vpux::VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt([[maybe_unused]] VPU::ArchKind arch, const int64_t KX,
                                                                 const int64_t SX, ArrayRef<int64_t> workloadOutSz,
-                                                                const bool isFp16Input,
-                                                                [[maybe_unused]] const int64_t KY,
+                                                                bool isFp16Input, [[maybe_unused]] const int64_t KY,
                                                                 [[maybe_unused]] const int64_t padLeft) {
     // L1Opt can be enabled when kernelX = 3 and strideX = 1
     if (KX != 3 || SX != 1) {
         return false;
     }
 
-    return isFp16Input ? workloadOutSz[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT
-                       : workloadOutSz[Dims4D::Act::C.ind()] % VPU_CHANNEL_SIZE_FOR_L1OPT == 0;
+    // Float16 input align to 16 generates performance regression.
+    return isFp16Input ? workloadOutSz[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT32
+                       : workloadOutSz[Dims4D::Act::C.ind()] % VPU_CHANNEL_SIZE_FOR_L1OPT16 == 0;
 }
 
 bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(const VPU::ArchKind arch, mlir::Operation* op) {
@@ -322,11 +347,18 @@ bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(const VPU::Arch
     mlir::DenseSet<int64_t> workloadsChannels;
     const auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
     const auto isFp16Input = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType().isF16();
-
+    auto is16Workload = false;
+    auto is64Workload = false;
     const auto workloadChannelsMeetRequirement = llvm::all_of(workloads, [&](auto workload) {
         const auto wlSizes = parseIntArrayAttr<int64_t>(workload.getOutSizes());
-        return isFp16Input ? wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT
-                           : wlSizes[Dims4D::Act::C.ind()] % VPU_CHANNEL_SIZE_FOR_L1OPT == 0;
+        is16Workload |= wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT16;
+        is64Workload |= wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT64;
+        return isFp16Input ? wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT16 ||
+                                     wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT32
+                           : (wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT16 ||
+                              wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT32 ||
+                              wlSizes[Dims4D::Act::C.ind()] == VPU_CHANNEL_SIZE_FOR_L1OPT64) &&
+                                     !(is16Workload && is64Workload);
     });
 
     return KX == 3 && SX == 1 && workloadChannelsMeetRequirement;
@@ -448,4 +480,35 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::verifyPoolCMX(mlir::Location loc, m
     }
 
     return mlir::success();
+}
+
+bool vpux::VPU::NCEInvariant::isAlignmentBeneficial(mlir::Operation* op) {
+    // Experiments shows that alignment can be beneficial for SW ops
+    // #E164667: For SoftMax with axis on C and IC > 256, alignment bring significant SHAVE performance gain
+    if (auto softMaxOp = mlir::dyn_cast<IE::SoftMaxOp>(op)) {
+        // To avoid regression caused by expand and slice,
+        // we only allow NCE + SoftMax pattern now
+        auto parentOp = softMaxOp.getInput().getDefiningOp();
+        if (parentOp == nullptr) {
+            return false;
+        }
+        // Skip if the parent is a slice
+        if (auto sliceOp = mlir::dyn_cast<IE::SliceOp>(parentOp)) {
+            auto parentParentOp = sliceOp.getSource().getDefiningOp();
+            parentOp = parentParentOp;
+        }
+        if (isSupported(parentOp).failed()) {
+            return false;
+        }
+
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(softMaxOp.getInput().getType());
+        auto inputShape = inputType.getShape();
+        const auto IC = inputShape[Dims4D::Act::C];
+
+        if (softMaxOp.getAxisInd() == Dims4D::Act::C.ind() && IC > 256) {
+            return true;
+        }
+    }
+
+    return false;
 }

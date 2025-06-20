@@ -230,6 +230,22 @@ mlir::FailureOr<OutputTiling> getD2STilingStrategy(mlir::Operation* op, TilingMo
     // Explicit tiling not needed, op will be converted to multicluster DMA
     if (useDMA && vpux::VPUIP::isCompatibleWithMultiClusterNNDMA(origOp, nTilesOnDimforDepthToSpace)) {
         nTilesOnDimforDepthToSpace = vpux::Shape(outputShape.size(), 1);
+    } else {
+        // Update tiling with multiCluster
+        auto strategyAttr = origOp.getMultiClusterStrategy();
+        if (strategyAttr.has_value()) {
+            auto numClusters = VPU::getOptimalNumClusters(op, outputShape, strategyAttr.value());
+            auto strategy = strategyAttr.value();
+            if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
+                nTilesOnDimforDepthToSpace[Dims4D::Act::H] =
+                        (nTilesOnDimforDepthToSpace[Dims4D::Act::H] + numClusters - 1) / numClusters;
+            }
+
+            if (strategy == VPU::MultiClusterStrategy::SplitOverWidth) {
+                nTilesOnDimforDepthToSpace[Dims4D::Act::W] =
+                        (nTilesOnDimforDepthToSpace[Dims4D::Act::W] + numClusters - 1) / numClusters;
+            }
+        }
     }
 
     auto origTiles = fillDividedTiles(op, nTilesOnDimforDepthToSpace, outputShape);
@@ -243,14 +259,12 @@ mlir::FailureOr<OutputTiling> vpux::VPU::DepthToSpaceOp::getTilingStrategy(Tilin
 }
 
 bool vpux::VPU::DepthToSpaceOp::isVFSupported() {
-    auto op = this->getOperation();
-    if (!vpux::VPUIP::isLegalAndBeneficialConvertToDMA(op)) {
-        return true;
+    return true;
+}
+
+mlir::LogicalResult VPU::DepthToSpaceOp::verify() {
+    if (getBlockSize() <= 0) {
+        return errorAt(*this, "Block size should be a positive integer, while it is {0}", getBlockSize());
     }
-    auto origOp = mlir::dyn_cast<VPU::DepthToSpaceOp>(op);
-    if (origOp.getMode() != IE::DepthToSpaceMode::BLOCKS_FIRST) {
-        return true;
-    }
-    // DepthToSpaceOp will be converted to DMA
-    return false;
+    return mlir::success();
 }

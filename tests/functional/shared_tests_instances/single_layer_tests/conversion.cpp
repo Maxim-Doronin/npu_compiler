@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Intel Corporation
+// Copyright (C) 2019-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,8 @@ namespace test {
 class ConversionLayerTestCommon : public ConversionLayerTest, virtual public VpuOv2LayerTest {};
 class ConversionLayerTestCommon_HW : public ConversionLayerTest, virtual public VpuOv2LayerTest {};
 
+class ShaveCodeGenConversionLayerTest : public ConversionLayerTestCommon {};
+
 TEST_P(ConversionLayerTestCommon_HW, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
@@ -20,7 +22,12 @@ TEST_P(ConversionLayerTestCommon_HW, NPU3720_HW) {
 
 TEST_P(ConversionLayerTestCommon_HW, NPU4000_HW) {
     setDefaultHardwareMode();
-    setBatchCompilerMode("unroll");
+    run(Platform::NPU4000);
+}
+
+TEST_P(ShaveCodeGenConversionLayerTest, NPU4000) {
+    setShaveCodeGenMode();
+    setMLIRCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -116,6 +123,17 @@ INSTANTIATE_TEST_SUITE_P(smoke_f64_i64_Conversion, ConversionLayerTestCommon_HW,
 INSTANTIATE_TEST_SUITE_P(smoke_i64_f64_Conversion, ConversionLayerTestCommon_HW, configParamsI64ToF64,
                          ConversionLayerTest::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_ShaveCodeGen_Conversion, ShaveCodeGenConversionLayerTest, configParams,
+                         ConversionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_bf16_ShaveCodeGen_Conversion, ShaveCodeGenConversionLayerTest,
+                         configParamsBF16ToF16, ConversionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_f64_i64_ShaveCodeGen_Conversion, ShaveCodeGenConversionLayerTest, configParamsF64ToI64,
+                         ConversionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_i64_f64_ShaveCodeGen_Conversion, ShaveCodeGenConversionLayerTest, configParamsI64ToF64,
+                         ConversionLayerTest::getTestCaseName);
 // Tracking number [E#128077]
 INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_precommit_u4_odd_Conversion, ConversionLayerTestCommon_HW,
                          configParamsU4OddShape, ConversionLayerTest::getTestCaseName);

@@ -5,6 +5,10 @@
 
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/relu.hpp"
+#include "openvino/op/swish.hpp"
+
 namespace ov::test::subgraph {
 
 class ReluAddSwishTest : public VpuOv2LayerTest {

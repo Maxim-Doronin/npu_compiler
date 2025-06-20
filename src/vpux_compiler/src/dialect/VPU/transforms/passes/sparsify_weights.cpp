@@ -152,6 +152,11 @@ void SparsifyWeightsPass::safeRunOnFunc() {
         auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(sparsifiableOp.getOperation());
         VPUX_THROW_UNLESS(nceOp != nullptr, "Unexpected non-NCE operation that supports weights sparsity");
 
+        // don't sparsify the weights if the split weight table format is used
+        if (nceOp.getWeightsTableOperand() == nullptr) {
+            return;
+        }
+
         const auto weights = nceOp.getWeightsOperand();
         if (weights == nullptr || mlir::isa<mlir::BlockArgument>(weights)) {
             return;
@@ -353,7 +358,7 @@ void SparsifyWeightsPass::safeRunOnFunc() {
             };
 
             llvm::ThreadPoolTaskGroup tasksGroup(threadPool);
-            unsigned int numActions = std::min(constNumInParallel, threadPool.getThreadCount());
+            unsigned int numActions = std::min(constNumInParallel, threadPool.getMaxConcurrency());
             for (unsigned int i = 0; i < numActions; ++i) {
                 tasksGroup.async(processConstants);
             }

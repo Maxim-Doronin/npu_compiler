@@ -81,7 +81,7 @@ mlir::LogicalResult AsyncRegionRewriter::matchAndRewrite(mlir::async::ExecuteOp 
 
     for (auto* origOp : outerDeps) {
         auto* newOp = rewriter.clone(*origOp);
-        rewriter.replaceOpWithinBlock(origOp, newOp->getResults(), bodyBlock);
+        rewriter.replaceOpUsesWithinBlock(origOp, newOp->getResults(), bodyBlock);
     }
 
     return mlir::success();

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --correct-NCE-workloads %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --correct-NCE-workloads %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: func.func @ConvLargeSparseOutput
@@ -191,6 +192,76 @@ func.func @NCEPermuteClustered(%arg0: !Input_DDR) -> !Output_CMX {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
+!qElemType = !quant.uniform<u8:f16, 0.92406077665441178>
+
+!InputType = !VPU.DistributedTensor<
+    1x3x224x224xf16, #NCHW, @CMX_NN, {
+        mode = "OVERLAPPED", num_tiles = [1, 1, 3, 1], num_clusters = 3 : i64, uniform_distributed_segments,
+        compute_shapes = [[1, 3, 75, 224], [1, 3, 75, 224], [1, 3, 74, 224]],
+        compute_offsets = [[0, 0, 0, 0], [0, 0, 75, 0], [0, 0, 150, 0]],
+        memory_shapes = [[1, 3, 75, 224], [1, 3, 75, 224], [1, 3, 74, 224]],
+        memory_offsets = [[0, 0, 0, 0], [0, 0, 75, 0], [0, 0, 150, 0]]
+    }>
+
+!OutputType = !VPU.DistributedTensor<
+    1x4x224x224x!qElemType, #NHWC, @CMX_NN, {
+        mode = "OVERLAPPED", num_tiles = [1, 1, 3, 1], num_clusters = 3 : i64, uniform_distributed_segments,
+        compute_shapes = [[1, 4, 75, 224], [1, 4, 75, 224], [1, 4, 74, 224]],
+        compute_offsets = [[0, 0, 0, 0], [0, 0, 75, 0], [0, 0, 150, 0]],
+        memory_shapes = [[1, 4, 77, 224], [1, 4, 76, 224], [1, 4, 74, 224]],
+        memory_offsets = [[0, 0, 0, 0], [0, 0, 75, 0], [0, 0, 150, 0]]
+    }>
+
+module @NCEPermuteODUAutopadRemoveChannelPadding {
+    config.PipelineOptions @Options {
+        config.Option @VPU.AutoPaddingODU : true
+    }
+
+    func.func @main(%input: !InputType) -> !OutputType {
+        %output = VPU.NCE.Permute(%input) {
+                dstElemType = !qElemType,
+                dstOrder = #NHWC,
+                expandedChannels = 4 : i64,
+                ppe = #VPU.PPEFp<
+                    mode = <NOOP>,
+                    clamp_low = 0.000000e+00 : f64,
+                    clamp_high = 2.550000e+02 : f64,
+                    scale = 1.0821799012187578 : f64,
+                    prelu_alpha = [1.000000e+00],
+                    bias = 0.000000e+00 : f64,
+                    adder = 0.000000e+00 : f64
+                >} -> !OutputType {
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 4, 75, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 0 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 75, 0] outSizes [1, 4, 75, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 1 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 150, 0] outSizes [1, 4, 74, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 2 : i64}
+        }
+
+        return %output : !OutputType
+
+        // CHECK:       VPU.NCE.Permute
+
+        // CHECK-NEXT:  VPU.DPU.Workload
+        // CHECK-SAME:      outOffsets [0, 0, 0, 0] outSizes [1, 3, 75, 224]
+        // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+        // CHECK-SAME:      cluster_id = 0
+
+        // CHECK-NEXT:  VPU.DPU.Workload
+        // CHECK-SAME:      outOffsets [0, 0, 75, 0] outSizes [1, 3, 75, 224]
+        // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+        // CHECK-SAME:      cluster_id = 1
+
+        // CHECK-NEXT:  VPU.DPU.Workload
+        // CHECK-SAME:      outOffsets [0, 0, 150, 0] outSizes [1, 3, 74, 224]
+        // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+        // CHECK-SAME:      cluster_id = 2
+    }
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
 !Input_CMX = !VPU.DistributedTensor<
     1x256x24x42xf16, #NHWC, @CMX_NN, {
     mode = "DUPLICATED",
@@ -259,6 +330,79 @@ func.func @DepthConvWithL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
     // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 160, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
     // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
     // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 224, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!Input_CMX = !VPU.DistributedTensor<
+    1x160x24x42xf16, #NHWC, @CMX_NN, {
+    mode = "DUPLICATED",
+    num_clusters = 2 : i64,
+    alignment = [1, 16, 1, 1],
+    uniform_distributed_segments
+}>
+
+!Weights_CMX = !VPU.DistributedTensor<
+    160x16x1x1xf16, #NHWC, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [2, 1, 1, 1],
+    num_clusters = 2 : i64,
+    alignment = [16, 1, 1, 1],
+    uniform_distributed_segments
+}>
+
+!WeightsTable_CMX = !VPU.DistributedTensor<
+    160x1x1x4xsi32, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [2, 1, 1, 1],
+    num_clusters = 2 : i64,
+    alignment = [16, 1, 1, 1],
+    uniform_distributed_segments
+}>
+
+!Output_CMX = !VPU.DistributedTensor<
+    1x160x24x42xf16, #NHWC, @CMX_NN, {
+    mode = "DUPLICATED|SEGMENTED",
+    num_tiles = [1, 2, 1, 1],
+    num_clusters = 2 : i64,
+    alignment = [1, 16, 1, 1],
+    uniform_distributed_segments
+}>
+
+// CHECK-LABEL: @DepthConvWithL1aOpt16
+func.func @DepthConvWithL1aOpt16(%arg0: !Input_CMX) -> !Output_CMX {
+    %cst0 = const.Declare tensor<160x16x1x1xf16, {order = #NHWC}> =
+        dense<1.000000e+00> : tensor<160x16x1x1xf16>, [#const.Reorder<#NHWC>]
+    %wt = const.Declare tensor<160x1x1x4xsi32, {order = #NCHW}> =
+        dense<10> : tensor<160x1x1x4xsi32>
+
+    %0 = VPU.Copy(%cst0) {out_mem_space = @CMX_NN} : tensor<160x16x1x1xf16, {order = #NHWC}> -> !Weights_CMX
+
+    %1 = VPU.Copy(%wt) {out_mem_space = @CMX_NN} : tensor<160x1x1x4xsi32, {order = #NCHW}> -> !WeightsTable_CMX
+
+    %2 = VPU.NCE.DepthConvolution(%arg0, %0, %1) {
+            pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+            ppe = #VPU.PPEStub<>,
+            rawFilterShape = [160, 1, 3, 3],
+            strides = [1, 1]} -> !Output_CMX {
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 80, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 80, 0, 0] outSizes [1, 80, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+        }
+
+    return %2 : !Output_CMX
+
+
+    // CHECK:       VPU.NCE.DepthConvolution
+    // split workload into size 16&32 to enable small kernel optimization
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 16, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 80, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 112, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 144, 0, 0] outSizes [1, 16, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 }
 
 // -----
@@ -566,4 +710,103 @@ func.func @DepthConvSparseInputWithoutL1aOpt(
 
     return %DWCONV : tensor<1x64x16x16xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
     // CHECK:   return [[DWCONV]] : tensor<1x64x16x16xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!Input_CMX = !VPU.SparseTensor<
+    data = !VPU.DistributedTensor<
+        1x512x14x14x!quant.uniform<u8:f16, 0.0062617507635378371>, #NHWC, @CMX_NN, {
+        mode = "DUPLICATED",
+        num_clusters = 3 : i64,
+        uniform_distributed_segments}>,
+    sparsity_map = !VPU.DistributedTensor<
+        1x512x14x14xi1, #NHWC, @CMX_NN, {
+        mode = "DUPLICATED",
+        num_clusters = 3 : i64,
+        uniform_distributed_segments}>
+>
+
+!Weights_CMX = !VPU.SparseTensor<
+    data = !VPU.DistributedTensor<
+        256x512x3x3x!quant.uniform<u8:f16, 0.00092766667697943892>, #NHWC, @CMX_NN, {
+        mode = "SEGMENTED",
+        num_tiles = [3, 1, 1, 1],
+        num_clusters = 3 : i64,
+        alignment = [16, 1, 1, 1],
+        compute_shapes = [[96, 512, 3, 3], [96, 512, 3, 3], [64, 512, 3, 3]],
+        compute_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]],
+        memory_shapes = [[96, 512, 3, 3], [96, 512, 3, 3], [64, 512, 3, 3]],
+        memory_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]]}>,
+    sparsity_map = !VPU.DistributedTensor<
+        256x1x1x4608xi1, #NCHW, @CMX_NN, {
+        mode = "SEGMENTED",
+        num_tiles = [3, 1, 1, 1],
+        num_clusters = 3 : i64,
+        alignment = [16, 1, 1, 1],
+        compute_shapes = [[96, 1, 1, 4608], [96, 1, 1, 4608], [64, 1, 1, 4608]],
+        compute_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]],
+        memory_shapes = [[96, 1, 1, 4608], [96, 1, 1, 4608], [64, 1, 1, 4608]],
+        memory_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]]}>,
+        is_weights,
+        #VPU.SparsityCompression<axis = 0 : i64, numElems = dense_resource<__elided__> : tensor<256xi64>, alignment = 16 : i64>
+>
+
+!WeightsTable_CMX = !VPU.DistributedTensor<
+    256x1x1x4xsi32, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [3, 1, 1, 1],
+    num_clusters = 3 : i64,
+    alignment = [16, 1, 1, 1],
+    compute_shapes = [[96, 1, 1, 4], [96, 1, 1, 4], [64, 1, 1, 4]],
+    compute_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]],
+    memory_shapes = [[96, 1, 1, 4], [96, 1, 1, 4], [64, 1, 1, 4]],
+    memory_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]]}
+>
+
+!Output_CMX = !VPU.SparseTensor<
+    data = !VPU.DistributedTensor<
+        1x256x7x7x!quant.uniform<u8:f16, 0.0048209779402788944>, #NHWC, @CMX_NN, {
+        mode = "DUPLICATED|SEGMENTED",
+        num_tiles = [1, 3, 1, 1],
+        num_clusters = 3 : i64,
+        alignment = [1, 16, 1, 1],
+        compute_shapes = [[1, 96, 7, 7], [1, 96, 7, 7], [1, 64, 7, 7]],
+        compute_offsets = [[0, 0, 0, 0], [0, 96, 0, 0], [0, 192, 0, 0]],
+        memory_shapes = [[1, 256, 7, 7], [1, 256, 7, 7], [1, 256, 7, 7]],
+        memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>,
+    sparsity_map = !VPU.DistributedTensor<
+        1x256x7x7xi1, #NHWC, @CMX_NN, {
+        mode = "DUPLICATED|SEGMENTED",
+        num_tiles = [1, 3, 1, 1],
+        num_clusters = 3 : i64,
+        alignment = [1, 16, 1, 1],
+        compute_shapes = [[1, 96, 7, 7], [1, 96, 7, 7], [1, 64, 7, 7]],
+        compute_offsets = [[0, 0, 0, 0], [0, 96, 0, 0], [0, 192, 0, 0]],
+        memory_shapes = [[1, 256, 7, 7], [1, 256, 7, 7], [1, 256, 7, 7]],
+        memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
+>
+
+// CHECK-LABEL: @SOKConvSparseOutput
+func.func @SOKConvSparseOutput(%arg0: !Input_CMX, %arg1: !Weights_CMX, %arg2: !WeightsTable_CMX) -> !Output_CMX {
+    %2 = VPU.NCE.Convolution(%arg0, %arg1, %arg2) {
+            mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
+            pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
+            ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>,
+            rawFilterShape = [256, 512, 3, 3], strides = [2, 2]} : !Input_CMX, !Weights_CMX, !WeightsTable_CMX -> !Output_CMX {
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 2 : i64}
+        }
+
+    return %2 : !Output_CMX
+
+
+    // CHECK:       VPU.NCE.Convolution
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 2 : i64}
 }

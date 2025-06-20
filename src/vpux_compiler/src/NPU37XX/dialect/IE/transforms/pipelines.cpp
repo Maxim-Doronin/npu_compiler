@@ -52,14 +52,20 @@ void vpux::IE::arch37xx::buildMemPermutePositioningPipeline(mlir::OpPassManager&
     pm.addPass(IE::createAdjustMemPermuteAroundOpPass(log));
 }
 
-void vpux::IE::arch37xx::buildMemPermuteProcessingPipeline(mlir::OpPassManager& pm, Logger log) {
+void vpux::IE::arch37xx::buildMemPermuteProcessingPipeline(mlir::OpPassManager& pm,
+                                                           const ExpandActivationChannelsOptions& options, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
     pm.addPass(IE::createSwapMemPermuteAndExpandPass(log));
     pm.addPass(IE::createPropagateMemPermuteBeforeOpPass(log));
     pm.addPass(IE::createOptimizeConcatWithConvPass(log));
+    if (options.enableAdjustConvShapePass) {
+        // For such Convolution which used to optimize Concat need to be processed by AdjustConvolutionShapePass for
+        // efficiency.
+        pm.addPass(IE::createAdjustConvolutionShapePass(log));
+    }
     pm.addPass(IE::arch37xx::createInsertIdentityPoolBeforeOpPass(log));
     pm.addPass(IE::createFuseMemPermutePass(log));
-    pm.addPass(IE::createConvertMemPermuteToPoolPass(log));
+    pm.addPass(IE::createConvertMemPermuteToOpPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createUniquifyOpsPass(log));
 }
@@ -73,8 +79,7 @@ void vpux::IE::arch37xx::buildExpandAndOptimizeActivationChannelsPipeline(
             pm.addPass(IE::createAdjustConvolutionShapePass(log));
         }
         pm.addPass(IE::arch37xx::createExpandActivationChannelsPass(
-                /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-                /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+                /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations), log));
         pm.addPass(mlir::createCanonicalizerPass(grc));
 
         if (options.enableOptimizeSliceExpand) {
@@ -114,7 +119,7 @@ void vpux::IE::arch37xx::buildOptimizeMemPermuteAndActivationChannelsExpandPipel
         mlir::OpPassManager& pm, const ExpandActivationChannelsOptions& options, Logger log) {
     IE::arch37xx::buildMemPermutePositioningPipeline(pm, IE::MemPermutePositioningOptions(options), log);
     IE::arch37xx::buildExpandAndOptimizeActivationChannelsPipeline(pm, options, log);
-    IE::arch37xx::buildMemPermuteProcessingPipeline(pm, log);
+    IE::arch37xx::buildMemPermuteProcessingPipeline(pm, options, log);
 }
 
 //
@@ -124,6 +129,7 @@ void vpux::IE::arch37xx::buildOptimizeMemPermuteAndActivationChannelsExpandPipel
 void vpux::IE::arch37xx::buildInitialLowPrecisionTransformationsPipeline(
         mlir::OpPassManager& pm, const IE::LowPrecisionTransformOptions& options, Logger log) {
     pm.addPass(IE::createConvertScalarToTensorPass(log));
+    pm.addPass(IE::createConsolidateNF4WeightsPatternPass(log));
     pm.addPass(IE::createWeightsDequantizeToFakeQuantizePass(log));
     pm.addPass(IE::createFuseInputScaleShiftPass(log));
     pm.addPass(IE::createConsolidateWeightsDequantizationPass(options, log));
@@ -153,7 +159,7 @@ void vpux::IE::arch37xx::buildInitialTransformationsPipeline(mlir::OpPassManager
     pm.addPass(IE::createDecomposeNormalizeL2Pass(log));
     pm.addPass(IE::createReshapeMatMulInputsPass(options.enableGroupedMatMul, log));
     pm.addPass(IE::createAdjustFakeQuantizeParamsPass(log));
-    pm.addPass(IE::createFuseFQAndMulPass(log));
+    pm.addPass(IE::createFuseFQAndMulPass(options.fuseFQAndMulWithNonConstInput, log));
     pm.addPass(IE::createHandleU16FakeQuantizePass(log));
     pm.addPass(IE::createSwishFusionPass(log));
     pm.addPass(IE::createFuseSDPAPass(log));
@@ -165,7 +171,7 @@ void vpux::IE::arch37xx::buildInitialTransformationsPipeline(mlir::OpPassManager
     if (options.enableConvertFFTToConv) {
         pm.addPass(IE::arch37xx::createConvertFFTToConvPass(log));
     }
-    pm.addPass(IE::createMoveMultiplyPostOpPass(log));
+    pm.addPass(IE::createMoveMultiplyDividePostOpPass(log));
     pm.addPass(IE::createShrinkMatmulGroupsPass(log));
     pm.addPass(IE::createMatMulInputsTo2dPass(options.enableGroupedMatMul, log));
     pm.addPass(IE::createPropagateOpThroughBatchConcatPass(log));
@@ -202,7 +208,7 @@ void vpux::IE::arch37xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     }
 
     pm.addPass(IE::createSplitFakeQuantPass(log));
-    pm.addPass(IE::createFuseConvertWithQuantizePass(log));
+    pm.addPass(IE::createFuseOpWithQuantizePass(log));
     pm.addPass(IE::createConvertToDequantizePass(options, log));
     if (options.enablePropagateQuantDequant) {
         pm.addPass(mlir::createCanonicalizerPass(grc));
@@ -211,7 +217,7 @@ void vpux::IE::arch37xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     if (options.enableSwapTransposeWithFQ) {
         pm.addPass(IE::createSwapTransposeWithFQPass(log));
     }
-    pm.addPass(IE::createPropagateFqThroughConcatPass(log));
+    pm.addPass(IE::createPropagateDequantThroughConcatPass(log));
     pm.addPass(IE::createFuseQuantizedOpsPass(
             /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
             /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
@@ -219,14 +225,18 @@ void vpux::IE::arch37xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
         pm.addPass(IE::arch37xx::createOptimizeNetworkInputConvertPass(log));
     }
 
-    pm.addPass(IE::arch37xx::createConvertWeightsToI8Pass(log));
+    if (options.enableConvertWeightsToU8I4) {
+        pm.addPass(IE::arch37xx::createConvertWeightsToI8Pass(log));
+    }
     pm.addPass(IE::arch37xx::createConvertToMixedPrecision(isOptionEnabled(options.enableFloatInQuantWeightsMixedMode),
                                                            log));
     if (options.enableQuantDequantRemoval) {
         pm.addPass(IE::createRemoveQuantDequantSeqPass(log));
     }
-    pm.addPass(IE::createConvertWeightsToU8Pass(log));
-    pm.addPass(IE::createConvertWeightsToI4Pass(log));
+    if (options.enableConvertWeightsToU8I4) {
+        pm.addPass(IE::createConvertWeightsToU8Pass(log));
+        pm.addPass(IE::createConvertWeightsToI4Pass(log));
+    }
     // After the execution of ConvertWeightsToU8 could appear new cases when FuseQuantizedOps and
     // ConvertToMixedPrecision can be applied. The execution ConvertWeightsToU8 can align the data type of the operands
     // of NCE operations to U8, condition that is necessary in rewriters like: FuseWithEltwiseConverter,
@@ -374,11 +384,11 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     pm.addPass(IE::createSwapTransposeConcatPass(log));
     pm.addPass(IE::createConvertSplitConcatToTransposePass(log));
     pm.addPass(IE::createConvertShapeTo4DPass(log));
+    pm.addPass(IE::createSplitInterpolateAxesPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createConvertGatherElementsToGatherPass(log));
 
-    pm.addPass(
-            IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableSEPtrsOperations), log));
     pm.addPass(IE::createConvertSubtractToAddPass(log));
     pm.addPass(IE::createConvertBranchesConcatToConvPass(log));
     pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
@@ -397,6 +407,12 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     // So convert it's shape to 4D and then convert this AddOp to ScaleShift.
     pm.addPass(IE::createConvertShapeTo4DPass(log));
     pm.addPass(IE::createConvertToScaleShiftPass(log));
+    // Place ReassociateMultiply pass here to ensure that no multiply is converted to DW conv later.
+    // Applying this optimization and subsequently converting to a DW conv might introduce unnecessary expansion
+    // to make channel aligned. A better long-term solution should be that this optimization does not break a DW conv
+    // optimization in a different place. Either by extending the logic of this pass or the rules for rewriting
+    // multiplications to a DW conv.
+    pm.addPass(IE::createReassociateMultiplyPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
     pm.addPass(IE::createConvertGroupConvToConvPass(log));
@@ -567,13 +583,13 @@ void vpux::IE::arch37xx::registerIEPipelines() {
                 IE::arch37xx::buildExpandAndOptimizeActivationChannelsPipeline(pm, options);
             });
 
-    mlir::PassPipelineRegistration<mlir::EmptyPipelineOptions>(
+    mlir::PassPipelineRegistration<ExpandActivationChannelsOptions>(
             "mempermute-processing",
             "[OPTIMIZATION] MemPermute processing is responsible for handling mempermute op and optimize final "
             "subgraph to avoid unnecessary data "
             "permutations",
-            [](mlir::OpPassManager& pm) {
-                IE::arch37xx::buildMemPermuteProcessingPipeline(pm);
+            [](mlir::OpPassManager& pm, const ExpandActivationChannelsOptions& options) {
+                IE::arch37xx::buildMemPermuteProcessingPipeline(pm, options);
             });
 
     mlir::PassPipelineRegistration<ExpandActivationChannelsOptions>(

@@ -347,8 +347,8 @@ TEST_F(MLIR_GetExplicitDistributionInfoAttrTest, NCEPermuteOp) {
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
         !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
-        module @test attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode =
-        #VPU.compilation_mode<DefaultHW>} {
+        module @test attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode =
+        #config.compilation_mode<DefaultHW>} {
             func.func @main(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x4x224x224x!qElemType, {order
             = #NHWC}> {
 

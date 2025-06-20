@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL:  func.func @ConstantLayer
 // CHECK-SAME:       ([[ARG:%.+]]: memref<1x2x2x2xf16>)
 func.func @ConstantLayer(%input: tensor<1x2x2x2xf16>) -> tensor<1x2x2x2xf16> {
@@ -250,10 +251,10 @@ func.func @QuantizeCast(%input: tensor<1x32x256x256x!qElemType1, {order = #NHWC}
 
 // CHECK-LABEL: @StorageElementTable
 func.func @StorageElementTable() -> tensor<1x1x16x16xi32, {order = #NHWC}> {
-    %output = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 16, 16], seDepth = 1 : i64, seSize = 64 : i64} -> tensor<1x1x16x16xi32, {order = #NHWC}>
+    %output = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 16, 16], seDepth = 1 : i64, seSize = [64]} -> tensor<1x1x16x16xi32, {order = #NHWC}>
     return %output : tensor<1x1x16x16xi32, {order = #NHWC}>
 
-    // CHECK: [[OUTPUT:%.+]] = VPUIP.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 16, 16], seDepth = 1 : i64, seSize = 64 : i64} -> memref<1x1x16x16xi32, #NHWC>
+    // CHECK: [[OUTPUT:%.+]] = VPUIP.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 16, 16], seDepth = 1 : i64, seSize = [64]} -> memref<1x1x16x16xi32, #NHWC>
     // CHECK: return [[OUTPUT]] : memref<1x1x16x16xi32, #NHWC>
 }
 

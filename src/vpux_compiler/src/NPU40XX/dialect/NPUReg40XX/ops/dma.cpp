@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -20,7 +20,7 @@ using namespace NPUReg40XX;
 //
 
 void NPUReg40XX::NNDMAOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto dmaDescriptor = getDescriptor().getRegMapped();
+    auto dmaDescriptor = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuDMATask) == dmaDescriptor.size(),
                       "HW DmaDescriptor size {0} != regMapped representation size {1}.", sizeof(nn_public::VpuDMATask),
@@ -47,7 +47,7 @@ size_t getSymRefOffsetForReloc(NPUReg40XX::NNDMAOp op, mlir::SymbolRefAttr ref) 
     } else if (ref == mlir::cast<mlir::SymbolRefAttr>(op.getOutputBuffsAttr()[0])) {
         return offsetof(nn_public::VpuDMATask, transaction_) + offsetof(DmaDescriptor, dst_offsetof);
     } else if (op.getActCompressionSizeEntryAttr() == ref) {
-        const auto& descriptor = op.getDescriptor().getRegMapped();
+        const auto& descriptor = op.getProperties().getDescriptor();
         const auto dma_cfg_fields_rws_en = descriptor.read<Fields::dma_cfg_fields_rws_en>();
         const auto dma_cfg_fields_rwf_en = descriptor.read<Fields::dma_cfg_fields_rwf_en>();
         if (dma_cfg_fields_rws_en == 1) {
@@ -120,4 +120,19 @@ std::vector<ELF::RelocationInfo> NPUReg40XX::NNDMAOp::getRelocationInfo(ELF::Sym
     }
 
     return relocs;
+}
+
+void NPUReg40XX::NNDMAOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
+                                vpux::NPUReg40XX::Descriptors::DMARegister&& descriptor, mlir::SymbolRefAttr input,
+                                mlir::ArrayAttr outputBuffs, mlir::SymbolRefAttr nextLink,
+                                mlir::SymbolRefAttr actCompressionSizeEntry, mlir::SymbolRefAttr indices) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.descriptor = std::move(descriptor);
+    props.input = input;
+    props.output_buffs = outputBuffs;
+    props.next_link = nextLink;
+    props.act_compression_size_entry = actCompressionSizeEntry;
+    props.indices = indices;
 }

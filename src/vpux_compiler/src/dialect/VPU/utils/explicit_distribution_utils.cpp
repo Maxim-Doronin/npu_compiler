@@ -467,11 +467,6 @@ VPU::DistributionInfoAttr vpux::VPU::getExplicitDistrAttrForSparseData(VPU::Dist
         return denseDataDistribution;
     }
 
-    SmallVector<int64_t> seAttrOffsets(dataShape.size(), 0);
-    if (auto tileInfo = seAttr.getTileInfo(); tileInfo.has_value() && tileInfo->offsets != nullptr) {
-        seAttrOffsets = parseIntArrayAttr<int64_t>(tileInfo->offsets);
-    }
-
     auto getDataShapesOffsets =
             [&](mlir::ArrayAttr denseDataShapesAttr,
                 mlir::ArrayAttr denseDataOffsetsAttr) -> std::pair<mlir::ArrayAttr, mlir::ArrayAttr> {
@@ -485,13 +480,7 @@ VPU::DistributionInfoAttr vpux::VPU::getExplicitDistrAttrForSparseData(VPU::Dist
             const auto denseDataShape = Shape(denseDataShapes[clusterIdx]);
             const auto denseDataOffset = Shape(denseDataOffsets[clusterIdx]);
 
-            Shape startOffsets(denseDataShape.size());
-            std::transform(denseDataOffset.begin(), denseDataOffset.end(), seAttrOffsets.begin(), startOffsets.begin(),
-                           [](const int64_t dataOffset, const int64_t seOffset) {
-                               return dataOffset + seOffset;
-                           });
-
-            seAttr.extractTile(startOffsets, denseDataShape, dataShape, dataOffsetsVec[clusterIdx],
+            seAttr.extractTile(denseDataOffset, denseDataShape, dataShape, dataOffsetsVec[clusterIdx],
                                dataShapesVec[clusterIdx]);
         }
 

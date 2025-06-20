@@ -8,7 +8,7 @@
 // REQUIRES: arch-NPU40XX
 
 // CHECK-LABEL: @Gather
-module @Gather attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @Gather attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     // CHECK-DAG: {{  }}IE.TileResource
     // CHECK-DAG: {{      }}module @DmaProfilingReservedMemory
     // CHECK-NEXT: {{        }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN

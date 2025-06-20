@@ -247,7 +247,7 @@ bool vpux::StrideReqsRef::checkStrides(vpux::NDTypeInterface type) const {
 }
 
 bool vpux::StrideReqsRef::checkStrides(mlir::Value val) const {
-    const auto type = val.getType().dyn_cast_or_null<vpux::NDTypeInterface>();
+    const auto type = mlir::dyn_cast_or_null<vpux::NDTypeInterface>(val.getType());
     VPUX_THROW_UNLESS(type != nullptr, "Value '{0}' has non vpux::NDTypeInterface '{1}'", val, val.getType());
     return checkStrides(type);
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -1098,6 +1098,176 @@ func.func @UnrollTanhSOH(%input0: !Input_DDR, %output: !Output_DDR) -> !Output_D
     //CHECK:    VPUIP.NNDMA {port = 1 : i64} inputs([[OUT1_CMX]] : memref<1x4x256x1xf16, [@CMX_NN, 1]>) outputs([[OUT_DDR2]] : memref<1x4x256x1xf16, {order = #NCHW, strides = [2048, 512, 1, 1]}, @DDR>) -> memref<1x4x256x1xf16, {order = #NCHW, strides = [2048, 512, 1, 1]}, @DDR>
 }
 
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!typeCmxDistributedSOH = !VPUIP.DistributedBuffer<
+    1x1x666x400xf32, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 2, 1],
+    num_clusters = 2
+}>
+
+!typeDdrDistributedSOH = !VPUIP.DistributedBuffer<
+    1x1x666x400xf32, #NCHW, @DDR, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 2, 1],
+    num_clusters = 2
+}>
+
+!typeCmxDistributedOutSOH = !VPUIP.DistributedBuffer<
+    1x1x666x400xui8, #NCHW, @CMX_NN, {
+    mode = "SEGMENTED",
+    num_tiles = [1, 1, 2, 1],
+    num_clusters = 2
+}>
+
+!typeCmxDuplicated = !VPUIP.DistributedBuffer<
+    1x1x1x1xf32, #NCHW, @CMX_NN, {
+    mode = "DUPLICATED",
+    num_clusters = 2
+}>
+
+!typeCmxOutDuplicated = !VPUIP.DistributedBuffer<
+    1x1x1x1xui8, #NCHW, @CMX_NN, {
+    mode = "DUPLICATED",
+    num_clusters = 2
+}>
+
+VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
+module @VPU.SW {
+    func.func private @builtin_DynamicQuantize(memref<*xf32, @CMX_NN>, memref<*xf32, @CMX_NN>, memref<*xf32, @CMX_NN>, memref<*xui8, @CMX_NN>, memref<*xf32, @CMX_NN>, memref<*xui8, @CMX_NN>) attributes {VPU.kernel_code = "dynamic_quantize.cpp", VPU.kernel_entry = "dynamic_quantize", VPU.kernel_name = "dynamic_quantize", VPU.task_type = @COMPUTE}
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+}
+
+// CHECK-LABEL: @UnrollDynamicQuantizeSOH
+func.func @UnrollDynamicQuantizeSOH() -> (memref<1x1x666x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>, memref<1x1x1x1xf32, @DDR>, memref<1x1x1x1xui8, @DDR>) {
+    %0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+
+    %4 = VPURT.DeclareBuffer <CMX_NN> [0] <60928> -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    %5 = VPURT.DeclareBuffer <CMX_NN> <60992> -> !typeCmxDuplicated
+
+    %6 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x1x1xf32, @DDR>
+    %7 = VPURT.DeclareBuffer <CMX_NN> <128> -> !typeCmxDuplicated
+
+    %8 = VPURT.DeclareBuffer <NetworkInput> [0] <7468800> -> memref<1x1x666x400xf32, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    %9 = VPURT.DeclareBuffer <CMX_NN> <194624> -> !typeCmxDistributedSOH
+
+    %10 = VPURT.DeclareBuffer <CMX_NN> <995904> -> !typeCmxDistributedOutSOH
+    %11 = VPURT.DeclareBuffer <CMX_NN> <727424> -> !typeCmxDuplicated
+    %12 = VPURT.DeclareBuffer <CMX_NN> <727488> -> !typeCmxOutDuplicated
+
+    %13 = VPURT.DeclareBuffer <NetworkOutput> [0] <1334000> -> memref<1x1x666x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    %14 = VPURT.DeclareBuffer <NetworkOutput> [1] <0> -> memref<1x1x1x1xf32, @DDR>
+    %15 = VPURT.DeclareBuffer <NetworkOutput> [2] <0> -> memref<1x1x1x1xui8, @DDR>
+
+    VPURT.Task updates(%0 : !VPURT.Barrier) {
+      %2631 = VPUIP.NNDMA {port = 0 : i64} inputs(%4 : memref<1x1x1x1xf32, [@CMX_NN, 0]>) outputs(%5 : !typeCmxDuplicated) -> !typeCmxDuplicated
+    }
+
+    VPURT.Task updates(%1 : !VPURT.Barrier) {
+      %2631 = VPUIP.NNDMA {port = 1 : i64} inputs(%6 : memref<1x1x1x1xf32, @DDR>) outputs(%7 : !typeCmxDuplicated) -> !typeCmxDuplicated
+    }
+
+    VPURT.Task updates(%2 : !VPURT.Barrier) {
+      %2631 = VPUIP.NNDMA {port = 0 : i64} inputs(%8 : memref<1x1x666x400xf32, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>) outputs(%9 : !typeCmxDistributedSOH) -> !typeCmxDistributedSOH
+    }
+
+    VPURT.Task waits(%0, %1, %2 : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates(%3 : !VPURT.Barrier) {
+      %results:3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>} @VPU.SW::@builtin_DynamicQuantize inputs(%9 as %arg4: memref<1x1x666x400xf32, @CMX_NN>, %5 as %arg5: memref<1x1x1x1xf32, @CMX_NN>, %7 as %arg6: memref<1x1x1x1xf32, @CMX_NN>) outputs(%10 as %arg7: memref<1x1x666x400xui8, @CMX_NN>, %11 as %arg8: memref<1x1x1x1xf32, @CMX_NN>, %12 as %arg9: memref<1x1x1x1xui8, @CMX_NN>) on tile 0 -> (!typeCmxDistributedOutSOH, !typeCmxDuplicated, !typeCmxOutDuplicated){
+        VPUIP.SW.Kernel.run(%arg4, %arg5, %arg6, %arg7, %arg8, %arg9) : memref<1x1x666x400xf32, @CMX_NN>, memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x666x400xui8, @CMX_NN>, memref<1x1x1x1xf32, @CMX_NN>, memref<1x1x1x1xui8, @CMX_NN>
+      }
+    }
+
+    VPURT.Task waits(%3 : !VPURT.Barrier) {
+      %2631 = VPUIP.NNDMA {port = 0 : i64} inputs(%10 : !typeCmxDistributedOutSOH) outputs(%13 : memref<1x1x666x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>) -> memref<1x1x666x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    }
+
+    VPURT.Task waits(%3 : !VPURT.Barrier) {
+      %2631 = VPUIP.NNDMA {port = 0 : i64} inputs(%11 : !typeCmxDuplicated) outputs(%14 : memref<1x1x1x1xf32, @DDR>) -> memref<1x1x1x1xf32, @DDR>
+    }
+    VPURT.Task waits(%3 : !VPURT.Barrier) {
+      %2631 = VPUIP.NNDMA {port = 1 : i64} inputs(%12 : !typeCmxOutDuplicated) outputs(%15 : memref<1x1x1x1xui8, @DDR>) -> memref<1x1x1x1xui8, @DDR>
+    }
+
+    return %13, %14, %15 : memref<1x1x666x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>, memref<1x1x1x1xf32, @DDR>, memref<1x1x1x1xui8, @DDR>
+
+    // CHECK: [[MIN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <60928> -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[CMX_0_MIN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <60992> -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[CMX_1_MIN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <60992> -> memref<1x1x1x1xf32, [@CMX_NN, 1]>
+    // CHECK: [[MIN_DIST:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <60992> -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK: [[MAX:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x1x1xf32, @DDR>
+    // CHECK: [[CMX_0_MAX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[CMX_1_MAX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <128> -> memref<1x1x1x1xf32, [@CMX_NN, 1]>
+    // CHECK: [[MAX_DIST:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <128> -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK: [[DATA_IN_0:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <7468800> -> memref<1x1x333x400xf32, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    // CHECK: [[DATA_IN_1:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <8001600> -> memref<1x1x333x400xf32, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    // CHECK: [[CMX_0_DATA:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <194624> -> memref<1x1x333x400xf32, [@CMX_NN, 0]>
+    // CHECK: [[CMX_1_DATA:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <194624> -> memref<1x1x333x400xf32, [@CMX_NN, 1]>
+    // CHECK: [[DATA_CMX_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <194624> -> memref<1x1x333x400xf32, [@CMX_NN, 0]>
+    // CHECK: [[DATA_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <194624> -> memref<1x1x333x400xf32, [@CMX_NN, 1]>
+    // CHECK: [[CMX_0_DATA_BUFF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <995904> -> memref<1x1x333x400xui8, [@CMX_NN, 0]>
+    // CHECK: [[CMX_1_DATA_BUFF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <995904> -> memref<1x1x333x400xui8, [@CMX_NN, 1]>
+    // CHECK: [[OUT_CMX_0_DATA:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <995904> -> memref<1x1x333x400xui8, [@CMX_NN, 0]>
+    // CHECK: [[OUT_CMX_1_DATA:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <995904> -> memref<1x1x333x400xui8, [@CMX_NN, 1]>
+    // CHECK: [[CMX_0_SCALE_BUFF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <727424> -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[OUT_CMX_0_SCALE:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <727424> -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[OUT_CMX_1_SCALE:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <727424> -> memref<1x1x1x1xf32, [@CMX_NN, 1]>
+    // CHECK: [[CMX_0_ZP_BUFF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <727488> -> memref<1x1x1x1xui8, [@CMX_NN, 0]>
+    // CHECK: [[OUT_CMX_0_ZP:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <727488> -> memref<1x1x1x1xui8, [@CMX_NN, 0]>
+    // CHECK: [[OUT_CMX_1_ZP:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <727488> -> memref<1x1x1x1xui8, [@CMX_NN, 1]>
+    // CHECK: [[DDR_DATA:%.+]]  = VPURT.DeclareBuffer <NetworkOutput> [0] <1334000> -> memref<1x1x666x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    // CHECK: [[DDR_DATA_0:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <1334000> -> memref<1x1x333x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    // CHECK: [[DDR_DATA_1:%.+]]  = VPURT.DeclareBuffer <NetworkOutput> [0] <1467200> -> memref<1x1x333x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    // CHECK: [[DDR_SCALE:%.+]]  = VPURT.DeclareBuffer <NetworkOutput> [1] <0> -> memref<1x1x1x1xf32, @DDR>
+    // CHECK: [[DDR_ZP:%.+]]  = VPURT.DeclareBuffer <NetworkOutput> [2] <0> -> memref<1x1x1x1xui8, @DDR>
+
+    // CHECK: VPUIP.NNDMA {port = 0 : i64} inputs([[MIN]] : memref<1x1x1x1xf32, [@CMX_NN, 0]>) outputs([[MIN_DIST]] : !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: VPUIP.NNDMA {port = 1 : i64} inputs([[MAX]] : memref<1x1x1x1xf32, @DDR>) outputs([[MAX_DIST]] : !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x1xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK: VPUIP.NNDMA {port = 0 : i64} inputs([[DATA_IN_0]] : memref<1x1x333x400xf32, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>) outputs([[DATA_CMX_0]] : memref<1x1x333x400xf32, [@CMX_NN, 0]>) -> memref<1x1x333x400xf32, [@CMX_NN, 0]>
+
+    // CHECK: VPUIP.NNDMA {port = 1 : i64} inputs([[DATA_IN_1]] : memref<1x1x333x400xf32, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>) outputs([[DATA_CMX_1]] : memref<1x1x333x400xf32, [@CMX_NN, 1]>) -> memref<1x1x333x400xf32, [@CMX_NN, 1]>
+
+    // CHECK:       VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>}
+    // CHECK-SAME:  @VPU.SW::@builtin_DynamicQuantize
+    // CHECK-SAME:  inputs([[CMX_0_DATA]] as %arg0: memref<1x1x333x400xf32, [@CMX_NN, 0]>,
+    // CHECK-SAME:         [[CMX_0_MIN]] as %arg1: memref<1x1x1x1xf32, [@CMX_NN, 0]>,
+    // CHECK-SAME:         [[CMX_0_MAX]] as %arg2: memref<1x1x1x1xf32, [@CMX_NN, 0]>)
+    // CHECK-SAME:       outputs([[OUT_CMX_0_DATA]] as %arg3: memref<1x1x333x400xui8, [@CMX_NN, 0]>,
+    // CHECK-SAME:               [[OUT_CMX_0_SCALE]] as %arg4: memref<1x1x1x1xf32, [@CMX_NN, 0]>,
+    // CHECK-SAME:               [[OUT_CMX_0_ZP]] as %arg5: memref<1x1x1x1xui8, [@CMX_NN, 0]>) on tile 0
+    // CHECK:       -> (memref<1x1x333x400xui8, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xui8, [@CMX_NN, 0]>)
+    // CHECK:       VPUIP.SW.Kernel.run(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5)
+    // CHECK:       memref<1x1x333x400xf32, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK:       memref<1x1x333x400xui8, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xui8, [@CMX_NN, 0]>
+
+    // CHECK:       VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>}
+    // CHECK-SAME:  @VPU.SW::@builtin_DynamicQuantize
+    // CHECK-SAME:  inputs([[CMX_1_DATA]] as %arg0: memref<1x1x333x400xf32, [@CMX_NN, 1]>,
+    // CHECK-SAME:         [[CMX_1_MIN]] as %arg1: memref<1x1x1x1xf32, [@CMX_NN, 1]>,
+    // CHECK-SAME:         [[CMX_1_MAX]] as %arg2: memref<1x1x1x1xf32, [@CMX_NN, 1]>)
+    // CHECK-SAME:       outputs([[OUT_CMX_1_DATA]] as %arg3: memref<1x1x333x400xui8, [@CMX_NN, 1]>,
+    // CHECK-SAME:               [[OUT_CMX_1_SCALE]] as %arg4: memref<1x1x1x1xf32, [@CMX_NN, 1]>,
+    // CHECK-SAME:               [[OUT_CMX_1_ZP]] as %arg5: memref<1x1x1x1xui8, [@CMX_NN, 1]>) on tile 1
+    // CHECK:       -> (memref<1x1x333x400xui8, [@CMX_NN, 1]>, memref<1x1x1x1xf32, [@CMX_NN, 1]>, memref<1x1x1x1xui8, [@CMX_NN, 1]>)
+    // CHECK:       VPUIP.SW.Kernel.run(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5)
+    // CHECK:       memref<1x1x333x400xf32, [@CMX_NN, 1]>, memref<1x1x1x1xf32, [@CMX_NN, 1]>, memref<1x1x1x1xf32, [@CMX_NN, 1]>
+    // CHECK:       memref<1x1x333x400xui8, [@CMX_NN, 1]>, memref<1x1x1x1xf32, [@CMX_NN, 1]>, memref<1x1x1x1xui8, [@CMX_NN, 1]>
+
+    // CHECK: VPUIP.NNDMA {port = 0 : i64} inputs([[CMX_0_DATA_BUFF]] : memref<1x1x333x400xui8, [@CMX_NN, 0]>) outputs([[DDR_DATA_0]] : memref<1x1x333x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>) -> memref<1x1x333x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    // CHECK:  VPUIP.NNDMA {port = 1 : i64} inputs([[CMX_1_DATA_BUFF]] : memref<1x1x333x400xui8, [@CMX_NN, 1]>) outputs([[DDR_DATA_1]] : memref<1x1x333x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>) -> memref<1x1x333x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>
+    // CHECK:  VPUIP.NNDMA {port = 0 : i64} inputs([[CMX_0_SCALE_BUFF]] : memref<1x1x1x1xf32, [@CMX_NN, 0]>) outputs([[DDR_SCALE]] : memref<1x1x1x1xf32, @DDR>) -> memref<1x1x1x1xf32, @DDR>
+    // CHECK:  VPUIP.NNDMA {port = 1 : i64} inputs([[CMX_0_ZP_BUFF]] : memref<1x1x1x1xui8, [@CMX_NN, 0]>) outputs([[DDR_ZP]] : memref<1x1x1x1xui8, @DDR>) -> memref<1x1x1x1xui8, @DDR>
+    // CHECK:  return [[DDR_DATA]], [[DDR_SCALE]], [[DDR_ZP]]
+    // CHECK:  memref<1x1x666x400xui8, {order = #NCHW, strides = [2400000, 2400000, 400, 1]}, @DDR>, memref<1x1x1x1xf32, @DDR>, memref<1x1x1x1xui8, @DDR>
+}
 
 // -----
 

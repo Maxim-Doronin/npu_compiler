@@ -5,6 +5,38 @@
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
+module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+IE.ExecutorResource 1 of @DMA_NN
+IE.TileResource 1 of @NCE at 6.000000e+02 MHz
+  net.NetworkInfo entryPoint : @nndma_0d_to_0d inputsInfo : {
+    DataInfo "input" : tensor<f16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<f16>
+  }
+  VPUASM.IOBindings inputDeclarations : {
+    VPUASM.DeclareBuffer @input_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<f16, @DDR> :  swizzling(0)>
+  } outputDeclarations : {
+    VPUASM.DeclareBuffer @output_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<f16, @DDR> :  swizzling(0)>
+  } profilingBuffDeclarations : {
+  }
+  func.func private @nndma_0d_to_0d() {
+    %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
+    %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<f16, @DDR>
+    %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <884868> {swizzlingKey = 0 : i64} -> memref<f16, @DDR>
+    %3 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%0 : !VPURegMapped.Index<0:0:0>)
+        inputs(%1 : memref<f16, @DDR>)
+        outputs(%2 : memref<f16, @DDR>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+
+    // CHECK:   dma_descriptor(<numPlanes = 0 : i32, len = 2 : i32, srcWidth = 2 : i32, srcStride = 2 : i32, srcPlaneStride = 0 : i32, dstWidth = 2 : i32, dstStride = 2 : i32, dstPlaneStride = 0 : i32>)
+
+    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    VPUMI40XX.OpRanges
+  }
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
@@ -308,7 +340,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 // -----
 
-!quantileFloatType = !QuantileFloat.quantileFloat<4, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+!quantileFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 

@@ -2,11 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/opsets/opset4.hpp"
-#include "openvino/opsets/opset6.hpp"
+#include "openvino/opsets/opset4_decl.hpp"
+#include "openvino/opsets/opset6_decl.hpp"
 
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/reduce_mean.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/sqrt.hpp"
+#include "openvino/op/subtract.hpp"
 
 namespace ov::test::subgraph {
 

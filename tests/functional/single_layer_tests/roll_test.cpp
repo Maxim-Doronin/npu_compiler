@@ -5,6 +5,8 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/roll.hpp"
+
 namespace ov::test {
 
 class SEPRollLayerTestTestCommon :
@@ -57,13 +59,13 @@ class SEPRollLayerTest_NPU4000 : public SEPRollLayerTestTestCommon {};
 
 TEST_P(SEPRollLayerTest_NPU3720, HW) {
     setDefaultHardwareMode();
-    configuration["NPU_COMPILATION_MODE_PARAMS"] = "enable-experimental-se-ptrs-operations=true";
+    configuration["NPU_COMPILATION_MODE_PARAMS"] = "enable-se-ptrs-operations=true";
     run(Platform::NPU3720);
 }
 
 TEST_P(SEPRollLayerTest_NPU4000, HW) {
     setDefaultHardwareMode();
-    configuration["NPU_COMPILATION_MODE_PARAMS"] = "enable-experimental-se-ptrs-operations=true";
+    configuration["NPU_COMPILATION_MODE_PARAMS"] = "enable-se-ptrs-operations=true";
     run(Platform::NPU4000);
 }
 

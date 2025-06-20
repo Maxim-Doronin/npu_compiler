@@ -39,12 +39,12 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
 
     cd /home/useraccount/workspace (Just an example, you should use your own path.)
     git clone https://github.com/openvinotoolkit/npu_compiler
-    cd npu_compiler
+    cd applications.ai.vpu-accelerators.vpux-plugin
     git checkout -b master origin/master (Just an example, you could use your own branch/tag/commit.)
     git submodule update --init --recursive
 
-    export OPENVINO_HOME=/home/useraccount/workspace/openvino (need change to your own path)
-    export NPU_PLUGIN_HOME=/home/useraccount/workspace/npu_compiler (need change to your own path)
+    export OPENVINO_HOME=/home/useraccount/workspace/openvino (need to change to your own path)
+    export NPU_PLUGIN_HOME=/home/useraccount/workspace/applications.ai.vpu-accelerators.vpux-plugin (need to change to your own path)
     ```
     </details>
 
@@ -54,7 +54,7 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
     
     2.1 Build instructions:
 
-    Before build with the following instructions, please make sure `OPENVINO_HOME` and `NPU_PLUGIN_HOME` enviroment variables have been set.
+    Before building with the following instructions, please make sure `OPENVINO_HOME` and `NPU_PLUGIN_HOME` environment variables have been set.
 
     <details>
     <summary>Instructions</summary>
@@ -222,7 +222,7 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
     <details>
     <summary>2.3.2 Use different TBB version</summary>
 
-    If you wish to build with system TBB, you need install TBB in your local system first and then use `-DENABLE_SYSTEM_TBB=ON` option to instead of `-DENABLE_SYSTEM_TBB=OFF` option.
+    If you wish to build with system TBB, you need to install TBB in your local system first and then use `-DENABLE_SYSTEM_TBB=ON` option instead of `-DENABLE_SYSTEM_TBB=OFF` option.
 
     If you wish to build with a specific version of TBB, you can download it from [oneTBB Project] and unzip its release package. Then use the `-DENABLE_SYSTEM_TBB=OFF -DTBBROOT=/home/username/path/to/downloaded/tbb` option to build.
     
@@ -232,7 +232,7 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
     <details>
     <summary>2.3.3 Do not use TBB</summary>
 
-    If you wish to build without TBB (which will result in a slower build process), you need change `-D THREADING=TBB` to `-D THREADING=SEQ`. More info about SEQ mode, please refer to this [file](https://github.com/openvinotoolkit/openvino/blob/master/docs/dev/cmake_options_for_custom_compilation.md#options-affecting-binary-size).
+    If you wish to build without TBB (which will result in a slower build process), you need to change `-D THREADING=TBB` to `-D THREADING=SEQ`. For more information about SEQ mode, please refer to this [file](https://github.com/openvinotoolkit/openvino/blob/master/docs/dev/cmake_options_for_custom_compilation.md#options-affecting-binary-size).
 
     </details>
 

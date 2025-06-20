@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -442,37 +442,27 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
     // CHECK:       [[INPUT_SM_DIST:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xi1, #NHWC, @CMX_NN,
     // CHECK-SAME:      {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
     // CHECK:       [[INPUT_SPARSE_DIST:%.+]] = VPUIP.GroupSparseBuffer([[INPUT_DIST]], [[INPUT_SM_DIST]])
-    // CHECK:       [[INPUT_SPARSE_DIST_CMX:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:          inputs([[INPUT_SPARSE_DDR]] as [[ARG3:%.+]]: !VPUIP.SparseBuffer<data=memref<1x32x16x16xf16, #NHWC, @DDR>, sparsity_map=memref<1x32x16x16xi1, #NHWC, @DDR>>)
-    // CHECK-SAME:          outputs([[INPUT_SPARSE_DIST]] as [[ARG4:%.+]]: !VPUIP.SparseBuffer<data=memref<1x32x16x16xf16, #NHWC, @CMX_NN>, sparsity_map=memref<1x32x16x16xi1, #NHWC, @CMX_NN>>)
+    // CHECK:       [[INPUT_SPARSE_DIST_CMX:%.+]] = VPUIP.Copy
+    // CHECK-SAME:          inputs([[INPUT_SPARSE_DDR]] : !VPUIP.SparseBuffer<data=memref<1x32x16x16xf16, #NHWC, @DDR>, sparsity_map=memref<1x32x16x16xi1, #NHWC, @DDR>>)
+    // CHECK-SAME:          outputs([[INPUT_SPARSE_DIST]] : !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>, sparsity_map=!VPUIP.DistributedBuffer<1x32x16x16xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>>)
     // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
-    // CHECK-SAME:                             sparsity_map=!VPUIP.DistributedBuffer<1x32x16x16xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>> {
-    // CHECK:           VPUIP.Copy inputs([[ARG3]]
-    // CHECK-SAME:                 outputs([[ARG4]]
-    // CHECK:       }
-
+    // CHECK-SAME:                             sparsity_map=!VPUIP.DistributedBuffer<1x32x16x16xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>>
     // CHECK:       [[WEIGHTS_DIST:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<64x32x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:       [[WEIGHTS_SM_DIST:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<64x1x1x384xi1, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:       [[WEIGHTS_SPARSE_DIST:%.+]] = VPUIP.GroupSparseBuffer([[WEIGHTS_DIST]], [[WEIGHTS_SM_DIST]])
-    // CHECK:       [[WEIGHTS_SPARSE_DIST_CMX:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:          inputs([[WEIGHTS_SPARSE_DDR]] as [[ARG5:%.+]]: !VPUIP.SparseBuffer<data=memref<64x32x3x3xf16, #NHWC, @DDR>, sparsity_map=memref<64x1x1x384xi1, @DDR>, is_weights>)
-    // CHECK-SAME:          outputs([[WEIGHTS_SPARSE_DIST]] as [[ARG6:%.+]]: !VPUIP.SparseBuffer<data=memref<64x32x3x3xf16, #NHWC, @CMX_NN>, sparsity_map=memref<64x1x1x384xi1, @CMX_NN>, is_weights>)
+    // CHECK:       [[WEIGHTS_SPARSE_DIST_CMX:%.+]] = VPUIP.Copy
+    // CHECK-SAME:          inputs([[WEIGHTS_SPARSE_DDR]] : !VPUIP.SparseBuffer<data=memref<64x32x3x3xf16, #NHWC, @DDR>, sparsity_map=memref<64x1x1x384xi1, @DDR>, is_weights>)
+    // CHECK-SAME:          outputs([[WEIGHTS_SPARSE_DIST]] : !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<64x32x3x3xf16, #NHWC, @CMX_NN
     // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<64x32x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
     // CHECK-SAME:                             sparsity_map=!VPUIP.DistributedBuffer<64x1x1x384xi1, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
-    // CHECK-SAME:                             is_weights> {
-    // CHECK:           VPUIP.Copy inputs([[ARG5]]
-    // CHECK-SAME:                 outputs([[ARG6]]
-    // CHECK:       }
+    // CHECK-SAME:                             is_weights>
 
     // CHECK:       [[WEIGHTS_TABLE_DIST:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, @CMX_NN,
     // CHECK-SAME:          {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK:       [[WEIGHTS_TABLE:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:          inputs([[CST_WEIGHTS_TABLE]] as [[ARG7:%.+]]: memref<64x1x1x4xsi32, @DDR>)
-    // CHECK-SAME:          outputs([[WEIGHTS_TABLE_DIST]] as [[ARG8:%.+]]: memref<64x1x1x4xsi32, @CMX_NN>)
-    // CHECK-SAME:      -> !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}> {
-    // CHECK:         VPUIP.Copy inputs([[ARG7]]
-    // CHECK-SAME:               outputs([[ARG8]]
-    // CHECK:       }
+    // CHECK:       [[WEIGHTS_TABLE:%.+]] = VPUIP.Copy
+    // CHECK-SAME:          inputs([[CST_WEIGHTS_TABLE]] : memref<64x1x1x4xsi32, @DDR>)
+    // CHECK-SAME:          outputs([[WEIGHTS_TABLE_DIST]] : !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:      -> !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     // CHECK:       [[OUTPUT_DATA:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x64x14x14xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
     // CHECK:       [[OUTPUT_SM:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x64x14x14xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
@@ -484,52 +474,34 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
     // CHECK-SAME:      -> !VPUIP.DistributedBuffer<64x32x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK-SAME:         !VPUIP.DistributedBuffer<64x1x1x384xi1, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    // CHECK:       [[CONV_OUTPUT:%.+]]:2 = VPUIP.NCEClusterTiling
-    // CHECK-SAME:          inputs([[INPUT_DATA]] as [[ARG9:%[^:]+]]: memref<1x32x16x16xf16, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                 [[INPUT_SM]] as [[ARG10:%[^:]+]]: memref<1x32x16x16xi1, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                 [[WEIGHTS_DATA]] as [[ARG11:%[^:]+]]: memref<64x32x3x3xf16, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                 [[WEIGHTS_SM]] as [[ARG12:%[^:]+]]: memref<64x1x1x384xi1, @CMX_NN>,
-    // CHECK-SAME:                 [[WEIGHTS_TABLE]] as [[ARG13:%[^:]+]]: memref<64x1x1x4xsi32, @CMX_NN>,
-    // CHECK-SAME:                 [[INPUT_DATA]] as [[ARG16:%[^:]+]]: memref<1x32x16x16xf16, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                 [[INPUT_SM]] as [[ARG17:%[^:]+]]: memref<1x32x16x16xi1, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                 [[OUTPUT_DATA]] as [[ARG18:%[^:]+]]: memref<1x64x14x14xf16, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                 [[OUTPUT_SM]] as [[ARG19:%[^:]+]]: memref<1x64x14x14xi1, #NHWC, @CMX_NN>
-    // CHECK-SAME:          outputs([[OUTPUT_DATA]] as [[ARG14:%[^:]+]]: memref<1x64x14x14xf16, #NHWC, @CMX_NN>,
-    // CHECK-SAME:                  [[OUTPUT_SM]] as [[ARG15:%[^:]+]]: memref<1x64x14x14xi1, #NHWC, @CMX_NN>)
-    // CHECK-SAME:      -> (!VPUIP.DistributedBuffer<1x64x14x14xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
-    // CHECK-SAME:          !VPUIP.DistributedBuffer<1x64x14x14xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) {
-
-    // CHECK:           [[CONV_OUT:%.+]]:2 = VPUIP.NCEClusterTask
+    // CHECK:       [[CONV_OUTPUT:%.+]]:2 = VPUIP.NCEClusterTask
     // CHECK-SAME:              {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
-    // CHECK-SAME:              input([[ARG9]]
-    // CHECK-SAME:              input_sparsity_map([[ARG10]]
-    // CHECK-SAME:              weights([[ARG11]]
-    // CHECK-SAME:              weights_sparsity_map([[ARG12]]
-    // CHECK-SAME:              weight_table([[ARG13]]
-    // CHECK-SAME:              parent_input([[ARG16]]
-    // CHECK-SAME:              parent_input_sparsity_map([[ARG17]]
-    // CHECK-SAME:              parent_output([[ARG18]]
-    // CHECK-SAME:              parent_output_sparsity_map([[ARG19]]
-    // CHECK-SAME:              outputs([[ARG14]]
-    // CHECK-SAME:              output_sparsity_map([[ARG15]]
-    // CHECK-SAME:          -> memref<1x64x14x14xf16, #NHWC, @CMX_NN>, memref<1x64x14x14xi1, #NHWC, @CMX_NN> variants :  {
+    // CHECK-SAME:          input([[INPUT_DATA]]
+    // CHECK-SAME:          input_sparsity_map([[INPUT_SM]]
+    // CHECK-SAME:          weights([[WEIGHTS_DATA]]
+    // CHECK-SAME:          weights_sparsity_map([[WEIGHTS_SM]]
+    // CHECK-SAME:          weight_table([[WEIGHTS_TABLE]]
+    // CHECK-SAME:          parent_input([[INPUT_DATA]]
+    // CHECK-SAME:          parent_input_sparsity_map([[INPUT_SM]]
+    // CHECK-SAME:          parent_output([[OUTPUT_DATA]]
+    // CHECK-SAME:          parent_output_sparsity_map([[OUTPUT_SM]]
+    // CHECK-SAME:          outputs([[OUTPUT_DATA]]
+    // CHECK-SAME:          output_sparsity_map([[OUTPUT_SM]]
+    // CHECK-SAME:      -> !VPUIP.DistributedBuffer<1x64x14x14xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
+    // CHECK-SAME:          !VPUIP.DistributedBuffer<1x64x14x14xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}> variants : {
     // CHECK:                   DPUTask {mpe_mode = #VPU.mpe_mode<VECTOR_FP16>, outEnd = [15, 15, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
     // CHECK:               } PPE :  {
     // CHECK:               }
-    // CHECK:       }
 
     // CHECK:       [[CONV_OUTPUT_SPARSE:%.+]] = VPUIP.GroupSparseBuffer([[CONV_OUTPUT]]#0, [[CONV_OUTPUT]]#1)
 
     // CHECK:       [[OUTPUT_BUF_DDR:%.+]] = memref.alloc() : memref<1x64x14x14xf16, #NHWC, @DDR>
     // CHECK:       [[OUTPUT_SM_BUF_DDR:%.+]] = memref.alloc() : memref<1x64x14x14xi1, #NHWC, @DDR>
     // CHECK:       [[OUTPUT_BUF_SPARSE:%.+]] = VPUIP.GroupSparseBuffer([[OUTPUT_BUF_DDR]], [[OUTPUT_SM_BUF_DDR]])
-    // CHECK:       [[OUTPUT_SPARSE_DDR:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:          inputs([[CONV_OUTPUT_SPARSE]] as [[ARG15:%.+]]: !VPUIP.SparseBuffer<data=memref<1x64x14x14xf16, #NHWC, @CMX_NN>, sparsity_map=memref<1x64x14x14xi1, #NHWC, @CMX_NN>>)
-    // CHECK-SAME:          outputs([[OUTPUT_BUF_SPARSE]] as [[ARG16:%.+]]: !VPUIP.SparseBuffer<data=memref<1x64x14x14xf16, #NHWC, @DDR>, sparsity_map=memref<1x64x14x14xi1, #NHWC, @DDR>>)
-    // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<1x64x14x14xf16, #NHWC, @DDR>, sparsity_map=memref<1x64x14x14xi1, #NHWC, @DDR>> {
-    // CHECK:           VPUIP.Copy inputs([[ARG15]]
-    // CHECK-SAME:                 outputs([[ARG16]]
-    // CHECK:       }
+    // CHECK:       [[OUTPUT_SPARSE_DDR:%.+]] = VPUIP.Copy
+    // CHECK-SAME:          inputs([[CONV_OUTPUT_SPARSE]] : !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<1x64x14x14xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>, sparsity_map=!VPUIP.DistributedBuffer<1x64x14x14xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>>)
+    // CHECK-SAME:          outputs([[OUTPUT_BUF_SPARSE]] : !VPUIP.SparseBuffer<data=memref<1x64x14x14xf16, #NHWC, @DDR>, sparsity_map=memref<1x64x14x14xi1, #NHWC, @DDR>>)
+    // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<1x64x14x14xf16, #NHWC, @DDR>, sparsity_map=memref<1x64x14x14xi1, #NHWC, @DDR>>
 
     // CHECK:       [[RESULT:%.+]] = VPUIP.Copy inputs([[OUTPUT_SPARSE_DDR]]
     // CHECK-SAME:                              outputs([[ARG2]]
@@ -549,7 +521,7 @@ module {
   }
 func.func @SparseNCEConvSETable(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>, %arg1 : tensor<1x32x16x16xi1, {order = #NHWC}>)
         -> tensor<1x64x14x14xf16, {order = #NHWC}> {
-    %se_table = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 16, 16], seDepth = 1 : i64, seSize = 32 : i64} -> tensor<1x1x16x16xi32, {order = #NHWC}>
+    %se_table = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 16, 16], seDepth = 1 : i64, seSize = [32]} -> tensor<1x1x16x16xi32, {order = #NHWC}>
     %input_sparse = VPU.GroupSparseTensor(%arg0, %arg1, %se_table)
         -> !VPU.SparseTensor<data=tensor<1x32x16x16xf16, {order = #NHWC}>,
                              sparsity_map=tensor<1x32x16x16xi1, {order = #NHWC}>,
@@ -588,7 +560,7 @@ func.func @SparseNCEConvSETable(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>,
     // CHECK-DAG:       [[WEIGHTS_TABLE:%.+]] = const.Declare memref<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare memref<64x32x3x3xf16, #NHWC> = dense<1.000000e+00> : tensor<64x32x3x3xf16>, [#const.Reorder<#NHWC>]
     // CHECK:       [[SE_TABLE:%.+]] = VPUIP.StorageElementTable
-    // CHECK-SAME:      {dataElemType = f16, dataShape = [1, 32, 16, 16], seDepth = 1 : i64, seSize = 32 : i64} -> memref<1x1x16x16xi32, #NHWC>
+    // CHECK-SAME:      {dataElemType = f16, dataShape = [1, 32, 16, 16], seDepth = 1 : i64, seSize = [32]} -> memref<1x1x16x16xi32, #NHWC>
     // CHECK:       [[GROUP_SPARSE_BUFFER:%.+]] = VPUIP.GroupSparseBuffer(%arg0, %arg1, [[SE_TABLE]])
     // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<1x32x16x16xf16, #NHWC>,
     // CHECK-SAME:                             sparsity_map=memref<1x32x16x16xi1, #NHWC>,

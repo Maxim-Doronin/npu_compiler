@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --decompose-gru-sequence %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL:   func.func @DecomposeGruResetTrue(
 // CHECK-SAME:                                     %[[VAL_0:.*]]: tensor<2x2x256xf16>,
 // CHECK-SAME:                                     %[[VAL_1:.*]]: tensor<2x1x256xf16>) -> (tensor<2x1x2x256xf16>, tensor<2x1x256xf16>) {

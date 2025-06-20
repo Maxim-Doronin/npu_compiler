@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-cluster-tiling --canonicalize  %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 // -----
 // Case 1: DUPLICATED clustering mode, copy DDR to CMX
 

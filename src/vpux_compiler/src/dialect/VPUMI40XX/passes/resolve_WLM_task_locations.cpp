@@ -6,11 +6,13 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 
 namespace vpux::VPUMI40XX {
 #define GEN_PASS_DECL_RESOLVEWLMTASKLOCATION
@@ -31,22 +33,26 @@ public:
 
 private:
     void safeRunOnFunc() final;
+    // Key: tileIdx, Value: current offset
+    llvm::DenseMap<int64_t, int64_t> _offsetTrackers;
 };
 
 void ResolveWLMTaskLocationPass::safeRunOnFunc() {
     auto netFunc = getOperation();
     auto mpi = VPUMI40XX::getMPI(netFunc);
+    auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
+    const auto tilesCount = IE::getTileExecutor(parentModule).getCount();
+    const auto availableShaveEnginesPerTile =
+            IE::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
 
     auto archKind = VPU::getArch(netFunc);
     const llvm::DenseMap<VPURegMapped::TaskType, size_t> sizes = {
-            {VPURegMapped::TaskType::DPUInvariant,
-             VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::DPUInvariant, archKind) / 2},
-            {VPURegMapped::TaskType::DPUVariant,
-             VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::DPUVariant, archKind) / 2},
+            {VPURegMapped::TaskType::DPUInvariant, VPU::getConstraint(netFunc, VPU::METADATA_MAX_INVARIANT_COUNT) / 2},
+            {VPURegMapped::TaskType::DPUVariant, VPU::getConstraint(netFunc, VPU::METADATA_MAX_VARIANT_COUNT) / 2},
             {VPURegMapped::TaskType::ActKernelInvocation,
-             VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::ActKernelInvocation, archKind) / 2},
+             VPU::getConstraint(netFunc, VPU::METADATA_MAX_KERNEL_INVOCATION_COUNT) / 2},
             {VPURegMapped::TaskType::ActKernelRange,
-             VPURegMapped::getDefaultTaskListCount(VPURegMapped::TaskType::ActKernelRange, archKind) / 2}};
+             VPU::getConstraint(netFunc, VPU::METADATA_MAX_KERNEL_RANGE_COUNT) / 2}};
 
     auto getSize = [&sizes](VPURegMapped::TaskType type) -> size_t {
         auto mapIt = sizes.find(type);
@@ -55,23 +61,30 @@ void ResolveWLMTaskLocationPass::safeRunOnFunc() {
         return mapIt->getSecond();
     };
 
-    auto populate = [&netFunc](mlir::OpBuilder builder, VPURegMapped::TaskType taskType, size_t tileIdx, size_t count) {
+    auto populate = [this, &netFunc, &archKind](mlir::OpBuilder builder, VPURegMapped::TaskType taskType,
+                                                size_t tileIdx, size_t listIdx,
+                                                size_t count) -> std::vector<mlir::Value> {
         std::vector<mlir::Value> taskBuffers;
+        auto ctx = builder.getContext();
+        int64_t& offsetTracker = _offsetTrackers[tileIdx];
         for (size_t i = 0; i < count; ++i) {
-            auto index = VPURegMapped::IndexType::get(builder.getContext(), static_cast<uint32_t>(tileIdx), 0,
+            auto index = VPURegMapped::IndexType::get(ctx, static_cast<uint32_t>(tileIdx), listIdx,
                                                       static_cast<uint32_t>(i));
-            auto taskBuffer = builder.create<VPUMI40XX::DeclareTaskBufferOp>(netFunc.getLoc(), index, taskType,
-                                                                             /* offset */ nullptr);
+            auto offsetAttr = mlir::IntegerAttr::get(getUInt64Type(ctx), offsetTracker);
+
+            auto binarySize = VPUMI40XX::getTaskBinarySize(taskType, archKind);
+            auto taskBuffer =
+                    builder.create<VPUMI40XX::DeclareTaskBufferOp>(netFunc.getLoc(), index, taskType, offsetAttr);
             taskBuffers.push_back(taskBuffer.getResult());
+            offsetTracker += static_cast<int64_t>(binarySize);
         }
+
         return taskBuffers;
     };
 
-    auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
-    const auto tilesCount = IE::getTileExecutor(parentModule).getCount();
-
-    auto solveGroupOps = [&mpi, &populate, &getSize](VPURegMapped::TaskType taskType, size_t tileIdx) -> void {
-        auto listHead = mpi.getListHead(taskType, tileIdx);
+    auto solveGroupOps = [&mpi, &populate, &getSize](VPURegMapped::TaskType taskType, size_t tileIdx,
+                                                     size_t listIdx = 0) -> void {
+        auto listHead = mpi.getListHead(taskType, tileIdx, listIdx);
         if (!listHead)
             return;
 
@@ -80,7 +93,7 @@ void ResolveWLMTaskLocationPass::safeRunOnFunc() {
         mlir::OpBuilder builder(listHead.getDefiningOp());
         auto groupSize = getSize(taskType);
 
-        auto taskBuffers = populate(builder, taskType, tileIdx, groupSize * 2);
+        auto taskBuffers = populate(builder, taskType, tileIdx, listIdx, groupSize * 2);
 
         size_t groupCtr = 0;
 
@@ -102,11 +115,16 @@ void ResolveWLMTaskLocationPass::safeRunOnFunc() {
         }
     };
 
+    // Order of task descriptors in CMX are important, they must me in order
+    // Order must be constructed respecting the structure presented at TaskBufferLayoutOp tblgen definition
+    // DPUInvariant->DPUVariant->ActKernelRange->ActKernelInvocation
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         solveGroupOps(VPURegMapped::TaskType::DPUInvariant, tileIdx);
         solveGroupOps(VPURegMapped::TaskType::DPUVariant, tileIdx);
-        solveGroupOps(VPURegMapped::TaskType::ActKernelInvocation, tileIdx);
-        solveGroupOps(VPURegMapped::TaskType::ActKernelRange, tileIdx);
+        for (int64_t listIdx = 0; listIdx < availableShaveEnginesPerTile; listIdx++) {
+            solveGroupOps(VPURegMapped::TaskType::ActKernelRange, tileIdx, listIdx);
+            solveGroupOps(VPURegMapped::TaskType::ActKernelInvocation, tileIdx, listIdx);
+        }
     }
 }
 

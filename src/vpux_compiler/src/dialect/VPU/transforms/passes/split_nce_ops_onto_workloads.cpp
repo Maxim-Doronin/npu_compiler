@@ -12,9 +12,11 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/factories/split_cost_getter.hpp"
-#include "vpux/compiler/utils/workload_split.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 
 #include "vpux/utils/core/enums.hpp"
 
@@ -32,13 +34,13 @@ using namespace VPU;
 namespace {
 
 //
-// GenericNCERewrite
+// NCEWorkloadSplitRewrite
 //
 
-class GenericNCERewrite final : public mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface> {
+class NCEWorkloadSplitRewrite final : public mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface> {
 public:
-    GenericNCERewrite(mlir::MLIRContext* ctx, int64_t numDPU, VPU::ArchKind arch,
-                      std::shared_ptr<VPUNN::VPUCostModel> costModel, Logger log)
+    NCEWorkloadSplitRewrite(mlir::MLIRContext* ctx, int64_t numDPU, VPU::ArchKind arch,
+                            std::shared_ptr<VPUNN::VPUCostModel> costModel, Logger log)
             : mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface>(ctx),
               _numDPU(numDPU),
               _arch(arch),
@@ -56,13 +58,105 @@ private:
     Logger _log;
 };
 
-mlir::LogicalResult GenericNCERewrite::matchAndRewrite(VPU::NCEOpInterface nceOp,
-                                                       mlir::PatternRewriter& rewriter) const {
-    return vpux::genericNCEWorkloadSplit(nceOp, rewriter, _arch, _numDPU, _costModel, _log);
+mlir::LogicalResult NCEWorkloadSplitRewrite::matchAndRewrite(VPU::NCEOpInterface nceOp,
+                                                             mlir::PatternRewriter& rewriter) const {
+    return genericNCEWorkloadSplit(nceOp, rewriter, _arch, _numDPU, _costModel, _log);
 }
 
 //
-// SplitNCEOpsOntoWorkloads
+// NCEWorkloadSplitPreSplitRewrite
+//
+
+class NCEWorkloadSplitPreSplitRewrite final : public mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface> {
+public:
+    NCEWorkloadSplitPreSplitRewrite(mlir::MLIRContext* ctx, int64_t numDPU, int64_t numTiles, VPU::ArchKind arch,
+                                    std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModel,
+                                    std::shared_ptr<VPUNN::VPUCostModel> costModel, Logger log)
+            : mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface>(ctx),
+              _numDPU(numDPU),
+              _numTiles(numTiles),
+              _arch(arch),
+              _layerCostModel(std::move(layerCostModel)),
+              _costModel(std::move(costModel)),
+              _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(VPU::NCEOpInterface origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    VPUNN::LayerSplitInfo retrieveLayerSplitInfoFromVPUNN(VPU::NCEOpInterface nceOp, uint32_t& cost, Logger log) const;
+
+private:
+    int64_t _numDPU;
+    int64_t _numTiles;
+
+    VPU::ArchKind _arch;
+    std::shared_ptr<VPUNN::VPULayerCostModel> _layerCostModel;
+    std::shared_ptr<VPUNN::VPUCostModel> _costModel;
+
+    Logger _log;
+};
+
+VPUNN::LayerSplitInfo NCEWorkloadSplitPreSplitRewrite::retrieveLayerSplitInfoFromVPUNN(VPU::NCEOpInterface nceOp,
+                                                                                       uint32_t& cost,
+                                                                                       Logger log) const {
+    const auto costParams = getWorkloadCostParam(nceOp, _arch, _numDPU, _numTiles);
+
+    auto perClusterVPUNNLayers = VPU::getPerClusterDPULayers(nceOp, costParams, log);
+    VPUNN::LayerSplitInfo layerSplitInfo;
+    cost = checkAndReturnCost(
+            _layerCostModel->LayersPreSplit(perClusterVPUNNLayers, _numDPU, /*input_in_ddr=*/false,
+                                            /*output_in_ddr=*/false, /*prefetching=*/true, layerSplitInfo),
+            log);
+    VPUX_THROW_WHEN(layerSplitInfo.empty(), "layerSplitInfo is empty with cost '{0}'", cost);
+    if (cost >= VPU::INVALID_COST_BASE) {
+        log.warning("Get invalid cost for op {0}", nceOp);
+        printVPUNNLayers(perClusterVPUNNLayers, log);
+        VPUX_THROW("Cost is Invalid");
+    }
+    return layerSplitInfo;
+}
+
+mlir::LogicalResult NCEWorkloadSplitPreSplitRewrite::matchAndRewrite(VPU::NCEOpInterface nceOp,
+                                                                     mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got op '{0}' at '{1}'", nceOp->getName(), nceOp->getLoc());
+    if (!isSupportedPreSplitNCEOp(nceOp)) {
+        _log.trace("Use heuristic mode for op {0}'", nceOp->getName());
+        return genericNCEWorkloadSplit(nceOp, rewriter, _arch, _numDPU, _costModel, _log);
+    }
+    uint32_t cost = 0;
+    auto layerSplitInfo = retrieveLayerSplitInfoFromVPUNN(nceOp, cost, _log);
+
+    // Track E#159358
+    // VPUNN will update the workload split logic to meet max workload requirement
+    // This check can be removed when VPUNN submodule is updated
+    const auto maxAvailableSlots = VPUIP::getBarrierMaxVariantCount(nceOp);
+    const auto maxSlotsSum = VPUIP::getBarrierMaxVariantSum(nceOp);
+    const auto availableSlot = std::min(maxAvailableSlots, maxSlotsSum) / 2;
+    for (auto item : layerSplitInfo) {
+        // item OneTileLayerInfo
+        auto workloadCost = item.best_intra_tile_split;
+        if (workloadCost.second.size() > availableSlot) {
+            _log.trace("There are too many workloads, Use heuristic mode for op {0}'", nceOp->getName());
+            return genericNCEWorkloadSplit(nceOp, rewriter, _arch, _numDPU, _costModel, _log);
+        }
+    }
+
+    // For debug purpose, check VPUNN split by `VPU::printLayerSplitInfo(layerSplitInfo, _log)`
+    // Apply workload split
+    _log.trace("Applying workload split");
+    rewriter.modifyOpInPlace(nceOp, [&]() {
+        splitWorkloadsWithInfo(nceOp, rewriter, layerSplitInfo, _log);
+    });
+
+    nceOp->setAttr(DPUCost, getIntAttr(nceOp->getContext(), cost));
+
+    return mlir::success();
+}
+
+//
+// SplitNCEOpsOntoWorkloadsPass
 //
 
 class SplitNCEOpsOntoWorkloadsPass final :
@@ -95,7 +189,8 @@ void SplitNCEOpsOntoWorkloadsPass::safeRunOnFunc() {
 
     const auto numDPUs = dpuExec.getCount();
 
-    const auto costModel = VPU::createCostModel(arch);
+    const auto costModel = VPU::CostModelConfig::createCostModel(arch);
+    std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModel = nullptr;
 
     mlir::ConversionTarget target(ctx);
     target.markUnknownOpDynamicallyLegal([&](mlir::Operation* op) {
@@ -107,10 +202,23 @@ void SplitNCEOpsOntoWorkloadsPass::safeRunOnFunc() {
     target.addLegalOp<VPU::DPUWorkloadOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<GenericNCERewrite>(&ctx, numDPUs, arch, costModel, _log);
+    const auto enableVPUNNPreSplit = hasVPUNNPreSplit(module);
+    if (enableVPUNNPreSplit) {
+        const auto numTiles = nceCluster.getCount();
+        layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
+        layerCostModel->getPreloadedCacheCounter().reset();
+        patterns.add<NCEWorkloadSplitPreSplitRewrite>(&ctx, numDPUs, numTiles, arch, layerCostModel, costModel, _log);
+    } else {
+        patterns.add<NCEWorkloadSplitRewrite>(&ctx, numDPUs, arch, costModel, _log);
+    }
 
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
+    }
+
+    if (enableVPUNNPreSplit && layerCostModel != nullptr) {
+        _log.info("[SplitNCEOpsOntoWorkloads phase]");
+        _log.info("[NN Cache statistics]  {0}", layerCostModel->getPreloadedCacheCounter().printString());
     }
 }
 

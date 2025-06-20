@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --move-subview-before-sparse-buffer --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @MoveSubviewUp
@@ -21,7 +22,7 @@ func.func @MoveSubviewUp(%arg0: memref<1x64x4x4xf16, #NHWC>,
     %cst_sm = const.Declare memref<1x64x9x9xi1, {order = #NHWC}> = dense<true> : tensor<1x64x9x9xi1, {order = #NHWC}>
 
     // Stprage element table op
-    %se_table = VPUIP.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = 64 : i64, seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]> } -> memref<1x1x9x9xi32, #NHWC>
+    %se_table = VPUIP.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = [64], seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]> } -> memref<1x1x9x9xi32, #NHWC>
 
     // Group all buffers
     %sparse = VPUIP.GroupSparseBuffer(%arg0, %cst_sm, %se_table)  {seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>}
@@ -67,7 +68,7 @@ func.func @MoveSubviewUp(%arg0: memref<1x64x4x4xf16, #NHWC>,
     // CHECK-SAME:                       dataShape = [1, 64, 3, 4],
     // CHECK-SAME:                       seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 0, 0], sizes = [1, 64, 5, 9]>,
     // CHECK-SAME:                       seDepth = 1 : i64,
-    // CHECK-SAME:                       seSize = 64 : i64}
+    // CHECK-SAME:                       seSize = [64]}
     // CHECK-SAME:                     -> memref<1x1x5x9xi32, #NHWC>
 
     // CHECK:       [[DATA_SLICE:%.*]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 64, 3, 4] : memref<1x64x4x4xf16, #NHWC>
@@ -115,7 +116,7 @@ func.func @MoveSubviewUpCheckReinfer(%arg0: memref<1x64x4x4xf16, #NHWC>,
     %cst_sm = const.Declare memref<1x64x9x9xi1, {order = #NHWC}> = dense<true> : tensor<1x64x9x9xi1, {order = #NHWC}>
 
     // Stprage element table op
-    %se_table = VPUIP.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = 64 : i64, seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]> } -> memref<1x1x9x9xi32, #NHWC>
+    %se_table = VPUIP.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = [64], seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]> } -> memref<1x1x9x9xi32, #NHWC>
 
     // Group all buffers
     %sparse = VPUIP.GroupSparseBuffer(%arg0, %cst_sm, %se_table)  {seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>}
@@ -175,7 +176,7 @@ func.func @MoveMultipleSubviewUp(
                                 storage_element_table=memref<1x1x4x9xi32, #NHWC>,
                                 #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 1, 0], sizes = [1, 64, 4, 9]>>) {
     %cst_sm = const.Declare memref<1x64x9x9xi1, {order = #NHWC}> = dense<true> : tensor<1x64x9x9xi1, {order = #NHWC}>
-    %se_table = VPUIP.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = 64 : i64, seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>} -> memref<1x1x9x9xi32, #NHWC>
+    %se_table = VPUIP.StorageElementTable { dataElemType = f16, dataShape=[1, 64, 4, 4], seDepth = 1 : i64, seSize = [64], seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>} -> memref<1x1x9x9xi32, #NHWC>
 
     %sparse = VPUIP.GroupSparseBuffer(%arg0, %cst_sm, %se_table)  {seAttr =  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>}
         -> !VPUIP.SparseBuffer<data=memref<1x64x4x4xf16, #NHWC>,
@@ -242,9 +243,9 @@ func.func @MoveMultipleSubviewUp(
     // CHECK:           [[CONST_SM_0:%.*]] = const.Declare memref<1x64x4x9xi1, #NHWC> = dense<true> : tensor<1x64x9x9xi1, {order = #NHWC}>, [#const.SubView<[0, 0, 5, 0], [1, 64, 4, 9]>]
     // CHECK:           [[CONST_SM_1:%.*]] = const.Declare memref<1x64x5x9xi1, #NHWC> = dense<true> : tensor<1x64x9x9xi1, {order = #NHWC}>, [#const.SubView<[0, 0, 0, 0], [1, 64, 5, 9]>]
     // CHECK:           [[SET_OP_0:%.*]] = VPUIP.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 2, 4],
-    // CHECK-SAME:              seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 1, 0], sizes = [1, 64, 4, 9]>, seDepth = 1 : i64, seSize = 64 : i64} -> memref<1x1x4x9xi32, #NHWC>
+    // CHECK-SAME:              seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 1, 0], sizes = [1, 64, 4, 9]>, seDepth = 1 : i64, seSize = [64]} -> memref<1x1x4x9xi32, #NHWC>
     // CHECK:           [[SET_OP_1:%.*]] = VPUIP.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 3, 4],
-    // CHECK-SAME:              seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 0, 0], sizes = [1, 64, 5, 9]>, seDepth = 1 : i64, seSize = 64 : i64} -> memref<1x1x5x9xi32, #NHWC>
+    // CHECK-SAME:              seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 0, 0], sizes = [1, 64, 5, 9]>, seDepth = 1 : i64, seSize = [64]} -> memref<1x1x5x9xi32, #NHWC>
 
     // CHECK:           [[SUBVIEW_DATA_1:%.*]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 64, 3, 4] : memref<1x64x4x4xf16, #NHWC>
     // CHECK-SAME:              to memref<1x64x3x4xf16, {order = #NHWC, strides = [1024, 1, 256, 64]}>

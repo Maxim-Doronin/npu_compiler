@@ -135,14 +135,6 @@ ArchKind getArch(mlir::Operation* op);
 bool isArchVPUX3XXX(VPU::ArchKind arch);
 
 //
-// CompilationMode
-//
-
-void setCompilationMode(mlir::ModuleOp module, CompilationMode compilationMode);
-bool hasCompilationMode(mlir::ModuleOp module);
-CompilationMode getCompilationMode(mlir::Operation* op);
-
-//
 // RevisionID
 //
 

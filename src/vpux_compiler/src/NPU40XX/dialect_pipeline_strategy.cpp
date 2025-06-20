@@ -16,10 +16,10 @@
 #include "vpux/compiler/NPU40XX/dialect/VPURT/transforms/passes.hpp"
 
 #include "vpux/compiler/conversion.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 
-#include "vpux/compiler/options_mapper.hpp"
 #include "vpux/compiler/pipelines/options_setup.hpp"
 
 using namespace vpux;
@@ -30,41 +30,131 @@ namespace {
 // OptionsSetup40XX
 //
 
-class DefaultHWSetup40XX : public OptionsSetup<DefaultHWSetup40XX, DefaultHWOptions40XX> {
+class DefaultHWSetup40XX final : public OptionsSetupBase<DefaultHWSetup40XX, DefaultHWOptions40XX> {
 public:
-    using Base = OptionsSetup<DefaultHWSetup40XX, DefaultHWOptions40XX>;
+    using Base = OptionsSetupBase<DefaultHWSetup40XX, DefaultHWOptions40XX>;
     using Base::Base;
-    friend Base;
+    // Expose setupOptionsImpl() to OptionsSetup
+    friend Base::Base;
 
-protected:
-    // Note: must be static as we call ConcreteModel::setupOptionsImpl() from the ctor of base class
+    static void setupLitTestOptionsImpl(DefaultHWOptions40XX& options) {
+        Base::setupLitTestOptionsImpl(options);
+        setupOptionsCommon(options);
+    }
+
     static void setupOptionsImpl(DefaultHWOptions40XX& options, const intel_npu::Config& config) {
-        setupPWLMCompilationParams(options.optimizationLevel, options, options.workloadManagementEnable);
-        options.enableProfiling = config.get<intel_npu::PERF_COUNT>();
-        options.enableConvertAvgPoolToDWConv = false;
-        options.enableHandleAsymmetricStrides = false;
+        Base::setupOptionsImpl(options, config);
+        if (config.get<intel_npu::TURBO>()) {
+            overwriteIfUnset(options.optimizationLevel, 3);
+        }
+        setupOptionsCommon(options);
+        overwriteIfUnset(options.enableProfiling, config.get<intel_npu::PERF_COUNT>());
+        options.updateBatchCompileOptionsFromString(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
+    }
+
+    static void setupOptionsCommon(DefaultHWOptions40XX& options) {
+        setupParamsAccordingToOptimizationLevel(options.optimizationLevel, options, options.workloadManagementEnable);
+        setupPWLMParams(options);
         // TODO: E#-108844 Support Compressed activation with Partial workload management
         if (options.workloadManagementEnable) {
-            options.enableCompressActivationSpill = false;
+            overwriteIfUnset(options.enableCompressActivationSpill, false);
         }
-        options.updateBatchCompileOptionsFromString(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
     }
 };
 
-class ShaveCodeGenSetup40XX : public ShaveCodeGenSetupBase<DefaultHWOptions40XX> {
+class ShaveCodeGenSetup40XX : public OptionsSetupBase<ShaveCodeGenSetup40XX, DefaultHWOptions40XX> {
 public:
-    using Base = ShaveCodeGenSetupBase<DefaultHWOptions40XX>;
+    using Base = OptionsSetupBase<ShaveCodeGenSetup40XX, DefaultHWOptions40XX>;
     using Base::Base;
 };
 
-class ReferenceSWSetup40XX : public ReferenceSwSetupBase<ReferenceSWOptions40XX> {
+class ReferenceSWSetup40XX : public OptionsSetupBase<ReferenceSWSetup40XX, ReferenceSWOptions40XX> {
 public:
-    using Base = ReferenceSwSetupBase<ReferenceSWOptions40XX>;
+    using Base = OptionsSetupBase<ReferenceSWSetup40XX, ReferenceSWOptions40XX>;
     using Base::Base;
+};
+
+class HostCompileSetup40XX : public OptionsSetupBase<HostCompileSetup40XX, DefaultHWOptions40XX> {
+public:
+    using Base = OptionsSetupBase<HostCompileSetup40XX, DefaultHWOptions40XX>;
+    using Base::Base;
+    // Expose setupOptionsImpl() to OptionsSetup
+    friend Base::Base;
+
+private:
+    static void setupLitTestOptionsImpl(DefaultHWOptions40XX& options) {
+        // DefaultHW options
+        DefaultHWSetup40XX::setupLitTestOptionsImpl(options);
+
+        setupOptionsCommon(options);
+    }
+
+    static void setupOptionsImpl(DefaultHWOptions40XX& options, const intel_npu::Config& config) {
+        // DefaultHW options
+        DefaultHWSetup40XX::setupOptionsImpl(options, config);
+
+        // HostCompileSetup40XX common options
+        setupOptionsCommon(options);
+    }
+
+    static void setupOptionsCommon(DefaultHWOptions40XX& options) {
+        // DefaultHW specific options
+        DefaultHWSetup40XX::setupOptionsCommon(options);
+
+        // HostCompile specific options
+        overwriteIfUnset(options.enableDynamicShapeTransformationsPipeline, false);
+        overwriteIfUnset(options.enableSCFTiling, true);
+        overwriteIfUnset(options.enableScfComputeOpsOutlining, true);
+        overwriteIfUnset(options.useMemrefForHostFunctionBufferization, true);
+    }
+};
+class WSMonolithicSetup40XX final : public WSMonolithicSetupBase<WSMonolithicSetup40XX, DefaultHWOptions40XX> {
+public:
+    using Base = WSMonolithicSetupBase<WSMonolithicSetup40XX, DefaultHWOptions40XX>;
+    using Base::Base;
+    friend Base::Base;
+
+private:
+    static void setupLitTestOptionsImpl(DefaultHWOptions40XX& options) {
+        Base::setupLitTestOptionsImpl(options);
+        setupOptionsCommon(options);
+    }
+
+    static void setupOptionsImpl(DefaultHWOptions40XX& options, const intel_npu::Config& config) {
+        Base::setupOptionsImpl(options, config);
+        setupOptionsCommon(options);
+    }
+
+    static void setupOptionsCommon(DefaultHWOptions40XX& options) {
+        setupParamsAccordingToOptimizationLevel(options.optimizationLevel, options, options.workloadManagementEnable);
+        setupPWLMParams(options);
+        // TODO: E#-108844 Support Compressed activation with Partial workload management
+        if (options.workloadManagementEnable) {
+            overwriteIfUnset(options.enableCompressActivationSpill, false);
+        }
+    }
+};
+
+class WSInitSetup40XX : public WSInitSetupBase<WSInitSetup40XX, DefaultHWOptions40XX> {
+public:
+    using Base = WSInitSetupBase<WSInitSetup40XX, DefaultHWOptions40XX>;
+    using Base::Base;
+    friend Base::Base;
+
+private:
+    static void setupLitTestOptionsImpl(DefaultHWOptions40XX& options) {
+        Base::setupLitTestOptionsImpl(options);
+        setupPWLMParams(options);
+    }
+
+    static void setupOptionsImpl(DefaultHWOptions40XX& options, const intel_npu::Config& config) {
+        Base::setupOptionsImpl(options, config);
+        setupPWLMParams(options);
+    }
 };
 
 //
-// DialectPipelineStrategy40XX: [DefaultHW, ShaveCodeGen]
+// DialectPipelineStrategy40XX
 //
 
 template <class OptionsContainerType, class Enable = void>
@@ -101,7 +191,8 @@ public:
 
     void buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, Logger log) override {
         vpux::arch37xx::buildLowerVPU2VPUIPPipeline(
-                pm, _optionsContainer->getPipelineOptions().enableInPlaceBufferization, log);
+                pm, _optionsContainer->getPipelineOptions().enableInPlaceBufferization,
+                _optionsContainer->getPipelineOptions().useMemrefForHostFunctionBufferization, log);
     }
 
     void buildVPUIPPipeline(mlir::OpPassManager& pm, Logger log) override {
@@ -169,8 +260,7 @@ public:
         pm.addPass(IE::createConvertNceOpsTo4DPass(log));
         pm.addPass(IE::createConvertShapeTo4DPass(log));
         pm.addPass(mlir::createCanonicalizerPass(grc));
-        pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableExperimentalSEPtrsOperations),
-                                                    log));
+        pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableSEPtrsOperations), log));
         pm.addPass(IE::createConvertGRNToNormalizeL2Pass(log));
         pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
         IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
@@ -198,7 +288,9 @@ public:
         pm.addPass(VPU::createSplitGRUSequencePass(log));
         pm.addPass(VPU::arch37xx::createDecomposeMVNPass(log));
 
-        pm.addPass(VPU::createTilingStrategyAssignmentPass(/*enablePrefetchTiling=*/false, false, "true", log));
+        pm.addPass(VPU::createTilingStrategyAssignmentPass(
+                /*enablePrefetchTiling=*/false, /*enableVPUNNCostForTiling*/ false,
+                /*enableShaveDDRAccessOptimization*/ "true", log));
         pm.addPass(VPU::arch37xx::createApplyTilingMVN1SumPass(/*enablePrefetchTiling=*/false, log));
         pm.addPass(VPU::createApplyTilingPass(/*enableSCFTiling=*/false, log));
 
@@ -207,7 +299,8 @@ public:
         pm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
 
         // Lowering to VPUIP
-        vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization, log);
+        vpux::arch37xx::buildLowerVPU2VPUIPPipeline(pm, options.enableInPlaceBufferization,
+                                                    options.useMemrefForHostFunctionBufferization, log);
 
         // Level 2 : Abstract RunTime
 
@@ -243,7 +336,7 @@ public:
 
         VPUIP::buildHardwareAdaptationPipeline(pm, log);
 
-        pm.addPass(VPUIP::arch40xx::createAddStartBarrierPass(log));
+        pm.addPass(VPUIP::arch40xx::createAddStartBarrierPass(/*compilerBarrierProgramming=*/false, log));
         pm.addPass(VPURT::arch37xx::createAddFinalBarrierPass(log));
 
         // Level 1 : VPU RunTime
@@ -271,17 +364,26 @@ private:
 // createDialectPipelineStrategy40XX
 //
 
-std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40XX(VPU::CompilationMode compilationMode,
-                                                                                  const intel_npu::Config& config) {
+std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40XX(
+        config::CompilationMode compilationMode, const intel_npu::Config& config) {
     switch (compilationMode) {
-    case VPU::CompilationMode::DefaultHW: {
+    case config::CompilationMode::DefaultHW: {
         return std::make_unique<DialectPipelineStrategy40XX<DefaultHWSetup40XX>>(config);
     }
-    case VPU::CompilationMode::ShaveCodeGen: {
+    case config::CompilationMode::ShaveCodeGen: {
         return std::make_unique<DialectPipelineStrategy40XX<ShaveCodeGenSetup40XX>>(config);
     }
-    case VPU::CompilationMode::ReferenceSW: {
+    case config::CompilationMode::ReferenceSW: {
         return std::make_unique<DialectPipelineStrategy40XX<ReferenceSWSetup40XX>>(config);
+    }
+    case config::CompilationMode::HostCompile: {
+        return std::make_unique<DialectPipelineStrategy40XX<HostCompileSetup40XX>>(config);
+    }
+    case config::CompilationMode::WSMonolithic: {
+        return std::make_unique<DialectPipelineStrategy40XX<WSMonolithicSetup40XX>>(config);
+    }
+    case config::CompilationMode::WSInit: {
+        return std::make_unique<DialectPipelineStrategy40XX<WSInitSetup40XX>>(config);
     }
     default:
         VPUX_THROW("Unsupported compilation mode '{0}'", compilationMode);
@@ -292,14 +394,37 @@ std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40X
 // createDialectPipelineStrategy40XX [lit-tests]
 //
 
-template <class OptionsType>
+template <>
 std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40XX(
-        const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options) {
-    auto wrapper = std::make_unique<OptionsWrapper<OptionsType>>(initCompilerOptions, options);
-    return std::make_unique<DialectPipelineStrategy40XX<OptionsWrapper<OptionsType>>>(std::move(wrapper));
+        const VPU::InitCompilerOptions* initCompilerOptions, const DefaultHWOptions40XX* options) {
+    auto wrapper = std::make_unique<DefaultHWSetup40XX>(initCompilerOptions, options);
+    return std::make_unique<DialectPipelineStrategy40XX<DefaultHWSetup40XX>>(std::move(wrapper));
 }
 
-template std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40XX(
-        const VPU::InitCompilerOptions*, const DefaultHWOptions40XX*);
-template std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40XX(
-        const VPU::InitCompilerOptions*, const ReferenceSWOptions40XX*);
+template <>
+std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40XX(
+        const VPU::InitCompilerOptions* initCompilerOptions, const ReferenceSWOptions40XX* options) {
+    auto wrapper = std::make_unique<ReferenceSWSetup40XX>(initCompilerOptions, options);
+    return std::make_unique<DialectPipelineStrategy40XX<ReferenceSWSetup40XX>>(std::move(wrapper));
+}
+
+/// The reason this method is separate from the default and reference compilation modes is that it has to *copy* the
+/// options in order to override them.
+template <>
+std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy40XXWS(
+        config::CompilationMode compilationMode, const VPU::InitCompilerOptions* initCompilerOptions,
+        const DefaultHWOptions40XX* options) {
+    switch (compilationMode) {
+    case config::CompilationMode::WSMonolithic: {
+        auto wrapper = std::make_unique<WSMonolithicSetup40XX>(initCompilerOptions, options);
+        return std::make_unique<DialectPipelineStrategy40XX<WSMonolithicSetup40XX>>(std::move(wrapper));
+    }
+    case config::CompilationMode::WSInit: {
+        auto wrapper = std::make_unique<WSInitSetup40XX>(initCompilerOptions, options);
+        return std::make_unique<DialectPipelineStrategy40XX<WSInitSetup40XX>>(std::move(wrapper));
+    }
+    default:
+        VPUX_THROW("Unsupported compilation mode {0} for Monolithic WS.", config::stringifyEnum(compilationMode));
+        return {};
+    }
+}

@@ -7,7 +7,35 @@
 
 namespace vpux {
 
-void setupPWLMCompilationParams(int optimizationLevel, DefaultHWOptions40XX& compilationOptions, bool useWlm) {
+void setupParamsAccordingToOptimizationLevel(int optimizationLevel, DefaultHWOptions40XX& compilationOptions,
+                                             bool useWlm) {
+    //
+    // Non-WLM params
+    //
+
+    switch (optimizationLevel) {
+    case 0:
+    case 1:
+    case 2: {
+        break;
+    }
+    case 3: {
+        compilationOptions.enableReduceNumTilesForSmallModelsPass = true;
+        break;
+    }
+    default:
+        VPUX_THROW("Unexpected optimization-level. Actual value = {0}\n"
+                   "Possible values: 0 - optimization for compilation time, "
+                   "1 - optimization for execution time (default), 2 - high optimization for execution time, 3 - "
+                   "optimization for maximaze HW utilization, may affect compilation time and memory footprint",
+                   optimizationLevel);
+        break;
+    }
+
+    //
+    // WLM-related params
+    //
+
     if (!useWlm) {
         compilationOptions.workloadManagementEnable = false;
         return;
@@ -26,15 +54,20 @@ void setupPWLMCompilationParams(int optimizationLevel, DefaultHWOptions40XX& com
             originalValueBarrierCountThreshold = compilationOptions.workloadManagementBarrierCountThreshold;
         }
 
+        // we do not have default value for workloadManagementMode on NPU40XX. Need to set it explicitly
+        // E166333
         switch (optimizationLevel) {
         case 0:
             compilationOptions.workloadManagementEnable = false;
+            compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
             break;
         case 1:
             compilationOptions.workloadManagementEnable = true;
+            compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
             break;
         case 2: {
             compilationOptions.workloadManagementEnable = true;
+            compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
             compilationOptions.workloadManagementBarrierCountThreshold = std::numeric_limits<int>::max();
             break;
         }
@@ -42,6 +75,7 @@ void setupPWLMCompilationParams(int optimizationLevel, DefaultHWOptions40XX& com
             compilationOptions.workloadManagementEnable = true;
             compilationOptions.workloadManagementBarrierCountThreshold = std::numeric_limits<int>::max();
             compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V1_BARRIER_FIFO;
+            compilationOptions.workloadManagementDmaFifoType = DMAFifoType::HW;
             break;
         }
         default:
@@ -59,6 +93,29 @@ void setupPWLMCompilationParams(int optimizationLevel, DefaultHWOptions40XX& com
 
         if (originalValueBarrierCountThreshold.has_value()) {
             compilationOptions.workloadManagementBarrierCountThreshold = originalValueBarrierCountThreshold.value();
+        }
+    }
+}
+
+void setupPWLMParams(DefaultHWOptions40XX& compilationOptions) {
+    bool isWorkloadManagementBarrierProgrammingModeSet =
+            compilationOptions.workloadManagementBarrierProgrammingMode.hasValue();
+
+    if (!isWorkloadManagementBarrierProgrammingModeSet) {
+        switch (compilationOptions.workloadManagementMode) {
+        case WorkloadManagementMode::PWLM_V0_LCA:
+            compilationOptions.workloadManagementBarrierProgrammingMode =
+                    WorkloadManagementBarrierProgrammingMode::LEGACY;
+            break;
+        case WorkloadManagementMode::PWLM_V1_BARRIER_FIFO:
+        case WorkloadManagementMode::PWLM_V2_PAGES:
+            compilationOptions.workloadManagementBarrierProgrammingMode =
+                    WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED;
+            break;
+        default:
+            compilationOptions.workloadManagementBarrierProgrammingMode =
+                    WorkloadManagementBarrierProgrammingMode::UNKNOWN;
+            break;
         }
     }
 }

@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outline-entire-main-content %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @SkipWhenMainHasNoCallOps
 module @SkipWhenMainHasNoCallOps {
     net.NetworkInfo entryPoint : @main

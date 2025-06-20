@@ -202,13 +202,13 @@ module @DynamicReshape {
     // CHECK-SAME:      [[ARG1:%.+]]: memref<1x1x2x240xf32, @DDR>,
     // CHECK-SAME:      [[SHAPE0:%.+]]: memref<4xsi32, @DDR>
     // CHECK-SAME:      -> (memref<1x1x2x240xf32, @DDR>, memref<4xsi32, @DDR>)
-    func.func @main(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}> {    
-    
+    func.func @main(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}> {
+
         %cst = const.Declare tensor<4xsi64> = dense<[1, 1, 2, -1]> : tensor<4xsi64>
         %0 = IE.DynamicReshape(%arg0, %cst) {output_bounds = [1, 1, 2, 240], output_shape = [1, 1, 2, -9223372036854775808]} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
         return %0 : tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
 
-        // CHECK:       [[input_output_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <{{[0-9]+}}> -> memref<1x3x10x16xf16, [@CMX_NN, 0]>				
+        // CHECK:       [[input_output_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <{{[0-9]+}}> -> memref<1x3x10x16xf16, [@CMX_NN, 0]>
         // CHECK:       [[input_output_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <{{[0-9]+}}> -> memref<1x1x2x240xf16, [@CMX_NN, 0]>
 
         // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier) {
@@ -232,7 +232,7 @@ module @DynamicReshape {
         // CHECK-SAME:          dynamicInputShapes({{%[0-9]+}} : memref<4xsi32, [@CMX_NN, 0]>)
         // CHECK-SAME:          outputs([[input_output_2]] as {{%arg[0-9]+}}: memref<1x1x2x240xf16, [@CMX_NN, 0]>
         // CHECK-SAME:          dynamicOutputShapes({{%.+}} : memref<4xsi32, [@CMX_NN, 0]>)
-   
+
         // CHECK:       return {{%.+}}, {{%.+}} : memref<1x1x2x240xf32, @DDR>, memref<4xsi32, @DDR>
     }
 }
@@ -284,7 +284,7 @@ module @DynamicReshape {
         %cst = const.Declare tensor<4xsi64> = dense<[1, 1, 2, -1]> : tensor<4xsi64>
         %0 = IE.DynamicReshape(%arg0, %cst) {output_bounds = [1, 1, 2, 240], output_shape = [1, 1, 2, -9223372036854775808]} : tensor<3x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 10, 16]> : tensor<3xsi64>, order = #CHW}>, tensor<4xsi64> -> tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
         return %0 : tensor<1x1x2x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 2, 240]> : tensor<4xsi64>, order = #NCHW}>
-        
+
         // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier) {
         // CHECK:       [[convert:%.+]], [[convert_shape:%.+]] = VPUIP.SW.Kernel
         // CHECK-SAME:          dynamicInputShapesMap = array<i32: 0>
@@ -356,8 +356,8 @@ module @BatchedGroupConvWithBroadcast {
     // CHECK:   input([[INPUT_0:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK:   weights([[WEIGHTS_0:%.+]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK:   weight_table([[WT_0:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
-    // CHECK:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)
-    // CHECK:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)
+    // CHECK:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     // CHECK:   outputs([[OUT_0:%.+]] : memref<1x16x2x2xf16, [@CMX_NN, 0]>) -> memref<1x16x2x2xf16, [@CMX_NN, 0]> variants : {
     // CHECK:     DPUTask {cluster_id = 0 : i64
     // CHECK:   PPETask {ppe = #VPU.PPEInt<mode = <NOOP>
@@ -370,8 +370,8 @@ module @BatchedGroupConvWithBroadcast {
     // CHECK:   input([[INPUT_1:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:   weights([[WEIGHTS_1:%.+]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:   weight_table([[WT_1:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
-    // CHECK:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)
-    // CHECK:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)
+    // CHECK:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     // CHECK:   outputs([[OUT_1:%.+]] : memref<1x16x2x2xf16, [@CMX_NN, 1]>) -> memref<1x16x2x2xf16, [@CMX_NN, 1]> variants : {
     // CHECK:     DPUTask {cluster_id = 1 : i64
     // CHECK:   PPETask {ppe = #VPU.PPEInt<mode = <NOOP>

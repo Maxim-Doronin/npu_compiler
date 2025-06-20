@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2024 Intel Corporation
+// Copyright (C) 2018-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -264,11 +264,11 @@ private:
         switch (element_type) {
         case ov::element::f16: {
             auto b = inputTensor.data<ov::element_type_traits<ov::element::f16>::value_type>();
-            generate_uniform_vector(b, totalSize, seedB, -0.5, 0.5);
+            generate_uniform_vector(b, totalSize, seedB, low, high);
         } break;
         case ov::element::f32: {
             auto b = inputTensor.data<ov::element_type_traits<ov::element::f32>::value_type>();
-            generate_uniform_vector(b, totalSize, seedB, -0.5, 0.5);
+            generate_uniform_vector(b, totalSize, seedB, low, high);
         } break;
         default:
             throw std::runtime_error("Unsupported element type.");
@@ -542,7 +542,7 @@ private:
                           << std::setprecision(10) << max_abs_hidden_vals << " | " << std::fixed
                           << std::setprecision(10) << cosine_hidden_vals << " | " << std::endl;
 #endif
-                //#define LSTM_THROW_EXCEPTION(NAME)
+                // #define LSTM_THROW_EXCEPTION(NAME)
                 if ((mse_hidden_vals > mse_thr) || std::isnan(mse_hidden_vals)) {
                     errors.push_back(getErrorMsg(mse_hidden_vals, mse_thr, "MSE", "Ho", b, d));
                 }
@@ -604,6 +604,12 @@ private:
 
 };  // namespace test
 
+class LSTMSequenceLayerTestCommonSwDpu : public LSTMSequenceLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-dpu-from-shave-control=true";
+    }
+};
+
 TEST_P(LSTMSequenceLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
@@ -613,6 +619,12 @@ TEST_P(LSTMSequenceLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(LSTMSequenceLayerTestCommonSwDpu, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -668,7 +680,7 @@ std::vector<size_t> batchAccuracy{1};
 std::vector<size_t> hiddenSizeAccuracy{128};
 std::vector<size_t> inputSizeAccuracy{64};
 std::vector<float> clipAccuracy{0.f};
-std::vector<ov::op::RecurrentSequenceDirection> directionAccuracy = {ov::op::RecurrentSequenceDirection::FORWARD};
+std::vector<ov::op::RecurrentSequenceDirection> directionAccuracy = {ov::op::RecurrentSequenceDirection::BIDIRECTIONAL};
 // FORWARD BIDIRECTIONAL
 const auto lstmConfigAccuracy = ::testing::Combine(
         ::testing::ValuesIn(mode), ::testing::ValuesIn(seqLengthsAccuracy), ::testing::ValuesIn(batchAccuracy),
@@ -678,6 +690,9 @@ const auto lstmConfigAccuracy = ::testing::Combine(
         ::testing::Values(ov::test::utils::DEVICE_NPU));
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMSequenceAccuracy, LSTMSequenceLayerTestCommon, lstmConfigAccuracy,
+                         LSTMSequenceLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMSequenceAccuracy, LSTMSequenceLayerTestCommonSwDpu, lstmConfigAccuracy,
                          LSTMSequenceLayerTestCommon::getTestCaseName);
 
 }  // namespace

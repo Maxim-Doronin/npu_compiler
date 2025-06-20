@@ -5,6 +5,10 @@
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/concat.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/transpose.hpp"
+
 using namespace ov::test;
 using namespace ov::test::utils;
 namespace {

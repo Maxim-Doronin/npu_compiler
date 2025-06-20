@@ -4,6 +4,7 @@
 //
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% %s | FileCheck %s
+// RUN: vpux-opt --emit-bytecode --vpu-arch=%arch% %s | vpux-opt --vpu-arch=%arch% | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 module @SingleHswishFP16 attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
@@ -58,7 +59,7 @@ module @SingleHswishFP16 attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
         VPUASM.ConfigureBarrier @ConfigureBarrier1 idx(!VPURegMapped.Index<0:0:1>) (1) => (-1) counts(1 : 1)
       }
       ELF.CreateSection @task.shave.range.0.0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-        "NPUReg40XX.ActKernelRange"() <{descriptor = #NPUReg40XX.VpuActKernelRange<
+        NPUReg40XX.ActKernelRange descriptor = <
           VpuActKernelRange {
             type = UINT 0,
             kernel_entry = UINT 0x1D000000,
@@ -68,21 +69,10 @@ module @SingleHswishFP16 attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
             kernel_invo_count = UINT 0,
             pad1_4 = UINT 0,
           }
-        >, kernel_entry = @DeclareKernelEntry0, kernel_text = @text.shave::@DeclareKernelText0, sym_name = "ActKernelRange0", task_location = @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange0_0_0}> : () -> ()
-        // CHECK: descriptor = #NPUReg40XX.VpuActKernelRange<
-        // CHECK: VpuActKernelRange {
-        // CHECK:   type = UINT 0,
-        // CHECK:   kernel_entry = UINT 0x1D000000,
-        // CHECK:   text_window_base = UINT 0,
-        // CHECK:   code_size = UINT 0x750,
-        // CHECK:   deprecated_akr = UINT 0,
-        // CHECK:   kernel_invo_count = UINT 0,
-        // CHECK:   pad1_4 = UINT 0,
-        // CHECK: }
-        // CHECK: >
+        > {kernel_entry = @DeclareKernelEntry0, kernel_text = @text.shave::@DeclareKernelText0, sym_name = "ActKernelRange0", task_location = @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange0_0_0}
       }
       ELF.CreateSection @task.shave.invocation.0.0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-        "NPUReg40XX.ActKernelInvocation"() <{descriptor = #NPUReg40XX.VpuActKernelInvocation<
+        NPUReg40XX.ActKernelInvocation descriptor = <
           VpuActKernelInvocation {
             range = UINT 0x200000,
             kernel_args = UINT 0,
@@ -109,37 +99,52 @@ module @SingleHswishFP16 attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
             kernel_range_index = UINT 0,
             next_aki_wl_addr = UINT 0,
           } requires 11:4:10
-        >, kernel_data = @program.shave.data::@DeclareKernelArgs0, kernel_params = @program.shave.parameter::@KernelParams0, kernel_range = @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange0_0_0, sym_name = "ActKernelInvocation0", task_location = @program.ActKernelInvocation.cmx.0.0::@DeclareTaskBuffer_ActKernelInvocation_0_0_0}> : () -> ()
-        // CHECK: descriptor = #NPUReg40XX.VpuActKernelInvocation<
-        // CHECK: VpuActKernelInvocation {
-        // CHECK:   range = UINT 0x200000,
-        // CHECK:   kernel_args = UINT 0,
-        // CHECK:   data_window_base = UINT 0,
-        // CHECK:   perf_packet_out = UINT 0,
-        // CHECK:   barriers_wait_mask_hi_act {
-        // CHECK:     UINT barriers_wait_mask_hi_act = 0,
-        // CHECK:   }
-        // CHECK:   barriers_wait_mask_lo_act = UINT 1,
-        // CHECK:   barriers_post_mask_hi_act {
-        // CHECK:     UINT barriers_post_mask_hi_act = 0,
-        // CHECK:   }
-        // CHECK:   barriers_post_mask_lo_act = UINT 2,
-        // CHECK:   barriers_group_mask_act {
-        // CHECK:     UINT group_act = 1,
-        // CHECK:     UINT mask_act = 1,
-        // CHECK:   }
-        // CHECK:   act_invo_barriers_sched {
-        // CHECK:     UINT start_after_ = 0,
-        // CHECK:     UINT clean_after_ = 0,
-        // CHECK:   }
-        // CHECK:   invo_index = UINT 0,
-        // CHECK:   invo_tile = UINT 0,
-        // CHECK:   kernel_range_index = UINT 0,
-        // CHECK:   next_aki_wl_addr = UINT 0,
-        // CHECK: } requires 11:4:10
-        // CHECK: >
+        > {kernel_data = @program.shave.data::@DeclareKernelArgs0, kernel_params = @program.shave.parameter::@KernelParams0,
+        kernel_range = @program.ActKernelRange.cmx.0.0::@DeclareTaskBuffer_ActKernelRange0_0_0, sym_name = "ActKernelInvocation0",
+        task_location = @program.ActKernelInvocation.cmx.0.0::@DeclareTaskBuffer_ActKernelInvocation_0_0_0}
       }
     }
     return
   }
 }
+
+// CHECK: NPUReg40XX.ActKernelRange descriptor = <
+// CHECK: VpuActKernelRange {
+// CHECK:   type = UINT 0,
+// CHECK:   kernel_entry = UINT 0x1D000000,
+// CHECK:   text_window_base = UINT 0,
+// CHECK:   code_size = UINT 0x750,
+// CHECK:   deprecated_akr = UINT 0,
+// CHECK:   kernel_invo_count = UINT 0,
+// CHECK:   pad1_4 = UINT 0,
+// CHECK: }
+// CHECK: >
+
+// CHECK: NPUReg40XX.ActKernelInvocation descriptor = <
+// CHECK: VpuActKernelInvocation {
+// CHECK:   range = UINT 0x200000,
+// CHECK:   kernel_args = UINT 0,
+// CHECK:   data_window_base = UINT 0,
+// CHECK:   perf_packet_out = UINT 0,
+// CHECK:   barriers_wait_mask_hi_act {
+// CHECK:     UINT barriers_wait_mask_hi_act = 0,
+// CHECK:   }
+// CHECK:   barriers_wait_mask_lo_act = UINT 1,
+// CHECK:   barriers_post_mask_hi_act {
+// CHECK:     UINT barriers_post_mask_hi_act = 0,
+// CHECK:   }
+// CHECK:   barriers_post_mask_lo_act = UINT 2,
+// CHECK:   barriers_group_mask_act {
+// CHECK:     UINT group_act = 1,
+// CHECK:     UINT mask_act = 1,
+// CHECK:   }
+// CHECK:   act_invo_barriers_sched {
+// CHECK:     UINT start_after_ = 0,
+// CHECK:     UINT clean_after_ = 0,
+// CHECK:   }
+// CHECK:   invo_index = UINT 0,
+// CHECK:   invo_tile = UINT 0,
+// CHECK:   kernel_range_index = UINT 0,
+// CHECK:   next_aki_wl_addr = UINT 0,
+// CHECK: } requires 11:4:10
+// CHECK: >

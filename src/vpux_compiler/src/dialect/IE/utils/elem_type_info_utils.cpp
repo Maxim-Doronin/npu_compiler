@@ -4,7 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
+#include <llvm/ADT/TypeSwitch.h>
 
+#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -59,11 +62,18 @@ bool vpux::IE::isSupportedElemTypeInfoCase(mlir::Operation* op, bool seOpsEnable
     if (!mlir::isa<IE::ElemTypeInfoOpInterface>(op)) {
         return false;
     }
-    if (auto interpolateOp = mlir::dyn_cast<IE::InterpolateOp>(op)) {
-        // Software interpolate supports only FP16 precision.
-        return seOpsEnabled && isSupportedNearestNCEInterpolate(interpolateOp, logCb);
-    }
-    return true;
+
+    return llvm::TypeSwitch<mlir::Operation*, bool>(op)
+            .Case<IE::InterpolateOp>([&](IE::InterpolateOp origOp) {
+                return seOpsEnabled && isSupportedNearestNCEInterpolate(origOp, logCb);
+            })
+            .Case<IE::PadOp>([&](IE::PadOp origOp) {
+                return seOpsEnabled &&
+                       VPU::isSupportedSEPPadOp(origOp, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false);
+            })
+            .Default([](mlir::Operation*) {
+                return true;
+            });
 }
 
 void vpux::IE::propagateElemTypeDownForAffineReshapeOp(IE::AffineReshapeOp affineReshape,
@@ -360,7 +370,7 @@ mlir::FailureOr<mlir::Type> vpux::IE::inferOutElemTypeWithOffsets(ArrayRef<mlir:
 
 mlir::Type vpux::IE::inferElemTypeReorder(IE::ReorderOpAdaptor reorder, mlir::Type inputElemType,
                                           mlir::MLIRContext* ctx) {
-    const auto perAxisQType = inputElemType.dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(inputElemType);
     if (perAxisQType == nullptr) {
         return inputElemType;
     }
@@ -373,7 +383,8 @@ mlir::Type vpux::IE::inferElemTypeReorder(IE::ReorderOpAdaptor reorder, mlir::Ty
 
     const auto outAxis = DimsOrder::fromAffineMap(memPerm).toPermutation()[inputAxis];
 
-    if (const auto perAxisQuantileQType = inputElemType.dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>()) {
+    if (const auto perAxisQuantileQType =
+                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(inputElemType)) {
         return mlir::quant::QuantileQuantizedPerAxisType::get(
                 perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
                 perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
@@ -393,7 +404,7 @@ mlir::Type vpux::IE::inferElemTypeReorder(IE::ReorderOpAdaptor reorder, mlir::Ty
 //
 
 mlir::Type vpux::IE::inferElemTypeTranspose(mlir::AffineMap map, mlir::Type inputElemType) {
-    const auto perAxisQType = inputElemType.dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>();
+    const auto perAxisQType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(inputElemType);
     if (perAxisQType == nullptr) {
         return inputElemType;
     }
@@ -401,7 +412,8 @@ mlir::Type vpux::IE::inferElemTypeTranspose(mlir::AffineMap map, mlir::Type inpu
     const auto origAxis = perAxisQType.getQuantizedDimension();
     const auto newAxis = DimsOrder::fromAffineMap(map).dimPos(Dim(origAxis));
 
-    if (const auto perAxisQuantileQType = inputElemType.dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>()) {
+    if (const auto perAxisQuantileQType =
+                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(inputElemType)) {
         return mlir::quant::QuantileQuantizedPerAxisType::get(
                 perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
                 perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),

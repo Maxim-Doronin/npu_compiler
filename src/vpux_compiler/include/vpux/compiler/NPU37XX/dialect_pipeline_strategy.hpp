@@ -9,6 +9,7 @@
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "vpux/utils/IE/config.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -19,7 +20,7 @@ namespace vpux {
 // This version is used for production purposes
 //
 
-std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy37XX(VPU::CompilationMode compilationMode,
+std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy37XX(config::CompilationMode compilationMode,
                                                                             const intel_npu::Config& config);
 
 //

@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -54,16 +54,6 @@ const std::unordered_map<TaskListKey, uint32_t, TaskListKeyHash> taskListsDefaul
         {{VPU::ArchKind::NPU40XX, VPU::TaskType::M2I}, NPU_DEFAULT_MEDIA_COUNT},
         {{VPU::ArchKind::NPU40XX, VPU::TaskType::DMA}, NPU_DEFAULT_DMA_TASK_COUNT},
 };
-
-size_t VPU::getConstraint(mlir::Operation* op, StringRef attrName) {
-    auto module = getModuleOp(op);
-    auto pipelineOptionOp = module.lookupSymbol<IE::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS);
-    VPUX_THROW_WHEN(pipelineOptionOp == nullptr, "Failed to find PipelineOptions to fetch constraint");
-
-    auto attrValue = pipelineOptionOp.lookupSymbol<IE::OptionOp>(attrName);
-    VPUX_THROW_WHEN(attrValue == nullptr, "Failed to find IE.OptionOp attribute", attrName);
-    return static_cast<size_t>(attrValue.getOptionValue());
-}
 
 uint32_t VPU::getDefaultTaskListCount(VPU::TaskType taskType, VPU::ArchKind archKind) {
     auto taskListCapacityIter = taskListsDefaultCapacityMap.find({archKind, taskType});

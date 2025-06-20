@@ -200,7 +200,7 @@ mlir::LogicalResult UpdateSwKernelParamsRewriter::matchAndRewrite(VPUIP::SwKerne
 
         const mlir::ArrayAttr arrayAttrs = kernelRun.getAttrs().value();
         const auto& attrs = arrayAttrs.getValue();
-        if (auto arr = attrs[0].dyn_cast_or_null<mlir::ArrayAttr>()) {
+        if (auto arr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(attrs[0])) {
             _log.trace("Attrs was already updated '{0}' at '{1}'", arr, swKernelOp->getLoc());
             return mlir::failure();
         }

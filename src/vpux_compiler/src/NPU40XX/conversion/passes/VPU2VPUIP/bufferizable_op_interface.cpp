@@ -72,6 +72,7 @@ void registerGatherDMAOpBufferizableOpInterfaces(mlir::DialectRegistry& registry
 
 void vpux::arch40xx::registerBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
     vpux::registerConstDeclareBufferizableOpInterfaces(registry);
+    vpux::registerCoreBufferizableOpInterfaces(registry);
     vpux::registerFuncAndReturnBufferizableOpInterfaces(registry);
     vpux::registerSoftwareLayerBufferizableOpInterfaces(registry);
     vpux::registerVpuNceBufferizableOpInterfaces(registry);

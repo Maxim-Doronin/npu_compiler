@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-main" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // This test file focuses on testing view-like-only constant transformations
 
 {-#
@@ -244,4 +245,35 @@ module @TrivialReorder {
     // CHECK: @main() -> tensor<4x1xf32, {order = [[CN]]}>
     // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.Reorder<[[CN]]>]
     // CHECK:   return [[CST]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x00000004aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccd6"
+        }
+    }
+#-}
+
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+// CHECK: module @AffineReshape
+module @AffineReshape {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<1x1x3x3xf32>
+    }
+
+    func.func @main() -> tensor<1x1x3x3xf32, {order = #NCWH}> {
+        %cst = const.Declare tensor<1x1x3x3xf32, {order = #NCWH}> = dense_resource<ov_1> : tensor<1x1x3x3xf32>,
+            [#const.AffineReshape<[[0], [1], [3], [2]], [1, 1, 3, 3]>]
+        return %cst : tensor<1x1x3x3xf32, {order = #NCWH}>
+    }
+
+    // CHECK:           func.func @main() -> tensor<1x1x3x3xf32, {order = #NCWH}>
+    // CHECK:               [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1>
+    // CHECK-LITERAL:           [#const.AffineReshape<[[0], [1], [3], [2]], [1, 1, 3, 3]>]
+    // CHECK:           return [[CST]]
 }

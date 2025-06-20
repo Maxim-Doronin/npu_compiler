@@ -71,7 +71,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherDMAOp::getTilingStrategy(TilingMo
 
     VPUX_THROW_WHEN(getAxisValueAttr() == nullptr, "Miss axis value, for op {0} at '{1}'", baseOp->getName(), getLoc());
 
-    auto axisValue = getAxisValueAttr().dyn_cast_or_null<mlir::IntegerAttr>().getValue().getSExtValue();
+    auto axisValue = mlir::dyn_cast_or_null<mlir::IntegerAttr>(getAxisValueAttr()).getValue().getSExtValue();
 
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(baseOp->getResult(0).getType());
     const auto outputShape = outputType.getShape();

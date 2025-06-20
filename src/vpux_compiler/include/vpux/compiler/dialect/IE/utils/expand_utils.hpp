@@ -39,6 +39,7 @@ bool beneficialToKeepExpand(ShapeRef unExpandedShape, ShapeRef expandedShape, ml
 int64_t calculateAlignmentRequirementForExpandOpConversion(const vpux::NDTypeInterface expandInType);
 bool beneficialToPadHeight(IE::ExpandOp origOp);
 bool beneficialToPadWidth(IE::ExpandOp origOp);
+bool beneficialToReshapeHeightToChannel(IE::ExpandOp origOp);
 bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugName);
 std::optional<vpux::Dim> getExpandAxis(IE::ExpandOp expandOp);
 }  // namespace IE

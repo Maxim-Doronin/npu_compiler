@@ -63,6 +63,10 @@ mlir::async::ExecuteOp vpux::AsyncDepsInfo::getExecuteOpAtIndex(size_t opIdx) co
     return _allExecOps[opIdx];
 }
 
+size_t vpux::AsyncDepsInfo::getExecOpCount() const {
+    return _execOpCount;
+}
+
 //
 // buildDepsMap
 //

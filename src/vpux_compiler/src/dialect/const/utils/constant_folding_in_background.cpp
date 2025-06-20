@@ -23,7 +23,7 @@ BackgroundConstantFolding::BackgroundConstantFolding(mlir::MLIRContext* ctx, siz
 
     auto& threadPool = _ctx->getThreadPool();
 
-    if (threadPool.getThreadCount() <= 1) {
+    if (threadPool.getMaxConcurrency() <= 1) {
         _log.info("The thread pool size is not greater than 1, background constant folding is disabled");
         _isEnabled = false;
         return;
@@ -194,7 +194,7 @@ void BackgroundConstantFolding::processFoldingRequest(FoldingRequest&& req, Cons
     });
 }
 
-std::shared_future<void> BackgroundConstantFolding::initFoldingListener(llvm::ThreadPool& threadPool) {
+std::shared_future<void> BackgroundConstantFolding::initFoldingListener(llvm::ThreadPoolInterface& threadPool) {
     auto listenerThread = threadPool.async([this]() {
         auto& cacheManager = ConstantFoldingCacheManager::getInstance();
         auto& cache = cacheManager.get(_ctx);

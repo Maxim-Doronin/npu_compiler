@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/func_ref.hpp"
@@ -16,6 +17,7 @@
 #include <mlir/Dialect/Bufferization/IR/Bufferization.h>
 #include <mlir/Dialect/Bufferization/Transforms/Bufferize.h>
 #include <mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h>
+#include <mlir/IR/Dialect.h>
 
 namespace vpux {
 
@@ -78,6 +80,7 @@ void registerVpuNceBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerFuncAndReturnBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerVPUBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerConstDeclareBufferizableOpInterfaces(mlir::DialectRegistry& registry);
+void registerCoreBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 
 //
 // bufferize vpu ops functions
@@ -156,11 +159,14 @@ mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEMatMulOp origOp,
                                 mlir::RewriterBase& rewriter);
 
 //
-// bufferize const declare op function
+// bufferize non-VPU operations
 //
 
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, Const::DeclareOp origOp, Const::DeclareOp::Adaptor newArgs,
                                 mlir::RewriterBase& rewriter);
+
+mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, Core::ReinterpretCastOp origOp,
+                                Core::ReinterpretCastOp::Adaptor newArgs, mlir::RewriterBase& rewriter);
 
 // generic VPU-specific one-shot bufferization model
 template <typename ConcreteOp>

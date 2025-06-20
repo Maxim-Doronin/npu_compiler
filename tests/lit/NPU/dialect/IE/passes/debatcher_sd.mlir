@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --debatcher %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 // CHECK-LABEL: @HeterogenousInputsBatchInConstant
 // CHECK-SAME:     ([[ARG0:%.+]]: tensor<3x320xf32>,
 // CHECK-SAME:     [[ARG1:%.+]]: tensor<1xf64>,

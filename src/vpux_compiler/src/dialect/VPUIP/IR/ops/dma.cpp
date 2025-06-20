@@ -1,9 +1,11 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/gather_dma_constants.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
@@ -168,10 +170,11 @@ mlir::LogicalResult vpux::VPUIP::NNDMAOp::verify() {
 
 size_t vpux::VPUIP::NNDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: Expose API to get arch from cost model
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -201,12 +204,13 @@ mlir::LogicalResult vpux::VPUIP::PermuteDMAOp::verify() {
 
 size_t vpux::VPUIP::PermuteDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs PermuteDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -270,12 +274,13 @@ mlir::LogicalResult vpux::VPUIP::GatherDMAOp::verify() {
 
 size_t vpux::VPUIP::GatherDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs GatherDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -326,12 +331,13 @@ mlir::LogicalResult vpux::VPUIP::ConvertDMAOp::verify() {
 
 size_t vpux::VPUIP::ConvertDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs ConvertDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -430,12 +436,13 @@ mlir::LogicalResult vpux::VPUIP::DecompressDMAOp::verify() {
 
 size_t vpux::VPUIP::DecompressDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs DecompressDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -499,12 +506,13 @@ mlir::LogicalResult vpux::VPUIP::CompressDMAOp::verify() {
 
 size_t vpux::VPUIP::CompressDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs CompressDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -518,7 +526,7 @@ void vpux::VPUIP::DepthToSpaceDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
     build(odsBuilder, odsState, input, output_buff, /* port= */ nullptr, block_size, mode, dma_descriptor,
           padded_channels,
           /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
-          /* profilingMetadata */ nullptr);
+          /* profilingMetadata */ nullptr, /*internalDataFlow= */ nullptr);
 }
 
 void vpux::VPUIP::DepthToSpaceDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
@@ -527,21 +535,28 @@ void vpux::VPUIP::DepthToSpaceDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
                                            mlir::IntegerAttr port, vpux::IE::ChannelPaddingAttr padded_channels) {
     build(odsBuilder, odsState, input, output_buff, port, block_size, mode, dma_descriptor, padded_channels,
           /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
-          /* profilingMetadata */ nullptr);
+          /* profilingMetadata */ nullptr, /*internalDataFlow= */ nullptr);
 }
 
 mlir::LogicalResult vpux::VPUIP::DepthToSpaceDMAOp::verify() {
-    return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+    const auto loc = getLoc();
+    const auto blockSize = getBlockSize();
+    if (blockSize <= 0) {
+        return errorAt(loc, "block size for D2S should be > 0; actual {0}", blockSize);
+    }
+
+    return verifyTensorSize(VPU::getArch(getOperation()), loc, getInput());
 }
 
 size_t vpux::VPUIP::DepthToSpaceDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs DepthToSpaceDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -553,7 +568,7 @@ void vpux::VPUIP::SpaceToDepthDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
                                            VPUIP::DMADescriptorAttr dma_descriptor) {
     build(odsBuilder, odsState, input, output_buff, nullptr, block_size, mode, dma_descriptor,
           /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
-          /* profilingMetadata */ nullptr);
+          /* profilingMetadata */ nullptr, nullptr);
 }
 
 void vpux::VPUIP::SpaceToDepthDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState,
@@ -562,21 +577,28 @@ void vpux::VPUIP::SpaceToDepthDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
                                            mlir::IntegerAttr port) {
     build(odsBuilder, odsState, input, output_buff, port, block_size, mode, dma_descriptor,
           /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
-          /* profilingMetadata */ nullptr);
+          /* profilingMetadata */ nullptr, nullptr);
 }
 
 mlir::LogicalResult vpux::VPUIP::SpaceToDepthDMAOp::verify() {
-    return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+    const auto loc = getLoc();
+    const auto blockSize = getBlockSize();
+    if (blockSize <= 0) {
+        return errorAt(loc, "block size for S2D should be > 0; actual {0}", blockSize);
+    }
+
+    return verifyTensorSize(VPU::getArch(getOperation()), loc, getInput());
 }
 
 size_t vpux::VPUIP::SpaceToDepthDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs SpaceToDepthDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -616,12 +638,13 @@ mlir::LogicalResult vpux::VPUIP::ExpandDMAOp::verify() {
 
 size_t vpux::VPUIP::ExpandDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs ExpandDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -651,12 +674,13 @@ mlir::LogicalResult vpux::VPUIP::PerAxisTileDMAOp::verify() {
 
 size_t vpux::VPUIP::PerAxisTileDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs PerAxisTileDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 //
@@ -706,12 +730,13 @@ mlir::LogicalResult vpux::VPUIP::UpsamplingDMAOp::verify() {
 
 size_t vpux::VPUIP::UpsamplingDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs UpsamplingDMAOp will need to be handled by more detailed method than
     // getDMACost()
     const auto arch = VPU::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
 mlir::LogicalResult vpux::VPUIP::SyncDMAOp::verify() {
@@ -749,4 +774,24 @@ mlir::Value vpux::VPUIP::ReadOnlyDMAOp::getOutputBuff() {
 
 mlir::Value vpux::VPUIP::ReadOnlyDMAOp::getOutput() {
     return nullptr;
+}
+
+//
+// BarProgDMAOp
+//
+
+mlir::LogicalResult vpux::VPUIP::BarProgDMAOp::verify() {
+    auto range = getPhysicalBarrierRange();
+    if (range.getStart().getValue().getSExtValue() >= range.getEnd().getValue().getSExtValue()) {
+        return emitOpError("start_pid must be less than end_pid in pid_range");
+    }
+    return mlir::success();
+}
+
+size_t vpux::VPUIP::BarProgDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
+    auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+
+    // TODO: Expose API to get arch from cost model
+    const auto arch = VPU::getArch(module);
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
 }

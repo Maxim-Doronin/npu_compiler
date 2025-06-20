@@ -85,6 +85,9 @@ mlir::LogicalResult vpux::VPU::SplitOp::inferReturnTypes(mlir::MLIRContext* ctx,
     }
 
     const auto num_splits = split.getNumSplits();
+    if (num_splits <= 0) {
+        return errorAt(loc, "Number of splits should be a natural number");
+    }
 
     auto outShape = mlir::cast<vpux::NDTypeInterface>(inType).getShape().toValues();
     if ((outShape[*axis] < num_splits) || (outShape[*axis] % num_splits != 0)) {
@@ -115,6 +118,10 @@ mlir::LogicalResult vpux::VPU::SplitOp::verify() {
         if (outType != nullptr && outType.containsDistributedTypes()) {
             return errorAt(*this, "Split op cannot have Distributed output type", outType);
         }
+    }
+
+    if (getNumSplits() <= 0) {
+        return errorAt(*this, "Number of splits should be a positive integer, while it is {0}", getNumSplits());
     }
 
     return mlir::success();

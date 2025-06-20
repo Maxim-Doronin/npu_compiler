@@ -123,7 +123,7 @@ public:
 
 TEST_F(MLIR_TaskRangeTest, Empty) {
     constexpr std::string_view inputIR = R"(
-        module @EmptyOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+        module @EmptyOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
         IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
             IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -139,7 +139,7 @@ TEST_F(MLIR_TaskRangeTest, Empty) {
             DataInfo "output_0" : tensor<1x2x3x4xf16>
         }
         func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
-            %0 = VPUMI40XX.MappedInference dmaCount([[0, 0], [0, 0]]) invariantCount([0, 0, 0, 0, 0, 0]) variantCount([0, 0, 0, 0, 0, 0]) actKernelRangesCount([0, 0, 0, 0, 0, 0]) actKernelInvocationsCount([0, 0, 0, 0, 0, 0]) mediaCount(0) barrierCount(0) -> !VPURegMapped.Index<0:0:0>
+            %0 = VPUMI40XX.MappedInference dmaCount([[0, 0], [0, 0]]) invariantCount([0, 0, 0, 0, 0, 0]) variantCount([0, 0, 0, 0, 0, 0]) actKernelRangesCount([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) actKernelInvocationsCount([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) mediaCount(0) barrierCount(0) -> !VPURegMapped.Index<0:0:0>
             VPUMI40XX.OpRanges
         }
         }
@@ -162,7 +162,7 @@ TEST_F(MLIR_TaskRangeTest, Empty) {
 TEST_F(MLIR_TaskRangeTest, DMA) {
     constexpr std::string_view inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
                 IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -210,7 +210,7 @@ TEST_F(MLIR_TaskRangeTest, DMA) {
 TEST_F(MLIR_TaskRangeTest, Shave) {
     constexpr std::string_view inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
                 IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -287,7 +287,7 @@ TEST_F(MLIR_TaskRangeTest, Shave) {
 TEST_F(MLIR_TaskRangeTest, DPU) {
     constexpr std::string_view inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
                 IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}

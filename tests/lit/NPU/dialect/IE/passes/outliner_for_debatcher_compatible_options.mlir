@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outliner="function-outlining=\"batching=''\"" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 module @SimpleModuleForOutlining attributes {VPU.debatch = 1 : i64} {
 
     net.NetworkInfo entryPoint : @main

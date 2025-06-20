@@ -11,69 +11,44 @@
 #include <openvino/core/shape.hpp>
 #include <vpux/utils/core/checked_cast.hpp>
 
-#include <algorithm>
-#include <string>
 #include <vector>
 
-ov::test::InputShape staticShape(const ov::Shape& shape) {
-    auto partialShape = ov::PartialShape(shape);
-    return ov::test::InputShape(std::move(partialShape), {shape});
-}
-
-ov::test::InputShape boundedShape(const ov::Shape& bounds) {
-    auto boundedDims = std::vector<ov::Dimension>(bounds.size());
-
-    auto toBoundedDim = [](const auto dim) {
-        return ov::Dimension(1, dim);
-    };
-
-    std::transform(std::begin(bounds), std::end(bounds), std::begin(boundedDims), toBoundedDim);
-
-    return ov::test::InputShape(ov::PartialShape(boundedDims), {bounds});
-}
-
-ov::test::InputShape boundedShape(const std::vector<BoundedDim>& boundedDims) {
-    auto dimensions = std::vector<ov::Dimension>(boundedDims.size());
-
-    auto toPartialDim = [](const BoundedDim boundedDim) {
-        if (boundedDim.dim == -1) {
-            return ov::Dimension(1, boundedDim.bound);
-        }
-        return ov::Dimension(boundedDim.dim);
-    };
-    std::transform(std::begin(boundedDims), std::end(boundedDims), std::begin(dimensions), toPartialDim);
-
-    auto bounds = ov::Shape(boundedDims.size());
-    auto toUpperBound = [](const BoundedDim boundedDim) {
-        return vpux::checked_cast<ov::Shape::value_type>(boundedDim.bound);
-    };
-    std::transform(std::begin(boundedDims), std::end(boundedDims), std::begin(bounds), toUpperBound);
-
-    return ov::test::InputShape(ov::PartialShape(dimensions), {bounds});
-}
-
 namespace {
-using DimType = decltype(BoundedDim::dim);
 
-std::vector<DimType> generateStaticDims(const BoundedDim& dimInfo) {
-    if (dimInfo.dim != -1) {
-        return {dimInfo.dim};
-    } else {
-        std::set<DimType> values{1, (dimInfo.bound + 1) / 2, dimInfo.bound};
-        return std::vector<DimType>(values.begin(), values.end());
+ov::PartialShape createPartialShape(const std::vector<BoundedDim>& boundedDims) {
+    auto dimensions = std::vector<ov::Dimension>();
+    dimensions.reserve(boundedDims.size());
+
+    for (auto boundedDim : boundedDims) {
+        if (boundedDim.dim == -1) {
+            dimensions.emplace_back(1, boundedDim.bound);
+        } else {
+            dimensions.emplace_back(boundedDim.dim);
+        }
     }
+
+    return ov::PartialShape(dimensions);
 }
 
-}  // namespace
+std::vector<std::vector<int>> expandEachBoundedDimToThreeStaticDims(const std::vector<BoundedDim>& boundedDims) {
+    auto staticDimsVector = std::vector<std::vector<int>>();
+    staticDimsVector.reserve(boundedDims.size());
 
-std::vector<ov::Shape> generateStaticShapes(const std::vector<BoundedDim>& dims) {
-    std::vector<std::vector<DimType>> staticDims;
-    staticDims.reserve(dims.size());
+    for (const auto& boundedDim : boundedDims) {
+        if (boundedDim.dim != -1) {
+            staticDimsVector.push_back({boundedDim.dim});
+            continue;
+        }
 
-    for (const auto& dimInfo : dims) {
-        staticDims.push_back(generateStaticDims(dimInfo));
+        auto valuesSet = std::set<int>{1, (boundedDim.bound + 1) / 2, boundedDim.bound};
+        auto values = std::vector<int>(valuesSet.begin(), valuesSet.end());
+        staticDimsVector.push_back(values);
     }
 
+    return staticDimsVector;
+}
+
+std::vector<ov::Shape> generateShapesFromAllDimPermutations(const std::vector<std::vector<int>>& staticDims) {
     std::vector<int> indices(staticDims.size(), 0);
     std::set<ov::Shape> allShapes;
 
@@ -106,4 +81,22 @@ std::vector<ov::Shape> generateStaticShapes(const std::vector<BoundedDim>& dims)
     }
 
     return std::vector<ov::Shape>(allShapes.begin(), allShapes.end());
+}
+
+}  // namespace
+
+// Static shape case
+ov::test::InputShape generateTestShape(const ov::Shape& shape) {
+    auto partialShape = ov::PartialShape(shape);
+    return ov::test::InputShape(std::move(partialShape), {shape});
+}
+
+// Dynamic shape case
+ov::test::InputShape generateTestShape(const std::vector<BoundedDim>& boundedDims) {
+    auto partialShape = createPartialShape(boundedDims);
+
+    auto staticDims = expandEachBoundedDimToThreeStaticDims(boundedDims);
+    auto staticShapes = generateShapesFromAllDimPermutations(staticDims);
+
+    return ov::test::InputShape(partialShape, staticShapes);
 }

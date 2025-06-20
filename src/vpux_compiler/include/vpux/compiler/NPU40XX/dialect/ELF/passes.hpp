@@ -16,6 +16,7 @@
 #include <mlir/Pass/Pass.h>
 
 #include <memory>
+#include <optional>
 
 namespace vpux {
 namespace ELF {
@@ -26,8 +27,7 @@ namespace ELF {
 
 std::unique_ptr<mlir::Pass> createAddELFSymbolTablePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddELFRelocationsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createSetOpOffsetsPass(Logger log = Logger::global(),
-                                                   bool enableComputeTaskBufferOffsets = false);
+std::unique_ptr<mlir::Pass> createSetOpOffsetsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSetEntryPointPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddNetworkMetadataPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUpdateELFSectionFlagsPass(Logger log = Logger::global(),
@@ -36,6 +36,11 @@ std::unique_ptr<mlir::Pass> createRemoveEmptyELFSectionsPass(Logger log = Logger
 std::unique_ptr<mlir::Pass> createHandleAlignmentRequirementsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddABIVersionPass(Logger log = Logger::global(), uint32_t versionMajor = 0,
                                                     uint32_t versionMinor = 0, uint32_t versionPatch = 0);
+std::unique_ptr<mlir::Pass> createSetCMXSymbolValuePass(Logger log = Logger::global(),
+                                                        std::optional<uint32_t> workspaceAddr = std::nullopt,
+                                                        std::optional<uint32_t> workspaceSize = std::nullopt,
+                                                        std::optional<uint32_t> metadataAddr = std::nullopt,
+                                                        std::optional<uint32_t> metadataSize = std::nullopt);
 
 //
 // Registration

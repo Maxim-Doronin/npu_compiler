@@ -4,6 +4,11 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/softmax.hpp"
+
 namespace ov::test {
 
 struct SDPAAfterDecomposeTestParams {

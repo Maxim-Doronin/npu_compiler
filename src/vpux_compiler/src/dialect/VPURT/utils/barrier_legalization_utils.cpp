@@ -383,3 +383,15 @@ bool VPURT::addFinalBarrierIfNotExists(mlir::func::FuncOp funcOp, Logger log) {
 
     return true;
 }
+
+bool VPURT::isShareWaitAndUpdateBarriersNeeded(std::optional<WorkloadManagementMode> workloadManagementMode) {
+    // Disable share wait and update barriers for PWLM_V2_PAGE mode only for now
+    // For PWLM_V0_LCA mode enable shared barriers in order to avoid performance regressions
+    // For PWLM_V0_LCA/PWLM_V1_BARRIER_FIFO mode use shareWaitAndUpdateBarriers to avoid issues in case of
+    // rollback to nonWLM and lack of legalization of DMA descriptor fetch and potential issues in enqueue
+    if (workloadManagementMode.has_value() && workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES) {
+        return false;
+    }
+    // enable shared wait and update barriers
+    return true;
+}

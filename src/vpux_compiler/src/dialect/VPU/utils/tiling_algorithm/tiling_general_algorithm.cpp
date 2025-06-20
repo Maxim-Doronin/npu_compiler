@@ -15,7 +15,8 @@ mlir::LogicalResult TilingGeneralAlgorithm::applyTiling(mlir::Operation* operati
     if (!operation->hasAttr(tilingStrategy)) {
         return mlir::failure();
     }
-    const auto strategy = Shape(parseIntArrayAttr<int64_t>(operation->getAttr(tilingStrategy).cast<mlir::ArrayAttr>()));
+    const auto strategy =
+            Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy))));
 
     auto tilingBuilder = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(operation);
     VPUX_THROW_WHEN(tilingBuilder == nullptr, "Operation '{0}' doesn't implement TilingInfoOpInterface",

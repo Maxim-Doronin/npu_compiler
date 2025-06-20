@@ -179,7 +179,7 @@ jobs:
             -DENABLE_MLIR_COMPILER=ON \
             -DENABLE_PLUGINS_XML=ON \
             -DENABLE_PYTHON=ON \
-            -DENABLE_WHEEL=ON \
+            -DENABLE_WHEEL=OFF \
             -DENABLE_TBBBIND_2_5=ON \
             -DENABLE_DEBUG_CAPS=ON \
             -DENABLE_NPU_DEBUG_CAPS=ON \

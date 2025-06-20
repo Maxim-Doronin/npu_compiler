@@ -7,8 +7,8 @@
 
 #include "vpux/compiler/pipelines/dialect_pipeline_strategy.hpp"
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "vpux/utils/IE/config.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -19,7 +19,7 @@ namespace vpux {
 // This version is used for production purposes
 //
 
-std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XX(VPU::CompilationMode compilationMode,
+std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XX(config::CompilationMode compilationMode,
                                                                             const intel_npu::Config& config);
 
 //
@@ -30,7 +30,13 @@ std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XX(VPU:
 //
 
 template <class OptionsType>
-extern std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XX(
+std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XX(
         const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options);
+
+/// @brief This method creates a pipeline strategy for Monolithic WS compilation.
+template <class OptionsType>
+std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XXWS(
+        config::CompilationMode compilationMode, const VPU::InitCompilerOptions* initCompilerOptions,
+        const OptionsType* options);
 
 }  // namespace vpux

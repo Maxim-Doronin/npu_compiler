@@ -147,6 +147,8 @@ vpux::InputTiling vpux::VPU::SpaceToDepthOp::backInferTileInfo(const vpux::TileI
     VPUX_THROW_UNLESS(getBlockSizeAttr() != nullptr, "Got NULL block_size");
     blockSize = mlir::dyn_cast<mlir::IntegerAttr>(getBlockSizeAttr()).getValue().getSExtValue();
 
+    VPUX_THROW_WHEN(blockSize <= 0, "Unsupported block size: {0}", blockSize);
+
     TileInfo inputTile(origInputShape);
 
     inputTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
@@ -207,6 +209,8 @@ mlir::FailureOr<OutputTiling> vpux::VPU::SpaceToDepthOp::getTilingStrategy(Tilin
 
     int64_t maxTile = 1;
 
+    VPUX_THROW_WHEN(blockSize <= 0, "Unsupported block size: {0}", blockSize);
+
     while (tileDimIter < tileDimOrder.end()) {
         if (dimToTile == Dims4D::Act::C) {
             while (((maxTile * blockSize * blockSize) <= outputShape[dimToTile]) &&
@@ -241,4 +245,11 @@ mlir::FailureOr<OutputTiling> vpux::VPU::SpaceToDepthOp::getTilingStrategy(Tilin
 
     auto origTiles = fillDividedTiles(op, nTilesOnDimforSpaceToDepth, outputShape);
     return origTiles;
+}
+
+mlir::LogicalResult VPU::SpaceToDepthOp::verify() {
+    if (getBlockSize() <= 0) {
+        return errorAt(*this, "Block size should be a positive integer, while it is {0}", getBlockSize());
+    }
+    return mlir::success();
 }

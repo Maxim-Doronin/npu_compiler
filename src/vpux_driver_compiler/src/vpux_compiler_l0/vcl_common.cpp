@@ -138,29 +138,21 @@ ov::element::Type_t BuildInfo::stringToOVPrecision(std::string value, bool& matc
     /// Ticket: E-88902
     /// @todo Update the map when zero backend begin to support more types
     static const std::unordered_map<std::string, ov::element::Type_t> supported_precisions = {
-            {"UNSPECIFIED", ov::element::Type_t::undefined},
-            {"DYNAMIC", ov::element::Type_t::dynamic},
-            {"BOOL", ov::element::Type_t::boolean},
-            {"BF16", ov::element::Type_t::bf16},
-            {"FP16", ov::element::Type_t::f16},
-            {"FP32", ov::element::Type_t::f32},
-            {"FP64", ov::element::Type_t::f64},
-            {"I4", ov::element::Type_t::i4},
-            {"I8", ov::element::Type_t::i8},
-            {"I16", ov::element::Type_t::i16},
-            {"I32", ov::element::Type_t::i32},
-            {"I64", ov::element::Type_t::i64},
-            {"BIN", ov::element::Type_t::u1},
-            {"U4", ov::element::Type_t::u4},
-            {"U8", ov::element::Type_t::u8},
-            {"U16", ov::element::Type_t::u16},
-            {"U32", ov::element::Type_t::u32},
-            {"U64", ov::element::Type_t::u64},
+            {"DYNAMIC", ov::element::Type_t::dynamic}, {"BOOL", ov::element::Type_t::boolean},
+            {"FP8_E4M3", ov::element::Type_t::f8e4m3}, {"FP8_E5M2", ov::element::Type_t::f8e5m2},
+            {"FP8_E8M0", ov::element::Type_t::f8e8m0}, {"BF16", ov::element::Type_t::bf16},
+            {"FP16", ov::element::Type_t::f16},        {"FP32", ov::element::Type_t::f32},
+            {"FP64", ov::element::Type_t::f64},        {"I4", ov::element::Type_t::i4},
+            {"I8", ov::element::Type_t::i8},           {"I16", ov::element::Type_t::i16},
+            {"I32", ov::element::Type_t::i32},         {"I64", ov::element::Type_t::i64},
+            {"BIN", ov::element::Type_t::u1},          {"U4", ov::element::Type_t::u4},
+            {"U8", ov::element::Type_t::u8},           {"U16", ov::element::Type_t::u16},
+            {"U32", ov::element::Type_t::u32},         {"U64", ov::element::Type_t::u64},
             {"NF4", ov::element::Type_t::nf4},
     };
 
     return getElementFromCon<std::string, ov::element::Type_t>(value, matched, supported_precisions,
-                                                               ov::element::Type_t::undefined);
+                                                               ov::element::Type_t::dynamic);
 }
 
 std::string BuildInfo::checkSupportedLayout(std::string value, bool& matched) {

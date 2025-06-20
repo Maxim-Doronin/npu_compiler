@@ -4,6 +4,8 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/group_normalization.hpp"
+
 namespace ov::test {
 
 struct GroupNormalizationDecomposeTestParams {

@@ -12,7 +12,7 @@ using namespace npu40xx;
 using namespace vpux;
 
 void vpux::NPUReg40XX::WorkItemOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto workItemDesc = getDescriptor().getRegMapped();
+    auto workItemDesc = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuWorkItem) == workItemDesc.size(),
                       "HW VpuWorkItem size {0} != regMapped representation size {1}.", sizeof(nn_public::VpuWorkItem),
@@ -50,4 +50,15 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::WorkItemOp::getRelocationInfo
     }
 
     return relocs;
+}
+
+void vpux::NPUReg40XX::WorkItemOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
+                                         VPURegMapped::TaskTypeAttr taskType, mlir::SymbolRefAttr firstTask,
+                                         vpux::NPUReg40XX::Descriptors::WorkItem&& descriptor) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.task_type = taskType;
+    props.first_task = firstTask;
+    props.descriptor = std::move(descriptor);
 }

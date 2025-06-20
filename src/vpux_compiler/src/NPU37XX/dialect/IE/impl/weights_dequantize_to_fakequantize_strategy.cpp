@@ -17,10 +17,11 @@ template <typename OriginalOp>
 mlir::LogicalResult commonMatchAndRewrite(OriginalOp origOp, IE::WeightsDequantizeStructureInfo& wdInfo,
                                           mlir::PatternRewriter& rewriter) {
     const auto loc = wdInfo.getLastOp()->getLoc();
+    const auto ctx = rewriter.getContext();
 
     const auto inputElemType = IE::getTrueElemTypeOfWeights(origOp);
-    // The commonMatchAndRewrite supported weights data type are I8, U8, I4, U4 and NF4
-    if (!inputElemType.isInteger(8) && !inputElemType.isInteger(4) &&
+    // The commonMatchAndRewrite supported weights data type are I8, U8, I4, U4, I2, U2 and NF4
+    if (!inputElemType.isInteger(8) && !inputElemType.isInteger(4) && !inputElemType.isInteger(2) &&
         !mlir::isa<vpux::type::QuantileFloatType>(inputElemType)) {
         return mlir::failure();
     }
@@ -33,13 +34,11 @@ mlir::LogicalResult commonMatchAndRewrite(OriginalOp origOp, IE::WeightsDequanti
     if (mlir::isa<mlir::IntegerType>(inputElemType)) {
         // Integer case
         const auto levels = IE::getQuantizationLevels(inputElemType);
-        levelsAttr = getIntAttr(rewriter.getContext(), levels);
+        levelsAttr = getIntAttr(ctx, levels);
         inLow = (inputElemType.isSignedInteger() ? -(levels / 2) : 0);
         inHigh = (levels + inLow - 1);
     } else if (auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(inputElemType)) {
         // Quantile float case
-        auto width = quantileFloatType.getWidth();
-        quantileFloatType = vpux::type::QuantileFloatType::getQuantileFloat(rewriter.getContext(), width);
         auto quantileTable = quantileFloatType.getQuantiles();
         inLow = quantileTable.front();
         inHigh = quantileTable.back();
@@ -53,7 +52,7 @@ mlir::LogicalResult commonMatchAndRewrite(OriginalOp origOp, IE::WeightsDequanti
     const auto [outLowConst, outHighConst] =
             wdInfo.getOutputQuantizationInterval(rewriter, appendLoc(loc, "artificial_fq_out_param"), inLow, inHigh);
 
-    const auto broadCastAttr = IE::AutoBroadcastTypeAttr::get(rewriter.getContext(), IE::AutoBroadcastType::NUMPY);
+    const auto broadCastAttr = IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NUMPY);
 
     // sanity checks:
     VPUX_THROW_WHEN(origOp->getNumResults() != 1, "Unexpected number of results {0} in operation {1}",

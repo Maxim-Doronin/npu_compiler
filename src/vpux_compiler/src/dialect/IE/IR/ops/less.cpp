@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
 
@@ -18,16 +19,31 @@ mlir::LogicalResult vpux::IE::LessOp::inferReturnTypeComponents(
     if (mlir::failed(less.verify(loc))) {
         return mlir::failure();
     }
+    const auto in1Type = mlir::cast<vpux::NDTypeInterface>(less.getInput1().getType());
+    const auto in2Type = mlir::cast<vpux::NDTypeInterface>(less.getInput2().getType());
 
-    const auto in1Type = mlir::cast<mlir::ShapedType>(less.getInput1().getType());
-    const auto in2Type = mlir::cast<mlir::ShapedType>(less.getInput2().getType());
+    const auto outShapeInfo = inferEltwiseOutputShapeInfo(ShapeInfo::fromNDType(in1Type),
+                                                          ShapeInfo::fromNDType(in2Type), less.getAutoBroadcast(), loc);
 
-    const auto outShapeRes =
-            IE::broadcastEltwiseShape(in1Type.getShape(), in2Type.getShape(), less.getAutoBroadcast(), loc);
+    const auto outDesc =
+            vpux::getTensorAttr(ctx, inferOrder(in1Type, in2Type), /*memSpace=*/nullptr, Bounds(outShapeInfo.bounds));
 
-    if (mlir::succeeded(outShapeRes)) {
-        inferredReturnShapes.emplace_back(outShapeRes.value(), getBool8Type(ctx));
+    // Explicitly set the output type to boolean since input and output types are not the same
+    inferredReturnShapes.emplace_back(outShapeInfo.shape, getBool8Type(ctx), outDesc);
+
+    return mlir::success();
+}
+
+mlir::LogicalResult vpux::IE::LessOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                        mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    auto outShape = reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
+
+    if (mlir::failed(outShape)) {
+        return outShape;
     }
 
-    return outShapeRes;
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }

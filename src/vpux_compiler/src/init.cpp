@@ -27,6 +27,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/dialect.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/dialect.hpp"
@@ -53,6 +54,10 @@
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Transforms/BufferizationUtils.h>
 
+#include <mlir/Conversion/ConvertToLLVM/ToLLVMPass.h>
+#include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h>
+#include <mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h>
+
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
 
@@ -78,6 +83,7 @@ struct CustomBuiltinBufferizerInterface : mlir::DialectBufferizerInterface {
 void registerDialects(mlir::DialectRegistry& registry) {
     registry.insert<vpux::Const::ConstDialect,                //
                     vpux::Core::CoreDialect,                  //
+                    vpux::config::ConfigDialect,              //
                     vpux::net::NetDialect,                    //
                     vpux::IE::IEDialect,                      //
                     vpux::VPU::VPUDialect,                    //
@@ -138,6 +144,8 @@ mlir::DialectRegistry vpux::createDialectRegistry(DummyOpMode dummyOpMode) {
     // Register the translation to LLVM IR with MLIR
     mlir::registerBuiltinDialectTranslation(registry);
     mlir::registerLLVMDialectTranslation(registry);
+    mlir::registerConvertMemRefToLLVMInterface(registry);
+    mlir::registerConvertFuncToLLVMInterface(registry);
 
     if (dummyOpMode == DummyOpMode::ENABLED) {
         VPUIP::VPUIPDialect::setupExtraInterfacesAdditional(registry);

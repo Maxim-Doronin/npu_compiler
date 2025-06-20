@@ -4,6 +4,9 @@
 
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/mvn.hpp"
+#include "openvino/op/transpose.hpp"
+
 using namespace ov::test;
 
 namespace {

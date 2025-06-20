@@ -115,11 +115,17 @@ void vpux::addLogging(mlir::PassManager& pm, Logger log) {
 // OpBuilderLogger
 //
 
-void vpux::OpBuilderLogger::notifyOperationInserted(mlir::Operation* op) {
+void vpux::OpBuilderLogger::notifyOperationInserted(mlir::Operation* op, mlir::OpBuilder::InsertPoint previous) {
+    (void)previous;
+
     _log.trace("Add new Operation {0}", op->getLoc());
 }
 
-void vpux::OpBuilderLogger::notifyBlockCreated(mlir::Block* block) {
+void vpux::OpBuilderLogger::notifyBlockInserted(mlir::Block* block, mlir::Region* previous,
+                                                mlir::Region::iterator previousIt) {
+    (void)previous;
+    (void)previousIt;
+
     if (auto* parent = block->getParentOp()) {
         _log.trace("Add new Block for Operation {0}", parent->getLoc());
     } else {

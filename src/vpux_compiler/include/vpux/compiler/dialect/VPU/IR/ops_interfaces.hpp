@@ -159,6 +159,12 @@ struct DefinedInArch {
 };
 
 //
+// SwOpInterface
+//
+
+bool supportSwOpLoweringAsDMA(mlir::Operation* op);
+
+//
 // LimitedToArch
 //
 

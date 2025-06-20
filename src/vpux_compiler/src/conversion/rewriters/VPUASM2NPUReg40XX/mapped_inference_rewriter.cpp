@@ -6,7 +6,12 @@
 #include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg40XX/mapped_inference_rewriter.hpp"
 
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
+#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/utils.hpp"
+#include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
+
+#include <npu_40xx_nnrt.hpp>
 
 using namespace NPUReg40XX;
 using namespace NPUReg40XX::Descriptors;
@@ -36,6 +41,89 @@ mlir::LogicalResult MappedInferenceRewriter::matchAndRewrite(VPUASM::MappedInfer
     const auto dmaCountDDRAttr = getIntArrayAttr(origOp.getContext(), ArrayRef(dmaCountDDR));
     const auto dmaCountCMXAttr = getIntArrayAttr(origOp.getContext(), ArrayRef(dmaCountCMX));
 
+    auto moduleOp = origOp->getParentOfType<mlir::ModuleOp>();
+    bool isActShaveProfilingEnabled =
+            vpux::getProfilingSection(moduleOp, profiling::ExecutorType::ACTSHAVE).has_value();
+
+    npu40xx::nn_public::VpuMappedInference mi = {};
+
+    mi.barrier_configs.count = origOp.getBarrierCount();
+    mi.media_tasks.count = origOp.getMediaCount();
+
+    size_t totalDDRDmaCount = 0;
+    VPUX_THROW_WHEN(dmaCountDDR.size() > npu40xx::nn_public::VPU_MAX_DMA_ENGINES, "Too many DMA DDR lists");
+    for (size_t listIdx = 0; listIdx < dmaCountDDR.size(); ++listIdx) {
+        mi.dma_tasks_ddr_[listIdx].count = dmaCountDDR[listIdx];
+        totalDDRDmaCount += mi.dma_tasks_ddr_[listIdx].count;
+    }
+
+    size_t totalCMXDmaCount = 0;
+    VPUX_THROW_WHEN(dmaCountCMX.size() > npu40xx::nn_public::VPU_MAX_DMA_ENGINES, "Too many DMA CMX lists");
+    for (size_t listIdx = 0; listIdx < dmaCountCMX.size(); ++listIdx) {
+        mi.dma_tasks_cmx_[listIdx].count = dmaCountCMX[listIdx];
+        totalCMXDmaCount += mi.dma_tasks_cmx_[listIdx].count;
+    }
+
+    auto invariantCountVec = parseIntArrayAttr<int64_t>(origOp.getInvariantCount());
+    VPUX_THROW_WHEN(invariantCountVec.size() > npu40xx::nn_public::VPU_MAX_TILES, "Too many Invariant lists");
+    for (size_t listIdx = 0; listIdx < invariantCountVec.size(); ++listIdx) {
+        mi.invariants[listIdx].count = invariantCountVec[listIdx];
+    }
+
+    auto variantCountVec = parseIntArrayAttr<int64_t>(origOp.getVariantCount());
+    VPUX_THROW_WHEN(variantCountVec.size() > npu40xx::nn_public::VPU_MAX_TILES, "Too many Variant lists");
+    for (size_t listIdx = 0; listIdx < variantCountVec.size(); ++listIdx) {
+        mi.variants[listIdx].count = variantCountVec[listIdx];
+    }
+
+    auto actKernelRangesCountVec = parseIntArrayAttr<int64_t>(origOp.getActKernelRangesCount());
+    VPUX_THROW_WHEN(actKernelRangesCountVec.size() > npu40xx::nn_public::VPU_MAX_TILES,
+                    "Too many ActKernelRange lists");
+    for (size_t listIdx = 0; listIdx < actKernelRangesCountVec.size(); ++listIdx) {
+        mi.act_kernel_ranges[listIdx].count = actKernelRangesCountVec[listIdx];
+    }
+
+    auto actKernelInvocationsCountVec = parseIntArrayAttr<int64_t>(origOp.getActKernelInvocationsCount());
+    VPUX_THROW_WHEN(actKernelInvocationsCountVec.size() > npu40xx::nn_public::VPU_MAX_TILES,
+                    "Too many ActKernelInvo lists");
+    for (size_t listIdx = 0; listIdx < actKernelInvocationsCountVec.size(); ++listIdx) {
+        mi.act_kernel_invocations[listIdx].count = actKernelInvocationsCountVec[listIdx];
+    }
+
+    std::optional<uint64_t> stackSize;
+    if (origOp.getActShaveStacks().has_value()) {
+        auto stackRef =
+                _symRefMap.lookupSymbol(mlir::dyn_cast<mlir::SymbolRefAttr>(*origOp.getActShaveStacks()->begin()));
+        auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stackRef);
+        stackSize = stackOp.getStackSize();
+    }
+    // NPU4 does not have stack frames provided by compiler
+    // they are resolved by shave driver when initialized.
+
+    auto isActKernelInvocations = origOp.getActKernelInvocationsCount().size() > 0;
+    NPUReg40XX::fillNNrtConfig<NPUReg40XX::ActShaveRtOp>(mi.shv_rt_configs, origOp, origOp.getActShaveRt(), stackSize,
+                                                         isActShaveProfilingEnabled, isActKernelInvocations,
+                                                         std::nullopt);
+
+    if (origOp.getManagedMappedInference().has_value()) {
+        mi.managed_inference.count = 1;
+    }
+
+    // Look only at the DMA tasks belonging to the first (and only) DMA engine
+    std::tie(mi.task_storage_counts_.dma_ddr_count, mi.task_storage_counts_.dma_cmx_count) =
+            VPUMI40XX::compute_dma_split(totalDDRDmaCount, totalCMXDmaCount);
+    mi.task_storage_counts_.dpu_invariant_count = VPU::getConstraint(moduleOp, VPU::METADATA_MAX_INVARIANT_COUNT);
+    mi.task_storage_counts_.dpu_variant_count = VPU::getConstraint(moduleOp, VPU::METADATA_MAX_VARIANT_COUNT);
+    mi.task_storage_counts_.act_range_count = VPU::getConstraint(moduleOp, VPU::METADATA_MAX_KERNEL_RANGE_COUNT);
+    mi.task_storage_counts_.act_invo_count = VPU::getConstraint(moduleOp, VPU::METADATA_MAX_KERNEL_INVOCATION_COUNT);
+    mi.task_storage_counts_.media_count = VPU::getConstraint(moduleOp, VPU::METADATA_MAX_MEDIA_COUNT);
+
+    VpuMappedInference miDesc;
+    VPUX_THROW_UNLESS(sizeof(npu40xx::nn_public::VpuMappedInference) == miDesc.size(),
+                      "HW VpuMappedInference size {0} != regMapped representation size {1}.",
+                      sizeof(npu40xx::nn_public::VpuMappedInference), miDesc.size());
+    miDesc.copyFrom(mi);
+
     rewriter.create<NPUReg40XX::MappedInferenceOp>(origOp->getLoc(),                           //
                                                    origOp.getSymNameAttr(),                    //
                                                    origOp.getDmaCountAttr(),                   //
@@ -52,14 +140,15 @@ mlir::LogicalResult MappedInferenceRewriter::matchAndRewrite(VPUASM::MappedInfer
                                                    origOp.getActShaveStacksAttr(),             //
                                                    origOp.getDmaHwpBaseAttr(),                 //
                                                    origOp.getHwpWorkpointCfgAttr(),            //
-                                                   origOp.getManagedMappedInferenceAttr(),
-                                                   origOp.getDmaTasksAttr(),              //
-                                                   origOp.getInvariantTasksAttr(),        //
-                                                   origOp.getVariantTasksAttr(),          //
-                                                   origOp.getActKernelRangesAttr(),       //
-                                                   origOp.getActKernelInvocationsAttr(),  //
-                                                   origOp.getMediaTasksAttr(),            //
-                                                   origOp.getBarrierTasksAttr());         //
+                                                   origOp.getManagedMappedInferenceAttr(),     //
+                                                   origOp.getDmaTasksAttr(),                   //
+                                                   origOp.getInvariantTasksAttr(),             //
+                                                   origOp.getVariantTasksAttr(),               //
+                                                   origOp.getActKernelRangesAttr(),            //
+                                                   origOp.getActKernelInvocationsAttr(),       //
+                                                   origOp.getMediaTasksAttr(),                 //
+                                                   origOp.getBarrierTasksAttr(),
+                                                   std::move(miDesc));  //
     rewriter.eraseOp(origOp);
 
     return mlir::success();

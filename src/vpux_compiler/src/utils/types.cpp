@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -68,6 +68,10 @@ mlir::IntegerType vpux::getInt32Type(mlir::MLIRContext* ctx) {
 
 mlir::IntegerType vpux::getInt64Type(mlir::MLIRContext* ctx) {
     return mlir::IntegerType::get(ctx, 64);
+}
+
+mlir::IntegerType vpux::getSInt2Type(mlir::MLIRContext* ctx) {
+    return mlir::IntegerType::get(ctx, 2, mlir::IntegerType::Signed);
 }
 
 mlir::IntegerType vpux::getSInt4Type(mlir::MLIRContext* ctx) {
@@ -141,7 +145,7 @@ mlir::IntegerType vpux::getBool8Type(mlir::MLIRContext* ctx) {
 
 Bit vpux::getElemTypeSize(mlir::Type type) {
     if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(type)) {
-        return Bit(quantileFloatType.getWidth());
+        return Bit(quantileFloatType.getStorageTypeIntegralWidth());
     }
 
     if (const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(type)) {

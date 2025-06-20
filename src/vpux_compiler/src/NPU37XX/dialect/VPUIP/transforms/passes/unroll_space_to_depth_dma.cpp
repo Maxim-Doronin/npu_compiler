@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -63,7 +64,7 @@ private:
                                                     mlir::PatternRewriter& rewriter) const;
 
     void createSpaceToDepthDMASubOp(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask, ShapeRef subShape,
-                                    int64_t srcOffset, int64_t dstOffset, VPUIP::DMADescriptorAttr dma_descriptor,
+                                    int64_t srcOffset, int64_t dstOffset, VPUIP::DMADescriptorAttr dmaDescriptor,
                                     int64_t port, mlir::PatternRewriter& rewriter) const;
 
 private:
@@ -79,8 +80,10 @@ void SpaceToDepthDMARewriter::unrollBlocksFirstNCHW2NCHW(VPUIP::SpaceToDepthDMAO
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
     const auto outShape = outType.getShape();
-    const auto blockSize = origOp.getBlockSize();
     const auto mode = origOp.getMode();
+    const auto blockSize = origOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
 
     const auto IC = inShape[Dims4D::Act::C];
     const auto IW = inShape[Dims4D::Act::W];
@@ -113,9 +116,10 @@ void SpaceToDepthDMARewriter::unrollBlocksFirstNHWC2NHWC(VPUIP::SpaceToDepthDMAO
     auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
     const auto inShape = inType.getShape();
-    const auto blockSize = origOp.getBlockSize();
     const auto mode = origOp.getMode();
-    const auto dmaPort = origOp.getPort();
+    const auto blockSize = origOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
 
     auto srcOffset = origOp.getInput().getDefiningOp<VPURT::DeclareBufferOp>().getByteOffset();
     auto dstOffset = origOp.getOutputBuff().getDefiningOp<VPURT::DeclareBufferOp>().getByteOffset();
@@ -123,6 +127,7 @@ void SpaceToDepthDMARewriter::unrollBlocksFirstNHWC2NHWC(VPUIP::SpaceToDepthDMAO
     auto dmaDescriptorGenerator = VPUIP::SpaceToDepthDmaDescriptorGenerator(getContext(), _log);
     auto dmaDescriptor = dmaDescriptorGenerator.generate(inType, outType, mode, blockSize);
 
+    const auto dmaPort = origOp.getPort();
     createSpaceToDepthDMASubOp(origOp, vpurtTask, inShape, srcOffset, dstOffset, dmaDescriptor, dmaPort.value_or(0),
                                rewriter);
 }
@@ -135,8 +140,10 @@ void SpaceToDepthDMARewriter::unrollBlocksFirstNCHW2NHWC(VPUIP::SpaceToDepthDMAO
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
     const auto outShape = outType.getShape();
-    const auto blockSize = origOp.getBlockSize();
     const auto mode = origOp.getMode();
+    const auto blockSize = origOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
 
     const auto IC = inShape[Dims4D::Act::C];
     const auto IW = inShape[Dims4D::Act::W];
@@ -174,8 +181,10 @@ void SpaceToDepthDMARewriter::unrollDepthFirstNCHW2NCHW(VPUIP::SpaceToDepthDMAOp
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
     const auto outShape = outType.getShape();
-    const auto blockSize = origOp.getBlockSize();
     const auto mode = origOp.getMode();
+    const auto blockSize = origOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
 
     const auto IC = inShape[Dims4D::Act::C];
     const auto IH = inShape[Dims4D::Act::H];
@@ -213,8 +222,10 @@ void SpaceToDepthDMARewriter::unrollDepthFirstNHWC2NHWC(VPUIP::SpaceToDepthDMAOp
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
     const auto outShape = outType.getShape();
-    const auto blockSize = origOp.getBlockSize();
     const auto mode = origOp.getMode();
+    const auto blockSize = origOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
 
     const auto IC = inShape[Dims4D::Act::C];
     const auto IW = inShape[Dims4D::Act::W];
@@ -251,8 +262,10 @@ void SpaceToDepthDMARewriter::unrollDepthFirstNCHW2NHWC(VPUIP::SpaceToDepthDMAOp
 
     const Byte elemTypeSize = inType.getElemTypeSize();
     const auto inShape = inType.getShape();
-    const auto blockSize = origOp.getBlockSize();
     const auto mode = origOp.getMode();
+    const auto blockSize = origOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
 
     const auto IC = inShape[Dims4D::Act::C];
     const auto IH = inShape[Dims4D::Act::H];
@@ -277,7 +290,7 @@ void SpaceToDepthDMARewriter::unrollDepthFirstNCHW2NHWC(VPUIP::SpaceToDepthDMAOp
 
 void SpaceToDepthDMARewriter::createSpaceToDepthDMASubOp(VPUIP::SpaceToDepthDMAOp origOp, vpux::VPURT::TaskOp vpurtTask,
                                                          ShapeRef subShape, int64_t srcOffset, int64_t dstOffset,
-                                                         VPUIP::DMADescriptorAttr dma_descriptor, int64_t port,
+                                                         VPUIP::DMADescriptorAttr dmaDescriptor, int64_t port,
                                                          mlir::PatternRewriter& rewriter) const {
     auto srcDeclBuff = origOp.getInput().getDefiningOp<VPURT::DeclareBufferOp>();
     auto dstDeclBuff = origOp.getOutputBuff().getDefiningOp<VPURT::DeclareBufferOp>();
@@ -311,8 +324,8 @@ void SpaceToDepthDMARewriter::createSpaceToDepthDMASubOp(VPUIP::SpaceToDepthDMAO
     VPURT::wrapIntoTaskOp<VPUIP::SpaceToDepthDMAOp>(
             rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), vpurtTask.getLoc(), newSrcBuff,
             newDstBuff, vpux::getIntAttr(rewriter, port), origOp.getBlockSizeAttr(), origOp.getModeAttr(),
-            dma_descriptor, origOp.getIsOutOfOrderAttr(), origOp.getIsCriticalAttr(), origOp.getDmaHwpIdAttr(),
-            origOp.getProfilingMetadataAttr());
+            dmaDescriptor, origOp.getIsOutOfOrderAttr(), origOp.getIsCriticalAttr(), origOp.getDmaHwpIdAttr(),
+            origOp.getProfilingMetadataAttr(), /*internalDataFlow= */ nullptr);
 }
 
 mlir::LogicalResult SpaceToDepthDMARewriter::unrollSegmentedOrOverlapped(VPUIP::SpaceToDepthDMAOp spaceToDepthOp,
@@ -334,6 +347,8 @@ mlir::LogicalResult SpaceToDepthDMARewriter::unrollSegmentedOrOverlapped(VPUIP::
                       "Unsupported distribution mode: {0}", distMode);
 
     const auto blockSize = spaceToDepthOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
 
     const auto perClusterOutShapes = distributedType.getPerClusterMemoryShapes();
     const auto perClusterOutShapeOffsets = distributedType.getPerClusterMemoryShapeOffsets();
@@ -428,8 +443,9 @@ mlir::LogicalResult SpaceToDepthDMARewriter::unrollSegmentedOrOverlapped(VPUIP::
         auto newSpaceToDepthDMAOp = VPURT::wrapIntoTaskOp<VPUIP::SpaceToDepthDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffer, outBuffer,
                 vpux::getIntAttr(rewriter, dmaPort), spaceToDepthOp.getBlockSizeAttr(), spaceToDepthOp.getModeAttr(),
-                /*dma_descriptor*/ nullptr, spaceToDepthOp.getIsOutOfOrderAttr(), spaceToDepthOp.getIsCriticalAttr(),
-                spaceToDepthOp.getDmaHwpIdAttr(), spaceToDepthOp.getProfilingMetadataAttr());
+                /*dmaDescriptor*/ nullptr, spaceToDepthOp.getIsOutOfOrderAttr(), spaceToDepthOp.getIsCriticalAttr(),
+                spaceToDepthOp.getDmaHwpIdAttr(), spaceToDepthOp.getProfilingMetadataAttr(),
+                /*internalDataFlow= */ nullptr);
 
         _log.trace("Insert new SpaceToDepthDMA: '{0}'", newSpaceToDepthDMAOp);
     }
@@ -469,6 +485,10 @@ mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewriteClusterDMA(VPUIP::Sp
 
 mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewrite(VPUIP::SpaceToDepthDMAOp spaceToDepthDMAOp,
                                                              mlir::PatternRewriter& rewriter) const {
+    const auto blockSize = spaceToDepthDMAOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize <= 0,
+                    "Unrolling failed; block size ({0}) of SpaceToDepthDMAOp is not a positive integer.", blockSize);
+
     const auto outputType = spaceToDepthDMAOp.getOutputBuff().getType();
     if (auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType)) {
         return matchAndRewriteClusterDMA(spaceToDepthDMAOp, rewriter);

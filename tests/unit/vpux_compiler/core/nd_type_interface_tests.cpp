@@ -366,7 +366,7 @@ TEST_F(MLIR_NDTypeInterface, CompressedMemRefType) {
     EXPECT_EQ(tiledType.getShape(), ShapeRef(tileShape));
     const auto memrefTiledType = mlir::dyn_cast<mlir::MemRefType>(tiledType);
     ASSERT_TRUE(memrefTiledType != nullptr);
-    auto layout = memrefTiledType.getLayout().dyn_cast_or_null<vpux::MemRefAttr>();
+    auto layout = mlir::dyn_cast_or_null<vpux::MemRefAttr>(memrefTiledType.getLayout());
     ASSERT_TRUE(layout != nullptr);
     auto tiledNumElems = layout.hwSpecificField<VPUIP::SparsityCompressionAttr>().getNumElems().getValues<int64_t>();
     EXPECT_EQ(tiledNumElems.size(), tileShape[compressionAxis]);

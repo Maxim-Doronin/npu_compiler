@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 func.func @ConstantFolding() -> tensor<1x5x28x31xf16> {
     %cst = const.Declare tensor<1x5x10x11xf16> = dense<1.0> : tensor<1x5x10x11xf16>
     %0 = IE.ExpandDilated(%cst) {dilations = [3, 3]} : tensor<1x5x10x11xf16> -> tensor<1x5x28x31xf16>

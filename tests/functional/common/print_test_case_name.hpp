@@ -18,7 +18,7 @@ struct PrintTestCaseName {
         auto paramsString = ::testing::PrintToString(info.param);
 
         const auto allowedChar = [](const unsigned char c) {
-            return std::isalnum(c) || c == '_' || c == '.' || c == ':' || c == ',';
+            return std::isalnum(c) || c == '_' || c == '.' || c == ':' || c == ',' || c == '{' || c == '}';
         };
         const auto newEnd = std::remove_if(paramsString.begin(), paramsString.end(), std::not_fn(allowedChar));
         paramsString.erase(newEnd, paramsString.end());

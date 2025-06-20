@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
-module @SingleLayer attributes {VPU.compilationMode = #VPU.compilation_mode<ReferenceSW>}  {
+module @SingleLayer attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>}  {
   net.NetworkInfo entryPoint : @main inputsInfo :  {
     DataInfo "inputCNN" : tensor<1x1000xf16>
   } outputsInfo :  {

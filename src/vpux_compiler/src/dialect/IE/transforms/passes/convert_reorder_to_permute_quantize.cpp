@@ -5,6 +5,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -78,52 +79,7 @@ private:
     Logger _log;
 };
 
-bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, Logger log) const {
-    const auto inType = mlir::dyn_cast<vpux::NDTypeInterface>(reorder.getInput().getType());
-    if (inType == nullptr) {
-        log.trace("Input type does not implement NDTypeInterface");
-        return false;
-    }
-    const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
-    if (outType == nullptr) {
-        log.trace("Output type does not implement NDTypeInterface");
-        return false;
-    }
-    const auto inOrder = inType.getDimsOrder();
-    const auto expectedInOrder = DimsOrder::NCHW;
-    if (inOrder != expectedInOrder) {
-        log.trace("Unsupported input layout. Expected: '{0}', got: '{1}'", expectedInOrder, inOrder);
-        return false;
-    }
-    const auto outOrder = outType.getDimsOrder();
-    const auto expectedOutOrder = DimsOrder::NHWC;
-    if (outOrder != expectedOutOrder) {
-        log.trace("Unsupported output layout. Expected: '{0}', got: '{1}'", expectedOutOrder, outOrder);
-        return false;
-    }
-    const auto inElemType = inType.getElementType();
-    if (!inElemType.isF16()) {
-        log.trace("Unsupported input element type. Expected: f16, got: '{0}'", inElemType);
-        return false;
-    }
-    const auto outElemType = outType.getElementType();
-    if (!outElemType.isF16()) {
-        log.trace("Unsupported output element type. Expected: f16, got: '{0}'", outElemType);
-        return false;
-    }
-    const ShapeRef inShape = inType.getShape();
-    const auto inAlignment = VPU::NCEInvariant::getAlignment(inElemType);
-    if (!IE::isODUPermuteEffectiveForShape(inShape, inAlignment)) {
-        log.trace("ODU permute is not effective for input shape {0}", inShape);
-        return false;
-    }
-    const ShapeRef outShape = outType.getShape();
-    const auto outAlignment = VPU::NCEInvariant::getAlignment(outElemType);
-    if (!IE::isODUPermuteEffectiveForShape(outShape, outAlignment)) {
-        log.trace("ODU permute is not effective for output shape {0}", outShape);
-        return false;
-    }
-
+bool hasQuantizedAvgPoolUserToPropagate(IE::ReorderOp reorder) {
     // For pattern Reorder -> Avgpool(quantize-dequantize or just quantize) -> Eltwise
     // if the Avgpool is quantized, the reorder can't be propagated through eltwise
     // after converting to PermuteQuantize because of the quantized type
@@ -135,24 +91,31 @@ bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reord
     // cannot be transformed into
     // Avgpool (f16 to quant) -> PermuteQuantize (quant to quant)
     // because PermuteQuantize expects f16 input
-    auto hasQuantizedAvgPoolUserToPropagate = [](IE::ReorderOp reorder) -> bool {
-        if (!reorder->hasOneUse()) {
-            return false;
-        }
-        // condition 1, quantize avgpool user
-        auto avgpoolOp = mlir::dyn_cast_or_null<IE::AvgPoolOp>(*reorder.getOutput().getUsers().begin());
-        if (avgpoolOp == nullptr || !avgpoolOp->hasOneUse() || !isQuantizedPurposeAvgPool(avgpoolOp)) {
-            return false;
-        }
-        // condition 2, optional dequantize avgpool and eltwise after the avgpool(s)
-        if (auto nextOp = mlir::dyn_cast_or_null<IE::AvgPoolOp>(*avgpoolOp.getOutput().getUsers().begin())) {
-            if (!avgpoolOp->hasOneUse() || !isQuantizedPurposeAvgPool(avgpoolOp)) {
-                return false;
-            }
-            avgpoolOp = nextOp;
-        }
-        return (*avgpoolOp.getOutput().getUsers().begin())->hasTrait<IE::EltwiseOp>();
-    };
+
+    if (!reorder->hasOneUse()) {
+        return false;
+    }
+    // condition 1, quantize avgpool user
+    auto avgpoolOp = mlir::dyn_cast_or_null<IE::AvgPoolOp>(*reorder.getOutput().getUsers().begin());
+    if (avgpoolOp == nullptr || !avgpoolOp->hasOneUse() || !isQuantizedPurposeAvgPool(avgpoolOp)) {
+        return false;
+    }
+    // condition 2, optional dequantize avgpool and eltwise after the avgpool(s)
+    if (auto nextOp = mlir::dyn_cast_or_null<IE::AvgPoolOp>(*avgpoolOp.getOutput().getUsers().begin())) {
+        avgpoolOp = nextOp;
+    }
+    return (*avgpoolOp.getOutput().getUsers().begin())->hasTrait<IE::EltwiseOp>();
+}
+
+bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, Logger log) const {
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
+
+    if (!IE::isLegalReorderLikeToPermuteQuantize(inType, outType, log)) {
+        log.trace("Can not convert to PermuteQuantize");
+        return false;
+    }
+
     if (hasQuantizedAvgPoolUserToPropagate(reorder)) {
         log.trace("PermuteQuantize can not be propagated through avgpool");
         return false;

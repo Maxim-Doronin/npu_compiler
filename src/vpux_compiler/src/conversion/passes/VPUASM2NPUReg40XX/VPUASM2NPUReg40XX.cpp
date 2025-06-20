@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -38,29 +38,14 @@ namespace {
 
 class ConvertVPUASM2NPUReg40XXPass final : public impl::ConvertVPUASM2NPUReg40XXBase<ConvertVPUASM2NPUReg40XXPass> {
 public:
-    ConvertVPUASM2NPUReg40XXPass(Logger log, bool enableWLM) {
+    ConvertVPUASM2NPUReg40XXPass(Logger log, uint32_t modelIdentifier): _modelIdentifier(modelIdentifier) {
         Base::initLogger(log, Base::getArgumentName());
-        _enableWLM = enableWLM;
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnModule() final;
-    bool _enableWLM;
+    uint32_t _modelIdentifier;
 };
-
-mlir::LogicalResult ConvertVPUASM2NPUReg40XXPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    if (wlmEnabled.hasValue()) {
-        _enableWLM = wlmEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void ConvertVPUASM2NPUReg40XXPass::safeRunOnModule() {
     auto moduleOp = getOperation();
@@ -93,10 +78,10 @@ void ConvertVPUASM2NPUReg40XXPass::safeRunOnModule() {
     patterns.add<ActShaveRtRewriter>(&ctx, _log);
     patterns.add<ActKernelInvocationRewriter>(&ctx, _log, symRefMap);
     patterns.add<ActKernelRangeRewriter>(&ctx, _log, symRefMap);
-    patterns.add<NNRTConfigRewriter>(&ctx, _log);
+    patterns.add<NNRTConfigRewriter>(&ctx, _log, symRefMap);
     patterns.add<ManagedBarrierRewriter>(&ctx, _log);
-    patterns.add<MappedInferenceRewriter>(&ctx, _log);
-    patterns.add<ManagedMappedInferenceRewriter>(&ctx, _log);
+    patterns.add<MappedInferenceRewriter>(&ctx, _log, symRefMap);
+    patterns.add<ManagedMappedInferenceRewriter>(&ctx, _log, _modelIdentifier);
     patterns.add<MappedInferenceVersionRewriter>(&ctx, _log);
     patterns.add<WorkItemRewriter>(&ctx, _log);
 
@@ -127,6 +112,6 @@ void ConvertVPUASM2NPUReg40XXPass::safeRunOnModule() {
 // createConvertVPUASM2NPUReg40XXPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::createConvertVPUASM2NPUReg40XXPass(Logger log, bool enableWLM) {
-    return std::make_unique<ConvertVPUASM2NPUReg40XXPass>(log, enableWLM);
+std::unique_ptr<mlir::Pass> vpux::createConvertVPUASM2NPUReg40XXPass(Logger log, uint32_t modelIdentifier) {
+    return std::make_unique<ConvertVPUASM2NPUReg40XXPass>(log, modelIdentifier);
 }

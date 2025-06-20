@@ -15,11 +15,13 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
+#include "vpux/compiler/utils/dma_transaction_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/reshape_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -27,6 +29,9 @@
 #include "vpux/compiler/utils/types.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/IR/AffineMap.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <algorithm>
 
 using namespace vpux;
 
@@ -1246,8 +1251,9 @@ SmallVector<mlir::Value> vpux::VPUIP::getSplitBuffers(mlir::MLIRContext* ctx, ml
         }
 
         const auto newLoc = appendLoc(loc, "_{0}_split_{1}", bufferName, bufferId);
-        auto newCmxBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, newLoc, cmxBuffType,
-                                                                    declBuff.getSection(), cmxOffset.count());
+        auto newCmxBuffer =
+                VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, newLoc, cmxBuffType,
+                                                        declBuff.getSection(), memSpaceId.value(), cmxOffset.count());
         insertionPoint = newCmxBuffer.getOperation();
 
         buffers[bufferId] = newCmxBuffer;
@@ -2290,8 +2296,23 @@ VPURT::TaskOp VPUIP::createSyncDMA(mlir::OpBuilder& builder, mlir::Value input, 
     auto syncDMATask = VPURT::wrapIntoTaskOp<VPUIP::SyncDMAOp>(
             builder, waitBarriers, updateBarriers, syncDmaLoc, input, output, portAttr,
             /*isOutOfOrder*/ nullptr, /*isCritical*/ nullptr, /*dmaHwpId*/ nullptr,
-            /*dmaProfilingMetaData*/ nullptr, nullptr);
+            /*dmaProfilingMetaData*/ nullptr);
     return syncDMATask->getParentOfType<VPURT::TaskOp>();
+}
+
+VPURT::TaskOp VPUIP::createBarProgDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                                      mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                                      VPUIP::PhysicalBarrierRangeAttr physicalBarrierRangeAttr,
+                                      llvm::StringLiteral opName) {
+    auto ctx = builder.getContext();
+    auto syncDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, opName));
+    auto portAttr = vpux::getIntAttr(ctx, port);
+
+    auto barProgDmaOp = VPURT::wrapIntoTaskOp<VPUIP::BarProgDMAOp>(
+            builder, waitBarriers, updateBarriers, syncDmaLoc, input, output, portAttr,
+            /*isOutOfOrder*/ nullptr, /*isCritical*/ nullptr, /*dmaHwpId*/ nullptr,
+            /*dmaProfilingMetaData*/ nullptr, /*physicalBarrierRangeAttr*/ physicalBarrierRangeAttr);
+    return barProgDmaOp->getParentOfType<VPURT::TaskOp>();
 }
 
 int64_t vpux::VPUIP::getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse,
@@ -2410,14 +2431,344 @@ mlir::Type vpux::VPUIP::getCompactBufferType(mlir::Type originalType) {
                     vpux::VPUIP::SparseBufferType::get(dataType, smType, seType, sparseType.getIsWeights(),
                                                        sparseType.getSparsityCompression(), sparseType.getSeAttr());
         }
-    } else if (auto boundedType = mlir::dyn_cast<vpux::VPUIP::BoundedBufferType>(originalType)) {
-        if (auto distributedDataType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(boundedType.getData())) {
-            mlir::MemRefType dataType = distributedDataType.getCompactType();
-            mlir::MemRefType dynamicShapeType =
-                    mlir::cast<vpux::VPUIP::DistributedBufferType>(boundedType.getDynamicShape()).getCompactType();
-
-            compactType = vpux::VPUIP::BoundedBufferType::get(dataType, dynamicShapeType);
-        }
     }
     return compactType;
+}
+
+//
+// Dim mapping utils
+//
+
+mlir::SmallVector<int64_t> VPUIP::getSmallVectorFromAffineMap(mlir::AffineMap map) {
+    mlir::SmallVector<int64_t> dimMappingVector;
+
+    for (auto expr : map.getResults()) {
+        dimMappingVector.push_back(mlir::cast<mlir::AffineDimExpr>(expr).getPosition());
+    }
+
+    return dimMappingVector;
+}
+
+void VPUIP::splitDimMapping(mlir::SmallVector<int64_t>& dimMappingVec, int64_t dimIndex) {
+    VPUX_THROW_WHEN(dimMappingVec.size() <= static_cast<uint64_t>(dimIndex) || (dimIndex < 0),
+                    "Dim index is not contained within received dim vector");
+
+    // First, shift all higher dims with + 1
+    for (auto& val : dimMappingVec) {
+        if (val >= dimIndex) {
+            ++val;
+        }
+    }
+
+    // Now split the target dim wherever it is in the permutation
+    auto dimLocation = llvm::find(dimMappingVec, dimIndex + 1);
+    dimMappingVec.insert(dimLocation, dimIndex);
+};
+
+vpux::NDTypeInterface VPUIP::splitNDTypeDimWithBlockSize(vpux::NDTypeInterface ndType, int64_t dimIndex,
+                                                         int64_t blockSize, bool blocksFirst) {
+    VPUX_THROW_WHEN(blockSize < 1, "Invalid block size provided");
+
+    const auto context = ndType.getContext();
+
+    auto shapeVec = ndType.getShape().toValues();
+    auto dimOrderVec = getSmallVectorFromAffineMap(ndType.getDimsOrder().toAffineMap(context));
+    auto stridesVec = ndType.getStrides();
+
+    auto targetDim = Dim(dimIndex);
+    auto newDim = Dim(dimIndex + 1);
+
+    // Duplicate existing values and update later
+    shapeVec.insert(&shapeVec[targetDim], shapeVec[targetDim]);
+    stridesVec.insert(&stridesVec[targetDim], stridesVec[targetDim]);
+
+    // Update dims sizes
+    if (blocksFirst) {
+        shapeVec[targetDim] = blockSize;
+        shapeVec[newDim] /= blockSize;
+    } else {
+        shapeVec[targetDim] /= blockSize;
+        shapeVec[newDim] = blockSize;
+    }
+
+    // Update stride for new dim
+    stridesVec[targetDim] *= shapeVec[newDim];
+    // Update dim order
+    splitDimMapping(dimOrderVec, dimIndex);
+
+    auto dimOrderMap = mlir::AffineMap::getPermutationMap(dimOrderVec, context);
+
+    auto result = mlir::MemRefType::get(mlir::SmallVector<int64_t>(shapeVec.raw()), ndType.getElementType(),
+                                        dimOrderMap, ndType.getMemSpace());
+
+    auto newNdType = mlir::cast<vpux::NDTypeInterface>(result).changeStrides(stridesVec);
+
+    return newNdType;
+}
+
+//
+// SpaceToDepth utils
+//
+
+static constexpr auto FIRST_DIM_INDEX = 0;
+static constexpr auto N_DIM_INDEX = FIRST_DIM_INDEX;
+static constexpr auto C_DIM_INDEX = N_DIM_INDEX + 1;
+static constexpr auto NUMBER_OF_NON_SPATIAL_DIMS = 2;
+static constexpr auto FIRST_SPACE_INDEX = C_DIM_INDEX + 1;
+
+mlir::MemRefType VPUIP::splitChannelsDim(vpux::NDTypeInterface ndType, int64_t blockSize, bool blocksFirst) {
+    auto resultingType = ndType;
+
+    const auto numSpatialDims = resultingType.getRank() - NUMBER_OF_NON_SPATIAL_DIMS;
+
+    auto workingDimIndex = C_DIM_INDEX;
+    auto remainingDims = numSpatialDims;
+
+    while (remainingDims--) {
+        // Blocks first spliting:
+        // N C S0 S1 ... Sn -> N BS0 BS1 ... BSn C/BS^n S0 S1 ... Sn ---> split current index + 1
+        //
+        // Depth first splitting:
+        // N C S0 S1 ... Sn -> N C/BS^n BS0 BS1 ... BSn S0 S1 ... Sn ---> split current index again
+        resultingType = VPUIP::splitNDTypeDimWithBlockSize(resultingType, workingDimIndex, blockSize, blocksFirst);
+        if (blocksFirst) {
+            ++workingDimIndex;
+        }
+    }
+
+    return mlir::cast<mlir::MemRefType>(resultingType);
+}
+
+mlir::MemRefType VPUIP::splitSpatialDims(vpux::NDTypeInterface ndType, int64_t blockSize, bool blocksFirst) {
+    auto resultingType = ndType;
+
+    const auto numSpatialDims = resultingType.getRank() - NUMBER_OF_NON_SPATIAL_DIMS;
+
+    auto workingDimIndex = FIRST_SPACE_INDEX;
+    auto remainingDims = numSpatialDims;
+
+    while (remainingDims--) {
+        // Blocks first spliting:
+        // N C S0 S1 ... Sn -> N C BS0 S0/BS BS1 S1/BS ... BSn/BS Sn ---> split current index + 2
+        //
+        // Depth first splitting:
+        // N C S0 S1 ... Sn -> N C S0/BS BS0 S1/BS BS1 ... Sn/BS BSn ---> split current index + 2
+        resultingType = VPUIP::splitNDTypeDimWithBlockSize(resultingType, workingDimIndex, blockSize, blocksFirst);
+        workingDimIndex += 2;
+    }
+
+    return mlir::cast<mlir::MemRefType>(resultingType);
+}
+
+// Permutation could be cached based on number of dimensions and input and output memory layouts
+mlir::SmallVector<int64_t> VPUIP::getSpaceToDepthInToOutPermutation(int64_t numDims, bool blocksFirst) {
+    mlir::SmallVector<int64_t> permutation;
+
+    // Canonical representation of input:
+    // N C S0/BS BS0 S1/BS BS1 ... Sn/BS BSn
+    const auto numSpaceDims = (numDims - NUMBER_OF_NON_SPATIAL_DIMS) / 2;
+
+    const auto firstSpatialDim = C_DIM_INDEX + 1;
+    const auto firstBlocksDim = firstSpatialDim + 1;
+
+    // Dim 0 (N) will always be unchanged
+    permutation.push_back(N_DIM_INDEX);
+
+    // In DEPTH_FIRST, channel index goes before BS dims
+    if (!blocksFirst) {
+        permutation.push_back(C_DIM_INDEX);
+    }
+
+    auto blocksDimIndex = firstBlocksDim;
+    auto remainingBlocksDims = numSpaceDims;
+
+    while (remainingBlocksDims--) {
+        permutation.push_back(blocksDimIndex);
+        blocksDimIndex += 2;
+    }
+
+    // In BLOCKS_FIRST, channel index goes after BS dims
+    if (blocksFirst) {
+        permutation.push_back(C_DIM_INDEX);
+    }
+
+    auto remainingSpaceDims = numSpaceDims;
+    auto spaceDimIndex = firstSpatialDim;
+
+    while (remainingSpaceDims--) {
+        permutation.push_back(spaceDimIndex);
+        spaceDimIndex += 2;
+    }
+
+    return permutation;
+}
+
+mlir::SmallVector<int64_t> VPUIP::getDefaultLoopOrder(int64_t numDims) {
+    mlir::SmallVector<int64_t> order;
+    auto index = 0;
+
+    while (numDims--) {
+        order.push_back(index++);
+    }
+
+    return order;
+}
+
+mlir::SmallVector<int64_t> VPUIP::getLinearMemOrder(vpux::NDTypeInterface ndType) {
+    return VPUIP::getSmallVectorFromAffineMap(ndType.getDimsOrder().toAffineMap(ndType.getContext()));
+}
+
+mlir::SmallVector<int64_t> VPUIP::getLoopOrder(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                               mlir::AffineMap mappingOrder) {
+    VPUX_THROW_WHEN(inType.getRank() != outType.getRank(), "Rank mismatch");
+
+    mlir::SmallVector<int64_t> workingOrder = VPUIP::getDefaultLoopOrder(inType.getRank());
+    mlir::SmallVector<int64_t> resultOrder;
+
+    int64_t maxIn = 0;
+    int64_t maxOut = 0;
+
+    // Brute force over all possible loop orders
+    do {
+        auto dmaTransaction = getDMATransactionFromPermutation(inType, outType, mappingOrder, workingOrder);
+
+        // A transfer that would require a higher rank than the original shape shall not be accepted as it may exceed
+        // DMA engine capabilities
+        if (dmaTransaction.inputs[0].dims.size() <= static_cast<size_t>(inType.getRank()) &&
+            dmaTransaction.outputs[0].dims.size() <= static_cast<size_t>(outType.getRank())) {
+            auto currentIn = dmaTransaction.inputs[0].dims.back();
+            auto currentOut = dmaTransaction.outputs[0].dims.back();
+
+            if (currentIn >= maxIn && currentOut >= maxOut) {
+                maxIn = currentIn;
+                maxOut = currentOut;
+
+                resultOrder = workingOrder;
+            }
+        }
+    } while (std::next_permutation(workingOrder.begin(), workingOrder.end()));
+
+    VPUX_THROW_WHEN(maxIn == 0 && maxOut == 0, "Could not find a valid loop order");
+
+    return resultOrder;
+}
+
+void VPUIP::splitSpaceToDepth(mlir::PatternRewriter& rewriter,
+                              const std::function<void(mlir::MemRefType, VPURT::DeclareBufferOp, mlir::MemRefType,
+                                                       VPURT::DeclareBufferOp, mlir::AffineMap, int64_t)>& builder,
+                              vpux::VPURT::TaskOp vpurtTask, vpux::NDTypeInterface origSpaceSideType,
+                              VPURT::DeclareBufferOp origSpaceSideBuffer, vpux::NDTypeInterface origChannelSideType,
+                              VPURT::DeclareBufferOp origChannelSideBuffer, int64_t blockSize, bool blocksFirst,
+                              int64_t splitCount) {
+    auto ctx = vpurtTask->getContext();
+
+    auto origSpaceSideShape = origSpaceSideType.getShape().toValues();
+    auto origSpaceSideStrides = origSpaceSideType.getStrides();
+    auto origSpaceSideByteOffset = origSpaceSideBuffer.getByteOffset();
+    auto origChannelSideShape = origChannelSideType.getShape().toValues();
+    auto origChannelSideStrides = origChannelSideType.getStrides();
+    auto origChannelSideByteOffset = origChannelSideBuffer.getByteOffset();
+
+    // Split by first spatial dim of channel side because its spatial dims are already divided by block
+    // size
+    auto splitDim = Dim(FIRST_SPACE_INDEX);
+
+    // Number of new tasks after unrolling
+    auto newTaskCount = splitCount;
+    // Check if we can split nicely for the number of ports available
+    if (origChannelSideShape[splitDim] < splitCount) {
+        newTaskCount = 1;
+    }
+
+    VPUX_THROW_WHEN(newTaskCount < 1, "Number of unrolled tasks cannot be lower than 1");
+
+    auto origChannelSideDimSize = origChannelSideShape[splitDim];
+    auto initialChannelSideSplitDimSize = origChannelSideShape[splitDim] / newTaskCount;
+
+    // Initialize variables here to allow loop to handle single iteration cases
+    auto newSpaceSideMemRef = mlir::cast<mlir::MemRefType>(origSpaceSideType);
+    auto newSpaceSideBuffer = origSpaceSideBuffer;
+    auto newChannelSideMemRef = mlir::cast<mlir::MemRefType>(origChannelSideType);
+    auto newChannelSideBuffer = origChannelSideBuffer;
+
+    int64_t currentChannelSideSplitDimSize = initialChannelSideSplitDimSize;
+
+    for (auto index : irange(newTaskCount)) {
+        if (newTaskCount > 1) {
+            if (index == newTaskCount - 1) {
+                // For last iter use remaining size for cases where dim size is not divisible nicely
+                currentChannelSideSplitDimSize = origChannelSideDimSize - initialChannelSideSplitDimSize * index;
+            }
+
+            // Compute new shapes
+            origChannelSideShape[splitDim] = currentChannelSideSplitDimSize;
+            origSpaceSideShape[splitDim] = currentChannelSideSplitDimSize * blockSize;
+
+            // Compute new offsets
+            // For simplicity, the splitting interleaves accesses to the original shapes
+            // Pretty heavy assumption here that strides will turn out to be byte aligned
+            // Jump only over elemenets in the dimension we split
+
+            auto newChannelSideOffset =
+                    initialChannelSideSplitDimSize * origChannelSideStrides[splitDim].to<Byte>().count() * index +
+                    origChannelSideByteOffset;
+            auto newSpaceSideOffset = initialChannelSideSplitDimSize * blockSize *
+                                              origSpaceSideStrides[splitDim].to<Byte>().count() * index +
+                                      origSpaceSideByteOffset;
+
+            newChannelSideMemRef = vpux::getMemRefType(origChannelSideShape, origChannelSideType.getElementType(),
+                                                       origChannelSideType.getDimsOrder(),
+                                                       origChannelSideType.getMemSpace(), origChannelSideStrides);
+
+            if (origChannelSideType.getMemSpace().getIndex().has_value()) {
+                newChannelSideBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(
+                        rewriter, newChannelSideBuffer, vpurtTask.getLoc(), newChannelSideMemRef,
+                        origChannelSideBuffer.getSection(), origChannelSideType.getMemSpace().getIndex().value(),
+                        newChannelSideOffset);
+            } else {
+                newChannelSideBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(
+                        rewriter, newChannelSideBuffer, vpurtTask.getLoc(), newChannelSideMemRef,
+                        origChannelSideBuffer.getSection(), newChannelSideOffset);
+            }
+
+            newSpaceSideMemRef = vpux::getMemRefType(origSpaceSideShape, origSpaceSideType.getElementType(),
+                                                     origSpaceSideType.getDimsOrder(), origSpaceSideType.getMemSpace(),
+                                                     origSpaceSideStrides);
+
+            if (origSpaceSideType.getMemSpace().getIndex().has_value()) {
+                newSpaceSideBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(
+                        rewriter, newSpaceSideBuffer, vpurtTask.getLoc(), newSpaceSideMemRef,
+                        origSpaceSideBuffer.getSection(), origSpaceSideType.getMemSpace().getIndex().value(),
+                        newSpaceSideOffset);
+            } else {
+                newSpaceSideBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(
+                        rewriter, newSpaceSideBuffer, vpurtTask.getLoc(), newSpaceSideMemRef,
+                        origSpaceSideBuffer.getSection(), newSpaceSideOffset);
+            }
+        }
+
+        // Compute internal representation of input and output based on the following canonical representation:
+        //      N C S0 S1 ... SN
+
+        // For the channel side, the canonical representation will be reinterpreted as:
+        // For blocks first:
+        //      N BS0 BS1 ... BSn C/BS^n S0 S1 ... Sn
+        // For depth first:
+        //      N C/BS^n BS0 BS1 ... BSn S0 S1 ... Sn
+        //
+        auto internalChannelSideMemRef = VPUIP::splitChannelsDim(newChannelSideMemRef, blockSize, blocksFirst);
+
+        // For the space side, the canonical representation will always be reinterpreted as:
+        //      N C S0/BS BS0 S1/BS BS1 ...Sn/BS x BSn
+        //
+        auto internalSpaceSideMemRef = VPUIP::splitSpatialDims(newSpaceSideMemRef, blockSize, false);
+
+        // Get the in to out permutation
+        auto internalInToOutPermutation = mlir::AffineMap::getPermutationMap(
+                VPUIP::getSpaceToDepthInToOutPermutation(internalChannelSideMemRef.getRank(), blocksFirst), ctx);
+
+        // Call builder wrapper to create new op
+        builder(internalSpaceSideMemRef, newSpaceSideBuffer, internalChannelSideMemRef, newChannelSideBuffer,
+                internalInToOutPermutation, index);
+    }
 }

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Copyright (c) 2023-2025, Intel Corporation.
+ * Copyright (c) 2023-2025 Intel Corporation.
  */
 
 // clang-format off

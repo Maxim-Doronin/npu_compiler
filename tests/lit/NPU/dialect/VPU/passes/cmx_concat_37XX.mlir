@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -754,14 +754,21 @@ func.func @InsertAvgPoolingInCaseCopyOpHasExtraUser(%arg0: !Distributed, %arg1: 
     // CHECK-SAME:                  rawFilterShape = [16, 32, 3, 3], strides = [1, 1]}
     // CHECK-SAME:                        -> !VPU.DistributedTensor<1x16x128x128x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    // CHECK:       [[AVGPOOL_2:%.+]] = VPU.NCE.AveragePool([[CONV_0]]) {
+    // CHECK-DAG:   [[AVGPOOL_2:%.+]] = VPU.NCE.AveragePool([[CONV_0]]) {
     // CHECK-SAME:                  kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                  ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
     // CHECK-SAME:                  quant_scale = [1.000000e+00], quant_mult = [16384], quant_shift = [14], quant_post_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:                  strides = [1, 1]}
     // CHECK-SAME:                        -> !VPU.DistributedTensor<1x16x128x128x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    // CHECK:       [[CMX_CONCAT_0:%.+]] = VPU.Concat([[AVGPOOL_1]], [[CONV_0]]) {
+    // CHECK-DAG:   [[AVGPOOL_3:%.+]] = VPU.NCE.AveragePool([[CONV_0]]) {
+    // CHECK-SAME:                  kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    // CHECK-SAME:                  ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
+    // CHECK-SAME:                  quant_scale = [1.000000e+00], quant_mult = [16384], quant_shift = [14], quant_post_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
+    // CHECK-SAME:                  strides = [1, 1]}
+    // CHECK-SAME:                        -> !VPU.DistributedTensor<1x16x128x128x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+
+    // CHECK:       [[CMX_CONCAT_0:%.+]] = VPU.Concat([[AVGPOOL_1]], [[AVGPOOL_3]]) {
     // CHECK-SAME:          static_offsets = [
     // CHECK-SAME:              [0, 0, 0, 0],
     // CHECK-SAME:              [0, 32, 0, 0]

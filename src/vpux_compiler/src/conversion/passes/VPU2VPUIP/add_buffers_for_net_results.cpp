@@ -4,7 +4,9 @@
 //
 
 #include "vpux/compiler/conversion.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/allocate_buffers_for_net_results.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/IR/Operation.h>
@@ -29,13 +31,27 @@ namespace {
 
 class AddBuffersForNetResults final : public impl::AddBuffersForNetResultsBase<AddBuffersForNetResults> {
 public:
-    explicit AddBuffersForNetResults(Logger log) {
+    explicit AddBuffersForNetResults(bool useMemrefForHostFunctionBufferization, Logger log)
+            : _useMemrefForHostFunctionBufferization(useMemrefForHostFunctionBufferization) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
+
 private:
     void safeRunOnModule() final;
+    bool _useMemrefForHostFunctionBufferization;
 };
+
+mlir::LogicalResult AddBuffersForNetResults::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
+        return mlir::failure();
+    }
+    _useMemrefForHostFunctionBufferization = useMemrefForHostFunctionBufferization.getValue();
+    return mlir::success();
+}
 
 //
 // safeRunOnFunc
@@ -43,6 +59,9 @@ private:
 
 void AddBuffersForNetResults::safeRunOnModule() {
     auto module = getOperation();
+    net::NetworkInfoOp netInfo;
+    mlir::func::FuncOp entryPointFuncOp;
+    net::NetworkInfoOp::getFromModule(module, netInfo, entryPointFuncOp);
 
     SmallVector<mlir::func::CallOp> callOps;
     module.walk([&](mlir::func::CallOp callOp) {
@@ -51,6 +70,10 @@ void AddBuffersForNetResults::safeRunOnModule() {
     SmallVector<mlir::func::FuncOp> funcOps;
     module.walk([&](mlir::func::FuncOp funcOp) {
         auto closestModuleParentOp = funcOp->getParentOfType<mlir::ModuleOp>();
+        if (_useMemrefForHostFunctionBufferization && funcOp == entryPointFuncOp) {
+            return mlir::WalkResult::skip();
+        }
+
         auto moduleName = closestModuleParentOp.getSymName().value_or("");
         if (moduleName == "VPU.SW" || funcOp.isExternal()) {
             /*
@@ -69,6 +92,9 @@ void AddBuffersForNetResults::safeRunOnModule() {
     });
 
     vpux::allocateBuffersForNetResults(callOps, funcOps, _log);
+    if (_useMemrefForHostFunctionBufferization) {
+        vpux::allocateBuffersForNetResults<mlir::memref::CopyOp>({}, entryPointFuncOp, _log);
+    }
 }
 
 }  // namespace
@@ -77,6 +103,7 @@ void AddBuffersForNetResults::safeRunOnModule() {
 // createAddBuffersForNetResults
 //
 
-std::unique_ptr<mlir::Pass> vpux::createAddBuffersForNetResults(Logger log) {
-    return std::make_unique<AddBuffersForNetResults>(log);
+std::unique_ptr<mlir::Pass> vpux::createAddBuffersForNetResults(bool useMemrefForHostFunctionBufferization,
+                                                                Logger log) {
+    return std::make_unique<AddBuffersForNetResults>(useMemrefForHostFunctionBufferization, log);
 }

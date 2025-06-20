@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -672,8 +672,8 @@ func.func @DoNotExpandInterpolateLinearChannels(%arg0: tensor<1x3x30x30xf16>) ->
 
 module @main {
 
-    IE.PipelineOptions @Options {
-            IE.Option @VPU.FP16CompressedConv : true
+    config.PipelineOptions @Options {
+            config.Option @VPU.FP16CompressedConv : true
     }
 
     // CHECK-LABEL: @ConvToNCE4channels
@@ -708,4 +708,35 @@ module @main {
 
         // CHECK:       return [[CONV]] : tensor<1x16x16x16xf16, {order = #NHWC}>
     }
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ExpandConvolutionChannelsWithSoftMaxAfter
+// CHECK-SAME: ([[INPUT:%.+]]: tensor<1x512x56x56xf16, {order = #NHWC}>, [[WEIGHTS:%.+]]: tensor<510x512x1x1xf16, {order = #NHWC}>)
+func.func @ExpandConvolutionChannelsWithSoftMaxAfter(%arg0: tensor<1x512x56x56xf16, {order = #NHWC}>, %arg1: tensor<510x512x1x1xf16, {order = #NHWC}>) -> tensor<1x510x56x56xf16, {order = #NHWC}> {
+
+    %0 = IE.Convolution(%arg0, %arg1) {
+        strides = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], dilations = [1, 1]
+    } : tensor<1x512x56x56xf16, {order = #NHWC}>, tensor<510x512x1x1xf16, {order = #NHWC}> -> tensor<1x510x56x56xf16, {order = #NHWC}>
+    %1 = IE.SoftMax(%0) {axisInd = 1 : i64} : tensor<1x510x56x56xf16, {order = #NHWC}> -> tensor<1x510x56x56xf16, {order = #NHWC}>
+
+    return %1 : tensor<1x510x56x56xf16, {order = #NHWC}>
+
+    // CHECK:    [[EXPAND:%.+]] = IE.Expand([[WEIGHTS]]) {pads_begin = [0, 0, 0, 0], pads_end = [2, 0, 0, 0]} : tensor<510x512x1x1xf16, {order = #NHWC}> -> tensor<512x512x1x1xf16, {order = #NHWC}>
+
+    // CHECK:    [[CONV:%.+]] = IE.Convolution([[INPUT]], [[EXPAND]])
+    // CHECK-SAME:        -> tensor<1x512x56x56xf16, {order = #NHWC}>
+
+    // CHECK:    [[SOFTMAX:%.+]] = IE.SoftMax([[CONV]]) 
+    // CHECK-SAME:        axisInd = 1 : i64
+    // CHECK-SAME:        padSize = 2 : i64
+    // CHECK-SAME:        -> tensor<1x512x56x56xf16, {order = #NHWC}>
+
+    // CHECK:    [[SLICE:%.+]] = IE.Slice [[SOFTMAX]]
+    // CHECK-SAME:        tensor<1x510x56x56xf16, {order = #NHWC}>
+
+    // CHECK:    return [[SLICE]] : tensor<1x510x56x56xf16, {order = #NHWC}>
 }

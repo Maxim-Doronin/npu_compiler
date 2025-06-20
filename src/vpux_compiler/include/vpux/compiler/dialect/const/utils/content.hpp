@@ -42,15 +42,7 @@ template <>
 struct CvtHelper<vpux::type::float16> final {
     template <typename InT>
     static vpux::type::float16 cvt(InT val) {
-        auto castedVal = vpux::type::float16(checked_cast<float>(val));
-        if (std::isinf(castedVal)) {
-            const auto clampedVal = std::numeric_limits<vpux::type::float16>::clamp(castedVal);
-            auto logger = Logger::global();
-            logger.debug("Value is out of range for FP16 = {0}; clamping to = {1}.", checked_cast<float>(val),
-                         checked_cast<float>(clampedVal));
-            return clampedVal;
-        }
-        return castedVal;
+        return vpux::type::float16(checked_cast<float>(val));
     }
 };
 

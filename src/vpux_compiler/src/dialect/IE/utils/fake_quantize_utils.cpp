@@ -142,12 +142,27 @@ mlir::LogicalResult WeightsDequantizeStructureInfo::initializeStructure(IE::Mult
     // Retrieve scale
     auto scaleCst = multiplyOp.getInput2().getDefiningOp<Const::DeclareOp>();
     if (scaleCst == nullptr) {
-        if (const auto scale = multiplyOp.getInput2(); mlir::isa<mlir::BlockArgument>(scale)) {
-            dynamicScale = scale;
+        auto checkAndSetDynamicScale = [&](mlir::Value input) -> mlir::LogicalResult {
+            if (mlir::isa<mlir::BlockArgument>(input)) {
+                dynamicScale = input;
+                return mlir::success();
+            }
+            if (auto maybeConvert = input.getDefiningOp<IE::ConvertOp>()) {
+                const auto convertInput = maybeConvert.getInput();
+                const auto convertInputElemType = mlir::cast<NDTypeInterface>(convertInput.getType()).getElementType();
+                if (mlir::isa<mlir::BlockArgument>(convertInput) &&
+                    (convertInputElemType.isF16() || convertInputElemType.isF32())) {
+                    dynamicScale = maybeConvert;
+                    return mlir::success();
+                }
+            }
+            return mlir::failure();
+        };
+
+        if (mlir::succeeded(checkAndSetDynamicScale(multiplyOp.getInput2()))) {
             return mlir::success();
         }
-        if (const auto scale = multiplyOp.getInput1(); mlir::isa<mlir::BlockArgument>(scale)) {
-            dynamicScale = scale;
+        if (mlir::succeeded(checkAndSetDynamicScale(multiplyOp.getInput1()))) {
             return mlir::success();
         }
         log.trace("Match failed: Got non-const and non-blockArgument scale");
@@ -241,9 +256,9 @@ mlir::LogicalResult WeightsDequantizeStructureInfo::initializeStructure(IE::Conv
 
     // Retrieve non-const input properties
     const auto inputBlock = mlir::dyn_cast_or_null<mlir::BlockArgument>(convertOp.getInput());
+    inputValue = convertOp.getOutput();
     if (inputBlock != nullptr) {
         log.trace("Got block argument input: {0}", inputBlock);
-        inputValue = convertOp.getOutput();
 
         if (auto transposeOp = mlir::dyn_cast<IE::TransposeOp>(*opUser)) {
             inputValue = transposeOp.getOutput();
@@ -476,6 +491,9 @@ int64_t getQuantizationLevels(mlir::Type inputElemType) {
     // cannot know real values, so it's impossible to adjust this anyhow. For
     // weights, we do not need to know real values, because it does not affect
     // accuracy (or, should not, at least).
+    if (inputElemType.isInteger(2)) {
+        return 4;
+    }
     if (inputElemType.isInteger(4) || mlir::isa<vpux::type::NF4Type>(inputElemType)) {
         return 16;
     }

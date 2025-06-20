@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/core/prefetch_data_ops.hpp"
 #include "vpux/compiler/core/schedule_analysis_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
@@ -653,7 +654,7 @@ void FeasibleAllocationPass::safeRunOnFunc() {
 
     // VPUNN cost model
     const auto arch = VPU::getArch(module);
-    const auto costModel = VPU::createCostModel(arch);
+    const auto costModel = VPU::CostModelConfig::createCostModel(arch);
 
     // If schedule analysis is enabled dynamic spilling stats will be gathered
     vpux::SpillStats dynamicSpillingBeforePrefetching;
@@ -790,6 +791,9 @@ void FeasibleAllocationPass::safeRunOnFunc() {
         signalPassFailure();
         return;
     }
+
+    _log.info("[FeasibleAllocation phase]");
+    _log.info("[NN Cache statistics]  {0}", costModel->getPreloadedCacheCounter().printString());
 }
 
 }  // namespace

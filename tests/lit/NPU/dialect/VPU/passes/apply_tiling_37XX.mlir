@@ -67,7 +67,7 @@ func.func @ApplyTilingSETransposedConv(%arg0: tensor<1x16x128x128xf16, {order = 
     %cst_0 = const.Declare tensor<1x16x386x386xi1, {order = #NHWC}> = dense<1> : tensor<1x16x386x386xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     %cst_1 = const.Declare tensor<16x16x5x5xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x5x5xf16, {order = #NHWC}>
     %0 = VPU.StorageElementTable {
-            dataElemType = f16, dataShape = [1, 16, 128, 128], seAttr = #VPU.SEUpsampling<factors = [2, 2], padding = [3, 1, 1, 3]>, seDepth = 1 : i64, seSize = 16 : i64
+            dataElemType = f16, dataShape = [1, 16, 128, 128], seAttr = #VPU.SEUpsampling<factors = [2, 2], padding = [3, 1, 1, 3]>, seDepth = 1 : i64, seSize = [16]
         } -> tensor<1x1x386x386xi32, {order = #NHWC}>
 
     %1 = VPU.GroupSparseTensor(%arg0, %cst_0, %0) {
@@ -98,11 +98,11 @@ func.func @ApplyTilingSETransposedConv(%arg0: tensor<1x16x128x128xf16, {order = 
     // CHECK:       [[INPUT_SE_0:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 16, 128, 64],
     // CHECK-SAME:          seAttr = #VPU.SEUpsampling<factors = [2, 2], padding = [3, 1, 3, 5],
     // CHECK-SAME:          offsets = [0, 0, 0, 0], sizes = [1, 16, 386, 195]>,
-    // CHECK-SAME:          seDepth = 1 : i64, seSize = 16 : i64} -> tensor<1x1x386x195xi32, {order = #NHWC}>
+    // CHECK-SAME:          seDepth = 1 : i64, seSize = [16]} -> tensor<1x1x386x195xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SE_1:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 16, 128, 66],
     // CHECK-SAME:          seAttr = #VPU.SEUpsampling<factors = [2, 2], padding = [3, 1, 3, 5],
     // CHECK-SAME:          offsets = [0, 0, 0, 5], sizes = [1, 16, 386, 195]>,
-    // CHECK-SAME:          seDepth = 1 : i64, seSize = 16 : i64} -> tensor<1x1x386x195xi32, {order = #NHWC}>
+    // CHECK-SAME:          seDepth = 1 : i64, seSize = [16]} -> tensor<1x1x386x195xi32, {order = #NHWC}>
 
     // CHECK:       [[INPUT_1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 62] [1, 16, 128, 66]
     // CHECK:       [[INPUT_SPARSE_1:%.+]] = VPU.GroupSparseTensor([[INPUT_1]], [[INPUT_SM_1]], [[INPUT_SE_1]])
@@ -132,10 +132,11 @@ func.func @SplitSEDepthConvolutionAlignedOnChannels(%arg0: tensor<1x192x65x65xf1
             #const.PadWithZero<[0, 0, 0, 0], [0, 7, 0, 0]>, #const.Reorder<#NHWC>]
     %set = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 192, 65, 65],
         seAttr = #VPU.SEDilatedConv<dilation = [2, 2], kernelStride = [1, 1], kernelSize = [3, 3], dataOffset = [0, 0, 1, 1], dataSizes = [1, 192, 64, 64]>,
-        seDepth = 16 : i64, seSize = 64 : i64} -> tensor<1x16x32x32xi32, {order = #NHWC}>
+        seDepth = 12 : i64, seSize = [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16]}
+        -> tensor<1x12x32x32xi32, {order = #NHWC}>
     %8 = VPU.GroupSparseTensor(%arg0, %sparsity_map, %set) {seAttr = #VPU.SEDilatedConv<dilation = [2, 2], kernelStride = [1, 1], kernelSize = [3, 3], dataOffset = [0, 0, 1, 1],
         dataSizes = [1, 192, 64, 64]>} -> !VPU.SparseTensor<data=tensor<1x192x65x65xf16, {order =#NHWC}>,
-        sparsity_map=tensor<1x192x32x32xi1, {order =#NHWC}>, storage_element_table=tensor<1x16x32x32xi32,
+        sparsity_map=tensor<1x192x32x32xi1, {order =#NHWC}>, storage_element_table=tensor<1x12x32x32xi32,
         {order =#NHWC}>, #VPU.SEDilatedConv<dilation = [2, 2], kernelStride = [1, 1], kernelSize = [3, 3],
         dataOffset = [0, 0, 1, 1], dataSizes = [1, 192, 64, 64]>>
     %9 = VPU.NCE.DepthConvolution(%8, %weight, %weight_table) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, pad = #VPU.Padding<left = 1 : i64,

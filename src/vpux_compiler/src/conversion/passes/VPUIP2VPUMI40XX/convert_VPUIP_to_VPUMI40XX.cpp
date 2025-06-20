@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/profiling_metadata.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
@@ -311,11 +312,17 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
     const auto tileCount = static_cast<size_t>(IE::getTileExecutor(moduleOp).getCount());
     const auto dmaTileCount =
             static_cast<size_t>(IE::getAvailableExecutor(moduleOp, VPU::ExecutorKind::DMA_NN).getCount());
+    const auto shavesPerTileCount =
+            static_cast<size_t>(IE::getAvailableExecutor(moduleOp, VPU::ExecutorKind::SHAVE_ACT).getCount());
 
     mlir::SmallVector<mlir::SmallVector<mlir::Value>> dmaTasks(dmaTileCount);
     mlir::SmallVector<mlir::ValueRange> dmaTasksArg(dmaTileCount);
     size_t dmaTasksArgLength = 0;
-    mlir::SmallVector<mlir::Value> invariantTasks, variantTasks, actKernelRanges, actKernelInvocations;
+    mlir::SmallVector<mlir::Value> invariantTasks, variantTasks;
+    mlir::SmallVector<mlir::SmallVector<mlir::Value>> actKernelRanges(tileCount), actKernelInvocations(tileCount);
+    mlir::SmallVector<mlir::ValueRange> actKernelRangesArgs(tileCount), actKernelInvocationsArgs(tileCount);
+    size_t actKernRangesTasksArgLength = 0;
+    size_t actKernInvocationsTasksArgLength = 0;
     mlir::Value barrierTasks;
     mlir::Value mediaTasks;
     mlir::Value actShvRt;
@@ -323,8 +330,12 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
 
     mlir::SmallVector<mlir::SmallVector<int64_t>> dmaCount(dmaTileCount,
                                                            mlir::SmallVector<int64_t>(dmaDirectionRank, 0));
-    mlir::SmallVector<int64_t> invariantCount(tileCount, 0), variantCount(tileCount, 0), rangeCount(tileCount, 0),
-            invoCount(tileCount, 0);
+    mlir::SmallVector<int64_t> invariantCount(tileCount, 0), variantCount(tileCount, 0);
+    mlir::SmallVector<mlir::SmallVector<int64_t>> rangeCount(tileCount,
+                                                             mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
+    mlir::SmallVector<mlir::SmallVector<int64_t>> invoCount(tileCount,
+                                                            mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
+
     int64_t barrierCount = 0;
     int64_t mediaCount = 0;
     bool hasInvocations = false;
@@ -347,14 +358,26 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
         // variantTasks
         variantCount[tileIdx] = gatherTasks<VPUMI40XX::DPUVariantOp>(variantTasks, funcOp, tileIdx, 0);
 
-        // actKernelRanges
-        rangeCount[tileIdx] = gatherTasks<VPUMI40XX::ActKernelRangeOp>(actKernelRanges, funcOp, tileIdx, 0);
+        for (size_t shaveIdx = 0; shaveIdx < shavesPerTileCount; ++shaveIdx) {
+            rangeCount[tileIdx][shaveIdx] =
+                    gatherTasks<VPUMI40XX::ActKernelRangeOp>(actKernelRanges[tileIdx], funcOp, tileIdx, shaveIdx);
+            invoCount[tileIdx][shaveIdx] = gatherTasks<VPUMI40XX::ActKernelInvocationOp>(actKernelInvocations[tileIdx],
+                                                                                         funcOp, tileIdx, shaveIdx);
+        }
+        if (!actKernelRanges[tileIdx].empty()) {
+            actKernelRangesArgs[tileIdx] = mlir::ValueRange(actKernelRanges[tileIdx]);
+            actKernRangesTasksArgLength = tileIdx + 1;
+        }
+        if (!actKernelInvocations[tileIdx].empty()) {
+            actKernelInvocationsArgs[tileIdx] = mlir::ValueRange(actKernelInvocations[tileIdx]);
+            actKernInvocationsTasksArgLength = tileIdx + 1;
+        }
 
-        // actKernelInvocations
-        invoCount[tileIdx] = gatherTasks<VPUMI40XX::ActKernelInvocationOp>(actKernelInvocations, funcOp, tileIdx, 0);
-
-        if (invoCount[tileIdx] != 0)
+        auto tileInvoCount =
+                std::accumulate(invoCount[tileIdx].begin(), invoCount[tileIdx].end(), static_cast<int64_t>(0));
+        if (tileInvoCount != 0) {
             hasInvocations = true;
+        }
     }
 
     // barrierTasks
@@ -376,28 +399,30 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
     auto trivialIndexType = VPURegMapped::IndexType::get(ctx, 0);
     builderFunc.create<VPUMI40XX::MappedInferenceOp>(
             mlir::UnknownLoc::get(ctx), trivialIndexType,
-            ArrayRef(dmaTasksArg.data(), dmaTasksArgLength),        // llvm::ArrayRef<::mlir::ValueRange> dmaTasks
-            invariantTasks,                                         // mlir::ValueRange invariantTasks
-            variantTasks,                                           // mlir::ValueRange variantTasks
-            actKernelRanges,                                        // mlir::ValueRange actKernelRanges
-            actKernelInvocations,                                   // mlir::ValueRange actKernelInvocations
-            mediaTasks,                                             // mlir::Value mediaTasks
-            barrierTasks,                                           // mlir::Value barrierTasks
-            nullptr,                                                // mlir::Value workItemTasks
-            nullptr,                                                // mlir::Value bootstrapTasks
-            actShvRt,                                               // mlir::Value actShaveRt
-            mlir::ValueRange(actShaveStacks),                       // mlir::ValueRange actShaveStacks
-            nullptr,                                                // mlir::Value dmaHwpBase
-            nullptr,                                                // mlir::Value hwpWorkpointCfg
-            getIntArrayOfArray(ctx, dmaCount),                      // mlir::ArrayAttr dmaCount
+            ArrayRef(dmaTasksArg.data(), dmaTasksArgLength),  // llvm::ArrayRef<::mlir::ValueRange> dmaTasks
+            invariantTasks,                                   // mlir::ValueRange invariantTasks
+            variantTasks,                                     // mlir::ValueRange variantTasks
+            ArrayRef(actKernelRangesArgs.data(),
+                     actKernRangesTasksArgLength),  // llvm::ArrayRef<::mlir::ValueRange> actKernelRanges
+            ArrayRef(actKernelInvocationsArgs.data(),
+                     actKernInvocationsTasksArgLength),  // llvm::ArrayRef<::mlir::ValueRange> actKernelInvocations
+            mediaTasks,                                  // mlir::Value mediaTasks
+            barrierTasks,                                // mlir::Value barrierTasks
+            nullptr,                                     // mlir::Value workItemTasks
+            nullptr,                                     // mlir::Value bootstrapBarriers
+            actShvRt,                                    // mlir::Value actShaveRt
+            mlir::ValueRange(actShaveStacks),            // mlir::ValueRange actShaveStacks
+            nullptr,                                     // mlir::Value dmaHwpBase
+            nullptr,                                     // mlir::Value hwpWorkpointCfg
+            getIntArrayOfArray(ctx, dmaCount),           // mlir::ArrayAttr dmaCount
             builderFunc.getI64ArrayAttr(ArrayRef(invariantCount)),  // mlir::ArrayAttr invariantCount
             builderFunc.getI64ArrayAttr(ArrayRef(variantCount)),    // mlir::ArrayAttr variantCount
-            builderFunc.getI64ArrayAttr(ArrayRef(rangeCount)),      // mlir::ArrayAttr actKernelRangesCount
-            builderFunc.getI64ArrayAttr(ArrayRef(invoCount)),       // mlir::ArrayAttr actKernelInvocationsCount
+            getIntArrayOfArray(ctx, rangeCount),                    // mlir::ArrayAttr actKernelRangesCount
+            getIntArrayOfArray(ctx, invoCount),                     // mlir::ArrayAttr actKernelInvocationsCount
             mediaCount,                                             // mlir::IntegerAttr mediaCount
             barrierCount,                                           // mlir::IntegerAttr barrierCount
             nullptr,                                                // mlir::IntegerAttr workItemCount
-            nullptr,                                                // mlir::IntegerAttr bootstrapTasksCount
+            nullptr,                                                // mlir::IntegerAttr bootstrapBarriersCount
             nullptr,                                                // mlir::IntegerAttr bootstrapWorkItemTasksCount
             nullptr,                                                // mlir::IntegerAttr finalBarrierId
             nullptr,                                                // mlir::AnyMemRef barrierConfigurationTasks
@@ -460,6 +485,7 @@ public:
 private:
     bool _enableMemorySideCacheOption;
     AllocateShaveStackFrames _allocateShaveStackFrames;
+
     void safeRunOnFunc() final {
         auto& ctx = getContext();
         auto funcOp = getOperation();
@@ -551,6 +577,7 @@ private:
         tasksConverters.add<CompressDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<GatherDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<SyncDMARewriter>(&ctx, _enableMemorySideCacheOption);
+        tasksConverters.add<BarrierProgDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<ReadOnlyDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<NCEClusterTaskRewriter>(&ctx);
         tasksConverters.add<SWKernelRewriter>(&ctx);

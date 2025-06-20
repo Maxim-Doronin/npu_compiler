@@ -90,14 +90,4 @@ public:
                                    BlobAllocator& allocator) const;
 };
 
-/**
- * @enum IRPrintingOrder
- * @brief VPUX IR pass printing before/after or before and after
- */
-enum class IRPrintingOrder {
-    BEFORE,
-    AFTER,
-    BEFORE_AFTER,
-};
-
 }  // namespace vpux

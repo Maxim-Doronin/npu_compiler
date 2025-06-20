@@ -8,7 +8,6 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_pipeline_container.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_storage.hpp"
 
@@ -81,14 +80,14 @@ mlir::FailureOr<Dim> getVFTilingDim(ArrayRef<int64_t> tilingStrategy, ArrayRef<m
 // get allowed dims for tiling
 DimArr getAllowedDims(ArrayRef<mlir::Operation*> operations, Logger log);
 
-// check if whole operation is in CMX
-bool isCmxOperation(mlir::Operation* operation, const bool checkTilingType);
-
 // check if previous operation will be early scheduled
 bool isPrevOperationEarlyScheduled(mlir::Operation* prevOp, mlir::Operation* nextOp);
 
 // get parent operation with pure view like operations bypassed
 mlir::Operation* findParent(mlir::Value operand);
+
+// get users of operation with pure view like operations bypassed
+SmallVector<mlir::OpOperand*> findUses(mlir::Operation* operation);
 
 // check if tiling is spatial
 bool isSpatialTiling(ArrayRef<int64_t> strategy);
@@ -97,23 +96,29 @@ bool isSpatialTiling(ArrayRef<int64_t> strategy);
 VPU::VerticalFusionOp fuseOpsInBlock(mlir::PatternRewriter& rewriter, VPU::VerticalFusionOp vfOp,
                                      mlir::Operation* prevOp, mlir::ArrayAttr tilingInfo = nullptr);
 
+template <typename VFConfigType>
 SmallVector<SmallVector<int64_t>> backInferVFTilingStrategy(
-        VPU::VFConfig& config, ArrayRef<int64_t> tilingStrategy,
+        VFConfigType& config, ArrayRef<int64_t> tilingStrategy,
         std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap);
 
-SmallVector<vpux::Dim> backInferVFTilingDim(VPU::VFConfig& config, vpux::Dim outputDim,
+template <typename VFConfigType>
+SmallVector<vpux::Dim> backInferVFTilingDim(VFConfigType& config, vpux::Dim outputDim,
                                             std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap);
 
 template <typename ArgType, typename ResultType>
 ResultType backInfer(VPU::TilingViewLikeOpInterface opIf, ArgType tiling, VPU::BackInferStrategy strategy);
 
-template <typename ArgType, typename ResultType>
-SmallVector<ResultType> backInferVFTiling(VPU::VFConfig& config, ArgType outputTiling, BackInferStrategy strategy,
+template <typename ArgType, typename ResultType, typename VFConfigType>
+SmallVector<ResultType> backInferVFTiling(VFConfigType& vfConfig, ArgType outputTiling, BackInferStrategy strategy,
                                           std::unordered_map<mlir::Operation*, ResultType>& opTilingMap);
 
 // Check if spilling read and write operations can be overlapped
 // For DMA ops with different source memory kind, if the HW supports VPUIP.ChannelType, the spilling read and write ops
 // can be overlapped
 bool spillingCopyOpsCanBeOverlapped(VPU::ArchKind arch);
+
+// Check if the op is tiled or not
+bool isOpTiled(mlir::Operation* op);
+
 }  // namespace VPU
 }  // namespace vpux

@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --lower-ops-to-se-nce="se-ops-enabled=true" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK: func.func @TransposedConvolutionNoStride([[INPUT_DATA:%.+]]: tensor<1x32x23x30xf16, {order = #NHWC}>) -> tensor<1x16x24x31xf16, {order = #NHWC}> {
@@ -19,7 +20,7 @@ func.func @TransposedConvolutionNoStride(%input: tensor<1x32x23x30xf16, {order =
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 23, 30],
     // CHECK-SAME:      seAttr = #VPU.SEUpsampling<factors = [0, 0], padding = [1, 1, 1, 1]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 32 : i64
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [32]
     // CHECK-SAME:  } -> tensor<1x1x25x32xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x32x25x32xi1, {order = #NHWC}> =
     // CHECK-SAME:      : tensor<1x32x25x32xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -61,7 +62,7 @@ func.func @TransposedConvolutionPadding(%input: tensor<1x32x23x30xf16, {order = 
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 23, 30],
     // CHECK-SAME:      seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [0, 0, 0, 0]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 32 : i64
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [32]
     // CHECK-SAME:  } -> tensor<1x1x45x59xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x32x45x59xi1, {order = #NHWC}> =
     // CHECK-SAME:      : tensor<1x32x45x59xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -104,7 +105,7 @@ func.func @TransposedConvolutionPaddingLargerThanStride(%arg0: tensor<1x16x128x1
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 16, 128, 128],
     // CHECK-SAME:          seAttr = #VPU.SEUpsampling<factors = [2, 2], padding = [3, 1, 1, 3]>,
-    // CHECK-SAME:          seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:          seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:      } -> tensor<1x1x386x386xi32, {order = #NHWC}>
     // CHECK-DAG:   [[INPUT_SM:%.+]] = const.Declare tensor<1x16x386x386xi1, {order = #NHWC}> =
     // CHECK-SAME:          : tensor<1x16x386x386xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -146,7 +147,7 @@ func.func @TransposedConvolutionOutputPadding(%input: tensor<1x32x23x30xf16, {or
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 23, 30],
     // CHECK-SAME:      seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 2, 2]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 32 : i64
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [32]
     // CHECK-SAME:  } -> tensor<1x1x48x62xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x32x48x62xi1, {order = #NHWC}> =
     // CHECK-SAME:      : tensor<1x32x48x62xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
@@ -214,7 +215,7 @@ func.func @TransposedConvolutionWithOutputShape(%arg0: tensor<1x16x128x128xf16, 
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 16, 128, 128],
     // CHECK-SAME:          seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [0, 0, 0, 0]>,
-    // CHECK-SAME:          seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:          seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:      } -> tensor<1x1x255x255xi32, {order = #NHWC}>
     // CHECK-DAG:   [[INPUT_SM:%.+]] = const.Declare tensor<1x16x255x255xi1, {order = #NHWC}>
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[INPUT]], [[INPUT_SM]], [[INPUT_SE]]) {
@@ -491,7 +492,7 @@ func.func @TransposedConvolutionWithNonConstFilter(%input0: tensor<1x16x4x4xf16,
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 16, 4, 4],
     // CHECK-SAME:      seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [2, 2, 2, 2]>,
-    // CHECK-SAME:      seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:      seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> tensor<1x1x11x11xi32, {order = #NHWC}>
     // CHECK:       [[INPUT_SM:%.+]] = const.Declare tensor<1x16x11x11xi1, {order = #NHWC}> =
     // CHECK-SAME:      : tensor<1x16x11x11xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]

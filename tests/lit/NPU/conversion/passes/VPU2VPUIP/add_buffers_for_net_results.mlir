@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-buffers-for-net-results --mlir-print-debuginfo %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @Network
 module @Network {
     net.NetworkInfo entryPoint : @SingleLayer
@@ -82,18 +83,11 @@ module @TwoFunctions {
     func.func @foo2(%arg0: memref<1x4x60x60xf16> ) -> memref<1x4x60x60xf16> {
         %0 = builtin.unrealized_conversion_cast %arg0 : memref<1x4x60x60xf16> to tensor<1x4x60x60xf16>
         %1 = VPU.MemPermute(%0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x4x60x60xf16> -> tensor<1x4x60x60xf16, {order = #NHWC}>
-        %2 = VPU.NCE.ClusterTiling (%1 as %arg1: tensor<1x4x60x60xf16, {order = #NHWC}>) -> !VPU.DistributedTensor<1x4x60x60xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}> {
-            %7 = VPU.Copy(%arg1) {out_mem_space = @CMX_NN} : tensor<1x4x60x60xf16, {order = #NHWC}> -> tensor<1x4x60x60xf16, {mem_space = @CMX_NN, order = #NHWC}>
-            VPU.Yield %7
-        }
-        %3 = VPU.NCE.ClusterTiling (%2 as %arg1: tensor<1x4x60x60xf16, {mem_space = @CMX_NN, order = #NHWC}>) -> !VPU.DistributedTensor<1x4x60x60xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}> {
-            %7 = VPU.SoftMax(%arg1) {axisInd = 1 : i64} : tensor<1x4x60x60xf16, {mem_space = @CMX_NN, order = #NHWC}> -> tensor<1x4x60x60xf16, {mem_space = @CMX_NN, order = #NHWC}>
-            VPU.Yield %7
-        }
-        %4 = VPU.NCE.ClusterTiling (%3 as %arg1: tensor<1x4x60x60xf16, {mem_space = @CMX_NN, order = #NHWC}>) -> tensor<1x4x60x60xf16, {order = #NHWC}> {
-            %7 = VPU.Copy(%arg1) : tensor<1x4x60x60xf16, {mem_space = @CMX_NN, order = #NHWC}> -> tensor<1x4x60x60xf16, {order = #NHWC}>
-            VPU.Yield %7
-        }
+        %2 = VPU.Copy(%1) {out_mem_space = @CMX_NN} : tensor<1x4x60x60xf16, {order = #NHWC}> -> !VPU.DistributedTensor<1x4x60x60xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+        %3 = VPU.SoftMax(%2) {axisInd = 1 : i64} : !VPU.DistributedTensor<1x4x60x60xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+                -> !VPU.DistributedTensor<1x4x60x60xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+        %4 = VPU.Copy(%3) : !VPU.DistributedTensor<1x4x60x60xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+                -> tensor<1x4x60x60xf16, {order = #NHWC}>
         %5 = VPU.MemPermute(%4) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x4x60x60xf16, {order = #NHWC}> -> tensor<1x4x60x60xf16>
         %6 = builtin.unrealized_conversion_cast %5 : tensor<1x4x60x60xf16> to memref<1x4x60x60xf16>  loc(fused<{name = "MemPermute_out", type = "MemPermute"}>["MemPermute_out", "unrealized_cast"])
 

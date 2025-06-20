@@ -47,18 +47,16 @@ private:
                                  BarrierInfo& barrierInfo, SmallVector<VPURT::TaskOp>& dummyDmas);
 
     void insertDMAForFetchTasks(DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& listOfExecutionGroups,
-                                VPU::ExecutorKind executorKind, mlir::Operation* bufferInsertionPoint,
-                                mlir::OpBuilder& builder, BarrierInfo& barrierInfo,
-                                SmallVector<VPURT::TaskOp>& dummyDmas, size_t tilesCount,
+                                mlir::Operation* bufferInsertionPoint, mlir::OpBuilder& builder,
+                                BarrierInfo& barrierInfo, SmallVector<VPURT::TaskOp>& dummyDmas,
                                 SmallVector<std::pair<size_t, size_t>>& blockRange, mlir::Value& inBuffer,
                                 mlir::Value& outBuffer);
 
-    void legalizeSchedulePerTile(DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& listOfExecutionGroups,
-                                 VPU::ExecutorKind executorKind, mlir::Operation* bufferInsertionPoint,
-                                 mlir::OpBuilder& builder, BarrierInfo& barrierInfo,
-                                 SmallVector<VPURT::TaskOp>& dummyDmas,
-                                 SmallVector<std::pair<size_t, size_t>>& blockRange, VPURT::TaskQueueType queueType,
-                                 mlir::Value& inBuffer, mlir::Value& outBuffer, size_t iterTile = 0);
+    void legalizeSchedulePerQueue(DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& listOfExecutionGroups,
+                                  mlir::Operation* bufferInsertionPoint, mlir::OpBuilder& builder,
+                                  BarrierInfo& barrierInfo, SmallVector<VPURT::TaskOp>& dummyDmas,
+                                  SmallVector<std::pair<size_t, size_t>>& blockRange, VPURT::TaskQueueType queueType,
+                                  mlir::Value& inBuffer, mlir::Value& outBuffer);
 
     SmallVector<size_t> getDmasUpdatingBarriers(llvm::DenseSet<size_t>& barriers, BarrierInfo& barrierInfo);
 
@@ -386,26 +384,24 @@ B:9184              B:9277     B:9279               B:9353
 
 */
 void LegalizeScheduleForWlmFetchDmasPass::insertDMAForFetchTasks(
-        DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& listOfExecutionGroups, VPU::ExecutorKind executorKind,
+        DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& listOfExecutionGroups,
         mlir::Operation* bufferInsertionPoint, mlir::OpBuilder& builder, BarrierInfo& barrierInfo,
-        SmallVector<VPURT::TaskOp>& dummyDmas, size_t tilesCount, SmallVector<std::pair<size_t, size_t>>& blockRange,
+        SmallVector<VPURT::TaskOp>& dummyDmas, SmallVector<std::pair<size_t, size_t>>& blockRange,
         mlir::Value& inBuffer, mlir::Value& outBuffer) {
-    VPURT::TaskQueueType queueType;
-    queueType.type = executorKind;
-    queueType.id = 0;
-
-    for (size_t iterTile = 0; iterTile < tilesCount; ++iterTile) {
-        queueType.id = iterTile;
-        legalizeSchedulePerTile(listOfExecutionGroups, executorKind, bufferInsertionPoint, builder, barrierInfo,
-                                dummyDmas, blockRange, queueType, inBuffer, outBuffer, iterTile);
+    for (auto& [queueType, executionGroup] : listOfExecutionGroups) {
+        if (queueType.type != VPU::ExecutorKind::SHAVE_ACT && queueType.type != VPU::ExecutorKind::DPU) {
+            continue;
+        }
+        legalizeSchedulePerQueue(listOfExecutionGroups, bufferInsertionPoint, builder, barrierInfo, dummyDmas,
+                                 blockRange, queueType, inBuffer, outBuffer);
     }
 }
 
-void LegalizeScheduleForWlmFetchDmasPass::legalizeSchedulePerTile(
-        DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& listOfExecutionGroups, VPU::ExecutorKind executorKind,
+void LegalizeScheduleForWlmFetchDmasPass::legalizeSchedulePerQueue(
+        DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& listOfExecutionGroups,
         mlir::Operation* bufferInsertionPoint, mlir::OpBuilder& builder, BarrierInfo& barrierInfo,
         SmallVector<VPURT::TaskOp>& dummyDmas, SmallVector<std::pair<size_t, size_t>>& blockRange,
-        VPURT::TaskQueueType queueType, mlir::Value& inBuffer, mlir::Value& outBuffer, size_t iterTile) {
+        VPURT::TaskQueueType queueType, mlir::Value& inBuffer, mlir::Value& outBuffer) {
     auto executionGroupListForTile = listOfExecutionGroups[queueType];
     if (executionGroupListForTile.size() < 3) {
         return;
@@ -524,14 +520,14 @@ void LegalizeScheduleForWlmFetchDmasPass::legalizeSchedulePerTile(
                         return false;
                     }
 
-                    if (VPURT::getTaskQueueType(taskOp, false).id != static_cast<int64_t>(iterTile)) {
+                    if (VPURT::getTaskQueueType(taskOp, false).id != static_cast<int64_t>(queueType.id)) {
                         return false;
                     }
 
                     // Don't modify DMA and tasks which doesn't not have same type as tasks in GP as they will be
                     // legalized with insertFetchTask for DPU/SW
                     if (taskOp.getExecutorKind() == VPU::ExecutorKind::DMA_NN ||
-                        taskOp.getExecutorKind() != executorKind) {
+                        taskOp.getExecutorKind() != queueType.type) {
                         return false;
                     }
                     return true;
@@ -606,7 +602,7 @@ void LegalizeScheduleForWlmFetchDmasPass::legalizeSchedulePerTile(
 
                 auto validUser = [&](size_t taskIdx) -> bool {
                     auto taskOp = barrierInfo.getTaskOpAtIndex(taskIdx);
-                    if (VPURT::getTaskQueueType(taskOp, false).id == static_cast<int64_t>(iterTile)) {
+                    if (VPURT::getTaskQueueType(taskOp, false).id == static_cast<int64_t>(queueType.id)) {
                         return true;
                     }
                     return false;
@@ -706,8 +702,6 @@ void LegalizeScheduleForWlmFetchDmasPass::safeRunOnFunc() {
     }
 
     mlir::OpBuilder builder(netFunc);
-    auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
-    const auto tilesCount = static_cast<size_t>(IE::getTileExecutor(parentModule).getCount());
 
     // Reuse the same Decl Buffer for all Dummy DMAs
     mlir::Value inBuffer = nullptr;
@@ -766,11 +760,11 @@ void LegalizeScheduleForWlmFetchDmasPass::safeRunOnFunc() {
     auto listOfSWExecutionGroups = execGroupAnalysis.getActShvExecutionGroups();
 
     SmallVector<VPURT::TaskOp> dummyDmas;
-    insertDMAForFetchTasks(listOfDPUExecutionGroups, VPU::ExecutorKind::DPU, bufferInsertionPoint, builder, barrierInfo,
-                           dummyDmas, tilesCount, blockRange, inBuffer, outBuffer);
+    insertDMAForFetchTasks(listOfDPUExecutionGroups, bufferInsertionPoint, builder, barrierInfo, dummyDmas, blockRange,
+                           inBuffer, outBuffer);
 
-    insertDMAForFetchTasks(listOfSWExecutionGroups, VPU::ExecutorKind::SHAVE_ACT, bufferInsertionPoint, builder,
-                           barrierInfo, dummyDmas, tilesCount, blockRange, inBuffer, outBuffer);
+    insertDMAForFetchTasks(listOfSWExecutionGroups, bufferInsertionPoint, builder, barrierInfo, dummyDmas, blockRange,
+                           inBuffer, outBuffer);
 
     // Apply the changes now as we need to make sure the new DMAs don't break the schedule
     barrierInfo.updateIR();

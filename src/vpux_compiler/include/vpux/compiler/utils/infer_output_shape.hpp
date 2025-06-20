@@ -14,22 +14,16 @@
 
 namespace vpux {
 
+bool isBroadcastable(int64_t d0, int64_t d1);
+
 struct ShapeInfo {
     SmallVector<int64_t> shape;
     SmallVector<int64_t> bounds;
 
-    static ShapeInfo fromNDType(NDTypeInterface type) {
-        // NB: empty bounds means that the shape is static
-        auto boundVals = [&type] {
-            if (const auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
-                const auto bounds = boundedType.getBounds();
-                return to_small_vector(bounds);
-            }
-            return SmallVector<int64_t>{};
-        }();
+    int64_t rank() const;
+    bool isDynamic() const;
 
-        return ShapeInfo{to_small_vector(type.getShape()), std::move(boundVals)};
-    }
+    static ShapeInfo fromNDType(NDTypeInterface type);
 };
 
 /**
@@ -87,10 +81,10 @@ ShapeInfo inferMaxPoolOutputShape(const ShapeInfo& inDataShape, ArrayRef<int64_t
  *                               computing output shape
  * @return                       The output shape as SmallVector
  */
-SmallVector<int64_t> inferMaxPool8OutputShape(ArrayRef<int64_t> inDataShape, ArrayRef<int64_t> windowStrides,
-                                              ArrayRef<int64_t> windowDilations, ArrayRef<int64_t> dataPaddingBelow,
-                                              ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowShape,
-                                              IE::RoundingType roundingType = IE::RoundingType::FLOOR);
+ShapeInfo inferMaxPool8OutputShape(const ShapeInfo& inDataShape, ArrayRef<int64_t> windowStrides,
+                                   ArrayRef<int64_t> windowDilations, ArrayRef<int64_t> dataPaddingBelow,
+                                   ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowShape,
+                                   IE::RoundingType roundingType = IE::RoundingType::FLOOR);
 
 /**
  * @brief                        Infers the output shape for a AvgPool operation
@@ -104,10 +98,10 @@ SmallVector<int64_t> inferMaxPool8OutputShape(ArrayRef<int64_t> inDataShape, Arr
  *                               computing output shape
  * @return                       The output shape as SmallVector
  */
-SmallVector<int64_t> inferAvgPoolOutputShape(ArrayRef<int64_t> inDataShape, ArrayRef<int64_t> windowStrides,
-                                             ArrayRef<int64_t> dataPaddingBelow, ArrayRef<int64_t> dataPaddingAbove,
-                                             ArrayRef<int64_t> windowShape,
-                                             IE::RoundingType roundingType = IE::RoundingType::FLOOR);
+ShapeInfo inferAvgPoolOutputShape(const ShapeInfo& inDataShape, ArrayRef<int64_t> windowStrides,
+                                  ArrayRef<int64_t> dataPaddingBelow, ArrayRef<int64_t> dataPaddingAbove,
+                                  ArrayRef<int64_t> windowShape,
+                                  IE::RoundingType roundingType = IE::RoundingType::FLOOR);
 
 /**
  * @brief                        Infers the output shape for a ConvolutionBackpropData operation
@@ -159,7 +153,7 @@ SmallVector<int64_t> inferTransposedGroupConvBackpropOutputShape(
 ShapeInfo inferMatMulOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeInfo& in2ShapeInfo, bool transposeA,
                                      bool transposeB);
 /**
- * @brief                        Infers the output shape for a ConvolutionOp operation
+ * @brief                        Infers the output shape for a Convolution operation
  *                               with the given parameters
  * @param inShapeInfo:           The shape info of the input data
  * @param filterShapeInfo:       The shape info of the filter
@@ -173,4 +167,94 @@ ShapeInfo inferMatMulOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeI
 ShapeInfo inferConvoutionOutputShapeInfo(const ShapeInfo& inShapeInfo, const ShapeInfo& filterShapeInfo,
                                          ArrayRef<int64_t> windowStrides, ArrayRef<int64_t> dataPaddingBelow,
                                          ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowDilations);
+
+/**
+ * @brief                        Infers the output shape for a GroupConvolution operation
+ *                               with the given parameters
+ * @param inShapeInfo:           The shape info of the input data
+ * @param filterShapeInfo:       The shape info of the filter
+ * @param windowStrides:         The strides
+ * @param dataPaddingBelow:      Builds the beginning of padding shape
+ * @param dataPaddingAbove:      Builds the end of padding shape
+ * @param windowDilations:       The dilations
+ * @param maybeGroups:           Number of groups, optionally specified by the original op
+ * @param hasOutputPadding:      Specifies if the original op has output padding
+ *
+ * @return                       The output shape info as ShapeInfo
+ */
+ShapeInfo inferGroupConvolutionOutputShapeInfo(ShapeInfo& inShapeInfo, ShapeInfo& filterShapeInfo,
+                                               ArrayRef<int64_t> windowStrides, ArrayRef<int64_t> dataPaddingBelow,
+                                               ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowDilations,
+                                               std::optional<int64_t> maybeGroups, bool hasOutputPadding);
+
+//
+// Tensor Reifiers
+//
+
+mlir::OpFoldResult reifyDim(mlir::OpBuilder builder, mlir::Value value, mlir::RankedTensorType type, size_t idx,
+                            std::optional<mlir::Location> loc = std::nullopt);
+mlir::OpFoldResult reifyDim(mlir::OpBuilder builder, mlir::Value value, size_t idx,
+                            std::optional<mlir::Location> loc = std::nullopt);
+
+SmallVector<mlir::OpFoldResult> reifyTrivialTensor(mlir::OpBuilder builder, mlir::Value input,
+                                                   std::optional<mlir::Location> loc = std::nullopt);
+
+mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyEltwiseTensors(mlir::OpBuilder& builder, mlir::Value input1,
+                                                                     mlir::Value input2,
+                                                                     IE::AutoBroadcastType broadcastType,
+                                                                     mlir::Location loc);
+
+mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyMatMulTensors(mlir::OpBuilder& builder, mlir::Value input1,
+                                                                    mlir::Value input2, bool transposeA,
+                                                                    bool transposeB, mlir::Location loc);
+
+/**
+ * @brief Reify tensors for convolution or pooling operations. Currently, it supports only convolution with dilation
+ * equal to 1 and pooling.
+ *
+ * @param builder - builder to create new operations
+ * @param input - input tensor
+ * @param output - output tensor
+ * @param kernelSize - kernel size
+ * @param strides - strides
+ * @param padBegin - padding begin
+ * @param padEnd - padding end
+ *
+ * @return reified shapes for output tensor
+ */
+mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyConvPoolTensors(mlir::OpBuilder& builder, mlir::Value input,
+                                                                      mlir::Value output, ArrayRef<int64_t> kernelSize,
+                                                                      ArrayRef<int64_t> strides,
+                                                                      ArrayRef<int64_t> padBegin,
+                                                                      ArrayRef<int64_t> padEnd, mlir::Location loc);
+
+/**
+ * @brief                        Infers the output shape for an Elementwise operation
+ *
+ * @param in1ShapeInfo:          The shape info of the first input
+ * @param in2ShapeInfo:          The shape info of the second input
+ * @param broadcastType:         The broadcast type
+ * @param inputPaddingAttr:      The padding attribute for the input
+ * @param outputPaddingAttr:     The padding attribute for the output
+ * @param loc:                   The location
+ *
+ * @return                       The output shape info as ShapeInfo
+ */
+ShapeInfo inferEltwiseOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeInfo& in2ShapeInfo,
+                                      IE::AutoBroadcastType broadcastType, mlir::ArrayAttr inputPaddingAttr,
+                                      mlir::ArrayAttr outputPaddingAttr, mlir::Location loc);
+
+/**
+ * @brief                        Infers the output shape for an Elementwise operation
+ *
+ * @param in1ShapeInfo:          The shape info of the first input
+ * @param in2ShapeInfo:          The shape info of the second input
+ * @param broadcastType:         The broadcast type
+ * @param loc:                   The location
+ *
+ * @return                       The output shape info as ShapeInfo
+ */
+ShapeInfo inferEltwiseOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeInfo& in2ShapeInfo,
+                                      IE::AutoBroadcastType broadcastType, mlir::Location loc);
+
 }  // namespace vpux

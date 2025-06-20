@@ -572,7 +572,7 @@ func.func @MultiplyNotAlign(%arg0: tensor<1x512x48x336xf16>, %arg1: tensor<1x512
 
     return %0 : tensor<1x512x48x336xf16>
 
-    
+
     // CHECK: tilingStrategy = [1, 35, 1, 1]
 }
 
@@ -584,8 +584,10 @@ func.func @SEPDWConvCTile(%arg0: tensor<1x768x32x32xf16, {order = #NHWC}>) -> te
   %cst = const.Declare tensor<1x768x16x16xi1, {order = #NHWC}> = dense<1> : tensor<1x768x16x16xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
   %cst_0 = const.Declare tensor<768x1x1x4xsi32> = dense<1> : tensor<768x1x1x4xsi32>
   %cst_1 = const.Declare tensor<768x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<768x1x1x3x3xf16>, [#const.Reshape<[768, 9, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 7, 0, 0]>, #const.Reorder<#NHWC>]
-  %storage_elem_table = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 768, 32, 32], seAttr = #VPU.SEDilatedConv<dilation = [2, 2],
-        kernelStride = [1, 1], kernelSize = [3, 3], dataOffset = [0, 0, 0, 0], dataSizes = [1, 768, 32, 32]>, seDepth = 12 : i64, seSize = 64 : i64}
+  %storage_elem_table = VPU.StorageElementTable {
+    dataElemType = f16, dataShape = [1, 768, 32, 32],
+    seAttr = #VPU.SEDilatedConv<dilation = [2, 2], kernelStride = [1, 1], kernelSize = [3, 3], dataOffset = [0, 0, 0, 0], dataSizes = [1, 768, 32, 32]>,
+    seDepth = 12 : i64, seSize = [64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64]}
             -> tensor<1x12x16x16xi32, {order = #NHWC}>
   %group_sparse_tensor = VPU.GroupSparseTensor(%arg0, %cst, %storage_elem_table) {seAttr = #VPU.SEDilatedConv<dilation = [2, 2], kernelStride = [1, 1], kernelSize = [3, 3],
         dataOffset = [0, 0, 0, 0], dataSizes = [1, 768, 32, 32]>}

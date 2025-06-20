@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --legalize-dilated-conv %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @LegalizeDilatedConvolution
 func.func @LegalizeDilatedConvolution(%arg0: tensor<1x2x16x16xf32>) -> tensor<1x8x16x16xf32> {
     %input_low = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
@@ -82,7 +83,7 @@ func.func @LegalizeDilatedGroupConvolutionWithConstantWeights(%arg0: tensor<1x3x
         tensor<1x3x30x30xf16>, tensor<3x1x3x3xf16> -> tensor<1x3x30x30xf16>
     return %1 : tensor<1x3x30x30xf16>
 
-    // CHECK-DAG: [[FILTERS:%.*]] = const.Declare tensor<3x1x3x3xf16> = dense<1.000000e+00> : tensor<1x3x3x3xf16>, [#const.Reshape<[3, 1, 3, 3]>]
+    // CHECK-DAG: [[FILTERS:%.*]] = const.Declare tensor<3x1x3x3xf16> = dense<1.000000e+00> : tensor<1x3x3x3xf16>, [#const.AffineReshape<{{\[\[}}0], [0], [1, 2], [3]], [3, 1, 3, 3]>]
     // CHECK: [[EXPAND_DILATED:%.*]] = IE.ExpandDilated([[FILTERS]]) {dilations = [2, 2]} : tensor<3x1x3x3xf16> -> tensor<3x1x5x5xf16>
     // CHECK: [[CONV:%.*]] = IE.GroupConvolution([[INPUT]], [[EXPAND_DILATED]]) {dilations = [1, 1], groups = 3 : i64, pads_begin = [2, 2], pads_end = [2, 2], strides = [1, 1]} : tensor<1x3x30x30xf16>, tensor<3x1x5x5xf16> -> tensor<1x3x30x30xf16>
 

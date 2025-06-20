@@ -152,6 +152,10 @@ mlir::LogicalResult SplitRewrite::matchAndRewrite(IE::SplitOp origOp, OpAdaptor 
     if (!origOp.getAxisValue().has_value()) {
         return matchFailed(rewriter, origOp, "Got non constant axis");
     }
+    const auto numSplits = origOp.getNumSplits();
+    if (numSplits <= 0) {
+        return matchFailed(rewriter, origOp, "Invalid number of splits: {0}", numSplits);
+    }
 
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(newArgs.getInput().getType());
     const auto inputShape = inputType.getShape();
@@ -167,7 +171,7 @@ mlir::LogicalResult SplitRewrite::matchAndRewrite(IE::SplitOp origOp, OpAdaptor 
     SmallVector<int64_t> svOffsets(inputShape.size(), 0);
     SmallVector<mlir::Value> results;
 
-    const auto offsetStep = inputShape[axis] / origOp.getNumSplits();
+    const auto offsetStep = inputShape[axis] / numSplits;
 
     for (auto i : irange(origOp->getNumResults())) {
         const auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult(i).getType());

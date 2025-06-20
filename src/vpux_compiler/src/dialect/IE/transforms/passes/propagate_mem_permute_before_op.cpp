@@ -192,7 +192,9 @@ mlir::LogicalResult replaceWithNewSubGraph(mlir::Value affineReshape, mlir::Valu
             vpux::IE::getReassociationMap(getShape(newPermute.getOutput()).raw(), outputShape.raw());
     if (mlir::failed(reassociationMap)) {
         log.nest().trace("getReassociationMap failed for op {0}", affineReshapeOp.getLoc());
+        newPermute->dropAllReferences();
         rewriter.eraseOp(newPermute);
+        inputCast->dropAllReferences();
         rewriter.eraseOp(inputCast);
         return mlir::failure();
     }
@@ -389,6 +391,7 @@ mlir::LogicalResult PropagatePermuteQuantize::movePermuteQuantize(mlir::Value af
     if (!VPU::NCEPermuteOp::isSupported(mlir::cast<IE::PermuteQuantizeOp>(newOp), logCb, /*checkLayout=*/true,
                                         /*checkChannelAlignment=*/true)) {
         _log.nest().trace("Not supported by NCEPermute");
+        newOp->dropAllReferences();
         rewriter.eraseOp(newOp);
         return mlir::failure();
     }
@@ -620,6 +623,8 @@ mlir::LogicalResult MoveThroughOpBase<ConcreteOp>::matchAndRewrite(ConcreteOp co
                       concreteOp->getLoc());
 
     rewriter.replaceOp(permuteOp, newPermuteCast);
+    // Prevent concreteOp from being added to the worklist again
+    concreteOp->dropAllReferences();
     rewriter.eraseOp(concreteOp);
     return mlir::success();
 }
@@ -852,6 +857,43 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::isPropagationBeneficialForConcatAndSli
     return beneficialStrideDMA && beneficialPermutation;
 }
 
+bool isPropagationBeneficialForMultiply(IE::MemPermuteOp memPermuteOp) {
+    auto multiplyOp = memPermuteOp.getInput().getDefiningOp<IE::MultiplyOp>();
+    if (multiplyOp == nullptr) {
+        return false;
+    }
+
+    auto outputType = mlir::cast<NDTypeInterface>(memPermuteOp.getOutput().getType());
+    auto order = outputType.getDimsOrder();
+    auto outputShape = outputType.getShape();
+    auto innerDim = getInnermostNonTrivialDim(outputShape, order);
+    if (!innerDim.has_value()) {
+        return false;
+    }
+
+    auto input1Shape = getShape(multiplyOp.getInput1());
+    auto input2Shape = getShape(multiplyOp.getInput2());
+    constexpr int64_t ACT_SHAVE_VAU_LENGTH = 512;
+    // When it's going to be a SW Multiply，need to ensure the inner most dim size will be aligned to SHAVE VAU length
+    // after propagation
+    if (input1Shape != input2Shape &&
+        outputShape[innerDim.value()] % Bit(ACT_SHAVE_VAU_LENGTH).to<Byte>().count() != 0) {
+        return false;
+    }
+
+    auto isMemPermuteOrTrivial = [&](mlir::Value input) {
+        if (mlir::isa_and_nonnull<IE::MemPermuteOp>(input.getDefiningOp())) {
+            return true;
+        }
+
+        auto inputMemShape = getMemShape(input);
+        auto perm = memPermuteOp.getMemPerm();
+        return isTrivialPermute(inputMemShape, perm);
+    };
+
+    return static_cast<bool>(llvm::any_of(multiplyOp.getOperands(), isMemPermuteOrTrivial));
+}
+
 template <class ConcreteOp>
 bool MoveMemPermuteThroughOp<ConcreteOp>::checkMemPermutePattern(mlir::Operation* permuteOp,
                                                                  mlir::PatternRewriter& rewriter) const {
@@ -866,6 +908,10 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::checkMemPermutePattern(mlir::Operation
     auto concreteOp = permuteOp->getOperand(0).getDefiningOp();
     if (mlir::isa<IE::ConcatOp, IE::SliceOp>(concreteOp) &&
         !isPropagationBeneficialForConcatAndSlice(memPermuteOp, rewriter)) {
+        return false;
+    }
+
+    if (mlir::isa<IE::MultiplyOp>(concreteOp) && !isPropagationBeneficialForMultiply(memPermuteOp)) {
         return false;
     }
 
@@ -1206,9 +1252,11 @@ void PropagateMemPermuteBeforeOpPass::safeRunOnFunc() {
     patterns.add<PropagatePermuteQuantize>(&ctx, _log);
     patterns.add<MoveMemPermuteThroughOp<IE::MVNOp>>(&ctx, _log);
     patterns.add<MoveMemPermuteThroughOp<IE::GeluOp>>(&ctx, _log);
+    patterns.add<MoveMemPermuteThroughOp<IE::SqrtOp>>(&ctx, _log);
     patterns.add<MoveMemPermuteThroughOp<IE::QuantizeCastOp>>(&ctx, _log);
     patterns.add<MoveMemPermuteThroughOp<IE::ConcatOp>>(&ctx, _log);
     patterns.add<MoveMemPermuteThroughOp<IE::SliceOp>>(&ctx, _log);
+    patterns.add<MoveMemPermuteThroughOp<IE::MultiplyOp>>(&ctx, _log);
     patterns.add<MovePermuteQuantizeThroughOp<IE::MultiplyOp>>(&ctx, _log);
     patterns.add<MoveThroughShapeCast>(&ctx, _log);
     patterns.add<MoveMemPermuteThroughReshape>(&ctx, _log);

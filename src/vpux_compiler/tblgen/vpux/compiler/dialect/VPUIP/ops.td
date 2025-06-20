@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -128,7 +128,7 @@ def VPUIP_NNDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -191,7 +191,7 @@ def VPUIP_PermuteDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -268,7 +268,7 @@ def VPUIP_GatherDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -330,7 +330,7 @@ def VPUIP_ConvertDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -414,7 +414,7 @@ def VPUIP_DecompressDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -486,7 +486,7 @@ def VPUIP_CompressDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -524,9 +524,7 @@ def VPUIP_SyncDMAOp :
         UnitAttr:$is_out_of_order,
         UnitAttr:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
-        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
-        OptionalAttr<IntAttr>:$bar_prog_dma_at_page
-
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
 
     let results = (outs
@@ -633,7 +631,8 @@ def VPUIP_DPUTaskOp :
         VPU_MPEModeAttr:$mpe_mode,
         OptionalAttr<IntAttr>:$cluster_id,
         OptionalAttr<DPUHaloRegionArrayAttr>: $haloRegions,
-        OptionalAttr<IntAttr>:$workload_id
+        OptionalAttr<IntAttr>:$workload_id,
+        OptionalAttr<I64ArrayAttr>:$variant_primitive_id // IDs for variant primitives A and B
     );
 
     let builders = [
@@ -770,6 +769,7 @@ def VPUIP_NCEClusterTaskOp :
         AnyTypeOf<[MemRefOf<[F16, F32, BF16, quant_QuantizedType]>, VPUIP_DistributedBuffer, VPUIP_ITIBuffer]>:$output_buff,
         Optional<AnyTypeOf<[MemRefOf<[I1]>, VPUIP_DistributedBuffer, VPUIP_ITIBuffer]>>:$output_sparsity_map_buff,
         Optional<AnyTypeOf<[MemRefOf<[UI64]>, VPUIP_DistributedBuffer]>>:$profiling_data,
+        Optional<AnyTypeOf<[MemRefOf<[I32]>, VPUIP_DistributedBuffer]>>:$dynamic_sequence_length, // 1x1x1xVALUExi32
 
         Optional<AnyMemRef>:$max_per_xy,
         Optional<AnyMemRef>:$min_per_xy,
@@ -793,7 +793,8 @@ def VPUIP_NCEClusterTaskOp :
         UnitAttr:$is_permute_quantize,
         UnitAttr:$is_small_kernel_optimized,
         OptionalAttr<VPUIP_DpuProfilingMetadataAttr>:$profilingMetadata,
-        OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine
+        OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine,
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig
     );
 
     let results = (outs
@@ -1038,6 +1039,7 @@ def VPUIP_NCEClusterTaskOp :
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         (`output_sparsity_map` `(` $output_sparsity_map_buff^  `:` type($output_sparsity_map_buff) `)`)?
         (`profiling_data` `(` $profiling_data^  `:` type($profiling_data) `)`)?
+        (`dynamic_sequence_length` `(` $dynamic_sequence_length^  `:` type($dynamic_sequence_length) `)`)?
         (`max_per_xy` `(` $max_per_xy^  `:` type($max_per_xy) `)`)?
         (`min_per_xy` `(` $min_per_xy^  `:` type($min_per_xy) `)`)?
         (`min_max_per_tensor` `(` $min_max_per_tensor^  `:` type($min_max_per_tensor) `)`)?
@@ -1148,6 +1150,7 @@ def VPUIP_SwKernelOp :
         OptionalAttr<DenseI32ArrayAttr>:$dynamicOutputShapesMap,
         Optional<AnyTypeOf<[MemRefOf<[UI32]>, VPUIP_DistributedBuffer]>>:$profiling_data,
         OptionalAttr<IntAttr>:$tileIndex,
+        OptionalAttr<IntAttr>:$listIndex,
         OptionalAttr<I64ArrayOfArraysAttr>:$strides,
         OptionalAttr<VPUIP_SwProfilingMetadataAttr>:$profilingMetadata
     );
@@ -1287,7 +1290,8 @@ def VPUIP_SpaceToDepthDMAOp :
         UnitAttr:$is_out_of_order,
         UnitAttr:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
-        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
+        OptionalAttr<VPUIP_InternalDataFlow>:$internalDataFlow
     );
 
     let builders = [
@@ -1309,7 +1313,7 @@ def VPUIP_SpaceToDepthDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -1371,7 +1375,7 @@ def VPUIP_PerAxisTileDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -1412,7 +1416,8 @@ def VPUIP_DepthToSpaceDMAOp :
         UnitAttr:$is_out_of_order,
         UnitAttr:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
-        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
+        OptionalAttr<VPUIP_InternalDataFlow>:$internalDataFlow
     );
 
     let builders = [
@@ -1436,7 +1441,7 @@ def VPUIP_DepthToSpaceDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -1531,12 +1536,12 @@ def VPUIP_NCEClusterTilingOp :
     let summary = "Operation that encapsulates details of tiling operation between clusters";
 
     let arguments = (ins
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>>:$inputs,
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>>:$output_buffs
+        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$inputs,
+        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$output_buffs
     );
 
     let results = (outs
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>>:$results
+        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$results
     );
 
     let regions = (region SizedRegion<1>:$body);
@@ -1647,7 +1652,7 @@ def VPUIP_SubViewOp :
     let summary = "Extract single subview from buffer";
 
     let arguments = (ins
-        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>:$source,
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>:$source,
 
         I64ArrayAttr:$static_offsets,
         I64ArrayAttr:$static_sizes,
@@ -1656,7 +1661,7 @@ def VPUIP_SubViewOp :
     );
 
     let results = (outs
-        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer, VPUIP_BoundedBuffer]>:$result
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>:$result
     );
 
     let assemblyFormat = [{
@@ -2195,7 +2200,7 @@ def VPUIP_StorageElementTableOp :
     let arguments = (ins
         I64ArrayAttr:$dataShape,
         TypeAttr:$dataElemType,
-        AnyAttrOf<[IntAttr, I64ArrayAttr]>:$seSize,
+        I64ArrayAttr:$seSize,
         IntAttr:$seDepth,
         OptionalAttr<VPU_SEAttr>:$seAttr,
         OptionalAttr<I64ArrayAttr>:$dataStrides,
@@ -2217,7 +2222,7 @@ def VPUIP_StorageElementTableOp :
         OpBuilder<(ins
             CArg<"llvm::ArrayRef<int64_t>">:$dataShape,
             CArg<"mlir::Type">:$dataElemType,
-            CArg<"int64_t">:$seSize,
+            CArg<"llvm::ArrayRef<int64_t>">:$seSize,
             CArg<"int64_t">:$seDepth,
             CArg<"VPU::SEAttr">:$seAttr
         )>
@@ -2383,7 +2388,7 @@ def VPUIP_ExpandDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -2447,7 +2452,7 @@ def VPUIP_UpsamplingDMAOp :
         }
 
         vpux::DotNodeColor getNodeColor() {
-            const auto memKind = getType().cast<vpux::NDTypeInterface>().getMemoryKind();
+            const auto memKind = mlir::cast<vpux::NDTypeInterface>(getType()).getMemoryKind();
             return memKind == vpux::VPU::MemoryKind::DDR ? vpux::DotNodeColor::RED : vpux::DotNodeColor::GREEN;
         }
     }] # commonExtraClassDeclaration;
@@ -2759,6 +2764,56 @@ def VPUIP_BinaryDataOp :
   let assemblyFormat = [{
     $sym_name attr-dict $object
   }];
+}
+
+//
+// BarProgDMAOp
+//
+
+def VPUIP_BarProgDMAOp :
+        VPUIP_TaskOp<1, "BarProgDMA",
+            [
+                ViewLikeOpInterface,
+                VPUIP_DMATypeOpInterface,
+                DotInterface
+            ]
+        > {
+    let summary = "Barrier programming DMA task";
+
+    let arguments = (ins
+        AnyMemRef:$input,
+        AnyMemRef:$output_buff,
+        OptionalAttr<IntAttr>:$port,
+        UnitAttr:$is_out_of_order,
+        UnitAttr:$is_critical,
+        OptionalAttr<IntAttr>:$dma_hwp_id,
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
+        VPUIP_PhysicalBarrierRangeAttr: $physical_barrier_range
+    );
+
+    let results = (outs
+        AnyMemRef:$output
+    );
+
+    let extraClassDeclaration = [{
+        static vpux::VPU::ExecutorKind getExecutorKind() {
+            return vpux::VPU::ExecutorKind::DMA_NN;
+        }
+
+        vpux::DotNodeColor getNodeColor() {
+            return vpux::DotNodeColor::GREEN;
+        }
+    }] # commonExtraClassDeclaration;
+
+    let assemblyFormat = [{
+        attr-dict
+        `inputs` `(` $input `:` type($input) `)`
+        `outputs` `(` $output_buff `:` type($output_buff) `)`
+        `physical_barrier_range` `(` $physical_barrier_range `)`
+        `->` type(results)
+    }];
+
+    let hasVerifier = 1;
 }
 
 #endif

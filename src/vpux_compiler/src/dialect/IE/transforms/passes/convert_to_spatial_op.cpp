@@ -287,8 +287,8 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
 
 class ConvertToSpatialOpPass final : public IE::impl::ConvertToSpatialOpBase<ConvertToSpatialOpPass> {
 public:
-    explicit ConvertToSpatialOpPass(const bool m2iEnabled, const bool seExperimentalOpsEnabled, Logger log)
-            : _m2iEnabled(m2iEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled), _log(log) {
+    explicit ConvertToSpatialOpPass(const bool m2iEnabled, const bool seOpsEnabled, Logger log)
+            : _m2iEnabled(m2iEnabled), _seOpsEnabled(seOpsEnabled), _log(log) {
         _log.setName(Base::getArgumentName());
     }
 
@@ -299,7 +299,7 @@ private:
 
 private:
     bool _m2iEnabled;
-    bool _seExperimentalOpsEnabled;
+    bool _seOpsEnabled;
     Logger _log;
 };
 
@@ -314,8 +314,8 @@ mlir::LogicalResult ConvertToSpatialOpPass::initialize(mlir::MLIRContext* ctx) {
         _m2iEnabled = m2iEnabled.getValue();
     }
 
-    if (seExperimentalOpsEnabled.hasValue()) {
-        _seExperimentalOpsEnabled = seExperimentalOpsEnabled.getValue();
+    if (seOpsEnabled.hasValue()) {
+        _seOpsEnabled = seOpsEnabled.getValue();
     }
 
     return mlir::success();
@@ -335,7 +335,7 @@ void ConvertToSpatialOpPass::safeRunOnFunc() {
         IE::InterpolateOp::getCanonicalizationPatterns(patterns, &ctx);
     }
 
-    if (_seExperimentalOpsEnabled) {
+    if (_seOpsEnabled) {
         patterns.add<TransposeRoll>(&ctx, _log);
     }
 
@@ -350,7 +350,7 @@ void ConvertToSpatialOpPass::safeRunOnFunc() {
 // createConvertToSpatialOpPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertToSpatialOpPass(const bool m2iEnabled,
-                                                                   const bool seExperimentalOpsEnabled, Logger log) {
-    return std::make_unique<ConvertToSpatialOpPass>(m2iEnabled, seExperimentalOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertToSpatialOpPass(const bool m2iEnabled, const bool seOpsEnabled,
+                                                                   Logger log) {
+    return std::make_unique<ConvertToSpatialOpPass>(m2iEnabled, seOpsEnabled, log);
 }

@@ -159,8 +159,9 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    auto inShape = SmallVector<int64_t>(getShape(op.getInput()).raw());
-    if (mlir::failed(IE::unpadInputShape(inShape, op.getInputPaddingAttr(), loc))) {
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    auto inShapeInfo = ShapeInfo::fromNDType(inType);
+    if (mlir::failed(IE::unpadInputShape(inShapeInfo.shape, op.getInputPaddingAttr(), loc))) {
         return mlir::failure();
     }
 
@@ -175,15 +176,16 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::inferReturnTypes(
     const auto dataPaddingBelow = SmallVector<int64_t>({padTop, padLeft});
     const auto dataPaddingAbove = SmallVector<int64_t>({padBottom, padRight});
 
-    auto outShape = inferAvgPoolOutputShape(inShape, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape);
+    auto outShape =
+            inferAvgPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape);
 
-    if (mlir::failed(IE::padOutputShape(outShape, op.getOutputPaddingAttr(), loc))) {
+    if (mlir::failed(IE::padOutputShape(outShape.shape, op.getOutputPaddingAttr(), loc))) {
         return mlir::failure();
     }
 
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto outputType =
-            mlir::RankedTensorType::get(outShape, inputType.getElementType(), createTensorAttrFromType(inputType));
+    auto outputType = mlir::RankedTensorType::get(outShape.shape, inputType.getElementType(),
+                                                  createTensorAttrFromType(inputType));
 
     inferredReturnTypes.push_back(outputType);
     return mlir::success();

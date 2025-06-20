@@ -5,6 +5,8 @@
 
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 
+#include <npu_40xx_nnrt.hpp>
+
 namespace {
 const size_t bits64 = sizeof(uint64_t) * CHAR_BIT;
 const size_t bits128 = 2 * bits64;
@@ -180,6 +182,26 @@ void reindexList(VPUMI40XX::MappedInferenceOp mpi, TaskOpType firstTask, size_t 
 template void reindexList<VPUMI40XX::NNDMAOp>(VPUMI40XX::MappedInferenceOp, VPUMI40XX::NNDMAOp, size_t, size_t);
 template void reindexList<VPURegMapped::FetchTaskOp>(VPUMI40XX::MappedInferenceOp, VPURegMapped::FetchTaskOp, size_t,
                                                      size_t);
+
+//
+// Resolve Task Location utils
+//
+
+namespace {
+const std::unordered_map<VPURegMapped::TaskType, size_t> taskBinarySize40XX = {
+        {VPURegMapped::TaskType::DPUInvariant, sizeof(npu40xx::nn_public::VpuDPUInvariant)},
+        {VPURegMapped::TaskType::DPUVariant, sizeof(npu40xx::nn_public::VpuDPUVariant)},
+        {VPURegMapped::TaskType::ActKernelRange, sizeof(npu40xx::nn_public::VpuActKernelRange)},
+        {VPURegMapped::TaskType::ActKernelInvocation, sizeof(npu40xx::nn_public::VpuActKernelInvocation)},
+        {VPURegMapped::TaskType::DMA, sizeof(npu40xx::nn_public::VpuDMATask)},
+        {VPURegMapped::TaskType::M2I, sizeof(npu40xx::nn_public::VpuMediaTask)}};
+}  // namespace
+
+// TODO: E#121934 Add method for VPURegMapped TaskType to be able to directly return its binary size in an
+// arch-specific way
+size_t getTaskBinarySize(VPURegMapped::TaskType taskType, [[maybe_unused]] VPU::ArchKind arch) {
+    return taskBinarySize40XX.at(taskType);
+}
 
 }  // namespace VPUMI40XX
 }  // namespace vpux

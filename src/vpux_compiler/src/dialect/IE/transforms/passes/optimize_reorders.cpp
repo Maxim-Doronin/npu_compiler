@@ -6,10 +6,13 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/expand_with_layer_rewriter.hpp"
 
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -17,9 +20,6 @@
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/range.hpp"
-
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
-
 namespace vpux::IE {
 #define GEN_PASS_DECL_OPTIMIZEREORDERS
 #define GEN_PASS_DEF_OPTIMIZEREORDERS
@@ -29,6 +29,39 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+// If we can optimize Reorder->GroupConv case
+bool DoesReorderWithGroupConvPatternMatch(IE::GroupConvolutionOp origOp) {
+    if (!IE::isEltwiseGroupConv(origOp, /*isConstFilter*/ false)) {
+        return false;
+    }
+
+    auto inReorderOp = origOp.getInput().getDefiningOp<IE::ReorderOp>();
+    if (inReorderOp == nullptr || !inReorderOp->hasOneUse()) {
+        return false;
+    }
+
+    const auto convInOrder = DimsOrder::fromValue(origOp.getInput());
+    const auto convOutOrder = DimsOrder::fromValue(origOp.getOutput());
+    if (convInOrder != convOutOrder) {
+        return false;
+    }
+
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outType.getElementType())) {
+        return false;
+    }
+
+    auto layerWithPostOp = mlir::cast<IE::LayerWithPostOpInterface>(origOp.getOperation());
+    if (layerWithPostOp) {
+        const auto postOp = layerWithPostOp.getPostOp();
+        if (postOp != nullptr && !postOp.isChannelAgnostic()) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 // If there are nonTrivial Reorders before and after Tile, the two Reorders will be fused after switch Tile and Reorder.
 
@@ -61,6 +94,9 @@ bool isBeneficialSwitch(IE::TileOp tileOp, vpux::DimsOrder origOrder, vpux::Dims
         return false;
     }
 
+    if (!tileOp.getRepeatsValues()) {
+        return false;
+    }
     auto repeatsValues = parseIntArrayAttr<int64_t>(tileOp.getRepeatsValuesAttr());
 
     SmallVector<int32_t> repeatAxesIndexVal, notRepeatAndHasValueAxesIndexVal;
@@ -926,6 +962,15 @@ bool isBeneficialToSwapConcatReorders(IE::ConcatOp& origConcatOp) {
         return false;
     }
 
+    // reoder with eltwise group conv could be optimized by ReorderWithGroupConv
+    if (maybeReorder->hasOneUse()) {
+        auto user = *maybeReorder.getOutput().getUsers().begin();
+        auto dwConv = mlir::dyn_cast_or_null<IE::GroupConvolutionOp>(user);
+        if (dwConv && DoesReorderWithGroupConvPatternMatch(dwConv)) {
+            return false;
+        }
+    }
+
     size_t nonReorderInput = 0;
     size_t reorderInput = 0;
 
@@ -1351,7 +1396,6 @@ mlir::LogicalResult ReorderWithLayer::matchAndRewrite(IE::LayoutInfoOpInterface 
     if (argReorderOp == nullptr) {
         return mlir::failure();
     }
-
     // Skip reorder propagation for below cases:
     // 1.ReorderOp's consumers are pure view like ops with ReturnOp
     //   e.g.Reorder->AffineReshape->PermuteCast->QuantizeCast->ReturnOp
@@ -1383,7 +1427,6 @@ mlir::LogicalResult ReorderWithLayer::matchAndRewrite(IE::LayoutInfoOpInterface 
                        convertOrReturnOp->getLoc());
         }
     }
-
     const auto propagatingOrder = DimsOrder::fromValue(argReorderOp.getInput());
 
     // Propagate first input layout and infer layout info
@@ -1394,7 +1437,6 @@ mlir::LogicalResult ReorderWithLayer::matchAndRewrite(IE::LayoutInfoOpInterface 
         return matchFailed(_log.nest(), rewriter, layerOp, "Layer doesn't support propagating order {0}",
                            propagatingOrder);
     }
-
     // Check if additional reorders for other inputs are needed
     for (auto ind : irange<size_t>(1, orderInfo.getNumInputs())) {
         const auto input = layerOp->getOperand(checked_cast<uint32_t>(ind));
@@ -1440,7 +1482,6 @@ mlir::LogicalResult ReorderWithLayer::matchAndRewrite(IE::LayoutInfoOpInterface 
             insertReorderForOutput(layerOp, output, curOrder, rewriter, _log.nest());
         }
     }
-
     rewriter.finalizeOpModification(layerOp);
 
     return mlir::success();
@@ -1651,6 +1692,118 @@ mlir::LogicalResult ReorderWithHWAdd<ConcreteOp>::matchAndRewrite(IE::ReorderOp 
 }
 
 //
+// ReorderWithGroupConv
+//
+
+class ReorderWithGroupConv final : public mlir::OpRewritePattern<IE::GroupConvolutionOp> {
+public:
+    ReorderWithGroupConv(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::GroupConvolutionOp>(ctx), _log(log) {
+        setDebugName("ReorderWithGroupConv");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::Value getNewFilter(IE::GroupConvolutionOp origOp, int64_t newChannel, int64_t repeatCnt,
+                         mlir::PatternRewriter& rewriter) {
+    auto ctx = origOp->getContext();
+    SmallVector<int64_t> repeatsShape(getShape(origOp.getFilter()).size(), 1);
+
+    auto filterReorderOp = mlir::dyn_cast_or_null<IE::ReorderOp>(origOp.getFilter().getDefiningOp());
+    if (filterReorderOp && filterReorderOp->hasOneUse()) {
+        auto filterTileOp = mlir::dyn_cast_or_null<IE::TileOp>(filterReorderOp.getInput().getDefiningOp());
+        if (filterTileOp && filterTileOp->hasOneUse()) {
+            repeatsShape[Dims4D::Act::N.ind()] = newChannel;
+            auto newTileOp = rewriter.create<IE::TileOp>(filterTileOp.getLoc(), filterTileOp.getInput(), nullptr,
+                                                         getIntArrayAttr(ctx, Shape(repeatsShape)));
+            return rewriter
+                    .create<IE::ReorderOp>(filterReorderOp.getLoc(), newTileOp.getOutput(),
+                                           filterReorderOp.getDstOrderAttr())
+                    .getOutput();
+        }
+    }
+
+    repeatsShape[Dims4D::Act::N.ind()] = repeatCnt;
+    return rewriter
+            .create<IE::TileOp>(takeOpLoc(origOp, "_filter_repeats"), origOp.getFilter(), nullptr,
+                                getIntArrayAttr(ctx, Shape(repeatsShape)))
+            .getOutput();
+}
+
+mlir::LogicalResult ReorderWithGroupConv::matchAndRewrite(IE::GroupConvolutionOp origOp,
+                                                          mlir::PatternRewriter& rewriter) const {
+    auto ctx = origOp->getContext();
+    if (!DoesReorderWithGroupConvPatternMatch(origOp)) {
+        return matchFailed(_log, rewriter, origOp, "DWConv pattern doesn't match");
+    }
+
+    auto inReorderOp = origOp.getInput().getDefiningOp<IE::ReorderOp>();
+    const auto convInOrder = DimsOrder::fromValue(origOp.getInput());
+
+    const auto inOrderAttr = mlir::AffineMapAttr::get(convInOrder.toAffineMap(ctx));
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto origChannel = inType.getShape()[Dims4D::Act::C];
+    const auto reorderInType = mlir::cast<vpux::NDTypeInterface>(inReorderOp.getInput().getType());
+    const auto reorderInOrder = reorderInType.getDimsOrder();
+    const auto reorderInMemShape = reorderInType.getMemShape();
+    const auto dimPos = convInOrder.dimPos(Dims4D::Act::C);
+    const auto newChannel = reorderInMemShape.raw()[dimPos];
+
+    // Here we have two solution:
+    // 1. LayoutCast, only change the layout, logic shape is the same, so don't need to change filter. LayoutCast
+    // will convert to permuteCast in VPUIP dialect, since it could not infer output from input, it may block some
+    // optimizaton.
+    // 2. PermuteCast, change the layout and logic shape, so we may need to adjust the filter, need extra cost.
+    // Experimental threshold data
+    constexpr int64_t THRESHOLD_FOR_BENEFICIAL_CONVERSION = 16;
+    const auto repeatCnt = newChannel / origChannel;
+
+    // there is a potential possibility that even newChannel is not divisible by origChannel, we could try to use
+    // permuteCast, but this need pattern match to tile the weights from the beggining, currently we don't support
+    // it, see #E165612
+    if (newChannel % origChannel != 0 || repeatCnt > THRESHOLD_FOR_BENEFICIAL_CONVERSION || origOp.getBias()) {
+        auto inLayoutCast = rewriter.create<IE::LayoutCastOp>(takeOpLoc(origOp, "_in_layoutCast"),
+                                                              inReorderOp.getInput(), inOrderAttr);
+        origOp->setOperand(0, inLayoutCast.getOutput());
+        const auto outOrderAttr = mlir::AffineMapAttr::get(reorderInOrder.toAffineMap(ctx));
+        rewriter.setInsertionPointAfter(origOp);
+        auto outLayoutCast = rewriter.create<IE::LayoutCastOp>(takeOpLoc(origOp, "_out_layoutCast"), origOp.getOutput(),
+                                                               outOrderAttr);
+        auto newReorder = rewriter.create<IE::ReorderOp>(origOp.getLoc(), outLayoutCast.getOutput(), inOrderAttr);
+        rewriter.replaceAllUsesExcept(origOp.getOutput(), newReorder.getOutput(), {outLayoutCast});
+    } else {
+        auto identityMap = mlir::AffineMap::getMultiDimIdentityMap(checked_cast<uint32_t>(inType.getRank()), ctx);
+        auto inPermuteCast =
+                rewriter.create<IE::PermuteCastOp>(takeOpLoc(origOp, "_in_permuteCast"), inReorderOp.getInput(),
+                                                   convInOrder.toAffineMap(ctx), identityMap);
+        auto newFilter = getNewFilter(origOp, newChannel, repeatCnt, rewriter);
+        auto newGroupAttr = getIntAttr(ctx, newChannel);
+        auto newGroupConv = rewriter.create<IE::GroupConvolutionOp>(
+                origOp->getLoc(), inPermuteCast.getResult(), newFilter, origOp.getBias(), origOp.getStridesAttr(),
+                origOp.getPadsBeginAttr(), origOp.getPadsEnd(), origOp.getDilationsAttr(), newGroupAttr,
+                origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+                origOp.getInputPaddingAttr());
+        auto origOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
+        newGroupConv.getOutput().setType(
+                mlir::cast<mlir::RankedTensorType>(origOutputType.changeShape(getShape(newGroupConv.getOutput()))));
+
+        auto outPermuteCast =
+                rewriter.create<IE::PermuteCastOp>(takeOpLoc(origOp, "_out_permuteCast"), newGroupConv.getOutput(),
+                                                   reorderInOrder.toAffineMap(ctx), identityMap);
+        auto newReorder = rewriter.create<IE::ReorderOp>(origOp.getLoc(), outPermuteCast.getOutput(), inOrderAttr);
+
+        rewriter.replaceOp(origOp, newReorder.getOutput());
+    }
+
+    return mlir::success();
+}
+
+//
 // ReorderWithEltwise
 //
 
@@ -1806,6 +1959,7 @@ void OptimizeReordersPass::safeRunOnFunc() {
     patterns.add<ReorderWithLayer>(&ctx, _log, _seOpsEnabled, _seExperimentalOpsEnabled);
     patterns.add<ReorderWithPermuteCast>(&ctx, _log);
     patterns.add<ReorderWithHWAdd<IE::MVNOp>>(&ctx, _log);
+    patterns.add<ReorderWithGroupConv>(&ctx, _log);
     IE::ReorderOp::getCanonicalizationPatterns(patterns, &ctx);
 
     auto func = getOperation();

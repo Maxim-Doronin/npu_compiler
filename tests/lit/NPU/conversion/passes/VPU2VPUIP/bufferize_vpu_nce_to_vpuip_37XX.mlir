@@ -121,9 +121,9 @@ func.func @InterpolateNearest(
     %sparsityMap = const.Declare tensor<1x64x10x20xi1> = dense<1> : tensor<1x64x10x20xi1>
 
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 64,
+        seSize = [64],
         dataShape = [1, 64, 5, 10],
         seAttr = #VPU.SEInterpolate<
             mode = <NEAREST>,
@@ -210,9 +210,9 @@ func.func @InterpolateBilinear(
     %sparsityMap = const.Declare tensor<1x64x11x21xi1> = dense<1> : tensor<1x64x11x21xi1>
 
     %storageElement = VPU.StorageElementTable {
-        dataElemType = i32,
+        dataElemType = f16,
         seDepth = 1,
-        seSize = 64,
+        seSize = [64],
         dataShape = [1, 64, 5, 10],
         seAttr = #VPU.SEInterpolate<
             mode = <BILINEAR>,

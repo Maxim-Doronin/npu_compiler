@@ -6,6 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unpack-nested-modules --verify-diagnostics %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
+
 // CHECK-LABEL: @NoNesting
 module @NoNesting {
     net.NetworkInfo entryPoint : @main inputsInfo : {

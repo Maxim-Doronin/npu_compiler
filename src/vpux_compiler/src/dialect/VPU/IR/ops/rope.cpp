@@ -89,11 +89,19 @@ InputTiling vpux::VPU::RoPEOp::backInferTileInfo(const vpux::TileInfo& outputTil
     TileInfo cosTile(getShape(getInputCos()));
     TileInfo sinTile(getShape(getInputSin()));
     auto inTile = outputTile;
-    // The number of channels for the Cosine and Sine operations can either match the input number of channels or be set
-    // to 1, depending on the specific requirements of the operation.
+    // The Cosine and Sine operations offer flexibility in channel configuration:
+    // - Channels: You can choose to match the input's number of channels or set it to 1
+    // - Height: Unlike channels, the height for Cosine and Sine operations can differ from the input height
     if (cosTile.shape[Dim(Dims4D::Act::C)] > 1) {
-        cosTile = inTile;
-        sinTile = inTile;
+        if (cosTile.shape[Dim(Dims4D::Act::H)] != inTile.shape[Dim(Dims4D::Act::H)]) {
+            sinTile.shape[Dim(Dims4D::Act::C)] = inTile.shape[Dim(Dims4D::Act::C)];
+            cosTile.shape[Dim(Dims4D::Act::C)] = inTile.shape[Dim(Dims4D::Act::C)];
+            sinTile.offsets[Dim(Dims4D::Act::C)] = inTile.offsets[Dim(Dims4D::Act::C)];
+            cosTile.offsets[Dim(Dims4D::Act::C)] = inTile.offsets[Dim(Dims4D::Act::C)];
+        } else {
+            cosTile = inTile;
+            sinTile = inTile;
+        }
     } else {
         sinTile.shape[Dim(Dims4D::Act::H)] = inTile.shape[Dim(Dims4D::Act::H)];
         cosTile.shape[Dim(Dims4D::Act::H)] = inTile.shape[Dim(Dims4D::Act::H)];

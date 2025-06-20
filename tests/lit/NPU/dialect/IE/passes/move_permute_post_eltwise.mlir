@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --move-permute-post-eltwise --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
@@ -1090,4 +1091,24 @@ func.func @MovePermuteQuantizePostGroupConvWithPermuteOutShapeInconsistent(%arg0
     // CHECK:       [[SHAPE_CAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 3, 128, 256]} inputs([[GROUP_CONV]] : tensor<1x48x128x16xf16, {order = #NHWC}>) -> tensor<1x3x128x256xf16, {order = #NHWC}>
 
     // CHECK:       return [[SHAPE_CAST_OUT]] : tensor<1x3x128x256xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @DoNotMovePermutePostFP32Add
+// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x3x256x256xf16>,
+// CHECK-SAME:        [[INPUT2:%arg[0-9]]]: tensor<1x3x256x256xf16>
+func.func @DoNotMovePermutePostFP32Add(%arg0: tensor<1x3x256x256xf16>, %arg1: tensor<1x3x256x256xf16>) -> tensor<1x3x256x256xf32, {order = #NHWC}> {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x3x256x256xf16> -> tensor<1x3x256x256xf16, {order = #NHWC}>
+    %1 = IE.MemPermute(%arg1) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x3x256x256xf16> -> tensor<1x3x256x256xf16, {order = #NHWC}>
+    %2 = IE.Add(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x256x256xf16, {order = #NHWC}>, tensor<1x3x256x256xf16, {order = #NHWC}>
+            -> tensor<1x3x256x256xf32, {order = #NHWC}>
+    return %2 : tensor<1x3x256x256xf32, {order = #NHWC}>
+
+    // CHECK:       [[MEMPERMUTE_1:%.+]] = IE.MemPermute([[INPUT1]]
+    // CHECK:       [[MEMPERMUTE_2:%.+]] = IE.MemPermute([[INPUT2]]
+    // CHECK:       [[ADD:%.+]] = IE.Add([[MEMPERMUTE_1]], [[MEMPERMUTE_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x256x256xf16, {order = #NHWC}>, tensor<1x3x256x256xf16, {order = #NHWC}> -> tensor<1x3x256x256xf32, {order = #NHWC}>
+    // CHECK:       return [[ADD]] : tensor<1x3x256x256xf32, {order = #NHWC}>
 }

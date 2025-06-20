@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/cycle_cost_info.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
@@ -43,7 +44,10 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith1ActShaveEngineOn1Cl
     // ACT C0_1:                   [----------------]
 
     constexpr StringLiteral inputIR = R"(
-        module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+        module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+            config.PipelineOptions @Options {
+                config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+            }
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
                 IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -96,6 +100,9 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith1ActShaveEngineOn1Cl
     auto funcOp = module.get().lookupSymbol<mlir::func::FuncOp>("main");
     ASSERT_TRUE(funcOp != nullptr);
 
+    // set cost model factory
+    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+
     CycleCostInfo cycleCostInfo(funcOp);
     VPURT::InferenceExecutionSimulator infSim(log, funcOp, cycleCostInfo);
 
@@ -132,7 +139,10 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith2ActShaveEngineOn1Cl
     // ACT C0_1: [----------------]
 
     constexpr StringLiteral inputIR = R"(
-        module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+        module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+            config.PipelineOptions @Options {
+                config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+            }
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
                 IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -185,6 +195,9 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith2ActShaveEngineOn1Cl
     auto funcOp = module.get().lookupSymbol<mlir::func::FuncOp>("main");
     ASSERT_TRUE(funcOp != nullptr);
 
+    // set cost model factory
+    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+
     CycleCostInfo cycleCostInfo(funcOp);
     VPURT::InferenceExecutionSimulator infSim(log, funcOp, cycleCostInfo);
 
@@ -225,7 +238,10 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateOnMultiQueueIR) {
     // ACT C1_0:                         [----------------]
     // ACT C1_1:                         [----------------]
     constexpr StringLiteral inputIR = R"(
-        module @test attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+        module @test attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+            config.PipelineOptions @Options {
+                config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+            }
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
                 IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -357,6 +373,9 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateOnMultiQueueIR) {
 
     auto funcOp = module.get().lookupSymbol<mlir::func::FuncOp>("main");
     ASSERT_TRUE(funcOp != nullptr);
+
+    // set cost model factory
+    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU37XX);
 
     CycleCostInfo cycleCostInfo(funcOp);
     VPURT::InferenceExecutionSimulator infSim(log, funcOp, cycleCostInfo);

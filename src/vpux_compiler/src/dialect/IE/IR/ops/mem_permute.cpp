@@ -308,6 +308,40 @@ mlir::LogicalResult ConvertToPermuteCast::matchAndRewrite(IE::MemPermuteOp memPe
     return mlir::success();
 }
 
+//
+// ConvertShapeCastToPermuteCast
+//
+
+// MemPermute -> ShapeCast ===> MemPermute
+
+class ConvertShapeCastToPermuteCast final : public mlir::OpRewritePattern<IE::ShapeCastOp> {
+public:
+    using mlir::OpRewritePattern<IE::ShapeCastOp>::OpRewritePattern;
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ShapeCastOp origOp, mlir::PatternRewriter& rewriter) const final;
+};
+
+mlir::LogicalResult ConvertShapeCastToPermuteCast::matchAndRewrite(IE::ShapeCastOp origOp,
+                                                                   mlir::PatternRewriter& rewriter) const {
+    auto memPermuteOp = origOp.getOperand().getDefiningOp<IE::MemPermuteOp>();
+    if (memPermuteOp == nullptr) {
+        return mlir::failure();
+    }
+
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
+    const auto outOrder = outType.getDimsOrder();
+    auto hasValidPermuteCast = vpux::tryToFindPermuteCastOp(origOp.getLoc(), origOp.getOperand(), outOrder,
+                                                            getShape(origOp.getResult()), rewriter);
+
+    if (!hasValidPermuteCast.has_value()) {
+        return mlir::failure();
+    }
+
+    rewriter.replaceOp(origOp, hasValidPermuteCast.value().getResult());
+    return mlir::success();
+}
+
 }  // namespace
 
 void vpux::IE::MemPermuteOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
@@ -318,6 +352,7 @@ void vpux::IE::MemPermuteOp::getCanonicalizationPatterns(mlir::RewritePatternSet
     patterns.add<FuseMemPermuteThroughConcat>(context);
     patterns.add<FuseMemPermuteThroughExpand>(context);
     patterns.add<FuseMemPermuteAndPermuteQuantize>(context);
+    patterns.add<ConvertShapeCastToPermuteCast>(context);
 }
 
 mlir::OpFoldResult vpux::IE::MemPermuteOp::fold(FoldAdaptor adaptor) {

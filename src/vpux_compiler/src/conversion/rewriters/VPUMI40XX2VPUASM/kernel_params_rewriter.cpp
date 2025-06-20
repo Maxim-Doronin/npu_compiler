@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -44,6 +44,11 @@ mlir::FailureOr<SymbolizationResult> KernelParamsRewriter::symbolize(VPUMI40XX::
     rewriter.eraseOp(op);
 
     return SymbolizationResult(newOp);
+}
+
+llvm::SmallVector<mlir::FlatSymbolRefAttr> KernelParamsRewriter::getSymbolicNames(VPUMI40XX::KernelParamsOp op,
+                                                                                  size_t) {
+    return getSymbolicNamesByTileListValue(op);
 }
 
 }  // namespace vpumi40xx2vpuasm

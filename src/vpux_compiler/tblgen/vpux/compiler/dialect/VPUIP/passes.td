@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -172,19 +172,18 @@ def CopyOpTiling : PassBase<"tile-copies", "vpux::FunctionPass"> {
 
     let constructor = "vpux::VPUIP::createCopyOpTilingPass()";
 }
-//
 
+//
 // ConvertDynamicReshapeToInPlace
-
 //
- 
+
 def ConvertDynamicReshapeToInPlace : PassBase<"convert-dynamic-reshape-to-in-place", "vpux::FunctionPass"> {
     let summary = "Convert DynamicReshape operation to read and write to the same buffer in memory";
- 
+
     let description = [{
         This pass will convert DynamicReshape to an inplace operation when the input rank is equal with the output rank.
     }];
- 
+
     let constructor = "vpux::VPUIP::createConvertDynamicReshapeToInPlacePass()";
 }
 
@@ -489,6 +488,191 @@ def WrapIntoAsyncRegions : PassBase<"wrap-into-async-regions", "vpux::FunctionPa
 }
 
 //
+// AsyncRegionsOutlining
+//
+
+def AsyncRegionsOutlining : PassBase<"async-regions-outlining", "vpux::ModulePass"> {
+    let summary = "Outlines async operations into functions based on AsyncDepsInfo";
+
+    let description = [{
+        This pass outlines async operations in main function into a number of sub-functions based on AsyncDepsInfo.
+        Unlike the outlining in IE dialect and VPU dialect, this pass operates within the VPUIP dialect and after the
+        increment pipeline. It allows for more precise control over DMA and compute operations within each sub-function.
+        This precision is beneficial for memory scheduling that occurs during the feasible allocation process.
+        This pass is executed before the feasible allocation pass, allowing feasible allocation to be performed more
+        concurrently, thereby reducing compilation time. It helps mitigate long spills, such as shared weights, enabling
+        feasible allocation to free up CMX occupied by live buffers for future use which helps enable more prefetching
+        and pipelining case. This pass reduces the number of operations in each function, which in turn decreases memory
+        fragmentation possibility during the feasible allocation pass.
+
+        The behavior of the pass is as follows.
+        Given the following function:
+        func @main {
+            %cst0 = const.Declare
+            %cst1 = const.Declare
+            %buf0 = memref.alloc()
+            %buf1 = memref.alloc()
+            %bufCMX0 = VPUIP.DistributedBuffer
+            %bufCMX1 = VPUIP.DistributedBuffer
+            %bufCMX2 = VPUIP.DistributedBuffer
+            %bufCMX3 = VPUIP.DistributedBuffer
+            %bufCMX4 = VPUIP.DistributedBuffer
+
+            // weight DMA
+            %t0, %r0 = async.execute index=0 {
+                %0 = VPUIP.NNDMA inputs(%cst0) outputs(%bufCMX0)
+                async.yield
+            }
+
+            // activation DMA
+            %t1, %r1 = async.execute index=1 {
+                %0 = VPUIP.NNDMA inputs(%buf0) outputs(%bufCMX1)
+                async.yield
+            }
+
+            // Compute
+            %t2, %r2 = async.execute [t0, t1] use [r0, r1] index=2 {
+                %0 = NCE inputs(%bufCMX0, bufCMX1) outputs(%bufCMX2)
+                async.yield
+            }
+
+            // weight DMA
+            %t3, %r3 = async.execute index=3 {
+                %0 = VPUIP.NNDMA inputs(%cst1) outputs(%bufCMX3)
+                async.yield
+            }
+
+            // Compute
+            %t4, %r4 = async.execute [t2, t3] use [r2, r3] index=4 {
+                %0 = NCE inputs(%bufCMX2, bufCMX3) outputs(%bufCMX4)
+                async.yield
+            }
+
+            // activation out DMA
+            %t5, %r5 = async.execute [t4] use [r4] index=5 {
+                %0 = VPUIP.NNDMA inputs(%bufCMX4) outputs(%buf1)
+                async.yield
+            }
+
+            %r6 = async.await %r5 : !async.value
+            return %r6
+        }
+
+        If the operations are divided into sets based on AsyncDepsInfo:
+            set1 = {0, 1, 2}
+            set2 = {3, 4, 5}
+        The pass outlines these operations into separate functions and replaces
+        the original function with the following:
+
+        func @main_outlining1 {
+            %cst0 = const.Declare
+            %buf0 = memref.alloc()
+            %buf1 = memref.alloc()
+            %bufCMX0 = VPUIP.DistributedBuffer
+            %bufCMX1 = VPUIP.DistributedBuffer
+            %bufCMX2 = VPUIP.DistributedBuffer
+
+            // weight DMA
+            %t0, %r0 = async.execute index=0 {
+                %0 = VPUIP.NNDMA inputs(%cst0) outputs(%bufCMX0)
+                async.yield
+            }
+
+            // activation DMA
+            %t1, %r1 = async.execute index=1 {
+                %0 = VPUIP.NNDMA inputs(%buf0) outputs(%bufCMX1)
+                async.yield
+            }
+
+            // Compute
+            %t2, %r2 = async.execute [t0, t1] use [r0, r1] index=2 {
+                %0 = NCE inputs(%bufCMX0, bufCMX1) outputs(%bufCMX2)
+                async.yield
+            }
+
+            // added DMA to pass buffer through DDR
+            %t3, %r3 = async.execute index=3 {
+                %0 = VPUIP.NNDMA inputs(%bufCMX2) outputs(%buf1)
+                async.yield
+            }
+
+            %r4 = async.await %r3 : !async.value
+            return %r4
+        }
+
+        func @main_outlining2 {
+            %cst0 = const.Declare
+            %buf0 = memref.alloc()
+            %buf1 = memref.alloc()
+            %bufCMX0 = VPUIP.DistributedBuffer
+            %bufCMX1 = VPUIP.DistributedBuffer
+            %bufCMX2 = VPUIP.DistributedBuffer
+
+            // weight DMA
+            %t0, %r0 = async.execute index=0 {
+                %0 = VPUIP.NNDMA inputs(%cst0) outputs(%bufCMX0)
+                async.yield
+            }
+
+            // activation DMA
+            %t1, %r1 = async.execute index=1 {
+                %0 = VPUIP.NNDMA inputs(%buf0) outputs(%bufCMX1)
+                async.yield
+            }
+
+            // Compute
+            %t2, %r2 = async.execute [t0, t1] use [r0, r1] index=2 {
+                %0 = NCE inputs(%bufCMX0, bufCMX1) outputs(%bufCMX2)
+                async.yield
+            }
+
+            // activation out DMA
+            %t3, %r3 = async.execute index=3 {
+                %0 = VPUIP.NNDMA inputs(%bufCMX2) outputs(%buf1)
+                async.yield
+            }
+
+            %r4 = async.await %r3 : !async.value
+            return %r4
+        }
+
+        func main (%arg0) {
+            %buf0 = memref.alloc()
+            %buf1 = memref.alloc()
+
+            %t0, %r0 = async.execute index=0 {
+                %0 = Call @main_outlining1 inputs(%arg0) outputs(%buf0)
+                async.yield
+            }
+
+            %t1, %r1 = async.execute [t0] uses [r0] index=1 {
+                %0 = Call @main_outlining2 inputs(%buf0) outputs(%buf1)
+                async.yield
+            }
+
+            %r2 = async.await %r1 : !async.value
+            return %r2
+        }
+    }];
+
+    let constructor = "vpux::VPUIP::createAsyncRegionsOutliningPass()";
+
+    let dependentDialects = [
+        "mlir::async::AsyncDialect",
+        "vpux::VPUIP::VPUIPDialect",
+        "vpux::VPURT::VPURTDialect"
+    ];
+
+    let options = [
+        Option<
+            "asyncRegionOutliningMinOpsInBlock", "async-region-outlining-min-ops-in-block",
+            "int", "",
+            "Threshold for number of ops in each instance of async region outlining"
+        >
+    ];
+}
+
+//
 // MoveWaitResultToAsyncBlockArgs
 //
 
@@ -779,6 +963,23 @@ def UpdateSwKernelParams : PassBase<"update-sw-kernel-params", "vpux::FunctionPa
 }
 
 //
+// SyncShvDpu
+//
+
+def SyncShvDpu : PassBase<"sync-shv-dpu", "vpux::FunctionPass"> {
+    let summary = "Add a sync dummy kernel after shave kernel that use DPU inside.";
+
+    let description = [{
+        Add a sync dummy kernel after shave kernel that use DPU inside.
+        This is made automaticaly base on kernel description "isDpuShaveKernelType".
+        It is necesarry for allow WLM to retrigger dpu fifo advance fill after filter finish.
+        Previous, Dpu fifo was emptied, not allowing task fill advance.
+    }];
+
+    let constructor = "vpux::VPUIP::createSyncShvDpuPass()";
+}
+
+//
 // DumpStatisticsOfTaskOpsPass
 //
 
@@ -910,6 +1111,15 @@ def UnrollSwKernel : PassBase<"unroll-sw-kernel", "vpux::FunctionPass"> {
     }];
 
     let constructor = "vpux::VPUIP::createUnrollSwKernelPass()";
+
+    let options = [
+        Option<
+            "enableSwKernelFifoPerShaveEngine", "enable-sw-kernel-fifo-per-shave-engine",
+            "bool", "",
+            "Enable separate SW kernel FIFO for each Shave engine"
+        >
+    ];
+
 }
 
 //
@@ -1727,4 +1937,52 @@ def SerializeELFToBinary : PassBase<"serialize-elf-to-binary", "vpux::FunctionPa
     ];
 }
 
+
+def ConvertToLLVMUMDCalls : PassBase<"convert-to-llvm-umd-calls", "vpux::ModulePass"> {
+    let summary = "Converts MLIR operations to LLVM UMD runtime API calls";
+
+    let description = [{
+        This pass converts higher-level MLIR operations into LLVM dialect operations that make calls
+        to the UMD (User Mode Driver) runtime API. The resulting code can be executed by the host CPU
+        and interfaces with the NPU device through the UMD wrapper library.
+    }];
+
+    let constructor = "vpux::VPUIP::createConvertToLLVMUMDCallsPass()";
+
+    let dependentDialects = [
+        "vpux::VPUIP::VPUIPDialect",
+        "mlir::memref::MemRefDialect",
+        "mlir::LLVM::LLVMDialect",
+        "mlir::func::FuncDialect",
+        "mlir::async::AsyncDialect"
+    ];
+}
+
+//
+// WrapFuncCallsIntoAsyncRegions
+//
+
+def WrapFuncCallsIntoAsyncRegions : PassBase<"wrap-func-calls-into-async-regions", "vpux::FunctionPass"> {
+    let summary = "Wraps function calls into async regions";
+
+    let description = [{
+        The pass wraps operations implementing CallOpInterface into async regions preserving linear execution.
+
+        The special case of the pass is handling scf.for operations. Every scf.for operation assigned with an async group.
+        It is expected that scf.for region contains at least one CallOpInterface operation.
+        Those ops are wrapped into async regions and tokens produced by async.execute are added to the group.
+        After the loop is finished, the async group is awaited by async.await_all.
+
+        The pass is designed to be used to express execution based on Level Zero submission model. It is expected that
+        async ops will be replaced with the corresponding Level Zero calls. Some ops like async.await and async_add_to_group
+        can be mapped to no-op while lowering to Level Zero as they do not have a direct equivalent in the Level Zero
+        and needed just to satisfy the async dialect requirements.
+    }];
+
+    let constructor = "vpux::VPUIP::createWrapFuncCallsIntoAsyncRegionsPass()";
+
+    let dependentDialects = [
+        "mlir::async::AsyncDialect"
+    ];
+}
 #endif

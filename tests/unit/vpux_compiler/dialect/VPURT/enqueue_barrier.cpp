@@ -88,11 +88,11 @@ TEST_F(EnqueueBarrierTests, CheckEnqueueForGraphSimple) {
     // because it uses first instance of barriers
     EXPECT_FALSE(enqueueBarrierHandlerTest.getEnqueueBarrier(4).has_value());
 
-    // Task 5 can be enqued at barrier 0, which is previous instance of its update barrier
+    // Task 5 can be enqueued at barrier 0, which is previous instance of its update barrier
     ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(5).has_value());
     EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(5).value(), 0);
 
-    // Task 6 can be enqued at barrier 0, which is previous instance of its wait barrier
+    // Task 6 can be enqueued at barrier 0, which is previous instance of its wait barrier
     ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(6).has_value());
     EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(6).value(), 0);
 }
@@ -113,13 +113,14 @@ TEST_F(EnqueueBarrierTests, CheckEnqueueForGraphSimpleBarrierFifo3) {
     // because it uses first instance of barriers
     EXPECT_FALSE(enqueueBarrierHandlerTest.getEnqueueBarrier(4).has_value());
 
-    // Task 5 can be enqued at bootstrap as this is first instace of wait barrier
+    // Task 5 can be enqueued at bootstrap as this is first instance of wait barrier
     // and needed update barrier will be ready in barrier FIFO
     EXPECT_FALSE(enqueueBarrierHandlerTest.getEnqueueBarrier(5).has_value());
 
-    // Task 6 can be enqued at barrier 0, which is previous instance of its wait barrier
-    ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(6).has_value());
-    EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(6).value(), 0);
+    // Task 6 can be enqueued at bootstrap, same as previous task (t5) because
+    // at t5 execution previous instance of t6 wait barrier (b0(0)) is guaranteed to be
+    // consumed and reconfigured for b4(0)
+    EXPECT_FALSE(enqueueBarrierHandlerTest.getEnqueueBarrier(6).has_value());
 }
 
 /**
@@ -399,6 +400,121 @@ TEST_F(EnqueueBarrierTests, CheckDelayEnqueueBasedOnDmaFifoSize) {
     // to that of Task 5 update barrier (barrier 4) to guarantee FIFO has no overflow
     ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(7).has_value());
     EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(7).value(), 4);
+}
+
+/**
+ * HW FIFO (DMA0): t0 t1 t9 t10
+ * HW FIFO (DMA1): t2 t3 t4 t6 t8
+ * HW FIFO (DPU):  t5 t7
+ * Barriers: b<VID>(<PID>)
+ *
+ *      t0
+ *       |
+ *      b0(0)
+ *     /  \
+ *   t1   t2
+ *    |    |
+ *  b1(1) b2(2)
+ *    |    |
+ *   t3    t5
+ *    |    |
+ *  b3(3)  |
+ *    |    |
+ *   t4    |
+ *     \  /
+ *     b4(0)
+ *     /  \
+ *   t6   t7
+ *    |   |
+ *    |  b5(1)
+ *    |   |
+ *   t8   t9
+ *    |   |
+ *    |  b6(3)
+ *    |   |
+ *    |   t10
+ *     \ /
+ *    b7(2)
+ */
+std::pair<BarrierInfoMaps, SmallVector<size_t>> graphDelayEnqueueBasedOnDmaFifoSizeWithReiteration() {
+    BarrierInfoMaps barrierMapsConfig;
+
+    barrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {3},  // task 3
+            {4},  // task 4
+            {4},  // task 5
+            {},   // task 6
+            {5},  // task 7
+            {7},  // task 8
+            {6},  // task 9
+            {7},  // task 10
+    };
+
+    barrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {0},  // task 2
+            {1},  // task 3
+            {3},  // task 4
+            {2},  // task 5
+            {4},  // task 6
+            {4},  // task 7
+            {},   // task 8
+            {5},  // task 9
+            {6}   // task 10
+    };
+
+    fillProducersAndConsumers(barrierMapsConfig);
+
+    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+
+    barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 1, 9, 10};
+    barrierMapsConfig.taskQueueTypeMap[dmaType1] = {2, 3, 4, 6, 8};
+    barrierMapsConfig.taskQueueTypeMap[dpuType] = {5, 7};
+
+    SmallVector<size_t> barrierToPidVec = {0, 1, 2, 3, 0, 1, 3, 2};
+
+    return std::make_pair(barrierMapsConfig, barrierToPidVec);
+}
+
+TEST_F(EnqueueBarrierTests, CheckDelayEnqueueBasedOnDmaFifoSizeWithReiteration) {
+    auto [barrierMapsConfig, barrierToPidVec] = graphDelayEnqueueBasedOnDmaFifoSizeWithReiteration();
+
+    ASSERT_TRUE(barrierToPidVec.size() == barrierMapsConfig.barrierProducerMap.size());
+
+    BarrierInfoTest barrierInfoTest(barrierMapsConfig);
+    // For test purpose make FIFO depth = 1 and disable optimization to make it easier to trigger scenario
+    // where FIFO can get overflow
+    VPURT::EnqueueBarrierHandler enqueueBarrierHandlerTest(barrierInfoTest, barrierMapsConfig.taskQueueTypeMap,
+                                                           barrierToPidVec, /*barrierFifoDepth*/ 1,
+                                                           /*dmaFifoDepth = */ 1,
+                                                           /*optimizeAndMergeEnqFlag = */ false);
+
+    const auto res = enqueueBarrierHandlerTest.calculateEnqueueBarriers();
+    ASSERT_TRUE(mlir::succeeded(res));
+
+    // Task 6 will be enqueued at barrier 0 - previous instance of its wait barrier
+    ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(6).has_value());
+    EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(6).value(), 0);
+
+    // Task 8 will be enqueued at barrier 3 as a result of delaying enqueue to not overflow DMA FIFO
+    // Original enqueue barrier was 2 but using 3 guarantees that task 4 and 6 was popped from FIFO
+    ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(8).has_value());
+    EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(8).value(), 3);
+
+    // Task 9 will be enqueued at barrier 3 - common ancestor of its wait and update barrier
+    ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(9).has_value());
+    EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(9).value(), 3);
+
+    // Task 10 original enqueue proposal was 4 but to not overflow DMA FIFO it was changed
+    // to 5 as this guarantees that task 9 was popped from FIFO
+    ASSERT_TRUE(enqueueBarrierHandlerTest.getEnqueueBarrier(10).has_value());
+    EXPECT_EQ(enqueueBarrierHandlerTest.getEnqueueBarrier(10).value(), 5);
 }
 
 /**

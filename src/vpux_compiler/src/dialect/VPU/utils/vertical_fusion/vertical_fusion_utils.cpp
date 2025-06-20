@@ -6,10 +6,13 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/vf_axis_increment.hpp"
+#include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vf_axis_increment.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 
@@ -107,17 +110,10 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation
                 continue;
             }
 
-            auto oneTile = inputTiling.tiles[indexOp];
-            oneTile.isCompletedTile = tile.isCompletedTile;
-            if (!mlir::isa<VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp>(operation) ||
-                !mlir::isa_and_nonnull<VPU::InterpolateOp>(operand.getDefiningOp())) {
-                // The propagation of the tiling axis in the pattern `VPU.Interpolate -> VPU.NCE.XXXPool` leads to
-                // performance regressions in some models.
-                oneTile.axis = tile.axis;
-            }
-            auto innerStorage = calculateTilingRegions(operand.getDefiningOp(), {std::move(oneTile)}, log, opStorage,
+            auto& oneTile = inputTiling.tiles[indexOp];
+            auto inputTile = TileInfo(oneTile.shape, oneTile.offsets, tile.axis, tile.isCompletedTile);
+            auto innerStorage = calculateTilingRegions(operand.getDefiningOp(), {std::move(inputTile)}, log, opStorage,
                                                        numTile.value_or(item.index()));
-
             if (mlir::failed(innerStorage)) {
                 return mlir::failure();
             }
@@ -343,9 +339,9 @@ ResultType vpux::VPU::backInfer(VPU::TilingViewLikeOpInterface opIf, ArgType til
 // Template method for inputs tiling dim (or strategy) back-infer
 // Infer logic is decided by the passed strategy
 // opTilingMap - record all ops in VF block and their tiling dims (or strategies) when back-infer given outputTiling
-template <typename ArgType, typename ResultType>
-SmallVector<ResultType> vpux::VPU::backInferVFTiling(VPU::VFConfig& vfConfig, ArgType outputTiling,
-                                                     VPU::BackInferStrategy strategy,
+template <typename ArgType, typename ResultType, typename VFConfigType>
+SmallVector<ResultType> vpux::VPU::backInferVFTiling(VFConfigType& vfConfig, ArgType outputTiling,
+                                                     BackInferStrategy strategy,
                                                      std::unordered_map<mlir::Operation*, ResultType>& opTilingMap) {
     // Vector index is the operand index in the VF op
     SmallVector<ResultType> inputTilings(vfConfig.getSubgraph().getNumOperands(), ResultType(outputTiling));
@@ -383,18 +379,19 @@ SmallVector<ResultType> vpux::VPU::backInferVFTiling(VPU::VFConfig& vfConfig, Ar
     return inputTilings;
 }
 
-// Helper how to back-infer the tiling strategy using template method
+template <typename VFConfigType>
 SmallVector<SmallVector<int64_t>> vpux::VPU::backInferVFTilingStrategy(
-        VPU::VFConfig& config, ArrayRef<int64_t> tilingStrategy,
+        VFConfigType& config, ArrayRef<int64_t> tilingStrategy,
         std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap) {
-    return backInferVFTiling<mlir::ArrayRef<int64_t>, mlir::SmallVector<int64_t>>(
+    return backInferVFTiling<mlir::ArrayRef<int64_t>, mlir::SmallVector<int64_t>, VFConfigType>(
             config, tilingStrategy, BackInferStrategy::TILING_STRATEGY, opStrategyMap);
 }
 
-// Helper how to back-infer the tiling dim using template method
-SmallVector<vpux::Dim> vpux::VPU::backInferVFTilingDim(VPU::VFConfig& config, vpux::Dim outputDim,
+template <typename VFConfigType>
+SmallVector<vpux::Dim> vpux::VPU::backInferVFTilingDim(VFConfigType& config, vpux::Dim outputDim,
                                                        std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap) {
-    return backInferVFTiling<vpux::Dim, vpux::Dim>(config, outputDim, BackInferStrategy::TILING_DIM, opDimMap);
+    return backInferVFTiling<vpux::Dim, vpux::Dim, VFConfigType>(config, outputDim, BackInferStrategy::TILING_DIM,
+                                                                 opDimMap);
 }
 
 VPU::VerticalFusionOp vpux::VPU::fuseOpsInBlock(mlir::PatternRewriter& rewriter, VPU::VerticalFusionOp vfOp,
@@ -521,49 +518,6 @@ bool vpux::VPU::isSpatialTiling(ArrayRef<int64_t> strategy) {
     return false;
 };
 
-bool vpux::VPU::isCmxOperation(mlir::Operation* operation, const bool checkTilingType) {
-    if (!mlir::isa_and_nonnull<VPU::TilingInfoOpInterface, VPU::VerticalFusionOp>(operation)) {
-        return false;
-    }
-
-    if (!operation->hasAttr(tilingStrategy)) {
-        return true;
-    }
-
-    auto tiling = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy)));
-    auto hasTiling = llvm::any_of(tiling, [](auto value) {
-        return value > 1;
-    });
-
-    if (!hasTiling) {
-        return true;
-    }
-
-    if (checkTilingType) {
-        if (isSpatialTiling(tiling)) {
-            return false;
-        }
-
-        const auto checkNCEFunc = [](mlir::Operation* oper) {
-            auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(oper);
-            return nceOp != nullptr && nceOp.getWeightsOperand() != nullptr;
-        };
-
-        if (auto vfUser = mlir::dyn_cast<VPU::VerticalFusionOp>(operation)) {
-            auto userConfig = VFConfig(vfUser);
-            return llvm::all_of(userConfig.getInputs(), checkNCEFunc);
-        }
-        return checkNCEFunc(operation);
-    }
-
-    const auto outputSize = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getTotalAllocSize();
-
-    if (outputSize > VPU::getTotalCMXSize(operation)) {
-        return false;
-    }
-    return !isSpatialTiling(tiling);
-}
-
 mlir::Operation* vpux::VPU::findParent(mlir::Value operand) {
     auto parent = operand.getDefiningOp();
 
@@ -572,6 +526,24 @@ mlir::Operation* vpux::VPU::findParent(mlir::Value operand) {
     }
 
     return parent;
+}
+
+SmallVector<mlir::OpOperand*> vpux::VPU::findUses(mlir::Operation* operation) {
+    SmallVector<mlir::OpOperand*> uses;
+
+    for (auto& use : operation->getUses()) {
+        if (!isPureViewOp(use.getOwner())) {
+            uses.emplace_back(&use);
+            continue;
+        }
+
+        auto usersBelow = findUses(use.getOwner());
+        if (!usersBelow.empty()) {
+            llvm::copy(usersBelow, std::back_inserter(uses));
+        }
+    }
+
+    return uses;
 }
 
 // Previous operation will be scheduled early when:
@@ -622,3 +594,33 @@ bool vpux::VPU::spillingCopyOpsCanBeOverlapped(VPU::ArchKind arch) {
     return getDMAChannelsWithIndependentLinkAgents(arch) !=
            SmallVector<VPUIP::DmaChannelType>{VPUIP::DmaChannelType::NOT_SPECIFIED};
 }
+
+bool vpux::VPU::isOpTiled(mlir::Operation* op) {
+    if (op == nullptr) {
+        return false;
+    }
+    if (!op->hasAttr(vpux::tilingStrategy)) {
+        return false;
+    }
+    const auto tilingDims = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(op->getAttr(vpux::tilingStrategy)));
+    return llvm::any_of(tilingDims, [](auto value) {
+        return value != 1;
+    });
+}
+
+// Explicit instantiation of the template function for V1/V2 VFConfig
+template SmallVector<SmallVector<int64_t>> vpux::VPU::backInferVFTilingStrategy<vpux::VPU::VF::v1::VFConfig>(
+        vpux::VPU::VF::v1::VFConfig& config, ArrayRef<int64_t> tilingStrategy,
+        std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap);
+
+template SmallVector<SmallVector<int64_t>> vpux::VPU::backInferVFTilingStrategy<vpux::VPU::VF::v2::VFConfig>(
+        vpux::VPU::VF::v2::VFConfig& config, ArrayRef<int64_t> tilingStrategy,
+        std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap);
+
+template SmallVector<vpux::Dim> vpux::VPU::backInferVFTilingDim<vpux::VPU::VF::v1::VFConfig>(
+        vpux::VPU::VF::v1::VFConfig& config, vpux::Dim outputDim,
+        std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap);
+
+template SmallVector<vpux::Dim> vpux::VPU::backInferVFTilingDim<vpux::VPU::VF::v2::VFConfig>(
+        vpux::VPU::VF::v2::VFConfig& config, vpux::Dim outputDim,
+        std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap);

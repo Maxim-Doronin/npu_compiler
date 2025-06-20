@@ -9,6 +9,13 @@
 
 using namespace vpux;
 
+mlir::LogicalResult vpux::IE::ReorgYoloOp::verify() {
+    if (getStride() <= 0) {
+        return errorAt(*this, "Stride should be a natural number, while it is {0}", getStride());
+    }
+    return mlir::success();
+}
+
 mlir::LogicalResult vpux::IE::ReorgYoloOp::inferReturnTypeComponents(
         mlir::MLIRContext* ctx, std::optional<mlir::Location> optLoc, mlir::ValueShapeRange operands,
         mlir::DictionaryAttr attrs, mlir::OpaqueProperties prop, mlir::RegionRange,
@@ -21,24 +28,25 @@ mlir::LogicalResult vpux::IE::ReorgYoloOp::inferReturnTypeComponents(
     }
 
     const auto inType = mlir::cast<mlir::ShapedType>(reorgYolo.getInput().getType());
+    auto stride = reorgYolo.getStride();
 
-    if (reorgYolo.getStride() <= 0) {
+    if (stride <= 0) {
         return errorAt(loc, "Stride should be a natural number");
     }
-    if (inType.getShape()[2] % reorgYolo.getStride() != 0) {
+    if (inType.getShape()[2] % stride != 0) {
         return errorAt(loc, "Input H should be divisible by stride.");
     }
-    if (inType.getShape()[3] % reorgYolo.getStride() != 0) {
+    if (inType.getShape()[3] % stride != 0) {
         return errorAt(loc, "Input W should be divisible by stride.");
     }
-    if (inType.getShape()[1] < reorgYolo.getStride() * reorgYolo.getStride()) {
+    if (inType.getShape()[1] < stride * stride) {
         return errorAt(loc, "Input C >= (stride*stride) is required.");
     }
 
     SmallVector<int64_t> outputShape{inType.getShape()[0], inType.getShape()[1]};
     for (size_t i = 2; i < inType.getShape().size(); i++) {
-        outputShape.push_back(inType.getShape()[i] / reorgYolo.getStride());
-        outputShape[1] *= reorgYolo.getStride();
+        outputShape.push_back(inType.getShape()[i] / stride);
+        outputShape[1] *= stride;
     }
 
     inferredReturnShapes.emplace_back(outputShape, inType.getElementType());

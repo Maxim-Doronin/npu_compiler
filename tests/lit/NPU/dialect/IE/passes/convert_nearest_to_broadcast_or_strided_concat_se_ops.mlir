@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-nearest-to-broadcast-or-strided-concat="interpolate-as-se-op=true" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ConvertNearestWithSmallChannelAndSmallSpatialSize
 func.func @ConvertNearestWithSmallChannelAndSmallSpatialSize(%arg0: tensor<1x4x160x160xf32>) -> tensor<1x4x640x640xf32> {
     %0 = IE.Interpolate(%arg0)

@@ -70,7 +70,7 @@ void vpux::IE::buildAdjustForVPUPipeline(mlir::OpPassManager& pm, const AdjustFo
     pm.addPass(IE::createMergeWeightsSharedConvPass(log));
     if (options.enableConvertNonConstantPadToSliceAndConcat) {
         pm.addPass(IE::createConvertNonConstantPadToSliceAndConcatPass(
-                /*enableSEPPad=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+                /*enableSEPPad=*/isOptionEnabled(options.enableSEPtrsOperations), log));
     }
     pm.addPass(IE::createFusePadOpsPass(log));
     pm.addPass(IE::createConvertPadToConcatPass(log));
@@ -102,7 +102,7 @@ void vpux::IE::buildOperationConversionPipeline(mlir::OpPassManager& pm, const I
     pm.addPass(IE::createUnrollGroupQuantizePass(log));
     pm.addPass(IE::createUnrollFullyConnectedPass(log, options.accumulateMatmulWithDPU));
     pm.addPass(IE::createConvertDynamicDequantizeToDequantizePass(log));
-    pm.addPass(IE::createMoveMultiplyPostOpPass(log));
+    pm.addPass(IE::createMoveMultiplyDividePostOpPass(log));
     pm.addPass(IE::createSwapOperationWithGatherPass(log));
     if (options.mergeUnrolledMatmul) {
         pm.addPass(IE::createMergeFullyConnectedPass(log));

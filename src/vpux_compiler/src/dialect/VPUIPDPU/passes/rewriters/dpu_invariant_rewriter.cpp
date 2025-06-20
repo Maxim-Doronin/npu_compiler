@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -140,6 +140,13 @@ mlir::LogicalResult insertInvBlockArgs(VPUASM::DPUInvariantOp op, const Logger& 
         invBlockArgsPos[BlockArg::ACT_SPARSE_MAP_OUT] = invBlock->getNumArguments() - 1;
     }
 
+    // dynamic sequence length
+    if (op.getDynamicSequenceLength()) {
+        auto dynamicSequenceLength = getBufferType(symRefMap.lookupSymbol(op.getDynamicSequenceLength().value()));
+        invBlock->addArgument(dynamicSequenceLength, op.getLoc());
+        invBlockArgsPos[BlockArg::DYNAMIC_SEQUENCE_LENGTH] = invBlock->getNumArguments() - 1;
+    }
+
     return mlir::success();
 }
 
@@ -159,8 +166,8 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUASM::DPUInvariantOp
             op.getWeightsSparsityMapAttr(), op.getWeightTableAttr(), op.getWeightTableDataPtrAttr(),
             op.getWeightTableScaleAttr(), op.getSprLookupTableAttr(), op.getPalletLookupTableAttr(), op.getOutputAttr(),
             op.getOutputSparsityMapAttr(), op.getProfilingDataAttr(), op.getIsZeroOffsetWeightsTableAttr(),
-            op.getMaxPerXyAttr(), op.getMinPerXyAttr(), op.getMinMaxPerTensorAttr(), op.getNceTaskTypeAttr(),
-            op.getIsContinuedAttr());
+            op.getMaxPerXyAttr(), op.getMinPerXyAttr(), op.getMinMaxPerTensorAttr(), op.getDynamicSequenceLengthAttr(),
+            op.getDynamicScaleConfigAttr(), op.getNceTaskTypeAttr(), op.getIsContinuedAttr());
 
     auto& invRegion = inv.getRegion();
     auto invBlock = rewriter.createBlock(&invRegion);
@@ -175,7 +182,12 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUASM::DPUInvariantOp
 
     {
         mlir::OpBuilder::InsertionGuard guard(rewriter);
+
         if (insertInvBlockArgs(op, _log, invBlock, invBlockArgsPos, _symRefMap).failed()) {
+            return mlir::failure();
+        }
+
+        if (dpuInvariantExpandIface.expandGeneralConfig(rewriter).failed()) {
             return mlir::failure();
         }
 

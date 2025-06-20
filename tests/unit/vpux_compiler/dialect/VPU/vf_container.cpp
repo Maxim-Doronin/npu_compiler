@@ -7,8 +7,10 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_pipeline_container.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "common/utils.hpp"
 
@@ -57,13 +59,15 @@ TEST_F(MLIR_VPU_VFPipelineContainer, VF_ContainerCost) {
     ASSERT_TRUE(func != nullptr);
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU40XX, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
     ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
 
     auto container = VPU::VFPipelineContainer();
+    // set cost model factory
+    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
     auto layerCost = std::make_unique<VPU::LayerVPUNNCost>(func);
 
     auto operationStorage = std::make_unique<VPU::TilingOperationStorage>();

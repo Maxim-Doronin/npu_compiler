@@ -13,6 +13,10 @@ add_npu_library(${TARGET_NAME}
         npu_llvm_utils
         # TODO: see discussion 16934
         npu_compiler_dialect_vpu
+        npu_compiler_dialect_vpu_utils
+        npu_compiler_dialect_vpu_transforms
     PUBLIC
         mlir-dependencies
+    SYSTEM_INCLUDES
+        $<TARGET_PROPERTY:openvino::npu_al,INTERFACE_INCLUDE_DIRECTORIES>
     )

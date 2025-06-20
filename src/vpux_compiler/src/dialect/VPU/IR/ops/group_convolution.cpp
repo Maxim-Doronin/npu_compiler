@@ -3,21 +3,9 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
-
-#include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/empty_node.hpp"
-#include "vpux/compiler/utils/error.hpp"
-
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/error.hpp"
-
-#include <openvino/op/convolution.hpp>
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
 
@@ -32,55 +20,24 @@ mlir::LogicalResult vpux::VPU::GroupConvolutionOp::inferReturnTypes(
         return mlir::failure();
     }
 
-    auto inShape = to_small_vector(mlir::cast<vpux::NDTypeInterface>(conv.getInput().getType()).getShape().raw());
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(conv.getInput().getType());
-    auto filterShape = to_small_vector(mlir::cast<vpux::NDTypeInterface>(conv.getFilter().getType()).getShape().raw());
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(conv.getInput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(conv.getFilter().getType());
+    auto inShapeInfo = ShapeInfo::fromNDType(inputType);
+    auto filterShapeInfo = ShapeInfo::fromNDType(filterType);
 
     const auto dataPaddingBelow = parseIntArrayAttr<int64_t>(conv.getPadsEnd());
     const auto dataPaddingAbove = parseIntArrayAttr<int64_t>(conv.getPadsBegin());
     const auto windowStrides = parseIntArrayAttr<int64_t>(conv.getStrides());
     const auto windowDilations = parseIntArrayAttr<int64_t>(conv.getDilations());
 
-    int64_t groups = 0;
-    if (conv.getGroups().value_or(0) != 0) {
-        if (filterShape.size() != inShape.size()) {
-            return errorAt(loc, "Input size '{0}' does not match filter size '{1}'. (groups != 0)", inShape.size(),
-                           filterShape.size());
-        }
+    const auto outShapeInfo = inferGroupConvolutionOutputShapeInfo(
+            inShapeInfo, filterShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove, windowDilations,
+            conv.getGroups(), conv.getOutputPadding().has_value());
+    const auto outDesc =
+            vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, Bounds(outShapeInfo.bounds));
 
-        groups = conv.getGroups().value();
-    } else {
-        if (filterShape.size() != inShape.size() + 1) {
-            return errorAt(loc, "Input size '{0}' does not match filter size '{1}'. (groups == 0)", inShape.size() + 1,
-                           filterShape.size());
-        }
-
-        groups = filterShape[0];
-
-        // we need to adjust filters_shape to reuse helpers for normal convolution
-        filterShape[1] *= groups;
-        filterShape.erase(filterShape.begin());
-    }
-
-    inShape[1] /= groups;
-
-    const auto op = ov::op::v1::Convolution(
-            std::make_shared<ov::op::v0::Parameter>(ov::element::i32, ov::Shape(inShape.begin(), inShape.end())),
-            std::make_shared<ov::op::v0::Parameter>(ov::element::i32,
-                                                    ov::Shape(filterShape.begin(), filterShape.end())),
-            ov::Strides(windowStrides.begin(), windowStrides.end()),
-            ov::CoordinateDiff(dataPaddingBelow.begin(), dataPaddingBelow.end()),
-            ov::CoordinateDiff(dataPaddingAbove.begin(), dataPaddingAbove.end()),
-            ov::Strides(windowDilations.begin(), windowDilations.end()));
-
-    const auto& outputShape = op.get_output_partial_shape(0);
-    const auto shapeI64 = to_small_vector(outputShape.get_shape() | transformed([](size_t val) {
-                                              return checked_cast<int64_t>(val);
-                                          }));
-
-    const auto outType = inType.changeShape(Shape(shapeI64));
-    inferredReturnTypes.push_back(outType);
-
+    const auto outputType = mlir::RankedTensorType::get(outShapeInfo.shape, inputType.getElementType(), outDesc);
+    inferredReturnTypes.push_back(outputType);
     return mlir::success();
 }
 

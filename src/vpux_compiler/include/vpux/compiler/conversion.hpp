@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include "utils/options.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
@@ -77,7 +78,8 @@ std::unique_ptr<mlir::Pass> createConvertDynamicQuantToVPUNCEPass(Logger log = L
 std::unique_ptr<mlir::Pass> createOneShotBufferizeVPU2VPUIPPass();
 std::unique_ptr<mlir::Pass> createInPlaceBufferizationAnalyzePass();
 std::unique_ptr<mlir::Pass> createAdjustDynamicOpsBeforeBufferizationPass();
-std::unique_ptr<mlir::Pass> createAddBuffersForNetResults(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddBuffersForNetResults(bool useMemrefForHostFunctionBufferization = false,
+                                                          Logger log = Logger::global());
 
 //
 // ShaveCodeGen
@@ -86,6 +88,7 @@ namespace ShaveCodeGen {
 void buildLowerSwLayers2LinalgPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createConvertEltwiseLayers2MathPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createExpandLayersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertAffine2LLVMPass(Logger log = Logger::global());
 }  // namespace ShaveCodeGen
 
@@ -103,7 +106,11 @@ std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(Logger log = Logge
 
 std::unique_ptr<mlir::Pass> createConvertVPUIPDPU2NPUReg40XXPass(
         Logger log = Logger::global(), VPU::DPUDryRunMode dpuDryRunMode = VPU::DPUDryRunMode::NONE);
-std::unique_ptr<mlir::Pass> createConvertVPUASM2NPUReg40XXPass(Logger log = Logger::global(), bool enableWLM = false);
+std::unique_ptr<mlir::Pass> createConvertVPUASM2NPUReg40XXPass(Logger log = Logger::global(),
+                                                               uint32_t modelIdentifier = 0);
+
+// Host compile specific passes
+void buildLLVMTranslationPipeline(mlir::OpPassManager& pm);
 
 //
 // Registration

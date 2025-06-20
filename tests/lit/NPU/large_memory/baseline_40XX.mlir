@@ -1,12 +1,7 @@
-//
-// Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
-//
-
 // RUN: vpux-translate --vpu-arch=%arch% --export-ELF %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
     IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
@@ -15,7 +10,7 @@ module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.compilationMode
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Input" : tensor<1x1024xui8>
   } outputsInfo : {

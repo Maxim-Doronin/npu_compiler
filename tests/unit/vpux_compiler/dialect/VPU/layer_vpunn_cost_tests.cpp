@@ -6,7 +6,9 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "common/utils.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
@@ -27,7 +29,7 @@ using MLIR_VPU_LayerVPUNNCost = vpux::VPU::arch37xx::UnitTest;
 VPU::StrategyCost getSWVPUNNCost(std::shared_ptr<VPUNN::SWOperation> vpunnLayer, mlir::ModuleOp module,
                                  VPU::MultiClusterStrategy mcStrategy) {
     const auto archKind = VPU::getArch(module);
-    const auto vpunnCostFunction = VPU::createLayerCostModel(archKind);
+    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
 
     auto tileOp = IE::getTileExecutor(module);
     auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
@@ -43,7 +45,7 @@ VPU::StrategyCost getSWVPUNNCost(std::shared_ptr<VPUNN::SWOperation> vpunnLayer,
 VPUNN::CyclesInterfaceType getHWVPUNNCost(VPUNN::DPULayer& vpunnLayer, mlir::ModuleOp module,
                                           VPU::MultiClusterStrategy mcStrategy) {
     const auto archKind = VPU::getArch(module);
-    const auto vpunnCostFunction = VPU::createLayerCostModel(archKind);
+    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
 
     auto tileOp = IE::getTileExecutor(module);
     auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
@@ -72,7 +74,7 @@ VPUNN::CyclesInterfaceType getWeightsDMACost(VPU::NCEOpInterface nceOp, mlir::Mo
     }
     const auto weightsType = mlir::cast<vpux::NDTypeInterface>(weightsVal.getType());
     const auto archKind = VPU::getArch(module);
-    const auto vpunnCostModel = VPU::createCostModel(archKind);
+    const auto vpunnCostModel = VPU::CostModelConfig::createCostModel(archKind);
     const auto vpunnDevice = VPU::getVPUDeviceType(archKind);
     const auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
     return checked_cast<VPUNN::CyclesInterfaceType>(getDMACost(weightsType, vpunnDevice, vpunnCostModel, numDMAPorts));
@@ -105,7 +107,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DPU_LayerCost) {
     const auto archKind = ArchKind::NPU37XX;
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -166,7 +168,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, SWKernel_LayerCost) {
     const auto archKind = ArchKind::NPU37XX;
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -213,7 +215,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, SWKernel_SimpleCost) {
     ASSERT_TRUE(func != nullptr);
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -264,7 +266,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
     const auto archKind = ArchKind::NPU37XX;
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, VPU::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, config::CompilationMode::DefaultHW);
 
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
 
@@ -273,7 +275,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
     VPU::LayerVPUNNCost layerCost(func);
 
     auto vpuDevice = VPU::getVPUDeviceType(archKind);
-    const auto vpunnCostFunction = VPU::createLayerCostModel(archKind);
+    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
     const auto dmaPorts = IE::getAvailableExecutor(module.get(), VPU::ExecutorKind::DMA_NN).getCount();
 
     func->walk([&](VPU::NCEConvolutionOp convOp) {

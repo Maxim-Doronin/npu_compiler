@@ -29,14 +29,12 @@ mlir::quant::QuantizedType createWeightsQuantizedType(mlir::Type weightsElemType
                                                       double scale, int64_t zeroPoint) {
     const auto [storageMin, storageMax, storageType] = getStorageParams(weightsElemType);
     if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(weightsElemType)) {
-        const auto ctx = weightsElemType.getContext();
-
         // The quantile type represents how the quantiles are stored by HW after the mapping, so it only makes sense to
         // be FP16 or lower. The expressed type maintains the normal precision type of the network (FP16/FP32).
         return mlir::quant::QuantileQuantizedType::get(
                 storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
-                /*quantileType=*/mlir::Float16Type::get(ctx), expressedType, quantileFloatType.getQuantiles(), scale,
-                zeroPoint, storageMin, storageMax);
+                quantileFloatType.getQuantileType(), expressedType, quantileFloatType.getQuantiles(), scale, zeroPoint,
+                storageMin, storageMax);
 
     } else {
         return mlir::quant::UniformQuantizedType::get(
@@ -50,13 +48,11 @@ mlir::quant::QuantizedType createWeightsQuantizedPerAxisType(mlir::Type weightsE
                                                              Dim quantizedDimension) {
     const auto [storageMin, storageMax, storageType] = getStorageParams(weightsElemType);
     if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(weightsElemType)) {
-        const auto ctx = weightsElemType.getContext();
-
         // The quantile type represents how the quantiles are stored by HW after the mapping, so it only makes sense to
         // be FP16 or lower. The expressed type maintains the normal precision type of the network (FP16/FP32).
         return mlir::quant::QuantileQuantizedPerAxisType::get(
                 storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
-                /*quantileType=*/mlir::Float16Type::get(ctx), expressedType, quantileFloatType.getQuantiles(), scales,
+                quantileFloatType.getQuantileType(), expressedType, quantileFloatType.getQuantiles(), scales,
                 SmallVector<int64_t>(scales.size(), zeroPoint), quantizedDimension.ind(), storageMin, storageMax);
     } else {
         return mlir::quant::UniformQuantizedPerAxisType::get(
@@ -213,6 +209,10 @@ mlir::LogicalResult WeightsDequantizeRewriter::dynamicMatchAndRewrite(const IE::
 
     const auto loc = wdInfo.getLastOp()->getLoc();
     rewriter.setInsertionPointAfter(origOp);
+    auto dynamicScaleOp = wdInfo.getDynamicScale().getDefiningOp();
+    if (dynamicScaleOp && !dynamicScaleOp->isBeforeInBlock(origOp)) {
+        rewriter.setInsertionPointAfter(dynamicScaleOp);
+    }
 
     auto inputValue = rewriter.create<IE::QuantizeCastOp>(loc, origOp.getInput(), quantElemType).getOutput();
     if (auto transposeOp = mlir::dyn_cast_or_null<IE::TransposeOp>(wdInfo.getInput().getDefiningOp())) {
@@ -265,7 +265,8 @@ public:
     }
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void initializeFromOptions();
 
     void safeRunOnFunc() final;
@@ -274,8 +275,9 @@ private:
     bool _enableWeightsDynamicDequantization = false;
 };
 
-mlir::LogicalResult ConsolidateWeightsDequantizationPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult ConsolidateWeightsDequantizationPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

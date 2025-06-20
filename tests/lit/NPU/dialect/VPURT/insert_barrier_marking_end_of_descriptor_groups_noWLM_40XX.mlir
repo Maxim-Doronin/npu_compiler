@@ -13,12 +13,12 @@
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 12
-    IE.Option @VPU.MetadataMaxInvariantCount : 6
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 12
+    config.Option @VPU.MetadataMaxInvariantCount : 6
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
 // CHECK-LABEL: @insertBarrierBetweenEvery3rdSetOfDPUtasks
 func.func @insertBarrierBetweenEvery3rdSetOfDPUtasks(%arg0: memref<1x3x224x224xf16, @DDR>, %arg1: memref<1x64x112x112xf16, @DDR>) -> memref<1x64x112x112xf16, @DDR> {
@@ -49,11 +49,11 @@ func.func @insertBarrierBetweenEvery3rdSetOfDPUtasks(%arg0: memref<1x3x224x224xf
     %48 = VPURT.DeclareBuffer <CMX_NN> [3] <75840> -> memref<1x16x59x224x!qElemType3, #NHWC, [@CMX_NN, 3]>
 
     //  DPUx(y): x - DPUTask id, y - cluster id
-    //  
+    //
     //                   DMA
     //                    |
     //                    b0
-    //          /                    \        
+    //          /                    \
     //  DPU1(0)...DPU7(0)    DPU8(1)...DPU14(1) (7 DPU tasks without barriers between them on two different FIFOs)
     //          \                    /
     //                    b1
@@ -280,12 +280,12 @@ func.func @insertBarrierBetweenEvery3rdSetOfDPUtasks(%arg0: memref<1x3x224x224xf
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 12
-    IE.Option @VPU.MetadataMaxInvariantCount : 6
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 12
+    config.Option @VPU.MetadataMaxInvariantCount : 6
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
 
 // CHECK-LABEL: @barBetweenEvery3rdSetOfDPUtasksWithNoBarDeps
@@ -317,11 +317,11 @@ func.func @barBetweenEvery3rdSetOfDPUtasksWithNoBarDeps(%arg0: memref<1x3x224x22
     %48 = VPURT.DeclareBuffer <CMX_NN> [3] <75840> -> memref<1x16x59x224x!qElemType3, #NHWC, [@CMX_NN, 3]>
 
     //  DPUx(y): x - DPUTask id, y - cluster id
-    //  
+    //
     //         DMA
     //          |
     //          b0
-    //        /     \        
+    //        /     \
     //  DPU1(0)    DPU8(1)
     //  DPU2(0)    DPU9(1)
     //  DPU3(0)    DPU10(1)
@@ -474,7 +474,7 @@ func.func @barBetweenEvery3rdSetOfDPUtasksWithNoBarDeps(%arg0: memref<1x3x224x22
     //     |         |
     //  DPU4(0)    DPU11(1)
     //  DPU5(0)    DPU12(1)
-    //  DPU6(0)    DPU13(1) barrier between DPU6 and DPU7 and between DPU13 and DPU14 
+    //  DPU6(0)    DPU13(1) barrier between DPU6 and DPU7 and between DPU13 and DPU14
     //     |         |      is not needed as the grand child execution group does not exist
     //  DPU7(0)    DPU14(1)
     //        \    /
@@ -556,12 +556,12 @@ func.func @barBetweenEvery3rdSetOfDPUtasksWithNoBarDeps(%arg0: memref<1x3x224x22
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 2
-    IE.Option @VPU.MetadataMaxInvariantCount : 2
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 2
+    config.Option @VPU.MetadataMaxInvariantCount : 2
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
 
 // CHECK-LABEL: @insertBarrierBetweenConsecutiveDPUtasksWithSharedBarriers
@@ -581,7 +581,7 @@ func.func @insertBarrierBetweenConsecutiveDPUtasksWithSharedBarriers(%arg0: memr
     %45 = VPURT.DeclareBuffer <CMX_NN> [0] <75840> -> memref<1x16x58x224x!qElemType3, #NHWC, [@CMX_NN, 0]>
 
     //  SWx(y): x - SWTask id, y - cluster id
-    //  
+    //
     //         DMA
     //          |
     //          b0
@@ -627,7 +627,7 @@ func.func @insertBarrierBetweenConsecutiveDPUtasksWithSharedBarriers(%arg0: memr
     return %arg1: memref<1x3x64x64xf16, @DDR>
 
     // execution groups: [DPU0][DPU1][DPU2]
-    //              
+    //
     //         DMA
     //          |
     //          b0
@@ -639,8 +639,8 @@ func.func @insertBarrierBetweenConsecutiveDPUtasksWithSharedBarriers(%arg0: memr
     //    |   DPU1(0)      |
     //    |    |           | no barrier between DPU1 and DPU2
     //    |    |           | because grand child group does not exist
-    //    |    |          /   
-    //    |    |    DPU2(0)   
+    //    |    |          /
+    //    |    |    DPU2(0)
     //     \    \      /
     //          b1
     //           |
@@ -666,7 +666,7 @@ func.func @insertBarrierBetweenConsecutiveDPUtasksWithSharedBarriers(%arg0: memr
     // CHECK:       VPURT.Task waits([[BAR1]] : !VPURT.Barrier)
     // CHECK:         VPUIP.NNDMA
 
-    // CHECK:       return 
+    // CHECK:       return
 }
 }
 
@@ -678,12 +678,12 @@ func.func @insertBarrierBetweenConsecutiveDPUtasksWithSharedBarriers(%arg0: memr
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-IE.PipelineOptions @Options {
-  IE.Option @VPU.MetadataMaxVariantCount : 2
-  IE.Option @VPU.MetadataMaxInvariantCount : 2
-  IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-  IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+config.PipelineOptions @Options {
+  config.Option @VPU.MetadataMaxVariantCount : 2
+  config.Option @VPU.MetadataMaxInvariantCount : 2
+  config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+  config.Option @VPU.MetadataMaxKernelRangeCount : 4
 }
 
 // CHECK-LABEL: @insertBarrierBetweenConsecutiveDPUtasks
@@ -703,7 +703,7 @@ func.func @insertBarrierBetweenConsecutiveDPUtasks(%arg0: memref<1x3x64x64xf16, 
     %45 = VPURT.DeclareBuffer <CMX_NN> [0] <75840> -> memref<1x16x58x224x!qElemType3, #NHWC, [@CMX_NN, 0]>
 
     //  SWx(y): x - DPUTask id, y - cluster id
-    //  
+    //
     //       DMA
     //        |
     //        b0
@@ -789,7 +789,7 @@ func.func @insertBarrierBetweenConsecutiveDPUtasks(%arg0: memref<1x3x64x64xf16, 
     // CHECK:       VPURT.Task waits([[BAR2]] : !VPURT.Barrier) {
     // CHECK:         VPUIP.NNDMA
 
-    // CHECK:       return 
+    // CHECK:       return
 }
 }
 
@@ -801,12 +801,12 @@ func.func @insertBarrierBetweenConsecutiveDPUtasks(%arg0: memref<1x3x64x64xf16, 
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-IE.PipelineOptions @Options {
-  IE.Option @VPU.MetadataMaxVariantCount : 2
-  IE.Option @VPU.MetadataMaxInvariantCount : 2
-  IE.Option @VPU.MetadataMaxKernelInvocationCount : 2
-  IE.Option @VPU.MetadataMaxKernelRangeCount : 2
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+config.PipelineOptions @Options {
+  config.Option @VPU.MetadataMaxVariantCount : 2
+  config.Option @VPU.MetadataMaxInvariantCount : 2
+  config.Option @VPU.MetadataMaxKernelInvocationCount : 2
+  config.Option @VPU.MetadataMaxKernelRangeCount : 2
 }
 
 module @VPU.SW {
@@ -820,10 +820,10 @@ func.func @insertBarrierBetweenConsecutiveSWtasks(%arg0: memref<1x3x64x64xf16, @
     %bar1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %buf0 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x64x64xf16, @DDR>
     %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
-    %buf2_0 = VPURT.DeclareBuffer <CMX_NN> [0] <196608> -> memref<1x32x1x1xf16, [@CMX_NN, 0]> 
+    %buf2_0 = VPURT.DeclareBuffer <CMX_NN> [0] <196608> -> memref<1x32x1x1xf16, [@CMX_NN, 0]>
 
     //  SWx(y): x - SWTask id, y - cluster id
-    //  
+    //
     //       DMA
     //        |
     //        b0
@@ -903,7 +903,7 @@ func.func @insertBarrierBetweenConsecutiveSWtasks(%arg0: memref<1x3x64x64xf16, @
     // CHECK:       VPURT.Task waits([[BAR2]] : !VPURT.Barrier)
     // CHECK:         VPUIP.NNDMA
 
-    // CHECK:       return 
+    // CHECK:       return
 }
 }
 
@@ -915,12 +915,12 @@ func.func @insertBarrierBetweenConsecutiveSWtasks(%arg0: memref<1x3x64x64xf16, @
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-IE.PipelineOptions @Options {
-  IE.Option @VPU.MetadataMaxVariantCount : 2
-  IE.Option @VPU.MetadataMaxInvariantCount : 2
-  IE.Option @VPU.MetadataMaxKernelInvocationCount : 2
-  IE.Option @VPU.MetadataMaxKernelRangeCount : 2
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+config.PipelineOptions @Options {
+  config.Option @VPU.MetadataMaxVariantCount : 2
+  config.Option @VPU.MetadataMaxInvariantCount : 2
+  config.Option @VPU.MetadataMaxKernelInvocationCount : 2
+  config.Option @VPU.MetadataMaxKernelRangeCount : 2
 }
 
 module @VPU.SW {
@@ -934,7 +934,7 @@ func.func @insertBarrierBetweenConsecutiveSWtasks2(%arg0: memref<1x3x64x64xf16, 
     %bar1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %buf0 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x64x64xf16, @DDR>
     %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
-    %buf2_0 = VPURT.DeclareBuffer <CMX_NN> [0] <196608> -> memref<1x32x1x1xf16, [@CMX_NN, 0]> 
+    %buf2_0 = VPURT.DeclareBuffer <CMX_NN> [0] <196608> -> memref<1x32x1x1xf16, [@CMX_NN, 0]>
 
     //  SWx(y): x - SWTask id, y - cluster id
     //                DMA
@@ -946,7 +946,7 @@ func.func @insertBarrierBetweenConsecutiveSWtasks2(%arg0: memref<1x3x64x64xf16, 
     //        |     /\
     //        SW2(0)  |
     //              \ |
-    //               b1      
+    //               b1
     //                |
     //                DMA
 
@@ -983,7 +983,7 @@ func.func @insertBarrierBetweenConsecutiveSWtasks2(%arg0: memref<1x3x64x64xf16, 
     // execution groups: [SW0][SW1][SW2]
     //        SW0(0) DMA
     //        |       |
-    //        b1     b0 
+    //        b1     b0
     //        |     / |
     //        SW1(0)  |
     //               \/  no barrier between SW1 and SW2
@@ -991,7 +991,7 @@ func.func @insertBarrierBetweenConsecutiveSWtasks2(%arg0: memref<1x3x64x64xf16, 
     //              / |
     //        SW2(0)  |
     //              \ |
-    //               b2      
+    //               b2
     //                |
     //                DMA
 
@@ -1014,7 +1014,7 @@ func.func @insertBarrierBetweenConsecutiveSWtasks2(%arg0: memref<1x3x64x64xf16, 
     // CHECK:       VPURT.Task waits([[BAR2]] : !VPURT.Barrier) {
     // CHECK:         VPUIP.NNDMA
 
-    // CHECK:       return 
+    // CHECK:       return
 }
 }
 
@@ -1026,12 +1026,12 @@ func.func @insertBarrierBetweenConsecutiveSWtasks2(%arg0: memref<1x3x64x64xf16, 
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-IE.PipelineOptions @Options {
-  IE.Option @VPU.MetadataMaxVariantCount : 2
-  IE.Option @VPU.MetadataMaxInvariantCount : 2
-  IE.Option @VPU.MetadataMaxKernelInvocationCount : 2
-  IE.Option @VPU.MetadataMaxKernelRangeCount : 2
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+config.PipelineOptions @Options {
+  config.Option @VPU.MetadataMaxVariantCount : 2
+  config.Option @VPU.MetadataMaxInvariantCount : 2
+  config.Option @VPU.MetadataMaxKernelInvocationCount : 2
+  config.Option @VPU.MetadataMaxKernelRangeCount : 2
 }
 
 module @VPU.SW {
@@ -1047,10 +1047,10 @@ func.func @noInsertBarrierBetweenConsecutiveSWtasksIfPathExists(%arg0: memref<1x
     %bar3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %buf0 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x64x64xf16, @DDR>
     %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
-    %buf2_0 = VPURT.DeclareBuffer <CMX_NN> [0] <196608> -> memref<1x32x1x1xf16, [@CMX_NN, 0]> 
+    %buf2_0 = VPURT.DeclareBuffer <CMX_NN> [0] <196608> -> memref<1x32x1x1xf16, [@CMX_NN, 0]>
 
     //  SWx(y): x - SWTask id, y - cluster id
-    //  
+    //
     //       DMA
     //        |
     //        b0
@@ -1149,7 +1149,7 @@ func.func @noInsertBarrierBetweenConsecutiveSWtasksIfPathExists(%arg0: memref<1x
     // CHECK:       VPURT.Task waits([[BAR3]] : !VPURT.Barrier) {
     // CHECK:         VPUIP.NNDMA
 
-    // CHECK:       return 
+    // CHECK:       return
 }
 }
 
@@ -1161,12 +1161,12 @@ func.func @noInsertBarrierBetweenConsecutiveSWtasksIfPathExists(%arg0: memref<1x
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {2.3954496608944391E-5:127,1.8652968519315946E-5:127,5.714536651851624E-6:127,9.2288640540415852E-6:127,5.2774985005536418E-5:127,1.0355251041922983E-5:127,4.7608623354453737E-5:127,4.2622483621432085E-5:127,6.3378041184793303E-5:127,9.0411328893946842E-6:127,3.7636343888410434E-5:127,9.1462623415969495E-6:127,3.0472522645484744E-5:127,1.3648806181992955E-6:127,8.4283783679872047E-5:127,5.5778683639886814E-5:127,1.6640490434301182E-5:127,5.4847537063238186E-5:127,9.0531476839320868E-5:127,1.0873389056348425E-5:127,8.4944597379429132E-5:127,5.5928868571604333E-5:127,7.9477865864911412E-5:127,1.5408973994217519E-5:127,2.7033287709153543E-5:127,7.3740801473302161E-6:127,4.5475997324064961E-5:127,4.5415923351377953E-5:127,1.4605484609528789E-5:127,8.4554116556963585E-6:127,1.9478985643762302E-5:127,4.6332051434854825E-6:127,9.6568911094365155E-6:127,1.3648806594488189E-4:127,4.8584825410617617E-6:127,1.0588037686085138E-5:127,9.6493818628506396E-6:127,1.0663130151943897E-5:127,3.8086898683562992E-5:127,4.142100416769193E-5:127,7.5805844284418062E-6:127,5.2684874046505907E-5:127,9.1462623415969495E-6:127,1.327634796382874E-5:127,6.1538275771253692E-6:127,2.9691561000553643E-5:127,5.6079053503321852E-5:127,1.4605484609528789E-5:127,2.8324878121924213E-5:127,6.1695969949557085E-5:127,5.0492174043430117E-5:127,2.3218590443528543E-5:127,1.5026002418337845E-5:127,4.4184406911294294E-5:127,4.0009265809547241E-5:127,2.0289984275036911E-5:127,2.0680465097502461E-5:127,5.5906340831846705E-6:127,1.6054769200602853E-5:127,1.0940972275621308E-5:127,2.3008331539124016E-5:127,3.4182090458907481E-5:127,9.4766691913754922E-6:127,8.9450145330954728E-5:127}>
 !qElemType3 = !quant.uniform<u8:f16, 1.000000e+00:114>
 
-module attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 18
-    IE.Option @VPU.MetadataMaxInvariantCount : 12
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<DISABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 18
+    config.Option @VPU.MetadataMaxInvariantCount : 12
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
 
 // CHECK-LABEL: @insertBarrierAtEndOfVariantLimit
@@ -1198,11 +1198,11 @@ func.func @insertBarrierAtEndOfVariantLimit(%arg0: memref<1x3x224x224xf16, @DDR>
     %48 = VPURT.DeclareBuffer <CMX_NN> [3] <75840> -> memref<1x16x59x224x!qElemType3, #NHWC, [@CMX_NN, 3]>
 
     //  DPUx(y): x - DPUTask id, y - cluster id
-    //  
+    //
     //                   DMA
     //                    |
     //                    b0
-    //          /                    \        
+    //          /                    \
     //  DPU1(0)...DPU7(0)    DPU8(1)...DPU14(1) (7 DPU tasks without barriers between them on two different FIFOs)
     //          \                    /
     //                    b1
@@ -1448,4 +1448,3 @@ func.func @insertBarrierAtEndOfVariantLimit(%arg0: memref<1x3x224x224xf16, @DDR>
     // CHECK:       return %arg1 : memref<1x64x112x112xf16, @DDR>
 }
 }
-

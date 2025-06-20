@@ -8,6 +8,7 @@
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
+#include "vpux/compiler/utils/sparsity.hpp"
 
 using namespace vpux;
 using namespace VPU;
@@ -50,6 +51,14 @@ void MultiClusterStrategySetter::setTemporaryStrategy(VPU::MultiClusterStrategy 
         _origStrategy = clusterOp.getMultiClusterStrategy();
         clusterOp.setMultiClusterStrategy(tempStrategy);
     }
+}
+
+void LayerVPUNNCost::resetNNCacheCounter() {
+    _vpunnCostModel->getPreloadedCacheCounter().reset();
+}
+
+void LayerVPUNNCost::printNNCacheStatistics() const {
+    _log.info("[NN Cache statistics]  {0}", _vpunnCostModel->getPreloadedCacheCounter().printString());
 }
 
 StrategyCost LayerVPUNNCost::getStrategyCost(mlir::Operation* operation, const VPUNNCostParameters& parameters) const {
@@ -101,12 +110,60 @@ SmallVector<StrategyCost> LayerVPUNNCost::getSpillingWriteCostsForAllTiles(
 
     auto outputType = mlir::cast<NDTypeInterface>(operation->getResult(0).getType());
 
+    /* Check if the op has single slice like user op. If the slice like op will slice on the inner most dimension, which
+    may cause the stride DMA inefficient,in this case, we need to compare the number of continuous bytes on the lowest
+    dimension and compares it with a predefined hreshold. If the continuous bytes are less than the threshold, the cost
+    need to be adjusted accordingly.
+               Op
+               |
+          SliceLikeOp
+               |
+            Other op
+    Ticket to apply this correct for other related DMC cost calculation: E#167797
+    */
+
+    auto hasInefficientSliceLikeSingleUserOp = [&]() -> mlir::FailureOr<double> {
+        mlir::Operation* userOp = nullptr;
+        if (auto vfOp = operation->getParentOfType<VPU::VerticalFusionOp>()) {
+            auto innerOps = vfOp.getBody()->without_terminator();
+            auto lastOp = &(*std::prev(innerOps.end()));
+            if (vfOp->hasOneUse() && lastOp == operation) {
+                userOp = *vfOp->user_begin();
+            }
+        } else if (operation->hasOneUse()) {
+            userOp = *operation->user_begin();
+        }
+        if (userOp == nullptr || !VPU::isPureViewOp(userOp)) {
+            return mlir::failure();
+        }
+        auto inShape = getShape(userOp->getOperand(0));
+        auto outShape = getShape(userOp->getResult(0));
+        if (inShape.totalSize() <= outShape.totalSize()) {
+            return mlir::failure();
+        }
+
+        auto dimOrder = outputType.getDimsOrder();
+        auto lowestDim = dimOrder.dimAt(dimOrder.numDims() - 1);
+        const Bit elemSize = outputType.getElemTypeSize();
+        auto continousBytes = outShape[lowestDim] * elemSize.count();
+        if (continousBytes >= strideDMACorrectionThresholdInBits) {
+            return mlir::failure();
+        }
+        return checked_cast<double>(strideDMACorrectionThresholdInBits) / continousBytes;
+    };
+
+    auto factor = hasInefficientSliceLikeSingleUserOp();
+
     const auto tiling =
             parameters._tiling.empty() ? OutputTiling({TileInfo(outputType.getShape())}) : parameters._tiling;
     spillWriteCosts.reserve(tiling.size());
     for (const auto& tileInfo : tiling) {
         auto tiledType = getOutputType(tileInfo);
-        spillWriteCosts.emplace_back(getSpillingTypeCost(tiledType, tiling[0].axis));
+        auto cost = getSpillingTypeCost(tiledType, tiling[0].axis);
+        if (mlir::succeeded(factor)) {
+            cost = checked_cast<uint32_t>(std::floor(factor.value() * cost));
+        }
+        spillWriteCosts.emplace_back(cost);
     }
     return spillWriteCosts;
 }
@@ -163,7 +220,6 @@ SmallVector<StrategyCost> LayerVPUNNCost::getSpillingReadCostsForAllTiles(
             return tiling[operandInd];
         };
     }
-
     spillReadCosts.reserve(childTiling.size());
     for (const auto& tileInfo : childTiling) {
         const auto childOperandsTiling = getOperandType(tileInfo);
@@ -223,7 +279,7 @@ StrategyCost LayerVPUNNCost::getNCELayerCost(VPU::NCEOpInterface nceOp, const VP
 
     _log.trace("Start calculating vpunn cost for Op {0} with strategy {1}", nceOp.getLoc(), parameters._strategy);
 
-    const auto costParams = VPU::getWorkloadCostParam(nceOp, _arch, _numDPUs);
+    const auto costParams = VPU::getWorkloadCostParam(nceOp, _arch, _numDPUs, _numTiles);
     MultiClusterStrategySetter mcSetter(nceOp, parameters._strategy);
     // Set prefetching to be true to ignore the DMA cost and only get the execution DPU cost
     // According to the VPUNN API definition,
@@ -237,8 +293,16 @@ StrategyCost LayerVPUNNCost::getNCELayerCost(VPU::NCEOpInterface nceOp, const VP
     }
     const auto vpunnStrategy = VPU::getVPULayerStrategy(parameters._strategy, _numDPUs, _numTiles, _arch, _numShaveActs,
                                                         true, distributionMode, nceOp);
-    auto vpunnLayerDPUCosts = getDPUCostForNCEOp(nceOp, parameters._strategy, parameters._tiling, costParams,
-                                                 vpunnStrategy, _vpunnCostModel, _log);
+    SmallVector<uint32_t> vpunnLayerDPUCosts;
+    const auto enableVPUNNPreSplit = hasVPUNNPreSplit(nceOp);
+    if (enableVPUNNPreSplit && !isActSparseOp(nceOp)) {
+        // Track E#160972. Activation sparse op accuracy issue
+        vpunnLayerDPUCosts = getDPUCostForNCEOpPreSplit(nceOp, parameters._tiling, costParams,
+                                                        vpunnStrategy.tiling_strategy, _vpunnCostModel, _numDPUs, _log);
+    } else {
+        vpunnLayerDPUCosts = getDPUCostForNCEOp(nceOp, parameters._strategy, parameters._tiling, costParams,
+                                                vpunnStrategy, _vpunnCostModel, _log);
+    }
     _log.trace("VPUNN DPU layer costs {0}", vpunnLayerDPUCosts);
 
     if (vpunnLayerDPUCosts.empty()) {

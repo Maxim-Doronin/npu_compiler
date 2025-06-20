@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-non-constant-pad-to-slice-and-concat %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK: func.func @convert2DReflectPad([[INPUT:%.+]]: tensor<1x8x13x29xf16>)
 func.func @convert2DReflectPad(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x8x16x32xf16> {
     %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<REFLECT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [0, 0, 1, 2], pads_end_attr = [0, 0, 2, 1]}

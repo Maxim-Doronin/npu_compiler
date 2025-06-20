@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 using namespace vpux;
 
@@ -46,8 +47,12 @@ mlir::LogicalResult vpux::IE::BroadcastOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    auto inShape = to_small_vector(mlir::cast<mlir::ShapedType>(broadcast.getInput().getType()).getShape());
-    const auto inType = mlir::cast<mlir::ShapedType>(broadcast.getInput().getType()).getElementType();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(broadcast.getInput().getType());
+
+    VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
+                      IE::BroadcastOp::getOperationName());
+
+    auto inShape = to_small_vector(inType.getShape());
     const auto broadcastMode = broadcast.getMode().has_value() ? broadcast.getMode().value() : IE::BroadcastType::NUMPY;
 
     auto outShape = IE::constInputToData(loc, broadcast.getTargetShape()).value();
@@ -55,8 +60,7 @@ mlir::LogicalResult vpux::IE::BroadcastOp::inferReturnTypeComponents(
         outShape = getResultShapeBidirectional(inShape, outShape);
     }
 
-    inferredReturnShapes.emplace_back(outShape, inType);
-
+    inferredReturnShapes.emplace_back(outShape, inType.getElementType());
     return mlir::success();
 }
 
@@ -71,7 +75,7 @@ mlir::OpFoldResult vpux::IE::BroadcastOp::fold(FoldAdaptor adaptor) {
     }
 
     // move broadcast to const attribute.
-    if (auto ephemeral = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (auto ephemeral = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         const auto contentAttr = static_cast<Const::ContentAttr>(ephemeral);
         const auto inputShape = to_small_vector(getShape(getInput()));
         const auto outputShape = to_small_vector(getShape(getOutput()));

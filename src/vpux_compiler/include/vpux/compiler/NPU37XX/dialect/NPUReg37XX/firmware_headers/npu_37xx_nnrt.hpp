@@ -7,19 +7,19 @@
 
 #pragma once
 
+#include <cstdint>
+#include <cstdlib>
+
 // put everything under generation-specific namespace, as different versions of firmware headers
 // define different structures with the same name
 // makes it possible to use different firmware headers in the same source file
-
-namespace npu37xx {
 
 // firmware headers are used by projects that cannot include system C headers (e.g. Linux Kernel)
 // however, they are using definition from there, such as offsetof and uint32_t
 // it may lead to compilation errors, if firmware header is included first (undefined uint32_t)
 // to resolve the issue include required system C headers before the firmware ones
 
-#include <cstdint>
-#include <cstdlib>
+namespace npu37xx {
 
 // disable clang-format to keep duplicated headers the same as original source
 // simplifies maintenance, such as showing differences between versions

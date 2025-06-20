@@ -391,8 +391,8 @@ mlir::LogicalResult AlignConcatScalesRewriter::matchAndRewrite(IE::ConcatOp orig
 
     // Determine the alignment interval limits
     findMinMax(fqOpsToAlign, min, max, range, maxLevels);
-    if (maxLevels > MAX_LEVELS) {
-        _log.trace("Only support quantization with maxLevels <= {0}", MAX_LEVELS);
+    if (maxLevels > QuantizationLevels::QUANT_LEVELS_8BIT) {
+        _log.trace("Only support quantization with maxLevels <= {0}", QuantizationLevels::QUANT_LEVELS_8BIT);
         return mlir::failure();
     }
     alignZP(min, max, maxLevels, mlir::IntegerType::get(ctx, 8, mlir::IntegerType::Unsigned));

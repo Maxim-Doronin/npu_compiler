@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -180,7 +180,8 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
                 outputBuffers[clusterId], vpux::getIntAttr(rewriter, dmaPort), depthToSpaceDMAOp.getBlockSizeAttr(),
                 depthToSpaceDMAOp.getModeAttr(), nullptr, depthToSpaceDMAOp.getPaddedChannelsAttr(),
                 depthToSpaceDMAOp.getIsOutOfOrderAttr(), depthToSpaceDMAOp.getIsCriticalAttr(),
-                depthToSpaceDMAOp.getDmaHwpIdAttr(), depthToSpaceDMAOp.getProfilingMetadataAttr());
+                depthToSpaceDMAOp.getDmaHwpIdAttr(), depthToSpaceDMAOp.getProfilingMetadataAttr(),
+                /*internalDataFlow= */ nullptr);
 
         dmaPort = (dmaPort + 1) % _dmaPortCount;
 
@@ -227,6 +228,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpace
     const auto outputC = outputShape[Dims4D::Act::C];
     const auto outputW = outputShape[Dims4D::Act::W];
     auto blockSize = depthToSpaceDMAOp.getBlockSize();
+    VPUX_THROW_WHEN(blockSize == 0, "Invalid block size: {0}", blockSize);
     auto mode = depthToSpaceDMAOp.getMode();
     auto paddedIC =
             depthToSpaceDMAOp.getPaddedChannels() ? depthToSpaceDMAOp.getPaddedChannels().value().getInput() : nullptr;
@@ -271,7 +273,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpace
                 newDstBuff, vpux::getIntAttr(rewriter, port), depthToSpaceDMAOp.getBlockSizeAttr(),
                 depthToSpaceDMAOp.getModeAttr(), dmaDescriptor, nullptr, depthToSpaceDMAOp.getIsOutOfOrderAttr(),
                 depthToSpaceDMAOp.getIsCriticalAttr(), depthToSpaceDMAOp.getDmaHwpIdAttr(),
-                /* profilingMetadata= */ nullptr);
+                /* profilingMetadata= */ nullptr, /*internalDataFlow= */ nullptr);
     };
 
     _log.nest().trace("Unroll DepthToSpaceDMAOp {0}", depthToSpaceDMAOp->getLoc());

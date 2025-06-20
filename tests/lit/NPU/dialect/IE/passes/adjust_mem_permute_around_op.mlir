@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-mem-permute-around-op %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
@@ -163,6 +164,52 @@ func.func @AdjustForConvert(%arg0: tensor<1x21x513x513xf16, {order = #NHWC}>) ->
     // CHECK:        [[CONVERT:%.+]] = IE.Convert([[INPUT]]) {dstElemType = f32} : tensor<1x21x513x513xf16, {order = #NHWC}> -> tensor<1x21x513x513xf32, {order = #NHWC}>
     // CHECK:        [[PERMUTE:%.+]] = IE.PermuteCast([[CONVERT]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x21x513x513xf32, {order = #NHWC}> -> tensor<1x513x513x21xf32>
     // CHECK:        return [[PERMUTE]] : tensor<1x513x513x21xf32>
+}
+
+// -----
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+// CHECK-LABEL: @AdjustForConcat
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x128x3000x1xf16, {order = #NHWC}>, [[INPUT2:%.+]]: tensor<1x128x3000x1xf16, {order = #NHWC}>, [[INPUT3:%.+]]: tensor<1x128x19x1xf16>
+func.func @AdjustForConcat(%arg0: tensor<1x128x3000x1xf16, {order = #NHWC}>, %arg1: tensor<1x128x3000x1xf16, {order = #NHWC}>, %arg2: tensor<1x128x19x1xf16>)
+-> tensor<1x128x6019x1xf16, {order = #NHWC}> {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x128x3000x1xf16, {order = #NHWC}> -> tensor<1x128x3000x1xf16>
+    %1 = IE.MemPermute(%arg1) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x128x3000x1xf16, {order = #NHWC}> -> tensor<1x128x3000x1xf16>
+    %2 = IE.Concat(%arg2, %0, %1) {static_offsets = [[0, 0, 0, 0], [0, 0, 19, 0], [0, 0, 3019, 0]]} : tensor<1x128x19x1xf16>, tensor<1x128x3000x1xf16>, tensor<1x128x3000x1xf16> -> tensor<1x128x6019x1xf16>
+    %3 = IE.MemPermute(%2) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x128x6019x1xf16> -> tensor<1x128x6019x1xf16, {order = #NHWC}>
+    return %3 : tensor<1x128x6019x1xf16, {order = #NHWC}>
+
+    // CHECK: [[BA_PERMUTE:%.+]] = IE.MemPermute([[INPUT3]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x128x19x1xf16> -> tensor<1x128x19x1xf16, {order = #NHWC}>
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[BA_PERMUTE]], [[INPUT1]], [[INPUT2]]) {per_axis = #IE.Concat<axis = 2 : i64>}
+    // CHECK:    tensor<1x128x19x1xf16, {order = #NHWC}>, tensor<1x128x3000x1xf16, {order = #NHWC}>, tensor<1x128x3000x1xf16, {order = #NHWC}>
+    // CHECK:    -> tensor<1x128x6019x1xf16, {order = #NHWC}>
+    // CHECK: return [[CONCAT]] : tensor<1x128x6019x1xf16, {order = #NHWC}>
+}
+
+// -----
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+// CHECK-LABEL: @AdjustForConcatToPermuteCast
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x128x3000x1xf16>, [[INPUT2:%.+]]: tensor<1x128x3000x1xf16>, [[INPUT3:%.+]]: tensor<1x1x19x128xf16>
+func.func @AdjustForConcatToPermuteCast(%arg0: tensor<1x128x3000x1xf16>, %arg1: tensor<1x128x3000x1xf16>, %arg2: tensor<1x1x19x128xf16>)
+-> tensor<1x1x128x6019xf16> {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWHC} : tensor<1x128x3000x1xf16> -> tensor<1x1x3000x128xf16>
+    %1 = IE.MemPermute(%arg1) {dst_order = #NCHW, mem_perm = #NWHC} : tensor<1x128x3000x1xf16> -> tensor<1x1x3000x128xf16>
+    %2 = IE.Concat(%arg2, %0, %1) {static_offsets = [[0, 0, 0, 0], [0, 0, 19, 0], [0, 0, 3019, 0]]} : tensor<1x1x19x128xf16>, tensor<1x1x3000x128xf16>, tensor<1x1x3000x128xf16> -> tensor<1x1x6019x128xf16>
+    %3 = IE.MemPermute(%2) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x6019x128xf16> -> tensor<1x1x128x6019xf16>
+    return %3 : tensor<1x1x128x6019xf16>
+
+    // CHECK: [[BA_PERMUTE:%.+]] = IE.MemPermute([[INPUT3]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x19x128xf16> -> tensor<1x1x128x19xf16>
+    // CHECK: [[PERMUTE_CAST1:%.+]] = IE.PermuteCast([[INPUT1]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x128x3000x1xf16> -> tensor<1x1x128x3000xf16>
+    // CHECK: [[PERMUTE_CAST2:%.+]] = IE.PermuteCast([[INPUT2]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x128x3000x1xf16> -> tensor<1x1x128x3000xf16>
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[BA_PERMUTE]], [[PERMUTE_CAST1]], [[PERMUTE_CAST2]]) {per_axis = #IE.Concat<axis = 3 : i64>}
+    // CHECK:    tensor<1x1x128x19xf16>, tensor<1x1x128x3000xf16>, tensor<1x1x128x3000xf16>
+    // CHECK:    -> tensor<1x1x128x6019xf16>
+    // CHECK: return [[CONCAT]] : tensor<1x1x128x6019xf16>
 }
 
 // -----

@@ -16,8 +16,9 @@ namespace vpux::VPURT::arch40xx {
 
 std::unique_ptr<mlir::Pass> createInsertSyncTasksPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeSyncTasksPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createFindWlmEnqueueBarrierPass(bool disableDmaSwFifo = false,
-                                                            Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createFindWlmEnqueueBarrierPass(
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        bool disableDmaSwFifo = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOrderBarriersForWlmPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWlmSplitGraphToPagesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWlmLegalizeSplitGraphToPagesPass(Logger log = Logger::global());

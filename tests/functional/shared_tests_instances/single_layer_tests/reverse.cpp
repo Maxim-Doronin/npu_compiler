@@ -6,6 +6,8 @@
 #include "single_op_tests/reverse.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/reverse.hpp"
+
 using namespace ov::test::utils;
 namespace ov {
 namespace test {
@@ -53,8 +55,6 @@ TEST_P(ReverseLayerTestCommon, NPU4000_SW) {
 
 TEST_P(ReverseLayerTestCommon, NPU4000_HW) {
     VpuOv2LayerTest::setDefaultHardwareMode();
-    // TODO E####-159644
-    VpuOv2LayerTest::setBatchCompilerMode("unroll");
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
 

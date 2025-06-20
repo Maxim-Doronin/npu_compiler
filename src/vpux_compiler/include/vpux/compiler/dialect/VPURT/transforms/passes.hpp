@@ -34,9 +34,9 @@ void buildBarrierLegalizationPipeline(
 
 std::unique_ptr<mlir::Pass> createSplitControlGraphPass(
         const int controlGraphSplitBlockSize = CONTROL_GRAPH_SPLIT_BLOCK_SIZE, Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createSimplifySchedulePass(const bool shareWaitAndUpdateBarriersFlag = true,
-                                                       const bool reduceParallelControlFlowsFlag = true,
-                                                       Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSimplifySchedulePass(
+        const bool reduceParallelControlFlowsFlag = true,
+        std::optional<WorkloadManagementMode> workloadManagementMode = std::nullopt, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitExceedingVariantCountBarriersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSatisfyOneWaitBarrierPerTaskPass(
         std::optional<int> virtualBarrierThresholdForWlm = std::nullopt, const bool unevenVariantSplitFlag = false,

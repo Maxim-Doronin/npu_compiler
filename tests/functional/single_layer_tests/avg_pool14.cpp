@@ -1,8 +1,9 @@
 // Copyright (C) 2024-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include <openvino/opsets/opset14.hpp>
-#include <openvino/opsets/opset3.hpp>
+#include <openvino/opsets/opset14_decl.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+#include "openvino/op/avg_pool.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov::test {

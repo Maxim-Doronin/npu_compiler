@@ -25,6 +25,8 @@ namespace NCEInvariant {
 // TODO: E113153, config to be moved to init compiler pass
 constexpr int64_t WEIGHT_TABLE_NUM_ELEMENTS_PER_OC = 4;
 
+constexpr int64_t NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC = 1;
+
 constexpr int64_t SUPPORTED_BATCH_SIZE = 1;
 
 constexpr int64_t MAX_STRIDE = 8;
@@ -40,7 +42,9 @@ constexpr int64_t VPU_DIMENSION_LIMIT = 8192;
 constexpr int64_t VPU_SEGMENT_SIZE_DENSE = 4;
 constexpr int64_t VPU_SEGMENT_SIZE_SPARSE = 8;
 
-constexpr int64_t VPU_CHANNEL_SIZE_FOR_L1OPT = 32;
+constexpr int64_t VPU_CHANNEL_SIZE_FOR_L1OPT16 = 16;
+constexpr int64_t VPU_CHANNEL_SIZE_FOR_L1OPT32 = 32;
+constexpr int64_t VPU_CHANNEL_SIZE_FOR_L1OPT64 = 64;
 
 constexpr int64_t VPU_SPATIAL_ALIGNMENT = 4;
 
@@ -70,6 +74,7 @@ bool isOutputActTypeSupported(vpux::NDTypeInterface type, int64_t alignment, Log
 //
 
 Byte getWeightsTableSize(int64_t OC);
+mlir::FailureOr<SmallVector<Byte>> getWeightsTableSize(int64_t OC, mlir::Operation* op);
 
 //
 // Fuse PadOp check
@@ -113,6 +118,12 @@ mlir::LogicalResult verifyPoolCMX(mlir::Location loc, mlir::ModuleOp module, vpu
 //
 
 bool isEltwiseMultiplySubtractSupported(const VPU::ArchKind arch);
+
+//
+// Check whether alignment is beneficial for the operation
+//
+
+bool isAlignmentBeneficial(mlir::Operation* op);
 
 }  // namespace NCEInvariant
 

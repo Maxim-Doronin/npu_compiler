@@ -118,7 +118,7 @@ void ConstantFoldingPass::safeRunOnFunc() {
         };
 
         llvm::ThreadPoolTaskGroup tasksGroup(threadPool);
-        unsigned int numActions = std::min(constNumInParallel, threadPool.getThreadCount());
+        unsigned int numActions = std::min(constNumInParallel, threadPool.getMaxConcurrency());
         for (unsigned int i = 0; i < numActions; ++i) {
             tasksGroup.async(processConstants);
         }

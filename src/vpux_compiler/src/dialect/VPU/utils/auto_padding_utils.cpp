@@ -4,8 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 
@@ -14,20 +14,26 @@
 using namespace vpux;
 
 bool hasAutoPaddingOption(mlir::ModuleOp module, StringRef paddingMode) {
-    auto pipelineOptionOp = module.lookupSymbol<IE::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS);
+    auto pipelineOptionOp = module.lookupSymbol<config::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS);
     if (pipelineOptionOp == nullptr) {
         auto logger = vpux::Logger::global();
         logger.trace("Failed to find PipelineOptions to fetch auto padding mode");
         return false;
     }
 
-    auto attrValue = pipelineOptionOp.lookupSymbol<IE::OptionOp>(paddingMode);
+    auto attrValue = pipelineOptionOp.lookupSymbol<config::OptionOp>(paddingMode);
     if (attrValue == nullptr) {
         auto logger = vpux::Logger::global();
-        logger.trace("Failed to find IE.OptionOp to fetch auto padding mode");
+        logger.trace("Failed to find config.OptionOp to fetch auto padding mode");
         return false;
     }
-    return static_cast<bool>(attrValue.getOptionValue());
+    auto boolAttr = mlir::dyn_cast<mlir::BoolAttr>(attrValue.getOptionValue());
+    if (boolAttr == nullptr) {
+        auto logger = vpux::Logger::global();
+        logger.trace("Failed to cast config.OptionOp to BoolAttr");
+        return false;
+    }
+    return boolAttr.getValue();
 }
 
 bool VPU::hasAutoPadding(mlir::ModuleOp module) {
@@ -43,6 +49,9 @@ bool VPU::hasAutoPaddingODU(mlir::ModuleOp module) {
 }
 
 bool VPU::outputCompatibleWithAutoPad(vpux::NDTypeInterface type) {
+    if (type.getRank() != 4) {
+        return false;
+    }
     const auto outShape = type.getShape();
     const auto outputC = outShape[Dims4D::Act::C];
     const auto elemTypeBitWidth = type.getElemTypeSize().count();
@@ -52,6 +61,9 @@ bool VPU::outputCompatibleWithAutoPad(vpux::NDTypeInterface type) {
 }
 
 bool VPU::inputCompatibleWithAutoPad(vpux::NDTypeInterface type) {
+    if (type.getRank() != 4) {
+        return false;
+    }
     const auto inShape = type.getShape();
     const auto inputC = inShape[Dims4D::Act::C];
     const auto elemTypeBitWidth = type.getElemTypeSize().count();

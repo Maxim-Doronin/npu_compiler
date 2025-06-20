@@ -15,6 +15,7 @@ public:
     using Base::Base;
     mlir::FailureOr<SymbolizationResult> symbolize(VPUMI40XX::ActKernelInvocationOp op, SymbolMapper& mapper,
                                                    mlir::ConversionPatternRewriter& rewriter) const override;
+    llvm::SmallVector<mlir::FlatSymbolRefAttr> getSymbolicNames(VPUMI40XX::ActKernelInvocationOp op, size_t) override;
 };
 
 }  // namespace vpumi40xx2vpuasm

@@ -28,11 +28,8 @@ static constexpr double FRAGMENTATION_AVOID_RATIO = 0.9;
 // Experimental number to avoid memory fragmentation when pipelining
 static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING = 0.85;
 
-// Experimental number to avoid memory fragmentation caused by large weights when pipelining
-static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS = 0.45;
-
 // Experimental number to avoid memory fragmentation caused by large activations (input & output) when pipelining
-static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION = 0.26;
+static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION = 0.27;
 
 // Experimental number to define large constant size
 // The constant filter is considered as large constant value
@@ -83,6 +80,10 @@ static constexpr double ACTSPARSE_DPU_COST_RATIO = 2;
 // Experimental number for reducemin to get better DPU performance than SHAVE
 // Track [E#126141]
 static constexpr double REDUCEMIN_DPU_THRESHOLD = 96 * 1024;
+
+// Experimental numbers to correct Convolution SOK cost
+static constexpr double NCECONV_DPU_SOK_COST_RATIO = 1.1;
+static constexpr double NCECONV_DPU_SOK_OC_TO_SPATIAL_RATIO = 1.1;
 
 // An experimental number for tiling strategy searching algorithms choice
 // Linear search for the first several times
@@ -475,6 +476,11 @@ mlir::FailureOr<OutputTiling> isSupportedTileSize(mlir::Operation* op, ShapeRef 
  * @returns {dimension to align, alignment size}
  */
 std::pair<Dim, int64_t> getAlignDimAndSize(mlir::Operation* op);
+
+/*
+ * Gets alignment for operation based on tiling
+ */
+std::optional<SmallVector<int64_t>> getAlignment(mlir::Operation* op, ShapeRef divisors, ShapeRef shape);
 
 /*
  * Check if the shape size is divisible with alignment

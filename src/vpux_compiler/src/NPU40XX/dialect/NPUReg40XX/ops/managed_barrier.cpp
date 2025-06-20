@@ -15,7 +15,7 @@ using namespace npu40xx;
 //
 
 void NPUReg40XX::ManagedBarrierOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
-    auto barrierDescriptor = getDescriptor().getRegMapped();
+    auto barrierDescriptor = getProperties().getDescriptor();
 
     VPUX_THROW_UNLESS(sizeof(nn_public::VpuTaskBarrierMap) == barrierDescriptor.size(),
                       "HW VpuTaskBarrierMap size {0} != regMapped representation size {1}.",
@@ -31,4 +31,12 @@ size_t NPUReg40XX::ManagedBarrierOp::getBinarySize(VPU::ArchKind) {
 
 size_t vpux::NPUReg40XX::ManagedBarrierOp::getAlignmentRequirements(VPU::ArchKind) {
     return alignof(nn_public::VpuTaskBarrierMap);
+}
+
+void vpux::NPUReg40XX::ManagedBarrierOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
+                                               vpux::NPUReg40XX::Descriptors::VpuTaskBarrierMap&& descriptor) {
+    auto& props = state.getOrAddProperties<Properties>();
+
+    props.sym_name = symName;
+    props.descriptor = std::move(descriptor);
 }

@@ -3,44 +3,54 @@
 //
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
+#include "vpux/compiler/core/types/quantile_float/dialect.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace type {
 
-QuantileFloatType QuantileFloatType::getNF4(mlir::MLIRContext* ctx, ArrayRef<double> quantiles) {
-    return NF4Type::get(ctx, 4, quantiles);
-}
-
-QuantileFloatType QuantileFloatType::getQuantileFloat(MLIRContext* ctx, unsigned bitWidth, ArrayRef<double> quantiles) {
-    if (bitWidth == 4) {
-        return NF4Type::get(ctx, bitWidth, quantiles);
+QuantileFloatType QuantileFloatType::get(MLIRContext* ctx, Type storageType, Type quantileType,
+                                         ArrayRef<double> quantiles) {
+    if (storageType.isUnsignedInteger(4)) {
+        return getNF4(ctx, storageType, quantileType, quantiles);
     }
     llvm_unreachable("unexpected quantile float type");
+}
+
+QuantileFloatType QuantileFloatType::getNF4(mlir::MLIRContext* ctx, Type storageType, Type quantileType,
+                                            ArrayRef<double> quantiles) {
+    return NF4Type::get(ctx, storageType, quantileType, quantiles);
 }
 
 bool QuantileFloatType::classof(mlir::Type type) {
     return mlir::isa<NF4Type>(type);
 }
 
-unsigned QuantileFloatType::getWidth() const {
+unsigned QuantileFloatType::getStorageTypeIntegralWidth() const {
     if (mlir::isa<NF4Type>(*this)) {
         return 4;
     }
     llvm_unreachable("unexpected quantile float type");
 }
 
+Type QuantileFloatType::getStorageType() const {
+    return static_cast<ImplType*>(impl)->getStorageType();
+}
+
+Type QuantileFloatType::getQuantileType() const {
+    return static_cast<ImplType*>(impl)->getQuantileType();
+}
+
 ArrayRef<double> QuantileFloatType::getQuantiles() const {
-    if (auto nf4 = mlir::dyn_cast<NF4Type>(*this)) {
-        return nf4.getQuantiles();
-    }
-    llvm_unreachable("unexpected quantile float type");
+    return static_cast<ImplType*>(impl)->getQuantiles();
 }
 
 void QuantileFloatType::print(mlir::AsmPrinter& printer) const {
     printer << "<";
-    printer << getWidth();
+    printer << getStorageType();
+    printer << ":";
+    printer << getQuantileType();
     printer << ", ";
 
     ArrayRef<double> quantiles = this->getQuantiles();
@@ -57,14 +67,23 @@ void QuantileFloatType::print(mlir::AsmPrinter& printer) const {
 }
 
 mlir::Type QuantileFloatType::parse(mlir::AsmParser& parser) {
-    uint32_t width = 0;
+    Type storageType;
+    Type quantileType;
     SmallVector<double, 1> quantiles;
 
     if (parser.parseLess()) {
         return nullptr;
     }
 
-    if (parser.parseInteger(width)) {
+    if (parser.parseType(storageType)) {
+        return nullptr;
+    }
+
+    if (parser.parseColon()) {
+        return nullptr;
+    }
+
+    if (parser.parseType(quantileType)) {
         return nullptr;
     }
 
@@ -91,7 +110,7 @@ mlir::Type QuantileFloatType::parse(mlir::AsmParser& parser) {
         return nullptr;
     }
 
-    return getQuantileFloat(parser.getContext(), width, quantiles);
+    return get(parser.getContext(), storageType, quantileType, quantiles);
 }
 
 const SmallVector<double> NF4Type::specQuantiles{-1.0,
@@ -111,25 +130,21 @@ const SmallVector<double> NF4Type::specQuantiles{-1.0,
                                                  0.7229568362236023,
                                                  1.0};
 
-NF4Type NF4Type::get(mlir::MLIRContext* ctx, unsigned width, ArrayRef<double> quantiles) {
+NF4Type NF4Type::get(mlir::MLIRContext* ctx, Type storageType, Type quantileType, ArrayRef<double> quantiles) {
     if (!quantiles.empty()) {
-        VPUX_THROW_UNLESS(quantiles.size() == std::pow(2, width), "quantiles array size needs to be equal to 2^width");
-        return Base::get(ctx, width, quantiles);
+        VPUX_THROW_UNLESS(quantiles.size() == 16, "quantiles array size of nf4 type needs to be equal to 16");
+        return Base::get(ctx, storageType, quantileType, quantiles);
     }
 
-    return Base::get(ctx, width, NF4Type::specQuantiles);
-}
-
-unsigned NF4Type::getWidth() const {
-    return 4;
+    return Base::get(ctx, storageType, quantileType, NF4Type::specQuantiles);
 }
 
 ArrayRef<double> NF4Type::getSpecQuantiles() {
     return NF4Type::specQuantiles;
 }
 
-ArrayRef<double> NF4Type::getQuantiles() const {
-    return getImpl()->getQuantiles();
+bool NF4Type::classof(mlir::Type type) {
+    return type.getTypeID() == mlir::TypeID::get<NF4Type>();
 }
 
 }  // namespace type

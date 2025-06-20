@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
@@ -13,6 +14,7 @@
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
+#include <vpu/layer.h>
 #include <vpu/shave/layers.h>
 #include <bitset>
 #include <limits>
@@ -20,7 +22,16 @@
 using namespace vpux;
 
 VPUNN::VPUTensor getVPUNNTensor(ShapeRef tensorShape, VPUNN::DataType dataType) {
-    return VPUNN::VPUTensor({static_cast<unsigned int>(tensorShape.totalSize()), 1, 1, 1}, dataType);
+    // Track E#160854. More generic support for 5D tensors
+    if (tensorShape.size() >= 4) {
+        return VPUNN::VPUTensor({static_cast<unsigned int>(tensorShape[Dims4D::Act::W]),
+                                 static_cast<unsigned int>(tensorShape[Dims4D::Act::H]),
+                                 static_cast<unsigned int>(tensorShape[Dims4D::Act::C]),
+                                 static_cast<unsigned int>(tensorShape[Dims4D::Act::N])},
+                                dataType);
+    } else {
+        return VPUNN::VPUTensor({static_cast<unsigned int>(tensorShape.totalSize()), 1, 1, 1}, dataType);
+    }
 }
 
 VPUNN::VPUTensor getVPUNNTensorMultiCluster(ArrayRef<Shape> tensorShapes, VPUNN::DataType dataType) {
@@ -356,18 +367,19 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, VPU::ArchKin
 }
 
 size_t calculateMultiClusterDMACost(mlir::Value innerOperand, VPUNN::DataType inElemType, VPUNN::DataType outElemType,
-                                    VPU::ArchKind archKind, const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
+                                    VPU::ArchKind archKind, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
+                                    [[maybe_unused]] int64_t numDMAPorts) {
     auto operandType = innerOperand.getType();
     auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operandType);
+    auto vpuDevice = getVPUDeviceType(archKind);
 
     // TODO: E#66557
     // Currently, if DMA source is OVERLAPPED we're moving the overlap twice. Once that is optimized,
     // we might need to update the cost here as well
     auto perClusterShapes = distributedType.getPerClusterMemoryShapes();
 
-    return static_cast<size_t>(costModel->DMA(getVPUDeviceType(archKind),
-                                              {getVPUNNTensorMultiCluster(perClusterShapes, inElemType)},
+    return static_cast<size_t>(costModel->DMA(vpuDevice, {getVPUNNTensorMultiCluster(perClusterShapes, inElemType)},
                                               {getVPUNNTensorMultiCluster(perClusterShapes, outElemType)}));
 }
 
@@ -382,7 +394,7 @@ bool extraDMAsRequired(mlir::Value innerOperand) {
 }
 
 size_t vpux::getDMACost(mlir::Value input, mlir::Value output, VPU::ArchKind archKind,
-                        const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
+                        const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts) {
     auto inputType = input.getType();
     auto outputType = output.getType();
 
@@ -392,11 +404,11 @@ size_t vpux::getDMACost(mlir::Value input, mlir::Value output, VPU::ArchKind arc
             getElementType(mlir::cast<vpux::NDTypeInterface>(outputType).getElementType(), getVPUNNDevice(archKind));
 
     if (mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType) && extraDMAsRequired(input)) {
-        return calculateMultiClusterDMACost(input, inElemType, outElemType, archKind, costModel);
+        return calculateMultiClusterDMACost(input, inElemType, outElemType, archKind, costModel, numDMAPorts);
     }
 
     if (mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType) && extraDMAsRequired(output)) {
-        return calculateMultiClusterDMACost(output, inElemType, outElemType, archKind, costModel);
+        return calculateMultiClusterDMACost(output, inElemType, outElemType, archKind, costModel, numDMAPorts);
     }
 
     auto inputShape = getShape(input);
@@ -535,7 +547,7 @@ vpux::Byte vpux::getSwKernelRunTotalAllocSize(VPUIP::SwKernelRun swKernelRun, Ar
     auto totalSwKernelRunSize = vpux::Byte(0);
 
     for (auto arg : swKernelRun.getArgs()) {
-        auto blkArg = arg.dyn_cast_or_null<mlir::BlockArgument>();
+        auto blkArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(arg);
         if (blkArg == nullptr) {
             continue;
         }
@@ -887,4 +899,14 @@ size_t vpux::calculateNceCycles(VPUIP::NCEClusterTaskOp nceOp, const std::shared
         }
     }
     return maxCost;
+}
+
+std::string vpux::stringifyVPUNNStrategy(VPUNN::VPUTilingStrategy strategy) {
+    const auto& enumMap = VPUNN::mapToText<VPUNN::VPUTilingStrategy>();
+    auto it = enumMap.find(static_cast<int>(strategy));
+    if (it != enumMap.end()) {
+        return it->second;
+    } else {
+        return "WRONG strategy";
+    }
 }

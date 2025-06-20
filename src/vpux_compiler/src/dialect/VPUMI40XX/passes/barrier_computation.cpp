@@ -105,13 +105,13 @@ struct BarrierConsumptionEventData {
     };
     void barrierVidConsumed(int64_t barVid) {
         VPUX_THROW_WHEN(barVid >= static_cast<int64_t>(barVidIndexToConsumptionEventIndexVec.size()),
-                        "1 Wrong VID - '{0}'", barVid);
+                        "Wrong VID - '{0}'", barVid);
         barVidIndexToConsumptionEventIndexVec[barVid] = nextConsumptionEventIndex++;
     };
 
     int64_t getConsumptionEventIndex(int64_t barVid) {
         VPUX_THROW_WHEN(barVid >= static_cast<int64_t>(barVidIndexToConsumptionEventIndexVec.size()),
-                        "2 Wrong VID - '{0}'", barVid);
+                        "Wrong VID - '{0}'", barVid);
         return barVidIndexToConsumptionEventIndexVec[barVid];
     };
     int64_t nextConsumptionEventIndex;
@@ -222,19 +222,22 @@ void simulateBarriers(const std::vector<BarrierCountConfig>& barriersConfigs, un
 
     bool progressed = false;
 
-    auto processTasks = [&](auto& currentIterator, auto endIterator) {
-        for (; currentIterator != endIterator; ++currentIterator, progressed = true) {
-            auto& current = *currentIterator;
-            const auto& op = std::get<0>(current);
-            auto& barrierConfig = std::get<1>(current);
-            const auto dependencyIndex = std::get<2>(current);
+    auto processNextTask = [&](auto& currentIterator, auto endIterator) {
+        if (currentIterator == endIterator) {
+            return;
+        }
 
-            const auto barrierHitsCount =
-                    mlir::dyn_cast<vpux::VPUMI40XX::ExecutableTaskOpInterface>(op).getBarrierHitsCount();
-            if (!processSim(vdt_, barriersConfigs, counts, vdt_.dep(dependencyIndex), barrierConfig, barrierHitsCount,
-                            to_virtual, barrierConsumptionEventData)) {
-                break;
-            }
+        auto& current = *currentIterator;
+        const auto& op = std::get<0>(current);
+        auto& barrierConfig = std::get<1>(current);
+        const auto dependencyIndex = std::get<2>(current);
+
+        const auto barrierHitsCount =
+                mlir::dyn_cast<vpux::VPUMI40XX::ExecutableTaskOpInterface>(op).getBarrierHitsCount();
+        if (processSim(vdt_, barriersConfigs, counts, vdt_.dep(dependencyIndex), barrierConfig, barrierHitsCount,
+                       to_virtual, barrierConsumptionEventData)) {
+            ++currentIterator;
+            progressed = true;
         }
     };
 
@@ -262,14 +265,17 @@ void simulateBarriers(const std::vector<BarrierCountConfig>& barriersConfigs, un
             to_virtual[barriersConfigs[bar].real_id_] = static_cast<int64_t>(bar);
         }
 
+        // Process each HW FIFO one by one to reflect parallelism between those engines
+        // This will allow to identify order of full barrier consumption events needed
+        // for proper setting of clean_after field
         for (auto item : dmaCurrs | indexed) {
             auto index = item.index();
             auto& dmaCurr = item.value();
-            processTasks(dmaCurr, dmas[index].end());
+            processNextTask(dmaCurr, dmas[index].end());
         }
-        processTasks(dpuCurr, dpus.end());
-        processTasks(actCurr, acts.end());
-        processTasks(m2iCurr, m2is.end());
+        processNextTask(dpuCurr, dpus.end());
+        processNextTask(actCurr, acts.end());
+        processNextTask(m2iCurr, m2is.end());
 
         if (!progressed) {
             VPUX_THROW("Did not progress");

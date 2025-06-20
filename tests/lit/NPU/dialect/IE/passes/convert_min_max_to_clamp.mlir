@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-min-max-to-clamp %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // -----
 
 // CHECK-LABEL: @EltwiseMinToClamp
@@ -37,6 +38,21 @@ func.func @EltwiseMaxToClamp(%arg0: tensor<1x64x28x28xf16>)
 
     // CHECK:       [[OUT:%.+]] = IE.Clamp([[ARG0]]) {max = 6.550400e+04 : f64, min = 0.000000e+00 : f64} : tensor<1x64x28x28xf16> -> tensor<1x64x28x28xf16>
     // CHECK:       return [[OUT]] : tensor<1x64x28x28xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @EltwiseMaxWithLargeMinValueToClamp
+// CHECK-SAME:  [[ARG0:%.+]]: tensor<1x1024x1xf32>
+func.func @EltwiseMaxWithLargeMinValueToClamp(%arg0: tensor<1x1024x1xf32>)
+        -> tensor<1x1024x1xf32> {
+    %cst = const.Declare tensor<1x1x1xf32> = dense<8454144.0> : tensor<1x1x1xf32>
+    %0 = IE.Maximum(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024x1xf32>, tensor<1x1x1xf32> -> tensor<1x1024x1xf32>
+
+    return %0 : tensor<1x1024x1xf32>
+
+    // CHECK:       [[OUT:%.+]] = IE.Clamp([[ARG0]]) {max = 6.550400e+04 : f64, min = 6.550400e+04 : f64} : tensor<1x1024x1xf32> -> tensor<1x1024x1xf32>
+    // CHECK:       return [[OUT]] : tensor<1x1024x1xf32>
 }
 
 // -----

@@ -96,6 +96,15 @@ public:
     SmallVector<DmaProgrammingBarrierPosition> getDmaProgrammingBarrierPositions();
     void legalizeForDmaProgrammingBarriers();
 
+    struct DummyDmaInsertionData {
+        size_t pageInd;
+        VPURT::TaskQueueType queueType;
+        SmallVector<size_t> waitBars;
+        SmallVector<size_t> updateBars;
+        size_t insertAfter;
+    };
+    SmallVector<DummyDmaInsertionData> getAndLegalizeDummyDmaInsertionData();
+
 private:
     size_t getBarrierPage(size_t barInd);
     SmallVector<size_t> getFirstBoundaryTasksForPage(size_t pageInd);
@@ -125,9 +134,20 @@ private:
                                                       BarrierInfo::TaskSet& pageEndBars,
                                                       BarrierInfo::TaskSet& pageEndAllBars,
                                                       BarrierInfo::TaskSet& pageEndTasks);
-    void removePageStartBarsDependingOnPageEndBars(BarrierInfo::TaskSet& pageStartTasks,
-                                                   BarrierInfo::TaskSet& pageStartBars,
-                                                   BarrierInfo::TaskSet& pageEndBars);
+    void legalizePageStartBarsDependingOnPageEndBars(BarrierInfo::TaskSet& pageStartTasks,
+                                                     BarrierInfo::TaskSet& pageStartBars,
+                                                     BarrierInfo::TaskSet& pageStartBarsToLegalize);
+    BarrierInfo::TaskSet getPageStartBarsDependingOnPageEndBars(BarrierInfo::TaskSet& pageStartBars,
+                                                                BarrierInfo::TaskSet& pageEndBars);
+
+    bool isDummyDmaNeeded(size_t pageInd, VPURT::TaskQueueType dmaQueueType,
+                          std::optional<size_t> lastDmaTaskOnSameQueueInPageOpt);
+
+    BarrierInfo::TaskSet getDummyDmaWaitBars(size_t pageInd);
+    size_t getDummyDmaInsertionPoint(BarrierInfo::TaskSet& dummyDmaProposedWaitBars,
+                                     std::optional<size_t> lastDmaTaskOnSameQueueInPageOpt);
+    BarrierInfo::TaskSet getDummyDmaUpdateBars(size_t pageInd, size_t insertionPoint,
+                                               SmallVector<std::pair<size_t, size_t>>& firstAndLastBarIndPerPage);
 
     // In assignment calculate barrier to page assignment but in
     // legalization mode read barrier to page assignment from IR
@@ -147,7 +167,7 @@ private:
     BarrierInfo _barrierInfo;
 
     size_t _pageSize;
-    size_t _pageCount;
+    size_t _pageCount = 0;
 
     // For each queue store a vector of task indexes on this queue
     std::map<VPURT::TaskQueueType, SmallVector<uint32_t>> _taskQueueTypeMap;

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-convbackpropdata-to-transposedconv --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ConvertConvBackpropDataToTransposedConv
 // CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x23x30xf16>)
 func.func @ConvertConvBackpropDataToTransposedConv(%input: tensor<1x16x23x30xf16>) -> tensor<1x32x46x59xf16> {

@@ -5,6 +5,10 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/less.hpp"
+#include "openvino/op/loop.hpp"
+
 using namespace ov;
 using namespace element;
 

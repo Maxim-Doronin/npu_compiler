@@ -8,7 +8,10 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/convert_op_types.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -24,6 +27,40 @@ using namespace vpux;
 using namespace IE;
 
 namespace {
+
+// E#160869: The compiler must have a much more general solution: either all
+// fp16 values must come out as HALF_MAX / HALF_MIN or none. the preferred way
+// seems to be "all". However, clamping non-splats produced inaccurate results
+// according to tests. This needs to be debugged properly to understand why. The
+// logic here is a *workaround* to have sustainable development in the meantime.
+Const::ContentAttr clampF16Splat(const Const::ContentAttr& input) {
+    if (!input.isSplat()) {
+        // Note: clamping values in the pass here is OK, because this logic only
+        // works for *splats* (aka single-value constants) and calculating
+        // splats is *fast*. If there is ever a need for a proper solution, this
+        // has to be migrated to a constant transformation (likely, to
+        // #const.ConvertElemType<f16>).
+        return nullptr;
+    }
+
+    // Note: fp16 internal ctor would convert any type to float thus get float
+    // value from the input directly.
+    const auto splatValue = input.fold().getSplatValue<float>();
+    const auto splatValueFp16 = vpux::type::float16(splatValue);
+    if (!std::isinf(splatValueFp16)) {
+        // no need to clamp - can use the existing content attr
+        return nullptr;
+    }
+    const auto clampedFp16 = std::numeric_limits<vpux::type::float16>::clamp(splatValueFp16);
+
+    const auto dataType = input.getType().changeElemType(mlir::Float16Type::get(input.getContext()));
+    const auto content = Const::createConstContent(mlir::cast<mlir::ShapedType>(dataType), ArrayRef{clampedFp16});
+
+    // Note: Cast to current input type to ensure compatibility with existing
+    // constant operation. This cast costs nothing and is likely to be fused
+    // with other casts.
+    return Const::ContentAttr::get(content, {Const::CastElemTypeAttr::get(input.getType().getElementType())});
+}
 
 //
 // ConvertPrecisionToFP16Pass
@@ -60,7 +97,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     auto& ctx = getContext();
 
     const auto convertElemType = [](mlir::Type elemType) -> mlir::Type {
-        if (elemType.isF32() || elemType.isSignlessInteger(CHAR_BIT)) {
+        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(CHAR_BIT)) {
             return mlir::Float16Type::get(elemType.getContext());
         } else if (const auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType);
                    qType != nullptr && qType.getExpressedType().isF32()) {
@@ -93,6 +130,9 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     target.addLegalOp<IE::DynamicQuantizeOp>();
     target.addLegalOp<IE::DynamicDequantizeOp>();
     target.addDynamicallyLegalOp<IE::QuantizeCastOp>([&](mlir::Operation* op) {
+        return isLegalOp(op) || hasDynamicDequantizeUser(op);
+    });
+    target.addDynamicallyLegalOp<IE::QuantizeOp>([&](mlir::Operation* op) {
         return isLegalOp(op) || hasDynamicDequantizeUser(op);
     });
     target.addLegalOp<IE::IfOp>();
@@ -153,6 +193,21 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
 
     auto module = getOperation();
 
+    // E#160869: Splat floating-point constants must be clamped, not converted,
+    // to ensure accurate results (e.g. when comparing to CPU inference).
+    module.walk([&](Const::DeclareOp op) {
+        const auto inElemType = op.getContentAttr().getType().getElementType();
+        const auto precisionLoweringToF16 =
+                mlir::isa<mlir::FloatType>(inElemType) && inElemType.getIntOrFloatBitWidth() >= sizeof(float);
+        const auto newContentAttr = precisionLoweringToF16 ? clampF16Splat(op.getContentAttr()) : nullptr;
+        if (newContentAttr != nullptr) {
+            VPUX_THROW_WHEN(op.getType() != newContentAttr.getType(),
+                            "Const op type {0} must match new content attribute type {1}", op.getType(),
+                            newContentAttr.getType());
+            op.setContentAttr(newContentAttr);
+        }
+    });
+
     // Some ops infer their output type based on a member type attribute, which should also be converted.
     module.walk([&](mlir::Operation* op) {
         if (!target.isIllegal(op)) {
@@ -160,7 +215,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
         }
 
         mlir::TypeSwitch<mlir::Operation*, void>(op)
-                .Case<IE::DequantizeOp, IE::QuantizeCastOp>([&](auto op) {
+                .Case<IE::DequantizeOp, IE::QuantizeCastOp, IE::QuantizeOp>([&](auto op) {
                     op.setDstElemType(convertElemType(op.getDstElemType()));
                 })
                 .Case<IE::OneHotOp, IE::RandomUniformOp, IE::EyeOp>([&](auto op) {
@@ -177,9 +232,29 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
         signalPassFailure();
     }
 
+    mlir::TypeConverter uniquifyPrecisionTypeConverter;
+    setupConvertPrecision(uniquifyPrecisionTypeConverter, [](mlir::Type elemType) -> mlir::Type {
+        return mlir::Float16Type::get(elemType.getContext());
+    });
+    const auto isPrecisionUniquifiedOp = [](mlir::Operation* op) {
+        auto operandTypes = op->getOperandTypes();
+        return std::all_of(operandTypes.begin() + 1, operandTypes.end(), [&](auto operandType) {
+            return mlir::cast<NDTypeInterface>(operandType).getElementType() ==
+                   mlir::cast<NDTypeInterface>(operandTypes.front()).getElementType();
+        });
+    };
+    mlir::ConversionTarget uniquifyPrecisionTarget(ctx);
+    uniquifyPrecisionTarget.markUnknownOpDynamicallyLegal([](mlir::Operation*) {
+        return true;
+    });
+    uniquifyPrecisionTarget.addDynamicallyLegalOp<IE::AndOp>(isPrecisionUniquifiedOp);
+    if (mlir::failed(runConvertPrecision(module, uniquifyPrecisionTypeConverter, uniquifyPrecisionTarget, _log))) {
+        signalPassFailure();
+    }
+
     mlir::TypeConverter additionalTypeConverter;
     setupConvertPrecision(additionalTypeConverter, [](mlir::Type elemType) -> mlir::Type {
-        if (elemType.isF32() || elemType.isSignedInteger(64)) {
+        if (elemType.isF32() || elemType.isF64() || elemType.isSignedInteger(64)) {
             return mlir::Float16Type::get(elemType.getContext());
         } else {
             return elemType;
@@ -195,6 +270,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     additionalTarget.addDynamicallyLegalOp<IE::LessEqualOp>(isLegalAdditionalOp);
     additionalTarget.addDynamicallyLegalOp<IE::GreaterOp>(isLegalAdditionalOp);
     additionalTarget.addDynamicallyLegalOp<IE::ClampOp>(isLegalAdditionalOp);
+    additionalTarget.addLegalOp<mlir::ModuleOp>();
     if (mlir::failed(runConvertPrecision(module, additionalTypeConverter, additionalTarget, _log))) {
         signalPassFailure();
     }
@@ -202,8 +278,8 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     // SelectOp
     mlir::TypeConverter selectOpConverter;
     setupConvertPrecision(selectOpConverter, [](mlir::Type elemType) -> mlir::Type {
-        if (elemType.isF32() || elemType.isSignlessInteger(CHAR_BIT) || elemType.isSignedInteger(32) ||
-            elemType.isSignedInteger(64)) {
+        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(CHAR_BIT) ||
+            elemType.isSignedInteger(32) || elemType.isSignedInteger(64)) {
             return mlir::Float16Type::get(elemType.getContext());
         } else {
             return elemType;
@@ -216,6 +292,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
 
     mlir::ConversionTarget selectOpTarget(ctx);
     selectOpTarget.addDynamicallyLegalOp<IE::SelectOp>(isLegalSelectOp);
+    selectOpTarget.addLegalOp<mlir::ModuleOp>();
     if (mlir::failed(runConvertPrecision(module, selectOpConverter, selectOpTarget, _log))) {
         signalPassFailure();
     }

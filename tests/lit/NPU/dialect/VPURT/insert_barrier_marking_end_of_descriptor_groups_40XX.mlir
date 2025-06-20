@@ -41,12 +41,12 @@
 //           DMA
 //            |
 
-module @NoInsertionNeeded attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @NoInsertionNeeded attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -56,7 +56,7 @@ module @NoInsertionNeeded attributes {VPU.compilationMode = #VPU.compilation_mod
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -187,12 +187,12 @@ module @NoInsertionNeeded attributes {VPU.compilationMode = #VPU.compilation_mod
 //           DMA
 //            |
 
-module @NoInsertionNeededMultiTile attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @NoInsertionNeededMultiTile attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -202,7 +202,7 @@ module @NoInsertionNeededMultiTile attributes {VPU.compilationMode = #VPU.compil
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -370,12 +370,12 @@ module @NoInsertionNeededMultiTile attributes {VPU.compilationMode = #VPU.compil
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @InsertBarriersWhereNeeded attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 8
-    IE.Option @VPU.MetadataMaxInvariantCount : 4
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @InsertBarriersWhereNeeded attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 8
+    config.Option @VPU.MetadataMaxInvariantCount : 4
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -385,7 +385,7 @@ module @InsertBarriersWhereNeeded attributes {VPU.compilationMode = #VPU.compila
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "result.1" : tensor<1x3x224x224xf16>
   } outputsInfo : {
@@ -541,12 +541,12 @@ module @InsertBarriersWhereNeeded attributes {VPU.compilationMode = #VPU.compila
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
-module @InsertBarriersWhereNeededMultiTile attributes {VPU.compilationMode = #VPU.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
-  IE.PipelineOptions @Options {
-    IE.Option @VPU.MetadataMaxVariantCount : 12
-    IE.Option @VPU.MetadataMaxInvariantCount : 6
-    IE.Option @VPU.MetadataMaxKernelInvocationCount : 4
-    IE.Option @VPU.MetadataMaxKernelRangeCount : 4
+module @InsertBarriersWhereNeededMultiTile attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
+  config.PipelineOptions @Options {
+    config.Option @VPU.MetadataMaxVariantCount : 12
+    config.Option @VPU.MetadataMaxInvariantCount : 6
+    config.Option @VPU.MetadataMaxKernelInvocationCount : 4
+    config.Option @VPU.MetadataMaxKernelRangeCount : 4
   }
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -556,7 +556,7 @@ module @InsertBarriersWhereNeededMultiTile attributes {VPU.compilationMode = #VP
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 4194304000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
 
 func.func @main(%arg0: memref<1x3x224x224xf16, @DDR>, %arg1: memref<1x64x112x112xf16, @DDR>) -> memref<1x64x112x112xf16, @DDR> {
     // barriers

@@ -30,11 +30,7 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
 
     auto isUniformDistributedSegments = VPU::isUniformDistributedSegmentsSupported(clusteredOp);
 
-    auto outputShape = ShapeRef(outputTile.shape);
-    if (outputShape == ShapeRef()) {
-        outputShape = getShape(clusteredOp->getResult(0));
-    }
-
+    auto outputShape = outputTile.shape.empty() ? getShape(clusteredOp->getResult(0)) : ShapeRef(outputTile.shape);
     auto heightCompatibleCheck = [&](ShapeRef outputShape) {
         const auto OH = outputShape[Dims4D::Act::H];
         auto numClustersForSOH = VPU::getNumberOfClustersForSpatialDim(outputShape[Dims4D::Act::H], numTiles,

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -25,7 +25,12 @@ sw_params::DataType KernelParamsSerializer::getDataTypeFromMlirType(mlir::Type t
             }
             return sw_params::DataType::NN_FP16;
         case 8:
-            return sw_params::DataType::NN_FP8;
+            if (mlir::isa<mlir::Float8E4M3FNType>(floatType)) {
+                return sw_params::DataType::NN_HF8;
+            } else if (mlir::isa<mlir::Float8E5M2Type>(floatType)) {
+                return sw_params::DataType::NN_BF8;
+            }
+            break;
         }
     } else if (auto integerType = mlir::dyn_cast<mlir::IntegerType>(type)) {
         if (integerType.isSigned()) {
@@ -118,19 +123,19 @@ sw_params::Location KernelParamsSerializer::getSwParamsLocationFromMemKind(VPU::
 }
 
 void KernelParamsSerializer::addBasicAttrToVector(SmallVector<uint8_t>& vec, mlir::Attribute attr) {
-    if (auto val = attr.dyn_cast_or_null<mlir::IntegerAttr>()) {
+    if (auto val = mlir::dyn_cast_or_null<mlir::IntegerAttr>(attr)) {
         appendValueToVector(vec, val.getValue().getSExtValue());
-    } else if (auto val = attr.dyn_cast_or_null<mlir::FloatAttr>()) {
+    } else if (auto val = mlir::dyn_cast_or_null<mlir::FloatAttr>(attr)) {
         appendValueToVector(vec, static_cast<float>(val.getValue().convertToDouble()));
+    } else if (auto val = mlir::dyn_cast_or_null<mlir::TypeAttr>(attr)) {
+        appendValueToVector(vec, getDataTypeFromMlirType(val.getValue()));
     } else {
-        const auto typedAttr = attr.dyn_cast_or_null<mlir::TypedAttr>();
-        const auto type = typedAttr != nullptr ? typedAttr.getType() : nullptr;
-        VPUX_THROW("Act Shave Invocation: arg type is unknown or unsupported {0}", type);
+        VPUX_THROW("Act Shave Invocation: cannot store attribute {0}", attr);
     }
 }
 
 void KernelParamsSerializer::addAttrsToVector(SmallVector<uint8_t>& vec, mlir::Attribute attr) {
-    if (auto arr = attr.dyn_cast_or_null<mlir::ArrayAttr>()) {
+    if (auto arr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr)) {
         auto vals = arr.getValue();
         for (auto val : vals) {
             addBasicAttrToVector(vec, val);
@@ -254,7 +259,7 @@ SmallVector<uint8_t> KernelParamsSerializer::createKernelParams(VPUIP::SwKernelO
     auto firstInnerOpPackMemrefs = mlir::dyn_cast<vpux::IERT::PackMemrefsOp>(firstInnerOp);
     if (firstInnerOpPackMemrefs != nullptr) {
         for (auto&& operand : firstInnerOpPackMemrefs.getOperands()) {
-            auto blockArg = operand.dyn_cast_or_null<mlir::BlockArgument>();
+            auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(operand);
             if (blockArg) {
                 auto blockId = blockArg.getArgNumber();
                 VPUX_THROW_UNLESS(blockId < kernelOpArgsCount,
@@ -286,7 +291,7 @@ SmallVector<uint8_t> KernelParamsSerializer::createKernelParams(VPUIP::SwKernelO
     } else {
         for (auto&& kernelRun : swKernelOp.getBody().getOps<VPUIP::SwKernelRun>()) {
             for (auto&& operand : kernelRun.getArgs()) {
-                auto blockArg = operand.dyn_cast_or_null<mlir::BlockArgument>();
+                auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(operand);
                 if (blockArg) {
                     auto blockId = blockArg.getArgNumber();
                     VPUX_THROW_UNLESS(blockId < kernelOpArgsCount,

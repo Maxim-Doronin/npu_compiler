@@ -359,7 +359,8 @@ if(build_kernels)
   # If we don't rebuild everything, copy the prebuilts for the kernels we haven't built
   if(NOT (ENABLE_SHAVE_BINARIES_BUILD AND ENABLE_MANAGEMENT_KERNEL_BUILD AND ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD))
     add_custom_target(update_prebuilt_binaries
-      COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin" "${target_binary_dir}"
+      # Update copy_directory function #E-167654
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin" "${target_binary_dir}"
       # Make sure we do this after updating the prebuilts, otherwise we would overwrite the rebuilt binaries
       DEPENDS act_shave_kernels_copy
     )

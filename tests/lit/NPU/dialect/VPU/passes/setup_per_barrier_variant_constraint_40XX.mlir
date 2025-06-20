@@ -8,9 +8,17 @@
 // REQUIRES: arch-NPU40XX
 
 module @mainModule attributes { VPU.arch = #VPU.arch_kind<NPU40XX> } {
+  IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
+    IE.ExecutorResource 2 of @SHAVE_ACT
+    IE.ExecutorResource 1 of @DPU
+  }
 }
 
 // CHECK: module @mainModule attributes
-// CHECK: IE.PipelineOptions @Options
-// CHECK: IE.Option @VPU.BarrierMaxVariantSum : 64
-// CHECK: IE.Option @VPU.BarrierMaxVariantCount : 128
+// CHECK: config.PipelineOptions @Options
+// CHECK: config.Option @VPU.UseDedicatedFifoPerShaveEngine : false
+// CHECK: config.Option @VPU.BarrierMaxVariantSum : 64
+// CHECK: config.Option @VPU.BarrierMaxVariantCount : 128
+// CHECK: config.Option @VPU.MetadataMaxKernelInvocationCount : 64
+// CHECK: config.Option @VPU.MetadataMaxKernelRangeCount : 64
+

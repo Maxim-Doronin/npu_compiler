@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/core/barrier_info.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/utils/options.hpp"
 
 namespace vpux {
 namespace VPURT {
@@ -33,6 +34,8 @@ bool allQueuesWaiting(const TaskOpQueueIterator& frontTasks, const TaskOpQueues&
                       BarrierInfo& barrierInfo);
 SmallVector<size_t> findReadyOpsFromTaskOpQueues(TaskOpQueueIterator& frontTasks, const TaskOpQueues& taskOpQueues,
                                                  BarrierInfo& barrierInfo);
+
+bool isShareWaitAndUpdateBarriersNeeded(std::optional<WorkloadManagementMode> workloadManagementMode);
 
 }  // namespace VPURT
 }  // namespace vpux

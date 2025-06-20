@@ -24,6 +24,12 @@ std::string DebatcherOpReorderingOptions::getDefaultOptions() {
     std::string ret;
     llvm::raw_string_ostream optionsPrinter(ret);
     DebatcherOpReorderingOptions{}.print(optionsPrinter);
+
+    // remove leading '{' and trailing '}'
+    if (ret.size() >= 2 && ret[0] == '{' and ret.back() == '}') {
+        ret = ret.substr(1, ret.size() - 2);
+    }
+
     return ret;
 }
 

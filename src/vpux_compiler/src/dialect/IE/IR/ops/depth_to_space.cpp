@@ -110,3 +110,10 @@ mlir::OpFoldResult vpux::IE::DepthToSpaceOp::fold(FoldAdaptor adaptor) {
 
     return nullptr;
 }
+
+mlir::LogicalResult IE::DepthToSpaceOp::verify() {
+    if (getBlockSize() <= 0) {
+        return errorAt(*this, "Block size should be a positive integer, while it is {0}", getBlockSize());
+    }
+    return mlir::success();
+}

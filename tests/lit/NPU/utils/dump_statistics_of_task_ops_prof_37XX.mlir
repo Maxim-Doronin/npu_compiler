@@ -10,7 +10,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #loc0 = loc(unknown)
 #loc2 = loc("profiling_result")
-module @age_gender attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilationMode = #VPU.compilation_mode<DefaultHW>} {
+module @age_gender attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096] loc(#loc0)
   module @VPU.SW {
     func.func private @builtin_MemPermute(memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"} loc(#loc0)
@@ -379,7 +379,7 @@ module @age_gender attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.compilati
 #loc74 = loc("actshaveProfilingCMX2DDR0")
 
 // CHECK:  Input size - 45.04 KB Output size - 169.04 KB
-// CHECK:  DDR heap size - 142.64 KB
+// CHECK:  DDR heap size - 120.12 KB
 // CHECK:  VPUIP tasks statistics:
 // CHECK:  VPUIP Tasks - 44 ops
 // CHECK:    VPUIP.NNDMA - 36 ops : Size - 422.81 KB

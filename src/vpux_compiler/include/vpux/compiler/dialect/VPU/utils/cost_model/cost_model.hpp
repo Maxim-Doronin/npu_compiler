@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,8 +25,8 @@ static constexpr uint32_t UNIT_COST = 1;
 static constexpr uint32_t INVALID_COST_BASE = MAX_VAL - 100;
 static constexpr uint32_t ERROR_INPUT_TOO_BIG = MAX_VAL - 0;
 
-std::shared_ptr<VPUNN::VPUCostModel> createCostModel(ArchKind arch);
-std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel(ArchKind arch);
+constexpr StringRef VPUNN_PRE_SPLIT = "VPU.EnableVPUNNPreSplit";
+bool hasVPUNNPreSplit(mlir::Operation* op);
 uint32_t checkAndReturnCost(const VPUNN::CyclesInterfaceType& cost, vpux::Logger log, bool beSilent = false);
 void printVPUNNLayerConfig(const VPUNN::DPULayer& layer, const VPUNN::VPULayerStrategy& strategy, vpux::Logger log);
 void printVPUNNLayers(ArrayRef<VPUNN::DPULayer> layers, vpux::Logger log);

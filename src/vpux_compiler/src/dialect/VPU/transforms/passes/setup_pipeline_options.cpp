@@ -4,11 +4,12 @@
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/impl/ppe_factory.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/setup_pipeline_options_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -37,7 +38,8 @@ public:
     }
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnModule() final;
 
 private:
@@ -48,8 +50,9 @@ private:
     bool _allowCustomValues = false;
 };
 
-mlir::LogicalResult SetupPipelineOptionsPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult SetupPipelineOptionsPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 
@@ -79,13 +82,16 @@ void SetupPipelineOptionsPass::initializeFromOptions() {
     } else {
         _log.error("Unknown PPE version name: '{0}'", ppeVersion);
     }
+
+    // Register the default cost model factory singleton
+    VPU::CostModelConfig::setFactory(_arch);
 }
 
 void SetupPipelineOptionsPass::safeRunOnModule() {
     auto& ctx = getContext();
     auto moduleOp = getModuleOp(getOperation());
 
-    const auto hasPipelineOptions = moduleOp.lookupSymbol<IE::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS) != nullptr;
+    const auto hasPipelineOptions = moduleOp.lookupSymbol<config::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS) != nullptr;
     VPUX_THROW_WHEN(!_allowCustomValues && hasPipelineOptions,
                     "PipelineOptions operation is already defined, probably you run '--init-compiler' twice");
 
@@ -95,7 +101,7 @@ void SetupPipelineOptionsPass::safeRunOnModule() {
 
     auto optionsBuilder = mlir::OpBuilder::atBlockBegin(moduleOp.getBody());
     auto pipelineOptionsOp =
-            optionsBuilder.create<IE::PipelineOptionsOp>(mlir::UnknownLoc::get(&ctx), VPU::PIPELINE_OPTIONS);
+            optionsBuilder.create<config::PipelineOptionsOp>(mlir::UnknownLoc::get(&ctx), VPU::PIPELINE_OPTIONS);
     pipelineOptionsOp.getOptions().emplaceBlock();
 }
 

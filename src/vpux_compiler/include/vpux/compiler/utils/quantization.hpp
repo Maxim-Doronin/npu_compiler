@@ -15,17 +15,21 @@
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/BuiltinTypes.h>
 
-#include <llvm/ADT/bit.h>
-
 #include <flatbuffers/flatbuffers.h>
+#include <llvm/ADT/bit.h>
 
 #include <cstdint>
 #include <tuple>
 
 namespace vpux {
 
-static constexpr int64_t MAX_LEVELS = 256;
-
+struct QuantizationLevels final {
+    static constexpr int64_t QUANT_LEVELS_2BIT = 4;
+    static constexpr int64_t QUANT_LEVELS_4BIT = 16;
+    static constexpr int64_t QUANT_LEVELS_8BIT = 256;
+    static constexpr int64_t QUANT_LEVELS_16BIT = 65536;
+};
+static constexpr int64_t MAX_QUANT_LEVELS = QuantizationLevels::QUANT_LEVELS_16BIT;
 static constexpr int64_t PARALLEL_EXECUTION_THRESHOLD = 4096;
 
 //
@@ -63,6 +67,9 @@ Scales extractScalesOrDefault(mlir::Type elemType, double defaultScale);
 /// In case of uniform per-axis type, this means that all zero points are the
 /// same and a single value could be returned successfully.
 std::optional<int64_t> extractSingleZeroPoint(mlir::quant::QuantizedType type);
+
+/// @brief Returns true if all zero-points are equal
+bool areAllZeroPointsEqual(mlir::quant::UniformQuantizedPerAxisType type);
 
 template <typename MultType>
 std::tuple<MultType, uint8_t, int8_t> approximate(uint8_t bits, double target) {
@@ -161,6 +168,14 @@ mlir::FailureOr<std::tuple<SmallVector<double>, SmallVector<int64_t>>> getScales
         const Const::ContentAttr& lowContentAttr, const Const::ContentAttr& highContentAttr,
         IE::AutoBroadcastType broadcast, const std::optional<int64_t> levels, const std::optional<mlir::Type> lowFpType,
         bool isSigned, const Logger& log = Logger::global());
+
+mlir::FailureOr<int64_t> getSingleZeroPointOrFail(mlir::quant::QuantizedType quantType);
+
+int64_t getDefaultQuantizedZeroPoint(mlir::quant::QuantizedType quantType);
+
+SmallVector<int64_t> getQuantizedTypeZeroPoints(mlir::quant::QuantizedType quantType);
+
+bool isSymmetricZeroPoint(mlir::quant::QuantizedType quantType);
 
 // Returns the min and max representable values for a known FP8 type.
 mlir::FailureOr<std::tuple<double, double>> getFp8Range(mlir::Type lowFpType);

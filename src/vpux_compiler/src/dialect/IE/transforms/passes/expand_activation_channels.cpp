@@ -493,3 +493,20 @@ mlir::LogicalResult IE::AvgPoolRewriter::matchAndRewrite(IE::AvgPoolOp origOp, m
 
     return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, _log.nest());
 }
+
+//
+// SoftMaxRewriter
+//
+
+mlir::LogicalResult IE::SoftMaxRewriter::matchAndRewrite(IE::SoftMaxOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got SoftMaxRewriter layer at '{1}'", getDebugName(), origOp->getLoc());
+
+    const auto opCreator = [&](mlir::Value expandedInput, int64_t inChanPadEnd,
+                               int64_t outChanPadsEnd) -> mlir::Operation* {
+        _log.trace("Expand SoftMax with pad {0} in {1} out", inChanPadEnd, outChanPadsEnd);
+        return rewriter.create<IE::SoftMaxOp>(origOp->getLoc(), expandedInput, origOp.getAxisIndAttr(),
+                                              getIntAttr(rewriter.getContext(), inChanPadEnd));
+    };
+
+    return generalRewrite(origOp, rewriter, opCreator, IE::extractMeaningfulOutput, _log.nest());
+}

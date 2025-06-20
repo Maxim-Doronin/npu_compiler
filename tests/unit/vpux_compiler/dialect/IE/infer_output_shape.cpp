@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/init.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
@@ -176,9 +177,11 @@ class InferAvgPoolTests : public testing::TestWithParam<InferPoolingData> {};
 
 TEST_P(InferAvgPoolTests, InferOutputShapePooling) {
     const auto params = GetParam();
-    const auto shapeI64 = inferAvgPoolOutputShape(params.inDataShape, params.windowStrides, params.padsBegin,
-                                                  params.padsEnd, params.windowShape);
-    EXPECT_EQ(to_std_vector(shapeI64), params.outDataShape);
+    ShapeInfo shapeInfo;
+    shapeInfo.shape = to_small_vector(params.inDataShape);
+    const auto shapeI64 = inferAvgPoolOutputShape(shapeInfo, params.windowStrides, params.padsBegin, params.padsEnd,
+                                                  params.windowShape);
+    EXPECT_EQ(to_std_vector(shapeI64.shape), params.outDataShape);
 }
 
 // clang-format off
@@ -488,7 +491,7 @@ TEST_P(ReifyDimTests, ReifyDimTest) {
     auto inArg = entryBlock.getArgument(0);
 
     for (auto i : irange(rank)) {
-        auto result = IE::reifyDim(builder, inArg, i);
+        auto result = reifyDim(builder, inArg, i);
         if (params.shape[i] == mlir::ShapedType::kDynamic) {
             EXPECT_TRUE(result.is<mlir::Value>());
             EXPECT_TRUE(mlir::isa<mlir::tensor::DimOp>(result.get<mlir::Value>().getDefiningOp()));

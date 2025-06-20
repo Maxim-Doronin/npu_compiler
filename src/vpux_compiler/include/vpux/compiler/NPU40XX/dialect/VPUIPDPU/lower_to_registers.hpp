@@ -73,7 +73,7 @@ uint64_t getTensorMode(mlir::Type type) {
             return static_cast<uint64_t>(nn_public::VpuInputTensorDType::U8);
         } else if (type.isInteger(8)) {
             return static_cast<uint64_t>(nn_public::VpuInputTensorDType::I8);
-        } else if (type.isInteger(4)) {
+        } else if (type.isSignedInteger(4)) {
             return static_cast<uint64_t>(nn_public::VpuInputTensorDType::I4);
         } else if (type.isInteger(2)) {
             return static_cast<uint64_t>(nn_public::VpuInputTensorDType::I2);

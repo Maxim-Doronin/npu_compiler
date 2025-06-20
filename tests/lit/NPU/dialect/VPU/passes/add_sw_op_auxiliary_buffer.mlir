@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --add-sw-op-auxiliary-buffer %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: func.func @Proposal
 // CHECK-SAME:        [[ARG0:%arg[0-9]]]: tensor<1x2x4x4xf16>
 // CHECK-SAME:        [[ARG1:%arg[0-9]]]: tensor<1x4x4x4xf16>

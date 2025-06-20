@@ -7,6 +7,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" %s | FileCheck --check-prefix=CHECK-INIT %s
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-main" %s | FileCheck --check-prefix=CHECK-MAIN %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // Note: these tests verify ws-extraction-mode differences of the
 // introduce-init-function pass. They are not supposed to test everything but
 // rather test the bare minimum, focusing on the difference in the mode.

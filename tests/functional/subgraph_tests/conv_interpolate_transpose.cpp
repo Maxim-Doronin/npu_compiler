@@ -4,6 +4,11 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/convert.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/interpolate.hpp"
+#include "openvino/op/transpose.hpp"
+
 using namespace ov::test;
 namespace {
 

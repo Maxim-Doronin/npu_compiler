@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -471,6 +472,130 @@ mlir::LogicalResult AdjustForSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir
 }
 
 //
+// AdjustForConcat
+//
+
+class AdjustForConcat final : public mlir::OpRewritePattern<IE::ConcatOp> {
+public:
+    AdjustForConcat(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ConcatOp>(ctx), _log(log) {
+        setDebugName("AdjustForConcatSlice");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+//    input1      input2       BlockArgument
+//      |            |             |
+//  MemPermute1  MemPermute2       |
+//      |            |             |
+//   -----------------------------------
+//  |              Concat               |
+//   -----------------------------------
+//                   |
+//              MemPermute3
+//                   |
+//                 Output
+//
+//
+//  Propagate MemPermute3 through Concat:
+//
+//
+//    input1      input2       BlockArgument
+//      |            |             |
+// PermuteCast1 PermuteCast2   MemPermute
+//      |            |             |
+//   -----------------------------------
+//  |              Concat               |
+//   -----------------------------------
+//                   |
+//                 Output
+//
+
+mlir::LogicalResult AdjustForConcat::matchAndRewrite(IE::ConcatOp concatOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] start to move MemPermute for {1} at {2}", this->getDebugName(), concatOp->getName(),
+               concatOp->getLoc());
+
+    if (!concatOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    auto outMemPermuteOp = mlir::dyn_cast<IE::MemPermuteOp>(*concatOp->getUsers().begin());
+    if (outMemPermuteOp == nullptr) {
+        return mlir::failure();
+    }
+    const auto outPermuteMemPerm = outMemPermuteOp.getMemPerm();
+
+    auto isFusedPermuteTrivial = [&](IE::MemPermuteOp currentOp) {
+        // Check if the fused MemPermute is trivial.
+        const auto inMemShape = getMemShape(currentOp.getInput());
+        const auto newMemPerm = outPermuteMemPerm.compose(currentOp.getMemPerm());
+        return isTrivialPermute(inMemShape, newMemPerm);
+    };
+
+    _log.trace("start checking inputs");
+
+    const auto concatOputShape = getShape(concatOp.getOutput());
+    std::optional<Dim> concatAxis;
+    int inputMemPermuteOpNum = 0;
+    for (const auto& input : concatOp.getInputs()) {
+        // only support concatenating on single dimension
+        auto axis = vpux::IE::getSingleDiffAxis(getShape(input), concatOputShape);
+        if (!axis.has_value()) {
+            return mlir::failure();
+        }
+        if (!concatAxis.has_value()) {
+            concatAxis = axis.value();
+        }
+        if (concatAxis.value() != axis.value()) {
+            return mlir::failure();
+        }
+
+        if (auto inPermuteOp = input.getDefiningOp<IE::MemPermuteOp>()) {
+            if (!isFusedPermuteTrivial(inPermuteOp)) {
+                _log.trace("Can not convert to PermuteCast or fold them");
+                return mlir::failure();
+            }
+            ++inputMemPermuteOpNum;
+            continue;
+        }
+
+        if (mlir::isa<mlir::BlockArgument>(input)) {
+            continue;
+        }
+
+        _log.trace("There are ops other than MemPermuteOp and BlockArgument");
+        return mlir::failure();
+    }
+
+    if (inputMemPermuteOpNum == 0) {
+        _log.trace("Inputs of Concat are all BlockArgument");
+        return mlir::failure();
+    }
+
+    const auto outPermuteInOrder = DimsOrder::fromValue(outMemPermuteOp.getInput());
+    const auto outPermuteOutOrder = DimsOrder::fromValue(outMemPermuteOp.getOutput());
+    const auto concatInferDim =
+            inferDimAfterPermutation(concatAxis.value(), outPermuteInOrder, outPermuteOutOrder, outPermuteMemPerm);
+
+    SmallVector<mlir::Value> newConcatInputs;
+    for (const auto& input : concatOp.getInputs()) {
+        auto newInPermuteOp = rewriter.createOrFold<IE::MemPermuteOp>(concatOp->getLoc(), input,
+                                                                      outMemPermuteOp.getDstOrder(), outPermuteMemPerm);
+        newConcatInputs.push_back(newInPermuteOp);
+    }
+
+    auto newConcat = rewriter.create<IE::ConcatOp>(concatOp->getLoc(), newConcatInputs, concatInferDim);
+    rewriter.replaceOp(outMemPermuteOp, newConcat);
+
+    return mlir::success();
+}
+
+//
 // AdjustMemPermuteAroundOpPass
 //
 
@@ -492,6 +617,7 @@ void AdjustMemPermuteAroundOpPass::safeRunOnFunc() {
     patterns.add<AdjustForTile>(&ctx, _log);
     patterns.add<AdjustForConvert>(&ctx, _log);
     patterns.add<AdjustForSoftmax>(&ctx, _log);
+    patterns.add<AdjustForConcat>(&ctx, _log);
     IE::MemPermuteOp::getCanonicalizationPatterns(patterns, &ctx);
 
     auto func = getOperation();

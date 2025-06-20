@@ -257,7 +257,7 @@ mlir::OpFoldResult VPUIP::SubViewOp::fold(FoldAdaptor adaptor) {
         return getSource();
     }
 
-    if (const auto origContent = operands[0].dyn_cast_or_null<Const::ContentAttr>()) {
+    if (const auto origContent = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
         auto offset = Shape(parseIntArrayAttr<int64_t>(getStaticOffsets()));
         auto shape = Shape(parseIntArrayAttr<int64_t>(getStaticSizes()));
         adaptSparsityMapConstant(getSource(), offset, shape);

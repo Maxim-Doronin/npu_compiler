@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --verify-diagnostics %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 func.func @ReduceMeanInvalidPadding(%arg0: tensor<1x16x4x2xf16>) -> tensor<1x1x4x2xf16> {
     // expected-error@+2 {{'IE.ReduceMean' op inferred type(s) 'tensor<1x16x4x2xf16>' are incompatible with return type(s) of operation 'tensor<1x1x4x2xf16>'}}
     // expected-error@+1 {{'IE.ReduceMean' op failed to infer returned types}}

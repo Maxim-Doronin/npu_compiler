@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --broadcast-input-for-add  %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @BroadcastTensorInput
 func.func @BroadcastTensorInput(%arg0: tensor<1x16x16x32xf16>, %arg1: tensor<1x16x16x1xf16>) -> tensor<1x16x16x32xf16> {
     %0 = IE.Add(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x16x32xf16>, tensor<1x16x16x1xf16> -> tensor<1x16x16x32xf16>
@@ -114,6 +115,53 @@ func.func @BroadcastFQAddConstInput(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       [[ADD:%.+]] = IE.Add([[FQ_1]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16>, tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       return [[ADD]] : tensor<1x3x30x30xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!dynType = tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: func.func @LhsDynamicBroadcast
+// CHECK-SAME:  [[INPUT_0:%.+]]: tensor<1x1x1x128xf16>
+// CHECK-SAME:  [[INPUT_1:%.+]]: tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>
+func.func @LhsDynamicBroadcast(%arg0: tensor<1x1x1x128xf16>, %arg1: !dynType) -> !dynType {
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x128xf16>, !dynType -> !dynType
+    return %0 : !dynType
+
+    // CHECK:       [[SHAPE:%.+]] = IE.ShapeOf([[INPUT_1]]) {dstElemType = si32} :
+    // CHECK-SAME:    tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi32>
+    // CHECK:       [[BCAST:%.+]] = IE.DynamicBroadcast([[INPUT_0]], [[SHAPE]]) {
+    // CHECK-SAME:    mode = #IE.broadcast_type<NUMPY>, output_bounds = [1, 500, 1, 128], output_shape = [1, -9223372036854775808, 1, 128]} : tensor<1x1x1x128xf16>, tensor<4xsi32> -> tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[BCAST]], [[INPUT_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+    // CHECK-SAME:    tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK:  return [[ADD]] : tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!dynType1 = tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}>
+!dynType2 = tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: func.func @RhsDynamicBroadcast
+// CHECK-SAME:  [[INPUT_0:%.+]]: tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}>
+// CHECK-SAME:  [[INPUT_1:%.+]]: tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>
+func.func @RhsDynamicBroadcast(%arg0: !dynType1, %arg1: !dynType2) -> !dynType1 {
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : !dynType1, !dynType2 -> !dynType1
+    return %0 : !dynType1
+
+    // CHECK:       [[SHAPE:%.+]] = IE.ShapeOf([[INPUT_0]]) {dstElemType = si32} :
+    // CHECK-SAME:    tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi32>
+    // CHECK:       [[BCAST:%.+]] = IE.DynamicBroadcast([[INPUT_1]], [[SHAPE]]) {
+    // CHECK-SAME:    mode = #IE.broadcast_type<NUMPY>, output_bounds = [1, 500, 16, 128], output_shape = [1, -9223372036854775808, -9223372036854775808, 128]} : tensor<1x?x1x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 1, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi32> -> tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[INPUT_0]], [[BCAST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+    // CHECK-SAME:    tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK:  return %2 : tensor<1x?x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 500, 16, 128]> : tensor<4xsi64>, order = #NCHW}>
 }
 
 // -----

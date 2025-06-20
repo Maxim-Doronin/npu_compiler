@@ -73,7 +73,7 @@ VPUIP::SparsityCompressionAttr VPUIP::getSparsityCompressionAttr(mlir::Type type
     }
 
     if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
-        if (const auto memRefAttr = memref.getLayout().dyn_cast_or_null<vpux::MemRefAttr>()) {
+        if (const auto memRefAttr = mlir::dyn_cast_or_null<vpux::MemRefAttr>(memref.getLayout())) {
             return memRefAttr.hwSpecificField<VPUIP::SparsityCompressionAttr>();
         }
     } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {

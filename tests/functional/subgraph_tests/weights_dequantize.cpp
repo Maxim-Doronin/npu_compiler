@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/opsets/opset6.hpp"
+#include "openvino/opsets/opset6_decl.hpp"
 
 #include <vpu_ov2_layer_test.hpp>
+
+#include "openvino/op/convert.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/subtract.hpp"
 
 using namespace ov::test::utils;
 using namespace ov::test;

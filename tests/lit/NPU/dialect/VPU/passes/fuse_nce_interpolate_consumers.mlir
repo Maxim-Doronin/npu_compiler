@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --fuse-nce-interpolate-consumers %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK: func.func @FuseInterpolateNearestWithConv([[INPUT_DATA:%.+]]: tensor<1x16x3x3xf16, {order = #NHWC}>) -> tensor<1x32x6x6xf16, {order = #NHWC}> {
@@ -13,7 +14,7 @@ func.func @FuseInterpolateNearestWithConv(%arg0: tensor<1x16x3x3xf16, {order = #
     %interp_weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %interp_sparsity_map = const.Declare tensor<1x16x6x6xi1> = dense<1> : tensor<1x16x6x6xi1>
 
-    %interp_storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 16, dataShape = [1, 16, 3, 3],
+    %interp_storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [16], dataShape = [1, 16, 3, 3],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 16, 6, 6]>
     } -> tensor<1x1x6x6xi32, {order = #NHWC}>
@@ -59,13 +60,13 @@ func.func @FuseInterpolateNearestWithConv(%arg0: tensor<1x16x3x3xf16, {order = #
     // CHECK-DAG:  [[INPUT_SPARSITY_MAP:%.+]] = const.Declare tensor<1x16x6x6xi1> = dense<true> : tensor<1x16x6x6xi1>
 
     // CHECK:      [[INPUT_SE_TABLE:%.+]] = VPU.StorageElementTable {
-    // CHECK-SAME:     dataElemType = i32,
+    // CHECK-SAME:     dataElemType = f16,
     // CHECK-SAME:     dataShape = [1, 16, 3, 3],
     // CHECK-SAME:     seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:                                 scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME:                                 nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 16, 6, 6]>,
     // CHECK-SAME:     seDepth = 1 : i64,
-    // CHECK-SAME:     seSize = 16 : i64
+    // CHECK-SAME:     seSize = [16]
     // CHECK-SAME:   } -> tensor<1x1x6x6xi32, {order = #NHWC}>
     // CHECK:      [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[INPUT_DATA]], [[INPUT_SPARSITY_MAP]], [[INPUT_SE_TABLE]]) {
     // CHECK-SAME:     seAttr = #VPU.SEInterpolate<mode = <NEAREST>,
@@ -101,7 +102,7 @@ func.func @DoNotFuseInterpolateBilinearWithConv(%arg0: tensor<1x16x3x3xf16, {ord
     %interp_weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %interp_sparsity_map = const.Declare tensor<1x16x7x7xi1> = dense<1> : tensor<1x16x7x7xi1>
 
-    %interp_storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = 16, dataShape = [1, 16, 3, 3],
+    %interp_storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [16], dataShape = [1, 16, 3, 3],
         seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 16, 7, 7]>
     } -> tensor<1x1x7x7xi32, {order = #NHWC}>

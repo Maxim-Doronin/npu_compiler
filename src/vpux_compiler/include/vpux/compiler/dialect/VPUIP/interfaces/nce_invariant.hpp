@@ -40,6 +40,7 @@ public:
                                                    Logger log = Logger::global());
     static mlir::LogicalResult verifyPipeliningCMX(VPU::NCEMatMulOp origOp, const vpux::OutputTiling& tiling,
                                                    Logger log = Logger::global());
+    static mlir::LogicalResult verifyPipeliningCMX(VPU::NCEReduceOp origOp, const OutputTiling& tiling, Logger log);
 
     static mlir::LogicalResult verifyPipeliningCMX(VPU::AddOp origOp, const vpux::OutputTiling& tiling,
                                                    Logger log = Logger::global());
@@ -73,6 +74,7 @@ public:
     static mlir::LogicalResult verifyChannels(IE::ReduceMeanOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(IE::ReduceSumOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(IE::MultiplyOp origOp, Logger log = Logger::global());
+    static mlir::LogicalResult verifyChannels(IE::SoftMaxOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(IE::SubtractOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(VPU::NCEEltwiseOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyEltwiseChannels(mlir::Operation* op, vpux::NDTypeInterface firstInputType,

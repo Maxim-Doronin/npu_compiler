@@ -4,8 +4,13 @@
 
 #include <ov_ops/rotary_positional_embeddings.hpp>
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/add.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/strided_slice.hpp"
 
 using namespace ov::test::utils;
 using namespace ov::test;
@@ -101,7 +106,9 @@ TEST_P(FuseRoPETestCommon, NPU4000_HW) {
     run(Platform::NPU4000);
 }
 
-INSTANTIATE_TEST_SUITE_P(precommit_FuseRoPE, FuseRoPETestCommon,
-                         ::testing::ValuesIn({RoPEParams{{1, 32, 32, 96}, {1, 1, 32, 96}, {1, 1, 32, 96}}}),
+const std::vector<RoPEParams> testValues = {{{1, 32, 32, 96}, {1, 1, 32, 96}, {1, 1, 32, 96}},
+                                            {{1, 512, 18, 80}, {1, 512, 1, 80}, {1, 512, 1, 80}}};
+
+INSTANTIATE_TEST_SUITE_P(precommit_FuseRoPE, FuseRoPETestCommon, ::testing::ValuesIn(testValues),
                          FuseRoPETestCommon::getTestCaseName);
 }  // namespace ov::test

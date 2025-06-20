@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --mlir-print-elementsattrs-with-hex-if-larger=-1 --compute-se-base-ptrs %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -89,7 +90,7 @@
 func.func @SEPaddingWithLargePadSize(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !OutputDistributed {
     %input_se = VPUIP.StorageElementTable {
                 dataElemType = f16, dataShape = [1, 16, 4, 4], seAttr = #VPU.SEPadding<mode = <REFLECT>,
-                padding = [2, 2, 2, 2]>, seDepth = 1 : i64, seSize = 16 : i64
+                padding = [2, 2, 2, 2]>, seDepth = 1 : i64, seSize = [16]
             } -> memref<1x1x8x8xi32, #NHWC, @DDR>
     %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se)
         -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR>
@@ -157,6 +158,6 @@ func.func @SEPaddingWithLargePadSize(%input_data: !Input_DDR, %input_sm: !InputS
     // CHECK-SAME:                      1, 1, 1, 1, 1, 1, 1, 1,
     // CHECK-SAME:                      1, 1, 1, 1, 1, 1, 1, 1]> : tensor<64xi32>,
     // CHECK-SAME:    dataElemType = f16, dataShape = [1, 16, 4, 4],
-    // CHECK-SAME:    seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [2, 2, 2, 2]>, seDepth = 1 : i64, seSize = 16 : i64
+    // CHECK-SAME:    seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [2, 2, 2, 2]>, seDepth = 1 : i64, seSize = [16]
     // CHECK-SAME:  } -> memref<1x1x8x8xi32, #NHWC, @DDR>
 }

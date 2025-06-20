@@ -18,7 +18,7 @@ include "mlir/IR/PatternBase.td"
 def createDeclareDDRTensorOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPURT::DeclareBufferOp>(
-                $_loc, $0.getType().cast<mlir::MemRefType>(),
+                $_loc, mlir::cast<mlir::MemRefType>($0.getType()),
                 vpux::VPURT::BufferSection::DDR,
                 $1.getInt()
             )
@@ -27,19 +27,19 @@ def createDeclareDDRTensorOp :
 def createDeclareCMXTensorOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPURT::DeclareBufferOp>(
-                $_loc, $0.getType().cast<mlir::MemRefType>(),
-                vpux::VPURT::BufferSection::CMX_NN, $0.getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().value(),
+                $_loc, mlir::cast<mlir::MemRefType>($0.getType()),
+                vpux::VPURT::BufferSection::CMX_NN, mlir::cast<vpux::NDTypeInterface>($0.getType()).getMemSpace().getIndex().value(),
                 $1.getInt()
             )
         }]>;
 
 class HasMemSpace<string physicalMemory> :
         Constraint<CPred<[{
-            $0.getType().cast<vpux::NDTypeInterface>().getMemoryKind() == vpux::VPU::MemoryKind::}] # physicalMemory
+            mlir::cast<vpux::NDTypeInterface>($0.getType()).getMemoryKind() == vpux::VPU::MemoryKind::}] # physicalMemory
         >>;
 
 def HasIndex:
-        Constraint<CPred<"$0.getType().cast<vpux::NDTypeInterface>().getMemSpace().getIndex().has_value()">>;
+        Constraint<CPred<"mlir::cast<vpux::NDTypeInterface>($0.getType()).getMemSpace().getIndex().has_value()">>;
 
 def RewriteStaticAllocDDR :
         Pat<

@@ -11,6 +11,10 @@
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include <random>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/shape_of.hpp"
+#include "openvino/op/strided_slice.hpp"
+
 using namespace ov::test;
 
 namespace {
@@ -105,7 +109,7 @@ TEST_P(DynamicAddWithShapeOfNPUTest, NPU4000_HW) {
 }
 
 const std::vector<ov::element::Type> inputPrecision = {ov::element::i64};
-const std::vector<BeginAndInputShape> inShapes = {{staticShape(1), {1, 1, 1}}};
+const std::vector<BeginAndInputShape> inShapes = {{generateTestShape(1), {1, 1, 1}}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicAddWithShapeOf, DynamicAddWithShapeOfNPUTest,
                          ::testing::Combine(::testing::ValuesIn(inShapes), ::testing::ValuesIn(inputPrecision)),

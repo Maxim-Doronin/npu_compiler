@@ -4,8 +4,11 @@
 //
 
 #include "common_test_utils/ov_tensor_utils.hpp"
-#include "openvino/opsets/opset1.hpp"
+#include "openvino/opsets/opset1_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/greater.hpp"
+#include "openvino/op/select.hpp"
 
 namespace ov::test::subgraph {
 /*
@@ -91,12 +94,12 @@ public:
     }
 };
 
-TEST_P(GreaterWithSelectTestCommon, NPU3720) {
+TEST_P(GreaterWithSelectTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(GreaterWithSelectTestCommon, NPU4000) {
+TEST_P(GreaterWithSelectTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }

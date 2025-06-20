@@ -1,6 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// Copyright Intel Corporation.
 //
 // LEGAL NOTICE: Your use of this software and any required dependent software
 // (the "Software Package") is subject to the terms and conditions of
@@ -2557,7 +2556,7 @@ def bf_MMI_barrier_configuration_stride : NPUReg40XX_RegFieldWrapper<"MMI_barrie
 def reg_MMI_barrier_configuration_stride : NPUReg40XX_RegisterWrapper<"MMI_barrier_configuration_stride", 4, 0x1C8, ["MMI_barrier_configuration_stride"]>;
 
 // inference_feature_cfg
-def bf_MMI_DisableDmaSwFifo : NPUReg40XX_RegFieldWrapper<"MMI_DisableDmaSwFifo", 1, 0, "UINT", NPUReg40XX_Version<11, 7, 0>>;
+def bf_MMI_DisableDmaSwFifo : NPUReg40XX_RegFieldWrapper<"MMI_DisableDmaSwFifo", 1, 0, "UINT", NPUReg40XX_Version<11, 10, 0>>;
 def bf_MMI_ReservedInferenceConfig : NPUReg40XX_RegFieldWrapper<"MMI_ReservedInferenceConfig", 7, 1, "UINT", NPUReg40XX_Version<11, 7, 0>>;
 def reg_MMI_inference_feature_cfg : NPUReg40XX_RegisterWrapper<"MMI_inference_feature_cfg", 1, 0x1CC, ["MMI_DisableDmaSwFifo", "MMI_ReservedInferenceConfig"]>;
 

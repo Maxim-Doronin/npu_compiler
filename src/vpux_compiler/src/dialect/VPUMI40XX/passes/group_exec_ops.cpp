@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
@@ -11,6 +12,7 @@
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+#include "vpux/compiler/utils/shave.hpp"
 
 namespace vpux::VPUMI40XX {
 #define GEN_PASS_DECL_GROUPEXECUTIONOPS
@@ -123,88 +125,107 @@ VPUMI40XX::ExecutableTaskOpInterface getBarrieredOp(VPURegMapped::TaskOpInterfac
     return nullptr;
 }
 
-size_t getMetadataSize(VPURegMapped::TaskType taskType, VPU::ArchKind archKind) {
+size_t getMetadataSize(mlir::Operation* op, VPURegMapped::TaskType taskType, VPU::ArchKind archKind) {
     // TODO: E109456
-    return VPURegMapped::getDefaultTaskListCount(taskType, archKind) / 2;
+    VPU::TaskType vpuTaskType = VPURegMapped::TaskTypeMapper<VPURegMapped::TaskType>::map(taskType);
+    switch (vpuTaskType) {
+    case VPU::TaskType::ActKernelInvocation:
+        return VPU::getConstraint(op, VPU::METADATA_MAX_KERNEL_INVOCATION_COUNT) / 2;
+    case VPU::TaskType::ActKernelRange:
+        return VPU::getConstraint(op, VPU::METADATA_MAX_KERNEL_RANGE_COUNT) / 2;
+    case VPU::TaskType::DPUInvariant:
+        return VPU::getConstraint(op, VPU::METADATA_MAX_INVARIANT_COUNT) / 2;
+    case VPU::TaskType::DPUVariant:
+        return VPU::getConstraint(op, VPU::METADATA_MAX_VARIANT_COUNT) / 2;
+    case VPU::TaskType::M2I:
+        return VPU::getConstraint(op, VPU::METADATA_MAX_MEDIA_COUNT) / 2;
+    default:
+        // For types that do not have defined limits in the IR, use the default task list counts.
+        return vpux::VPU::getDefaultTaskListCount(vpuTaskType, archKind) / 2;
+    }
 }
 
-void groupExecOps(VPUMI40XX::MappedInferenceOp mpi, int64_t tilesCount, const VPURegMapped::TaskType primary,
-                  const VPURegMapped::TaskType secondary) {
+void groupExecOps(VPUMI40XX::MappedInferenceOp mpi, const VPURegMapped::TaskType primary,
+                  const VPURegMapped::TaskType secondary, int64_t tilesCount, int64_t listsCount = 1) {
     auto archKind = VPU::getArch(mpi.getOperation());
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
-        auto startingVal = mpi.getListHead(primary, tileIdx);
-        if (!startingVal)
-            continue;
+        for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
+            auto startingVal = mpi.getListHead(primary, tileIdx, listIdx);
+            if (!startingVal)
+                continue;
 
-        mlir::OpBuilder groupBuilder(startingVal.getDefiningOp());
+            mlir::OpBuilder groupBuilder(startingVal.getDefiningOp());
 
-        auto traveler = mlir::dyn_cast_or_null<VPURegMapped::TaskOpInterface>(startingVal.getDefiningOp());
-        if (!traveler)
-            continue;
+            auto traveler = mlir::dyn_cast_or_null<VPURegMapped::TaskOpInterface>(startingVal.getDefiningOp());
+            if (!traveler)
+                continue;
 
-        auto taskOpCompare = [](mlir::Operation* lhs, mlir::Operation* rhs) {
-            auto lhsTask = mlir::cast<VPURegMapped::TaskOpInterface>(lhs);
-            auto rhsTask = mlir::cast<VPURegMapped::TaskOpInterface>(rhs);
-            return lhsTask.getIndexType().getValue() < rhsTask.getIndexType().getValue();
-        };
+            auto taskOpCompare = [](mlir::Operation* lhs, mlir::Operation* rhs) {
+                auto lhsTask = mlir::cast<VPURegMapped::TaskOpInterface>(lhs);
+                auto rhsTask = mlir::cast<VPURegMapped::TaskOpInterface>(rhs);
+                return lhsTask.getIndexType().getValue() < rhsTask.getIndexType().getValue();
+            };
 
-        mlir::ValueRange previosGroup;
-        do {
-            auto minPrimary = traveler;
-            auto maxPrimary = getNextUntil(traveler, secondary, getMetadataSize(primary, archKind),
-                                           getMetadataSize(secondary, archKind));
+            mlir::ValueRange previosGroup;
+            do {
+                auto minPrimary = traveler;
+                auto maxPrimary = getNextUntil(traveler, secondary, getMetadataSize(mpi, primary, archKind),
+                                               getMetadataSize(mpi, secondary, archKind));
 
-            auto minSecondaryIt = vpux::min_element(
-                    minPrimary.getResult().getUsers() | details::FilterRangeTag<isSecondaryTaskTypeFilter>{secondary},
-                    taskOpCompare);
-            auto maxSecondaryIt = vpux::max_element(
-                    maxPrimary.getResult().getUsers() | details::FilterRangeTag<isSecondaryTaskTypeFilter>{secondary},
-                    taskOpCompare);
+                auto minSecondaryIt =
+                        vpux::min_element(minPrimary.getResult().getUsers() |
+                                                  details::FilterRangeTag<isSecondaryTaskTypeFilter>{secondary},
+                                          taskOpCompare);
+                auto maxSecondaryIt =
+                        vpux::max_element(maxPrimary.getResult().getUsers() |
+                                                  details::FilterRangeTag<isSecondaryTaskTypeFilter>{secondary},
+                                          taskOpCompare);
 
-            auto minSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(*minSecondaryIt);
-            auto maxSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(*maxSecondaryIt);
+                auto minSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(*minSecondaryIt);
+                auto maxSecondary = mlir::cast<VPURegMapped::TaskOpInterface>(*maxSecondaryIt);
 
-            auto waitBarrs = getBarrieredOp(minPrimary, minSecondary).waitBarriers();
-            auto updateBarrs = getBarrieredOp(maxPrimary, maxSecondary).updateBarriers();
-            maxSecondary->setAttr(VPUMI40XX::lastSecondaryTaskInExecutionGroup,
-                                  mlir::UnitAttr::get(maxSecondary->getContext()));
+                auto waitBarrs = getBarrieredOp(minPrimary, minSecondary).waitBarriers();
+                auto updateBarrs = getBarrieredOp(maxPrimary, maxSecondary).updateBarriers();
+                maxSecondary->setAttr(VPUMI40XX::lastSecondaryTaskInExecutionGroup,
+                                      mlir::UnitAttr::get(maxSecondary->getContext()));
 
-            // Here we have implicit insert and create logic because
-            // GroupOp inherits the SSA values of the first and last variant and invariant,
-            // It cannot be placed anywhere, it has to "replace" the whole variants /invariants range even positionally.
-            // Position of inserting point is doesn't matter here
-            // We don't have restrictions that it should be after the maxVariant
-            // It can also be before maxVariant, or before firstInvariant, or anywhere in-between
-            groupBuilder.setInsertionPointAfter(maxSecondary.getOperation());
-            auto group = groupBuilder.create<VPURegMapped::ExecutionGroupOp>(
-                    maxPrimary.getLoc(), mlir::TypeRange({minPrimary.getIndexType(), minSecondary.getIndexType()}),
-                    mlir::TypeRange({maxPrimary.getIndexType(), maxSecondary.getIndexType()}), previosGroup, waitBarrs,
-                    updateBarrs, primary);
+                // Here we have implicit insert and create logic because
+                // GroupOp inherits the SSA values of the first and last variant and invariant,
+                // It cannot be placed anywhere, it has to "replace" the whole variants /invariants range even
+                // positionally. Position of inserting point is doesn't matter here We don't have restrictions that it
+                // should be after the maxVariant It can also be before maxVariant, or before firstInvariant, or
+                // anywhere in-between
+                groupBuilder.setInsertionPointAfter(maxSecondary.getOperation());
+                auto group = groupBuilder.create<VPURegMapped::ExecutionGroupOp>(
+                        maxPrimary.getLoc(), mlir::TypeRange({minPrimary.getIndexType(), minSecondary.getIndexType()}),
+                        mlir::TypeRange({maxPrimary.getIndexType(), maxSecondary.getIndexType()}), previosGroup,
+                        waitBarrs, updateBarrs, primary);
 
-            previosGroup = group.getEndIndexes();
+                previosGroup = group.getEndIndexes();
 
-            // add the terminator
-            mlir::Block* block = &group.getTasks().emplaceBlock();
-            auto terminatorBuilder = mlir::OpBuilder::atBlockEnd(block);
-            terminatorBuilder.create<VPURegMapped::GroupYieldOp>(
-                    group.getLoc(), mlir::ValueRange({minPrimary.getResult(), minSecondary.getResult()}),
-                    mlir::ValueRange({maxPrimary.getResult(), maxSecondary.getResult()}));
+                // add the terminator
+                mlir::Block* block = &group.getTasks().emplaceBlock();
+                auto terminatorBuilder = mlir::OpBuilder::atBlockEnd(block);
+                terminatorBuilder.create<VPURegMapped::GroupYieldOp>(
+                        group.getLoc(), mlir::ValueRange({minPrimary.getResult(), minSecondary.getResult()}),
+                        mlir::ValueRange({maxPrimary.getResult(), maxSecondary.getResult()}));
 
-            // need to travel now to the next elem in chain before we move all ops into the new container
-            traveler = getNextOp(maxPrimary);
+                // need to travel now to the next elem in chain before we move all ops into the new container
+                traveler = getNextOp(maxPrimary);
 
-            moveOpsIntoBlock(0, minPrimary, maxPrimary, group, [&group, &secondary](mlir::OpOperand& link) {
-                bool isOwnerGroup = link.getOwner()->getParentOp() != group.getOperation();
-                auto ownerTaskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(link.getOwner());
-                bool isOwnerSecodanry = ownerTaskOp ? (ownerTaskOp.getTaskType() == secondary) : false;
+                moveOpsIntoBlock(0, minPrimary, maxPrimary, group, [&group, &secondary](mlir::OpOperand& link) {
+                    bool isOwnerGroup = link.getOwner()->getParentOp() != group.getOperation();
+                    auto ownerTaskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(link.getOwner());
+                    bool isOwnerSecodanry = ownerTaskOp ? (ownerTaskOp.getTaskType() == secondary) : false;
 
-                return isOwnerGroup && !isOwnerSecodanry;
-            });
+                    return isOwnerGroup && !isOwnerSecodanry;
+                });
 
-            moveOpsIntoBlock(1, minSecondary, maxSecondary, group, [&group](mlir::OpOperand& link) {
-                return link.getOwner()->getParentOp() != group.getOperation();
-            });
-        } while (traveler);
+                moveOpsIntoBlock(1, minSecondary, maxSecondary, group, [&group](mlir::OpOperand& link) {
+                    return link.getOwner()->getParentOp() != group.getOperation();
+                });
+            } while (traveler);
+        }
     }
 }
 
@@ -220,13 +241,21 @@ private:
 
 void GroupExecutionOpsPass::safeRunOnFunc() {
     auto netFunc = getOperation();
+    bool fifoPerShaveEngineEnabled = VPU::isFifoPerShaveEngineEnabled(netFunc);
     auto mpi = VPUMI40XX::getMPI(netFunc);
 
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = IE::getTileExecutor(parentModule).getCount();
 
-    groupExecOps(mpi, tilesCount, VPURegMapped::TaskType::DPUInvariant, VPURegMapped::TaskType::DPUVariant);
-    groupExecOps(mpi, tilesCount, VPURegMapped::TaskType::ActKernelRange, VPURegMapped::TaskType::ActKernelInvocation);
+    auto numShaveQueuesPerTile = [&] {
+        const auto shavesCountPerTile = IE::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+        return fifoPerShaveEngineEnabled ? static_cast<size_t>(shavesCountPerTile) : static_cast<size_t>(1);
+    }();
+
+    groupExecOps(mpi, VPURegMapped::TaskType::DPUInvariant, VPURegMapped::TaskType::DPUVariant, tilesCount,
+                 /* listsCount */ 1);
+    groupExecOps(mpi, VPURegMapped::TaskType::ActKernelRange, VPURegMapped::TaskType::ActKernelInvocation, tilesCount,
+                 numShaveQueuesPerTile);
 
     return;
 }

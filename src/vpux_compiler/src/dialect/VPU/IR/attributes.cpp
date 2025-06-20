@@ -202,7 +202,7 @@ namespace {
 
 constexpr StringLiteral archAttrName = "VPU.arch";
 
-constexpr Byte DDR_HEAP_SIZE = 4000_MB;
+constexpr Byte DDR_HEAP_SIZE = 64000_MB;
 
 struct Resources {
     int numOfDPUGroups = 1;
@@ -421,38 +421,6 @@ VPU::ArchKind vpux::VPU::getArch(mlir::Operation* op) {
 // To discern between VPUX3XXX and later on architectures
 bool vpux::VPU::isArchVPUX3XXX(VPU::ArchKind arch) {
     return (arch == VPU::ArchKind::NPU37XX);
-}
-
-//
-// CompilationMode
-//
-
-namespace {
-
-constexpr StringLiteral compilationModeAttrName = "VPU.compilationMode";
-
-}  // namespace
-
-void vpux::VPU::setCompilationMode(mlir::ModuleOp module, CompilationMode compilationMode) {
-    module->setAttr(compilationModeAttrName, VPU::CompilationModeAttr::get(module.getContext(), compilationMode));
-}
-
-bool vpux::VPU::hasCompilationMode(mlir::ModuleOp module) {
-    return module->hasAttr(compilationModeAttrName);
-}
-
-VPU::CompilationMode vpux::VPU::getCompilationMode(mlir::Operation* op) {
-    auto module = getModuleOp(op);
-
-    if (auto attr = module->getAttr(compilationModeAttrName)) {
-        VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::CompilationModeAttr>(attr),
-                          "Module attribute '{0}' has unsupported value '{1}'", compilationModeAttrName, attr);
-
-        return mlir::cast<vpux::VPU::CompilationModeAttr>(attr).getValue();
-    }
-
-    // Use DefaultHW as a default mode
-    return VPU::CompilationMode::DefaultHW;
 }
 
 //
@@ -1480,14 +1448,14 @@ Byte VPU::SparsityCompressionAttr::getAllocSize(mlir::Type elemType) const {
 }
 
 VPU::SparsityCompressionAttr VPU::getSparsityCompressionAttr(mlir::Type type) {
-    if (auto sparseType = type.dyn_cast_or_null<VPU::SparseTensorType>()) {
+    if (auto sparseType = mlir::dyn_cast_or_null<vpux::VPU::SparseTensorType>(type)) {
         return sparseType.getSparsityCompression();
     }
     return nullptr;
 }
 
 mlir::Type VPU::setSparsityCompressionAttr(mlir::Type type, VPU::SparsityCompressionAttr sparsityCompressionAttr) {
-    if (auto sparseType = type.dyn_cast_or_null<VPU::SparseTensorType>()) {
+    if (auto sparseType = mlir::dyn_cast_or_null<vpux::VPU::SparseTensorType>(type)) {
         return VPU::SparseTensorType::get(sparseType.getData(), sparseType.getSparsityMap(),
                                           sparseType.getStorageElementTable(), sparseType.getIsWeights(),
                                           sparsityCompressionAttr);

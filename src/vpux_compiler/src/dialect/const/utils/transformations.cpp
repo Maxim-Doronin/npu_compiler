@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_cache.hpp"
 #include "vpux/compiler/dialect/const/utils/mem_permute_optimized.hpp"
 #include "vpux/compiler/utils/loop.hpp"
@@ -77,18 +78,18 @@ mlir::FailureOr<OffsetShapePair> sliceInputShape(ArrayRef<int64_t> reshapeInput,
 //
 
 template <typename Attr>
-void prepareCastElemTypeSwap(optimization::TransformAttrPos castElemTypeAttrIt) {
-    const auto castElemTypeAttr = mlir::cast<Attr>(*castElemTypeAttrIt);
+void prepareTransformElemTypeSwap(optimization::TransformAttrPos transformElemTypeAttrIt) {
+    const auto transformElemTypeAttr = mlir::cast<Attr>(*transformElemTypeAttrIt);
     const auto perAxisType =
-            mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(castElemTypeAttr.getElemType());
+            mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(transformElemTypeAttr.getElemType());
     if (perAxisType == nullptr) {
         return;
     }
-    const auto subViewAttr = mlir::cast<Const::SubViewAttr>(*(castElemTypeAttrIt + 1));
+    const auto subViewAttr = mlir::cast<Const::SubViewAttr>(*(transformElemTypeAttrIt + 1));
     const Shape offset(parseIntArrayAttr<int64_t>(subViewAttr.getOffset()));
     const Shape shape(parseIntArrayAttr<int64_t>(subViewAttr.getShape()));
     const auto newElemType = tileScalesAndZP(perAxisType, shape, offset);
-    *castElemTypeAttrIt = Attr::get(newElemType);
+    *transformElemTypeAttrIt = Attr::get(newElemType);
 }
 
 void prepareTransposeSwap(optimization::TransformAttrPos transposeAttrIt) {
@@ -110,21 +111,28 @@ void prepareTransposeSwap(optimization::TransformAttrPos transposeAttrIt) {
 
 mlir::LogicalResult prepareReshapeSwap(optimization::TransformAttrPos reshapeAttrIt, NDTypeInterface reshapeInputType) {
     const auto reshapeAttr = mlir::cast<Const::ReshapeAttr>(*reshapeAttrIt);
-    const auto reshapeInputShape = reshapeInputType.getShape();
-    const auto reshapeOutputShape = parseIntArrayAttr<int64_t>(reshapeAttr.getShape());
+    const auto reshapeOutputType = (*reshapeAttrIt).inferOutputType(reshapeInputType);
+    const auto reshapeMemInputShape = reshapeInputType.getMemShape();
+    const auto reshapeMemOutputShape = reshapeOutputType.getMemShape();
+    const auto reshapeInOrder = reshapeInputType.getDimsOrder();
+    const auto reshapeOrder = reshapeOutputType.getDimsOrder();
 
     const auto subViewAttr = mlir::cast<Const::SubViewAttr>(*(reshapeAttrIt + 1));
     const Shape offset(parseIntArrayAttr<int64_t>(subViewAttr.getOffset()));
     const Shape shape(parseIntArrayAttr<int64_t>(subViewAttr.getShape()));
+    const auto memOffset = reshapeOrder.toMemoryOrder(offset);
+    const auto memShape = reshapeOrder.toMemoryOrder(shape);
     const auto newSubViewOutput =
-            sliceInputShape(reshapeInputShape.raw(), reshapeOutputShape, offset.raw(), shape.raw());
+            sliceInputShape(reshapeMemInputShape.raw(), reshapeMemOutputShape.raw(), memOffset.raw(), memShape.raw());
     if (mlir::failed(newSubViewOutput)) {
         return mlir::failure();
     }
-    *reshapeAttrIt = Const::ReshapeAttr::get(subViewAttr.getShape());
-    const auto newOffset = getIntArrayAttr(reshapeAttr.getContext(), newSubViewOutput->offset);
-    const auto newShape = getIntArrayAttr(reshapeAttr.getContext(), newSubViewOutput->shape);
+    const MemShape newMemOffset(newSubViewOutput->offset);
+    const MemShape newMemShape(newSubViewOutput->shape);
+    const auto newOffset = getIntArrayAttr(reshapeAttr.getContext(), reshapeInOrder.toLogicalOrder(newMemOffset));
+    const auto newShape = getIntArrayAttr(reshapeAttr.getContext(), reshapeInOrder.toLogicalOrder(newMemShape));
     *(reshapeAttrIt + 1) = Const::SubViewAttr::get(newOffset, newShape);
+    *reshapeAttrIt = Const::ReshapeAttr::get(subViewAttr.getShape());
     return mlir::success();
 }
 
@@ -167,6 +175,33 @@ void prepareMemPermuteSwap(optimization::TransformAttrPos memPermuteAttrIt, NDTy
     }
     *(memPermuteAttrIt + 1) = Const::SubViewAttr::get(getIntArrayAttr(memPermuteAttr.getContext(), newOffset),
                                                       getIntArrayAttr(memPermuteAttr.getContext(), newShape));
+}
+
+mlir::LogicalResult prepareAffineReshapeSwap(optimization::TransformAttrPos reshapeAttrIt,
+                                             NDTypeInterface reshapeInputType) {
+    const auto affineReshapeAttr = mlir::cast<Const::AffineReshapeAttr>(*reshapeAttrIt);
+    const auto affineReshapeInputShape = reshapeInputType.getShape();
+    const auto affineReshapeOutputShape = parseIntArrayAttr<int64_t>(affineReshapeAttr.getShapeValue());
+    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(affineReshapeAttr.getDimMapping());
+
+    const auto subViewAttr = mlir::cast<Const::SubViewAttr>(*(reshapeAttrIt + 1));
+    const auto subViewOffset = parseIntArrayAttr<int64_t>(subViewAttr.getOffset());
+    const auto subViewShape = parseIntArrayAttr<int64_t>(subViewAttr.getShape());
+
+    const auto result = Const::swapAffineReshapeAndSubView(affineReshapeInputShape, affineReshapeOutputShape,
+                                                           dimMapping, subViewOffset, subViewShape);
+
+    if (mlir::failed(result)) {
+        return mlir::failure();
+    }
+
+    const auto [newOffset, newShape] = result.value();
+    *(reshapeAttrIt + 1) = Const::SubViewAttr::get(getIntArrayAttr(affineReshapeAttr.getContext(), newOffset),
+                                                   getIntArrayAttr(affineReshapeAttr.getContext(), newShape));
+
+    *reshapeAttrIt = Const::AffineReshapeAttr::get(affineReshapeAttr.getDimMapping(), subViewAttr.getShape());
+
+    return mlir::success();
 }
 
 mlir::LogicalResult prepareChangeShapeSwap(optimization::TransformAttrPos changeShapeAttrIt,
@@ -367,12 +402,13 @@ mlir::LogicalResult preparePadWithZeroSwap(optimization::TransformAttrPos padWit
 // MoveReshapeBefore
 //
 
-mlir::LogicalResult prepareCastElemTypeSwap(optimization::TransformAttrPos castElemTypeAttrIt,
-                                            NDTypeInterface castElemTypeInputType) {
-    const auto castElemTypeAttr = mlir::cast<Const::CastElemTypeAttr>(*castElemTypeAttrIt);
+template <typename Attr>
+mlir::LogicalResult prepareTransformElemTypeSwap(optimization::TransformAttrPos transformElemTypeAttrIt,
+                                                 NDTypeInterface inputType) {
+    const auto transformElemTypeAttr = mlir::cast<Attr>(*transformElemTypeAttrIt);
     // Keep the logic consistent with the original code. Don't make the swap if there is behavior like QuantCast
-    if (mlir::isa<mlir::quant::QuantizedType>(castElemTypeInputType.getElementType()) ||
-        mlir::isa<mlir::quant::QuantizedType>(castElemTypeAttr.getElemType())) {
+    if (mlir::isa<mlir::quant::QuantizedType>(inputType.getElementType()) ||
+        mlir::isa<mlir::quant::QuantizedType>(transformElemTypeAttr.getElemType())) {
         return mlir::failure();
     }
 
@@ -429,6 +465,13 @@ Const::CastElemTypeAttr tryFusingConsecutiveCasts(Const::CastElemTypeAttr currTr
     // something else). ultimately, this can cause invalid IR. as a workaround,
     // just ignore this problem altogether by not fusing cast-to-quantized-type.
     return castToQuantizedType ? nullptr : currTransformation;
+}
+
+std::pair<optimization::TransformAttrPos, bool> swapTransformations(optimization::TransformAttrPos prevIt,
+                                                                    optimization::TransformAttrPos currentIt) {
+    std::iter_swap(prevIt, currentIt);
+
+    return {prevIt, true};
 }
 
 }  // namespace
@@ -597,17 +640,9 @@ std::pair<optimization::TransformAttrPos, bool> moveSubViewBefore(
         !mlir::isa<Const::AddAttr, Const::RescaleAttr, Const::CastElemTypeAttr, Const::DequantizeAttr,
                    Const::ReorderAttr, Const::MemPermuteAttr, Const::ConvertElemTypeAttr, Const::TransposeAttr,
                    Const::ReshapeAttr, Const::ChangeShapeAndElemTypeAttr, Const::RelocateWeightsTableAttr,
-                   Const::PadWithZeroAttr>(prevTransformation)) {
+                   Const::PadWithZeroAttr, Const::AffineReshapeAttr>(prevTransformation)) {
         return {currPos, false};
     }
-
-    const auto swapTransformations =
-            [&](optimization::TransformAttrPos prevIt,
-                optimization::TransformAttrPos currentIt) -> std::pair<optimization::TransformAttrPos, bool> {
-        std::iter_swap(prevIt, currentIt);
-
-        return {prevIt, true};
-    };
 
     NDTypeInterface prevTransformationInType = baseType;
     for (auto tmpIt = transformations.begin(); tmpIt < (currPos - 1); tmpIt++) {
@@ -621,12 +656,8 @@ std::pair<optimization::TransformAttrPos, bool> moveSubViewBefore(
                             [&](Const::TransformAttrInterface /*transformation*/) {
                                 return swapTransformations(currPos - 1, currPos);
                             })
-                    .Case<Const::ConvertElemTypeAttr>([&](Const::ConvertElemTypeAttr) {
-                        prepareCastElemTypeSwap<Const::ConvertElemTypeAttr>(currPos - 1);
-                        return swapTransformations(currPos - 1, currPos);
-                    })
-                    .Case<Const::CastElemTypeAttr>([&](Const::CastElemTypeAttr) {
-                        prepareCastElemTypeSwap<Const::CastElemTypeAttr>(currPos - 1);
+                    .Case<Const::CastElemTypeAttr, Const::ConvertElemTypeAttr>([&](auto attr) {
+                        prepareTransformElemTypeSwap<decltype(attr)>(currPos - 1);
                         return swapTransformations(currPos - 1, currPos);
                     })
                     .Case<Const::TransposeAttr>([&](Const::TransposeAttr) {
@@ -639,6 +670,12 @@ std::pair<optimization::TransformAttrPos, bool> moveSubViewBefore(
                     })
                     .Case<Const::ReshapeAttr>([&](Const::ReshapeAttr) {
                         if (mlir::failed(prepareReshapeSwap(currPos - 1, prevTransformationInType))) {
+                            return std::pair<optimization::TransformAttrPos, bool>{currPos, false};
+                        }
+                        return swapTransformations(currPos - 1, currPos);
+                    })
+                    .Case<Const::AffineReshapeAttr>([&](Const::AffineReshapeAttr) {
+                        if (mlir::failed(prepareAffineReshapeSwap(currPos - 1, prevTransformationInType))) {
                             return std::pair<optimization::TransformAttrPos, bool>{currPos, false};
                         }
                         return swapTransformations(currPos - 1, currPos);
@@ -714,18 +751,10 @@ std::pair<optimization::TransformAttrPos, bool> moveReshapeBefore(
     auto prevTransformation = *(currPos - 1);
 
     if (!mlir::isa<Const::ReshapeAttr>(currTransformation) ||
-        !mlir::isa<Const::AddAttr, Const::RescaleAttr, Const::CastElemTypeAttr, Const::DequantizeAttr>(
-                prevTransformation)) {
+        !mlir::isa<Const::AddAttr, Const::RescaleAttr, Const::CastElemTypeAttr, Const::ConvertElemTypeAttr,
+                   Const::DequantizeAttr>(prevTransformation)) {
         return {currPos, false};
     }
-
-    const auto swapTransformations =
-            [&](optimization::TransformAttrPos prevIt,
-                optimization::TransformAttrPos currentIt) -> std::pair<optimization::TransformAttrPos, bool> {
-        std::iter_swap(prevIt, currentIt);
-
-        return {prevIt, true};
-    };
 
     auto prevTransformations = ArrayRef(transformations).drop_back((transformations.end() - currPos) + 1);
     auto prevTransformationInType = Const::inferFinalType(baseType, prevTransformations);
@@ -736,8 +765,9 @@ std::pair<optimization::TransformAttrPos, bool> moveReshapeBefore(
                     .Case<Const::AddAttr, Const::RescaleAttr>([&](Const::TransformAttrInterface /*transformation*/) {
                         return swapTransformations(currPos - 1, currPos);
                     })
-                    .Case<Const::CastElemTypeAttr>([&](Const::CastElemTypeAttr) {
-                        if (mlir::failed(prepareCastElemTypeSwap(currPos - 1, prevTransformationInType))) {
+                    .Case<Const::CastElemTypeAttr, Const::ConvertElemTypeAttr>([&](auto attr) {
+                        if (mlir::failed(prepareTransformElemTypeSwap<decltype(attr)>(currPos - 1,
+                                                                                      prevTransformationInType))) {
                             return std::pair<optimization::TransformAttrPos, bool>{currPos, false};
                         }
                         return swapTransformations(currPos - 1, currPos);
@@ -752,6 +782,112 @@ std::pair<optimization::TransformAttrPos, bool> moveReshapeBefore(
                         return std::pair<optimization::TransformAttrPos, bool>{currPos, false};
                     });
 
+    return result;
+}
+
+//
+// moveAttributeBeforeLayoutTransformations
+//
+
+std::pair<optimization::TransformAttrPos, bool> moveAttributeBeforeLayoutTransformations(
+        SmallVector<Const::TransformAttrInterface>& transformations, optimization::TransformAttrPos& currPos,
+        NDTypeInterface baseType) {
+    if (currPos == transformations.begin()) {
+        return {currPos, false};
+    }
+
+    auto currTransformation = *(currPos);
+    auto prevTransformation = *(currPos - 1);
+
+    auto isLayoutTransformation = [](Const::TransformAttrInterface transformation) {
+        // TODO: E#164242 support LayoutCast attribute
+        return mlir::isa<Const::ReorderAttr, Const::MemPermuteAttr>(transformation);
+    };
+
+    auto isTransformationDisabled = [](Const::TransformAttrInterface transformation) {
+        // Swapping Reshape and Reorder doesn't give accurate data
+        return mlir::isa<SubViewAttr, ReshapeAttr>(transformation);
+    };
+
+    const auto isAdmissible = !isLayoutTransformation(currTransformation) &&
+                              isLayoutTransformation(prevTransformation) &&
+                              !isTransformationDisabled(currTransformation);
+    if (!isAdmissible) {
+        return {currPos, false};
+    }
+
+    const auto prepareQuantizedPerAxisTypeSwap =
+            [&](optimization::TransformAttrPos prevAttrIt, NDTypeInterface memPermType, NDTypeInterface finalType,
+                FuncRef<vpux::Const::TransformAttrInterface(mlir::Type)> attributeModifier) {
+                const auto prevTransformationType = *(prevAttrIt);
+                if (!mlir::isa<MemPermuteAttr>(prevTransformationType)) {
+                    return mlir::success();
+                }
+
+                auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(finalType.getElementType());
+                if (perAxisType == nullptr) {
+                    return mlir::success();
+                }
+
+                const auto qDim = perAxisType.getQuantizedDimension();
+                const auto memPermAttr = mlir::cast<Const::MemPermuteAttr>(prevTransformationType);
+                const auto dstOrder = DimsOrder::fromAffineMap(memPermAttr.getDstOrder().getAffineMap());
+                const auto perm = memPermAttr.getMemPerm().getAffineMap();
+
+                const auto srcOrder = memPermType.getDimsOrder();
+                const auto newQDim =
+                        inferDimAfterPermutation(Dim(qDim), dstOrder, srcOrder, mlir::inversePermutation(perm)).ind();
+
+                const auto newPerAxisType = changeAxis(perAxisType, newQDim);
+                *(prevAttrIt + 1) = attributeModifier(newPerAxisType);
+                return mlir::success();
+            };
+
+    const auto getInferredTypes = [&]() {
+        auto prevTransformations = ArrayRef(transformations).drop_back((transformations.end() - currPos) + 1);
+        auto memPermInType = Const::inferFinalType(baseType, prevTransformations);
+
+        auto finalType = (*(currPos - 1)).inferOutputType(memPermInType);
+        finalType = (*(currPos)).inferOutputType(finalType);
+
+        return std::pair<NDTypeInterface, NDTypeInterface>(memPermInType, finalType);
+    };
+
+    auto result = llvm::TypeSwitch<Const::TransformAttrInterface, std::pair<optimization::TransformAttrPos, bool>>(
+                          currTransformation)
+                          .Case<Const::QuantizeAttr>([&](Const::QuantizeAttr) {
+                              const auto [memPermType, finalType] = getInferredTypes();
+                              const auto attributeModifier =
+                                      [](mlir::Type newPerAxisType) -> vpux::Const::TransformAttrInterface {
+                                  return Const::QuantizeAttr::get(
+                                          newPerAxisType.getContext(),
+                                          mlir::cast<mlir::quant::UniformQuantizedPerAxisType>(newPerAxisType));
+                              };
+                              if (mlir::failed(prepareQuantizedPerAxisTypeSwap(currPos - 1, memPermType, finalType,
+                                                                               attributeModifier))) {
+                                  return std::pair<optimization::TransformAttrPos, bool>{currPos, false};
+                              }
+                              return swapTransformations(currPos - 1, currPos);
+                          })
+                          .Case<Const::CastElemTypeAttr>([&](Const::CastElemTypeAttr castElemTypeAttr) {
+                              const auto [memPermType, finalType] = getInferredTypes();
+                              const auto attributeModifier =
+                                      [](mlir::Type newPerAxisType) -> vpux::Const::TransformAttrInterface {
+                                  return Const::CastElemTypeAttr::get(newPerAxisType);
+                              };
+                              if (mlir::isa<mlir::quant::QuantizedType>(finalType.getElementType()) ||
+                                  mlir::isa<mlir::quant::QuantizedType>(castElemTypeAttr.getElemType())) {
+                                  if (mlir::failed(prepareQuantizedPerAxisTypeSwap(currPos - 1, memPermType, finalType,
+                                                                                   attributeModifier))) {
+                                      return std::pair<optimization::TransformAttrPos, bool>{currPos, false};
+                                  }
+                              }
+
+                              return swapTransformations(currPos - 1, currPos);
+                          })
+                          .Default([&](Const::TransformAttrInterface /*transformation*/) {
+                              return swapTransformations(currPos - 1, currPos);
+                          });
     return result;
 }
 
@@ -983,7 +1119,8 @@ Const::Content Const::details::memPermuteTransformation(vpux::Const::Content& in
 
         // Check capability to use specific solution. Most transforms are between NCHW and NHWC layouts, so they
         // implemented separatly
-        if (Const::details::isOptimizedTransformationSupported(input, outType)) {
+        // Note: For inOrder NHWC, the permutation (inMemShape, memPerm) is trivial, so couldn't test the case
+        if (Const::details::isOptimizedTransformationSupported(input, outType, permOrder)) {
             Const::details::memPermuteTransformationOptimized(input, output);
         } else {
             // Use generic algorithm

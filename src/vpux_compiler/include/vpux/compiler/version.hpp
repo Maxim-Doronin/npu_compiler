@@ -18,6 +18,10 @@ Change Log:
 -----------
 NPU Compiler 7.20.0
   - Take NPU_QDQ_OPTIMIZATION property value to enable/disable adaptive stripping
+  - Restricted public compiler options from NPU_COMPILATION_MODE_PARAMS to the following: optimization-level,
+performance-hint-override, compute-layers-with-higher-precision, enable-activation-sparsity, enable-weights-sparsity,
+enable-se-ptrs-operations, enable-wd-blockarg-input, split-bilinear-into-H-and-W, output-pipelining,
+enable-output-ensurance, accumulate-matmul-with-dpu, fuse-fq-and-mul-with-non-const-input, workload-management-mode
 
 NPU Compiler 7.4.0
   - Add option BATCH_COMPILER_MODE_SETTINGS and turn batch-compile-mode on 'debatch' by default

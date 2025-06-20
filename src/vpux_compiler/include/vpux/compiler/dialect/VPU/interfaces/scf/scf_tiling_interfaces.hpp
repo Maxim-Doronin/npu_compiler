@@ -26,9 +26,9 @@ protected:
                                           mlir::OpBuilder& builder, SCFTilingInfo& inputTiling,
                                           const SCFTileInfo& outputTile, Dim dim, SCFShapeRef origShape,
                                           mlir::Operation* origOperation, ShapeRef tiling) const {
-        return static_cast<const ConcreteModel*>(this)->createTiledOperation(opGenerator, operandsGenerator, builder,
-                                                                             inputTiling, outputTile, dim, origShape,
-                                                                             origOperation, tiling);
+        return static_cast<const ConcreteModel*>(this)->createTiledOperation(
+                std::move(opGenerator), std::move(operandsGenerator), builder, inputTiling, outputTile, dim, origShape,
+                origOperation, tiling);
     }
 
     mlir::Value generateTile(mlir::Location loc, mlir::OpBuilder& builder, mlir::Value origInput,
@@ -82,18 +82,9 @@ public:
         SmallVector<mlir::Range> loops(tilingRank);
         mlir::Value zero = builder.create<mlir::arith::ConstantIndexOp>(loc, 0);
 
-        const auto outputValue = operation->getResult(0);
-        const auto outputType = mlir::cast<mlir::ShapedType>(outputValue.getType());
-
-        const auto getDimValue = [&](int64_t dim) -> mlir::OpFoldResult {
-            // E-162627 support dynamic shapes in upper bound calculation
-            VPUX_THROW_WHEN(outputType.isDynamicDim(dim), "Dynamic case is not supported for tiling yet");
-            return builder.getIndexAttr(outputType.getDimSize(dim));
-        };
-
         for (auto dim : llvm::seq<int64_t>(0, tilingRank)) {
             loops[dim].offset = zero;
-            loops[dim].size = getDimValue(tilingDims[dim].ind());
+            loops[dim].size = getDimValue(builder, operation, tilingDims[dim].ind());
         }
         return loops;
     }
@@ -129,7 +120,7 @@ public:
             SmallVector<mlir::Value> tiledOperands;
             tiledOperands.reserve(operation->getNumOperands());
 
-            const OpTilingOperandsFunc createTiledOperands = [&](auto& tiling) {
+            OpTilingOperandsFunc createTiledOperands = [&](auto& tiling) {
                 tiledOperands.clear();
                 for (auto p : operation->getOperands() | indexed) {
                     auto origInput = p.value();
@@ -147,22 +138,22 @@ public:
                 }
             };
 
-            const OpGeneratorFunc generatorFunc = [&]() {
+            OpGeneratorFunc generatorFunc = [&]() {
                 auto resultDenseTile = extractResultType(operation->getResult(0).getType(), resultSizes);
-
-                auto* tiledOp = mlir::clone(builder, operation, {resultDenseTile}, tiledOperands);
+                auto* tiledOp = mlir::cloneWithoutRegions(builder, operation, {resultDenseTile}, tiledOperands);
                 tiledOp->removeAttr(tilingStrategy);
                 return tiledOp;
             };
 
-            auto* resultOp = createTiledOperation(generatorFunc, createTiledOperands, builder, inputTiling, outputTile,
-                                                  tilingDims[index], origShape, operation, strategy);
+            auto* resultOp =
+                    createTiledOperation(std::move(generatorFunc), std::move(createTiledOperands), builder, inputTiling,
+                                         outputTile, tilingDims[index], origShape, operation, strategy);
 
             results.emplace_back(resultOp);
             resultValues.emplace_back(resultOp->getResult(0));
         }
 
-        return mlir::TilingResult{results, resultValues};
+        return mlir::TilingResult{std::move(results), std::move(resultValues)};
     }
 
     mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
@@ -214,7 +205,7 @@ public:
 
             inputTiles.push_back(curTile);
         }
-        return SCFTilingInfo{inputTiles};
+        return SCFTilingInfo{std::move(inputTiles)};
     }
 };
 
@@ -251,7 +242,7 @@ private:
             inputTile.shape[dim.ind()] = inputRange.size;
         }
 
-        return {inputTile};
+        return {std::move(inputTile)};
     }
 
 public:
@@ -259,8 +250,8 @@ public:
                                           mlir::OpBuilder& builder, SCFTilingInfo& inputTiling,
                                           const SCFTileInfo& outputTile, Dim dim, SCFShapeRef origShape,
                                           mlir::Operation* origOperation, ShapeRef tiling) const {
-        return createTiledPaddedOperation<ConcreteOp>(opGenerator, operandsGenerator, builder, inputTiling, outputTile,
-                                                      dim, origShape, origOperation, tiling);
+        return createTiledPaddedOperation<ConcreteOp>(std::move(opGenerator), std::move(operandsGenerator), builder,
+                                                      inputTiling, outputTile, dim, origShape, origOperation, tiling);
     }
 
     SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
@@ -306,7 +297,7 @@ protected:
                 continue;
             }
 
-            const auto stride = strides[index].cast<mlir::IntegerAttr>().getValue().getSExtValue();
+            const auto stride = mlir::cast<mlir::IntegerAttr>(strides[index]).getValue().getSExtValue();
             const auto kernel = kernel_size[index];
 
             mlir::Range inputRange =
@@ -331,9 +322,8 @@ public:
         const std::array<int64_t, 2> kernel = {origFilterShape[Dims4D::Filter::KX],
                                                origFilterShape[Dims4D::Filter::KY]};
 
-        auto inputTileTiling = backInferConvInputTile(operation->getLoc(), builder, outputTile, origInputShape, kernel,
-                                                      convOperation.getStrides(), origPadding);
-        SCFTilingInfo tilingInfo = {inputTileTiling};
+        SCFTilingInfo tilingInfo = {backInferConvInputTile(operation->getLoc(), builder, outputTile, origInputShape,
+                                                           kernel, convOperation.getStrides(), origPadding)};
 
         const auto tileOverChannels = !mlir::isConstantIntValue(outputTile.axis[Dims4D::Act::C.ind()], 1);
 
@@ -362,7 +352,7 @@ public:
         auto generator = opGenerator;
         auto newChannelValue = mlir::getConstantIntValue(outputTile.shape[Dims4D::Act::C.ind()]);
         if (!mlir::isConstantIntValue(outputTile.axis[Dims4D::Act::C.ind()], 1) && newChannelValue.has_value()) {
-            const OpGeneratorFunc adjustFilterGenerator = [&]() -> mlir::Operation* {
+            generator = [&]() -> mlir::Operation* {
                 auto newOperation = mlir::cast<ConcreteOp>(opGenerator());
                 auto newRawFilterShape = Shape(parseIntArrayAttr<int64_t>(newOperation.getRawFilterShape()));
                 newRawFilterShape[Dims4D::Filter::OC] = newChannelValue.value();
@@ -370,11 +360,9 @@ public:
 
                 return newOperation.getOperation();
             };
-
-            generator = adjustFilterGenerator;
         }
-        return createTiledPaddedOperation<ConcreteOp>(generator, operandsGenerator, builder, inputTiling, outputTile,
-                                                      dim, origShape, origOperation, tiling);
+        return createTiledPaddedOperation<ConcreteOp>(std::move(generator), std::move(operandsGenerator), builder,
+                                                      inputTiling, outputTile, dim, origShape, origOperation, tiling);
     }
 };
 

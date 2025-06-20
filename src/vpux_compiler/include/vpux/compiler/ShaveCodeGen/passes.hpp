@@ -32,6 +32,8 @@ namespace ShaveCodeGen {
 // Passes
 //
 
+std::unique_ptr<mlir::Pass> createEncapsulateCodeGenOpsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createEarlyCodeGenCapsuleFusionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOutlineLinalgSwLayersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdaptLLVMFuncsForShavePass(Logger log = Logger::global());
 

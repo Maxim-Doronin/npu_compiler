@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --optimize-mempermute-and-activation-channels-expand %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -100,4 +101,26 @@ func.func @MemPermuteProcessingWithNDReorder(%arg0: tensor<6x10x10x4x1xf16, {ord
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [1, 2], [3, 4]], shape_value = [6, 10, 10, 4, 1]} : tensor<1x6x100x4xf16> -> tensor<6x10x10x4x1xf16>
 
     // CHECK: return [[VAL3]] : tensor<6x10x10x4x1xf16>
+}
+
+// -----
+#NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
+
+// CHECK-LABEL: @MemPermuteProcessingForNHCWMemPermute
+// CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x380x720x1xf16>
+func.func @MemPermuteProcessingForNHCWMemPermute(%arg0: tensor<1x380x720x1xf16>) -> tensor<1x720x380x1xf16> {
+    %0 = IE.MemPermute(%arg0) {dstElemType = f16, dst_order = #NCHW, mem_perm = #NHCW} :
+        tensor<1x380x720x1xf16> -> tensor<1x720x380x1xf16>
+
+    return %0 : tensor<1x720x380x1xf16>
+
+    // CHECK:  [[PERMUTECAST0:%.+]] = IE.PermuteCast([[INPUT]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x380x720x1xf16> -> tensor<1x1x380x720xf16, {order = #NHWC}>
+    // CHECK:  [[SHAPECAST1:%.+]] = IE.ShapeCast {shape = [1, 16, 380, 45]} inputs([[PERMUTECAST0]] : tensor<1x1x380x720xf16, {order = #NHWC}>) -> tensor<1x16x380x45xf16, {order = #NHWC}>
+    // CHECK:  [[MAXPOOL:%.+]] = IE.MaxPool([[SHAPECAST1]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x380x45xf16, {order = #NHWC}> -> tensor<1x16x380x45xf16, {order = #NWCH}>
+    // CHECK:  [[PERMUTECAST3:%.+]] = IE.PermuteCast([[MAXPOOL]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x16x380x45xf16, {order = #NWCH}> -> tensor<1x45x16x380xf16>
+    // CHECK:  [[SHAPECAST4:%.+]] = IE.ShapeCast {shape = [1, 720, 1, 380]} inputs([[PERMUTECAST3]] : tensor<1x45x16x380xf16>) -> tensor<1x720x1x380xf16>
+    // CHECK:  [[PERMUTECAST5:%.+]] = IE.PermuteCast([[SHAPECAST4]]) {dst_order = #NCHW, mem_perm = #NHCW} : tensor<1x720x1x380xf16> -> tensor<1x1x720x380xf16>
+    // CHECK:  [[SHAPECAST6:%.+]] = IE.ShapeCast {shape = [1, 720, 380, 1]} inputs([[PERMUTECAST5]] : tensor<1x1x720x380xf16>) -> tensor<1x720x380x1xf16>
+
+    // CHECK: return [[SHAPECAST6]] : tensor<1x720x380x1xf16>
 }

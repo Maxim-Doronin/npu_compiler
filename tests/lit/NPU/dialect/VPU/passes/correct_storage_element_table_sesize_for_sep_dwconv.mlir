@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --correct-storage-element-table-sesize-for-sep-dwconv %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 module @CorrectSESize {
@@ -16,7 +17,9 @@ func.func @DWConvWithSEPSOK(%arg0: tensor<1x160x1x1xf16, {order = #NHWC}>) -> te
     %weights_table = const.Declare tensor<160x1x1x4xsi32> = dense<1> : tensor<160x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x160x2x2xi1> = dense<1> : tensor<1x160x2x2xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 10, seSize = 16, dataShape = [1, 160, 1, 1],
+    %storage_element = VPU.StorageElementTable {
+        dataElemType = f16, seDepth = 10, seSize = [16, 16, 16, 16, 16, 16, 16, 16, 16, 16],
+        dataShape = [1, 160, 1, 1],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 160, 2, 2]>
     } -> tensor<1x10x2x2xi32, {order = #NHWC}>
@@ -64,7 +67,8 @@ func.func @DWConvWithSEPSOH(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>) -> ten
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x8x8xi1> = dense<1> : tensor<1x64x8x8xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 4, seSize = 16, dataShape = [1, 64, 4, 4],
+    %storage_element = VPU.StorageElementTable {
+        dataElemType = f16, seDepth = 4, seSize = [16, 16, 16, 16], dataShape = [1, 64, 4, 4],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 8, 8]>
     } -> tensor<1x4x8x8xi32, {order = #NHWC}>
@@ -94,7 +98,7 @@ func.func @DWConvWithSEPSOH(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>) -> ten
     return %interpolate : tensor<1x64x8x8xf16, {order = #NHWC}>
 
     // CHECK:       VPU.StorageElementTable
-    // CHECK-SAME:     seDepth = 1 : i64, seSize = 64 : i64
+    // CHECK-SAME:     seDepth = 1 : i64, seSize = [64]
     // CHECK-SAME:  -> tensor<1x1x8x8xi32, {order = #NHWC}>
 }
 }
@@ -109,7 +113,8 @@ func.func @DWConvWithSEPNoMCStrategy(%arg0: tensor<1x64x1x1xf16, {order = #NHWC}
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x2x2xi1> = dense<1> : tensor<1x64x2x2xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 4, seSize = 16, dataShape = [1, 64, 1, 1],
+    %storage_element = VPU.StorageElementTable {
+        dataElemType = f16, seDepth = 4, seSize = [16, 16, 16, 16], dataShape = [1, 64, 1, 1],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 2, 2]>
     } -> tensor<1x4x2x2xi32, {order = #NHWC}>
@@ -138,7 +143,7 @@ func.func @DWConvWithSEPNoMCStrategy(%arg0: tensor<1x64x1x1xf16, {order = #NHWC}
     return %interpolate : tensor<1x64x2x2xf16, {order = #NHWC}>
 
     // CHECK:       VPU.StorageElementTable
-    // CHECK-SAME:     seDepth = 1 : i64, seSize = 64 : i64
+    // CHECK-SAME:     seDepth = 1 : i64, seSize = [64]
     // CHECK-SAME:  -> tensor<1x1x2x2xi32, {order = #NHWC}>
 }
 
@@ -163,7 +168,7 @@ func.func @DWConvWithSEPChannelSliceWithDepth1(%arg0: tensor<1x64x1x1xf16, {orde
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsity_map = const.Declare tensor<1x64x2x2xi1> = dense<1> : tensor<1x64x2x2xi1>
 
-    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = 128, dataShape = [1, 128, 1, 1],
+    %storage_element = VPU.StorageElementTable {dataElemType = f16, seDepth = 1, seSize = [128], dataShape = [1, 128, 1, 1],
         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
                                     scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 128, 2, 2]>
     } -> tensor<1x1x2x2xi32, {order = #NHWC}>
@@ -195,7 +200,7 @@ func.func @DWConvWithSEPChannelSliceWithDepth1(%arg0: tensor<1x64x1x1xf16, {orde
     // CHECK:       [[SE_TABLE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 1, 1]
     // CHECK-SAME:         seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:                  scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 2, 2]>
-    // CHECK-SAME:         seDepth = 1 : i64, seSize = 64 : i64
+    // CHECK-SAME:         seDepth = 1 : i64, seSize = [64]
     // CHECK-SAME:      -> tensor<1x1x2x2xi32, {order = #NHWC}>
 
     // CHECK:       [[INPUT:%.+]] = VPU.GroupSparseTensor([[ARG0]], [[SMAP]], [[SE_TABLE]])

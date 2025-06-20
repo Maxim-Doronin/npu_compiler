@@ -84,6 +84,10 @@ void WrapVPUIPOpsInNCEClusterTilingPass::safeRunOnFunc() {
             return mlir::WalkResult::skip();
         }
 
+        if (IE::hasDynamicTensors(origOp)) {
+            return mlir::WalkResult::skip();
+        }
+
         mlir::OpBuilder nceBuilder(origOp);
         const auto bodyBuilder = [origOp](mlir::OpBuilder& builder, mlir::Location /*loc*/,
                                           mlir::ValueRange newOperands) {

@@ -24,7 +24,7 @@ template <typename T>
 struct format_provider<std::optional<T>> final {
     static void format(const std::optional<T>& opt, llvm::raw_ostream& stream, StringRef style) {
         if (opt.has_value()) {
-            llvm::detail::build_format_adapter(opt.value()).format(stream, style);
+            llvm::support::detail::build_format_adapter(opt.value()).format(stream, style);
         } else {
             stream << "<NONE>";
         }

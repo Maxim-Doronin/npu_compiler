@@ -37,13 +37,13 @@ struct MetadataBufferSize<VPURegMapped::TaskType::DPUVariant> {
 
 template <>
 struct MetadataBufferSize<VPURegMapped::TaskType::ActKernelRange> {
-    static constexpr size_t listCount = 1;
+    static constexpr size_t listCount = 2;
     static constexpr std::array<size_t, listCount> defaultTaskCount = {64};
 };
 
 template <>
 struct MetadataBufferSize<VPURegMapped::TaskType::ActKernelInvocation> {
-    static constexpr size_t listCount = 1;
+    static constexpr size_t listCount = 2;
     static constexpr std::array<size_t, listCount> defaultTaskCount = {64};
 };
 
@@ -116,6 +116,11 @@ size_t reindexEnqueueList(VPURegMapped::EnqueueOp head);
 constexpr StringLiteral lastSecondaryTaskInExecutionGroup = "lastSecondaryTaskInExecutionGroup";
 
 uint32_t generateTileMask(mlir::ArrayRef<uint32_t> usedTileIndexes);
+
+//
+// Resolve Task Location utils
+//
+size_t getTaskBinarySize(VPURegMapped::TaskType taskType, VPU::ArchKind arch);
 
 }  // namespace VPUMI40XX
 }  // namespace vpux

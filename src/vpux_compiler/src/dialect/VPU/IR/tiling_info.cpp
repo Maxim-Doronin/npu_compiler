@@ -69,6 +69,9 @@ InputTiling DetectionOutputSortOpInputTilingOnShave(VPUIP::SwKernelOp swKernelOp
     auto module = swKernelOp.getOperation()->getParentOfType<mlir::ModuleOp>();
     auto numClusters = IE::getTileExecutor(module).getCount();
     auto numTotalShaves = IE::getTotalNumOfEngines(module, VPU::ExecutorKind::SHAVE_ACT);
+
+    VPUX_THROW_WHEN(numClusters <= 0, "Unsupported number of clusters: {0}", numClusters);
+
     auto numShavesOnCluster = numTotalShaves / numClusters;
 
     auto inputsTiling = DetectionOutputSortOpInputTiling(firstOutputTile, numTotalShaves);
@@ -103,6 +106,16 @@ OutputTiling GRUSequenceOutputTiling(const vpux::TileInfo& firstOutputTile) {
     auto stateOutputTile = vpux::TileInfo(outStateShape, outStateOffsets, outStateAxis);
 
     return {firstOutputTile, std::move(stateOutputTile)};
+}
+
+OutputTiling DynamicQuantizeOutputTiling(const vpux::TileInfo& firstOutputTile) {
+    const auto shapeSize = firstOutputTile.shape.size();
+    const auto oneShape = Shape(shapeSize, 1);
+    const auto zeroShape = Shape(shapeSize, 0);
+    const auto scaleTile = TileInfo(oneShape, zeroShape, oneShape);
+    const auto zpTile = TileInfo(oneShape, zeroShape, oneShape);
+
+    return {firstOutputTile, std::move(scaleTile), std::move(zpTile)};
 }
 
 OutputTiling lstmSequenceOutputTiling(const vpux::TileInfo& firstOutputTile) {

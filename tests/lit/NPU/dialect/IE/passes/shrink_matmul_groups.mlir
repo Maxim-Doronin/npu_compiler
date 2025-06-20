@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --shrink-matmul-groups %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ShrinkMatmulGroups
 // CHECK-SAME:      [[INPUT1:%.+]]: tensor<1x24x1x64xf32>,
 // CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x8x1x1024x64xf32>

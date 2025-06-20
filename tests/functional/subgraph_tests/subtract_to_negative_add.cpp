@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpu_ov2_layer_test.hpp>
 
 #include "common_test_utils/node_builders/fake_quantize.hpp"
+
+#include "openvino/op/relu.hpp"
+#include "openvino/op/subtract.hpp"
 
 namespace ov::test {
 

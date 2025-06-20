@@ -4,6 +4,9 @@
 
 #include <vpu_ov2_layer_test.hpp>
 
+#include "openvino/op/add.hpp"
+#include "openvino/op/transpose.hpp"
+
 namespace ov::test {
 
 class AddWithTransposeTest_NPU3720 : public testing::WithParamInterface<std::vector<int64_t>>, public VpuOv2LayerTest {

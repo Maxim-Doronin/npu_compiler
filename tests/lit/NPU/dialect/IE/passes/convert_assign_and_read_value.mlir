@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-assign-read-value --mlir-print-debuginfo %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @ConvertAssignAndReadValue
 net.NetworkInfo entryPoint : @ConvertAssignAndReadValue inputsInfo : {
     DataInfo "input1" : tensor<1x768xf32> loc(fused<{name = "input", type = "Parameter"}>["input"])

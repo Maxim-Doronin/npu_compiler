@@ -1,4 +1,4 @@
-// Copyright (C) 2021 - 2024 Intel Corporation
+// Copyright (C) 2021-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,15 +22,11 @@ class GatherElementsLayerTestCommon : public GatherElementsLayerTest, virtual pu
 
 TEST_P(GatherElementsLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
-    // TODO E####-159644
-    setBatchCompilerMode("unroll");
     run(Platform::NPU3720);
 }
 
 TEST_P(GatherElementsLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
-    // TODO E####-159644
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 }  // namespace test

@@ -14,6 +14,8 @@
 #include "pretty_test_arguments.hpp"
 #include "shared_test_classes/base/ov_subgraph.hpp"
 
+#include "openvino/op/detection_output.hpp"
+
 namespace ov::test {
 
 enum class CodeType { CENTER_SIZE, CORNER_SIZE, CORNER };
@@ -63,6 +65,8 @@ PRETTY_PARAM(PriorBatchSizeOne, bool);
 
 PRETTY_PARAM(NumDetectedClasses, int);
 PRETTY_PARAM(NumDetectionsPerClass, int);
+
+PRETTY_PARAM(Device, std::string);
 
 class DetectionOutputAttributesBuilder {
 public:
@@ -731,14 +735,14 @@ public:
 
         const auto numLocClasses = shareLocation ? 1 : static_cast<int>(numClasses);
 
-        auto boxLogitsShape = staticShape(numBatches, numPriors * numLocClasses * 4);
-        auto classConfidenceShape = staticShape(numBatches, numPriors * numClasses);
+        auto boxLogitsShape = generateTestShape(numBatches, numPriors * numLocClasses * 4);
+        auto classConfidenceShape = generateTestShape(numBatches, numPriors * numClasses);
 
         const auto priorBatch = priorBatchSizeOne ? 1 : static_cast<int>(numBatches);
         const auto priorHeight = varianceEncodedInTarget ? 1 : 2;
         const auto priorBoxSize = normalized ? 4 : 5;
 
-        auto priorBoxesShape = staticShape(priorBatch, priorHeight, numPriors * priorBoxSize);
+        auto priorBoxesShape = generateTestShape(priorBatch, priorHeight, numPriors * priorBoxSize);
 
         init_input_shapes({boxLogitsShape, classConfidenceShape, priorBoxesShape});
 

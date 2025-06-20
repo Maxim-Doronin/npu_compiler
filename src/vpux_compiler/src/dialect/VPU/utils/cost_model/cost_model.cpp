@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,52 +10,16 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
-#include "vpux/compiler/utils/workload_split.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/ops.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
 
 using namespace vpux;
 
-namespace {
-
-ArrayRef<char> getCostModelData(VPU::ArchKind archKind, bool isFastModel) {
-    switch (archKind) {
-    case VPU::ArchKind::NPU37XX:
-        if (isFastModel) {
-            return ArrayRef(VPU::COST_MODEL_2_7_FAST, VPU::COST_MODEL_2_7_FAST_SIZE);
-        }
-        return ArrayRef(VPU::COST_MODEL_2_7, VPU::COST_MODEL_2_7_SIZE);
-    default:
-        if (isFastModel) {
-            return ArrayRef(VPU::COST_MODEL_4_0_FAST, VPU::COST_MODEL_4_0_FAST_SIZE);
-        }
-        return ArrayRef(VPU::COST_MODEL_4_0, VPU::COST_MODEL_4_0_SIZE);
-    }
-}
-
-}  // namespace
-
-std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::createCostModel(ArchKind arch) {
-    // Track [E#70055]
-    // TODO: Do not switch vpunn model to FAST temporarily, need to investigate the impact for workloads generation pass
-    bool isFastModel = false;
-    const auto costModelData = getCostModelData(arch, isFastModel);
-    return std::make_shared<VPUNN::VPUCostModel>(costModelData.data(), costModelData.size(), false);
-}
-
-std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::createLayerCostModel(ArchKind arch) {
-    // VPUNN provides two models - default and fast.
-    // Currently use default model for workload generation. Ticket to explore moving to fast model [E#70055].
-    // Currently use fast model for per layer evaluation in multi-cluster strategy selection
-    bool isFastModel = true;
-    const auto costModelData = getCostModelData(arch, isFastModel);
-    auto layerCostModel = std::make_shared<VPUNN::VPULayerCostModel>(costModelData.data(), costModelData.size(), false);
-    if (VPU::isArchVPUX3XXX(arch)) {
-        // keep same per tile workload channel limit on 37XX after new vpunn software update
-        layerCostModel->set_maxWorkloadsPerIntraTileSplit(50U);
-    }
-    return layerCostModel;
+bool vpux::VPU::hasVPUNNPreSplit(mlir::Operation* op) {
+    return VPU::getConstraint(op, VPU::VPUNN_PRE_SPLIT);
 }
 
 ///@brief Validate vpunn cost. If cost is not the defined error code then return it
@@ -202,6 +166,10 @@ bool vpux::VPU::isVPUNNSupportedElementType(mlir::Type type) {
             // Temporary enablement; follow up E#103211
             return true;
         }
+    } else if (type.isFloat8E5M2()) {  // FP8
+        return true;
+    } else if (type.isFloat8E4M3FN()) {  // HF8
+        return true;
     }
     return false;
 }
@@ -220,6 +188,9 @@ std::optional<VPUNN::DataType> vpux::VPU::getVPUNNElementType(mlir::Type type) {
             return qType.isSigned() ? VPUNN::DataType::INT8 : VPUNN::DataType::UINT8;
         } else if (qType.getStorageTypeIntegralWidth() == 4) {
             return qType.isSigned() ? VPUNN::DataType::INT4 : VPUNN::DataType::UINT4;
+            // To do: provide proper cost for I16/U16: #E-160697
+        } else if (qType.getStorageTypeIntegralWidth() == 16) {
+            return VPUNN::DataType::FLOAT16;
         }
     } else if (type.isF32()) {
         return VPUNN::DataType::FLOAT32;
@@ -476,7 +447,7 @@ std::vector<VPUNN::DPULayer> vpux::VPU::getPerClusterDPULayers(VPU::NCEOpInterfa
             return isOutput ? distributedType.getPerClusterComputeShapes()
                             : distributedType.getPerClusterMemoryShapes();
         }
-        return SmallVector({params.outputShape});
+        return isOutput ? SmallVector({params.outputShape}) : SmallVector({params.inputShape});
     };
 
     // OutputTensors and InputTensors
@@ -802,14 +773,11 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
 
         if (strategy.has_value()) {
             params.layerStrategy = strategy.value();
-        } else if (op->getParentOfType<VPU::NCEClusterTilingOp>() != nullptr) {
+        } else if (hasDistributedTypesIO(op)) {
             // It shows this is a cluster tiling op and its MC strategy attribute has been removed
             // We need judge it from the input/ output distributed mode
-            auto clusterOp = op->getParentOfType<VPU::NCEClusterTilingOp>();
-            auto inputType =
-                    mlir::cast<vpux::VPU::DistributedTypeInterface>((*clusterOp.getOperands().begin()).getType());
-            auto outputType =
-                    mlir::cast<vpux::VPU::DistributedTypeInterface>((*clusterOp.getResults().begin()).getType());
+            auto inputType = mlir::cast<vpux::VPU::DistributedTypeInterface>((*op->getOperands().begin()).getType());
+            auto outputType = mlir::cast<vpux::VPU::DistributedTypeInterface>((*op->getResults().begin()).getType());
             auto distributedInput =
                     mlir::cast<vpux::VPU::DistributedTensorType>(inputType.getDistributedTypes().front());
             auto distributedOutput =

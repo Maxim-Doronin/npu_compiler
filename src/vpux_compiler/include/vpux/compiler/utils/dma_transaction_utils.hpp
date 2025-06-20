@@ -5,34 +5,41 @@
 
 #pragma once
 
-#include <llvm/ADT/SmallVector.h>
-#include <cstddef>
-#include <utility>
+#include <vpux/compiler/utils/types.hpp>
 
 namespace vpux {
 class NDTypeInterface;
 
 struct DMAPattern {
-    DMAPattern(llvm::SmallVector<size_t> dims, llvm::SmallVector<size_t> strides)
+    DMAPattern(mlir::SmallVector<int64_t> dims, mlir::SmallVector<int64_t> strides)
             : dims(std::move(dims)), strides(std::move(strides)) {
     }
     DMAPattern() = default;
 
-    llvm::SmallVector<size_t> dims;
-    llvm::SmallVector<size_t> strides;
+    mlir::SmallVector<int64_t> dims;
+    mlir::SmallVector<int64_t> strides;
 };
 
 struct DMATransaction {
-    DMATransaction(llvm::SmallVector<DMAPattern> inputs, llvm::SmallVector<DMAPattern> outputs)
+    DMATransaction(llvm::SmallVector<DMAPattern> inputs, mlir::SmallVector<DMAPattern> outputs)
             : inputs(std::move(inputs)), outputs(std::move(outputs)) {
     }
     DMATransaction() = default;
 
-    llvm::SmallVector<DMAPattern> inputs;
-    llvm::SmallVector<DMAPattern> outputs;
+    mlir::SmallVector<DMAPattern> inputs;
+    mlir::SmallVector<DMAPattern> outputs;
 };
 
-DMAPattern reduceDimsForDma(vpux::NDTypeInterface ndType);
+DMAPattern reduceDimsForDma(SmallVector<int64_t> memShape, SmallVector<vpux::MemSize<vpux::MemType::Bit>> memStrides,
+                            int64_t elemSize);
 void patchDimsForNPU37XX(DMAPattern& dmaPattern);
+
+DMATransaction getDMATransactionFromPermutation(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                                mlir::AffineMap mappingOrder, mlir::AffineMap loopOrder);
+
+DMATransaction getDMATransactionFromPermutation(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                                mlir::AffineMap mappingOrder, mlir::SmallVector<int64_t> loopOrder);
+
+std::tuple<SmallVector<int64_t>, SmallVector<Bit>, int64_t> getTypeInfo(NDTypeInterface type);
 
 }  // namespace vpux

@@ -84,10 +84,10 @@ Const::Content vpux::Const::GetSparsityMapAttr::transform(vpux::Const::Content& 
 
     int64_t sparsifyValue = 0;
     auto inputElementType = input.getType().getElementType();
-    if (auto qtype = inputElementType.dyn_cast_or_null<mlir::quant::UniformQuantizedType>()) {
+    if (auto qtype = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(inputElementType)) {
         inputElementType = normalizeQuantStorageType(qtype);
         sparsifyValue = qtype.getZeroPoint();
-    } else if (auto qtype = inputElementType.dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>()) {
+    } else if (auto qtype = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(inputElementType)) {
         inputElementType = normalizeQuantStorageType(qtype);
         const auto zeroPoints = qtype.getZeroPoints();
         const auto notAllEqual =

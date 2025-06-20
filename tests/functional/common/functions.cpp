@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2018-2023 Intel Corporation
+// Copyright (C) 2018-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "functions.h"
 #include "common/npu_test_env_cfg.hpp"
+#include "openvino/op/add.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/multiply.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/runtime/intel_npu/properties.hpp"
 

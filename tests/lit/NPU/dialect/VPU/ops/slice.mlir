@@ -5,6 +5,7 @@
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 !InputDistributed = !VPU.DistributedTensor<
@@ -104,4 +105,32 @@ func.func @SliceWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistribu
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], compute_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], memory_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
 
+}
+
+// -----
+
+// CHECK-LABEL: @OptimizeExpandSlicePattern
+// CHECK-SAME:        ([[INPUT:%.+]]: tensor<1x16x1x1xf16>)
+func.func @OptimizeExpandSlicePattern(%input: tensor<1x16x1x1xf16>) -> tensor<1x16x1x1xf16> {
+   %expand = VPU.Expand(%input) {pads_begin = [0, 0, 0, 0], pads_end = [15, 0, 0, 0]} : tensor<1x16x1x1xf16> -> tensor<16x16x1x1xf16>
+   %slice = VPU.Slice %expand [0, 0, 0, 0] [1, 16, 1, 1] : tensor<16x16x1x1xf16> to tensor<1x16x1x1xf16>
+   return %slice : tensor<1x16x1x1xf16>
+
+   // CHECK-NOT:    VPU.Expand
+   // CHECK-NOT:    VPU.Slice
+   // CHECK:        return [[INPUT]] : tensor<1x16x1x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @OptimizeExpandSlicePatternPadBothSides
+// CHECK-SAME:        ([[INPUT:%.+]]: tensor<1x16x1x1xf16>)
+func.func @OptimizeExpandSlicePatternPadBothSides(%input: tensor<1x16x1x1xf16>) -> tensor<1x16x1x1xf16> {
+   %expand = VPU.Expand(%input) {pads_begin = [4, 0, 0, 0], pads_end = [15, 0, 0, 0]} : tensor<1x16x1x1xf16> -> tensor<20x16x1x1xf16>
+   %slice = VPU.Slice %expand [4, 0, 0, 0] [1, 16, 1, 1] : tensor<20x16x1x1xf16> to tensor<1x16x1x1xf16>
+   return %slice : tensor<1x16x1x1xf16>
+
+   // CHECK-NOT:    VPU.Expand
+   // CHECK-NOT:    VPU.Slice
+   // CHECK:        return [[INPUT]] : tensor<1x16x1x1xf16>
 }

@@ -253,12 +253,11 @@ std::vector<int32_t> vpux::VPU::NCESparsity::patchWeightsTableSparsityPtrs(
     return newWeightsTableVals;
 }
 
-Shape vpux::VPU::NCESparsity::inferWeightsTableShape(int64_t OC) {
+Shape vpux::VPU::NCESparsity::inferWeightsTableShape(int64_t OC, bool newFormat) {
+    if (newFormat) {
+        return Shape{OC, 1, 1, VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC};
+    }
     return Shape{OC, 1, 1, VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC};
-}
-
-Shape vpux::VPU::NCESparsity::inferWeightsTablesNewFormatShape(int64_t OC) {
-    return Shape{OC, 1, 1, 1};
 }
 
 Shape vpux::VPU::NCESparsity::inferWeightsSparsityMapShape(ShapeRef dataShape) {
@@ -302,6 +301,16 @@ mlir::FailureOr<SmallVector<double>> vpux::VPU::NCESparsity::getRescaledBias(con
     return rescaledBias;
 }
 
+double vpux::VPU::NCESparsity::getSparsityRatio(vpux::NDTypeInterface weightsType, int64_t compressedSize) {
+    const auto elemByteSize = getElemTypeSize(weightsType.getElementType()).to<Byte>().count();
+    const auto uncompressedSize = weightsType.getShape().totalSize() * elemByteSize;
+    VPUX_THROW_WHEN(uncompressedSize == 0, "Uncompressed size should be non-zero");
+    const auto sparsityRatio = 1.0 - checked_cast<double>(compressedSize) / checked_cast<double>(uncompressedSize);
+    VPUX_THROW_WHEN(sparsityRatio < 0.0 || sparsityRatio > 1.0,
+                    "Sparsity ratio should be in range [0.0, 1.0], while it is {0}", sparsityRatio);
+    return sparsityRatio;
+}
+
 /*
  Compute sparsification ratio of weights. It computes effective compression ratio of weights in case of weights
  sparsification. Ratio depends on number of non-zero elements and HW requirements to alignment. Acceleration depends
@@ -316,18 +325,13 @@ mlir::FailureOr<SmallVector<double>> vpux::VPU::NCESparsity::getRescaledBias(con
 */
 double vpux::VPU::NCESparsity::getSparsityRatio(vpux::NDTypeInterface weightsType,
                                                 ArrayRef<int64_t> numNonSparseElemsPerOC) {
-    const auto elemType = weightsType.getElementType();
-    const auto elemByteSize = getElemTypeSize(elemType).to<Byte>().count();
+    const auto elemByteSize = getElemTypeSize(weightsType.getElementType()).to<Byte>().count();
     const auto alignedChanSizeDenseVals = [&](auto sum, auto elemsInChan) {
         return sum + vpux::alignValUp(elemsInChan * elemByteSize, VPU::NCEInvariant::VPU_WEIGHT_SET_BYTE_ALIGNMENT);
     };
-    const auto actualSize = std::accumulate(numNonSparseElemsPerOC.begin(), numNonSparseElemsPerOC.end(), 0LL,
-                                            alignedChanSizeDenseVals);
-
-    const auto uncompressedSize = weightsType.getShape().totalSize() * elemByteSize;
-    const auto actualSparsityRatio = 1.0 - checked_cast<double>(actualSize) / checked_cast<double>(uncompressedSize);
-    VPUX_THROW_WHEN(actualSparsityRatio < 0.0, "Sparsity ratio is negative");
-    return actualSparsityRatio;
+    const auto compressedSize = std::accumulate(numNonSparseElemsPerOC.begin(), numNonSparseElemsPerOC.end(), 0LL,
+                                                alignedChanSizeDenseVals);
+    return getSparsityRatio(weightsType, compressedSize);
 }
 
 bool vpux::VPU::NCESparsity::isSparsifiableWeightsOperand(mlir::Value operand) {

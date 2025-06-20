@@ -1,4 +1,4 @@
-// Copyright (C) 2021 - 2024 Intel Corporation
+// Copyright (C) 2021-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,11 @@ namespace test {
 class MatMulLayerTestCommon : public MatMulLayerTest, virtual public VpuOv2LayerTest {};
 
 class MatMulLayerTest_HW_NPU3720 : public MatMulLayerTestCommon {};
-class MatMulLayerTest_SW_NPU3720 : public MatMulLayerTestCommon {};
+class MatMulLayerTest_SW_NPU3720 : public MatMulLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-grouped-matmul=false";
+    }
+};
 
 class MatMulLayerTest_HW_NPU3720_ppe_fp16_clamp : public MatMulLayerTestCommon {
     void generate_inputs(const std::vector<ov::Shape>& inputShapes) override {
@@ -41,7 +45,11 @@ class MatMulLayerTest_HW_NPU3720_ppe_fp16_clamp : public MatMulLayerTestCommon {
 };
 
 class MatMulLayerTest_HW_NPU4000 : public MatMulLayerTestCommon {};
-class MatMulLayerTest_SW_NPU4000 : public MatMulLayerTestCommon {};
+class MatMulLayerTest_SW_NPU4000 : public MatMulLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-grouped-matmul=false";
+    }
+};
 TEST_P(MatMulLayerTest_HW_NPU3720, HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);

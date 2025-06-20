@@ -392,7 +392,8 @@ mlir::LogicalResult FuseWithReduce<ConcreteOp>::matchAndRewrite(IE::QuantizeOp q
     rewriter.replaceOpWithNewOp<ConcreteOp>(quantizeOp, quantizeOp.getType(), inputDequantizeOp.getInput(),
                                             /*axes*/ nullptr,
                                             /*axes_value*/ axes,
-                                            /*keep_dims*/ mlir::UnitAttr::get(quantizeOp.getContext()))
+                                            /*keep_dims*/ mlir::UnitAttr::get(quantizeOp.getContext()),
+                                            reduceOp.getOutputPaddingAttr(), reduceOp.getInputPaddingAttr())
             ->setLoc(reduceOp->getLoc());
     return mlir::success();
 }

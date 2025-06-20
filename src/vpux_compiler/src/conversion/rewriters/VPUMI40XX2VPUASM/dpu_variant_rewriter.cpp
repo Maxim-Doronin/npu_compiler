@@ -53,7 +53,8 @@ mlir::FailureOr<SymbolizationResult> DPUVariantRewriter::symbolize(VPUMI40XX::DP
             weightTable, weightTableDataPtr, weightTableSpPtr, weightTableScale, weightTableBias, weightZeroPoints,
             op.getNceTaskTypeAttr(), op.getInStartAttr(), op.getInEndAttr(), op.getStartAttr(), op.getEndAttr(),
             op.getPadAttr(), op.getMpeModeAttr(), op.getClusterIdAttr(), op.getHaloRegionsAttr(),
-            op.getWorkloadIdAttr(), op.getSprLutReadAttr(), op.getPalletLutReadAttr(), op.getForceInvReadAttr());
+            op.getWorkloadIdAttr(), op.getSprLutReadAttr(), op.getPalletLutReadAttr(), op.getForceInvReadAttr(),
+            op.getVariantPrimitiveIdAttr());
 
     rewriter.eraseOp(op);
 

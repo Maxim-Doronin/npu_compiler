@@ -9,6 +9,7 @@
 // RUN:     --outline-linalg-sw-layers                                \
 // RUN:   | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
 module @NoBitcastUI {
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input0" : tensor<1x1x16x1xui32>

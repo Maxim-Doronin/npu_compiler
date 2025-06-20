@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-scalar-to-tensor %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
 // CHECK-LABEL: @Gather
 func.func @Gather(%arg0: tensor<18x8x72x64xf16>) -> tensor<8x72x64xf16> {
     %cst = const.Declare tensor<si32> = dense<1> : tensor<si32>
@@ -71,8 +72,8 @@ func.func @AddResultRank0(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16>
 
     return %0 : tensor<f16>
 
-    // CHECK:       [[VAL0:%.*]] = IE.Reshape(%arg0) {shape_value = [1]} : tensor<f16> -> tensor<1xf16>
     // CHECK:       [[VAL1:%.*]] = IE.Reshape(%arg1) {shape_value = [1]} : tensor<f16> -> tensor<1xf16>
+    // CHECK:       [[VAL0:%.*]] = IE.Reshape(%arg0) {shape_value = [1]} : tensor<f16> -> tensor<1xf16>
     // CHECK:       [[VAL2:%.*]] = IE.Add([[VAL0]], [[VAL1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf16>, tensor<1xf16> -> tensor<1xf16>
     // CHECK:       [[VAL3:%.*]] = IE.Reshape([[VAL2]]) {shape_value = []} : tensor<1xf16> -> tensor<f16>
     // CHECK:       return [[VAL3]]

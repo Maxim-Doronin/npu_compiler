@@ -87,6 +87,13 @@ def SimplifySchedule : PassBase<"simplify-schedule", "vpux::FunctionPass"> {
     }];
 
     let constructor = "vpux::VPURT::createSimplifySchedulePass()";
+    let options = [
+        Option<
+            "shareWaitAndUpdateBarriersOpt", "share-wait-and-update-barriers",
+            "bool", "",
+            "Enforce sharing wait and update barriers between tasks on the same FIFO"
+        >
+    ];
 }
 
 //
@@ -198,7 +205,7 @@ def ReduceExceedingActiveCountBarriers : PassBase<"reduce-exceeding-active-count
         Option<
             "shareWaitAndUpdateBarriersOpt", "share-wait-and-update-barriers",
             "bool", "",
-            "Enforce sharing wait and update barriers between tasks on same FIFO"
+            "Enforce sharing wait and update barriers between tasks on the same FIFO"
         >
     ];
 }

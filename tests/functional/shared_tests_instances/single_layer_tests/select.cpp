@@ -1,9 +1,12 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation
+// Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache 2.0
 
 #include "single_op_tests/select.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/convert.hpp"
+#include "openvino/op/select.hpp"
 
 namespace ov {
 namespace test {
@@ -62,9 +65,11 @@ namespace {
 const std::vector<ov::element::Type> inputTypes = {ov::element::f16, ov::element::i32, ov::element::i64};
 
 const std::vector<std::vector<ov::Shape>> inShapes = {
-        {{10, 2, 1, 1}, {10, 2, 1, 1}, {1, 2, 1, 1}},     {{1, 1, 1, 32}, {1, 1, 1, 1}, {1, 4, 16, 32}},
-        {{1, 1, 1, 32}, {1, 4, 16, 32}, {1, 1, 1, 1}},    {{1, 1, 1, 1024}, {1, 1, 1, 1}, {1, 1, 1, 1024}},
-        {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1}}, {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1024}}};
+        {{10, 2, 1, 1}, {10, 2, 1, 1}, {1, 2, 1, 1}},        {{1, 1, 1, 32}, {1, 1, 1, 1}, {1, 4, 16, 32}},
+        {{1, 1, 1, 32}, {1, 4, 16, 32}, {1, 1, 1, 1}},       {{1, 1, 1, 1024}, {1, 1, 1, 1}, {1, 1, 1, 1024}},
+        {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1}},    {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1024}},
+        {{1, 1, 2, 4, 4}, {1, 1, 1, 1, 1}, {1, 1, 2, 4, 4}},
+};
 
 const auto selectTestParams = ::testing::Combine(
         ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes)), ::testing::ValuesIn(inputTypes),

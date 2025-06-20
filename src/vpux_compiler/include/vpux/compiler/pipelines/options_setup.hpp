@@ -5,63 +5,44 @@
 
 #pragma once
 
-#include "vpux/compiler/options_mapper.hpp"
+#include "vpux/compiler/compilation_options.hpp"
+#include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/utils/IE/config.hpp"
 
 #include "intel_npu/config/options.hpp"
 
 namespace vpux {
 
-//
-// OptionsWrapper is used for lit-test
-// Please note the class does not own options
-//
-
-template <class OptionsType>
-class OptionsWrapper final {
-public:
-    using value_type = OptionsType;
-
-    OptionsWrapper(const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options)
-            : _initCompilerOptions(initCompilerOptions), _options(options) {
-        VPUX_THROW_WHEN(_initCompilerOptions == nullptr, "initCompilerOptions is nullptr");
-        VPUX_THROW_WHEN(_options == nullptr, "options is nullptr");
-    }
-
-    // The class is supposed to exist only while FrontendStrategy is building a pipeline for vpux-opt.
-    // Please don't cache or move it outside the usage "context".
-    OptionsWrapper(const OptionsWrapper&) = delete;
-    OptionsWrapper& operator=(const OptionsWrapper&) = delete;
-    OptionsWrapper(OptionsWrapper&&) = delete;
-    OptionsWrapper& operator=(OptionsWrapper&&) = delete;
-    ~OptionsWrapper() = default;
-
-    const OptionsType& getPipelineOptions() const {
-        return *_options;
-    }
-
-    const VPU::InitCompilerOptions& getInitCompilerOptions() const {
-        return *_initCompilerOptions;
-    }
-
-protected:
-    const VPU::InitCompilerOptions* _initCompilerOptions;
-    const OptionsType* _options;
-};
-
-//
-// This class serves two purposes:
-//  1. Parsing options from config and setting specific values depending on platform and compilation mode
-//  2. From the PipelineStrategy pov it is simply a container for a specific type of options
-//
-
+/// This class serves two purposes:
+/// 1. Parsing options from an intel_npu::Config object and overriding specific values depending on platform and
+///    compilation mode.
+/// 2. From the PipelineStrategy's point of view it is simply a container for a specific type of options.
+///
+/// OptionsSetup can either parse options from intel_npu::Config or create copies of const VPU::InitCompilerOptions*
+/// and const OptionsType*. It owns the objects and derived classes can therefore override specific options without
+/// restrictions.
+///
+/// ConcreteModel has to be the *final* derived class as OptionsSetup will access ConcreteModel::setupOptionsImpl().
+/// Make sure that the final derived class exposes its implementation of setupOptionsImpl() to OptionsSetup. This can
+/// be done via `friend OptionsSetup<...>`.
+///
+/// ConcreteModel can choose to only implement one of the setupOptionsImpl() versions. OptionsSetup will then fallback
+/// to a default implementation for the not implemented version. However, due to C++'s name resolution you will have to
+/// add a `using OptionsSetup<...>::setupOptionsImpl` because as soon as ConcreteModel provides a function named
+/// `setupOptionsImpl`, it will hide all parent's functions with the same name [1].
+///
+/// You can have intermediate derivatives but make sure that the final derivative is always propagated with
+/// ConcreteModel!
+///
+/// [1] https://www.ibm.com/docs/en/zos/2.4.0?topic=scope-name-hiding-c-only
 template <class ConcreteModel, class OptionsType>
 class OptionsSetup {
 public:
     using value_type = OptionsType;
 
     explicit OptionsSetup(const intel_npu::Config& config): _config(config) {
-        _options = OptionsType::createFromString(config.get<intel_npu::COMPILATION_MODE_PARAMS>());
+        _options = parseCompilationModeParams<OptionsType>(config.get<intel_npu::COMPILATION_MODE_PARAMS>(),
+                                                           getArchKind(config));
         VPUX_THROW_WHEN(_options == nullptr, "Failed to parse COMPILATION_MODE_PARAMS");
 
         _initCompilerOptions = vpux::getInitCompilerOptions(config);
@@ -77,6 +58,15 @@ public:
         setupOptions();
     }
 
+    // lit-test mode
+    explicit OptionsSetup(const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options)
+            : _options(std::make_unique<OptionsType>()),
+              _initCompilerOptions(std::make_unique<VPU::InitCompilerOptions>()) {
+        _initCompilerOptions->copyOptionValuesFrom(*initCompilerOptions);
+        _options->copyOptionValuesFrom(*options);
+        setupOptions();
+    }
+
     virtual ~OptionsSetup() = default;
 
     const OptionsType& getPipelineOptions() const {
@@ -88,73 +78,122 @@ public:
     }
 
 protected:
+    // Fallback implementations - make sure they are exposed in ConcreteModel by doing `using Base::setupOptionsImpl;`.
+    static void setupLitTestOptionsImpl(OptionsType&) {
+        VPUX_THROW("setupOptionsImpl() is not implemented.");
+    }
+
+    static void setupOptionsImpl(OptionsType&, const intel_npu::Config&) {
+        VPUX_THROW("setupOptionsImpl() is not implemented.");
+    }
+
+private:
     void setupOptions() {
         _options->matchAndCopyOptionValuesFrom(*_initCompilerOptions);
 
         // this way user can setup specific option values
         // for different platforms and compilation modes
-        ConcreteModel::setupOptionsImpl(*_options, _config);
+        if (_config.has_value()) {
+            ConcreteModel::setupOptionsImpl(*_options.get(), _config.value());
+        } else {
+            ConcreteModel::setupLitTestOptionsImpl(*_options.get());
+        }
     }
 
-private:
-    intel_npu::Config _config;
+    // This class can operate in 2 modes: Either the options stem from an instance of intel_npu::Config. In that case we
+    // parse it. In the other case the options come from instances of OptionsType and VPU::InitCompilerOptions. In that
+    // case we create a copy.
+    std::optional<intel_npu::Config> _config;
     std::unique_ptr<OptionsType> _options;
     std::unique_ptr<VPU::InitCompilerOptions> _initCompilerOptions;
 };
+
+template <class OptionType, class ValueType>
+void overwriteIfUnset(OptionType& option, ValueType&& value) {
+    if (!option.hasValue()) {
+        Logger::global().info("Overriding option {0} with {1}", option.getArgStr(), value);
+        option = value;
+    }
+}
 
 //
 // Below are helper classes for HW-agnostic options settings
 // Developer can use them directly or implement new ones for specific platform
 //
 
-template <class ArchSpecificOptionsType>
-class DefaultHWSetupBase : public OptionsSetup<DefaultHWSetupBase<ArchSpecificOptionsType>, ArchSpecificOptionsType> {
+template <class ConcreteModel, class ArchSpecificOptionsType>
+class OptionsSetupBase : public OptionsSetup<ConcreteModel, ArchSpecificOptionsType> {
 public:
-    using Base = OptionsSetup<DefaultHWSetupBase<ArchSpecificOptionsType>, ArchSpecificOptionsType>;
+    using Base = OptionsSetup<ConcreteModel, ArchSpecificOptionsType>;
     using Base::Base;
+    // Expose setupOptionsImpl() to OptionsSetup
     friend Base;
 
-private:
-    // Note: must be static as we call ConcreteModel::setupOptionsImpl() from the ctor of base class
+protected:
+    static void setupLitTestOptionsImpl(ArchSpecificOptionsType&) {
+    }
+
     static void setupOptionsImpl(ArchSpecificOptionsType& options, const intel_npu::Config& config) {
-        options.enableProfiling = config.get<intel_npu::PERF_COUNT>();
-        options.enableConvertAvgPoolToDWConv = false;
-        options.enableHandleAsymmetricStrides = false;
+        overwriteIfUnset(options.enableProfiling, config.get<intel_npu::PERF_COUNT>());
         options.updateBatchCompileOptionsFromString(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
     }
 };
 
-template <class ArchSpecificOptionsType>
-class ShaveCodeGenSetupBase :
-        public OptionsSetup<ShaveCodeGenSetupBase<ArchSpecificOptionsType>, ArchSpecificOptionsType> {
+template <class ConcreteModel, class ArchSpecificOptionsType>
+class WSMonolithicSetupBase : public OptionsSetup<ConcreteModel, ArchSpecificOptionsType> {
 public:
-    using Base = OptionsSetup<ShaveCodeGenSetupBase<ArchSpecificOptionsType>, ArchSpecificOptionsType>;
+    using Base = OptionsSetup<ConcreteModel, ArchSpecificOptionsType>;
     using Base::Base;
     friend Base;
 
+protected:
+    static void setupLitTestOptionsImpl(ArchSpecificOptionsType& options) {
+        setupOptionsCommon(options);
+    }
+
+    static void setupOptionsImpl(ArchSpecificOptionsType& options, const intel_npu::Config&) {
+        setupOptionsCommon(options);
+    }
+
 private:
-    // Note: must be static as we call ConcreteModel::setupOptionsImpl() from the ctor of base class
-    static void setupOptionsImpl(ArchSpecificOptionsType& options, const intel_npu::Config& config) {
-        options.enableProfiling = config.get<intel_npu::PERF_COUNT>();
-        options.enableConvertAvgPoolToDWConv = false;
-        options.enableHandleAsymmetricStrides = false;
-        options.updateBatchCompileOptionsFromString(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
+    static void setupOptionsCommon(ArchSpecificOptionsType& options) {
+        overwriteIfUnset(options.enableProfiling, false);
+        // E#162617 Enable locations verification for monolithic mode
+        overwriteIfUnset(options.locationsVerificationMode, "off");
+        // E#127228 Introduce IE.Swizzle operation
+        overwriteIfUnset(options.enableWeightsSwizzling, false);
+        // E#127235 Introduce IE.Sparsify operation
+        overwriteIfUnset(options.enableWeightsSparsity, false);
     }
 };
 
-template <class ArchSpecificOptionsType>
-class ReferenceSwSetupBase :
-        public OptionsSetup<ReferenceSwSetupBase<ArchSpecificOptionsType>, ArchSpecificOptionsType> {
+template <class ConcreteModel, class ArchSpecificOptionsType>
+class WSInitSetupBase : public OptionsSetup<ConcreteModel, ArchSpecificOptionsType> {
 public:
-    using Base = OptionsSetup<ReferenceSwSetupBase<ArchSpecificOptionsType>, ArchSpecificOptionsType>;
+    using Base = OptionsSetup<ConcreteModel, ArchSpecificOptionsType>;
     using Base::Base;
     friend Base;
 
-private:
-    // Note: must be static as we call ConcreteModel::setupOptionsImpl() from the ctor of base class
+protected:
+    static void setupLitTestOptionsImpl(ArchSpecificOptionsType& options) {
+        setupOptionsCommon(options);
+    }
+
     static void setupOptionsImpl(ArchSpecificOptionsType& options, const intel_npu::Config& config) {
-        options.enableProfiling = config.get<intel_npu::PERF_COUNT>();
-        options.updateBatchCompileOptionsFromString(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
+        overwriteIfUnset(options.enableProfiling, config.get<intel_npu::PERF_COUNT>());
+        setupOptionsCommon(options);
+    }
+
+private:
+    static void setupOptionsCommon(ArchSpecificOptionsType& options) {
+        overwriteIfUnset(options.enableAdjustPrecisionPipeline, false);
+        overwriteIfUnset(options.enableConvertWeightsToU8I4, false);
+        // E#162617 Enable locations verification for monolithic mode
+        overwriteIfUnset(options.locationsVerificationMode, "off");
+        // E#165632 Disable all kinds of outlining passes for now.
+        overwriteIfUnset(options.enableVerticalFusionOutlining, false);
+        overwriteIfUnset(options.enableConcatRepeatingBlockOutlining, false);
+        overwriteIfUnset(options.enableEntireMainContentOutlining, false);
     }
 };
 

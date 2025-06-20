@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2018-2024 Intel Corporation
+// Copyright (C) 2018-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/random_uniform.hpp"
 #include "vpu_ov2_layer_test.hpp"
+
+#include "openvino/op/random_uniform.hpp"
+#include "openvino/op/shape_of.hpp"
 
 using namespace ov::test::utils;
 

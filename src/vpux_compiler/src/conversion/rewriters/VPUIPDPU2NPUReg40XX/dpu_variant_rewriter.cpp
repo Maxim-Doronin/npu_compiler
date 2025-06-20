@@ -69,10 +69,8 @@ mlir::LogicalResult DPUVariantRewriter::matchAndRewrite(VPUIPDPU::DPUVariantOp o
         descriptor.write<Fields::next_sram_job_valid>(1);
     }
 
-    auto regDPUVariantAttr = DpuVariantRegisterAttr::get(rewriter.getContext(), std::move(descriptor));
-
     rewriter.create<NPUReg40XX::DPUVariantOp>(origOp->getLoc(), origOp.getSymNameAttr(), origOp.getNextLinkAttr(),
-                                              origOp.getTaskIndexAttr(), regDPUVariantAttr,
+                                              origOp.getTaskIndexAttr(), std::move(descriptor),
                                               origOp.getTaskLocationAttr(), origOp.getInvariantTaskLocationAttr(),
                                               origOp.getWeightsAttr(), origOp.getWeightTableAttr(),
                                               origOp.getNceTaskTypeAttr(), origOp.getWorkloadIdAttr());

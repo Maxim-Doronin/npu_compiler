@@ -134,8 +134,13 @@ enable_t<OutT, std::is_integral<InT>, std::is_unsigned<InT>, std::is_floating_po
 
 template <typename OutT, typename InT>
 enable_t<OutT, std::is_same<double, InT>, std::is_same<float, OutT>> checked_cast(InT value) {
-    VPUX_THROW_UNLESS(static_cast<InT>(static_cast<OutT>(value)) == value, "Can not safely cast {0} from {1} to {2}",
-                      value, llvm::getTypeName<InT>(), llvm::getTypeName<OutT>());
+    VPUX_THROW_UNLESS(value <= static_cast<InT>(std::numeric_limits<OutT>::max()),
+                      "Can not safely cast {0} from {1} to {2}", value, llvm::getTypeName<InT>(),
+                      llvm::getTypeName<OutT>());
+
+    VPUX_THROW_UNLESS(value >= static_cast<InT>(std::numeric_limits<OutT>::lowest()),
+                      "Can not safely cast {0} from {1} to {2}", value, llvm::getTypeName<InT>(),
+                      llvm::getTypeName<OutT>());
 
     return static_cast<OutT>(value);
 }

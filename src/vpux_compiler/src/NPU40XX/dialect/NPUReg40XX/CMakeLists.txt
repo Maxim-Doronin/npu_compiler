@@ -14,4 +14,5 @@ add_npu_library(npu_compiler_dialect_npureg40xx
         flatbuffers
         npu_elf
         npu_40xx_firmware_headers
-        npu_compiler_dialect_vpurt)
+        npu_compiler_dialect_vpurt
+        npu_compiler_dialect_vpu_utils)

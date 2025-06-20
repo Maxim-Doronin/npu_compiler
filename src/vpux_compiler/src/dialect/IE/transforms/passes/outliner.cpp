@@ -619,7 +619,8 @@ public:
         _options = vpux::IE::OutlinerPassOptions::createFromString(functionOutlining);
     }
 
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
 
 private:
     void safeRunOnModule() final;
@@ -629,9 +630,10 @@ private:
     vpux::IE::OutlinerPassOptions _options;
 };
 
-mlir::LogicalResult OutlinerPass::initializeOptions(StringRef options) {
+mlir::LogicalResult OutlinerPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
     _log.info("initializeOptions");
-    if (mlir::failed(Base::initializeOptions(options))) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2024 Intel Corporation.
+// Copyright (C) 2023-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -60,6 +60,48 @@ func.func @StridedSlice3Dim(%input: tensor<3x40x40x15xf16>) -> tensor<3x20x20x5x
     // CHECK: [[OUTPUT_BUFFER:%.+]] = memref.alloc() : memref<3x20x20x5xf16>
     // CHECK: [[OUTPUT_DDR:%.+]] = VPUIP.Copy inputs([[OUTPUT]] : memref<3x20x20x5xf16, [@CMX_NN, 0]>) outputs([[OUTPUT_BUFFER:%.+]] : memref<3x20x20x5xf16>) -> memref<3x20x20x5xf16>
     // CHECK: return [[OUTPUT_DDR]] : memref<3x20x20x5xf16>
+}
+
+// -----
+// CHECK-LABEL: @DynamicQuantize
+// CHECK-SAME:  [[INPUT0:%.+]]: memref<1x1x4x400xf32>, [[INPUT1:%.+]]: memref<1x1x1x1xf32>, [[INPUT2:%.+]]: memref<1x1x1x1xf32>
+func.func @DynamicQuantize(%arg0: tensor<1x1x4x400xf32>, %arg1: tensor<1x1x1x1xf32>, %arg2: tensor<1x1x1x1xf32>) -> (tensor<1x1x4x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>) {
+    %output, %scale, %zero_point = VPU.DynamicQuantize(%arg0, %arg1, %arg2) : tensor<1x1x4x400xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x4x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+    return %output, %scale, %zero_point : tensor<1x1x4x400xui8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xui8>
+
+    // CHECK: [[DATA_IN_BUFF:%.+]] = memref.alloc() : memref<1x1x4x400xf32, [@CMX_NN, 0]>
+    // CHECK: [[DATA_COPY:%.+]] = VPUIP.Copy inputs([[INPUT0]] : memref<1x1x4x400xf32>) outputs([[DATA_IN_BUFF]] : memref<1x1x4x400xf32, [@CMX_NN, 0]>) -> memref<1x1x4x400xf32, [@CMX_NN, 0]>
+    // CHECK: [[MIN_IN_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[MIN_COPY:%.+]] = VPUIP.Copy inputs([[INPUT1]] : memref<1x1x1x1xf32>) outputs([[MIN_IN_BUFF]] : memref<1x1x1x1xf32, [@CMX_NN, 0]>) -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[MAX_IN_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[MAX_COPY:%.+]] = VPUIP.Copy inputs([[INPUT2]] : memref<1x1x1x1xf32>) outputs([[MAX_IN_BUFF]] : memref<1x1x1x1xf32, [@CMX_NN, 0]>) -> memref<1x1x1x1xf32, [@CMX_NN, 0]>
+
+    // CHECK: [[OUTPUT_BUFF:%.+]] = memref.alloc() : memref<1x1x4x400xui8, [@CMX_NN, 0]>
+    // CHECK: [[SCALE_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK: [[ZP_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1xui8, [@CMX_NN, 0]>
+
+    // CHECK: [[RESULT:%.+]]:3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>}
+    // CHECK: @VPU.SW::@builtin_DynamicQuantize
+    // CHECK:   inputs([[DATA_COPY]] as [[INNER_ARG3:[^:]+]]: memref<1x1x4x400xf32, [@CMX_NN, 0]>,
+    // CHECK:          [[MIN_COPY]] as [[INNER_ARG4:[^:]+]]: memref<1x1x1x1xf32, [@CMX_NN, 0]>,
+    // CHECK:          [[MAX_COPY]] as [[INNER_ARG5:[^:]+]]: memref<1x1x1x1xf32, [@CMX_NN, 0]>)
+    // CHECK:   outputs([[OUTPUT_BUFF]] as [[INNER_ARG6:[^:]+]]: memref<1x1x4x400xui8, [@CMX_NN, 0]>,
+    // CHECK:           [[SCALE_BUFF]] as [[INNER_ARG7:[^:]+]]: memref<1x1x1x1xf32, [@CMX_NN, 0]>,
+    // CHECK:           [[ZP_BUFF]] as [[INNER_ARG8:[^:]+]]: memref<1x1x1x1xui8, [@CMX_NN, 0]>) on tile 0
+    // CHECK: -> (memref<1x1x4x400xui8, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xui8, [@CMX_NN, 0]>){
+    // CHECK: VPUIP.SW.Kernel.run([[INNER_ARG3]], [[INNER_ARG4]], [[INNER_ARG5]], [[INNER_ARG6]], [[INNER_ARG7]], [[INNER_ARG8]])
+    // CHECK:   memref<1x1x4x400xf32, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>
+    // CHECK:   memref<1x1x4x400xui8, [@CMX_NN, 0]>, memref<1x1x1x1xf32, [@CMX_NN, 0]>, memref<1x1x1x1xui8, [@CMX_NN, 0]>
+
+    // CHECK: [[OUT_DATA_BUFF:%.+]] = memref.alloc() : memref<1x1x4x400xui8>
+    // CHECK: [[OUT_DATA_COPY:%.+]] = VPUIP.Copy inputs([[RESULT]]#0 : memref<1x1x4x400xui8, [@CMX_NN, 0]>)
+    // CHECK:   outputs([[OUT_DATA_BUFF]] : memref<1x1x4x400xui8>) -> memref<1x1x4x400xui8>
+    // CHECK: [[OUT_SCALE_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1xf32>
+    // CHECK: [[OUT_SCALE_COPY:%.+]] = VPUIP.Copy inputs([[RESULT]]#1 : memref<1x1x1x1xf32, [@CMX_NN, 0]>)
+    // CHECK:   outputs([[OUT_SCALE_BUFF]] : memref<1x1x1x1xf32>) -> memref<1x1x1x1xf32>
+    // CHECK: [[OUT_ZP_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1xui8>
+    // CHECK: [[OUT_ZP_COPY:%.+]] = VPUIP.Copy inputs([[RESULT]]#2 : memref<1x1x1x1xui8, [@CMX_NN, 0]>) outputs([[OUT_ZP_BUFF]] : memref<1x1x1x1xui8>) -> memref<1x1x1x1xui8>
+    // CHECK: return [[OUT_DATA_COPY]], [[OUT_SCALE_COPY]], [[OUT_ZP_COPY]] : memref<1x1x4x400xui8>, memref<1x1x1x1xf32>, memref<1x1x1x1xui8>
 }
 
 // -----

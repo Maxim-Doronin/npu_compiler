@@ -482,6 +482,16 @@ public:
         return _storage;
     }
 
+    // E#166553
+    template <class OldDescriptor>
+    void copyFrom(OldDescriptor& obj) {
+        // in some cases we need an easy way to copy from a c structure directly to the corresponding descriptor
+        // to enable descriptor features
+        static_assert(Union<RegistersPack...>::SIZE.count() == sizeof(OldDescriptor),
+                      "Size of template does not match the storage size!");
+        std::copy_n(reinterpret_cast<uint8_t*>(&obj), _storage.size(), _storage.begin());
+    }
+
     void print(mlir::AsmPrinter& printer) const {
         printer << '<';
         printer.increaseIndent();

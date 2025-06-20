@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2024 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache 2.0
 //
 
@@ -37,6 +37,7 @@ ConditionFunc makeStubCondition();
 
 std::unique_ptr<mlir::Pass> createConvertWeightsTableOp2ConstPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUpdateSwKernelParamsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSyncShvDpuPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDumpStatisticsOfTaskOpsPass(Logger log = Logger::global(), bool forceLogging = true);
 std::unique_ptr<mlir::Pass> createUnrollClusterTilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWrapVPUIPOpsInNCEClusterTilingPass(Logger log = Logger::global());
@@ -115,6 +116,9 @@ std::unique_ptr<mlir::Pass> createMoveReflectPadToCMXPass(Logger log = Logger::g
 
 void buildAsyncSchedulingPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 
+std::unique_ptr<mlir::Pass> createAsyncRegionsOutliningPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAsyncRegionsOutliningPass(size_t asyncRegionOutliningMinOpsInBlock,
+                                                            Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWrapIntoAsyncRegionsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveWaitResultToAsyncBlockArgsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCalculateAsyncRegionCycleCostPass(Logger log = Logger::global());
@@ -167,20 +171,16 @@ std::unique_ptr<mlir::Pass> createInvalidateUnrollDMAAnalysisPass(Logger log = L
 //
 // Host Compilation pipeline
 //
-
+// TODO : move passes to dedicated dialect E#162135
 std::unique_ptr<mlir::Pass> createSerializeELFToBinaryPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createConvertToLLVMUMDCallsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWrapFuncCallsIntoAsyncRegionsPass(Logger log = Logger::global());
 
 //
 // DefaultHWOptions(for all devices)
 //
 
 struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
-    BoolOption enableDPUProfiling{*this, "dpu-profiling", llvm::cl::desc("Enable DPU task profiling"),
-                                  llvm::cl::init(true)};
-
-    BoolOption enableSWProfiling{*this, "sw-profiling", llvm::cl::desc("Enable SW task profiling"),
-                                 llvm::cl::init(true)};
-
     BoolOption enableM2IProfiling{*this, "m2i-profiling", llvm::cl::desc("Enable M2I task profiling"),
                                   llvm::cl::init(true)};
 
@@ -210,10 +210,6 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
 
     BoolOption linearizeSchedule{*this, "linearize-schedule", llvm::cl::desc("Linearize tasks on all engines"),
                                  llvm::cl::init(false)};
-
-    BoolOption enableDumpTaskStats{*this, "dump-task-stats",
-                                   ::llvm::cl::desc("Enable dumping statistics of Task operations"),
-                                   ::llvm::cl::init(vpux::isDeveloperBuild())};
 
     BoolOption enableShaveKernelTiling{*this, "enable-shave-kernel-tiling",
                                        ::llvm::cl::desc("Enable shave kernel tiling"), ::llvm::cl::init(true)};

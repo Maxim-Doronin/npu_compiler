@@ -3,8 +3,12 @@
 // SPDX-License-Identifier: Apache 2.0
 //
 
+#include <vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp>
+#include <vpux/compiler/dialect/core/IR/dialect.hpp>
 #include <vpux/compiler/dialect/core/IR/ops.hpp>
+#include <vpux/compiler/dialect/core/interfaces/type_interfaces.hpp>
 
+#include <vpux/compiler/utils/error.hpp>
 #include <vpux/utils/core/format.hpp>
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -54,4 +58,40 @@ void vpux::Core::NestedCallOp::build(mlir::OpBuilder& /*builder*/, mlir::Operati
     odsState.addTypes(results);
     auto& props = odsState.getOrAddProperties<Properties>();
     props.callee = callee;
+}
+
+mlir::LogicalResult vpux::Core::ReinterpretCastOp::verify() {
+    auto inputType = getInput().getType();
+    auto outputType = getOutput().getType();
+    if (inputType.getTypeID() != outputType.getTypeID()) {
+        return errorAt(*this, "Cannot change type id: '{0}' -> '{1}'", inputType, outputType);
+    }
+
+    const auto inNdType = mlir::cast<NDTypeInterface>(inputType);
+    const auto outNdType = mlir::cast<NDTypeInterface>(outputType);
+    // Note: preserve rank to satisfy potential IR requirements (e.g. 4d shapes)
+    if (inNdType.getRank() != outNdType.getRank()) {
+        return errorAt(*this, "Cannot cast to different rank: '{0}' -> '{1}'", inputType, outputType);
+    }
+    if (inNdType.getTotalAllocSize() != outNdType.getTotalAllocSize()) {
+        return errorAt(*this, "Cannot cast to different allocation size: '{0}' -> '{1}'", inputType, outputType);
+    }
+    return mlir::success();
+}
+
+mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, Core::ReinterpretCastOp origOp,
+                                      Core::ReinterpretCastOp::Adaptor newArgs, mlir::RewriterBase& rewriter) {
+    auto log = Logger::global().nest("one-shot-bufferize-CoreReinterpretCastOp", 0);
+    log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    const auto newOutType = vpux::getBufferType(origOp.getResult().getType());
+    auto newOp = rewriter.create<Core::ReinterpretCastOp>(origOp->getLoc(), newOutType, newArgs.getInput());
+    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, newOp->getResults());
+    return mlir::success();
+}
+
+void vpux::registerCoreBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
+    registry.addExtension(+[](mlir::MLIRContext* ctx, vpux::Core::CoreDialect*) {
+        Core::ReinterpretCastOp::attachInterface<VpuGenericOneShotBufferizeModel<Core::ReinterpretCastOp>>(*ctx);
+    });
 }

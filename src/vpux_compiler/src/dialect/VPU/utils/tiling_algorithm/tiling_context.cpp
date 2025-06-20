@@ -34,8 +34,7 @@ bool isSCFSupported(mlir::Operation* operation, ShapeRef tilingStrategy) {
 
     const auto outShape = getShape(operation->getResult(0));
 
-    // E-162627 extend to dynamic shapes
-    if (outShape.isDynamic()) {
+    if (outShape.isDynamic() && !mlir::isa<mlir::ReifyRankedShapedTypeOpInterface>(operation)) {
         return false;
     }
 

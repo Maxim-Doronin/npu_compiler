@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2024 Intel Corporation
+// Copyright (C) 2019-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -563,7 +563,7 @@ const std::vector<std::vector<int64_t>> AxesInput3D = {
         {0, 1, 2},
 };
 
-auto interpolateCaseNearestModeNC_Nearst_Input3D = []() {
+auto interpolateCaseNearestModeNC_Input3D = []() {
     return ::testing::Combine(::testing::ValuesIn(nearestMode), ::testing::ValuesIn(shapeCalculationModeSizeScale),
                               ::testing::ValuesIn(coordinateTransformModeAsymmetric),
                               ::testing::ValuesIn(defaultNearestModeFloor), ::testing::ValuesIn(antialias),
@@ -572,8 +572,7 @@ auto interpolateCaseNearestModeNC_Nearst_Input3D = []() {
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input3D, InterpolateLayerTest_NPU3720,
-                         ::testing::Combine(interpolateCaseNearestModeNC_Nearst_Input3D(),
-                                            ::testing::ValuesIn(modelTypes),
+                         ::testing::Combine(interpolateCaseNearestModeNC_Input3D(), ::testing::ValuesIn(modelTypes),
                                             ::testing::ValuesIn(static_shapes_to_test_representation(inShapes3D)),
                                             ::testing::ValuesIn(targetShapes3D), ::testing::Values(DEVICE_NPU),
                                             ::testing::Values(additional_config)),
@@ -582,8 +581,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input
 // [Tracking number: E#93574]
 INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input3D,
                          InterpolateLayerTest_NPU4000,
-                         ::testing::Combine(interpolateCaseNearestModeNC_Nearst_Input3D(),
-                                            ::testing::ValuesIn(modelTypes),
+                         ::testing::Combine(interpolateCaseNearestModeNC_Input3D(), ::testing::ValuesIn(modelTypes),
                                             ::testing::ValuesIn(static_shapes_to_test_representation(inShapes3D)),
                                             ::testing::ValuesIn(targetShapes3D), ::testing::Values(DEVICE_NPU),
                                             ::testing::Values(additional_config)),
@@ -609,7 +607,7 @@ const std::vector<std::vector<int64_t>> AxesInput2D = {
         {0, 1},
 };
 
-auto interpolateCaseNearestModeNC_Nearst_Input2D = []() {
+auto interpolateCaseNearestModeNC_Input2D = []() {
     return ::testing::Combine(::testing::ValuesIn(nearestMode), ::testing::ValuesIn(shapeCalculationModeSizeScale),
                               ::testing::ValuesIn(coordinateTransformModeAsymmetric),
                               ::testing::ValuesIn(defaultNearestModeFloor), ::testing::ValuesIn(antialias),
@@ -618,16 +616,14 @@ auto interpolateCaseNearestModeNC_Nearst_Input2D = []() {
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input2D, InterpolateLayerTest_NPU3720,
-                         ::testing::Combine(interpolateCaseNearestModeNC_Nearst_Input2D(),
-                                            ::testing::ValuesIn(modelTypes),
+                         ::testing::Combine(interpolateCaseNearestModeNC_Input2D(), ::testing::ValuesIn(modelTypes),
                                             ::testing::ValuesIn(static_shapes_to_test_representation(inShapes2D)),
                                             ::testing::ValuesIn(targetShapes2D), ::testing::Values(DEVICE_NPU),
                                             ::testing::Values(additional_config)),
                          InterpolateLayerTest_NPU3720::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_nearest_NCinput_NClayout_NCaxes_Input2D, InterpolateLayerTest_NPU4000,
-                         ::testing::Combine(interpolateCaseNearestModeNC_Nearst_Input2D(),
-                                            ::testing::ValuesIn(modelTypes),
+                         ::testing::Combine(interpolateCaseNearestModeNC_Input2D(), ::testing::ValuesIn(modelTypes),
                                             ::testing::ValuesIn(static_shapes_to_test_representation(inShapes2D)),
                                             ::testing::ValuesIn(targetShapes2D), ::testing::Values(DEVICE_NPU),
                                             ::testing::Values(additional_config)),

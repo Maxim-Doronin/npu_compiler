@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/utils/compressed_convolution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 
 using namespace vpux;
@@ -22,8 +23,8 @@ class AlignedChannelsOpModel final :
         public IE::AlignedChannelsOpInterface::ExternalModel<AlignedChannelsOpModel<MainOpType>, MainOpType> {
 public:
     mlir::LogicalResult verifyChannels(mlir::Operation* op) const {
-        if (!canBeExecutedOnNCE(op)) {
-            // SW version of the operation has no specific requirements
+        if (!canBeExecutedOnNCE(op) && !VPU::NCEInvariant::isAlignmentBeneficial(op)) {
+            // Alignment is not required or beneficial
             return mlir::success();
         }
 
@@ -34,8 +35,8 @@ public:
         return VPUIP::NCEInvariant::verifyChannels(mlir::cast<MainOpType>(op));
     }
     int64_t getInputChannelAlignment(mlir::Operation* op) const {
-        if (!canBeExecutedOnNCE(op)) {
-            // SW version of the operation has no specific requirements
+        if (!canBeExecutedOnNCE(op) && !VPU::NCEInvariant::isAlignmentBeneficial(op)) {
+            // Alignment is not required or beneficial
             return 1;
         }
 
@@ -75,8 +76,8 @@ public:
         return VPU::NCEInvariant::getAlignment(inputType.getElementType());
     }
     int64_t getOutputChannelAlignment(mlir::Operation* op) const {
-        if (!canBeExecutedOnNCE(op)) {
-            // SW version of the operation has no specific requirements
+        if (!canBeExecutedOnNCE(op) && !VPU::NCEInvariant::isAlignmentBeneficial(op)) {
+            // Alignment is not required or beneficial
             return 1;
         }
         const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
@@ -85,7 +86,7 @@ public:
 
 private:
     static bool canBeExecutedOnNCE(mlir::Operation* op) {
-        if (VPU::getCompilationMode(op) == VPU::CompilationMode::ReferenceSW) {
+        if (config::getCompilationMode(op) == config::CompilationMode::ReferenceSW) {
             // We are in reference SW compilation mode
             return false;
         }
@@ -113,5 +114,6 @@ void vpux::VPUIP::arch37xx::registerAlignedChannelsOpInterfaces(mlir::DialectReg
         IE::TransposedConvolutionOp::attachInterface<AlignedChannelsOpModel<IE::TransposedConvolutionOp>>(*ctx);
         IE::PadOp::attachInterface<AlignedChannelsOpModel<IE::PadOp>>(*ctx);
         IE::MatMulOp::attachInterface<AlignedChannelsOpModel<IE::MatMulOp>>(*ctx);
+        IE::SoftMaxOp::attachInterface<AlignedChannelsOpModel<IE::SoftMaxOp>>(*ctx);
     });
 }

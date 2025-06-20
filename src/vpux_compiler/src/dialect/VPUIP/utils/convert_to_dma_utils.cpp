@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 
 using namespace vpux;
@@ -37,24 +38,14 @@ SmallVector<unsigned> correctPermutation(ArrayRef<unsigned> revPerm) {
 // 2) DPU: It is not feasible for the hardware to handle block sizes > 2, see E#83455.
 
 // Optimized DepthToSpace SW kernel has below restrictions:
-// 1. SW optimizations limited to NPU37XX, as VPU40XX SW-kernels performance is currently severely degraded (see
-// E#71378)
-// 2. Layout must be NHWC
-// 3. Data type must be 16-bits
-// 4. case blockSize = 4: Only support 128 / 16 input channels; case blockSize = 2: support 16 aligned input channals
-// 5. DepthToSpace mode should be DEPTH_FIRST
-bool isBeneficialForUsingSWDepthToSpace(VPUIP::SwKernelOp swKernelOp, VPU::ArchKind arch) {
-    if (arch != VPU::ArchKind::NPU37XX) {
-        return false;
-    }
-    VPUX_THROW_UNLESS(VPUIP::isDepthToSpaceSwKernel(swKernelOp), "SwKernelOp {0} is not DepthToSpace",
-                      swKernelOp->getLoc());
-
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType());
+// 1. Layout must be NHWC
+// 2. Data type must be 16-bits
+// 3. case blockSize = 4: Only support 128 / 16 input channels; case blockSize = 2: support 16 aligned input channals
+// 4. DepthToSpace mode should be DEPTH_FIRST
+bool isBeneficialForUsingSWDepthToSpace(vpux::NDTypeInterface inType, vpux::IE::DepthToSpaceMode mode,
+                                        int64_t blockSize) {
     const auto inC = inType.getShape()[Dims4D::Act::C];
-    const auto d2sAttr = VPUIP::getDepthToSpaceSwKernelAttr(swKernelOp);
-    const auto mode = std::get<0>(d2sAttr.value()).getValue();
-    const auto blockSize = std::get<1>(d2sAttr.value()).getInt();
+    const auto inW = inType.getShape()[Dims4D::Act::W];
 
     const bool isNHWC = (inType.getDimsOrder() == DimsOrder::NHWC);
     const bool is16bit = (inType.getElementType().isF16() || inType.getElementType().isInteger(16));
@@ -64,21 +55,28 @@ bool isBeneficialForUsingSWDepthToSpace(VPUIP::SwKernelOp swKernelOp, VPU::ArchK
     const bool isBS2 = (blockSize == 2);
     const bool isDepthFirst = (mode == IE::DepthToSpaceMode::DEPTH_FIRST);
 
+    if ((inType.getElemTypeSize().count() == 8) && (mode == IE::DepthToSpaceMode::BLOCKS_FIRST) && (inC == 16) &&
+        (blockSize == 2) && (inW >= 256) && isNHWC) {
+        return true;
+    }
+
     return isNHWC && is16bit && ((isBS4 && isC16C128) || (isBS2 && isC16Align)) && isDepthFirst;
 }
 
-/**
- * Cost function to evaluate whether it's beneficial to implement the operation using DMA for
- * operations like MemPermute.
- * @return true if it's beneficial for using DMA, otherwise false.
- */
-bool isBeneficialForUsingPermuteDMA(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType,
-                                    mlir::AffineMap memPerm, int64_t dmaPortCount, vpux::Logger log) {
-    auto subShapes = VPUIP::getPermuteDMASubInputShapes(arch, inType, outType, memPerm, dmaPortCount, log);
-    return subShapes.has_value();
+bool isBeneficialForUsingSWDepthToSpace(VPUIP::SwKernelOp swKernelOp, VPU::ArchKind /*arch*/) {
+    VPUX_THROW_UNLESS(VPUIP::isDepthToSpaceSwKernel(swKernelOp), "SwKernelOp {0} is not DepthToSpace",
+                      swKernelOp->getLoc());
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType());
+    const auto d2sAttr = VPUIP::getDepthToSpaceSwKernelAttr(swKernelOp);
+    const auto mode = std::get<0>(d2sAttr.value()).getValue();
+    const auto blockSize = std::get<1>(d2sAttr.value()).getInt();
+
+    return isBeneficialForUsingSWDepthToSpace(inType, mode, blockSize);
 }
 
 SmallVector<Shape> computeDMASubShape(VPU::ArchKind arch, ShapeRef shape, Dim numPlaneDim, int64_t dmaPortCount) {
+    VPUX_THROW_WHEN(dmaPortCount <= 0, "Invalid number of DMA ports: {0}", dmaPortCount);
+
     const auto shapeSize = shape.size();
     VPUX_THROW_UNLESS(shapeSize == 2 || shapeSize == 3 || shapeSize == 4,
                       "Shape size should be 2 or 3 or 4, but got {0}", shapeSize);
@@ -123,6 +121,35 @@ SmallVector<Shape> computeDMASubShape(VPU::ArchKind arch, ShapeRef shape, Dim nu
     return subOutputShapes;
 }
 }  // namespace
+
+bool vpux::VPUIP::isBeneficialForUsingPermuteDMA(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType,
+                                                 mlir::AffineMap memPerm, int64_t dmaPortCount, vpux::Logger log) {
+    // Checking Shave optimizations
+    if (arch != VPU::ArchKind::NPU37XX) {
+        const auto inC = inType.getShape()[Dims4D::Act::C];
+        const auto inW = inType.getShape()[Dims4D::Act::W];
+        const auto inBits = inType.getElemTypeSize().count();
+        const auto inOrder = inType.getDimsOrder();
+        const auto outOrder = outType.getDimsOrder();
+
+        if ((inOrder == DimsOrder::NHWC) && (outOrder == DimsOrder::NCHW)) {
+            if ((inC == 4) && (inW >= 256) && (inBits == 8)) {
+                return false;
+            }
+        }
+    }
+
+    auto subShapes = VPUIP::getPermuteDMASubInputShapes(arch, inType, outType, memPerm, dmaPortCount, log);
+    return subShapes.has_value();
+}
+
+bool vpux::VPUIP::isBeneficialForUsingSWDepthToSpace(VPU::DepthToSpaceOp d2sOp) {
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(d2sOp.getInput().getType());
+    const auto mode = d2sOp.getMode();
+    const auto blockSize = d2sOp.getBlockSize();
+
+    return ::isBeneficialForUsingSWDepthToSpace(inType, mode, blockSize);
+}
 
 // In order to simplify the difference cases about input layout and mem perm, the merged input shape need to be
 // calculated. For example,
@@ -493,7 +520,7 @@ bool vpux::VPUIP::doesSWLayerFitIntoCMX(mlir::Operation* op, vpux::Logger log) {
 }
 
 bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, bool checkCMXSize) {
-    if (VPU::getCompilationMode(op) == VPU::CompilationMode::ReferenceSW) {
+    if (config::getCompilationMode(op) == config::CompilationMode::ReferenceSW) {
         return false;
     }
     const auto arch = VPU::getArch(op);
@@ -576,11 +603,12 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                 }
                 if (auto memPerm = getMemPermFromSwKernel(swKernelOp)) {
                     // At VPUX37XX: VPU::MemPermute -> VPUIP::SwKernelOp -> VPUIP::PermuteDMA
-                    VPUX_THROW_UNLESS(swKernelOp->getNumOperands() == 2,
-                                      "Unexpected operand number {0} for VPUIP.SwKernelOp at '{1}'",
-                                      swKernelOp->getNumOperands(), swKernelOp);
+                    if (swKernelOp->getNumOperands() != 2) {
+                        log.trace("MemPermute {0} is more efficient on SW", op->getLoc());
+                        return false;
+                    }
                     const auto inputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOperand(0).getType());
-                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOperand(1).getType());
+                    const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getResult(0).getType());
                     auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
                     const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
@@ -676,9 +704,10 @@ bool vpux::VPUIP::isLegalAndBeneficialConvertToDMA(mlir::Operation* op, vpux::Lo
     const auto arch = VPU::getArch(op);
     auto module = op->getParentOfType<mlir::ModuleOp>();
     const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    VPUX_THROW_WHEN(dmaPortNum <= 0, "Number of ports should be a positive integer, while it is {0}", dmaPortNum);
     if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(op)) {
         if (VPUIP::isDepthToSpaceSwKernel(swKernelOp)) {
-            return !isBeneficialForUsingSWDepthToSpace(swKernelOp, arch);
+            return !::isBeneficialForUsingSWDepthToSpace(swKernelOp, arch);
         } else if (VPUIP::isSpaceToDepthSwKernel(swKernelOp) || VPUIP::isTileSwKernel(swKernelOp)) {
             return true;
         } else if (VPUIP::isMemPermSwKernel(swKernelOp)) {
@@ -825,6 +854,7 @@ bool vpux::VPUIP::isCompatibleWithMultiClusterNNDMA(VPU::DepthToSpaceOp op, vpux
     auto module = prevOp->getParentOfType<mlir::ModuleOp>();
     auto tileOp = IE::getTileExecutor(module);
     auto numClusters = tileOp.getCount();
+    VPUX_THROW_WHEN(numClusters <= 0, "Number of clusters should be a positive integer, while it is {0}", numClusters);
 
     // For VPUX40XX all SOH are SOH-overlapped tile them now
     // Support for overlapped buffers will be added with E#86818

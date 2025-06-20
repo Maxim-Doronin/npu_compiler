@@ -37,7 +37,8 @@ public:
     }
 
 private:
-    mlir::LogicalResult initializeOptions(StringRef options) final;
+    mlir::LogicalResult initializeOptions(
+            StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     vpux::VPU::MCOptimizationScope getMCOptimizationScope(StringRef mcOptimizationScope);
     void safeRunOnFunc() final;
 
@@ -47,8 +48,9 @@ private:
     VPU::MCOptimizationScope _mcOptimizationScope;
 };
 
-mlir::LogicalResult MultiClusterStrategyAssignmentPass::initializeOptions(StringRef options) {
-    if (mlir::failed(Base::initializeOptions(options))) {
+mlir::LogicalResult MultiClusterStrategyAssignmentPass::initializeOptions(
+        StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) {
+    if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
     if (tilingMode.hasValue()) {

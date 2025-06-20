@@ -64,7 +64,7 @@ void AddSparsityMapToSparseActivationsPass::safeRunOnFunc() {
         }
 
         for (auto result : op->getOpResults()) {
-            const auto sparseType = result.getType().dyn_cast_or_null<VPU::SparseTensorType>();
+            const auto sparseType = mlir::dyn_cast_or_null<VPU::SparseTensorType>(result.getType());
 
             if (sparseType == nullptr) {
                 return;

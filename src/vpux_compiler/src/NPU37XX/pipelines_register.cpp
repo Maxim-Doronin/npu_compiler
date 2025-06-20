@@ -13,6 +13,7 @@
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 
 #include <mlir/Pass/PassManager.h>
@@ -28,9 +29,9 @@ void PipelineRegistry37XX::registerPipelines() {
     mlir::PassPipelineRegistration<DefaultHWOptions37XX>(
             "ShaveCodeGen", "Compile both from IE to VPUIP and from IERT to LLVM for NPU37XX",
             [](mlir::OpPassManager& pm, const DefaultHWOptions37XX& options) {
-                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU37XX, VPU::CompilationMode::ShaveCodeGen,
-                                                             options};
-                auto createPipelineStartegy = [&](VPU::CompilationMode) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU37XX,
+                                                             config::CompilationMode::ShaveCodeGen, options};
+                auto createPipelineStartegy = [&](config::CompilationMode) {
                     return createDialectPipelineStrategy37XX<DefaultHWOptions37XX>(&initCompilerOptions, &options);
                 };
                 ShaveCodeGenStrategy factory(createPipelineStartegy, Logger::global());
@@ -40,9 +41,9 @@ void PipelineRegistry37XX::registerPipelines() {
     mlir::PassPipelineRegistration<ReferenceSWOptions37XX>(
             "reference-sw-mode", "Compile IE Network in Reference Software mode (SW only execution) for NPU37XX",
             [](mlir::OpPassManager& pm, const ReferenceSWOptions37XX& options) {
-                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU37XX, VPU::CompilationMode::ReferenceSW,
-                                                             options};
-                auto createPipelineStartegy = [&](VPU::CompilationMode) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU37XX,
+                                                             config::CompilationMode::ReferenceSW, options};
+                auto createPipelineStartegy = [&](config::CompilationMode) {
                     return createDialectPipelineStrategy37XX<ReferenceSWOptions37XX>(&initCompilerOptions, &options);
                 };
                 ReferenceSWStrategy factory(createPipelineStartegy, Logger::global());
@@ -52,12 +53,24 @@ void PipelineRegistry37XX::registerPipelines() {
     mlir::PassPipelineRegistration<DefaultHWOptions37XX>(
             "default-hw-mode", "Compile IE Network in Default Hardware mode (HW and SW execution) for NPU37XX",
             [](mlir::OpPassManager& pm, const DefaultHWOptions37XX& options) {
-                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU37XX, VPU::CompilationMode::DefaultHW,
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU37XX, config::CompilationMode::DefaultHW,
                                                              options};
-                auto createPipelineStartegy = [&](VPU::CompilationMode) {
+                auto createPipelineStartegy = [&](config::CompilationMode) {
                     return createDialectPipelineStrategy37XX<DefaultHWOptions37XX>(&initCompilerOptions, &options);
                 };
                 DefaultHwStrategy factory(createPipelineStartegy, Logger::global());
+                factory.buildPipeline(pm);
+            });
+
+    mlir::PassPipelineRegistration<DefaultHWOptions37XX>(
+            "ws-monolithic", "Compile IE Network in Weights separation Monolithic mode for NPU37XX",
+            [](mlir::OpPassManager& pm, const DefaultHWOptions37XX& options) {
+                VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU37XX,
+                                                             config::CompilationMode::WSMonolithic, options};
+                auto createPipelineStartegy = [&](config::CompilationMode) {
+                    return createDialectPipelineStrategy37XX<DefaultHWOptions37XX>(&initCompilerOptions, &options);
+                };
+                WSMonolithicStrategy factory(createPipelineStartegy, Logger::global());
                 factory.buildPipeline(pm);
             });
     vpux::IE::arch37xx::registerIEPipelines();

@@ -13,7 +13,8 @@
 // CHECK:       func.func @main([[ARG0:[^:]+]]: tensor<3x?xsi64, {bounds = #const.OpaqueI64Elements<[3, 5]> : tensor<2xsi64>, order = #NC}>)
 // CHECK-SAME:      -> (tensor<?x3xsi64, {bounds = #const.OpaqueI64Elements<[5, 3]> : tensor<2xsi64>, order = #NC}>, tensor<?xf32, {bounds = #const.OpaqueI64Elements<[9]> : tensor<1xsi64>, order = #C}>) {
 
-// CHECK-DAG:   [[CST_STRIDEDSLICE_IN:%.+]] = const.Declare tensor<9xf32>
+// CHECK-DAG:   [[CST_STRIDEDSLICE_IN_UNCONVERTED:%.+]] = const.Declare tensor<9xf16>
+// CHECK-DAG:   [[CST_STRIDEDSLICE_IN:%.+]] = IE.Convert([[CST_STRIDEDSLICE_IN_UNCONVERTED]]) {dstElemType = f32} : tensor<9xf16> -> tensor<9xf32>
 // CHECK-DAG:   [[CST_STRIDEDSLICE_BEGINS:%.+]] = const.Declare tensor<1xsi64>
 
 // CHECK-DAG:   [[CST_TRANSPOSE:%.+]] = const.Declare tensor<2xsi64>

@@ -1,10 +1,10 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <openvino/opsets/opset11.hpp>
+#include <openvino/opsets/opset11_decl.hpp>
 #include <openvino/runtime/core.hpp>
 
 // create dummy network for tests

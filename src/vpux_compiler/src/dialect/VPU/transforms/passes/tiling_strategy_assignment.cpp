@@ -61,13 +61,12 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    std::vector<vpux::VPU::StrategyWithCost> getStrategies(VPU::TilingBuilderOpInterface origOp, TilingMode tilingMode,
-                                                           mlir::func::FuncOp func,
-                                                           VPU::SiblingOpsAnalysis& siblingOpsAnalysis);
+    std::vector<vpux::VPU::StrategyWithCost> getStrategies(VPU::TilingBuilderOpInterface origOp, TilingMode tilingMode);
 
     bool _enablePrefetchTiling = true;
     bool _enableVpunnCostForTiling = false;
     VPU::EnableShaveDDRAccessOptimization _shaveDDRAccessOptimizationMode;
+    std::shared_ptr<vpux::VPU::LayerCostModel> _costModel;
 };
 
 mlir::LogicalResult TilingStrategyAssignmentPass::initialize(mlir::MLIRContext* ctx) {
@@ -95,8 +94,7 @@ mlir::LogicalResult TilingStrategyAssignmentPass::initialize(mlir::MLIRContext* 
 }
 
 std::vector<vpux::VPU::StrategyWithCost> TilingStrategyAssignmentPass::getStrategies(
-        VPU::TilingBuilderOpInterface origOp, TilingMode tilingMode, mlir::func::FuncOp func,
-        VPU::SiblingOpsAnalysis& siblingOpsAnalysis) {
+        VPU::TilingBuilderOpInterface origOp, TilingMode tilingMode) {
     _log.trace("Assign: '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
     auto op = origOp.getOperation();
 
@@ -112,9 +110,7 @@ std::vector<vpux::VPU::StrategyWithCost> TilingStrategyAssignmentPass::getStrate
         }
     } else {
         _log.trace("Get tiling strategy based on VPUNN DPU+DMA cost for NCE ops");
-        auto costModel = std::make_shared<vpux::VPU::LayerCostModel>(
-                vpux::VPU::LayerCostModel(func, _enablePrefetchTiling, _log, siblingOpsAnalysis));
-        strategies = getHwLayerTilingStrategiesWithCost(origOp, tilingMode, costModel, _log);
+        strategies = getHwLayerTilingStrategiesWithCost(origOp, tilingMode, _costModel, _log);
     }
     return strategies;
 }
@@ -127,10 +123,12 @@ void TilingStrategyAssignmentPass::safeRunOnFunc() {
     std::mutex prefetchSetMutex;
     std::mutex strategiesMapMutex;
     const auto opsToTile = func.getOps<VPU::TilingBuilderOpInterface>();
+    _costModel = std::make_shared<vpux::VPU::LayerCostModel>(
+            vpux::VPU::LayerCostModel(func, _enablePrefetchTiling, _log, siblingOpsAnalysis));
 
     // Get cost of possible ISOLATED/PIPELINING strategies in parallel. Note that it is not possible to
     // say which strategy will be the best since whether strategy can be prefetched depends on parent op tiling.
-    loop_1d(LoopExecPolicy::Parallel, func.getContext(), std::distance(opsToTile.begin(), opsToTile.end()),
+    loop_1d(LoopExecPolicy::Sequential, func.getContext(), std::distance(opsToTile.begin(), opsToTile.end()),
             [&](const size_t index) {
                 auto it = opsToTile.begin();
                 std::advance(it, index);
@@ -147,7 +145,7 @@ void TilingStrategyAssignmentPass::safeRunOnFunc() {
                 if (tilingModeOpt.has_value()) {
                     auto [tilingMode, prefetchingCandidate] = tilingModeOpt.value();
                     if (tilingMode == TilingMode::ISOLATED || tilingMode == TilingMode::PIPELINING) {
-                        auto strategies = getStrategies(tilingOp, tilingMode, func, siblingOpsAnalysis);
+                        auto strategies = getStrategies(tilingOp, tilingMode);
                         std::lock_guard<std::mutex> guard(strategiesMapMutex);
                         strategiesForOp.insert(std::make_pair(tilingOp, strategies));
                     }
@@ -199,7 +197,7 @@ void TilingStrategyAssignmentPass::safeRunOnFunc() {
         }
         if (opsToCheckForPrefetch.contains(tilingOp) &&
             VPU::prefetchTilingConditionSatisfied(tilingOp.getOperation(), _log.nest())) {
-            auto strategies = getStrategies(tilingOp, TilingMode::PREFETCHING, func, siblingOpsAnalysis);
+            auto strategies = getStrategies(tilingOp, TilingMode::PREFETCHING);
             if (!strategies.empty()) {
                 auto bestStrategy = getBestStrategy(tilingOp, strategies, true);
                 tilingOp.getOperation()->setAttr(tilingStrategy,
