@@ -13,11 +13,8 @@
 namespace vpux {
 
 constexpr bool arePrivateOptionsEnabled() {
-#ifdef PRIVATE_COMPILER_OPTIONS_ENABLED
+    // Note: private options have been intentionally made public for the time being
     return true;
-#else
-    return false;
-#endif
 }
 
 template <typename T>
