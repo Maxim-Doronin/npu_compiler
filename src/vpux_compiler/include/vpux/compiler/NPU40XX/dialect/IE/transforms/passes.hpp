@@ -43,9 +43,6 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
                                    llvm::cl::init(true)};
 
-    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
-                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
-                                    llvm::cl::init(true)};
     BoolOption enableApplyDynamicBoundaryCorrection{*this, "enable-apply-dynamic-boundary-correction",
                                                     llvm::cl::desc("Enable apply-dynamic-boundary-correction pass"),
                                                     llvm::cl::init(false)};

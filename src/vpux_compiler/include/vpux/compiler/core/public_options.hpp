@@ -141,6 +141,18 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
     BoolOption shaveDryRun{*this, "shave-dry-run", llvm::cl::desc("Enable shave dry run stripping"),
                            llvm::cl::init(false)};
 
+    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
+                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
+                                    llvm::cl::init(false)};
+    static bool getDefaultEnableRuntimeDequant(VPU::ArchKind arch) {
+        switch (arch) {
+        case VPU::ArchKind::NPU40XX:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     //
     // Constructors
     //
@@ -152,6 +164,7 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
             workloadManagementMode = getDefaultWorkloadManagementMode(arch);
         }
         enableDMAProfiling = getDefaultEnableDMAProfiling(arch);
+        enableRuntimeDequant = getDefaultEnableRuntimeDequant(arch);
     }
 
     static std::unique_ptr<PublicOptions> createFromString(StringRef options, VPU::ArchKind arch) {

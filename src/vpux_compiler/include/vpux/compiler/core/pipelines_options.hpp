@@ -149,9 +149,6 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
                                                   llvm::cl::desc("Enable weights dequantization for weights as input"),
                                                   llvm::cl::init(false)};
 
-    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
-                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
-                                    llvm::cl::init(false)};
     Int64Option runtimeDequantizationLimit{
             *this, "runtime-dequantization-limit",
             llvm::cl::desc("Lower limit on weight size for runtime dequantization"

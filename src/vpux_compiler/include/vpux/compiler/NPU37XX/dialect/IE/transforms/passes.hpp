@@ -94,9 +94,6 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
                                    llvm::cl::init(false)};
 
-    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
-                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
-                                    llvm::cl::init(false)};
     Int64Option runtimeDequantizationLimit{
             *this, "runtime-dequantization-limit",
             llvm::cl::desc("Lower limit on weight size for runtime dequantization"
