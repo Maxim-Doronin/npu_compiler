@@ -128,7 +128,7 @@ jobs:
 
       - name: System info
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: openvinotoolkit/openvino/.github/actions/system_info@6fec06580ab8f60d1518420d17a02e8057a74349 # 2025.1.0
+        uses: openvinotoolkit/openvino/.github/actions/system_info@c01cd93e24d1cd78bfbb401eed51c08fb93e0816 # 2025.2.0
 
       - name: Install python dependencies
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
@@ -146,7 +146,7 @@ jobs:
 
       - name: Initialize CodeQL
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/init@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
+        uses: github/codeql-action/init@181d5eefc20863364f96762470ba6f862bdef56b # v3.29.2
         with:
           languages: c-cpp
           build-mode: manual
@@ -233,7 +233,7 @@ jobs:
       - name: Perform CodeQL Analysis
         id: codeql-analyze
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/analyze@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
+        uses: github/codeql-action/analyze@181d5eefc20863364f96762470ba6f862bdef56b # v3.29.2
         with:
           category: "/language:c-cpp"
           output: ${{ env.CODEQL_OUTPUTS }}
@@ -256,7 +256,7 @@ jobs:
 
       - name: Upload CodeQL SARIF
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/upload-sarif@60168efe1c415ce0f5521ea06d5c2062adbeed1b # v3.28.17
+        uses: github/codeql-action/upload-sarif@181d5eefc20863364f96762470ba6f862bdef56b # v3.29.2
         with:
           sarif_file: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
           checkout_path: ${{ env.NPU_COMPILER_REPO }}
