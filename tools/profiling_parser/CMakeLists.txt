@@ -1,6 +1,6 @@
 #
-# Copyright (C) 2022-2024 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# Copyright (C) 2022-2025 Intel Corporation.
+# SPDX-License-Identifier: Apache-2.0
 #
 
 set(TARGET_NAME prof_parser)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Copyright (C) 2024-2025 Intel Corporation
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 import argparse
 import json

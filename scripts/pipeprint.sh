@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 cat << EOF_PIPE_PRINT_SRC | g++ -xc++ -o pipeprint - && chmod +x pipeprint && ./pipeprint $1

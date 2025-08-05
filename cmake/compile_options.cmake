@@ -1,6 +1,6 @@
 #
-# Copyright (C) 2022-2024 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# Copyright (C) 2022-2025 Intel Corporation.
+# SPDX-License-Identifier: Apache-2.0
 #
 
 include("${CMAKE_CURRENT_LIST_DIR}/compile_options_llvm.cmake")
