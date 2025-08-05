@@ -135,8 +135,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Min_Max_test_dynamic, MaxMinLayerTestDynamic, par
                          MaxMinLayerTestDynamic::getTestCaseName);
 
 // Avoid shapes that would require tiling for ShaveCodeGen for now.
-// Needs E-157681 for f16 min/max support
-INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_Min_Max_test4, ShaveCodeGenMaxMinLayerTestCommon, params2,
+INSTANTIATE_TEST_SUITE_P(smoke_Min_Max_test4, ShaveCodeGenMaxMinLayerTestCommon, params2,
                          ShaveCodeGenMaxMinLayerTestCommon::getTestCaseName);
 
 }  // namespace

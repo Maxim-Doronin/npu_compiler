@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // The EarlyCodegenCapsuleFusion pass relies on FusionChainAnalysis to be pre-computed & cached

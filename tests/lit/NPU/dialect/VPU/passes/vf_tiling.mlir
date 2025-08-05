@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
@@ -314,4 +314,68 @@ func.func @InterpAndAvgpoolPropagateAxis(%arg0: tensor<1x64x96x160xf16, {order =
     // CHECK: [[CONCAT:%.+]] = VPU.Concat
     // CHECK: return [[CONCAT]] : tensor<1x64x192x320xf16, {order = #NHWC}>
 
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @VfTilingWithMultiEltwiseAdjustOffset
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x16x128x128xf16, {order = #NHWC}>
+// CHECK-SAME:      [[WT:%.+]]: tensor<32x1x1x4xsi32>
+// CHECK-SAME:      [[W1:%.+]]: tensor<32x16x3x3xf16, {order = #NHWC}>
+// CHECK-SAME:      [[W2:%.+]]: tensor<32x32x3x3xf16, {order = #NHWC}>
+func.func @VfTilingWithMultiEltwiseAdjustOffset(
+            %arg0: tensor<1x16x128x128xf16, {order = #NHWC}>,
+            %wt: tensor<32x1x1x4xsi32>, %weights_1: tensor<32x16x3x3xf16, {order = #NHWC}>,
+            %weights_2: tensor<32x32x3x3xf16, {order = #NHWC}>) -> tensor<1x32x128x128xf16, {order = #NHWC}>  {
+    %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x128x128xf16, {order = #NHWC}>, %weights_1 as %arg2: tensor<32x16x3x3xf16, {order = #NHWC}>, %wt as %arg3: tensor<32x1x1x4xsi32>,
+                            %weights_2 as %arg4: tensor<32x32x7x7xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x32x128x128xf16, {order = #NHWC}> {
+      %1 = VPU.NCE.Convolution(%arg1, %arg2, %arg3)
+         {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+         ppe = #VPU.PPEStub<>,
+         rawFilterShape = [32, 16, 3, 3], strides = [1, 1]} : tensor<1x16x128x128xf16, {order = #NHWC}>, tensor<32x16x3x3xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x128x128xf16, {order = #NHWC}>
+      %2 = VPU.NCE.Convolution(%1, %arg4, %arg3)
+         {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+         pad = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>,
+         ppe = #VPU.PPEStub<>,
+         rawFilterShape = [32, 32, 7, 7], strides = [1, 1]} : tensor<1x32x128x128xf16, {order = #NHWC}>, tensor<32x32x7x7xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x128x128xf16, {order = #NHWC}>
+      %3 = VPU.NCE.Eltwise(%1, %2)
+         {is_inplace = true, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>,
+         ppe = #VPU.PPEStub<>}
+         -> tensor<1x32x128x128xf16, {order = #NHWC}>
+      %4 = VPU.NCE.Convolution(%3, %arg4, %arg3)
+         {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+         pad = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>,
+         ppe = #VPU.PPEStub<>,
+         rawFilterShape = [32, 32, 7, 7], strides = [1, 1]} : tensor<1x32x128x128xf16, {order = #NHWC}>, tensor<32x32x7x7xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x128x128xf16, {order = #NHWC}>
+      %5 = VPU.NCE.Eltwise(%1, %4)
+         {is_inplace = true, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>,
+         ppe = #VPU.PPEStub<>}
+         -> tensor<1x32x128x128xf16, {order = #NHWC}>
+      VPU.Yield %5
+    }
+    return %0 : tensor<1x32x128x128xf16, {order = #NHWC}>
+
+    // CHECK:       [[HEAD_IN_SLICE_1:%.+]] = VPU.Slice {{.*}} [0, 0, 0, 0] [1, 16, 71, 128] : tensor<1x16x128x128xf16, {order = #NHWC}> to tensor<1x16x71x128xf16, {order = #NHWC}>
+    // CHECK:       [[CONV1_1:%.+]] = VPU.NCE.Convolution([[HEAD_IN_SLICE_1]]
+    // CHECK:       [[CONV2_1:%.+]] = VPU.NCE.Convolution([[CONV1_1]]
+    // CHECK:       [[SLICE1_1:%.+]] = VPU.Slice [[CONV1_1]] [0, 0, 0, 0] [1, 32, 67, 128]
+    // CHECK:       [[ELTWISE1_1:%.+]] = VPU.NCE.Eltwise([[SLICE1_1]], [[CONV2_1]])
+    // CHECK:       [[CONV3_1:%.+]] = VPU.NCE.Convolution([[ELTWISE1_1]]
+    // CHECK:       [[SLICE2_1:%.+]] = VPU.Slice [[SLICE1_1]] [0, 0, 0, 0] [1, 32, 64, 128]
+    // CHECK:       [[ELTWISE2_1:%.+]] = VPU.NCE.Eltwise([[SLICE2_1]], [[CONV3_1]])
+
+    // CHECK:       [[HEAD_IN_SLICE_2:%.+]] = VPU.Slice {{.*}} [0, 0, 57, 0] [1, 16, 71, 128] : tensor<1x16x128x128xf16, {order = #NHWC}> to tensor<1x16x71x128xf16, {order = #NHWC}>
+    // CHECK:       [[CONV1_2:%.+]] = VPU.NCE.Convolution([[HEAD_IN_SLICE_2]]
+    // CHECK:       [[CONV2_2:%.+]] = VPU.NCE.Convolution([[CONV1_2]]
+    // CHECK:       [[SLICE1_2:%.+]] = VPU.Slice [[CONV1_2]] [0, 0, 3, 0] [1, 32, 67, 128]
+    // CHECK:       [[ELTWISE1_2:%.+]] = VPU.NCE.Eltwise([[SLICE1_2]], [[CONV2_2]])
+    // CHECK:       [[CONV3_2:%.+]] = VPU.NCE.Convolution([[ELTWISE1_2]]
+    // CHECK-NOT:   [[SLICE2_2:%.+]] = VPU.Slice [[SLICE1_2]] [0, 0, 6, 0] [1, 32, 64, 128]
+    // CHECK:       [[SLICE2_2:%.+]] = VPU.Slice [[SLICE1_2]] [0, 0, 3, 0] [1, 32, 64, 128]
+    // CHECK:       [[ELTWISE2_2:%.+]] = VPU.NCE.Eltwise([[SLICE2_2]], [[CONV3_2]])
+    // CHECK:       [[CONCAT:%.+]] = VPU.Concat([[ELTWISE2_1]], [[ELTWISE2_2]])
+    // CHECK:       return [[CONCAT]] : tensor<1x32x128x128xf16, {order = #NHWC}>
 }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% ppe-version=IntPPE" --cmx-concat --canonicalize %s | FileCheck %s
@@ -58,12 +58,12 @@
 !ConvInputStub_CMX = tensor<1x128x16x157xf16, {mem_space = @CMX_NN, order = #NHWC}>
 !ConvOutputStub_CMX = tensor<1x128x16x157xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
-// CHECK-LABEL: @ConcatClusterTilingWithExplicitDistributedAttrAndConstantSecondInput
+// CHECK-LABEL: @ConcatDistributedOpWithExplicitDistributedAttrAndConstantSecondInput
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x128x16x157xf16, {mem_space = @DDR, order = #NHWC}>,
 // CHECK-SAME:  [[WEIGHTS0:%.+]]: tensor<128x128x3x1xf16, {mem_space = @CMX_NN, order = #NHWC}>,
 // CHECK-SAME:  [[WEIGHTS1:%.+]]: tensor<128x128x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>,
 // CHECK-SAME:  [[WTABLE:%.+]]: tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>
-func.func @ConcatClusterTilingWithExplicitDistributedAttrAndConstantSecondInput(%arg0: !ConvInput_DDR,
+func.func @ConcatDistributedOpWithExplicitDistributedAttrAndConstantSecondInput(%arg0: !ConvInput_DDR,
         %weights0: tensor<128x128x3x1xf16, {mem_space = @CMX_NN, order = #NHWC}>,
         %weights1: tensor<128x128x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>,
         %weightsTable: tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>)

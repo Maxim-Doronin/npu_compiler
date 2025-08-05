@@ -1,24 +1,15 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "common/utils.hpp"
 
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
-#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
 #include "vpux/compiler/dialect/core/dialect.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
 
-#include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
-
-#include <gtest/gtest.h>
-#include <mlir/IR/BuiltinTypeInterfaces.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/Support/LLVM.h>
-#include <exception>
 
 using namespace vpux;
 
@@ -84,7 +75,7 @@ TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, NoMask) {
 TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, ThrowWithDynamicShape) {
     auto type = getDynamicTensorType();
 
-    const auto dimsMask = SmallVector<int64_t>{0, 1, 1, 0};
+    const auto dimsMask = DynamicDimsMask{0, 1, 1, 0};
     EXPECT_THROW(Core::DynamicDimsMaskTensorType::get(type, dimsMask), std::exception);
 }
 
@@ -100,7 +91,7 @@ TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, GetDynamicDimsMask) {
 
 TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, Get) {
     auto type = getStaticTensorType();
-    const auto dimsMask = SmallVector<int64_t>{1, 1, 0, 0};
+    const auto dimsMask = DynamicDimsMask{1, 1, 0, 0};
     const auto dynamicDimsMaskType = Core::DynamicDimsMaskTensorType::get(type, dimsMask);
     ASSERT_TRUE(dynamicDimsMaskType != nullptr);
     ASSERT_TRUE(llvm::equal(dynamicDimsMaskType.getDynamicDimsMask(), dimsMask));
@@ -115,7 +106,7 @@ TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, ChangeDynamicDimsMask) {
     const auto newDimsMask = mlir::SmallVector<int64_t>{1, 1, 1, 1};
     ASSERT_TRUE(dimsMask != newDimsMask);
 
-    const auto newType = dynamicDimsMaskType.changeDynamicDimsMask(newDimsMask);
+    const auto newType = dynamicDimsMaskType.changeDynamicDimsMask(DynamicDimsMask(newDimsMask));
     ASSERT_TRUE(llvm::equal(newType.getDynamicDimsMask(), newDimsMask));
 }
 
@@ -125,9 +116,11 @@ TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, ThrowChangeIncorrectMask) {
     auto dynMaskType = mlir::dyn_cast<Core::DynamicDimsMaskTensorType>(type);
     ASSERT_TRUE(dynMaskType != nullptr);
 
-    EXPECT_THROW([[maybe_unused]] auto _ = dynMaskType.changeDynamicDimsMask({10, 1, 0, 0}), std::exception);
-    EXPECT_THROW([[maybe_unused]] auto _ = dynMaskType.changeDynamicDimsMask({1, 0}), std::exception);
-    EXPECT_THROW([[maybe_unused]] auto _ = dynMaskType.changeDynamicDimsMask({0, 0, 0, 0}), std::exception);
+    EXPECT_THROW([[maybe_unused]] auto _ = dynMaskType.changeDynamicDimsMask(DynamicDimsMask{10, 1, 0, 0}),
+                 std::exception);
+    EXPECT_THROW([[maybe_unused]] auto _ = dynMaskType.changeDynamicDimsMask(DynamicDimsMask{1, 0}), std::exception);
+    EXPECT_THROW([[maybe_unused]] auto _ = dynMaskType.changeDynamicDimsMask(DynamicDimsMask{0, 0, 0, 0}),
+                 std::exception);
 }
 
 TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, ThrowGetWithIncorrectMask) {
@@ -135,4 +128,30 @@ TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, ThrowGetWithIncorrectMask) {
     EXPECT_THROW(Core::DynamicDimsMaskTensorType::get(type, {10, 1, 0, 0}), std::exception);
     EXPECT_THROW(Core::DynamicDimsMaskTensorType::get(type, {1, 1, 0, 0, 0}), std::exception);
     EXPECT_THROW(Core::DynamicDimsMaskTensorType::get(type, {0, 0, 0, 0}), std::exception);
+}
+
+TEST_F(MLIR_DynamicDimsMaskTensorTypeTest, CallOnShape) {
+    const auto [dynamicType, _] = getTensorWithDynamicDimsMaskType();
+    const int64_t argument = 4;
+    const int64_t capture = 4;
+
+    const auto dynamicSize = callOnShapeOf(
+            dynamicType,
+            [capture](const auto& shape, int64_t argument) {
+                EXPECT_TRUE((std::is_same_v<std::decay_t<decltype(shape)>, DimsMaskedShape>));
+
+                auto shapeCopy = copyShape(shape);
+                EXPECT_TRUE((std::is_same_v<std::decay_t<decltype(shapeCopy)>, DimsMaskedShape>));
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 2, 1..10, 1..20]");
+
+                shapeCopy[Dims4D::Act::H] += shapeCopy[Dims4D::Act::W] * argument + capture;
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 2, 1..94, 1..20]");
+
+                std::swap(shapeCopy[Dims4D::Act::H], shapeCopy[Dims4D::Act::C]);
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 1..94, 2, 1..20]");
+
+                return shapeCopy.totalSize();
+            },
+            argument);
+    EXPECT_EQ(dynamicSize, 1 * 94 * 2 * 20);
 }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --convert-to-dma --canonicalize %s | FileCheck %s
@@ -19,15 +19,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToNHCW(%arg0: memref<6x4x8x512xf16, @DDR>)
                                        -> memref<6x8x4x512xf16, @DDR> {
     %0 = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg2: memref<6x4x8x512xf16, @DDR>)
-            outputs(%0 as %arg3: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                -> memref<6x4x8x512xf16, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<6x4x8x512xf16, @DDR>)
-                    outputs(%arg3 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                        -> memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<6x4x8x512xf16, @DDR>)
+        outputs(%0 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)  ->  memref<6x4x8x512xf16, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<6x8x4x512xf16, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -40,23 +34,16 @@ func.func @ConvertMemPermuteNCHWToNHCW(%arg0: memref<6x4x8x512xf16, @DDR>)
     }
 
     %4 = memref.alloc() : memref<6x8x4x512xf16, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg2: memref<6x8x4x512xf16, [@CMX_NN, 0]>)
-            outputs(%4 as %arg3: memref<6x8x4x512xf16, @DDR>)
-                -> memref<6x8x4x512xf16, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<6x8x4x512xf16, [@CMX_NN, 0]>)
-                    outputs(%arg3 : memref<6x8x4x512xf16, @DDR>)
-                        -> memref<6x8x4x512xf16, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<6x8x4x512xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<6x8x4x512xf16, @DDR>)  ->  memref<6x8x4x512xf16, @DDR>
 
     return %5: memref<6x8x4x512xf16, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<6x4x8x512xf16, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<6x4x8x512xf16, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<6x8x4x512xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[COPY0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>) -> memref<1x24x8x512xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF2:%.+]] = memref.alloc() : memref<1x8x24x512xf16, [@CMX_NN, 0]>
@@ -64,10 +51,9 @@ func.func @ConvertMemPermuteNCHWToNHCW(%arg0: memref<6x4x8x512xf16, @DDR>)
     // CHECK:   [[GENERIC_RESHAPE1:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA0]] : memref<1x8x24x512xf16, [@CMX_NN, 0]>) -> memref<1x8x6x2048xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA1:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE1]] : memref<1x8x6x2048xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF1]] : memref<6x8x4x512xf16, [@CMX_NN, 0]>) -> memref<6x8x4x512xf16, [@CMX_NN, 0]>
     // CHECK:   [[COPY_BUFF3:%.+]] = memref.alloc() : memref<6x8x4x512xf16, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[PERMUTEDMA1]] as {{[^:]+}}: memref<6x8x4x512xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[COPY_BUFF3]] as {{[^:]+}}: memref<6x8x4x512xf16, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[PERMUTEDMA1]] : memref<6x8x4x512xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[COPY_BUFF3]] : memref<6x8x4x512xf16, @DDR>)
     // CHECK:   return [[COPY1]] : memref<6x8x4x512xf16, @DDR>
 }
 
@@ -86,15 +72,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToNHCWWithDifferentDimsOrder(%arg0: memref<6x4x8x512xf16, @DDR>)
                                        -> memref<6x512x8x4xf16, #NHWC, @DDR> {
     %0 = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg2: memref<6x4x8x512xf16, @DDR>)
-            outputs(%0 as %arg3: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                -> memref<6x4x8x512xf16, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<6x4x8x512xf16, @DDR>)
-                    outputs(%arg3 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                        -> memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<6x4x8x512xf16, @DDR>)
+        outputs(%0 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)  ->  memref<6x4x8x512xf16, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -107,23 +87,16 @@ func.func @ConvertMemPermuteNCHWToNHCWWithDifferentDimsOrder(%arg0: memref<6x4x8
     }
 
     %4 = memref.alloc() : memref<6x512x8x4xf16, #NHWC, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg2: memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>)
-            outputs(%4 as %arg3: memref<6x512x8x4xf16, #NHWC, @DDR>)
-                -> memref<6x512x8x4xf16, #NHWC, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>)
-                    outputs(%arg3 : memref<6x512x8x4xf16, #NHWC, @DDR>)
-                        -> memref<6x512x8x4xf16, #NHWC, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>)
+        outputs(%4 : memref<6x512x8x4xf16, #NHWC, @DDR>)  ->  memref<6x512x8x4xf16, #NHWC, @DDR>
 
     return %5: memref<6x512x8x4xf16, #NHWC, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<6x4x8x512xf16, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<6x4x8x512xf16, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTECAST:%.+]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NCHW} inputs([[COPY0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>) -> memref<6x512x4x8xf16, #NHWC, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[PERMUTECAST]] : memref<6x512x4x8xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x512x24x8xf16, #NHWC, [@CMX_NN, 0]>
@@ -132,10 +105,9 @@ func.func @ConvertMemPermuteNCHWToNHCWWithDifferentDimsOrder(%arg0: memref<6x4x8
     // CHECK:   [[GENERIC_RESHAPE1:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA0]] : memref<1x512x8x24xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2048x8x6xf16, #NHWC, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA1:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE1]] : memref<1x2048x8x6xf16, #NHWC, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF1]] : memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>
     // CHECK:   [[COPY_BUFF3:%.+]] = memref.alloc() : memref<6x512x8x4xf16, #NHWC, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[PERMUTEDMA1]] as {{[^:]+}}: memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[COPY_BUFF3]] as {{[^:]+}}: memref<6x512x8x4xf16, #NHWC, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[PERMUTEDMA1]] : memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[COPY_BUFF3]] : memref<6x512x8x4xf16, #NHWC, @DDR>)
     // CHECK:   return [[COPY1]] : memref<6x512x8x4xf16, #NHWC, @DDR>
 }
 
@@ -154,15 +126,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToHCNW(%arg0: memref<6x4x8x512xf16, @DDR>)
                                        -> memref<8x4x6x512xf16, @DDR> {
     %0 = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg2: memref<6x4x8x512xf16, @DDR>)
-            outputs(%0 as %arg3: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                -> memref<6x4x8x512xf16, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<6x4x8x512xf16, @DDR>)
-                    outputs(%arg3 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                        -> memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<6x4x8x512xf16, @DDR>)
+        outputs(%0 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)  ->  memref<6x4x8x512xf16, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<8x4x6x512xf16, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -175,23 +141,16 @@ func.func @ConvertMemPermuteNCHWToHCNW(%arg0: memref<6x4x8x512xf16, @DDR>)
     }
 
     %4 = memref.alloc() : memref<8x4x6x512xf16, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg2: memref<8x4x6x512xf16, [@CMX_NN, 0]>)
-            outputs(%4 as %arg3: memref<8x4x6x512xf16, @DDR>)
-                -> memref<8x4x6x512xf16, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<8x4x6x512xf16, [@CMX_NN, 0]>)
-                    outputs(%arg3 : memref<8x4x6x512xf16, @DDR>)
-                        -> memref<8x4x6x512xf16, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<8x4x6x512xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<8x4x6x512xf16, @DDR>)  ->  memref<8x4x6x512xf16, @DDR>
 
     return %5: memref<8x4x6x512xf16, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<6x4x8x512xf16, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<6x4x8x512xf16, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<8x4x6x512xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[COPY0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>) -> memref<1x24x8x512xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF2:%.+]] = memref.alloc() : memref<1x8x24x512xf16, [@CMX_NN, 0]>
@@ -202,10 +161,9 @@ func.func @ConvertMemPermuteNCHWToHCNW(%arg0: memref<6x4x8x512xf16, @DDR>)
     // CHECK:   [[GENERIC_RESHAPE2:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA1]] : memref<1x4x48x512xf16, [@CMX_NN, 0]>) -> memref<1x4x8x3072xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA2:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE2]] : memref<1x4x8x3072xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF1]] : memref<8x4x6x512xf16, [@CMX_NN, 0]>) -> memref<8x4x6x512xf16, [@CMX_NN, 0]>
     // CHECK:   [[COPY_BUFF4:%.+]] = memref.alloc() : memref<8x4x6x512xf16, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[PERMUTEDMA2]] as {{[^:]+}}: memref<8x4x6x512xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[COPY_BUFF4]] as {{[^:]+}}: memref<8x4x6x512xf16, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[PERMUTEDMA2]] : memref<8x4x6x512xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[COPY_BUFF4]] : memref<8x4x6x512xf16, @DDR>)
     // CHECK:   return [[COPY1]] : memref<8x4x6x512xf16, @DDR>
 }
 
@@ -224,15 +182,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToNWHC(%arg0: memref<6x4x8x512xf16, @DDR>)
                                        -> memref<6x512x8x4xf16, @DDR> {
     %0 = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg2: memref<6x4x8x512xf16, @DDR>)
-            outputs(%0 as %arg3: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                -> memref<6x4x8x512xf16, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<6x4x8x512xf16, @DDR>)
-                    outputs(%arg3 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-                        -> memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<6x4x8x512xf16, @DDR>)
+        outputs(%0 : memref<6x4x8x512xf16, [@CMX_NN, 0]>)  ->  memref<6x4x8x512xf16, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<6x512x8x4xf16, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -245,23 +197,16 @@ func.func @ConvertMemPermuteNCHWToNWHC(%arg0: memref<6x4x8x512xf16, @DDR>)
     }
 
     %4 = memref.alloc() : memref<6x512x8x4xf16, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg2: memref<6x512x8x4xf16, [@CMX_NN, 0]>)
-            outputs(%4 as %arg3: memref<6x512x8x4xf16, @DDR>)
-                -> memref<6x512x8x4xf16, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<6x512x8x4xf16, [@CMX_NN, 0]>)
-                    outputs(%arg3 : memref<6x512x8x4xf16, @DDR>)
-                        -> memref<6x512x8x4xf16, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<6x512x8x4xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<6x512x8x4xf16, @DDR>)  ->  memref<6x512x8x4xf16, @DDR>
 
     return %5: memref<6x512x8x4xf16, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<6x4x8x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<6x4x8x512xf16, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<6x4x8x512xf16, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<6x4x8x512xf16, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>)
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<6x512x8x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[COPY0]] : memref<6x4x8x512xf16, [@CMX_NN, 0]>) -> memref<1x6x4x4096xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF2:%.+]] = memref.alloc() : memref<1x6x4096x4xf16, [@CMX_NN, 0]>
@@ -272,10 +217,9 @@ func.func @ConvertMemPermuteNCHWToNWHC(%arg0: memref<6x4x8x512xf16, @DDR>)
     // CHECK:   [[GENERIC_RESHAPE2:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA1]] : memref<1x512x48x4xf16, [@CMX_NN, 0]>) -> memref<1x512x6x32xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA2:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE2]] : memref<1x512x6x32xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF1]] : memref<6x512x8x4xf16, [@CMX_NN, 0]>) -> memref<6x512x8x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[COPY_BUFF4:%.+]] = memref.alloc() : memref<6x512x8x4xf16, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[PERMUTEDMA2]] as {{[^:]+}}: memref<6x512x8x4xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[COPY_BUFF4]] as {{[^:]+}}: memref<6x512x8x4xf16, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[PERMUTEDMA2]] : memref<6x512x8x4xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[COPY_BUFF4]] : memref<6x512x8x4xf16, @DDR>)
     // CHECK:   return [[COPY1]] : memref<6x512x8x4xf16, @DDR>
 }
 
@@ -292,15 +236,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToCWNH(%arg0: memref<86x4x256x4xf16, @DDR>)
                                        -> memref<4x4x86x256xf16, @DDR> {
     %0 = memref.alloc() : memref<86x4x256x4xf16, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg2: memref<86x4x256x4xf16, @DDR>)
-            outputs(%0 as %arg3: memref<86x4x256x4xf16, [@CMX_NN, 0]>)
-                -> memref<86x4x256x4xf16, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<86x4x256x4xf16, @DDR>)
-                    outputs(%arg3 : memref<86x4x256x4xf16, [@CMX_NN, 0]>)
-                        -> memref<86x4x256x4xf16, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<86x4x256x4xf16, @DDR>)
+        outputs(%0 : memref<86x4x256x4xf16, [@CMX_NN, 0]>)  ->  memref<86x4x256x4xf16, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<4x4x86x256xf16, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -313,23 +251,16 @@ func.func @ConvertMemPermuteNCHWToCWNH(%arg0: memref<86x4x256x4xf16, @DDR>)
     }
 
     %4 = memref.alloc() : memref<4x4x86x256xf16, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg2: memref<4x4x86x256xf16, [@CMX_NN, 0]>)
-            outputs(%4 as %arg3: memref<4x4x86x256xf16, @DDR>)
-                -> memref<4x4x86x256xf16, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<4x4x86x256xf16, [@CMX_NN, 0]>)
-                    outputs(%arg3 : memref<4x4x86x256xf16, @DDR>)
-                        -> memref<4x4x86x256xf16, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<4x4x86x256xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<4x4x86x256xf16, @DDR>)  ->  memref<4x4x86x256xf16, @DDR>
 
     return %5: memref<4x4x86x256xf16, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<86x4x256x4xf16, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<86x4x256x4xf16, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<86x4x256x4xf16, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<86x4x256x4xf16, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<86x4x256x4xf16, [@CMX_NN, 0]>)
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<86x256x4x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[COPY0]] : memref<86x4x256x4xf16, [@CMX_NN, 0]>) -> memref<1x344x256x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF2:%.+]] = memref.alloc() : memref<1x256x344x4xf16, [@CMX_NN, 0]>
@@ -341,10 +272,9 @@ func.func @ConvertMemPermuteNCHWToCWNH(%arg0: memref<86x4x256x4xf16, @DDR>)
     // CHECK:   [[PERMUTEDMA2:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE2]] : memref<1x22016x16x1xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF3]] : memref<1x16x22016x1xf16, [@CMX_NN, 0]>) -> memref<1x16x22016x1xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE3:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA2]] : memref<1x16x22016x1xf16, [@CMX_NN, 0]>) -> memref<4x4x86x256xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF4:%.+]] = memref.alloc() : memref<4x4x86x256xf16, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[GENERIC_RESHAPE3]] as {{[^:]+}}: memref<4x4x86x256xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[PERMUTEDMA_BUFF4]] as {{[^:]+}}: memref<4x4x86x256xf16, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[GENERIC_RESHAPE3]] : memref<4x4x86x256xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[PERMUTEDMA_BUFF4]] : memref<4x4x86x256xf16, @DDR>)
     // CHECK:   return [[COPY1]] : memref<4x4x86x256xf16, @DDR>
 }
 
@@ -361,15 +291,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToHNWC(%arg0: memref<4x4x86x256xf16, @DDR>)
                                        -> memref<86x4x256x4xf16, @DDR> {
     %0 = memref.alloc() : memref<4x4x86x256xf16, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg2: memref<4x4x86x256xf16, @DDR>)
-            outputs(%0 as %arg3: memref<4x4x86x256xf16, [@CMX_NN, 0]>)
-                -> memref<4x4x86x256xf16, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<4x4x86x256xf16, @DDR>)
-                    outputs(%arg3 : memref<4x4x86x256xf16, [@CMX_NN, 0]>)
-                        -> memref<4x4x86x256xf16, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<4x4x86x256xf16, @DDR>)
+        outputs(%0 : memref<4x4x86x256xf16, [@CMX_NN, 0]>)  ->  memref<4x4x86x256xf16, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<86x4x256x4xf16, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -382,23 +306,16 @@ func.func @ConvertMemPermuteNCHWToHNWC(%arg0: memref<4x4x86x256xf16, @DDR>)
     }
 
     %4 = memref.alloc() : memref<86x4x256x4xf16, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg2: memref<86x4x256x4xf16, [@CMX_NN, 0]>)
-            outputs(%4 as %arg3: memref<86x4x256x4xf16, @DDR>)
-                -> memref<86x4x256x4xf16, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<86x4x256x4xf16, [@CMX_NN, 0]>)
-                    outputs(%arg3 : memref<86x4x256x4xf16, @DDR>)
-                        -> memref<86x4x256x4xf16, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<86x4x256x4xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<86x4x256x4xf16, @DDR>)  ->  memref<86x4x256x4xf16, @DDR>
 
     return %5: memref<86x4x256x4xf16, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<4x4x86x256xf16, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<4x4x86x256xf16, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<4x4x86x256xf16, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<4x4x86x256xf16, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<4x4x86x256xf16, [@CMX_NN, 0]>)
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[COPY0]] : memref<4x4x86x256xf16, [@CMX_NN, 0]>) -> memref<1x16x86x256xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<1x86x16x256xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA0:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE0]] : memref<1x16x86x256xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF1]] : memref<1x86x16x256xf16, [@CMX_NN, 0]>) -> memref<1x86x16x256xf16, [@CMX_NN, 0]>
@@ -407,10 +324,9 @@ func.func @ConvertMemPermuteNCHWToHNWC(%arg0: memref<4x4x86x256xf16, @DDR>)
     // CHECK:   [[PERMUTEDMA1:%.+]] = VPUIP.PermuteDMA {mem_perm = #NCWH} inputs([[GENERIC_RESHAPE1]] : memref<1x344x4x256xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF2]] : memref<1x344x256x4xf16, [@CMX_NN, 0]>) -> memref<1x344x256x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE2:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA1]] : memref<1x344x256x4xf16, [@CMX_NN, 0]>) -> memref<86x4x256x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF3:%.+]] = memref.alloc() : memref<86x4x256x4xf16, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[GENERIC_RESHAPE2]] as {{[^:]+}}: memref<86x4x256x4xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[PERMUTEDMA_BUFF3]] as {{[^:]+}}: memref<86x4x256x4xf16, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[GENERIC_RESHAPE2]] : memref<86x4x256x4xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[PERMUTEDMA_BUFF3]] : memref<86x4x256x4xf16, @DDR>)
     // CHECK:   return [[COPY1]] : memref<86x4x256x4xf16, @DDR>
 }
 
@@ -427,15 +343,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToCWNH(%arg0: memref<86x4x256x4xui4, @DDR>)
                                        -> memref<4x4x86x256xui4, @DDR> {
     %0 = memref.alloc() : memref<86x4x256x4xui4, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg2: memref<86x4x256x4xui4, @DDR>)
-            outputs(%0 as %arg3: memref<86x4x256x4xui4, [@CMX_NN, 0]>)
-                -> memref<86x4x256x4xui4, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<86x4x256x4xui4, @DDR>)
-                    outputs(%arg3 : memref<86x4x256x4xui4, [@CMX_NN, 0]>)
-                        -> memref<86x4x256x4xui4, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<86x4x256x4xui4, @DDR>)
+        outputs(%0 : memref<86x4x256x4xui4, [@CMX_NN, 0]>)  ->  memref<86x4x256x4xui4, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<4x4x86x256xui4, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -448,15 +358,9 @@ func.func @ConvertMemPermuteNCHWToCWNH(%arg0: memref<86x4x256x4xui4, @DDR>)
     }
 
     %4 = memref.alloc() : memref<4x4x86x256xui4, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg2: memref<4x4x86x256xui4, [@CMX_NN, 0]>)
-            outputs(%4 as %arg3: memref<4x4x86x256xui4, @DDR>)
-                -> memref<4x4x86x256xui4, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg2 : memref<4x4x86x256xui4, [@CMX_NN, 0]>)
-                    outputs(%arg3 : memref<4x4x86x256xui4, @DDR>)
-                        -> memref<4x4x86x256xui4, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<4x4x86x256xui4, [@CMX_NN, 0]>)
+        outputs(%4 : memref<4x4x86x256xui4, @DDR>)  ->  memref<4x4x86x256xui4, @DDR>
 
     return %5: memref<4x4x86x256xui4, @DDR>
 
@@ -478,15 +382,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToWCHN(%arg0: memref<4x2x121x3xf16, @DDR>)
                                        -> memref<3x2x121x4xf16, @DDR> {
     %0 = memref.alloc() : memref<4x2x121x3xf16, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg1: memref<4x2x121x3xf16, @DDR>)
-            outputs(%0 as %arg2: memref<4x2x121x3xf16, [@CMX_NN, 0]>)
-                -> memref<4x2x121x3xf16, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg1 : memref<4x2x121x3xf16, @DDR>)
-                    outputs(%arg2 : memref<4x2x121x3xf16, [@CMX_NN, 0]>)
-                        -> memref<4x2x121x3xf16, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<4x2x121x3xf16, @DDR>)
+        outputs(%0 : memref<4x2x121x3xf16, [@CMX_NN, 0]>)  ->  memref<4x2x121x3xf16, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<3x2x121x4xf16, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -499,23 +397,16 @@ func.func @ConvertMemPermuteNCHWToWCHN(%arg0: memref<4x2x121x3xf16, @DDR>)
     }
 
     %4 = memref.alloc() : memref<3x2x121x4xf16, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg1: memref<3x2x121x4xf16, [@CMX_NN, 0]>)
-            outputs(%4 as %arg2: memref<3x2x121x4xf16, @DDR>)
-                -> memref<3x2x121x4xf16, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg1 : memref<3x2x121x4xf16, [@CMX_NN, 0]>)
-                    outputs(%arg2 : memref<3x2x121x4xf16, @DDR>)
-                        -> memref<3x2x121x4xf16, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<3x2x121x4xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<3x2x121x4xf16, @DDR>)  ->  memref<3x2x121x4xf16, @DDR>
 
     return %5: memref<3x2x121x4xf16, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<4x2x121x3xf16, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<4x2x121x3xf16, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<4x2x121x3xf16, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<4x2x121x3xf16, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<4x2x121x3xf16, [@CMX_NN, 0]>)
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[COPY0]] : memref<4x2x121x3xf16, [@CMX_NN, 0]>) -> memref<1x4x242x3xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<1x242x4x3xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA0:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE0]] : memref<1x4x242x3xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF1]] : memref<1x242x4x3xf16, [@CMX_NN, 0]>) -> memref<1x242x4x3xf16, [@CMX_NN, 0]>
@@ -524,10 +415,9 @@ func.func @ConvertMemPermuteNCHWToWCHN(%arg0: memref<4x2x121x3xf16, @DDR>)
     // CHECK:   [[PERMUTEDMA1:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE1]] : memref<1x968x3x1xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF2]] : memref<1x3x968x1xf16, [@CMX_NN, 0]>) -> memref<1x3x968x1xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE2:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA1]] : memref<1x3x968x1xf16, [@CMX_NN, 0]>) -> memref<3x2x121x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF3:%.+]] = memref.alloc() : memref<3x2x121x4xf16, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[GENERIC_RESHAPE2]] as {{[^:]+}}: memref<3x2x121x4xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[PERMUTEDMA_BUFF3]] as {{[^:]+}}: memref<3x2x121x4xf16, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[GENERIC_RESHAPE2]] : memref<3x2x121x4xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[PERMUTEDMA_BUFF3]] : memref<3x2x121x4xf16, @DDR>)
     // CHECK:   return [[COPY1]] : memref<3x2x121x4xf16, @DDR>
 }
 
@@ -546,15 +436,9 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 func.func @ConvertMemPermuteNCHWToWCHNWithDifferentDimsOrder(%arg0: memref<4x3x2x121xf16, #NHWC, @DDR>)
                                        -> memref<3x2x121x4xf16, @DDR> {
     %0 = memref.alloc() : memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTiling
-            inputs(%arg0 as %arg1: memref<4x3x2x121xf16, #NHWC, @DDR>)
-            outputs(%0 as %arg2: memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>)
-                -> memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]> {
-        %inner = VPUIP.Copy
-                    inputs(%arg1 : memref<4x3x2x121xf16, #NHWC, @DDR>)
-                    outputs(%arg2 : memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>)
-                        -> memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>
-    }
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<4x3x2x121xf16, #NHWC, @DDR>)
+        outputs(%0 : memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>)  ->  memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>
 
     %2 = memref.alloc() : memref<3x2x121x4xf16, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -567,23 +451,16 @@ func.func @ConvertMemPermuteNCHWToWCHNWithDifferentDimsOrder(%arg0: memref<4x3x2
     }
 
     %4 = memref.alloc() : memref<3x2x121x4xf16, @DDR>
-    %5 = VPUIP.NCEClusterTiling
-            inputs(%3 as %arg1: memref<3x2x121x4xf16, [@CMX_NN, 0]>)
-            outputs(%4 as %arg2: memref<3x2x121x4xf16, @DDR>)
-                -> memref<3x2x121x4xf16, @DDR> {
-        %inner = VPUIP.Copy
-                    inputs(%arg1 : memref<3x2x121x4xf16, [@CMX_NN, 0]>)
-                    outputs(%arg2 : memref<3x2x121x4xf16, @DDR>)
-                        -> memref<3x2x121x4xf16, @DDR>
-    }
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<3x2x121x4xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<3x2x121x4xf16, @DDR>)  ->  memref<3x2x121x4xf16, @DDR>
 
     return %5: memref<3x2x121x4xf16, @DDR>
 
     // CHECK:   [[COPY_BUFF0:%.+]] = memref.alloc() : memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[COPY0:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[INPUT]] as {{[^:]+}}: memref<4x3x2x121xf16, #NHWC, @DDR>)
-    // CHECK-SAME:    outputs([[COPY_BUFF0]] as {{[^:]+}}: memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]] : memref<4x3x2x121xf16, #NHWC, @DDR>)
+    // CHECK-SAME:     outputs([[COPY_BUFF0]] : memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK:   [[PERMUTE_CAST0:%.+]] = VPUIP.PermuteCast {dst_order = #NCHW, mem_perm = #NCHW} inputs([[COPY0]] : memref<4x3x2x121xf16, #NHWC, [@CMX_NN, 0]>) -> memref<4x2x121x3xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[PERMUTE_CAST0]] : memref<4x2x121x3xf16, [@CMX_NN, 0]>) -> memref<1x4x242x3xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF1:%.+]] = memref.alloc() : memref<1x242x4x3xf16, [@CMX_NN, 0]>
@@ -593,10 +470,9 @@ func.func @ConvertMemPermuteNCHWToWCHNWithDifferentDimsOrder(%arg0: memref<4x3x2
     // CHECK:   [[PERMUTEDMA1:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[GENERIC_RESHAPE1]] : memref<1x968x3x1xf16, [@CMX_NN, 0]>) outputs([[PERMUTEDMA_BUFF2]] : memref<1x3x968x1xf16, [@CMX_NN, 0]>) -> memref<1x3x968x1xf16, [@CMX_NN, 0]>
     // CHECK:   [[GENERIC_RESHAPE2:%.+]] = VPUIP.GenericReshape inputs([[PERMUTEDMA1]] : memref<1x3x968x1xf16, [@CMX_NN, 0]>) -> memref<3x2x121x4xf16, [@CMX_NN, 0]>
     // CHECK:   [[PERMUTEDMA_BUFF3:%.+]] = memref.alloc() : memref<3x2x121x4xf16, @DDR>
-    // CHECK:   [[COPY1:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:    inputs([[GENERIC_RESHAPE2]] as {{[^:]+}}: memref<3x2x121x4xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:    outputs([[PERMUTEDMA_BUFF3]] as {{[^:]+}}: memref<3x2x121x4xf16, @DDR>)
-    // CHECK:         [[INNER_COPY:%.+]] = VPUIP.Copy
+    // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[GENERIC_RESHAPE2]] : memref<3x2x121x4xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:     outputs([[PERMUTEDMA_BUFF3]] : memref<3x2x121x4xf16, @DDR>)
     // CHECK:   return [[COPY1]] : memref<3x2x121x4xf16, @DDR>
 }
 

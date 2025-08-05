@@ -52,8 +52,9 @@ class Mvn1LayerTest_NPU3720 : public VpuOv2LayerTest, public testing::WithParamI
             ov::AxisSet axes;
             const size_t startAxis = acrossChannels ? 1 : 2;
             const size_t numOfDims = param->output(0).get_partial_shape().size();
-            for (size_t i = startAxis; i < numOfDims; i++)
+            for (size_t i = startAxis; i < numOfDims; i++) {
                 axes.insert(i);
+            }
             mvn->set_reduction_axes(axes);
         } else {
             mvn = std::make_shared<ov::op::v0::MVN>(param, axes, normalizeVariance, eps);

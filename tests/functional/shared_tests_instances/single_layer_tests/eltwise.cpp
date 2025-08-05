@@ -4,6 +4,9 @@
 //
 
 #include "single_op_tests/eltwise.hpp"
+#include "common_test_utils/node_builders/eltwise.hpp"
+#include "common_test_utils/ov_tensor_utils.hpp"
+#include "openvino/op/convert.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using ov::test::utils::EltwiseTypes;
@@ -18,6 +21,43 @@ class EltwiseLayerTestCommon : public EltwiseLayerTest, virtual public VpuOv2Lay
 class EltwiseLayerTestF32Common : public EltwiseLayerTestCommon {
     void configure_model() override {
         configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+    }
+};
+
+class EltwiseLayerTestDynamic : public EltwiseLayerTest, virtual public VpuOv2LayerTest {
+    void SetUp() override {
+        std::vector<InputShape> shapes;
+        ov::test::utils::InputLayerType secondInputType;
+        ov::test::Config testConfig;
+        ov::element::Type modelType;
+        ov::test::utils::EltwiseTypes eltwiseOpType;
+
+        std::tie(shapes, eltwiseOpType, secondInputType,
+                 std::ignore,  // OpType
+                 modelType,    // precision
+                 std::ignore,  // Type1
+                 std::ignore,  // Type2
+                 std::ignore,  // DEVICE_NPU
+                 testConfig) = this->GetParam();
+        configuration.insert(testConfig.begin(), testConfig.end());
+
+        init_input_shapes(shapes);
+
+        ov::ParameterVector inputs{std::make_shared<ov::op::v0::Parameter>(modelType, inputDynamicShapes[0])};
+
+        std::shared_ptr<ov::Node> secondInput;
+        if (secondInputType == InputLayerType::PARAMETER) {
+            secondInput = std::make_shared<ov::op::v0::Parameter>(modelType, inputDynamicShapes[1]);
+            inputs.push_back(ov::as_type_ptr<ov::op::v0::Parameter>(secondInput));
+        } else {
+            ov::Tensor tensor = ov::test::utils::create_and_fill_tensor(modelType, targetStaticShapes.front()[1]);
+            secondInput = std::make_shared<ov::op::v0::Constant>(tensor);
+        }
+
+        auto eltwiseNode = ov::test::utils::make_eltwise(inputs[0], secondInput, eltwiseOpType);
+
+        auto convertedEltwiseNode = std::make_shared<ov::op::v0::Convert>(eltwiseNode, modelType);
+        function = std::make_shared<ov::Model>(convertedEltwiseNode, inputs, "DynamicEltwise");
     }
 };
 
@@ -120,6 +160,19 @@ TEST_P(EltwiseIntegerLayerTest, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(EltwiseLayerTestDynamic, NPU3720_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU3720);
+}
+
+TEST_P(EltwiseLayerTestDynamic, NPU4000_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -181,6 +234,37 @@ const auto typesParamsF32 = ::testing::Combine(
 
 INSTANTIATE_TEST_SUITE_P(precommit_EltwiseTypesF32, EltwiseLayerTestF32Common, typesParamsF32,
                          EltwiseLayerTestF32Common::getTestCaseName);
+
+//
+// Dynamic shape tests
+//
+
+std::set<EltwiseTypes> DynamicEltwiseOpTypes = {EltwiseTypes::SUBTRACT};
+
+std::vector<std::vector<ov::test::InputShape>> in_shapes_dynamic = {
+        {{{1, 1, 1, ov::Dimension(1, 10)}, {{1, 1, 1, 10}, {1, 1, 1, 5}}},
+         {{1, 1, 1, ov::Dimension(1, 10)}, {{1, 1, 1, 1}}}},
+};
+
+std::vector<ov::test::ElementType> precision = {
+        ov::element::f32,
+        ov::element::f16,
+};
+
+std::vector<InputLayerType> secondInputType = {
+        InputLayerType::PARAMETER,
+        InputLayerType::CONSTANT,
+};
+
+const auto eltwise_params_dynamic = ::testing::Combine(
+        ::testing::ValuesIn(in_shapes_dynamic), ::testing::ValuesIn(DynamicEltwiseOpTypes),
+        ::testing::ValuesIn(secondInputType), ::testing::ValuesIn(opTypes), ::testing::ValuesIn(precision),
+        ::testing::Values(ov::element::undefined), ::testing::Values(ov::element::undefined),
+        ::testing::Values(ov::test::utils::DEVICE_NPU), ::testing::Values(ov::test::Config{}));
+
+//  Dynamic shapes cases
+INSTANTIATE_TEST_SUITE_P(smoke_EltwiseDynamic, EltwiseLayerTestDynamic, eltwise_params_dynamic,
+                         EltwiseLayerTestDynamic::getTestCaseName);
 
 //
 // Test Eltwise input broadcast
@@ -459,7 +543,7 @@ using namespace ov::test;
 // Test supported Eltwise types
 //
 
-// Add tests not enabled due to E#163155
+// Tests for the ADD operator are not enabled due to E#163155
 std::set<EltwiseTypes> scgEltwiseTypes = {EltwiseTypes::DIVIDE, EltwiseTypes::SQUARED_DIFF, EltwiseTypes::SUBTRACT,
                                           EltwiseTypes::MULTIPLY};
 
@@ -530,7 +614,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_VectorShapesNDF32, ShaveCodeGenEltwiseLayerTestF3
 // Test Unsigned Integer data types
 //
 
-// Add tests not enabled due to E#163155
+// Tests for the ADD operator are not enabled due to E#163155
 std::set<EltwiseTypes> scgEltwiseTypesUnsigned = {EltwiseTypes::DIVIDE, EltwiseTypes::SUBTRACT, EltwiseTypes::MULTIPLY};
 
 const auto scgTypesParamsUnsigned = ::testing::Combine(

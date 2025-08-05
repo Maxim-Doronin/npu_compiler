@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --handle-large-strides --canonicalize %s | FileCheck %s
@@ -164,13 +164,13 @@ func.func @HandleLargeStridesConvolution(%arg0: tensor<1x1x1x2176xf16>, %arg1: t
   %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1, 2], [3], [3]], shape_value = [1, 2, 129, 16]} : tensor<1x258x1x16xf16> -> tensor<1x2x129x16xf16>
   return %1 : tensor<1x2x129x16xf16>
   // CHECK:       %[[CONV0:.*]] = IE.Convolution(%arg0, %arg1)
-  // CHECK-SAME:  {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [8, 8]}
+  // CHECK-SAME:  {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 8]}
 
   // CHECK:       %[[MAXPOOL1:.*]] = IE.MaxPool(%[[CONV0]])
-  // CHECK-SAME:  {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 8]} : tensor<1x258x1x241xf16> -> tensor<1x258x1x31xf16>
+  // CHECK-SAME:  {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 8]} : tensor<1x258x1x241xf16> -> tensor<1x258x1x31xf16>
 
   // CHECK:       %[[MAXPOOL2:.*]] = IE.MaxPool(%[[MAXPOOL1]])
-  // CHECK-SAME:  {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x258x1x31xf16> -> tensor<1x258x1x16xf16>
+  // CHECK-SAME:  {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 2]} : tensor<1x258x1x31xf16> -> tensor<1x258x1x16xf16>
 
   // CHECK:       %[[AffineReshape3:.*]] = IE.AffineReshape(%[[MAXPOOL2]])
   // CHECK-SAME:  : tensor<1x258x1x16xf16> -> tensor<1x2x129x16xf16>
@@ -279,4 +279,30 @@ func.func @HandleLargeStridesAvgPoolMpThenGeneral(%arg0: tensor<1x16x24x42xf16>)
     // CHECK-SAME{LITERAL}:             {static_offsets = [[0, 0, 0, 0], [0, 0, 1, 0]]} : tensor<1x16x1x2xf16>, tensor<1x16x1x2xf16> -> tensor<1x16x2x2xf16>
 
     // CHECK:       return      [[CONCAT3]] : tensor<1x16x2x2xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @HandleLargeStridesConvolutionWithUpdatedStrides
+// CHECK: [[INPUT:%.+]]: tensor<1x16x9x9xf16>
+func.func @HandleLargeStridesConvolutionWithUpdatedStrides(%arg0: tensor<1x16x9x9xf16>) -> tensor<1x1280x1x1xf16> {
+    %filters = const.Declare tensor<1280x16x9x9xf16> = dense<1.0> : tensor<1280x16x9x9xf16>
+    %1 = IE.Convolution(%arg0, %filters) {
+        dilations = [1, 1],
+        pads_begin = [0, 0],
+        pads_end = [0, 0],
+        strides = [9, 9]
+    } : tensor<1x16x9x9xf16>, tensor<1280x16x9x9xf16> -> tensor<1x1280x1x1xf16>
+
+    return %1 : tensor<1x1280x1x1xf16>
+
+    // CHECK-DAG:       [[FILTERS:%.+]] = const.Declare tensor<1280x16x9x9xf16> = dense<1.000000e+00> : tensor<1280x16x9x9xf16>
+    // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[FILTERS]])
+    // CHECK-SAME:          dilations = [1, 1]
+    // CHECK-SAME:          pads_begin = [0, 0]
+    // CHECK-SAME:          pads_end = [0, 0]
+    // CHECK-SAME:          strides = [1, 1]
+    // CHECK-SAME:          tensor<1x16x9x9xf16>, tensor<1280x16x9x9xf16> -> tensor<1x1280x1x1xf16>
+
+    // CHECK:           return [[CONV]] : tensor<1x1280x1x1xf16>
 }

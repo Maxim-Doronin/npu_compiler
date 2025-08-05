@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --vpu-arch=%arch% --intermediate-buffer-output="op-index=5 insertion-index=5 buffer-index=4" %s | FileCheck %s

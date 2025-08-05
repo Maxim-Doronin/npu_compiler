@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --optimize-copies %s | FileCheck %s
@@ -161,8 +161,8 @@ IE.TileResource 4 of @NCE at 1.700000e+03 MHz {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @NotRemoveClusterTilingCMXToCMXCopyDueToSubView
-func.func @NotRemoveClusterTilingCMXToCMXCopyDueToSubView()
+// CHECK-LABEL: @NotRemoveDistributedOpCMXToCMXCopyDueToSubView
+func.func @NotRemoveDistributedOpCMXToCMXCopyDueToSubView()
           -> (memref<1x2x28x50xf16, #NHWC, [@CMX_NN, 0]>) {
     %0 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x16x28x48xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48]], compute_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]], memory_shapes = [[1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48], [1, 16, 7, 48]], memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 14, 0], [0, 0, 21, 0]]}>
 
@@ -290,9 +290,9 @@ IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
 }
 
-// CHECK-LABEL: @NotFuseClusterTilingCopiesThroughReshapeDueToNoAxisMapping
+// CHECK-LABEL: @NotFuseDistributedOpCopiesThroughReshapeDueToNoAxisMapping
 // CHECK-SAME:  [[INPUT:%.+]]: memref<2x2x1025x121xf16, @DDR>
-func.func @NotFuseClusterTilingCopiesThroughReshapeDueToNoAxisMapping(%input : memref<2x2x1025x121xf16, @DDR>) -> !DistributedBufferType {
+func.func @NotFuseDistributedOpCopiesThroughReshapeDueToNoAxisMapping(%input : memref<2x2x1025x121xf16, @DDR>) -> !DistributedBufferType {
     %0 = VPUIP.SubView %input [0, 0, 0, 0] [2, 2, 2, 121] : memref<2x2x1025x121xf16, @DDR> to memref<2x2x2x121xf16, {order = #NCHW, strides = [248050, 124025, 121, 1]}, @DDR>
     %1 = memref.alloc() : memref<2x2x2x121xf16, @DDR>
     %2 = VPUIP.Copy inputs(%0 : memref<2x2x2x121xf16, {order = #NCHW, strides = [248050, 124025, 121, 1]}, @DDR>) outputs(%1 : memref<2x2x2x121xf16, @DDR>) -> memref<2x2x2x121xf16, @DDR>

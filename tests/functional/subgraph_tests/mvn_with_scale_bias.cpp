@@ -1,4 +1,4 @@
-// Copyright (C) 2023 - 2024 Intel Corporation
+// Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,8 +30,9 @@ class MVNWithScaleBiasTest_NPU3720 : public VpuOv2LayerTest, public testing::Wit
         ov::AxisSet axes;
         const size_t startAxis = acrossChanels ? 1 : 2;
         const size_t numOfDims = params[0]->get_partial_shape().size();
-        for (size_t i = startAxis; i < numOfDims; i++)
+        for (size_t i = startAxis; i < numOfDims; i++) {
             axes.insert(i);
+        }
         mvn->set_reduction_axes(axes);
 
         const size_t scaleShiftSize = inputShape[3];

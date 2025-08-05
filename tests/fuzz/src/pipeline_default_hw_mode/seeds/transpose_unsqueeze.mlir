@@ -1,8 +1,7 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
-
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 

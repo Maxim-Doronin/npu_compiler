@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -54,10 +54,11 @@ public:
     }
 
     const std::shared_ptr<IDevice> getDevice(const std::string& specificName) const override {
-        if (specificName == _dummyDevice->getName())
+        if (specificName == _dummyDevice->getName()) {
             return _dummyDevice;
-        else
+        } else {
             return nullptr;
+        }
     }
 
     const std::shared_ptr<IDevice> getDevice(const ov::AnyMap&) const override {

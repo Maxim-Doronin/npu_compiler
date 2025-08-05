@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <common_test_utils/test_common.hpp>
@@ -234,7 +234,6 @@ protected:
         _options->add<intel_npu::COMPILATION_MODE_PARAMS>();
         _options->add<intel_npu::BACKEND_COMPILATION_PARAMS>();
         _options->add<intel_npu::COMPILATION_NUM_THREADS>();
-        _options->add<intel_npu::DPU_GROUPS>();
         _options->add<intel_npu::TILES>();
         _options->add<intel_npu::STEPPING>();
         _options->add<intel_npu::MAX_TILES>();
@@ -390,7 +389,6 @@ protected:
         _options->add<intel_npu::COMPILATION_MODE_PARAMS>();
         _options->add<intel_npu::BACKEND_COMPILATION_PARAMS>();
         _options->add<intel_npu::COMPILATION_NUM_THREADS>();
-        _options->add<intel_npu::DPU_GROUPS>();
         _options->add<intel_npu::TILES>();
         _options->add<intel_npu::STEPPING>();
         _options->add<intel_npu::MAX_TILES>();

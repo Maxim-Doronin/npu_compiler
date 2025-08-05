@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-input-shape --canonicalize %s | FileCheck %s
@@ -1382,7 +1382,7 @@ func.func @AdjustAvgPoolingWithBatchSizeNot1(%arg0: tensor<1024x77x1x1xf16, {ord
 func.func @AdjustInputShapeForNHCWMemPermute(%arg0: tensor<1x380x720x1xf16>) -> tensor<1x720x380x1xf16> {
     %0 = IE.MemPermute(%arg0) {dstElemType = f16, dst_order = #NCHW, mem_perm = #NHCW} :
         tensor<1x380x720x1xf16> -> tensor<1x720x380x1xf16>
-    
+
     return %0 : tensor<1x720x380x1xf16>
 
     // CHECK:   [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 1, 380, 720]} inputs([[INPUT]] : tensor<1x380x720x1xf16>)
@@ -1393,4 +1393,27 @@ func.func @AdjustInputShapeForNHCWMemPermute(%arg0: tensor<1x380x720x1xf16>) -> 
     // CHECK-SAME:      -> tensor<1x720x380x1xf16>
 
     // CHECK:   return [[SHAPECAST_OUT]] : tensor<1x720x380x1xf16>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @AdjustInputShapeWithMinimalDimChange
+// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x4x1600x2560xf16, {order = #NHWC}>,
+// CHECK-SAME:        [[INPUT2:%arg[0-9]]]: tensor<1x4x1600x2560xf16, {order = #NHWC}>
+func.func @AdjustInputShapeWithMinimalDimChange(%arg0: tensor<1x4x1600x2560xf16, {order = #NHWC}>, %arg1: tensor<1x4x1600x2560xf16, {order = #NHWC}>) -> tensor<1x16x1600x2560xf16, {order = #NHWC}> {
+    %0 = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]} : tensor<1x4x1600x2560xf16, {order = #NHWC}> -> tensor<1x16x1600x2560xf16, {order = #NHWC}>
+    %1 = IE.Expand(%arg1) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]} : tensor<1x4x1600x2560xf16, {order = #NHWC}> -> tensor<1x16x1600x2560xf16, {order = #NHWC}>
+    %2 = IE.Add(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x1600x2560xf16, {order = #NHWC}>, tensor<1x16x1600x2560xf16, {order = #NHWC}> -> tensor<1x16x1600x2560xf16, {order = #NHWC}>
+    return %2 : tensor<1x16x1600x2560xf16, {order = #NHWC}>
+
+    // CHECK-NOT:   IE.Expand
+    // CHECK-DAG:   [[CAST1:%.+]] = IE.ShapeCast {shape = [1, 16, 1600, 640]} inputs([[INPUT1]] : tensor<1x4x1600x2560xf16, {order = #NHWC}>) -> tensor<1x16x1600x640xf16, {order = #NHWC}>
+    // CHECK-DAG:   [[CAST2:%.+]] = IE.ShapeCast {shape = [1, 16, 1600, 640]} inputs([[INPUT2]] : tensor<1x4x1600x2560xf16, {order = #NHWC}>) -> tensor<1x16x1600x640xf16, {order = #NHWC}>
+
+    // CHECK:       [[ADD:%.+]] = IE.Add([[CAST1]], [[CAST2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x1600x640xf16, {order = #NHWC}>, tensor<1x16x1600x640xf16, {order = #NHWC}> -> tensor<1x16x1600x640xf16, {order = #NHWC}>
+    // CHECK:       [[CAST_OUTPUT:%.+]] = IE.ShapeCast {shape = [1, 4, 1600, 2560]} inputs([[ADD]] : tensor<1x16x1600x640xf16, {order = #NHWC}>) -> tensor<1x4x1600x2560xf16, {order = #NHWC}>
+    // CHECK:       [[EXPAND_OUTPUT:%.+]] = IE.Expand([[CAST_OUTPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]} : tensor<1x4x1600x2560xf16, {order = #NHWC}> -> tensor<1x16x1600x2560xf16, {order = #NHWC}>
+    // CHECK:       return [[EXPAND_OUTPUT]]
 }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -35,17 +35,17 @@ TEST_P(MLIR_GetExpectedBufferSizeTests, getExpectedBufferSize) {
     ASSERT_EQ(static_cast<size_t>(vpux::getExpectedBufferSize(type).count()), expectedSize);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-        NormalTypes, MLIR_GetExpectedBufferSizeTests,
-        ::testing::Values(
-                [](mlir::MLIRContext* ctx) -> TestInfo {
-                    const auto type = mlir::RankedTensorType::get({1, 3, 3, 3}, mlir::Float32Type::get(ctx));
-                    return {type, 3 * 3 * 3 * sizeof(float)};
-                },
-                [](mlir::MLIRContext* ctx) -> TestInfo {
-                    const auto type = mlir::RankedTensorType::get({1, 3, 3, 3}, getUInt8Type(ctx));
-                    return {type, 3 * 3 * 3 * sizeof(uint8_t)};
-                }));
+INSTANTIATE_TEST_SUITE_P(NormalTypes, MLIR_GetExpectedBufferSizeTests,
+                         ::testing::Values(
+                                 [](mlir::MLIRContext* ctx) -> TestInfo {
+                                     const auto type =
+                                             mlir::RankedTensorType::get({1, 3, 3, 3}, mlir::Float32Type::get(ctx));
+                                     return {type, 3 * 3 * 3 * sizeof(float)};
+                                 },
+                                 [](mlir::MLIRContext* ctx) -> TestInfo {
+                                     const auto type = mlir::RankedTensorType::get({1, 3, 3, 3}, getUInt8Type(ctx));
+                                     return {type, 3 * 3 * 3 * sizeof(uint8_t)};
+                                 }));
 
 INSTANTIATE_TEST_SUITE_P(SubbyteTypes, MLIR_GetExpectedBufferSizeTests,
                          ::testing::Values(

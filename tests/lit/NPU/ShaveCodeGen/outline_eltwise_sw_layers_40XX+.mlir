@@ -1,12 +1,13 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" \
+// RUN:     --encapsulate-codegen-ops                                 \
 // RUN:     --convert-eltwise-layers-to-math                          \
 // RUN:     --canonicalize                                            \
-// RUN:     --outline-linalg-sw-layers                                \
+// RUN:     --outline-codegen-capsules                                \
 // RUN:   | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
@@ -34,10 +35,10 @@ module @NoBitcastUI {
 // CHECK:         func.func @main([[ARG0:%.+]]: tensor<1x1x16x1xui32>, [[ARG1:%.+]]: tensor<1x1x16xui32>) -> tensor<1x1x16x16xui32>
 // CHECK-NOT:     tensor.bitcast
 // CHECK-NOT:     tensor.empty
-// CHECK-NEXT:    [[R0:%.+]] = VPU.GenericSwLayer([[ARG0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x1xui32>, tensor<1x1x16xui32> -> tensor<1x1x16x16xi32>
-// CHECK-NEXT:    [[R1:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xi32>, tensor<1x1x16xui32> -> tensor<1x1x16x16xi32>
-// CHECK-NEXT:    [[R2:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xi32>, tensor<1x1x16xui32> -> tensor<1x1x16x16xi32>
-// CHECK-NEXT:    [[R3:%.+]] = VPU.GenericSwLayer([[R2]], [[R1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xi32>, tensor<1x1x16x16xi32> -> tensor<1x1x16x16xui32>
+// CHECK-NEXT:    [[R0:%.+]] = VPU.GenericSwLayer([[ARG0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x1xui32>, tensor<1x1x16xui32> -> tensor<1x1x16x16xui32>
+// CHECK-NEXT:    [[R1:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xui32>, tensor<1x1x16xui32> -> tensor<1x1x16x16xui32>
+// CHECK-NEXT:    [[R2:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xui32>, tensor<1x1x16xui32> -> tensor<1x1x16x16xui32>
+// CHECK-NEXT:    [[R3:%.+]] = VPU.GenericSwLayer([[R2]], [[R1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xui32>, tensor<1x1x16x16xui32> -> tensor<1x1x16x16xui32>
 // CHECK-NEXT:    return [[R3]] : tensor<1x1x16x16xui32>
   }
 }
@@ -68,10 +69,10 @@ module @NoBitcastSI {
 // CHECK:         func.func @main([[ARG0:%.+]]: tensor<1x1x16x1xsi32>, [[ARG1:%.+]]: tensor<1x1x16xsi32>) -> tensor<1x1x16x16xsi32>
 // CHECK-NOT: tensor.bitcast
 // CHECK-NOT: tensor.empty
-// CHECK-NEXT:    [[R0:%.+]] = VPU.GenericSwLayer([[ARG0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x1xsi32>, tensor<1x1x16xsi32> -> tensor<1x1x16x16xi32>
-// CHECK-NEXT:    [[R1:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xi32>, tensor<1x1x16xsi32> -> tensor<1x1x16x16xi32>
-// CHECK-NEXT:    [[R2:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xi32>, tensor<1x1x16xsi32> -> tensor<1x1x16x16xi32>
-// CHECK-NEXT:    [[R3:%.+]] = VPU.GenericSwLayer([[R2]], [[R1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xi32>, tensor<1x1x16x16xi32> -> tensor<1x1x16x16xsi32>
+// CHECK-NEXT:    [[R0:%.+]] = VPU.GenericSwLayer([[ARG0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x1xsi32>, tensor<1x1x16xsi32> -> tensor<1x1x16x16xsi32>
+// CHECK-NEXT:    [[R1:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xsi32>, tensor<1x1x16xsi32> -> tensor<1x1x16x16xsi32>
+// CHECK-NEXT:    [[R2:%.+]] = VPU.GenericSwLayer([[R0]], [[ARG1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xsi32>, tensor<1x1x16xsi32> -> tensor<1x1x16x16xsi32>
+// CHECK-NEXT:    [[R3:%.+]] = VPU.GenericSwLayer([[R2]], [[R1]]) {callee = @VPU.SW::@generated_{{.+}}} : tensor<1x1x16x16xsi32>, tensor<1x1x16x16xsi32> -> tensor<1x1x16x16xsi32>
 // CHECK-NEXT:    return [[R3]] : tensor<1x1x16x16xsi32>
   }
 }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file --dispatched-inliner --move-declarations-to-top %s | FileCheck %s --strict-whitespace

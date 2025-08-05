@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-expand-to-conv %s | FileCheck %s
@@ -1462,6 +1462,40 @@ func.func @ConvertExpandToConvWithNon16MultipleWidth(%arg0: tensor<1x1x32x79741x
     // CHECK-SAME:          -> tensor<1x80x32x15949xf16, {order = #NHWC}>
 
     // CHECK:   return [[CONV1]] : tensor<1x80x32x15949xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ConvertExpandToConvWithInputH2CReshapeWithN2
+// CHECK-SAME: [[INPUT:%.+]]: tensor<2x7x262144x1xf16, {order = #NHWC}>
+func.func @ConvertExpandToConvWithInputH2CReshapeWithN2(%arg0: tensor<2x7x262144x1xf16, {order = #NHWC}>)
+    -> tensor<2x16x262144x1xf16, {order = #NHWC}> {
+    %EXPAND = IE.Expand(%arg0) {
+        pads_begin = [0, 0, 0, 0],
+        pads_end = [0, 9, 0, 0]
+    } : tensor<2x7x262144x1xf16, {order = #NHWC}> -> tensor<2x16x262144x1xf16, {order = #NHWC}>
+
+    return %EXPAND : tensor<2x16x262144x1xf16, {order = #NHWC}>
+
+    // CHECK-DAG: [[EXPAND_WEIGHTS:%.+]] = const.Declare tensor<256x112x1x1xf16, {order = #NHWC}>
+    // CHECK:     [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME(LITERAL):     {dim_mapping = [[0], [1], [2], [3]], shape_value = [1, 112, 32768, 1]} : tensor<2x7x262144x1xf16, {order = #NHWC}> -> tensor<1x112x32768x1xf16, {order = #NHWC}>
+
+    // CHECK:     [[CONV:%.+]] = IE.Convolution([[RESHAPE_INPUT]], [[EXPAND_WEIGHTS]]) {
+    // CHECK-SAME:      dilations = [1, 1],
+    // CHECK-SAME:      pads_begin = [0, 0],
+    // CHECK-SAME:      pads_end = [0, 0],
+    // CHECK-SAME:      strides = [1, 1]
+    // CHECK-SAME:  } : tensor<1x112x32768x1xf16, {order = #NHWC}>,
+    // CHECK-SAME:      tensor<256x112x1x1xf16, {order = #NHWC}>
+    // CHECK-SAME:          -> tensor<1x256x32768x1xf16, {order = #NHWC}>
+
+    // CHECK:   [[RESHAPE_OUTPUT:%.+]] = IE.AffineReshape([[CONV]])
+    // CHECK-SAME(LITERAL):     {dim_mapping = [[0], [1], [2], [3]], shape_value = [2, 16, 262144, 1]} : tensor<1x256x32768x1xf16, {order = #NHWC}> -> tensor<2x16x262144x1xf16, {order = #NHWC}>
+
+    // CHECK:   return [[RESHAPE_OUTPUT]] : tensor<2x16x262144x1xf16, {order = #NHWC}>
 }
 
 // -----

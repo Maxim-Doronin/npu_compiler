@@ -1,9 +1,9 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --relocate-weight-table-for-reuse --mlir-print-elementsattrs-with-hex-if-larger=-1 %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% weights-table-reuse-mode=ENABLED" --relocate-weight-table-for-reuse --mlir-print-elementsattrs-with-hex-if-larger=-1 %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>

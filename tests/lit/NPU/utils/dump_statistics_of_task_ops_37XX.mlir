@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: env IE_NPU_LOG_FILTER=dump-statistics-of-task-ops vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --compress-weights-btc --dump-statistics-of-task-ops -o /dev/null %s | FileCheck %s

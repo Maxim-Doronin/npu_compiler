@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-copy-between-swkernels-and-network-io %s | FileCheck %s
@@ -520,37 +520,33 @@ func.func private @runtime()
 }
 // CHECK-LABEL: @AddCopyForInOutWithoutTilePattern
 net.NetworkInfo entryPoint : @AddCopyForInOutWithoutTilePattern inputsInfo : {
-    DataInfo "input" : tensor<1x1x1x1000xf16>
+    DataInfo "input" : tensor<1x1x1x500xf16>
 } outputsInfo : {
     DataInfo "output" : tensor<1x1x1x500xf16>
 }
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK-LABEL: @AddCopyForInOutWithoutTilePattern
-// CHECK-SAME:     ([[INPUT:%.+]]: memref<1x1x1x1000xf16, @DDR>, [[OUTPUT:%.+]]: memref<1x1x1x1000xf16, @DDR>)
-func.func @AddCopyForInOutWithoutTilePattern(%arg0: memref<1x1x1x1000xf16, @DDR>, %arg1: memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x500xf16,{order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR> {
-    %0 = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    %1 = VPUIP.SubView %arg1 [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+// CHECK-SAME:     ([[INPUT:%.+]]: memref<1x1x1x500xf16, @DDR>, [[OUTPUT:%.+]]: memref<1x1x1x500xf16, @DDR>)
+func.func @AddCopyForInOutWithoutTilePattern(%arg0: memref<1x1x1x500xf16, @DDR>, %arg1: memref<1x1x1x500xf16, @DDR>) -> memref<1x1x1x500xf16, @DDR> {
     %sw_kernel = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
-                inputs(%0 as %in_buff_0: memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-                outputs(%1 as %out_buff_0: memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-                on tile 0 -> memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR> {
+                inputs(%arg0 as %in_buff_0: memref<1x1x1x500xf16, @DDR>)
+                outputs(%arg1 as %out_buff_0: memref<1x1x1x500xf16, @DDR>)
+                on tile 0 -> memref<1x1x1x500xf16, @DDR> {
             VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%in_buff_0, %out_buff_0)
-                : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-                , memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+                : memref<1x1x1x500xf16, @DDR>
+                , memref<1x1x1x500xf16, @DDR>
     }
-    return %sw_kernel: memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    return %sw_kernel: memref<1x1x1x500xf16, @DDR>
 
-    // CHECK:    [[NEW_OUTPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[NEW_INPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[INPUT_SUBVIEW:%.+]] = VPUIP.SubView  [[INPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[OUTPUT_SUBVIEW:%.+]] = VPUIP.SubView [[OUTPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[INPUT_COPY:%.+]] = VPUIP.Copy inputs([[INPUT_SUBVIEW]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-    // CHECK:                                     outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
+    // CHECK:    [[NEW_OUTPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x500xf16, @DDR>
+    // CHECK:    [[NEW_INPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x500xf16, @DDR>
+    // CHECK:    [[INPUT_COPY:%.+]] = VPUIP.Copy inputs([[INPUT]] : memref<1x1x1x500xf16, @DDR>)
+    // CHECK:                                     outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x500xf16, @DDR>)
     // CHECK:    [[SW_KERNEL:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
-    // CHECK-SAME:   inputs([[INPUT_COPY]] as [[SW_KERNEL_INPUT:%.+]]: memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) outputs([[NEW_OUTPUT_DDR_BUFF]] as [[SW_KERNEL_OUTPUT:%.+]]: memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
+    // CHECK-SAME:   inputs([[INPUT_COPY]] as [[SW_KERNEL_INPUT:%.+]]: memref<1x1x1x500xf16, @DDR>) outputs([[NEW_OUTPUT_DDR_BUFF]] as [[SW_KERNEL_OUTPUT:%.+]]: memref<1x1x1x500xf16, @DDR>)
     // CHECK:   [[OUTPUT_COPY:%.+]] = VPUIP.Copy
-    // CHECK:        inputs([[SW_KERNEL]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-    // CHECK-SAME:   outputs([[OUTPUT_SUBVIEW]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
+    // CHECK:        inputs([[SW_KERNEL]] : memref<1x1x1x500xf16, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT]] : memref<1x1x1x500xf16, @DDR>)
     // CHECK:   return [[OUTPUT_COPY]]
 }
 
@@ -657,7 +653,7 @@ func.func private @runtime()
 net.NetworkInfo entryPoint : @AddCopyForInOutWithViewOpInMainNoTilePattern inputsInfo : {
     DataInfo "input" : tensor<1x1x1x1000xf16>
 } outputsInfo : {
-    DataInfo "output" : tensor<1x1x1x500xf16>
+    DataInfo "output" : tensor<1x1x1x1000xf16>
 }
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
@@ -683,22 +679,34 @@ func.func private @SwKernelPrivateFuncSwKernelIn(%arg0: memref<1x1x1x500xf16, {o
 
 // CHECK-LABEL: @AddCopyForInOutWithViewOpInMainNoTilePattern
 // CHECK-SAME:     ([[INPUT:%.+]]: memref<1x1x1x1000xf16, @DDR>, [[OUTPUT:%.+]]: memref<1x1x1x1000xf16, @DDR>)
-func.func @AddCopyForInOutWithViewOpInMainNoTilePattern(%arg0: memref<1x1x1x1000xf16, @DDR>, %arg1: memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x500xf16,{order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR> {
+func.func @AddCopyForInOutWithViewOpInMainNoTilePattern(%arg0: memref<1x1x1x1000xf16, @DDR>, %arg1: memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x1000xf16, @DDR> {
     %0 = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
     %1 = VPUIP.SubView %arg1 [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    %call_op = call @SwKernelPrivateFuncSwKernelIn(%0, %1) : (memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) -> memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    return %call_op : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[NEW_OUTPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[NEW_INPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[INPUT_SUBVIEW:%.+]] = VPUIP.SubView  [[INPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[OUTPUT_SUBVIEW:%.+]] = VPUIP.SubView [[OUTPUT]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:    [[INPUT_COPY:%.+]] = VPUIP.Copy inputs([[INPUT_SUBVIEW]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-    // CHECK:                                    outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-    // CHECK:    [[CALL_OP:%.+]] = call @SwKernelPrivateFuncSwKernelIn([[INPUT_COPY]], [[NEW_OUTPUT_DDR_BUFF]])
+    %call_op_0 = call @SwKernelPrivateFuncSwKernelIn(%0, %1) : (memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) -> memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+
+    %2 = VPUIP.SubView %arg0 [0, 0, 0, 500] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    %3 = VPUIP.SubView %arg1 [0, 0, 0, 500] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    %call_op_1 = call @SwKernelPrivateFuncSwKernelIn(%2, %3) : (memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) -> memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+
+    %4 = VPUIP.ConcatView inputs(%call_op_0, %call_op_1 : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) outputs(%arg1 : memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x1000xf16, @DDR>
+    return %4 : memref<1x1x1x1000xf16, @DDR>
+    // CHECK:    [[NEW_OUTPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1000xf16, @DDR>
+    // CHECK:    [[NEW_INPUT_DDR_BUFF:%.+]] = memref.alloc() : memref<1x1x1x1000xf16, @DDR>
+    // CHECK:    [[INPUT_COPY:%.+]] = VPUIP.Copy inputs([[INPUT]] : memref<1x1x1x1000xf16, @DDR>)
+    // CHECK:                                    outputs([[NEW_INPUT_DDR_BUFF]] : memref<1x1x1x1000xf16, @DDR>)
+    // CHECK:    [[INPUT_SUBVIEW0:%.+]] = VPUIP.SubView [[INPUT_COPY]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    // CHECK:    [[OUTPUT_SUBVIEW0:%.+]] = VPUIP.SubView [[NEW_OUTPUT_DDR_BUFF]] [0, 0, 0, 0] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    // CHECK:    [[CALL_OP0:%.+]] = call @SwKernelPrivateFuncSwKernelIn([[INPUT_SUBVIEW0]], [[OUTPUT_SUBVIEW0]])
     // CHECK-SAME:    (memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) -> memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
-    // CHECK:   [[OUTPUT_COPY:%.+]] = VPUIP.Copy
-    // CHECK:        inputs([[CALL_OP]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
-    // CHECK-SAME:   outputs([[OUTPUT_SUBVIEW]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
+    // CHECK:    [[INPUT_SUBVIEW1:%.+]] = VPUIP.SubView [[INPUT_COPY]] [0, 0, 0, 500] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    // CHECK:    [[OUTPUT_SUBVIEW1:%.+]] = VPUIP.SubView [[NEW_OUTPUT_DDR_BUFF]] [0, 0, 0, 500] [1, 1, 1, 500] : memref<1x1x1x1000xf16, @DDR> to memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    // CHECK:    [[CALL_OP1:%.+]] = call @SwKernelPrivateFuncSwKernelIn([[INPUT_SUBVIEW1]], [[OUTPUT_SUBVIEW1]])
+    // CHECK-SAME:    (memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>) -> memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>
+    // CHECK:    [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[CALL_OP0]], [[CALL_OP1]] : memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>, memref<1x1x1x500xf16, {order = #NCHW, strides = [1000, 1000, 1000, 1]}, @DDR>)
+    // CHECK-SAME:         outputs([[NEW_OUTPUT_DDR_BUFF]] : memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x1000xf16, @DDR>
+    // CHECK:    [[OUTPUT_COPY:%.+]] = VPUIP.Copy
+    // CHECK:        inputs([[CONCAT]] : memref<1x1x1x1000xf16, @DDR>)
+    // CHECK-SAME:   outputs([[OUTPUT]] : memref<1x1x1x1000xf16, @DDR>)
     // CHECK:   return [[OUTPUT_COPY]]
 }
 

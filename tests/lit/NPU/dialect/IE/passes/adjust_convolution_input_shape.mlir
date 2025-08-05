@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-convolution-input-shape %s | FileCheck %s
@@ -391,6 +391,139 @@ func.func @ReshapeInputFor1x1GroupConvHeight1(%arg0: tensor<1x320x1x4096xf16>) -
     // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
     // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 320, 1, 4096]} : tensor<1x320x4x1024xf16> -> tensor<1x320x1x4096xf16>
     // CHECK:       return [[RESHAPE1]] : tensor<1x320x1x4096xf16>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ReshapeInputForAddOpWithConstInputWidthEQOne
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x108864x2x1xf16, {order = #NHWC}>
+func.func @ReshapeInputForAddOpWithConstInputWidthEQOne(%arg0: tensor<1x108864x2x1xf16, {order = #NHWC}>) -> tensor<1x108864x2x1xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<1x108864x2x1xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x1x2x1xf32>, [#const.Reshape<[1, 1, 2, 1]>, #const.CastElemType<f16>, #const.Broadcast<1 : i64, 108864 : i64>, #const.Reorder<#NHWC>]
+    %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x108864x2x1xf16, {order = #NHWC}>, tensor<1x108864x2x1xf16, {order = #NHWC}> -> tensor<1x108864x2x1xf16, {order = #NHWC}>
+    return %0 : tensor<1x108864x2x1xf16, {order = #NHWC}>
+
+    // CHECK-DAG:  [[CST:%.+]] = const.Declare tensor<1x3888x14x4xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x1x2x1xf32>, [#const.Reshape<[1, 1, 2, 1]>, #const.CastElemType<f16>, #const.Broadcast<1 : i64, 108864 : i64>, #const.Reorder<#NHWC>, #const.Reshape<[1, 3888, 14, 4]>]
+    // CHECK:      [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 3888, 14, 4]}
+    // CHECK:          inputs([[INPUT]] : tensor<1x108864x2x1xf16, {order = #NHWC}>) -> tensor<1x3888x14x4xf16, {order = #NHWC}>
+    // CHECK:      [[ADD:%.+]] = IE.Add([[SHAPECAST_IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:          tensor<1x3888x14x4xf16, {order = #NHWC}>, tensor<1x3888x14x4xf16, {order = #NHWC}> -> tensor<1x3888x14x4xf16, {order = #NHWC}>
+    // CHECK:      [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 108864, 2, 1]}
+    // CHECK:          inputs([[ADD]] : tensor<1x3888x14x4xf16, {order = #NHWC}>) -> tensor<1x108864x2x1xf16, {order = #NHWC}>
+    // CHECK:      return [[SHAPECAST_OUT]] : tensor<1x108864x2x1xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ReshapeInputForAddOpWithConstInputWidthEQOneAndSmallChannel
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x256x2x1xf16, {order = #NHWC}>
+func.func @ReshapeInputForAddOpWithConstInputWidthEQOneAndSmallChannel(%arg0: tensor<1x256x2x1xf16, {order = #NHWC}>) -> tensor<1x256x2x1xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<1x256x2x1xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x1x2x1xf32>, [#const.Reshape<[1, 1, 2, 1]>, #const.CastElemType<f16>, #const.Broadcast<1 : i64, 256 : i64>, #const.Reorder<#NHWC>]
+    %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x1xf16, {order = #NHWC}>, tensor<1x256x2x1xf16, {order = #NHWC}> -> tensor<1x256x2x1xf16, {order = #NHWC}>
+    return %0 : tensor<1x256x2x1xf16, {order = #NHWC}>
+
+    // CHECK-DAG:  [[CST:%.+]] = const.Declare tensor<1x64x2x4xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x1x2x1xf32>, [#const.Reshape<[1, 1, 2, 1]>, #const.CastElemType<f16>, #const.Broadcast<1 : i64, 256 : i64>, #const.Reorder<#NHWC>, #const.Reshape<[1, 64, 2, 4]>]
+    // CHECK:      [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 64, 2, 4]}
+    // CHECK:          inputs([[INPUT]] : tensor<1x256x2x1xf16, {order = #NHWC}>) -> tensor<1x64x2x4xf16, {order = #NHWC}>
+    // CHECK:      [[ADD:%.+]] = IE.Add([[SHAPECAST_IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:          tensor<1x64x2x4xf16, {order = #NHWC}>, tensor<1x64x2x4xf16, {order = #NHWC}> -> tensor<1x64x2x4xf16, {order = #NHWC}>
+    // CHECK:      [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 256, 2, 1]}
+    // CHECK:          inputs([[ADD]] : tensor<1x64x2x4xf16, {order = #NHWC}>) -> tensor<1x256x2x1xf16, {order = #NHWC}>
+    // CHECK:      return [[SHAPECAST_OUT]] : tensor<1x256x2x1xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ReshapeInputForAddOpWithConstInputHWNotEQOne
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x12096x9x2xf16, {order = #NHWC}>
+func.func @ReshapeInputForAddOpWithConstInputHWNotEQOne(%arg0: tensor<1x12096x9x2xf16, {order = #NHWC}>) -> tensor<1x12096x9x2xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<1x12096x9x2xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1344x9x9x2xf32>, [#const.Reshape<[1, 12096, 9, 2]>, #const.CastElemType<f16>, #const.LayoutCast<#NHWC>]
+    %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x12096x9x2xf16, {order = #NHWC}>, tensor<1x12096x9x2xf16, {order = #NHWC}> -> tensor<1x12096x9x2xf16, {order = #NHWC}>
+    return %0 : tensor<1x12096x9x2xf16, {order = #NHWC}>
+
+    // CHECK-DAG:  [[CST:%.+]] = const.Declare tensor<1x6048x9x4xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1344x9x9x2xf32>, [#const.Reshape<[1, 12096, 9, 2]>, #const.CastElemType<f16>, #const.LayoutCast<#NHWC>, #const.Reshape<[1, 6048, 9, 4]>]
+    // CHECK:      [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 6048, 9, 4]}
+    // CHECK:          inputs([[INPUT]] : tensor<1x12096x9x2xf16, {order = #NHWC}>) -> tensor<1x6048x9x4xf16, {order = #NHWC}>
+    // CHECK:      [[ADD:%.+]] = IE.Add([[SHAPECAST_IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:          tensor<1x6048x9x4xf16, {order = #NHWC}>, tensor<1x6048x9x4xf16, {order = #NHWC}> -> tensor<1x6048x9x4xf16, {order = #NHWC}>
+    // CHECK:      [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 12096, 9, 2]}
+    // CHECK:          inputs([[ADD]] : tensor<1x6048x9x4xf16, {order = #NHWC}>) -> tensor<1x12096x9x2xf16, {order = #NHWC}>
+    // CHECK:      return [[SHAPECAST_OUT]] : tensor<1x12096x9x2xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotReshapeInputForAddOpWithConstInputHeightGreaterFour
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x256x7x1xf16, {order = #NHWC}>
+func.func @NotReshapeInputForAddOpWithConstInputHeightGreaterFour(%arg0: tensor<1x256x7x1xf16, {order = #NHWC}>) -> tensor<1x256x7x1xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<1x256x7x1xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x1x7x1xf32>, [#const.Reshape<[1, 1, 7, 1]>, #const.CastElemType<f16>, #const.Broadcast<1 : i64, 256 : i64>, #const.Reorder<#NHWC>]
+    %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x7x1xf16, {order = #NHWC}>, tensor<1x256x7x1xf16, {order = #NHWC}> -> tensor<1x256x7x1xf16, {order = #NHWC}>
+    return %0 : tensor<1x256x7x1xf16, {order = #NHWC}>
+
+    // CHECK-DAG:  [[CST:%.+]] = const.Declare tensor<1x256x7x1xf16, {order = #NHWC}>
+    // CHECK:      [[ADD:%.+]] = IE.Add([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:          tensor<1x256x7x1xf16, {order = #NHWC}>, tensor<1x256x7x1xf16, {order = #NHWC}> -> tensor<1x256x7x1xf16, {order = #NHWC}>
+    // CHECK:      return [[ADD]] : tensor<1x256x7x1xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotReshapeInputForAddOpWithConstInputHWNotEQOneAndSmallChannel
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x256x2x3xf16, {order = #NHWC}>
+func.func @NotReshapeInputForAddOpWithConstInputHWNotEQOneAndSmallChannel(%arg0: tensor<1x256x2x3xf16, {order = #NHWC}>) -> tensor<1x256x2x3xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<1x256x2x3xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x1x2x3x1xf32>, [#const.Reshape<[1, 1, 2, 3]>, #const.CastElemType<f16>, #const.Broadcast<1 : i64, 256 : i64>, #const.Reorder<#NHWC>]
+    %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x3xf16, {order = #NHWC}>, tensor<1x256x2x3xf16, {order = #NHWC}> -> tensor<1x256x2x3xf16, {order = #NHWC}>
+    return %0 : tensor<1x256x2x3xf16, {order = #NHWC}>
+
+    // CHECK-DAG:  [[CST:%.+]] = const.Declare tensor<1x256x2x3xf16, {order = #NHWC}>
+    // CHECK:      [[ADD:%.+]] = IE.Add([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:          tensor<1x256x2x3xf16, {order = #NHWC}>, tensor<1x256x2x3xf16, {order = #NHWC}> -> tensor<1x256x2x3xf16, {order = #NHWC}>
+    // CHECK:      return [[ADD]]  : tensor<1x256x2x3xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotReshapeInputForAddOpWithConstInputDueToSmallChannel
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x32x9x2xf16, {order = #NHWC}>
+func.func @NotReshapeInputForAddOpWithConstInputDueToSmallChannel(%arg0: tensor<1x32x9x2xf16, {order = #NHWC}>) -> tensor<1x32x9x2xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<1x32x9x2xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<32x1x9x2xf32>, [#const.Reshape<[1, 32, 9, 2]>, #const.CastElemType<f16>, #const.LayoutCast<#NHWC>]
+    %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x9x2xf16, {order = #NHWC}>, tensor<1x32x9x2xf16, {order = #NHWC}> -> tensor<1x32x9x2xf16, {order = #NHWC}>
+    return %0 : tensor<1x32x9x2xf16, {order = #NHWC}>
+
+    // CHECK-DAG:  [[CST:%.+]] = const.Declare tensor<1x32x9x2xf16, {order = #NHWC}>
+    // CHECK:      [[ADD:%.+]] = IE.Add([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:          tensor<1x32x9x2xf16, {order = #NHWC}>, tensor<1x32x9x2xf16, {order = #NHWC}> -> tensor<1x32x9x2xf16, {order = #NHWC}>
+    // CHECK:      return [[ADD]] : tensor<1x32x9x2xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotReshapeInputForAddOpWithConstInputDueToBigChannelAndHW
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x108864x1024x1048xf16, {order = #NHWC}>
+func.func @NotReshapeInputForAddOpWithConstInputDueToBigChannelAndHW(%arg0: tensor<1x108864x1024x1048xf16, {order = #NHWC}>)
+          -> tensor<1x108864x1024x1048xf16, {order = #NHWC}> {
+    %cst = const.Declare tensor<1x108864x1024x1048xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x108864x1024x1048xf16>, [#const.LayoutCast<#NHWC>]
+    %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x108864x1024x1048xf16, {order = #NHWC}>, tensor<1x108864x1024x1048xf16, {order = #NHWC}> -> tensor<1x108864x1024x1048xf16, {order = #NHWC}>
+    return %0 : tensor<1x108864x1024x1048xf16, {order = #NHWC}>
+
+    // CHECK-DAG:  [[CST:%.+]] = const.Declare tensor<1x108864x1024x1048xf16, {order = #NHWC}>
+    // CHECK:      [[ADD:%.+]] = IE.Add([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:          tensor<1x108864x1024x1048xf16, {order = #NHWC}>, tensor<1x108864x1024x1048xf16, {order = #NHWC}>
+    // CHECK:          -> tensor<1x108864x1024x1048xf16, {order = #NHWC}>
+    // CHECK:      return [[ADD]] : tensor<1x108864x1024x1048xf16, {order = #NHWC}>
 }
 
 // -----

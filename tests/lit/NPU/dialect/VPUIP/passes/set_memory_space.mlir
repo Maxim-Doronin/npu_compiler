@@ -1,55 +1,105 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --set-memory-space="memory-space=DDR" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
+module @VPU.SW {
+    func.func private @builtin_softmax(%input : memref<*xf16>, %output : memref<*xf16>, %axis : i64) attributes {
+        VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax"
+    }
+}
+
 // CHECK: func.func @MultipleAllocs([[ARG0:%.+]]: memref<1x1000xf16, @DDR>, [[ARG1:%.+]]: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
 func.func @MultipleAllocs(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) -> memref<1x1000xf16> {
     %0 = memref.alloc() : memref<1x1000xf16>
-    %1 = IERT.SoftMax {axisInd = 1} inputs(%arg0 : memref<1x1000xf16>) outputs(%0 : memref<1x1000xf16>) -> memref<1x1000xf16>
+    %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
+        inputs(%arg0 as %input: memref<1x1000xf16>)
+        outputs(%0 as %output: memref<1x1000xf16>) on tile 0 -> memref<1x1000xf16> {
+        VPUIP.SW.Kernel.run {attrs = [1]} (%input, %output) : memref<1x1000xf16>, memref<1x1000xf16>
+    }
     %2 = memref.alloc() : memref<1x1000xf16>
-    %3 = IERT.SoftMax {axisInd = 1} inputs(%1 : memref<1x1000xf16>) outputs(%2 : memref<1x1000xf16>) -> memref<1x1000xf16>
-    %4 = IERT.SoftMax {axisInd = 1} inputs(%3 : memref<1x1000xf16>) outputs(%arg1 : memref<1x1000xf16>) -> memref<1x1000xf16>
+    %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
+        inputs(%1 as %input: memref<1x1000xf16>)
+        outputs(%2 as %output: memref<1x1000xf16>) on tile 0 -> memref<1x1000xf16> {
+        VPUIP.SW.Kernel.run {attrs = [1]} (%input, %output) : memref<1x1000xf16>, memref<1x1000xf16>
+    }
+    %4 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
+        inputs(%3 as %input: memref<1x1000xf16>)
+        outputs(%arg1 as %output: memref<1x1000xf16>) on tile 0 -> memref<1x1000xf16> {
+        VPUIP.SW.Kernel.run {attrs = [1]} (%input, %output) : memref<1x1000xf16>, memref<1x1000xf16>
+    }
     return %4 : memref<1x1000xf16>
 
-    // CHECK: [[VAR0:%.+]] = memref.alloc() : memref<1x1000xf16, @DDR>
-    // CHECK: [[VAR1:%.+]] = IERT.SoftMax {axisInd = 1 : i64} inputs(%arg0 : memref<1x1000xf16, @DDR>) outputs([[VAR0]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
-    // CHECK: [[VAR2:%.+]] = memref.alloc() : memref<1x1000xf16, @DDR>
-    // CHECK: [[VAR3:%.+]] = IERT.SoftMax {axisInd = 1 : i64} inputs([[VAR1]] : memref<1x1000xf16, @DDR>) outputs([[VAR2]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
-    // CHECK: [[VAR4:%.+]] = IERT.SoftMax {axisInd = 1 : i64} inputs([[VAR3]] : memref<1x1000xf16, @DDR>) outputs(%arg1 : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
-    // CHECK: return [[VAR4]] : memref<1x1000xf16, @DDR>
+    // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x1000xf16, @DDR>
+    // CHECK:       [[VAR1:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:      @builtin_softmax
+    // CHECK-SAME:      inputs([[ARG0]] as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK-SAME:      outputs([[VAR0]] as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK:       [[VAR2:%.+]] = memref.alloc() : memref<1x1000xf16, @DDR>
+    // CHECK:       [[VAR3:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:      @builtin_softmax
+    // CHECK-SAME:      inputs([[VAR1]] as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK-SAME:      outputs([[VAR2]] as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK:       [[VAR4:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:      @builtin_softmax
+    // CHECK-SAME:      inputs([[VAR3]] as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK-SAME:      outputs(%arg1 as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK:       return [[VAR4]] : memref<1x1000xf16, @DDR>
 }
 
 // -----
+
+module @VPU.SW {
+    func.func private @builtin_softmax(%input : memref<*xf16>, %output : memref<*xf16>, %axis : i64) attributes {
+        VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax"
+    }
+}
 
 // CHECK: func.func @ReshapeInGraph([[ARG0:%.+]]: memref<1x512x1x1xf32, @DDR>, [[ARG1:%.+]]: memref<1x512x1x1xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
 func.func @ReshapeInGraph(%arg0: memref<1x512x1x1xf32>, %arg1: memref<1x512x1x1xf32>) -> memref<1x512x1x1xf32> {
     %0 = VPUIP.GenericReshape inputs(%arg0 : memref<1x512x1x1xf32>) -> memref<1x512xf32>
     %1 = memref.alloc() : memref<1x512xf32>
-    %2 = IERT.SoftMax {axisInd = 1} inputs(%0 : memref<1x512xf32>) outputs(%1 : memref<1x512xf32>) -> memref<1x512xf32>
+    %2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
+        inputs(%0 as %input: memref<1x512xf32>)
+        outputs(%1 as %output: memref<1x512xf32>) on tile 0 -> memref<1x512xf32> {
+        VPUIP.SW.Kernel.run {attrs = [1]} (%input, %output) : memref<1x512xf32>, memref<1x512xf32>
+    }
     %3 = VPUIP.GenericReshape inputs(%2 : memref<1x512xf32>) -> memref<1x512x1x1xf32>
     %4 = VPUIP.Copy inputs(%3 : memref<1x512x1x1xf32>) outputs(%arg1 : memref<1x512x1x1xf32>) -> memref<1x512x1x1xf32>
     return %4 : memref<1x512x1x1xf32>
 
-    // CHECK: [[VAR0:%.+]] =  VPUIP.GenericReshape inputs(%arg0 : memref<1x512x1x1xf32, @DDR>) -> memref<1x512xf32, @DDR>
-    // CHECK: [[VAR1:%.+]] =  memref.alloc() : memref<1x512xf32, @DDR>
-    // CHECK: [[VAR2:%.+]] =  IERT.SoftMax {axisInd = 1 : i64} inputs([[VAR0]] : memref<1x512xf32, @DDR>) outputs([[VAR1]] : memref<1x512xf32, @DDR>) -> memref<1x512xf32, @DDR>
-    // CHECK: [[VAR3:%.+]] =  VPUIP.GenericReshape inputs([[VAR2]] : memref<1x512xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
-    // CHECK: [[VAR4:%.+]] =  VPUIP.Copy inputs([[VAR3]] : memref<1x512x1x1xf32, @DDR>) outputs(%arg1 : memref<1x512x1x1xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
-    // CHECK: return [[VAR4]] : memref<1x512x1x1xf32, @DDR>
+    // CHECK:       [[VAR0:%.+]] =  VPUIP.GenericReshape inputs(%arg0 : memref<1x512x1x1xf32, @DDR>) -> memref<1x512xf32, @DDR>
+    // CHECK:       [[VAR1:%.+]] =  memref.alloc() : memref<1x512xf32, @DDR>
+    // CHECK:       [[VAR2:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:      @builtin_softmax
+    // CHECK-SAME:      inputs([[VAR0]] as {{[^:]+}}: memref<1x512xf32>)
+    // CHECK-SAME:      outputs([[VAR1]] as {{[^:]+}}: memref<1x512xf32>)
+    // CHECK:       [[VAR3:%.+]] =  VPUIP.GenericReshape inputs([[VAR2]] : memref<1x512xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
+    // CHECK:       [[VAR4:%.+]] =  VPUIP.Copy inputs([[VAR3]] : memref<1x512x1x1xf32, @DDR>) outputs(%arg1 : memref<1x512x1x1xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
+    // CHECK:       return [[VAR4]] : memref<1x512x1x1xf32, @DDR>
 }
 
 // -----
+
+module @VPU.SW {
+    func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {
+        VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE
+    }
+}
 
 // CHECK: func.func @Async([[ARG0:%.+]]: memref<1x1000xf16, @DDR>, [[ARG1:%.+]]: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
 func.func @Async(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) -> memref<1x1000xf16> {
     %0 = memref.alloc() : memref<1x1000xf16>
 
     %t1, %f1 = async.execute -> !async.value<memref<1x1000xf16>> {
-        %1 = IERT.ReLU inputs(%arg0 : memref<1x1000xf16>) outputs(%0 : memref<1x1000xf16>) -> memref<1x1000xf16>
+        %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+            inputs(%arg0 as %input: memref<1x1000xf16>)
+            outputs(%0 as %output: memref<1x1000xf16>) on tile 0 -> memref<1x1000xf16> {
+            VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x1000xf16>, memref<1x1000xf16>
+        }
         async.yield %1 : memref<1x1000xf16>
     }
 
@@ -64,10 +114,10 @@ func.func @Async(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) -> memref
     // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x1000xf16, @DDR>
 
     // CHECK:       [[T1:%.+]], [[F1:%.+]] = async.execute -> !async.value<memref<1x1000xf16, @DDR>>
-    // CHECK:           [[VAR1:%.+]] = IERT.ReLU
-    // CHECK-SAME:          inputs(%arg0 : memref<1x1000xf16, @DDR>)
-    // CHECK-SAME:          outputs([[VAR0]] : memref<1x1000xf16, @DDR>)
-    // CHECK-SAME:          -> memref<1x1000xf16, @DDR>
+    // CHECK:           [[VAR1:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:          @builtin_relu
+    // CHECK-SAME:          inputs([[ARG0]] as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK-SAME:          outputs([[VAR0]] as {{[^:]+}}: memref<1x1000xf16>)
     // CHECK:           async.yield [[VAR1]] : memref<1x1000xf16, @DDR>
 
     // CHECK:       [[T2:%.+]], [[F2:%.+]] = async.execute

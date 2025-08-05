@@ -1,23 +1,15 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "common/utils.hpp"
 
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/dialect.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
 
-#include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
-
-#include <gtest/gtest.h>
-#include <mlir/IR/BuiltinTypeInterfaces.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/Support/LLVM.h>
-#include <exception>
 
 using namespace vpux;
 
@@ -74,7 +66,7 @@ TEST_F(MLIR_BoundedTensorTypeTest, NoBounds) {
 TEST_F(MLIR_BoundedTensorTypeTest, ThrowWithStaticShape) {
     auto type = getStaticTensorType();
 
-    const auto bounds = SmallVector<int64_t>{1, 2, 10, 20};
+    const auto bounds = Bounds{1, 2, 10, 20};
     EXPECT_THROW(Core::BoundedTensorType::get(type, bounds), std::exception);
 }
 
@@ -83,7 +75,7 @@ TEST_F(MLIR_BoundedTensorTypeTest, Get) {
     auto ndType = mlir::cast<NDTypeInterface>(type);
     auto dynShapeType = ndType.changeShape(Shape(ndType.getShape().size(), mlir::ShapedType::kDynamic));
 
-    const auto bounds = SmallVector<int64_t>{1, 2, 10, 20};
+    const auto bounds = Bounds{1, 2, 10, 20};
     const auto boundedType = Core::BoundedTensorType::get(dynShapeType, bounds);
     ASSERT_TRUE(boundedType != nullptr);
     ASSERT_TRUE(llvm::equal(boundedType.getBounds(), bounds));
@@ -108,6 +100,58 @@ TEST_F(MLIR_BoundedTensorTypeTest, ChangeBounds) {
     const auto newBounds = mlir::SmallVector<int64_t>{1, 2, 20, 20};
     ASSERT_TRUE(bounds != newBounds);
 
-    const auto newType = boundedType.changeBounds(newBounds);
+    const auto newType = boundedType.changeBounds(Bounds(newBounds));
     ASSERT_TRUE(llvm::equal(newType.getBounds(), newBounds));
+}
+
+TEST_F(MLIR_BoundedTensorTypeTest, CallOnStaticShape) {
+    const auto type = getStaticTensorType();
+    const int64_t argument = 4;
+    const int64_t capture = 4;
+
+    const auto size = callOnShapeOf(
+            type,
+            [capture](const auto& shape, int64_t argument) {
+                EXPECT_TRUE((std::is_same_v<std::decay_t<decltype(shape)>, ShapeRef>));
+
+                auto shapeCopy = copyShape(shape);
+                EXPECT_TRUE((std::is_same_v<std::decay_t<decltype(shapeCopy)>, Shape>));
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 2, 10, 20]");
+
+                shapeCopy[Dims4D::Act::H] += shapeCopy[Dims4D::Act::W] * argument + capture;
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 2, 94, 20]");
+
+                std::swap(shapeCopy[Dims4D::Act::H], shapeCopy[Dims4D::Act::C]);
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 94, 2, 20]");
+
+                return shapeCopy.totalSize();
+            },
+            argument);
+    EXPECT_EQ(size, 1 * 94 * 2 * 20);
+}
+
+TEST_F(MLIR_BoundedTensorTypeTest, CallOnShape) {
+    const auto [type, _] = getTensorWithBoundsType();
+    const int64_t argument = 4;
+    const int64_t capture = 4;
+
+    const auto size = callOnShapeOf(
+            type,
+            [capture](const auto& shape, int64_t argument) {
+                EXPECT_TRUE((std::is_same_v<std::decay_t<decltype(shape)>, BoundedShape>));
+
+                auto shapeCopy = copyShape(shape);
+                EXPECT_TRUE((std::is_same_v<std::decay_t<decltype(shapeCopy)>, BoundedShape>));
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 2, 1..10, 20]");
+
+                shapeCopy[Dims4D::Act::H] += shapeCopy[Dims4D::Act::W] * argument + capture;
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 2, 1..94, 20]");
+
+                std::swap(shapeCopy[Dims4D::Act::H], shapeCopy[Dims4D::Act::C]);
+                EXPECT_EQ(llvm::formatv("{0}", shapeCopy).str(), "[1, 1..94, 2, 20]");
+
+                return shapeCopy.totalSize();
+            },
+            argument);
+    EXPECT_EQ(size, 1 * 94 * 2 * 20);
 }

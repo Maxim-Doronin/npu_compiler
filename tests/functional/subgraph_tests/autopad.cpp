@@ -7,6 +7,7 @@
 #include <openvino/op/add.hpp>
 #include <openvino/op/avg_pool.hpp>
 #include <openvino/op/convolution.hpp>
+#include <openvino/op/group_conv.hpp>
 #include <openvino/op/max_pool.hpp>
 #include <openvino/op/reduce_mean.hpp>
 #include <openvino/op/reduce_sum.hpp>
@@ -20,7 +21,7 @@ namespace ov::test {
 
 enum class OpType {
     CONV = 0,
-    ADD = 1,
+    GROUP_CONV = 1,
     MAXPOOL = 2,
     AVGPOOL = 3,
     REDUCE_MEAN = 4,
@@ -34,8 +35,8 @@ static std::ostream& operator<<(std::ostream& os, const OpType opType) {
         os << "CONV";
         break;
     }
-    case OpType::ADD: {
-        os << "ADD";
+    case OpType::GROUP_CONV: {
+        os << "GROUP_CONV";
         break;
     }
     case OpType::MAXPOOL: {
@@ -75,17 +76,16 @@ struct Params {
 
 class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterface<Params> {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-auto-padding-odu=true";
-        // configuration[ov::intel_npu::compilation_mode_params.name()] =
-        //         "enable-auto-padding-odu=true enable-is-reduce-supported=true";
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-auto-padding-odu=true enable-is-reduce-supported=true";
     }
 
     void SetUp() override {
         const auto createOp = [&](const Output<Node>& input, OpType opType, bool quantized) -> Output<Node> {
             if (opType == OpType::CONV) {
                 return buildConv(input, quantized);
-            } else if (opType == OpType::ADD) {
-                return buildAdd(input);
+            } else if (opType == OpType::GROUP_CONV) {
+                return buildGroupConv(input, quantized);
             } else if (opType == OpType::MAXPOOL) {
                 return buildMaxPool(input);
             } else if (opType == OpType::AVGPOOL) {
@@ -134,7 +134,8 @@ class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterfa
     }
 
     ov::Output<ov::Node> buildConv(const ov::Output<ov::Node>& input, bool quantized) const {
-        const auto weightsShape = ov::Shape{3, 3, 1, 1};
+        const auto inputChannels = input.get_shape().at(1);
+        const auto weightsShape = ov::Shape{3, inputChannels, 1, 1};
         const auto weightsSize = shape_size(weightsShape);
         auto weights =
                 ov::op::v0::Constant::create(ov::element::f16, weightsShape, std::vector<float>(weightsSize, 0.5f))
@@ -152,8 +153,24 @@ class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterfa
                 ->get_default_output();
     }
 
-    ov::Output<ov::Node> buildAdd(const ov::Output<ov::Node>& input) const {
-        return std::make_shared<ov::op::v1::Add>(input, input)->get_default_output();
+    ov::Output<ov::Node> buildGroupConv(const ov::Output<ov::Node>& input, bool quantized) const {
+        const auto inputChannels = input.get_shape().at(1);
+        const auto weightsShape = ov::Shape{/*groups=*/inputChannels, 1, 1, 1, 1};
+        const auto weightsSize = shape_size(weightsShape);
+        auto weights =
+                ov::op::v0::Constant::create(ov::element::f16, weightsShape, std::vector<float>(weightsSize, 0.5f))
+                        ->get_default_output();
+        if (quantized) {
+            weights = utils::makeFakeQuantize(weights, ov::element::f16, 256,
+                                              FakeQuantizeParams({-1.0f}, {1.0f}, {-1.0f}, {1.0f}))
+                              ->get_default_output();
+        }
+
+        return std::make_shared<ov::op::v1::GroupConvolution>(input, weights, /*strides=*/ov::Strides({1, 1}),
+                                                              /*pads_begin=*/ov::CoordinateDiff({0, 0}),
+                                                              /*pads_end=*/ov::CoordinateDiff({0, 0}),
+                                                              /*dilations=*/ov::Strides({1, 1}))
+                ->get_default_output();
     }
 
     ov::Output<ov::Node> buildMaxPool(const ov::Output<ov::Node>& input) const {
@@ -196,11 +213,16 @@ public:
     };
 };
 
-INSTANTIATE_TEST_SUITE_P(ODU, AutoPaddingTest,
-                         testing::ValuesIn({
-                                 Params{ov::Shape{1, 3, 16, 16}, OpType::CONV, OpType::SOFTMAX, /*quantized=*/false},
-                                 Params{ov::Shape{1, 3, 16, 16}, OpType::CONV, OpType::SOFTMAX, /*quantized=*/true},
-                         }),
-                         AutoPaddingTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(
+        ODU, AutoPaddingTest,
+        testing::ValuesIn({
+                Params{ov::Shape{1, 3, 16, 16}, OpType::CONV, OpType::SOFTMAX, /*quantized=*/false},
+                Params{ov::Shape{1, 3, 16, 16}, OpType::CONV, OpType::SOFTMAX, /*quantized=*/true},
+                Params{ov::Shape{1, 3, 16, 16}, OpType::GROUP_CONV, OpType::SOFTMAX, /*quantized=*/false},
+                Params{ov::Shape{1, 3, 16, 16}, OpType::MAXPOOL, OpType::SOFTMAX, /*quantized=*/false},
+                Params{ov::Shape{1, 3, 16, 16}, OpType::AVGPOOL, OpType::SOFTMAX, /*quantized=*/false},
+                Params{ov::Shape{1, 3, 16, 16}, OpType::REDUCE_SUM, OpType::SOFTMAX, /*quantized=*/false},
+        }),
+        AutoPaddingTest::getTestCaseName);
 
 }  // namespace ov::test

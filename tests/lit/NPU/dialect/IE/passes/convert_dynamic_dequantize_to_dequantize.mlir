@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-dynamic-dequantize-to-dequantize %s | FileCheck %s
@@ -26,6 +26,68 @@ func.func @ConvertForDirectConnect(%arg0: tensor<4096x4096x!qElemType>, %arg1: t
     // CHECK:  return [[MULTIPLY]] : tensor<1x4096xf16>
 }
 
+// -----
+
+!qElemType = !quant.uniform<i2:f16, 1.000000e+00>
+
+// CHECK-LABEL: @ConvertForDirectConnectI2
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<4096x4096x!qElemType>,
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<4096x1xf16>,
+// CHECK-SAME:      [[INPUT_2:%.+]]: tensor<1x4096xf16>
+func.func @ConvertForDirectConnectI2(%arg0: tensor<4096x4096x!qElemType>, %arg1: tensor<4096x1xf16>, %arg2: tensor<1x4096xf16>) -> tensor<1x4096xf16> {
+    %0 = IE.DynamicDequantize(%arg0, %arg1) {dstElemType = f16} : tensor<4096x4096x!qElemType>, tensor<4096x1xf16> -> tensor<4096x4096xf16>
+    %1 = IE.FullyConnected(%arg2, %0) : tensor<1x4096xf16>, tensor<4096x4096xf16> -> tensor<1x4096xf16>
+
+    return %1 : tensor<1x4096xf16>
+
+    // CHECK:  [[SCALE_RESHAPE:%.+]] = IE.Reshape([[INPUT_1]]) {shape_value = [1, 4096]} : tensor<4096x1xf16> -> tensor<1x4096xf16>
+    // CHECK:  [[DEQUANT:%.+]] = IE.Dequantize([[INPUT_0]]) {dstElemType = f16} : tensor<4096x4096x!qElemType> -> tensor<4096x4096xf16>
+    // CHECK:  [[FC:%.+]] = IE.FullyConnected([[INPUT_2]], [[DEQUANT]]) : tensor<1x4096xf16>, tensor<4096x4096xf16> -> tensor<1x4096xf16>
+    // CHECK:  [[MULTIPLY:%.+]] = IE.Multiply([[FC]], [[SCALE_RESHAPE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4096xf16>, tensor<1x4096xf16> -> tensor<1x4096xf16>
+    // CHECK:  return [[MULTIPLY]] : tensor<1x4096xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u2:f16, 1.000000e+00:2>
+
+// CHECK-LABEL: @ConvertForDirectConnectU2WithSymmetricZP
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<4096x4096x!qElemType>,
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<4096x1xf16>,
+// CHECK-SAME:      [[INPUT_2:%.+]]: tensor<1x4096xf16>
+func.func @ConvertForDirectConnectU2WithSymmetricZP(%arg0: tensor<4096x4096x!qElemType>, %arg1: tensor<4096x1xf16>, %arg2: tensor<1x4096xf16>) -> tensor<1x4096xf16> {
+    %0 = IE.DynamicDequantize(%arg0, %arg1) {dstElemType = f16} : tensor<4096x4096x!qElemType>, tensor<4096x1xf16> -> tensor<4096x4096xf16>
+    %1 = IE.FullyConnected(%arg2, %0) : tensor<1x4096xf16>, tensor<4096x4096xf16> -> tensor<1x4096xf16>
+
+    return %1 : tensor<1x4096xf16>
+
+    // CHECK:  [[SCALE_RESHAPE:%.+]] = IE.Reshape([[INPUT_1]]) {shape_value = [1, 4096]} : tensor<4096x1xf16> -> tensor<1x4096xf16>
+    // CHECK:  [[DEQUANT:%.+]] = IE.Dequantize([[INPUT_0]]) {dstElemType = f16} : tensor<4096x4096x!qElemType> -> tensor<4096x4096xf16>
+    // CHECK:  [[FC:%.+]] = IE.FullyConnected([[INPUT_2]], [[DEQUANT]]) : tensor<1x4096xf16>, tensor<4096x4096xf16> -> tensor<1x4096xf16>
+    // CHECK:  [[MULTIPLY:%.+]] = IE.Multiply([[FC]], [[SCALE_RESHAPE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4096xf16>, tensor<1x4096xf16> -> tensor<1x4096xf16>
+    // CHECK:  return [[MULTIPLY]] : tensor<1x4096xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u2:f16, 1.000000e+00:1>
+
+// CHECK-LABEL: @ConvertForDirectConnectU2WithAsymmetricZP
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<4096x4096x!qElemType>,
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<4096x1xf16>,
+// CHECK-SAME:      [[INPUT_2:%.+]]: tensor<1x4096xf16>
+func.func @ConvertForDirectConnectU2WithAsymmetricZP(%arg0: tensor<4096x4096x!qElemType>, %arg1: tensor<4096x1xf16>, %arg2: tensor<1x4096xf16>) -> tensor<1x4096xf16> {
+    %0 = IE.DynamicDequantize(%arg0, %arg1) {dstElemType = f16} : tensor<4096x4096x!qElemType>, tensor<4096x1xf16> -> tensor<4096x4096xf16>
+    %1 = IE.FullyConnected(%arg2, %0) : tensor<1x4096xf16>, tensor<4096x4096xf16> -> tensor<1x4096xf16>
+
+    return %1 : tensor<1x4096xf16>
+
+    // CHECK:  [[SCALE_RESHAPE:%.+]] = IE.Reshape([[INPUT_1]]) {shape_value = [1, 4096]} : tensor<4096x1xf16> -> tensor<1x4096xf16>
+    // CHECK:  [[DEQUANT:%.+]] = IE.Dequantize([[INPUT_0]]) {dstElemType = f16} : tensor<4096x4096x!qElemType> -> tensor<4096x4096xf16>
+    // CHECK:  [[FC:%.+]] = IE.FullyConnected([[INPUT_2]], [[DEQUANT]]) : tensor<1x4096xf16>, tensor<4096x4096xf16> -> tensor<1x4096xf16>
+    // CHECK:  [[MULTIPLY:%.+]] = IE.Multiply([[FC]], [[SCALE_RESHAPE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4096xf16>, tensor<1x4096xf16> -> tensor<1x4096xf16>
+    // CHECK:  return [[MULTIPLY]] : tensor<1x4096xf16>
+}
 
 // -----
 
@@ -283,27 +345,6 @@ func.func @NotConvertForReshapeOnlyDueToNotSqueezeReshape(%arg0: tensor<1x128x51
     // CHECK:  [[FC:%.+]] = IE.FullyConnected
     // CHECK:  return [[FC]] : tensor<1x512xf16>
 
-}
-
-
-// -----
-
-
-!qElemType = !quant.uniform<i4:f16, 1.000000e+00:8>
-
-// CHECK-LABEL: @NotConvertZPIsNotZero
-// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<4096x4096x!qElemType>,
-// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<4096x1xf16>,
-// CHECK-SAME:      [[INPUT_2:%.+]]: tensor<1x4096xf16>
-func.func @NotConvertZPIsNotZero(%arg0: tensor<4096x4096x!qElemType>, %arg1: tensor<4096x1xf16>, %arg2: tensor<1x4096xf16>) -> tensor<1x4096xf16> {
-    %0 = IE.DynamicDequantize(%arg0, %arg1) {dstElemType = f16} : tensor<4096x4096x!qElemType>, tensor<4096x1xf16> -> tensor<4096x4096xf16>
-    %1 = IE.FullyConnected(%arg2, %0) : tensor<1x4096xf16>, tensor<4096x4096xf16> -> tensor<1x4096xf16>
-
-    return %1 : tensor<1x4096xf16>
-
-    // CHECK:  [[DYN_DEQUANTIZE:%.+]] = IE.DynamicDequantize
-    // CHECK:  [[FC:%.+]] = IE.FullyConnected
-    // CHECK:  return [[FC]] : tensor<1x4096xf16>
 }
 
 // -----

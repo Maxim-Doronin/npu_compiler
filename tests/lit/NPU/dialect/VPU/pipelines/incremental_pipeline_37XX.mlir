@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --incremental-pipeline %s | FileCheck %s
@@ -247,58 +247,41 @@ func.func @InterpolateIncrementalPipeline(%arg0: tensor<1x2x540x1920xf16>) -> te
     %0 = VPU.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>, scales_attr = [1.3333300352096558, 1.3333300352096558], sizes_attr = [256, 512]} : tensor<1x2x540x1920xf16> -> tensor<1x2x256x512xf16>
     return %0 : tensor<1x2x256x512xf16>
 
-    // CHECK-DAG:       %[[LAMBDAS_2:.+]] = const.Declare tensor<1x1x1x340xf16>
-    // CHECK-DAG:       %[[COORDINATES_2:.+]] = const.Declare tensor<1x1x1x170xsi32>
+    // CHECK-DAG:       %[[LAMBDAS_1:.+]] = const.Declare tensor<1x1x1x512xf16>
+    // CHECK-DAG:       %[[COORDINATES_1:.+]] = const.Declare tensor<1x1x1x256xsi32>
 
-    // CHECK-DAG:       %[[LAMBDAS_1:.+]] = const.Declare tensor<1x1x1x342xf16>
-    // CHECK-DAG:       %[[COORDINATES_1:.+]] = const.Declare tensor<1x1x1x171xsi32>
+    // CHECK-DAG:       %[[LAMBDAS_0:.+]] = const.Declare tensor<1x1x1x512xf16>
+    // CHECK-DAG:       %[[COORDINATES_0:.+]] = const.Declare tensor<1x1x1x256xsi32>
 
-    // CHECK-DAG:       %[[LAMBDAS_0:.+]] = const.Declare tensor<1x1x1x342xf16>
-    // CHECK-DAG:       %[[COORDINATES_0:.+]] = const.Declare tensor<1x1x1x171xsi32>
-
-    // CHECK:           %[[VAL_1:.+]] = VPU.Slice %[[VAL_0]] [0, 0, 0, 0] [1, 2, 540, 640] : tensor<1x2x540x1920xf16> to tensor<1x2x540x640xf16>
+    // CHECK:           %[[VAL_1:.+]] = VPU.Slice %[[VAL_0]] [0, 0, 0, 0] [1, 2, 540, 959] : tensor<1x2x540x1920xf16> to tensor<1x2x540x959xf16>
     // CHECK:           %[[VAL_2:.+]] = VPU.Copy(%[[VAL_1]]) {out_mem_space = @CMX_NN}
-    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x540x640xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = {{\[\[}}1, 2, 270, 640], [1, 2, 270, 640]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]], memory_shapes = {{\[\[}}1, 2, 270, 640], [1, 2, 270, 640]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]]}>
+    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x540x959xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = {{\[\[}}1, 2, 270, 959], [1, 2, 270, 959]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]], memory_shapes = {{\[\[}}1, 2, 270, 959], [1, 2, 270, 959]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]]}>
 
-    // CHECK-DAG:       %[[COORDINATES_CMX_0:.+]] = VPU.Copy(%[[COORDINATES_0]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x171xsi32> -> !VPU.DistributedTensor<1x1x1x171xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK-DAG:       %[[LAMBDAS_CMX_0:.+]] = VPU.Copy(%[[LAMBDAS_0]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x342xf16> -> !VPU.DistributedTensor<1x1x1x342xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-DAG:       %[[COORDINATES_CMX_0:.+]] = VPU.Copy(%[[COORDINATES_0]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x256xsi32> -> !VPU.DistributedTensor<1x1x1x256xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-DAG:       %[[LAMBDAS_CMX_0:.+]] = VPU.Copy(%[[LAMBDAS_0]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x512xf16> -> !VPU.DistributedTensor<1x1x1x512xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    // CHECK:           %[[VAL_3:.+]] = VPU.Interpolate(%[[VAL_2]], %[[COORDINATES_CMX_0]], %[[LAMBDAS_CMX_0]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SCALES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], initial_input_dims_attr = [1, 2, 540, 1920], initial_input_offset_attr = [0, 0, 0, 0], initial_output_dims_attr = [1, 2, 256, 512], initial_output_offset_attr = [0, 0, 0, 0], operandSegmentSizes = array<i32: 1, 0, 0, 0, 1, 1>, scales_attr = [0.47407407407407409, 0.26718750000000002], sizes_attr = [256, 512], tile_offset_attr = [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]}
-    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x256x171xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    // CHECK:           %[[VAL_3:.+]] = VPU.Interpolate(%[[VAL_2]], %[[COORDINATES_CMX_0]], %[[LAMBDAS_CMX_0]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SCALES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], initial_input_dims_attr = [1, 2, 540, 1920], initial_input_offset_attr = [0, 0, 0, 0], initial_output_dims_attr = [1, 2, 256, 512], initial_output_offset_attr = [0, 0, 0, 0], operandSegmentSizes = array<i32: 1, 0, 0, 0, 1, 1>, scales_attr = [0.47407407407407409, 0.26694473409801878], sizes_attr = [256, 512], tile_offset_attr = [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]}
+    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x256x256xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     // CHECK:           %[[VAL_4:.+]] = VPU.Copy(%[[VAL_3]])
-    // CHECK-SAME:           : !VPU.DistributedTensor<1x2x256x171xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK-SAME:           -> tensor<1x2x256x171xf16>
+    // CHECK-SAME:           : !VPU.DistributedTensor<1x2x256x256xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    // CHECK-SAME:           -> tensor<1x2x256x256xf16>
 
-    // CHECK:           %[[VAL_10:.+]] = VPU.Slice %[[VAL_0]] [0, 0, 0, 642] [1, 2, 540, 640] : tensor<1x2x540x1920xf16> to tensor<1x2x540x640xf16>
+    // CHECK:           %[[VAL_10:.+]] = VPU.Slice %[[VAL_0]] [0, 0, 0, 961] [1, 2, 540, 959] : tensor<1x2x540x1920xf16> to tensor<1x2x540x959xf16>
     // CHECK:           %[[VAL_11:.+]] = VPU.Copy(%[[VAL_10]]) {out_mem_space = @CMX_NN}
-    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x540x640xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = {{\[\[}}1, 2, 270, 640], [1, 2, 270, 640]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]], memory_shapes = {{\[\[}}1, 2, 270, 640], [1, 2, 270, 640]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]]}>
+    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x540x959xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = {{\[\[}}1, 2, 270, 959], [1, 2, 270, 959]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]], memory_shapes = {{\[\[}}1, 2, 270, 959], [1, 2, 270, 959]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]]}>
 
-    // CHECK-DAG:       %[[COORDINATES_CMX_1:.+]] = VPU.Copy(%[[COORDINATES_1]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x171xsi32> -> !VPU.DistributedTensor<1x1x1x171xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK-DAG:       %[[LAMBDAS_CMX_1:.+]] = VPU.Copy(%[[LAMBDAS_1]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x342xf16> -> !VPU.DistributedTensor<1x1x1x342xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-DAG:       %[[COORDINATES_CMX_1:.+]] = VPU.Copy(%[[COORDINATES_1]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x256xsi32> -> !VPU.DistributedTensor<1x1x1x256xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-DAG:       %[[LAMBDAS_CMX_1:.+]] = VPU.Copy(%[[LAMBDAS_1]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x512xf16> -> !VPU.DistributedTensor<1x1x1x512xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    // CHECK:           %[[VAL_12:.+]] = VPU.Interpolate(%[[VAL_11]], %[[COORDINATES_CMX_1]], %[[LAMBDAS_CMX_1]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SCALES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], initial_input_dims_attr = [1, 2, 540, 1920], initial_input_offset_attr = [0, 0, 0, 642], initial_output_dims_attr = [1, 2, 256, 512], initial_output_offset_attr = [0, 0, 0, 171], operandSegmentSizes = array<i32: 1, 0, 0, 0, 1, 1>, scales_attr = [0.47407407407407409, 0.26718750000000002], sizes_attr = [256, 512], tile_offset_attr = [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]}
-    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x256x171xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    // CHECK:           %[[VAL_12:.+]] = VPU.Interpolate(%[[VAL_11]], %[[COORDINATES_CMX_1]], %[[LAMBDAS_CMX_1]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SCALES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], initial_input_dims_attr = [1, 2, 540, 1920], initial_input_offset_attr = [0, 0, 0, 961], initial_output_dims_attr = [1, 2, 256, 512], initial_output_offset_attr = [0, 0, 0, 256], operandSegmentSizes = array<i32: 1, 0, 0, 0, 1, 1>, scales_attr = [0.47407407407407409, 0.26694473409801878], sizes_attr = [256, 512], tile_offset_attr = [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]}
+    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x256x256xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     // CHECK:           %[[VAL_13:.+]] = VPU.Copy(%[[VAL_12]])
-    // CHECK-SAME:           : !VPU.DistributedTensor<1x2x256x171xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK-SAME:           -> tensor<1x2x256x171xf16>
+    // CHECK-SAME:           : !VPU.DistributedTensor<1x2x256x256xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    // CHECK-SAME:           -> tensor<1x2x256x256xf16>
 
-    // CHECK:           %[[VAL_20:.+]] = VPU.Slice %[[VAL_0]] [0, 0, 0, 1284] [1, 2, 540, 636] : tensor<1x2x540x1920xf16> to tensor<1x2x540x636xf16>
-    // CHECK:           %[[VAL_21:.+]] = VPU.Copy(%[[VAL_20]]) {out_mem_space = @CMX_NN}
-    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x540x636xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = {{\[\[}}1, 2, 270, 636], [1, 2, 270, 636]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]], memory_shapes = {{\[\[}}1, 2, 270, 636], [1, 2, 270, 636]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 270, 0]]}>
-
-    // CHECK-DAG:       %[[COORDINATES_CMX_2:.*]] = VPU.Copy(%[[COORDINATES_2]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x170xsi32> -> !VPU.DistributedTensor<1x1x1x170xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK-DAG:       %[[LAMBDAS_CMX_2:.*]] = VPU.Copy(%[[LAMBDAS_2]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x340xf16> -> !VPU.DistributedTensor<1x1x1x340xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-
-    // CHECK:           %[[VAL_22:.+]] = VPU.Interpolate(%[[VAL_21]], %[[COORDINATES_CMX_2]], %[[LAMBDAS_CMX_2]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SCALES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], initial_input_dims_attr = [1, 2, 540, 1920], initial_input_offset_attr = [0, 0, 0, 1284], initial_output_dims_attr = [1, 2, 256, 512], initial_output_offset_attr = [0, 0, 0, 342], operandSegmentSizes = array<i32: 1, 0, 0, 0, 1, 1>, scales_attr = [0.47407407407407409, 0.26729559748427673], sizes_attr = [256, 512], tile_offset_attr = [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]}
-    // CHECK-SAME:           -> !VPU.DistributedTensor<1x2x256x170xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-
-    // CHECK:           %[[VAL_23:.+]] = VPU.Copy(%[[VAL_22]])
-    // CHECK-SAME:           : !VPU.DistributedTensor<1x2x256x170xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK-SAME:           -> tensor<1x2x256x170xf16>
-
-    // CHECK:           %[[VAL_31:.+]] = VPU.Concat(%[[VAL_4]], %[[VAL_13]], %[[VAL_23]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 171], [0, 0, 0, 342]]} : tensor<1x2x256x171xf16>, tensor<1x2x256x171xf16>, tensor<1x2x256x170xf16> -> tensor<1x2x256x512xf16>
+    // CHECK:           %[[VAL_31:.+]] = VPU.Concat(%[[VAL_4]], %[[VAL_13]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 256]]} : tensor<1x2x256x256xf16>, tensor<1x2x256x256xf16> -> tensor<1x2x256x512xf16>
     // CHECK:           return %[[VAL_31]] : tensor<1x2x256x512xf16>
 }
 

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -44,9 +44,18 @@ namespace {
 
 constexpr llvm::StringLiteral inputIR = R"(
         module @test {
+            module @VPU.SW {
+                func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {
+                    VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE
+                }
+            }
             func.func @main(%arg0: memref<1x512xf32>, %arg1: memref<1x512xf32>) -> memref<1x512xf32> {
                 %0 = memref.alloc() : memref<1x512xf32>
-                %1 = IERT.SoftMax {axisInd = 1 : i32, test = 2 : i8} inputs(%arg0 : memref<1x512xf32>) outputs(%0 : memref<1x512xf32>) -> memref<1x512xf32>
+                %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
+                    inputs(%arg0 as %input: memref<1x512xf32>)
+                    outputs(%0 as %output: memref<1x512xf32>) on tile 0 -> memref<1x512xf32> {
+                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x512xf32>, memref<1x512xf32>
+                }
                 %2 = VPUIP.Copy inputs(%1 : memref<1x512xf32>) outputs(%arg1 : memref<1x512xf32>) -> memref<1x512xf32>
                 memref.dealloc %0 : memref<1x512xf32>
                 return %2 : memref<1x512xf32>
@@ -116,7 +125,7 @@ TEST_F(MLIR_DotGraph, GenerateViaPass) {
     ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
     const std::string expectedOutputFileName = "output_main.dot";
 
-    CheckDotFile(expectedOutputFileName, std::string("IERT.SoftMax"));
+    CheckDotFile(expectedOutputFileName, std::string("VPUIP.SW.Kernel"));
     std::remove(expectedOutputFileName.c_str());
 }
 
@@ -141,8 +150,8 @@ TEST_F(MLIR_DotGraph, GenerateViaEnvVar) {
     const std::string expectedOutputFileName = "output_main.dot";
     const std::string expectedOutputFileName2 = "output2_main.dot";
 
-    CheckDotFile(expectedOutputFileName, std::string("IERT.SoftMax"));
-    CheckDotFile(expectedOutputFileName2, std::string("IERT.SoftMax"));
+    CheckDotFile(expectedOutputFileName, std::string("VPUIP.SW.Kernel"));
+    CheckDotFile(expectedOutputFileName2, std::string("VPUIP.SW.Kernel"));
     std::remove(expectedOutputFileName.c_str());
     std::remove(expectedOutputFileName2.c_str());
 }

@@ -174,9 +174,11 @@ const std::vector<float> spatial_scales = {0.625f, 1.f};
 
 auto inputShapes = [](const std::vector<ov::Shape>& in1, const std::vector<ov::Shape>& in2) {
     std::vector<std::vector<ov::test::InputShape>> res;
-    for (const auto& sh1 : in1)
-        for (const auto& sh2 : in2)
+    for (const auto& sh1 : in1) {
+        for (const auto& sh2 : in2) {
             res.push_back(ov::test::static_shapes_to_test_representation({sh1, sh2}));
+        }
+    }
     return res;
 }(paramShapes, coordShapes);
 

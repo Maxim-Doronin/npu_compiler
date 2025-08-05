@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-last-copy %s | FileCheck %s
@@ -723,9 +723,9 @@ func.func @NotFuseCopyWithPermuteCastOpWithMultipleUsers(%arg0: memref<1x131584x
     // CHECK-SAME:      memref<1x11x513x513xf16, #NHWC, @DDR> to
     // CHECK-SAME:      memref<1x11x256x513xf16, {order = #NHWC, strides = [2894859, 1, 5643, 11]}, @DDR>
     // CHECK:       [[ALLOC1:%.+]] = memref.alloc() : memref<1x11x256x513xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[CLUSTERTILING:%.+]] = VPUIP.Copy inputs([[SUBVIEW]] : memref<1x11x256x513xf16, {order = #NHWC, strides = [2894859, 1, 5643, 11]}, @DDR>) outputs([[ALLOC1]] : memref<1x11x256x513xf16, #NHWC, @CMX_NN>) -> memref<1x11x256x513xf16, #NHWC, @CMX_NN>
+    // CHECK:       [[DISTRIBUTEDOP:%.+]] = VPUIP.Copy inputs([[SUBVIEW]] : memref<1x11x256x513xf16, {order = #NHWC, strides = [2894859, 1, 5643, 11]}, @DDR>) outputs([[ALLOC1]] : memref<1x11x256x513xf16, #NHWC, @CMX_NN>) -> memref<1x11x256x513xf16, #NHWC, @CMX_NN>
     // CHECK:       [[COPY0:%.+]] = VPUIP.Copy inputs([[PERMUTECAST]] : memref<1x11x513x513xf16, #NHWC, @DDR>) outputs(%arg2 : memref<1x11x513x513xf16, #NHWC, @DDR>) -> memref<1x11x513x513xf16, #NHWC, @DDR>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[CLUSTERTILING]] : memref<1x11x256x513xf16, #NHWC, @CMX_NN>) outputs(%arg3 : memref<1x11x256x513xf16, #NHWC, @DDR>) -> memref<1x11x256x513xf16, #NHWC, @DDR>
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[DISTRIBUTEDOP]] : memref<1x11x256x513xf16, #NHWC, @CMX_NN>) outputs(%arg3 : memref<1x11x256x513xf16, #NHWC, @DDR>) -> memref<1x11x256x513xf16, #NHWC, @DDR>
     // CHECK:       return [[COPY0]], [[COPY1]] : memref<1x11x513x513xf16, #NHWC, @DDR>, memref<1x11x256x513xf16, #NHWC, @DDR>
 }
 

@@ -1,21 +1,36 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --move-declarations-to-top %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
+
+module @VPU.SW {
+    func.func private @builtin_Add(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>) attributes {
+        VPU.kernel_code = "eltwise_add.cpp", VPU.kernel_entry = "eltwise_add", VPU.task_type = @COMPUTE
+    }
+}
+
 func.func @MoveToTopOfBlock(%arg0: memref<16xf16>, %arg1: memref<8xf16>) -> memref<8xf16> {
     %0 = VPUIP.SubView %arg0 [0] [8] : memref<16xf16> to memref<8xf16>
     %decl0 = VPUIP.StaticAlloc<0> -> memref<8xf16>
     %cst2 = const.Declare memref<8xf16> = dense<2.000000e+00> : tensor<8xf16>
-    %1 = IERT.Add inputs(%0 : memref<8xf16>, %cst2 : memref<8xf16>) outputs(%decl0 : memref<8xf16>) -> memref<8xf16>
+    %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Add
+        inputs(%0 as %input_0: memref<8xf16>, %cst2 as %input_1: memref<8xf16>)
+        outputs(%decl0 as %output: memref<8xf16>) on tile 0 -> memref<8xf16> {
+        VPUIP.SW.Kernel.run (%input_0, %input_1, %output) : memref<8xf16>, memref<8xf16>, memref<8xf16>
+    }
 
     %cst4 = const.Declare memref<8xf16> = dense<4.000000e+00> : tensor<8xf16>
     %decl16 = VPUIP.StaticAlloc<16> -> memref<8xf16>
     %t2, %f2 = async.execute -> !async.value<memref<8xf16>> {
-        %2 = IERT.Add inputs(%1 : memref<8xf16>, %cst4 : memref<8xf16>) outputs(%decl16 : memref<8xf16>) -> memref<8xf16>
+        %2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Add
+            inputs(%1 as %input_0: memref<8xf16>, %cst4 as %input_1: memref<8xf16>)
+            outputs(%decl16 as %output: memref<8xf16>) on tile 0 -> memref<8xf16> {
+            VPUIP.SW.Kernel.run (%input_0, %input_1, %output) : memref<8xf16>, memref<8xf16>, memref<8xf16>
+        }
         async.yield %2 : memref<8xf16>
     }
     %3 = async.await %f2 : !async.value<memref<8xf16>>
@@ -23,7 +38,11 @@ func.func @MoveToTopOfBlock(%arg0: memref<16xf16>, %arg1: memref<8xf16>) -> memr
     %decl32 = VPUIP.StaticAlloc<32> -> memref<8xf16>
     %cst9 = const.Declare memref<8xf16> = dense<9.000000e+00> : tensor<8xf16>
     %t4, %f4 = async.execute -> !async.value<memref<8xf16>> {
-        %4 = IERT.Add inputs(%3 : memref<8xf16>, %cst9 : memref<8xf16>) outputs(%decl32 : memref<8xf16>) -> memref<8xf16>
+        %4 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Add
+            inputs(%3 as %input_0: memref<8xf16>, %cst9 as %input_1: memref<8xf16>)
+            outputs(%decl32 as %output: memref<8xf16>) on tile 0 -> memref<8xf16> {
+            VPUIP.SW.Kernel.run (%input_0, %input_1, %output) : memref<8xf16>, memref<8xf16>, memref<8xf16>
+        }
         async.yield %4 : memref<8xf16>
     }
     %5 = async.await %f4 : !async.value<memref<8xf16>>
@@ -41,16 +60,25 @@ func.func @MoveToTopOfBlock(%arg0: memref<16xf16>, %arg1: memref<8xf16>) -> memr
 
     // CHECK:       [[VAR0:%.+]] = VPUIP.SubView %arg0 [0] [8] : memref<16xf16> to memref<8xf16>
 
-    // CHECK:       [[VAR1:%.+]] = IERT.Add inputs([[VAR0]] : memref<8xf16>, [[CST2]] : memref<8xf16>) outputs([[DECL0]] : memref<8xf16>)
+    // CHECK:       [[VAR1:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Add
+    // CHECK-SAME:      inputs([[VAR0]]
+    // CHECK-SAME:             [[CST2]]
+    // CHECK-SAME:      outputs([[DECL0]]
 
     // CHECK:       [[T2:%.+]], [[F2:%.+]] = async.execute -> !async.value<memref<8xf16>> {
-    // CHECK:           [[VAR2:%.+]] = IERT.Add inputs([[VAR1]] : memref<8xf16>, [[CST4]] : memref<8xf16>) outputs([[DECL16]] : memref<8xf16>)
+    // CHECK:           [[VAR2:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Add
+    // CHECK-SAME:          inputs([[VAR1]]
+    // CHECK-SAME:                 [[CST4]]
+    // CHECK-SAME:          outputs([[DECL16]]
     // CHECK:           async.yield [[VAR2]] : memref<8xf16>
     // CHECK:       }
     // CHECK:       [[VAR3:%.+]] = async.await [[F2]] : !async.value<memref<8xf16>>
 
     // CHECK:       [[T4:%.+]], [[F4:%.+]] = async.execute -> !async.value<memref<8xf16>> {
-    // CHECK:           [[VAR4:%.+]] = IERT.Add inputs([[VAR3]] : memref<8xf16>, [[CST9]] : memref<8xf16>) outputs([[DECL32]] : memref<8xf16>)
+    // CHECK:           [[VAR4:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Add
+    // CHECK-SAME:          inputs([[VAR3]]
+    // CHECK-SAME:                 [[CST9]]
+    // CHECK-SAME:          outputs([[DECL32]]
     // CHECK:           async.yield [[VAR4]] : memref<8xf16>
     // CHECK:       }
     // CHECK:       [[VAR5:%.+]] = async.await [[F4]] : !async.value<memref<8xf16>>

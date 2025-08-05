@@ -1,10 +1,24 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
+
+// CHECK-LABEL: @ConstFold
+func.func @ConstFold() -> tensor<4x4xf32> {
+    %0 = const.Declare tensor<16xf32> = dense<1.0> : tensor<16xf32>
+    %1 = VPU.Reshape(%0) { shape_value = [4, 4] } : tensor<16xf32> -> tensor<4x4xf32>
+    return %1 : tensor<4x4xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<4x4xf32> =
+    // CHECK-SAME:      dense<1.000000e+00> : tensor<16xf32>, [#const.Reshape<[4, 4]>]
+    // CHECK-NOT:   VPU.Reshape
+    // CHECK:       return [[CST]]
+}
+
+// -----
 
 // CHECK-LABEL: @ConvertToShapeCast
 func.func @ConvertToShapeCast(%arg0 : tensor<1x2x3x4xf16>) -> tensor<1x3x2x4xf16> {

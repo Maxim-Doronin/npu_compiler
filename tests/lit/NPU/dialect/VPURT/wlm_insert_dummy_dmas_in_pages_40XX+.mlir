@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --wlm-insert-dummy-dmas-in-pages="num-barriers=4" %s | FileCheck %s

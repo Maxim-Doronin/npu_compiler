@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 
@@ -42,19 +42,22 @@ module @Model20 {
         VPUASM.ActKernelInvocation @ActKernelInvocation_0_0 idx(!VPURegMapped.Index<0:0:0>) taskLocation(@program.metadata.cmx::@DeclareTaskBuffer_ActKernelInvocation_0_0_0) -> @program.metadata.cmx::@DeclareTaskBuffer_ActKernelRange_0_0_0(kernel_data : @shave.data::@DeclareKernelArgs_0_0, kernel_params : @shave.params::@KernelParams_0_0) waits([0 : ui8]) updates([1 : ui8]) tile(0) start_after(2) clean_after(1) range_index(0) {elfMemOffsetAttrKey = 0 : ui64}
       }
       ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
-        ELF.Symbol @elfsym.program.metadata.cmx of(@program.metadata.cmx) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.buffer.CMX_NN.0 of(@buffer.CMX_NN.0) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.shave.text of(@shave.text) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.shave.data of(@shave.data) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.shave.params of(@shave.params) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.task.shave.range.0.0 of(@task.shave.range.0.0) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.task.shave.invocation.0.0 of(@task.shave.invocation.0.0) type(<STT_SECTION>) size(0) value(0)
+        ELF.Symbol @elfsym.program.metadata.cmx of(@program.metadata.cmx) type(<STT_SECTION>) size(82944) value(1075854336)
+        ELF.Symbol @elfsym.buffer.CMX_NN.0 of(@buffer.CMX_NN.0) type(<STT_SECTION>) size(1474560) value(1075937280)
+        ELF.Symbol @elfsym.shave.text of(@shave.text) type(<STT_SECTION>)
+        ELF.Symbol @elfsym.shave.data of(@shave.data) type(<STT_SECTION>)
+        ELF.Symbol @elfsym.shave.params of(@shave.params) type(<STT_SECTION>)
+        ELF.Symbol @elfsym.task.shave.range.0.0 of(@task.shave.range.0.0) type(<STT_SECTION>)
+        ELF.Symbol @elfsym.task.shave.invocation.0.0 of(@task.shave.invocation.0.0) type(<STT_SECTION>)
       }
 
     }
     return
 }
 
+
+    // CHECK:    VpuActKernelInvocation {
+    // CHECK:        range = UINT 0x40203C00,
     // CHECK:      ELF.CreateRelocationSection @rela.shave.params.symtab
     // CHECK-SAME:   target(@shave.params)
     // CHECK-SAME:   symtab(@symtab)
@@ -111,12 +114,9 @@ module @Model20 {
     // CHECK-SAME:   target(@task.shave.invocation.0.0)
     // CHECK-SAME:   symtab(@symtab)
     // CHECK-SAME:   secFlags("SHF_NONE")
-    // CHECK:      ELF.Reloc
-    // CHECK-SAME:   offset({{[0-9]+}})
-    // CHECK-SAME:   sourceSym(@symtab::@elfsym.program.metadata.cmx)
-    // CHECK-SAME:   relocType(<R_VPU_64_BIT_OR_B21_B26_UNSET>)
-    // CHECK-SAME:   addend({{[0-9]+}})
-    // CHECK-SAME:   (description : "Kernel range in act kernel invocation reloc")
+
+    // CHECK-NOT:  ELF.Reloc offset({{[0-9]+}}) sourceSym(@symtab::@elfsym.program.metadata.cmx)
+
     // CHECK:      ELF.Reloc
     // CHECK-SAME:   offset({{[0-9]+}})
     // CHECK-SAME:   sourceSym(@symtab::@elfsym.shave.data)

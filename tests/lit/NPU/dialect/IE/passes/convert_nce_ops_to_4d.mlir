@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-nce-ops-to-4d %s | FileCheck %s
@@ -323,4 +323,30 @@ func.func @ConvertBatchNceOpsTo4DExtendOnH(%arg0: tensor<2x9x121xf16>) -> tensor
     // CHECK-SAME:              shape_value = [2, 32, 121]
     // CHECK-SAME:          } : tensor<2x32x1x121xf16> -> tensor<2x32x121xf16>
     // CHECK:               return [[RESHAPE_1]] : tensor<2x32x121xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertNceOpsTo4DGroupConvolutions
+// CHECK-SAME:      [[INPUT0:%.+]]: tensor<1x768x5130xf16>
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<768x1x1x12xf16>
+func.func @ConvertNceOpsTo4DGroupConvolutions(%arg0: tensor<1x768x5130xf16>, %arg1: tensor<768x1x1x12xf16>) -> tensor<1x768x10270xf16>{
+    %0 = IE.GroupTransposedConvolution(%arg0, %arg1) {
+            dilations = [1], pads_begin = [0], pads_end = [0], spatial_output_padding = [0], strides = [2]
+        } : tensor<1x768x5130xf16>, tensor<768x1x1x12xf16> -> tensor<1x768x10270xf16>
+    return %0 : tensor<1x768x10270xf16>
+
+    // CHECK: [[RESHAPE_INPUT:%.+]] = IE.Reshape([[INPUT0]]) {shape_value = [1, 768, 5130, 1]} : tensor<1x768x5130xf16> -> tensor<1x768x5130x1xf16>
+    // CHECK: [[RESHAPE_WEIGHT:%.+]] = IE.Reshape([[INPUT1]]) {shape_value = [768, 1, 1, 12, 1]} : tensor<768x1x1x12xf16> -> tensor<768x1x1x12x1xf16>
+
+    // CHECK:       [[GROUP_TRANSPOSED_CONV:%.+]] = IE.GroupTransposedConvolution([[RESHAPE_INPUT]], [[RESHAPE_WEIGHT]])
+    // CHECK-SAME:      dilations = [1, 1]
+    // CHECK-SAME:      pads_begin = [0, 0]
+    // CHECK-SAME:      pads_end = [0, 0]
+    // CHECK-SAME:      spatial_output_padding = [0, 0]
+    // CHECK-SAME:      strides = [2, 1]
+    // CHECK-SAME:      tensor<1x768x5130x1xf16>, tensor<768x1x1x12x1xf16> -> tensor<1x768x10270x1xf16>
+
+    // CHECK: [[RESHAPE_OUTPUT:%.+]] = IE.Reshape([[GROUP_TRANSPOSED_CONV]]) {shape_value = [1, 768, 10270]} : tensor<1x768x10270x1xf16> -> tensor<1x768x10270xf16>
+    // CHECK: return [[RESHAPE_OUTPUT]] : tensor<1x768x10270xf16>
 }

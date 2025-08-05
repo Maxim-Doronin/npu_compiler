@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --expand-activation-channels %s | FileCheck %s
@@ -145,4 +145,29 @@ func.func @ExpandOCMatMulQuant(%input1: tensor<1x32x75x16x!input1ElemType>, %inp
     // CHECK:           [[SLICE:%.+]] = IE.Slice [[MATMUL]] [0, 0, 0, 0] [1, 32, 75, 75]
     // CHECK-SAME:      : tensor<1x32x75x80x[[OUTPUT_ELEM_TYPE]]> to tensor<1x32x75x75x[[OUTPUT_ELEM_TYPE]]>
     // CHECK:           return [[SLICE]] : tensor<1x32x75x75x[[OUTPUT_ELEM_TYPE]]>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.010420070909986309:128>
+!qElemType1 = !quant.uniform<u8:f16, 0.02042007090998631:128>
+
+// CHECK:       func.func @ExpandQuantizedICMatMul([[INPUT_0:%.+]]: tensor<1x16x64x49x!qElemType>,
+// CHECK-SAME:  [[INPUT_1:%.+]]: tensor<1x16x49x128x!qElemType1>) ->  tensor<1x16x64x128xf16> {
+func.func @ExpandQuantizedICMatMul(%arg0: tensor<1x16x64x49x!qElemType>, %arg1: tensor<1x16x49x128x!qElemType1>) -> tensor<1x16x64x128xf16> {
+    %matmul = IE.MatMul(%arg0, %arg1) : tensor<1x16x64x49x!qElemType>, tensor<1x16x49x128x!qElemType1> -> tensor<1x16x64x128xf16>
+
+    return %matmul : tensor<1x16x64x128xf16>
+
+    // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<1x16x64x15x!qElemType> = dense<128> : tensor<1x16x64x15xui8>
+    // CHECK:           [[CONCAT_0:%.+]] = IE.Concat([[INPUT_0]], [[CST]]) {per_axis = #IE.Concat<axis = 3 : i64>}
+    // CHECK-SAME:          : tensor<1x16x64x49x!qElemType>, tensor<1x16x64x15x!qElemType> -> tensor<1x16x64x64x!qElemType>
+    // CHECK-DAG:       [[CST_0:%.+]] = const.Declare tensor<1x16x15x128x!qElemType1> = dense<128> : tensor<1x16x15x128xui8>
+    // CHECK:           [[CONCAT_1:%.+]] = IE.Concat([[INPUT_1]], [[CST_0]]) {per_axis = #IE.Concat<axis = 2 : i64>}
+    // CHECK-SAME:          : tensor<1x16x49x128x!qElemType1>, tensor<1x16x15x128x!qElemType1> -> tensor<1x16x64x128x!qElemType1>
+    // CHECK:           [[MATMUL:%.+]] = IE.MatMul([[CONCAT_0]], [[CONCAT_1]])
+    // CHECK-SAME:          : tensor<1x16x64x64x!qElemType>, tensor<1x16x64x128x!qElemType1> -> tensor<1x16x64x128xf16>
+    // CHECK:           [[SLICE:%.+]] = IE.Slice [[MATMUL]] [0, 0, 0, 0] [1, 16, 64, 128]
+    // CHECK-SAME:          : tensor<1x16x64x128xf16> to tensor<1x16x64x128xf16>
+    // CHECK:           return [[SLICE]] : tensor<1x16x64x128xf16>
 }

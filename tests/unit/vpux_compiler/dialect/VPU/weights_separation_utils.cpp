@@ -1,23 +1,29 @@
 //
 // Copyright (C) 2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "common/utils.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/dialect.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/Verifier.h>
 #include <mlir/Parser/Parser.h>
 #include <mlir/Pass/PassManager.h>
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <vector>
 
 namespace vpux::VPU {
 bool operator==(const TransformationsSplit& x, const TransformationsSplit& y) {
-    return x.declareOp().getContentAttr() == y.declareOp().getContentAttr();
+    return x.getContentAttr() == y.getContentAttr();
 }
 }  // namespace vpux::VPU
 
@@ -31,16 +37,16 @@ public:
     }
 
     template <typename Pred>
-    SmallVector<VPU::TransformationsSplit> extractSpecificSplits(mlir::ModuleOp moduleOp, Pred pred) {
-        SmallVector<VPU::TransformationsSplit> splits;
+    std::vector<VPU::TransformationsSplit> extractSpecificSplits(mlir::ModuleOp moduleOp, Pred pred) {
+        std::vector<VPU::TransformationsSplit> splits;
         moduleOp.walk([&](mlir::func::FuncOp funcOp) {
-            auto moveWorthy = VPU::collectMoveWorthyTransformationSplits(log, funcOp);
+            auto moveWorthy = VPU::collectMoveWorthyConstants(log, funcOp);
             std::copy_if(moveWorthy.begin(), moveWorthy.end(), std::back_inserter(splits), pred);
         });
         return splits;
     }
 
-    SmallVector<VPU::TransformationsSplit> extractSplits(mlir::ModuleOp moduleOp) {
+    std::vector<VPU::TransformationsSplit> extractSplits(mlir::ModuleOp moduleOp) {
         return extractSpecificSplits(moduleOp, [](const VPU::TransformationsSplit&) {
             return true;
         });
@@ -127,9 +133,9 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, CompletelySlicedInit) {
     for (auto& actual : allSlices) {
         ASSERT_FALSE(actual.empty());
 
-        const auto resourceName = getResourceName(actual.front().declareOp().getContentAttr().getBaseContent()).str();
+        const auto resourceName = getResourceName(actual.front().getContentAttr().getBaseContent()).str();
         auto expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
-            return getResourceName(x.declareOp().getContentAttr().getBaseContent()).str() == resourceName;
+            return getResourceName(x.getContentAttr().getBaseContent()).str() == resourceName;
         });
 
         ASSERT_EQ_SPLITS(actual, expected);
@@ -155,17 +161,17 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, PartialSlicing) {
     for (auto& actual : allSlices) {
         ASSERT_FALSE(actual.empty());
 
-        const auto resourceName = getResourceName(actual.front().declareOp().getContentAttr().getBaseContent()).str();
-        SmallVector<VPU::TransformationsSplit> expected;
+        const auto resourceName = getResourceName(actual.front().getContentAttr().getBaseContent()).str();
+        std::vector<VPU::TransformationsSplit> expected;
         // Note: ov2 and ov4 are assumed to be stored together
         if (resourceName == "ov2" || resourceName == "ov4") {
             expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
-                const auto xName = getResourceName(x.declareOp().getContentAttr().getBaseContent()).str();
+                const auto xName = getResourceName(x.getContentAttr().getBaseContent()).str();
                 return xName == "ov2" || xName == "ov4";
             });
         } else {
             expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
-                return getResourceName(x.declareOp().getContentAttr().getBaseContent()).str() == resourceName;
+                return getResourceName(x.getContentAttr().getBaseContent()).str() == resourceName;
             });
         }
 
@@ -243,9 +249,9 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SlicedInit_SubView) {
     for (auto& actual : allSlices) {
         ASSERT_FALSE(actual.empty());
 
-        const auto resourceName = getResourceName(actual.front().declareOp().getContentAttr().getBaseContent()).str();
+        const auto resourceName = getResourceName(actual.front().getContentAttr().getBaseContent()).str();
         auto expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
-            return getResourceName(x.declareOp().getContentAttr().getBaseContent()).str() == resourceName;
+            return getResourceName(x.getContentAttr().getBaseContent()).str() == resourceName;
         });
 
         ASSERT_EQ_SPLITS(actual, expected);
@@ -321,11 +327,171 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SlicedInit_ReorderAndPad) 
     for (auto& actual : allSlices) {
         ASSERT_FALSE(actual.empty());
 
-        const auto resourceName = getResourceName(actual.front().declareOp().getContentAttr().getBaseContent()).str();
+        const auto resourceName = getResourceName(actual.front().getContentAttr().getBaseContent()).str();
         auto expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
-            return getResourceName(x.declareOp().getContentAttr().getBaseContent()).str() == resourceName;
+            return getResourceName(x.getContentAttr().getBaseContent()).str() == resourceName;
         });
 
         ASSERT_EQ_SPLITS(actual, expected);
     }
+}
+
+struct MLIR_VPU_WeightsSeparationUtils_Obfuscation : MLIR_UnitBase {
+    MLIR_VPU_WeightsSeparationUtils_Obfuscation(): MLIR_UnitBase() {
+        ctx.appendDialectRegistry(registry);
+        ctx.loadDialect<Core::CoreDialect>();
+        ctx.loadDialect<Const::ConstDialect>();
+        ctx.loadDialect<IE::IEDialect>();
+    }
+
+    mlir::MLIRContext ctx;
+    Logger log = Logger::global();
+
+    static mlir::Operation* createSlice(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input,
+                                        ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes) {
+        return builder.create<IE::SliceOp>(loc, input, offsets, sizes);
+    }
+
+    static mlir::Operation* createConcat(mlir::OpBuilder& builder, mlir::Location loc, ArrayRef<mlir::Value> inputs,
+                                         int64_t axis) {
+        return builder.create<IE::ConcatOp>(loc, inputs, axis);
+    }
+};
+
+constexpr llvm::StringLiteral INPUT_IR_OBFUSCATION = R"(
+module @main {
+    func.func private @dummy(%a0: tensor<2xf32>) -> tensor<2xf32> {
+        return %a0 : tensor<2xf32>
+    }
+
+    func.func @foo(%a0: tensor<1x1x1xf32>, %a1: tensor<1x1x2xf16>, %a2: tensor<4x2x1xsi8>,
+                   %extra: tensor<2x3x4xf16>)
+                   -> (tensor<1x1x1xsi8>, tensor<1x1x2xf32>, tensor<4x2x1xf16>, tensor<2x3x4xf16>) {
+        %0 = IE.Convert(%a0) {dstElemType = si8} : tensor<1x1x1xf32> -> tensor<1x1x1xsi8>
+        %1 = IE.Convert(%a1) {dstElemType = f32} : tensor<1x1x2xf16> -> tensor<1x1x2xf32>
+        %2 = IE.Convert(%a2) {dstElemType = f16} : tensor<4x2x1xsi8> -> tensor<4x2x1xf16>
+        return %0, %1, %2, %extra : tensor<1x1x1xsi8>, tensor<1x1x2xf32>, tensor<4x2x1xf16>, tensor<2x3x4xf16>
+    }
+})";
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_Obfuscation, ObfuscateInputs_Noop) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_OBFUSCATION, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto ops = module->getOps<mlir::func::FuncOp>();
+    ASSERT_FALSE(ops.empty());
+    auto op = *ops.begin();
+    ASSERT_EQ(op.getSymName(), "dummy");
+
+    VPU::obfuscateInputs(log, appendLoc(op.getLoc(), "test"), op, {0}, createSlice);
+
+    // test that nothing was changed
+    SmallVector<mlir::Type> expected = {
+            mlir::RankedTensorType::get({2}, mlir::Float32Type::get(&ctx)),
+    };
+    ASSERT_EQ(op.getFunctionType().getInputs(), ArrayRef(expected));
+
+    ASSERT_TRUE(mlir::succeeded(mlir::verify(op))) << "IR must be valid";
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_Obfuscation, ObfuscateInputs_Partial) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_OBFUSCATION, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto ops = module->getOps<mlir::func::FuncOp>();
+    ASSERT_FALSE(ops.empty());
+    auto op = *std::next(ops.begin());
+    ASSERT_EQ(op.getSymName(), "foo");
+
+    VPU::obfuscateInputs(log, appendLoc(op.getLoc(), "test"), op, {1, 2}, createSlice);
+
+    SmallVector<mlir::Type> expected = {
+            mlir::RankedTensorType::get({1, 1, 1}, mlir::Float32Type::get(&ctx)),
+            mlir::RankedTensorType::get({2, 3, 4}, mlir::Float16Type::get(&ctx)),
+            // Note: new input is added as the last argument
+            mlir::RankedTensorType::get({12}, getInt8Type(&ctx)),
+    };
+    ASSERT_EQ(op.getFunctionType().getInputs(), ArrayRef(expected));
+
+    ASSERT_TRUE(mlir::succeeded(mlir::verify(op))) << "IR must be valid";
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_Obfuscation, ObfuscateInputs_Full) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_OBFUSCATION, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto ops = module->getOps<mlir::func::FuncOp>();
+    ASSERT_FALSE(ops.empty());
+    auto op = *std::next(ops.begin());
+    ASSERT_EQ(op.getSymName(), "foo");
+
+    VPU::obfuscateInputs(log, appendLoc(op.getLoc(), "test"), op, {0, 1, 2, 3}, createSlice);
+
+    SmallVector<mlir::Type> expected = {
+            mlir::RankedTensorType::get({64}, getInt8Type(&ctx)),
+    };
+    ASSERT_EQ(op.getFunctionType().getInputs(), ArrayRef(expected));
+
+    ASSERT_TRUE(mlir::succeeded(mlir::verify(op))) << "IR must be valid";
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_Obfuscation, ObfuscateOutputs_Noop) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_OBFUSCATION, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto ops = module->getOps<mlir::func::FuncOp>();
+    ASSERT_FALSE(ops.empty());
+    auto op = *ops.begin();
+    ASSERT_EQ(op.getSymName(), "dummy");
+
+    VPU::obfuscateOutputs(log, appendLoc(op.getLoc(), "test"), op, {0}, createConcat);
+
+    // test that nothing was changed
+    SmallVector<mlir::Type> expected = {
+            mlir::RankedTensorType::get({2}, mlir::Float32Type::get(&ctx)),
+    };
+    ASSERT_EQ(op.getFunctionType().getResults(), ArrayRef(expected));
+
+    ASSERT_TRUE(mlir::succeeded(mlir::verify(op))) << "IR must be valid";
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_Obfuscation, ObfuscateOutputs_Partial) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_OBFUSCATION, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto ops = module->getOps<mlir::func::FuncOp>();
+    ASSERT_FALSE(ops.empty());
+    auto op = *std::next(ops.begin());
+    ASSERT_EQ(op.getSymName(), "foo");
+
+    VPU::obfuscateOutputs(log, appendLoc(op.getLoc(), "test"), op, {1, 2}, createConcat);
+
+    SmallVector<mlir::Type> expected = {
+            mlir::RankedTensorType::get({1, 1, 1}, getSInt8Type(&ctx)),
+            mlir::RankedTensorType::get({2, 3, 4}, mlir::Float16Type::get(&ctx)),
+            // Note: new output is added as the last argument
+            mlir::RankedTensorType::get({24}, getInt8Type(&ctx)),
+    };
+    ASSERT_EQ(op.getFunctionType().getResults(), ArrayRef(expected));
+
+    ASSERT_TRUE(mlir::succeeded(mlir::verify(op))) << "IR must be valid";
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_Obfuscation, ObfuscateOutputs_Full) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_OBFUSCATION, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto ops = module->getOps<mlir::func::FuncOp>();
+    ASSERT_FALSE(ops.empty());
+    auto op = *std::next(ops.begin());
+    ASSERT_EQ(op.getSymName(), "foo");
+
+    VPU::obfuscateOutputs(log, appendLoc(op.getLoc(), "test"), op, {0, 1, 2, 3}, createConcat);
+
+    SmallVector<mlir::Type> expected = {
+            mlir::RankedTensorType::get({73}, getInt8Type(&ctx)),
+    };
+    ASSERT_EQ(op.getFunctionType().getResults(), ArrayRef(expected));
+
+    ASSERT_TRUE(mlir::succeeded(mlir::verify(op))) << "IR must be valid";
 }

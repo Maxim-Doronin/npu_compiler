@@ -177,18 +177,6 @@ Example:
         </filters>
     </skip_config>
 
-    <!-- E#152648 -->
-    <skip_config>
-        <message>Tests are failing due to smoke_BI_PAD=0</message>
-        <enable_rules>
-            <backend>LEVEL0</backend>
-            <device>!3720</device>
-        </enable_rules>
-        <filters>
-            <filter>.*DeformableConvolution2DTest_Strides.*</filter>
-        </filters>
-    </skip_config>
-
     <!-- E#32075 -->
     <skip_config>
         <message>Exception during loading to the device</message>
@@ -508,6 +496,15 @@ Example:
             <filter>.*smoke_registerPluginsLibrariesUnicodePath.*</filter>
         </filters>
     </skip_config>
+
+    <!-- E#171305 -->
+    <skip_config>
+        <message>Dynamic output issue in sync infer request where keepDims is off</message>
+        <filters>
+            <filter>.*smoke_ReduceAllAxis/ReduceLayerTest_SW_FP16.*KeepDims=0.*</filter>
+        </filters>
+    </skip_config>
+
     <!-- E#166289 -->
     <skip_config>
         <message>M2I tests failing with device hung</message>
@@ -516,6 +513,7 @@ Example:
             <filter>.*PreProcessTest_M2I.*</filter>
         </filters>
     </skip_config>
+
     <!-- E#118999 -->
     <skip_config>
         <message>Newly enabled, never tested</message>
@@ -955,96 +953,22 @@ Example:
     </skip_config>
 
     <!-- E#168882 -->
-    <!-- E#TBD -->
+    <!-- E#170866 -->
     <skip_config>
-        <message> Test-cases failing due to private configs - LNL</message>
+        <message>LSTM Sequence accuracy fails</message>
         <enable_rules>
-            <device>4000</device>
-            <operating_system>windows</operating_system>
         </enable_rules>
         <filters>
-            <filter>.*ActivationLayerTest.*</filter>
-            <filter>.*smoke_convInterpolateTransposeTest.*</filter>
-            <filter>.*smoke_SEPDilatedConv.*</filter>
-            <filter>.*smoke_Reduce_FP32.*</filter>
-            <filter>.*smoke_precommit_TopK_FP32.*</filter>
-            <filter>.*ConvolutionLayerTest_FP32_SW.*</filter>
-            <filter>.*precommit_EltwiseTypesF32.*</filter>
-            <filter>.*smoke_ScalarShapesNDF32.*</filter>
-            <filter>.*smoke_VectorShapesNDF32.*</filter>
-            <filter>.*smoke_ExperimentalROIExtractor.*</filter>
-            <filter>.*precommit_ExperimentalROIExtractor.*</filter>
-            <filter>.*smoke_FakeQuantPerCh.*</filter>
-            <filter>.*smoke_precommit_GRUSequence.*</filter>
-            <filter>.*smoke_precommit_LrnGooglenetV1_FP32.*</filter>
-            <filter>.*smoke_precommit_MatMul.*</filter>
-            <filter>.*smoke_MatMul_to_FC_caseSecondTrans.*</filter>
-            <filter>.*smoke_MatMul_to_FC_caseNoTrans.*</filter>
-            <filter>.*smoke_MatMulNoTrans.*</filter>
-            <filter>.*smoke_MatMulFirstTrans.*</filter>
-            <filter>.*smoke_MatMulSecondTrans.*</filter>
-            <filter>.*smoke_MatMulBothTrans.*</filter>
-            <filter>.*smoke_MVN6_fp32.*</filter>
-            <filter>.*smoke_Pad.*</filter>
-            <filter>.*smoke_precommit_Pad.*</filter>
-            <filter>.*custom_Pad.*</filter>
-            <filter>.*smoke_reflectPad.*</filter>
-            <filter>.*smoke_Pooling_F32.*</filter>
-            <filter>.*smoke_RandomUniform.*</filter>
-            <filter>.*smoke_ApplyBoundaryCorrection.*</filter>
-            <filter>.*precommit_FuseMvn6ScaleBias.*</filter>
-            <filter>.*tiling_FuseMvn6ScaleBias.*</filter>
-            <filter>.*smoke_TwoMishInDDR.*</filter>
-            <filter>.*smoke_QuantizedConv.*</filter>
-            <filter>.*LSTMSequenceLayerTestCommonSwDpu.*</filter>
-            <filter>.*DynamicUnsqueezeConcat.*</filter>
-            <filter>.*DriverCompilerAdapterPropComTestNPU.*</filter>
-            <filter>.*Conv2dInMixedModeIncorrectZeroPoint.*</filter>
+            <filter>.*smoke_precommit_LSTMSequencePt/LSTMSequenceLayerTestCommon.*direction=bidirectional_clip=0_WRBType=CONSTANT_modelType=f32.*</filter>
+            <filter>.*smoke_precommit_LSTMSequenceCommonZeroClip/LSTMSequenceLayerTestCommon.*</filter>
         </filters>
     </skip_config>
+
+    <!-- E###### -->
     <skip_config>
-        <message> Test-cases failing due to private configs - MTL</message>
-        <enable_rules>
-            <device>3720</device>
-            <operating_system>windows</operating_system>
-        </enable_rules>
+        <message>NPU_DPU_GROUPS is a deprecated property</message>
         <filters>
-            <filter>.*ActivationLayerTest.*</filter>
-            <filter>.*Conv2dInMixedModeIncorrectZeroPoint.*</filter>
-            <filter>.*smoke_convInterpolateTransposeTest.*</filter>
-            <filter>.*smoke_Reduce_FP32.*</filter>
-            <filter>.*smoke_precommit_TopK_FP32.*</filter>
-            <filter>.*ConvolutionLayerTest_FP32_SW.*</filter>
-            <filter>.*precommit_EltwiseTypesF32.*</filter>
-            <filter>.*smoke_ScalarShapesNDF32.*</filter>
-            <filter>.*smoke_VectorShapesNDF32.*</filter>
-            <filter>.*smoke_ExperimentalROIExtractor.*</filter>
-            <filter>.*precommit_ExperimentalROIExtractor.*</filter>
-            <filter>.*smoke_FakeQuantPerCh.*</filter>
-            <filter>.*smoke_tiling_FakeQuantPerCh.*</filter>
-            <filter>.*smoke_precommit_GRUSequence.*</filter>
-            <filter>.*smoke_precommit_LrnGooglenetV1_FP32.*</filter>
-            <filter>.*smoke_precommit_MatMul.*</filter>
-            <filter>.*smoke_MatMul_to_FC_caseSecondTrans.*</filter>
-            <filter>.*smoke_MatMul_to_FC_caseNoTrans.*</filter>
-            <filter>.*smoke_MatMulNoTrans.*</filter>
-            <filter>.*smoke_MatMulFirstTrans.*</filter>
-            <filter>.*smoke_MatMulSecondTrans.*</filter>
-            <filter>.*smoke_MatMulBothTrans.*</filter>
-            <filter>.*smoke_MVN6_fp32.*</filter>
-            <filter>.*smoke_Pad.*</filter>
-            <filter>.*smoke_precommit_Pad.*</filter>
-            <filter>.*smoke_Pooling_SOB.*</filter>
-            <filter>.*custom_Pad.*</filter>
-            <filter>.*smoke_reflectPad.*</filter>
-            <filter>.*smoke_Pooling_F32.*</filter>
-            <filter>.*smoke_RandomUniform.*</filter>
-            <filter>.*precommit_FuseMvn6ScaleBias.*</filter>
-            <filter>.*tiling_FuseMvn6ScaleBias.*</filter>
-            <filter>.*DynamicUnsqueezeConcat.*</filter>
-            <filter>.*DriverCompilerAdapterPropComTestNPU.*</filter>
-            <filter>.*smoke_precommit_BehaviorTest_Dummy.*</filter>
-            <filter>.*EltwiseAddQuantizedFuseOutstandingQuantSubGraphTest_NPU3720.*</filter>
+            <filter>.*NPU_DPU_GROUPS.*</filter>
         </filters>
     </skip_config>
 

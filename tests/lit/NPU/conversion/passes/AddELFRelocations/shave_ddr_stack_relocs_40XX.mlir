@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --create-elf-relocations %s | FileCheck %s
@@ -69,16 +69,16 @@ ELF.Main @ELFMain {
       @shave.stack::@ActShaveRtStack_0_10, @shave.stack::@ActShaveRtStack_0_11], dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer6, isActKernelInvocations, sym_name = "MappedInference_nnrtConfigManaged", elfMemOffsetAttrKey = 0 : ui64}
     }
     ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
-    ELF.Symbol @elfsym.buffer.CMX_NN.0 of(@buffer.CMX_NN.0) type(<STT_SECTION>) size(0) value(0)
-    ELF.Symbol @elfsym.shave.runtime of(@shave.runtime) type(<STT_SECTION>) size(0) value(0)
-    ELF.Symbol @elfsym.shave.stack of(@shave.stack) type(<STT_SECTION>) size(0) value(0)
-    ELF.Symbol @elfsym.program.nnrt_config of(@program.nnrt_config) type(<STT_SECTION>) size(0) value(0)
+    ELF.Symbol @elfsym.buffer.CMX_NN.0 of(@buffer.CMX_NN.0) type(<STT_SECTION>) size(1474560) value(1075937280)
+    ELF.Symbol @elfsym.shave.runtime of(@shave.runtime) type(<STT_SECTION>)
+    ELF.Symbol @elfsym.shave.stack of(@shave.stack) type(<STT_SECTION>)
+    ELF.Symbol @elfsym.program.nnrt_config of(@program.nnrt_config) type(<STT_SECTION>)
     }
 }
 return
 }
 
-
+// CHECK: NNRTCfg_logAddrDmaHwp = UINT 0x4037FC00
 // CHECK:  ELF.CreateRelocationSection @rela.program.nnrt_config.symtab target(@program.nnrt_config) symtab(@symtab) secFlags("SHF_NONE") {
 // CHECK:         ELF.Reloc offset(16) sourceSym(@symtab::@elfsym.shave.runtime) relocType(<R_VPU_64>) addend(0) (description : "actShaveRt in mapped inference reloc")
 // CHECK:         ELF.Reloc offset(24) sourceSym(@symtab::@elfsym.shave.stack) relocType(<R_VPU_32>) addend(16384) (description : "Act shave stack in mapped inference reloc")
@@ -93,4 +93,3 @@ return
 // CHECK:         ELF.Reloc offset(60) sourceSym(@symtab::@elfsym.shave.stack) relocType(<R_VPU_32>) addend(163840) (description : "Act shave stack in mapped inference reloc")
 // CHECK:         ELF.Reloc offset(64) sourceSym(@symtab::@elfsym.shave.stack) relocType(<R_VPU_32>) addend(180224) (description : "Act shave stack in mapped inference reloc")
 // CHECK:         ELF.Reloc offset(68) sourceSym(@symtab::@elfsym.shave.stack) relocType(<R_VPU_32>) addend(196608) (description : "Act shave stack in mapped inference reloc")
-// CHECK:         ELF.Reloc offset(96) sourceSym(@symtab::@elfsym.buffer.CMX_NN.0) relocType(<R_VPU_64>) addend(1473536) (description : "")

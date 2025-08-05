@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --encapsulate-codegen-ops %s | FileCheck %s
@@ -74,9 +74,9 @@ module @MultipleCosWithExceptionLayer {
     %cos_res = IE.Cos(%arg0) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
     %cos_res1 = IE.Cos(%cos_res) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
 
-    %relu = IE.ReLU(%cos_res1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16> // not supported by ShaveCodeGen, at least for now
+    %sig = IE.Sigmoid(%cos_res1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16> // not supported by ShaveCodeGen, at least for now
 
-    %cos_res2 = IE.Cos(%relu) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    %cos_res2 = IE.Cos(%sig) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
     return %cos_res2 : tensor<1x1x1x1000xf16>
 
     // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
@@ -91,9 +91,9 @@ module @MultipleCosWithExceptionLayer {
     // CHECK: } -> tensor<1x1x1x1000xf16>
 
     // Unsupported layer should stay unwrapped
-    // CHECK: [[RELU_RES:%.+]] = IE.ReLU([[VAR1]]) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    // CHECK: [[SIG_RES:%.+]] = IE.Sigmoid([[VAR1]]) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
 
-    // CHECK: [[VAR2:%.+]] = IE.CodeGenCapsule inputs([[RELU_RES]] as [[CAPSULE_ARG:%.+]]: tensor<1x1x1x1000xf16>) {
+    // CHECK: [[VAR2:%.+]] = IE.CodeGenCapsule inputs([[SIG_RES]] as [[CAPSULE_ARG:%.+]]: tensor<1x1x1x1000xf16>) {
     // CHECK: [[COS_RES:%.+]] = IE.Cos([[CAPSULE_ARG]]) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
     // CHECK: IE.CGCYield [[COS_RES]] : tensor<1x1x1x1000xf16>
     // CHECK: } -> tensor<1x1x1x1000xf16>

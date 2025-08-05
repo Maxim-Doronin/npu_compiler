@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 
 #include "shared_test_classes/subgraph/conv_act_base.hpp"
 #include "common_test_utils/common_utils.hpp"

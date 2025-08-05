@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --multi-cluster-strategy-assignment %s | FileCheck %s
@@ -383,6 +383,80 @@ func.func @AvgPoolAssignedSOB(%input: tensor<2x32x112x112xf16, {order = #NHWC}>)
     // CHECK-SAME:  } -> tensor<2x32x112x112xf16, {order = #NHWC}>
 
     // CHECK:       return [[AVGPOOL]] : tensor<2x32x112x112xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.006259918212890625>
+!qWeightType = !quant.uniform<u8:f16, 0.0>
+
+// CHECK-LABEL: @SparseConvAssignedSOKWhenSmallHeight
+// CHECK-SAME:     ([[ARG0:%.+]]: tensor<1x512x14x14x!qElemType
+// CHECK-SAME:      [[ARG1:%.+]]: tensor<1x512x14x14xi1
+func.func @SparseConvAssignedSOKWhenSmallHeight(
+    %arg0: tensor<1x512x14x14x!qElemType, {order = #NHWC}>,
+    %arg1: tensor<1x512x14x14xi1, {order = #NHWC}>
+) -> !VPU.SparseTensor<
+        data=tensor<1x512x7x7x!qElemType, {order = #NHWC}>,
+        sparsity_map=tensor<1x512x7x7xi1, {order = #NHWC}>
+    >
+{
+    %input_sparse = VPU.GroupSparseTensor(%arg0, %arg1)
+        -> !VPU.SparseTensor<
+            data=tensor<1x512x14x14x!qElemType, {order = #NHWC}>,
+            sparsity_map=tensor<1x512x14x14xi1, {order = #NHWC}>
+        >
+
+    %weights = const.Declare tensor<512x512x3x3x!qWeightType, {order = #NHWC}> = dense<1.000000e+00> : tensor<512x512x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
+    %weights_sm = const.Declare tensor<512x1x1x4608xi1> = dense<1.000000e+00> : tensor<512x512x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
+    %weights_sparse = VPU.GroupSparseTensor(%weights, %weights_sm) {
+        sparsity_compression = #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<512> : tensor<512xi64>, alignment = 16 : i64>, is_weights
+    } -> !VPU.SparseTensor<
+            data=tensor<512x512x3x3x!qWeightType, {order = #NHWC}>,
+            sparsity_map=tensor<512x1x1x4608xi1>,
+            is_weights,
+            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<512> : tensor<512xi64>, alignment = 16 : i64>
+        >
+
+    %weights_table = const.Declare tensor<512x1x1x4xsi32> = dense<1> : tensor<512x1x1x4xsi32>
+
+    %0 = VPU.NCE.Convolution(%input_sparse, %weights_sparse, %weights_table) {
+        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+        ppe = #VPU.PPEStub<>,
+        rawFilterShape = [512, 512, 3, 3],
+        strides = [2, 2]
+    } : !VPU.SparseTensor<
+            data=tensor<1x512x14x14x!qElemType, {order = #NHWC}>,
+            sparsity_map=tensor<1x512x14x14xi1, {order = #NHWC}>
+        >,
+        !VPU.SparseTensor<
+            data=tensor<512x512x3x3x!qWeightType, {order = #NHWC}>,
+            sparsity_map=tensor<512x1x1x4608xi1>,
+            is_weights,
+            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<512> : tensor<512xi64>, alignment = 16 : i64>
+        >,
+        tensor<512x1x1x4xsi32>
+      -> !VPU.SparseTensor<
+            data=tensor<1x512x7x7x!qElemType, {order = #NHWC}>,
+            sparsity_map=tensor<1x512x7x7xi1, {order = #NHWC}>
+        >
+
+    return %0 : !VPU.SparseTensor<
+        data=tensor<1x512x7x7x!qElemType, {order = #NHWC}>,
+        sparsity_map=tensor<1x512x7x7xi1, {order = #NHWC}>
+    >
+
+    // CHECK: [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG0]], [[ARG1]])
+    // CHECK-DAG: [[CST_WEIGHTS:%.+]] = const.Declare tensor<512x512x3x3
+    // CHECK-DAG: [[CST_WEIGHTS_SM:%.+]] = const.Declare tensor<512x1x1x4608xi1>
+    // CHECK: [[WEIGHTS_SPARSE:%.+]] = VPU.GroupSparseTensor([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]])
+    // CHECK-SAME: is_weights, sparsity_compression = #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<512> : tensor<512xi64>, alignment = 16 : i64>
+    // CHECK-DAG: [[CST_WEIGHTS_TABLE:%.+]] = const.Declare tensor<512x1x1x4xsi32>
+    // CHECK: [[OUT:%.+]] = VPU.NCE.Convolution([[INPUT_SPARSE]], [[WEIGHTS_SPARSE]], [[CST_WEIGHTS_TABLE]])
+    // CHECK-SAME: multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
+    // CHECK-SAME: rawFilterShape = [512, 512, 3, 3], strides = [2, 2]
+    // CHECK: return [[OUT]] : !VPU.SparseTensor<data=tensor<1x512x7x7
 }
 
 // -----

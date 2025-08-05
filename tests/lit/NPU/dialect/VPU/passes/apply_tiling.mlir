@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --apply-tiling --canonicalize %s | FileCheck %s
@@ -1244,10 +1244,10 @@ func.func @ApplyTilingConvertSubByteInput(%arg0: tensor<1x930x24x128xui4>) -> te
     %0 = VPU.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC, tilingStrategy = [1, 2, 1, 1]} : tensor<1x930x24x128xui4> -> tensor<1x930x24x128xui4, {order = #NHWC}>
     return %0 : tensor<1x930x24x128xui4, {order = #NHWC}>
 
-    // CHECK:   [[SLICE0:%.*]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 466, 24, 128]
+    // CHECK:   [[SLICE0:%.*]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 480, 24, 128]
     // CHECK:   [[PERMUTE0:%.*]] = VPU.MemPermute([[SLICE0]])
 
-    // CHECK:   [[SLICE1:%.*]] = VPU.Slice [[INPUT]] [0, 466, 0, 0] [1, 464, 24, 128]
+    // CHECK:   [[SLICE1:%.*]] = VPU.Slice [[INPUT]] [0, 480, 0, 0] [1, 450, 24, 128]
     // CHECK:   [[PERMUTE1:%.*]] = VPU.MemPermute([[SLICE1]])
 
     // CHECK:   [[CONCAT:%.*]] = VPU.Concat([[PERMUTE0]], [[PERMUTE1]])

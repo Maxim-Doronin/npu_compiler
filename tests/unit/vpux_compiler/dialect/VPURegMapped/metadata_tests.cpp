@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/ELFNPU37XX/metadata.hpp"
@@ -39,6 +39,7 @@ std::vector<std::pair<mlir::Type, elf::OVNodeType>> getMLIR2OVTypes(mlir::MLIRCo
             std::make_pair(getSInt16Type(ctx), elf::OVNodeType::OVNodeType_I16),
             std::make_pair(getSInt8Type(ctx), elf::OVNodeType::OVNodeType_I8),
             std::make_pair(getSInt4Type(ctx), elf::OVNodeType::OVNodeType_I4),
+            std::make_pair(getSInt2Type(ctx), elf::OVNodeType::OVNodeType_I2),
             std::make_pair(getSInt1Type(ctx), elf::OVNodeType::OVNodeType_U1),
 
             // Unsigned
@@ -56,6 +57,7 @@ std::vector<std::pair<mlir::Type, elf::OVNodeType>> getMLIR2OVTypes(mlir::MLIRCo
             // Signless 8-bit integer use for BOOL, to distinguish it from U8
             std::make_pair(getBool8Type(ctx), elf::OVNodeType::OVNodeType_BOOLEAN),
             std::make_pair(getInt4Type(ctx), elf::OVNodeType::OVNodeType_U4),
+            std::make_pair(getUInt2Type(ctx), elf::OVNodeType::OVNodeType_U2),
             std::make_pair(getInt1Type(ctx), elf::OVNodeType::OVNodeType_U1)};
 }
 

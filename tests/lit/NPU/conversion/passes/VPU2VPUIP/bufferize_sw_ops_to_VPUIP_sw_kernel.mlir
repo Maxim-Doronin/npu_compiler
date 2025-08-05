@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
@@ -1608,5 +1608,157 @@ func.func @DynamicDataMask(%arg0: tensor<4xsi32>) -> tensor<1x3x32x32xf16> {
     // CHECK: [[ALLOC1:%.+]] = memref.alloc() : memref<1x3x32x32xf16>
     // CHECK: [[COPY3:%.+]] = VPUIP.Copy inputs([[RES]] : memref<1x3x32x32xf16, [@CMX_NN, 0]>) outputs([[ALLOC1]] : memref<1x3x32x32xf16>) -> memref<1x3x32x32xf16>
     // CHECK: return [[COPY3]] : memref<1x3x32x32xf16>
+}
 
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: #[[$NHWC:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL:   module @VPU.SW {
+// CHECK:           func.func private @builtin_dummy_kernel(memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>)
+// CHECK-SAME:      attributes {VPU.kernel_code = "dummy_kernel.cpp", VPU.kernel_entry = "dummy_kernel", VPU.kernel_name = "dummy_kernel", VPU.task_type = @COMPUTE}
+// CHECK:           func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+
+// CHECK-LABEL:   func.func @ExternalKernelOneInputOneOutputCMX(
+// CHECK-SAME:      %[[VAL_0:.*]]: memref<1x512x512x1xf16, #[[$NHWC]]>) -> memref<1x512x512x1xf16, #[[$NHWC]]>
+func.func @ExternalKernelOneInputOneOutputCMX(%arg0: tensor<1x512x512x1xf16, {order = #NHWC}>) -> tensor<1x512x512x1xf16, {order = #NHWC}> {
+    %0 = VPU.ExternalKernel "dummy_kernel" inputs(%arg0 : tensor<1x512x512x1xf16, {order = #NHWC}>) attrs({}) -> tensor<1x512x512x1xf16, {order = #NHWC}>
+    return %0 : tensor<1x512x512x1xf16, {order = #NHWC}>
+
+// CHECK:         %[[VAL_1:.*]] = memref.alloc() : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_2:.*]] = VPUIP.Copy inputs(%[[VAL_0]] : memref<1x512x512x1xf16, #[[$NHWC]]>) outputs(%[[VAL_1]] : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>) -> memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_3:.*]] = memref.alloc() : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_4:.*]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_dummy_kernel inputs(%[[VAL_2]] as %[[VAL_5:.*]]: memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>) outputs(%[[VAL_3]] as %[[VAL_6:.*]]: memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>) on tile 0
+// CHECK-SAME:    -> memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>{
+// CHECK:           VPUIP.SW.Kernel.run(%[[VAL_5]], %[[VAL_6]]) : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>, memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         }
+// CHECK:         %[[VAL_7:.*]] = memref.alloc() : memref<1x512x512x1xf16, #[[$NHWC]]>
+// CHECK:         %[[VAL_8:.*]] = VPUIP.Copy inputs(%[[VAL_9:.*]] : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>) outputs(%[[VAL_7]] : memref<1x512x512x1xf16, #[[$NHWC]]>) -> memref<1x512x512x1xf16, #[[$NHWC]]>
+// CHECK:         return %[[VAL_8]] : memref<1x512x512x1xf16, #[[$NHWC]]>
+}
+
+// -----
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: #[[$NHWC:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL:   module @VPU.SW {
+// CHECK:           func.func private @builtin_dummy_kernel(memref<*xf16, [@CMX_NN, 0]>, memref<*xf16>)
+// CHECK-SAME:      attributes {VPU.kernel_code = "dummy_kernel.cpp", VPU.kernel_entry = "dummy_kernel", VPU.kernel_name = "dummy_kernel", VPU.task_type = @COMPUTE}
+// CHECK:           func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+
+// CHECK-LABEL:   func.func @ExternalKernelOneInputCMXOneOutputDDR(
+// CHECK-SAME:      %[[VAL_0:.*]]: memref<1x512x512x1xf16, #[[$NHWC]]>) -> memref<1x512x512x10xf16, #[[$NHWC]]>
+func.func @ExternalKernelOneInputCMXOneOutputDDR(%arg0: tensor<1x512x512x1xf16, {order = #NHWC}>) -> tensor<1x512x512x10xf16, {order = #NHWC}> {
+    %0 = VPU.ExternalKernel "dummy_kernel" inputs(%arg0 : tensor<1x512x512x1xf16, {order = #NHWC}>) attrs({}) -> tensor<1x512x512x10xf16, {order = #NHWC}>
+    return %0 : tensor<1x512x512x10xf16, {order = #NHWC}>
+
+// CHECK:         %[[VAL_1:.*]] = memref.alloc() : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_2:.*]] = VPUIP.Copy inputs(%[[VAL_0]] : memref<1x512x512x1xf16, #[[$NHWC]]>) outputs(%[[VAL_1]] : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>) -> memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_3:.*]] = memref.alloc() : memref<1x512x512x10xf16, #[[$NHWC]]>
+// CHECK:         %[[VAL_4:.*]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_dummy_kernel
+// CHECK-SAME:    inputs(%[[VAL_2]] as %[[VAL_5:.*]]: memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>)
+// CHECK-SAME:    outputs(%[[VAL_3]] as %[[VAL_6:.*]]: memref<1x512x512x10xf16, #[[$NHWC]]>) on tile 0
+// CHECK-SAME:    -> memref<1x512x512x10xf16, #[[$NHWC]]>{
+// CHECK:           VPUIP.SW.Kernel.run(%[[VAL_5]], %[[VAL_6]]) : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>, memref<1x512x512x10xf16, #[[$NHWC]]>
+// CHECK:         }
+// CHECK:         return %[[VAL_7:.*]] : memref<1x512x512x10xf16, #[[$NHWC]]>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: #[[$NHWC:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL:   module @VPU.SW {
+// CHECK:           func.func private @builtin_dummy_kernel(memref<*xf16>, memref<*xf16, [@CMX_NN, 0]>)
+// CHECK-SAME:      attributes {VPU.kernel_code = "dummy_kernel.cpp", VPU.kernel_entry = "dummy_kernel", VPU.kernel_name = "dummy_kernel", VPU.task_type = @COMPUTE}
+// CHECK:           func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+
+// CHECK-LABEL:   func.func @ExternalKernelOneInputDDROneOutputCMX(
+// CHECK-SAME:      %[[VAL_0:.*]]: memref<1x512x512x10xf16, #[[$NHWC]]>) -> memref<1x512x512x1xf16, #[[$NHWC]]>
+func.func @ExternalKernelOneInputDDROneOutputCMX(%arg0: tensor<1x512x512x10xf16, {order = #NHWC}>) -> tensor<1x512x512x1xf16, {order = #NHWC}> {
+    %0 = VPU.ExternalKernel "dummy_kernel" inputs(%arg0 : tensor<1x512x512x10xf16, {order = #NHWC}>) attrs({}) -> tensor<1x512x512x1xf16, {order = #NHWC}>
+    return %0 : tensor<1x512x512x1xf16, {order = #NHWC}>
+
+// CHECK:         %[[VAL_1:.*]] = memref.alloc() : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_2:.*]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_dummy_kernel
+// CHECK-SAME:    inputs(%[[VAL_0]] as %[[VAL_3:.*]]: memref<1x512x512x10xf16, #[[$NHWC]]>)
+// CHECK-SAME:    outputs(%[[VAL_1]] as %[[VAL_4:.*]]: memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>) on tile 0
+// CHECK-SAME:    -> memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>{
+// CHECK:           VPUIP.SW.Kernel.run(%[[VAL_3]], %[[VAL_4]]) : memref<1x512x512x10xf16, #[[$NHWC]]>, memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         }
+// CHECK:         %[[VAL_5:.*]] = memref.alloc() : memref<1x512x512x1xf16, #[[$NHWC]]>
+// CHECK:         %[[VAL_6:.*]] = VPUIP.Copy inputs(%[[VAL_7:.*]] : memref<1x512x512x1xf16, #[[$NHWC]], [@CMX_NN, 0]>) outputs(%[[VAL_5]] : memref<1x512x512x1xf16, #[[$NHWC]]>) -> memref<1x512x512x1xf16, #[[$NHWC]]>
+// CHECK:         return %[[VAL_6]] : memref<1x512x512x1xf16, #[[$NHWC]]>
+}
+
+// -----
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: #[[$NHWC:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL:   module @VPU.SW {
+// CHECK:           func.func private @builtin_dummy_kernel
+// CHECK-SAME:      (memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>)
+// CHECK-SAME:      attributes {VPU.kernel_code = "dummy_kernel.cpp", VPU.kernel_entry = "dummy_kernel", VPU.kernel_name = "dummy_kernel", VPU.task_type = @COMPUTE}
+// CHECK:           func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+
+// CHECK-LABEL:   func.func @ExternalKernelMultipleIOCMX(
+// CHECK-SAME:      %[[VAL_0:.*]]: memref<1x64x64x3xf16, #[[$NHWC]]>, %[[VAL_1:.*]]: memref<1x64x64x3xf16, #[[$NHWC]]>, %[[VAL_2:.*]]: memref<1x64x64x3xf16, #[[$NHWC]]>) -> (memref<1x64x64x3xf16, #[[$NHWC]]>, memref<1x64x64x3xf16, #[[$NHWC]]>) {
+func.func @ExternalKernelMultipleIOCMX(%arg0: tensor<1x64x64x3xf16, {order = #NHWC}>,
+                                       %arg1: tensor<1x64x64x3xf16, {order = #NHWC}>,
+                                       %arg2: tensor<1x64x64x3xf16, {order = #NHWC}>)
+                                       -> (tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x64x64x3xf16, {order = #NHWC}>) {
+    %0, %1 = VPU.ExternalKernel "dummy_kernel" inputs(%arg0, %arg1, %arg2 : tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x64x64x3xf16, {order = #NHWC}>) attrs({}) -> tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x64x64x3xf16, {order = #NHWC}>
+    return %0, %1 : tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x64x64x3xf16, {order = #NHWC}>
+
+// CHECK:         %[[VAL_3:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_4:.*]] = VPUIP.Copy inputs(%[[VAL_0]] : memref<1x64x64x3xf16, #[[$NHWC]]>) outputs(%[[VAL_3]] : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) -> memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_5:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_6:.*]] = VPUIP.Copy inputs(%[[VAL_1]] : memref<1x64x64x3xf16, #[[$NHWC]]>) outputs(%[[VAL_5]] : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) -> memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_7:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_8:.*]] = VPUIP.Copy inputs(%[[VAL_2]] : memref<1x64x64x3xf16, #[[$NHWC]]>) outputs(%[[VAL_7]] : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) -> memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_9:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_10:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:         %[[VAL_9:.*]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_dummy_kernel inputs(%[[VAL_4]] as %[[VAL_10:.*]]: memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, %[[VAL_6]] as %[[VAL_13:.*]]: memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, %[[VAL_8]] as %[[VAL_14:.*]]: memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>)
+// CHECK:         %[[VAL_17:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]]>
+// CHECK:         %[[VAL_18:.*]] = VPUIP.Copy inputs(%[[VAL_19:.*]]#0 : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) outputs(%[[VAL_17]] : memref<1x64x64x3xf16, #[[$NHWC]]>) -> memref<1x64x64x3xf16, #[[$NHWC]]>
+// CHECK:         %[[VAL_20:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]]>
+// CHECK:         %[[VAL_21:.*]] = VPUIP.Copy inputs(%[[VAL_19]]#1 : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) outputs(%[[VAL_20]] : memref<1x64x64x3xf16, #[[$NHWC]]>) -> memref<1x64x64x3xf16, #[[$NHWC]]>
+// CHECK:         return %[[VAL_18]], %[[VAL_21]] : memref<1x64x64x3xf16, #[[$NHWC]]>, memref<1x64x64x3xf16, #[[$NHWC]]>
+}
+
+// -----
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: #[[$NHWC:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL:   module @VPU.SW {
+// CHECK:           func.func private @builtin_dummy_kernel
+// CHECK-SAME:      (memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16>)
+// CHECK-SAME:      attributes {VPU.kernel_code = "dummy_kernel.cpp", VPU.kernel_entry = "dummy_kernel", VPU.kernel_name = "dummy_kernel", VPU.task_type = @COMPUTE}
+// CHECK:           func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+
+// CHECK-LABEL:   func.func @ExternalKernelMultipleIOHybrid(
+// CHECK-SAME:      %[[VAL_0:.*]]: memref<1x64x64x3xf16, #[[$NHWC]]>, %[[VAL_1:.*]]: memref<1x64x64x3xf16, #[[$NHWC]]>, %[[VAL_2:.*]]: memref<1x512x512x10xf16, #[[$NHWC]]>) -> (memref<1x64x64x3xf16, #[[$NHWC]]>, memref<1x512x512x10xf16, #[[$NHWC]]>) {
+func.func @ExternalKernelMultipleIOHybrid(%arg0: tensor<1x64x64x3xf16, {order = #NHWC}>,
+                                       %arg1: tensor<1x64x64x3xf16, {order = #NHWC}>,
+                                       %arg2: tensor<1x512x512x10xf16, {order = #NHWC}>)
+                                       -> (tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x512x512x10xf16, {order = #NHWC}>) {
+    %0, %1 = VPU.ExternalKernel "dummy_kernel" inputs(%arg0, %arg1, %arg2 : tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x512x512x10xf16, {order = #NHWC}>) attrs({}) -> tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x512x512x10xf16, {order = #NHWC}>
+    return %0, %1 : tensor<1x64x64x3xf16, {order = #NHWC}>, tensor<1x512x512x10xf16, {order = #NHWC}>
+
+// CHECK:           %[[VAL_3:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:           %[[VAL_4:.*]] = VPUIP.Copy inputs(%[[VAL_0]] : memref<1x64x64x3xf16, #[[$NHWC]]>) outputs(%[[VAL_3]] : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) -> memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:           %[[VAL_5:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:           %[[VAL_6:.*]] = VPUIP.Copy inputs(%[[VAL_1]] : memref<1x64x64x3xf16, #[[$NHWC]]>) outputs(%[[VAL_5]] : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) -> memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:           %[[VAL_7:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>
+// CHECK:           %[[VAL_8:.*]] = memref.alloc() : memref<1x512x512x10xf16, #[[$NHWC]]>
+// CHECK:           %[[VAL_9:.*]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_dummy_kernel inputs(%[[VAL_4]] as %[[VAL_10:.*]]: memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, %[[VAL_6]] as %[[VAL_11:.*]]: memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, %[[VAL_2]] as %[[VAL_12:.*]]: memref<1x512x512x10xf16, #[[$NHWC]]>) outputs(%[[VAL_7]] as %[[VAL_13:.*]]: memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, %[[VAL_8]] as %[[VAL_14:.*]]: memref<1x512x512x10xf16, #[[$NHWC]]>) on tile 0
+// CHECK-SAME:      -> (memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, memref<1x512x512x10xf16, #[[$NHWC]]>){
+// CHECK:             VPUIP.SW.Kernel.run(%[[VAL_10]], %[[VAL_11]], %[[VAL_12]], %[[VAL_13]], %[[VAL_14]])
+// CHECK-SAME:      memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, memref<1x512x512x10xf16, #[[$NHWC]]>, memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>, memref<1x512x512x10xf16, #[[$NHWC]]>
+// CHECK:           }
+// CHECK:           %[[VAL_15:.*]] = memref.alloc() : memref<1x64x64x3xf16, #[[$NHWC]]>
+// CHECK:           %[[VAL_16:.*]] = VPUIP.Copy inputs(%[[VAL_17:.*]]#0 : memref<1x64x64x3xf16, #[[$NHWC]], [@CMX_NN, 0]>) outputs(%[[VAL_15]] : memref<1x64x64x3xf16, #[[$NHWC]]>) -> memref<1x64x64x3xf16, #[[$NHWC]]>
+// CHECK:           return %[[VAL_16]], %[[VAL_17]]#1 : memref<1x64x64x3xf16, #[[$NHWC]]>, memref<1x512x512x10xf16, #[[$NHWC]]>
 }

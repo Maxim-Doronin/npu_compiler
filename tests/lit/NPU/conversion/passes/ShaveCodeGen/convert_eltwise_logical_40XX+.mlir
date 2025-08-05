@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
@@ -19,13 +19,16 @@ module @AndILayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi32>, %arg1: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-    %res = IE.And(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
-    return %res : tensor<1x1x1x1000xsi32>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg2: tensor<1x1x1x1000xsi32>, %arg1 as %arg3: tensor<1x1x1x1000xsi32>) {
+      %1 = IE.And(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xsi32>
+    } -> tensor<1x1x1x1000xsi32>
+    return %0 : tensor<1x1x1x1000xsi32>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xsi32>, [[RHS:%.+]]: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
+// CHECK-NOT:     IE.And
+// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -36,7 +39,7 @@ module @AndILayer {
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
   }
 }
 
@@ -53,11 +56,14 @@ module @AndFPLayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>, %arg1: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.And(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg2: tensor<1x1x1x1000xf16>, %arg1 as %arg3: tensor<1x1x1x1000xf16>) {
+      %1 = IE.And(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xf16>, [[RHS:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS]], [[RHS]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
+// CHECK-NOT:     IE.And
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS:%.+]], [[RHS:%.+]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpf one, [[LHS]], [[ZLHS]] fastmath<nnan,nsz> : f16
@@ -67,7 +73,7 @@ module @AndFPLayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.uitofp [[RES_B]] : i1 to f16
 // CHECK-NEXT:      linalg.yield [[RES]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -85,13 +91,16 @@ module @LogicalXorILayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi32>, %arg1: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-    %res = IE.LogicalXor(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
-    return %res : tensor<1x1x1x1000xsi32>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg2: tensor<1x1x1x1000xsi32>, %arg1 as %arg3: tensor<1x1x1x1000xsi32>) {
+      %1 = IE.LogicalXor(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xsi32>
+    } -> tensor<1x1x1x1000xsi32>
+    return %0 : tensor<1x1x1x1000xsi32>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xsi32>, [[RHS:%.+]]: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
+// CHECK-NOT:     IE.LogicalXor
+// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -102,7 +111,7 @@ module @LogicalXorILayer {
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
   }
 }
 
@@ -119,11 +128,14 @@ module @LogicalXorFPLayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>, %arg1: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.LogicalXor(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg2: tensor<1x1x1x1000xf16>, %arg1 as %arg3: tensor<1x1x1x1000xf16>) {
+      %1 = IE.LogicalXor(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xf16>, [[RHS:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS]], [[RHS]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
+// CHECK-NOT:     IE.LogicalXor
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS:%.+]], [[RHS:%.+]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpf one, [[LHS]], [[ZLHS]] fastmath<nnan,nsz> : f16
@@ -133,7 +145,7 @@ module @LogicalXorFPLayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.uitofp [[RES_B]] : i1 to f16
 // CHECK-NEXT:      linalg.yield [[RES]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -151,13 +163,16 @@ module @LogicalOrILayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi32>, %arg1: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-    %res = IE.LogicalOr(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
-    return %res : tensor<1x1x1x1000xsi32>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg2: tensor<1x1x1x1000xsi32>, %arg1 as %arg3: tensor<1x1x1x1000xsi32>) {
+      %1 = IE.LogicalOr(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xsi32>
+    } -> tensor<1x1x1x1000xsi32>
+    return %0 : tensor<1x1x1x1000xsi32>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xsi32>, [[RHS:%.+]]: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
+// CHECK-NOT:     IE.LogicalOr
+// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -168,7 +183,7 @@ module @LogicalOrILayer {
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
   }
 }
 
@@ -185,11 +200,14 @@ module @LogicalOrFPLayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>, %arg1: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.LogicalOr(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg2: tensor<1x1x1x1000xf16>, %arg1 as %arg3: tensor<1x1x1x1000xf16>) {
+      %1 = IE.LogicalOr(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xf16>, [[RHS:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS]], [[RHS]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
+// CHECK-NOT:     IE.LogicalOr
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS:%.+]], [[RHS:%.+]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpf one, [[LHS]], [[ZLHS]] fastmath<nnan,nsz> : f16
@@ -199,7 +217,7 @@ module @LogicalOrFPLayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.uitofp [[RES_B]] : i1 to f16
 // CHECK-NEXT:      linalg.yield [[RES]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -216,12 +234,15 @@ module @LogicalNotILayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-    %res = IE.LogicalNot(%arg0) : tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
-    return %res : tensor<1x1x1x1000xsi32>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xsi32>) {
+      %1 = IE.LogicalNot(%arg1) : tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xsi32>
+    } -> tensor<1x1x1x1000xsi32>
+    return %0 : tensor<1x1x1x1000xsi32>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]] : tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
+// CHECK-NOT:     IE.LogicalNot
+// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]] : tensor<1x1x1x1000xi32>) outs([[LHS_BC]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -231,7 +252,7 @@ module @LogicalNotILayer {
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
   }
 }
 
@@ -247,11 +268,14 @@ module @LogicalNotFPLayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.LogicalNot(%arg0) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.LogicalNot(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
 
-// CHECK: func.func @main([[LHS:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS]] : tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
+// CHECK-NOT:     IE.LogicalNot
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS:%.+]] : tensor<1x1x1x1000xf16>) outs([[LHS]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpf one, [[LHS]], [[ZLHS]] fastmath<nnan,nsz> : f16
@@ -260,7 +284,7 @@ module @LogicalNotFPLayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.uitofp [[RES_B]] : i1 to f16
 // CHECK-NEXT:      linalg.yield [[RES]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -279,14 +303,17 @@ module @SelectILayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi32>, %arg1: tensor<1x1x1x1000xsi32>, %arg2: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-    %res = IE.Select(%arg0, %arg1, %arg2) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
-    return %res : tensor<1x1x1x1000xsi32>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg3: tensor<1x1x1x1000xsi32>, %arg1 as %arg4: tensor<1x1x1x1000xsi32>, %arg2 as %arg5: tensor<1x1x1x1000xsi32>) {
+      %1 = IE.Select(%arg3, %arg4, %arg5) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xsi32>
+    } -> tensor<1x1x1x1000xsi32>
+    return %0 : tensor<1x1x1x1000xsi32>
 
-// CHECK: func.func @main([[COND:%.+]]: tensor<1x1x1x1000xsi32>, [[LHS:%.+]]: tensor<1x1x1x1000xsi32>, [[RHS:%.+]]: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
-// CHECK-DAG:     [[COND_BC:%.+]] = tensor.bitcast [[COND]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND_BC]], [[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[COND_BC]] : tensor<1x1x1x1000xi32>) {
+// CHECK-NOT:     IE.Select
+// CHECK-DAG:     [[COND_BC:%.+]] = tensor.bitcast [[COND:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND_BC]], [[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[COND_BC]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[COND:%.+]]: i32, [[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZCOND:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BCOND:%.+]] = arith.cmpi ne, [[COND]], [[ZCOND]] : i32
@@ -294,7 +321,7 @@ module @SelectILayer {
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
   }
 }
 
@@ -312,18 +339,21 @@ module @SelectFPLayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>, %arg1: tensor<1x1x1x1000xf16>, %arg2: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.Select(%arg0, %arg1, %arg2) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg3: tensor<1x1x1x1000xf16>, %arg1 as %arg4: tensor<1x1x1x1000xf16>, %arg2 as %arg5: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Select(%arg3, %arg4, %arg5) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
 
-// CHECK: func.func @main([[COND:%.+]]: tensor<1x1x1x1000xf16>, [[LHS:%.+]]: tensor<1x1x1x1000xf16>, [[RHS:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND]], [[LHS]], [[RHS]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[COND]] : tensor<1x1x1x1000xf16>) {
+// CHECK-NOT:     IE.Select
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND:%.+]], [[LHS:%.+]], [[RHS:%.+]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[COND]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[COND:%.+]]: f16, [[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZCOND:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[BCOND:%.+]] = arith.cmpf one, [[COND]], [[ZCOND]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      [[RES:%.+]] = arith.select [[BCOND]], [[LHS]], [[RHS]] : f16
 // CHECK-NEXT:      linalg.yield [[RES]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -341,20 +371,22 @@ module @MixedSelectLayer {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi32>, %arg1: tensor<1x1x1x1000xf16>, %arg2: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.Select(%arg0, %arg1, %arg2) { auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT> }: tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg3: tensor<1x1x1x1000xsi32>, %arg1 as %arg4: tensor<1x1x1x1000xf16>, %arg2 as %arg5: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Select(%arg3, %arg4, %arg5) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1x1x1000xsi32>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
 
-// CHECK: func.func @main([[COND:%.+]]: tensor<1x1x1x1000xsi32>, [[LHS:%.+]]: tensor<1x1x1x1000xf16>, [[RHS:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-
-// CHECK-NEXT:    [[COND_BC:%.+]] = tensor.bitcast %arg0 : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+// CHECK-NOT:     IE.Select
+// CHECK:         [[COND_BC:%.+]] = tensor.bitcast [[COND:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
 // CHECK-NEXT:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND_BC]], [[LHS]], [[RHS]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND_BC]], [[LHS:%.+]], [[RHS:%.+]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[COND:%.+]]: i32, [[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZCOND:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BCOND:%.+]] = arith.cmpi ne, [[COND]], [[ZCOND]] : i32
 // CHECK-NEXT:      [[RES:%.+]] = arith.select [[BCOND]], [[LHS]], [[RHS]] : f16
 // CHECK-NEXT:      linalg.yield [[RES]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }

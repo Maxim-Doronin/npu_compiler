@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --introduce-init-function="ws-extraction-mode=gen-init init-part=0 memory-limit=1000" --verify-diagnostics %s | FileCheck --check-prefix=CHECK-BIG-LIMIT %s

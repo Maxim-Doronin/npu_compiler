@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-all" %s | FileCheck %s
@@ -366,8 +366,8 @@ module @QuantizedToQuantizedConversion_PerAxis {
     // CHECK: func.func private @main
     // CHECK-SAME: ([[INIT_OUT0:%.+]]: tensor<16x3x3x3xui8, {order = #NHWC}>, [[INIT_OUT1:%.+]]: tensor<10x20x1x1xui8>)
     // CHECK:   [[QUANTIZECAST10:%.+]] = VPU.QuantizeCast([[INIT_OUT0]]) {dstElemType = [[QTYPE2]]}
-    // CHECK:   [[SLICE0:%.+]] = VPU.Slice [[QUANTIZECAST10]] [0, 0, 0, 0] [16, 1, 3, 3]
     // CHECK:   [[SLICE1:%.+]] = VPU.Slice [[QUANTIZECAST10]] [0, 1, 0, 0] [16, 2, 3, 3]
+    // CHECK:   [[SLICE0:%.+]] = VPU.Slice [[QUANTIZECAST10]] [0, 0, 0, 0] [16, 1, 3, 3]
     // CHECK:   [[QUANTIZECAST12:%.+]] = VPU.QuantizeCast([[INIT_OUT1]]) {dstElemType = [[QTYPE7]]}
 
     // CHECK:   [[QUANTIZECAST13:%.+]] = VPU.QuantizeCast([[SLICE0]]) {dstElemType = ui8}

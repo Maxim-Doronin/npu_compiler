@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --cmx-concat --canonicalize %s | FileCheck %s
@@ -66,13 +66,13 @@ func.func @AllInputsAreBlockArgsNoChages(
     num_clusters = 4
 }>
 
-// CHECK-LABEL:   func.func @ConcatClusterTilingOutputAndBlockArgInput(
+// CHECK-LABEL:   func.func @ConcatDistributedOpOutputAndBlockArgInput(
 // CHECK-SAME:    [[INPUT:%.*]]: tensor<1x48x32x32xf16, {order = #NHWC}>,
 // CHECK-SAME:    [[FILTER:%.*]]: tensor<48x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>,
 // CHECK-SAME:    [[WT:%.*]]: tensor<48x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>,
 // CHECK-SAME:    [[MAXP_WT:%.*]]: tensor<96x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>,
 // CHECK-SAME:    [[INPUT2:%.*]]: tensor<1x32x1536xf16>) -> tensor<1x96x32x32xf16, {order = #NHWC}> {
-func.func @ConcatClusterTilingOutputAndBlockArgInput(%input: tensor<1x48x32x32xf16, {order = #NHWC}>,
+func.func @ConcatDistributedOpOutputAndBlockArgInput(%input: tensor<1x48x32x32xf16, {order = #NHWC}>,
            %filter: tensor<48x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>,
            %weightsTable: tensor<48x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>,
            %maxPoolWeightsTable: tensor<96x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>,
@@ -151,7 +151,7 @@ func.func @ConcatClusterTilingOutputAndBlockArgInput(%input: tensor<1x48x32x32xf
 
 !InputStub_CMX = tensor<1x128x16x32xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
-func.func @ConcatClusterTilingOutputAndConstantInput2(%arg0: !Input_DDR,
+func.func @ConcatDistributedOpOutputAndConstantInput2(%arg0: !Input_DDR,
         %weights: tensor<128x128x3x1xf16, {mem_space = @CMX_NN, order = #NHWC}>,
         %weightsTable: tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>)
            -> !VPU.DistributedTensor<1x128x16x33xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}> {
@@ -229,7 +229,7 @@ func.func @ConcatClusterTilingOutputAndConstantInput2(%arg0: !Input_DDR,
 
 !InputStub_CMX = tensor<1x16x16x157x!qElemType1, {mem_space = @CMX_NN, order = #NHWC}>
 
-func.func @ConcatClusterTilingOutputAndConstantInput2WithPerAxisQuantization(%arg0: !Input_DDR,
+func.func @ConcatDistributedOpOutputAndConstantInput2WithPerAxisQuantization(%arg0: !Input_DDR,
         %weights: tensor<16x16x3x1x!qElemType4, {mem_space = @CMX_NN, order = #NHWC}>,
         %weights_dw_conv: tensor<32x16x1x1x!qElemType3, {mem_space = @CMX_NN, order = #NHWC}>,
         %weightsTable: tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>,
@@ -851,7 +851,7 @@ func.func @main(%input: tensor<1x144x32x32xf16, {order = #NHWC}>,
     num_clusters = 4
 }>
 
-module @CaseWithNceClusterTilingWithoutChildTiling {
+module @CaseWithDistributedOpWithoutChildTiling {
 
 net.NetworkInfo
     entryPoint : @main
@@ -935,7 +935,7 @@ func.func @main(%input: tensor<1x144x32x32xf16, {order = #NHWC}>,
 }
 }
 
-// CHECK-LABEL: @CaseWithNceClusterTilingWithoutChildTiling
+// CHECK-LABEL: @CaseWithDistributedOpWithoutChildTiling
 
 // Tile 0
 // CHECK:       [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 48, 32, 32]
@@ -1018,7 +1018,7 @@ func.func @main(%input: tensor<1x144x32x32xf16, {order = #NHWC}>,
     num_clusters = 4
 }>
 
-module @CaseWithNceClusterTilingWithChildTiling {
+module @CaseWithDistributedOpWithChildTiling {
 
 net.NetworkInfo
     entryPoint : @main
@@ -1118,7 +1118,7 @@ func.func @main(%input: tensor<1x144x32x32xf16, {order = #NHWC}>,
 }
 }
 
-// CHECK-LABEL: @CaseWithNceClusterTilingWithChildTiling
+// CHECK-LABEL: @CaseWithDistributedOpWithChildTiling
 
 // Tile 0
 // CHECK:       [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 48, 32, 32]
@@ -1206,7 +1206,7 @@ func.func @main(%input: tensor<1x144x32x32xf16, {order = #NHWC}>,
     num_clusters = 4
 }>
 
-module @CaseWithEltwiseNceClusterTilingWithChildTiling {
+module @CaseWithEltwiseDistributedOpWithChildTiling {
 
 net.NetworkInfo
     entryPoint : @main
@@ -1293,7 +1293,7 @@ func.func @main(%input: tensor<1x48x32x32xf16, {order = #NHWC}>,
 }
 }
 
-// CHECK-LABEL: @CaseWithEltwiseNceClusterTilingWithChildTiling
+// CHECK-LABEL: @CaseWithEltwiseDistributedOpWithChildTiling
 
 // Tile 0
 // CHECK:       [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 16, 32, 32]
@@ -2091,7 +2091,7 @@ func.func @NoCMXConcatWhenTilingOnCAndSOC(%input: tensor<1x32x64x32xf16, {order 
             post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>,
             rawFilterShape = [16, 1, 3, 3],
             strides = [1, 1]}
-            -> !DistributedTileOutput 
+            -> !DistributedTileOutput
 
     %3 = VPU.Copy(%2) : !DistributedTileOutput -> tensor<1x16x64x32xf16, {order = #NHWC}>
 

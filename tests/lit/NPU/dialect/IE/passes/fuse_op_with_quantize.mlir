@@ -1,12 +1,12 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-op-with-quantize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
-// CHECK: !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
+// CHECK: !qElemType = !quant.uniform<u8:f16, 0.95599999999999996:128>
 !qElemType = !quant.uniform<u8:f16, 0.956:128>
 
 // CHECK-LABEL: @PerTensor
@@ -28,7 +28,7 @@ func.func @PerTensor(%arg0: tensor<1x3x16x16xui8>) -> tensor<1x3x16x16xf16> {
 
 // -----
 
-// CHECK: !qElemType = !quant.uniform<u8:f16:1, {1.000000e+00,1.000000e+00,1.000000e+00}>
+// CHECK: !qElemType = !quant.uniform<u8:f16:1, {0.95599999999999996:128,7.850000e-01:128,5.670000e-01:128}>
 !qElemType = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128}>
 
 // CHECK-LABEL: @PerAxis

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --optimize-concat-with-conv %s | FileCheck %s
@@ -98,5 +98,16 @@ func.func @NotOptimizeConcatIfConvCannotShapeCasted(%arg0: tensor<1x1x256x480xf1
 
     //CHECK:   [[CONCAT:%.+]] = IE.Concat([[INPUT0]], [[INPUT1]])
 
+    //CHECK:   return [[CONCAT]]
+}
+
+// -----
+
+// CHECK-LABEL: @NotOptimizeConcatIfElementTypeNotSupported
+// CHECK-SAME:     ([[INPUT0:%.+]]: tensor<1x128x1x1xsi32>, [[INPUT1:%.+]]: tensor<1x128x1x1xsi32>)
+func.func @NotOptimizeConcatIfElementTypeNotSupported(%arg0: tensor<1x128x1x1xsi32>, %arg1: tensor<1x128x1x1xsi32>) -> tensor<1x128x2x1xsi32> {
+    %0 = IE.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 0, 1, 0]]} : tensor<1x128x1x1xsi32>, tensor<1x128x1x1xsi32> -> tensor<1x128x2x1xsi32>
+    return %0 : tensor<1x128x2x1xsi32>
+    //CHECK:   [[CONCAT:%.+]] = IE.Concat([[INPUT0]], [[INPUT1]])
     //CHECK:   return [[CONCAT]]
 }

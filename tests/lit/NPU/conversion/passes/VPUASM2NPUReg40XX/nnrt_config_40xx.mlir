@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
@@ -31,7 +31,7 @@ module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 //CHECK: NPUReg40XX.NNrtConfig descriptor = <
 //CHECK:   VpuNNRTConfig {
 //CHECK:     NNRTCfg_reserved = UINT 0,
-//CHECK:     NNRTCfg_runtime_entry = UINT 0x1C000A60,
+//CHECK:     NNRTCfg_runtime_entry = UINT 0x1C000000,
 //CHECK:     NNRTCfg_act_rt_window_base = UINT 0,
 //CHECK:     NNRTCfg_stack_0 = UINT 0,
 //CHECK:     NNRTCfg_stack_1 = UINT 0,
@@ -46,9 +46,9 @@ module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 //CHECK:     NNRTCfg_stack_10 = UINT 0,
 //CHECK:     NNRTCfg_stack_11 = UINT 0,
 //CHECK:     NNRTCfg_stack_size = UINT 0,
-//CHECK:     NNRTCfg_code_window_buffer_size = UINT 0x2490,
+//CHECK:     NNRTCfg_code_window_buffer_size = UINT 0x23E0,
 //CHECK:     NNRTCfg_perf_metrics_mask = UINT 0,
-//CHECK:     NNRTCfg_runtime_version = UINT 0x10008,
+//CHECK:     NNRTCfg_runtime_version = UINT 0x10009,
 //CHECK:     NNRTCfg_use_schedule_embedded_rt = UINT 1,
 //CHECK:     NNRTCfg_dpu_perf_mode = UINT 3,
 //CHECK:     NNRTCfg_pad_6 = UINT 0,

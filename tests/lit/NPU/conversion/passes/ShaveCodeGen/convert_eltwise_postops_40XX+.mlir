@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
@@ -17,17 +17,20 @@ module @ReLU {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.ReLU(%arg0) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
-// CHECK: func.func @main([[ARG:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG]] : tensor<1x1x1x1000xf16>) outs([[ARG]] : tensor<1x1x1x1000xf16>) {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.ReLU(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+// CHECK-NOT:     IE.ReLU
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[CMP:%.+]] = arith.cmpf ole, [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP]], [[ZERO]], [[IN]] : f16
 // CHECK-NEXT:      linalg.yield [[OP]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -43,10 +46,13 @@ module @LeakyReLU {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.LeakyRelu(%arg0) {negative_slope = 2.500000e-01 : f64} : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
-// CHECK: func.func @main([[ARG:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG]] : tensor<1x1x1x1000xf16>) outs([[ARG]] : tensor<1x1x1x1000xf16>) {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.LeakyRelu(%arg1) {negative_slope = 2.500000e-01 : f64} : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+// CHECK-NOT:     IE.LeakyRelu
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[CMP:%.+]] = arith.cmpf ole, [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
@@ -57,7 +63,7 @@ module @LeakyReLU {
 // CHECK-NEXT:      [[OP:%.+]] = arith.addf [[POSITIVE]], [[SLOPED_NEGATIVE]] : f16
 // CHECK-NEXT:      linalg.yield [[OP]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -73,10 +79,13 @@ module @ClampU16 {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xui16>) -> tensor<1x1x1x1000xui16> {
-    %res = IE.Clamp(%arg0) {min = 0.500000e+00 : f64, max = 6.500000e+00 : f64} : tensor<1x1x1x1000xui16> -> tensor<1x1x1x1000xui16>
-    return %res : tensor<1x1x1x1000xui16>
-// CHECK: func.func @main([[ARG:%.+]]: tensor<1x1x1x1000xui16>) -> tensor<1x1x1x1000xui16> {
-// CHECK-NEXT:    [[ARG_BC:%.+]] = tensor.bitcast [[ARG]] : tensor<1x1x1x1000xui16> to tensor<1x1x1x1000xi16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xui16>) {
+      %1 = IE.Clamp(%arg1) {max = 6.500000e+00 : f64, min = 5.000000e-01 : f64} : tensor<1x1x1x1000xui16> -> tensor<1x1x1x1000xui16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xui16>
+    } -> tensor<1x1x1x1000xui16>
+    return %0 : tensor<1x1x1x1000xui16>
+// CHECK-NOT:     IE.Clamp
+// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xui16> to tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[ARG_BC]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant 1 : i16
@@ -88,7 +97,7 @@ module @ClampU16 {
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xui16>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xui16>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xui16>
   }
 }
 
@@ -104,10 +113,13 @@ module @ClampU16NonRepresentable {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xui16>) -> tensor<1x1x1x1000xui16> {
-    %res = IE.Clamp(%arg0) {min = -5.500000e+00 : f64, max = 70000.500000e+00 : f64} : tensor<1x1x1x1000xui16> -> tensor<1x1x1x1000xui16>
-    return %res : tensor<1x1x1x1000xui16>
-// CHECK: func.func @main([[ARG:%.+]]: tensor<1x1x1x1000xui16>) -> tensor<1x1x1x1000xui16> {
-// CHECK-NEXT:    [[ARG_BC:%.+]] = tensor.bitcast [[ARG]] : tensor<1x1x1x1000xui16> to tensor<1x1x1x1000xi16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xui16>) {
+      %1 = IE.Clamp(%arg1) {max = 7.000050e+04 : f64, min = -5.500000e+00 : f64} : tensor<1x1x1x1000xui16> -> tensor<1x1x1x1000xui16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xui16>
+    } -> tensor<1x1x1x1000xui16>
+    return %0 : tensor<1x1x1x1000xui16>
+// CHECK-NOT:     IE.Clamp
+// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xui16> to tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[ARG_BC]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant 0 : i16
@@ -119,7 +131,7 @@ module @ClampU16NonRepresentable {
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xui16>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xui16>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xui16>
   }
 }
 
@@ -135,10 +147,13 @@ module @ClampS16 {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi16>) -> tensor<1x1x1x1000xsi16> {
-    %res = IE.Clamp(%arg0) {min = 0.500000e+00 : f64, max = 6.500000e+00 : f64} : tensor<1x1x1x1000xsi16> -> tensor<1x1x1x1000xsi16>
-    return %res : tensor<1x1x1x1000xsi16>
-// CHECK: func.func @main([[ARG:%.+]]: tensor<1x1x1x1000xsi16>) -> tensor<1x1x1x1000xsi16> {
-// CHECK-NEXT:    [[ARG_BC:%.+]] = tensor.bitcast [[ARG]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xsi16>) {
+      %1 = IE.Clamp(%arg1) {max = 6.500000e+00 : f64, min = 5.000000e-01 : f64} : tensor<1x1x1x1000xsi16> -> tensor<1x1x1x1000xsi16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xsi16>
+    } -> tensor<1x1x1x1000xsi16>
+    return %0 : tensor<1x1x1x1000xsi16>
+// CHECK-NOT:     IE.Clamp
+// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[ARG_BC]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant 1 : i16
@@ -150,7 +165,7 @@ module @ClampS16 {
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xsi16>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xsi16>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi16>
   }
 }
 
@@ -166,11 +181,14 @@ module @ClampS16NonRepresentable {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xsi16>) -> tensor<1x1x1x1000xsi16> {
-    %res = IE.Clamp(%arg0) {min = -70000.500000e+00 : f64, max = 70000.500000e+00 : f64} : tensor<1x1x1x1000xsi16> -> tensor<1x1x1x1000xsi16>
-    return %res : tensor<1x1x1x1000xsi16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xsi16>) {
+      %1 = IE.Clamp(%arg1) {max = 7.000050e+04 : f64, min = -7.000050e+04 : f64} : tensor<1x1x1x1000xsi16> -> tensor<1x1x1x1000xsi16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xsi16>
+    } -> tensor<1x1x1x1000xsi16>
+    return %0 : tensor<1x1x1x1000xsi16>
 
-// CHECK: func.func @main([[ARG:%.+]]: tensor<1x1x1x1000xsi16>) -> tensor<1x1x1x1000xsi16> {
-// CHECK-NEXT:    [[ARG_BC:%.+]] = tensor.bitcast [[ARG]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
+// CHECK-NOT:     IE.Clamp
+// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[ARG_BC]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant -32768 : i16
@@ -182,7 +200,7 @@ module @ClampS16NonRepresentable {
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xsi16>
-// CHECK-NEXT:    return [[RET]] : tensor<1x1x1x1000xsi16>
+// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi16>
   }
 }
 
@@ -198,11 +216,14 @@ module @ClampF16 {
   }
 
   func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-    %res = IE.Clamp(%arg0) {min = 0.500000e+00 : f64, max = 6.500000e+00 : f64} : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
-    return %res : tensor<1x1x1x1000xf16>
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Clamp(%arg1) {max = 6.500000e+00 : f64, min = 5.000000e-01 : f64} : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
 
-// CHECK: func.func @main([[ARG:%.+]]: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG]] : tensor<1x1x1x1000xf16>) outs([[ARG]] : tensor<1x1x1x1000xf16>) {
+// CHECK-NOT:     IE.Clamp
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant 5.000000e-01 : f16
 // CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 6.500000e+00 : f16
@@ -212,6 +233,6 @@ module @ClampF16 {
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[CLAMPED_LOW]], [[HIGH]] : f16
 // CHECK-NEXT:      linalg.yield [[OP]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    return [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
 }

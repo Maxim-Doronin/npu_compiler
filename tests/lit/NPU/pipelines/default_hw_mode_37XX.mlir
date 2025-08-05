@@ -1,6 +1,6 @@
 //
-// Copyright (C) 2022 - 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// Copyright (C) 2022-2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --vpu-arch=%arch% --split-input-file --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode %s | FileCheck %s --strict-whitespace

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2021-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // VPU translate expectedly failed dueto unsupported DDR memory for actshave

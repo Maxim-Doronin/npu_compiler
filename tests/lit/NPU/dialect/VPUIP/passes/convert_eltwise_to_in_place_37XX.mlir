@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-to-in-place --canonicalize %s | FileCheck %s
@@ -67,11 +67,11 @@ func.func @InplaceEltwiseSameType(%in: memref<1x32x96x96xf16, #NHWC>, %out: memr
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @InplaceEltwiseFpClusterTiling
+// CHECK-LABEL: @InplaceEltwiseFpDistributedOp
 // CHECK-SAME:    ([[ARG0:%.*]]: memref<1x256x56x56xf16, #NHWC>,
 // CHECK-SAME:    [[ARG1:%.*]]: memref<1x256x56x56xf16, #NHWC>)
 // CHECK-SAME:    -> memref<1x256x56x56xf16, #NHWC> {
-func.func @InplaceEltwiseFpClusterTiling(%in: memref<1x256x56x56xf16, #NHWC>, %out: memref<1x256x56x56xf16, #NHWC>) -> memref<1x256x56x56xf16, #NHWC> {
+func.func @InplaceEltwiseFpDistributedOp(%in: memref<1x256x56x56xf16, #NHWC>, %out: memref<1x256x56x56xf16, #NHWC>) -> memref<1x256x56x56xf16, #NHWC> {
 
     %cst0 = const.Declare memref<1x256x56x56xf16, #NHWC> = dense<2.0> : tensor<1x256x56x56xf16>, [#const.Reorder<#NHWC>]
 

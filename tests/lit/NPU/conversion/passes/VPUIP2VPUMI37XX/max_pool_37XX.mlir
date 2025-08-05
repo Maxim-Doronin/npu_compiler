@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // max_pool_1x64x16x16xfp16_2x2_pads_1x0x1x0_strides_2x2_fp16

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --feasible-allocation="memory-space=CMX_NN second-level-memory-space=DDR" %s | FileCheck %s
@@ -1985,6 +1985,162 @@ func.func @main(%arg0: memref<1x1x640x128xf16, @DDR>, %arg1: memref<1x1x640x128x
     // CHECK:           ([[R2]] as
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      spillId
+}
+
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @InPlaceBufferSpill
+module @InPlaceBufferSpill {
+
+IE.TileResource 1 of @NCE at 1.300000e+03 MHz {
+    builtin.module @ReservedMemory {
+        module @DmaProfilingReservedMemory {
+            IE.MemoryResource 512 bytes of @CMX_NN offset 0
+        }
+    }
+}
+
+net.NetworkInfo
+    entryPoint : @main
+    inputsInfo : {
+        DataInfo "in0" : tensor<1x384x1x937xf16>
+        DataInfo "in1" : tensor<1x384x937x1xf16>
+        DataInfo "in2" : tensor<1x384x937x1xf16>
+    }
+    outputsInfo : {
+        DataInfo "out0" : tensor<1x384x937x1xf16>
+        DataInfo "out1" : tensor<1x384x937x1xf16>
+    }
+
+// CHECK:   IE.TileResource {{[0-9]+}} of @NCE
+
+func.func @main(%in_0: memref<1x384x1x937xf16, #NHWC, @DDR>, %in_1: memref<1x384x937x1xf16, #NHWC, @DDR>,  %in_2: memref<1x384x937x1xf16, #NHWC, @DDR>, %out_0: memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>,  %out_1: memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>)
+   -> (memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>,memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) {
+
+    %buf0 = memref.alloc() : memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>
+    %t0, %r0 = async.execute -> !async.value<memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 0 : i64, cycleCost = 817 : i64} {
+      %0 = VPUIP.NNDMA inputs(%in_0 : memref<1x384x1x937xf16, #NHWC, @DDR>) outputs(%buf0 : memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>
+      async.yield %0 : memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    %buf1 = memref.alloc() : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    %t1, %r1 = async.execute -> !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 1 : i64, cycleCost = 817 : i64} {
+      %0 = VPUIP.NNDMA inputs(%in_1 : memref<1x384x937x1xf16, #NHWC, @DDR>) outputs(%buf1 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+      async.yield %0 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    %t2, %r2 = async.execute [%t0, %t1]  (%r0 as %arg5: !async.value<memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>>, %r1 as %arg6: !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>) -> !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 2 : i64, cycleCost = 143259 : i64} {
+      %0 = VPUIP.ShapeCast {shape = [1, 384, 937, 1]} inputs(%arg5 : memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+      %1 = VPUIP.NCEClusterTask
+             {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 143259 : i64,
+              mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+             input(%arg6 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) weights(%0 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>)
+             parent_input(%arg6 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%0 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>)
+             outputs(%0 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]> variants : {
+             DPUTask {inEnd = [0, 936, 383], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [0, 936, 383], outStart = [0, 0, 0],
+                      pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+             } PPE : {
+               PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64,
+                        scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
+             }
+      async.yield %1 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    %buf2 = memref.alloc() : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    %t3, %r3 = async.execute -> !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 3 : i64, cycleCost = 817 : i64} {
+      %0 = VPUIP.NNDMA inputs(%in_2 : memref<1x384x937x1xf16, #NHWC, @DDR>) outputs(%buf2 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+      async.yield %0 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    %t4, %r4 = async.execute [%t1, %t3] (%r1 as %arg5: !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>, %r3 as %arg6: !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>) -> !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 4 : i64, cycleCost = 143259 : i64} {
+      %0 = VPUIP.NCEClusterTask
+             {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 143259 : i64,
+              mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+             input(%arg5 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg6 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>)
+             parent_input(%arg5 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%arg6 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>)
+             outputs(%arg6 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]> variants : {
+             DPUTask {inEnd = [0, 936, 383], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [0, 936, 383], outStart = [0, 0, 0],
+                      pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+             } PPE : {
+               PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64,
+                        scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
+             }
+      async.yield %0 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    %buf3 = memref.alloc() : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    %t5, %r5 = async.execute [%t2] (%r2 as %arg5: !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>) -> !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 5 : i64, cycleCost = 143259 : i64} {
+      %0 = VPUIP.NCEClusterTask
+             {eltwise_type = #VPU.eltwise_type<ADD>, minimumHardwareExecutionCost = 143259 : i64,
+              mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+             input(%arg5 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg5 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>)
+             parent_input(%arg5 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%buf3 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>)
+             outputs(%buf3 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]> variants : {
+             DPUTask {inEnd = [0, 936, 383], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [0, 936, 383], outStart = [0, 0, 0],
+                      pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+             } PPE : {
+               PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64,
+                        scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
+             }
+      async.yield %0 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    %2 = async.await %r4 : !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>
+    %3 = async.await %r5 : !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>
+    return %out_0, %out_1 : memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>, memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>
+
+    // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute ->
+    // CHECK-NEXT:      VPUIP.NNDMA
+
+    // CHECK:       [[SPILL_WRITE_T0:%.+]], [[SPILL_WRITE_R0:%.+]] = async.execute
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       spillId
+
+    // CHECK:       [[T2:%.+]], [[R2:%.+]] = async.execute
+    // CHECK:           ([[R0]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>>,
+    // CHECK:            [[R1]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK:           VPUIP.ShapeCast
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
+
+    // CHECK:       [[T3:%.+]], [[R3:%.+]] = async.execute
+    // CHECK-NEXT:      VPUIP.NNDMA
+
+    // CHECK:       [[SPILL_WRITE_T1:%.+]], [[SPILL_WRITE_R1:%.+]] = async.execute
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       spillId
+
+    // CHECK:       [[SPILL_READ_T0:%.+]], [[SPILL_READ_R0:%.+]] = async.execute
+    // CHECK:       ([[SPILL_WRITE_R0]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x384x937x1xf16, #NHWC, @DDR>>)
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       spillId
+
+    // CHECK:       [[T5:%.+]], [[R5:%.+]] = async.execute
+    // CHECK:       ([[SPILL_READ_R0]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK:        [[R3]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x384x937x1xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
+
+    // CHECK:       [[SPILL_WRITE_T2:%.+]], [[SPILL_WRITE_R2:%.+]] = async.execute
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       spillId
+
+    // CHECK:       [[SPILL_READ_T1:%.+]], [[SPILL_READ_R1:%.+]] = async.execute
+    // CHECK:       ([[SPILL_WRITE_R1]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x384x1x937xf16, #NHWC, @DDR>>)
+    // CHECK-NEXT:      VPUIP.NNDMA
+    // CHECK-SAME:       spillId
+
+    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute
+    // CHECK:       ([[SPILL_READ_R1]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x384x1x937xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK:           VPUIP.ShapeCast
+    // CHECK-NEXT:      VPUIP.NCEClusterTask
+    // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
 }
 
 }

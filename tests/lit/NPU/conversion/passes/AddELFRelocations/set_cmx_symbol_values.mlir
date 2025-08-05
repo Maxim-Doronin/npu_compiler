@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --set-cmx-symbol="cmx-workspace-addr=1075937280 cmx-workspace-size=1474560 cmx-metadata-addr=1075854336 cmx-metadata-size=82944" %s | FileCheck %s

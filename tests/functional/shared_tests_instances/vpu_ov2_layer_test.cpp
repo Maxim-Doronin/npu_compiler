@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpu_ov2_layer_test.hpp"
@@ -374,7 +374,7 @@ bool VpuOv2LayerTest::isDefaultHardwareMode() const {
 }
 
 void VpuOv2LayerTest::setSingleClusterMode() {
-    configuration[ov::intel_npu::dpu_groups.name()] = "1";
+    configuration[ov::intel_npu::tiles.name()] = "1";
     configuration[ov::intel_npu::dma_engines.name()] = "1";
 }
 

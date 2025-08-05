@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --consolidate-nf4-weights-pattern %s | FileCheck %s
@@ -180,3 +180,24 @@ func.func @NotConsolidateNF4WeightsPatternIllegalGather(%input: tensor<4096x4096
     }
   }
 #-}
+
+// -----
+
+!quantileFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.71435546875,-0.53564453125,-0.392822265625,-0.28564453125,-0.1785888671875,-0.08929443359375,0.000000e+00,0.080322265625,0.1607666015625,2.500000e-01,0.321533203125,0.428466796875,0.5712890625,0.71435546875,1.000000e+00}>
+
+// CHECK-LABEL: @NotConsolidateNF4WeightsPatternDynamicGather
+// CHECK-SAME:    [[INPUT1:%.+]]: tensor<?xf16, {bounds = #const.OpaqueI64Elements<[16]> : tensor<1xsi64>}>
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<4096x4096xui4>
+func.func @NotConsolidateNF4WeightsPatternDynamicGather(%input1: tensor<?xf16, {bounds = #const.OpaqueI64Elements<[16]> : tensor<1xsi64>}>, %input: tensor<4096x4096xui4>) -> tensor<4096x4096xf16> {
+    %scale = const.Declare tensor<1xf16> = dense<0.1> : tensor<1xf16>
+    %convert = IE.Convert(%input) {dstElemType = ui8} : tensor<4096x4096xui4> -> tensor<4096x4096xui8>
+    %gather = IE.Gather(%input1, %convert) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<?xf16, {bounds = #const.OpaqueI64Elements<[16]> : tensor<1xsi64>}>, tensor<4096x4096xui8> -> tensor<4096x4096xf16>
+    %res = IE.Multiply(%gather, %scale) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<4096x4096xf16>, tensor<1xf16> -> tensor<4096x4096xf16>
+    return %res : tensor<4096x4096xf16>
+
+    // CHECK: [[SCALE:%.+]] = const.Declare tensor<1xf16> = dense<{{.+}}> : tensor<1xf16>
+    // CHECK: [[CONVERT:%.+]] = IE.Convert([[INPUT]]) {dstElemType = ui8} : tensor<4096x4096xui4> -> tensor<4096x4096xui8>
+    // CHECK: [[GATHER:%.+]] = IE.Gather([[INPUT1]], [[CONVERT]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<?xf16, {bounds = #const.OpaqueI64Elements<[16]> : tensor<1xsi64>}>, tensor<4096x4096xui8> -> tensor<4096x4096xf16>
+    // CHECK: [[MULTIPLY:%.+]] = IE.Multiply([[GATHER]], [[SCALE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<4096x4096xf16>, tensor<1xf16> -> tensor<4096x4096xf16>
+    // CHECK: return [[MULTIPLY]]
+}

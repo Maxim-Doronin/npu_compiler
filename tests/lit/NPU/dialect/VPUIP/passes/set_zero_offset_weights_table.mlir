@@ -1,9 +1,9 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --set-zero-offset-weights-table %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% weights-table-reuse-mode=ENABLED" --set-zero-offset-weights-table %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -192,26 +192,20 @@ func.func @SetIsZeroOffsetWTForNCEClusterTask(%input: !InputDistributed, %weight
 // CHECK-LABEL: @SetZeroOffsetWTFor5DShape
 func.func @SetZeroOffsetWTFor5DShape(%input: memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>, %weights: memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>, %weights_table: memref<8x64x1x1x4xsi32, @CMX_NN>) -> !OutputDistributed {
     %alloc = VPURT.AllocDistributed -> !OutputDistributed
-    %nce_cluster_tiling = VPUIP.NCEClusterTiling
-                                inputs(%input as %arg0: memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>, %weights as %arg1: memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>, %weights_table as %arg2: memref<8x64x1x1x4xsi32, @CMX_NN>)
-                                outputs(%alloc as %arg3: memref<8x1x64x3x1xf16, #GNHWC, @CMX_NN>) -> !OutputDistributed {
-        %nce_task = VPUIP.NCEClusterTask {
-            kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-            kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>
-        } input(%arg0 : memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>)
-        weights(%arg1 : memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>)
-        weight_table(%arg2 : memref<8x64x1x1x4xsi32, @CMX_NN>)
-        parent_input(%arg0 : memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>)
-        parent_output(%arg3 : memref<8x1x64x3x1xf16, #GNHWC, @CMX_NN>)
-        outputs(%arg3 : memref<8x1x64x3x1xf16, #GNHWC, @CMX_NN>)
-        -> memref<8x1x64x3x1xf16, #GNHWC, @CMX_NN> variants : {
-            DPUTask {cluster_id = 0 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
-            DPUTask {cluster_id = 1 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
-            DPUTask {cluster_id = 2 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
-            DPUTask {cluster_id = 3 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
-        } PPE : {
-            PPETask {ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>}
-        }
+    %nce_cluster_tiling = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+        input(%input : memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>)
+        weights(%weights : memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>)
+        weight_table(%weights_table : memref<8x64x1x1x4xsi32, @CMX_NN>)
+        parent_input(%input : memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>)
+        parent_output(%alloc : !OutputDistributed)
+        outputs(%alloc : !OutputDistributed)
+    ->  !OutputDistributed variants : {
+        DPUTask {cluster_id = 0 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 1 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 2 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        DPUTask {cluster_id = 3 : i64, inEnd = [0, 2, 1023], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [0, 2, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+    } PPE : {
+        PPETask {ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>}
     }
 
     return %nce_cluster_tiling : !OutputDistributed
@@ -223,7 +217,7 @@ func.func @SetZeroOffsetWTFor5DShape(%input: memref<8x1x1024x3x1xf16, #GNHWC, @C
     // CHECK-SAME:      weights({{[^:]+}} : memref<8x64x1024x1x1xf16, #GNHWC, @CMX_NN>)
     // CHECK-SAME:      weight_table({{[^:]+}} : memref<8x64x1x1x4xsi32, @CMX_NN>)
     // CHECK-SAME:      parent_input({{[^:]+}} : memref<8x1x1024x3x1xf16, #GNHWC, @CMX_NN>)
-    // CHECK-SAME:      parent_output({{[^:]+}} : memref<8x1x64x3x1xf16, #GNHWC, @CMX_NN>)
-    // CHECK-SAME:      outputs({{[^:]+}} : memref<8x1x64x3x1xf16, #GNHWC, @CMX_NN>)
-    // CHECK-SAME:      -> memref<8x1x64x3x1xf16, #GNHWC, @CMX_NN>
+    // CHECK-SAME:      parent_output({{[^:]+}} : !VPUIP.DistributedBuffer<8x1x64x3x1xf16
+    // CHECK-SAME:      outputs({{[^:]+}} : !VPUIP.DistributedBuffer<8x1x64x3x1xf16
+    // CHECK-SAME{LITERAL}:      -> !VPUIP.DistributedBuffer<8x1x64x3x1xf16, #GNHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[2, 1, 64, 3, 1], [2, 1, 64, 3, 1], [2, 1, 64, 3, 1], [2, 1, 64, 3, 1]], compute_offsets = [[0, 0, 0, 0, 0], [2, 0, 0, 0, 0], [4, 0, 0, 0, 0], [6, 0, 0, 0, 0]], memory_shapes = [[2, 1, 64, 3, 1], [2, 1, 64, 3, 1], [2, 1, 64, 3, 1], [2, 1, 64, 3, 1]], memory_offsets = [[0, 0, 0, 0, 0], [2, 0, 0, 0, 0], [4, 0, 0, 0, 0], [6, 0, 0, 0, 0]]}>
 }

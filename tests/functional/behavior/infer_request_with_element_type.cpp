@@ -99,10 +99,12 @@ protected:
     }
 
     bool files_equal(std::ifstream& f1, std::ifstream& f2) {
-        if (!f1.good())
+        if (!f1.good()) {
             return false;
-        if (!f2.good())
+        }
+        if (!f2.good()) {
             return false;
+        }
 
         while (!f1.eof() && !f2.eof()) {
             if (f1.get() != f2.get()) {
@@ -129,8 +131,9 @@ protected:
         }
         for (int i = 0; i < undefinedOutput.get_size(); i++) {
             if (fabs(dynamicOutput.data<float>()[i] - undefinedOutput.data<float>()[i]) >
-                std::numeric_limits<float>::epsilon())
+                std::numeric_limits<float>::epsilon()) {
                 return false;
+            }
         }
         return result;
     }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --create-elf-symbol-table %s | FileCheck %s
@@ -33,9 +33,9 @@ func.func @oneDma() {
 //CHECK: ELF.Main
 
 //CHECK: ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
-//CHECK-NEXT: ELF.Symbol @elfsym.dsec1 of(@dsec1) type(<STT_SECTION>) size(0) value(0)
-//CHECK-NEXT: ELF.Symbol @elfsym.dsec2 of(@dsec2) type(<STT_SECTION>) size(0) value(0)
-//CHECK-NEXT: ELF.Symbol @elfsym.dsec3 of(@dsec3) type(<STT_SECTION>) size(0) value(0)
-//CHECK-NEXT: ELF.Symbol @elfsym.lsec1 of(@lsec1) type(<STT_SECTION>) size(0) value(0)
-//CHECK-NEXT: ELF.Symbol @elfsym.lsec2 of(@lsec2) type(<STT_SECTION>) size(0) value(0)
-//CHECK-NEXT: ELF.Symbol @elfsym.lsec3 of(@lsec3) type(<STT_SECTION>) size(0) value(0)
+//CHECK-NEXT: ELF.Symbol @elfsym.dsec1 of(@dsec1) type(<STT_SECTION>)
+//CHECK-NEXT: ELF.Symbol @elfsym.dsec2 of(@dsec2) type(<STT_SECTION>)
+//CHECK-NEXT: ELF.Symbol @elfsym.dsec3 of(@dsec3) type(<STT_SECTION>)
+//CHECK-NEXT: ELF.Symbol @elfsym.lsec1 of(@lsec1) type(<STT_SECTION>)
+//CHECK-NEXT: ELF.Symbol @elfsym.lsec2 of(@lsec2) type(<STT_SECTION>)
+//CHECK-NEXT: ELF.Symbol @elfsym.lsec3 of(@lsec3) type(<STT_SECTION>)

@@ -174,9 +174,10 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
 const std::vector<ov::element::Type> integerNetPrecisions = {ov::element::i32};
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenActivationTypes = {
-        {Cos, {{1.0f}}},         {Exp, {{1.0f}}},  {Log, {{1.0f}}},       {Sin, {{1.0f}}},
-        {Erf, {{1.0f}}},         {Sqrt, {{1.0f}}}, {RoundHalfToEven, {}}, {RoundHalfAwayFromZero, {}},
-        {Clamp, {{-1.0f, 1.0f}}}};
+        {Cos, {{1.0f}}},          {Exp, {{1.0f}}},   {Log, {{1.0f}}},       {Sin, {{1.0f}}},
+        {Erf, {{1.0f}}},          {Sqrt, {{1.0f}}},  {RoundHalfToEven, {}}, {RoundHalfAwayFromZero, {}},
+        {Clamp, {{-1.0f, 1.0f}}}, {Tanh, {{1.0f}}},  {Tan, {{1.0f}}},       {Sinh, {{1.0f}}},
+        {Cosh, {{1.0f}}},         {Atanh, {{1.0f}}}, {Atan, {{1.0f}}}};
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenIntActivationTypes = {
         {Clamp, {{-1.0f, 1.0f}}},
@@ -261,6 +262,14 @@ const auto basicShaveCodeGenIntCases = ::testing::Combine(
         ::testing::ValuesIn(static_shapes_param_transform(ov::test::utils::combineParams(basic))),
         ::testing::Values(DEVICE_NPU));
 
+const auto basicClampI32 = ::testing::Combine(
+        ::testing::ValuesIn(
+                ::combineParams(std::map<ActivationTypes, std::vector<std::vector<float>>>{{Clamp, {{-1.0f, 1.0f}}}})),
+        ::testing::ValuesIn(integerNetPrecisions),
+        ::testing::ValuesIn(static_shapes_param_transform(ov::test::utils::combineParams(
+                std::map<std::vector<ov::Shape>, std::vector<ov::Shape>>({{{{1, 50, 1, 1}}, {}}})))),
+        ::testing::Values(DEVICE_NPU));
+
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Activation, ActivationLayerTest_SW_FP16, basicCases,
                          ActivationLayerTest::getTestCaseName);
 
@@ -292,6 +301,9 @@ INSTANTIATE_TEST_SUITE_P(smoke_Activation, ActivationLayerTest_SW_FP32, basicCas
                          ActivationLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_Activation, ActivationLayerTest_HW_FP32, basicCasesHWFP32,
+                         ActivationLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Clamp_I32, ActivationLayerTest_HW_FP32, basicClampI32,
                          ActivationLayerTest::getTestCaseName);
 
 }  // namespace
