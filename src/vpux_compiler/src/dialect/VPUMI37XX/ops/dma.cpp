@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/BuiltinTypes.h>
@@ -35,8 +35,9 @@ namespace {
 void decode_storage_order(ShapeRef dims, StridesRef strides, unsigned char* order) {
     const size_t S = dims.size();
 
-    for (unsigned int i = 0; i < S; ++i)
+    for (unsigned int i = 0; i < S; ++i) {
         order[i] = i;
+    }
 
     std::sort(&order[0], &order[0] + S, [&](int lhs, int rhs) {
         return std::make_tuple(strides[Dim(lhs)], dims[Dim(lhs)], lhs) <
@@ -80,8 +81,9 @@ public:
 
             if (previous_size * previous_stride < crt_stride) {
                 if (sizes[Dim(order[dim])] == 1) {
-                    if (dim + 1 == dims)
+                    if (dim + 1 == dims) {
                         continue;
+                    }
 
                     crt_stride = bit_strides(Dim(order[dim + 1]));
                 }
@@ -156,8 +158,9 @@ void vpux::VPUMI37XX::NNDMAOp::serialize(elf::writer::BinaryDataSection<uint8_t>
 
     // In case of multicasting (multiple outputs) we will mask the destination with the multicast mask;
 
-    if (getOutputBuffs().size() > 1)
+    if (getOutputBuffs().size() > 1) {
         descriptor.dst = 0xC00000;
+    }
 
     if (auto nextDMAIndexValue = getNextDMAIdx()) {
         descriptor.link_address =

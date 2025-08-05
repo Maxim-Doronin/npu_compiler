@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -115,45 +115,47 @@ mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::
     } else {
         auto source = origOp.getInput();
         if (!reverseAxis.empty()) {
-            VPUX_THROW_UNLESS(reverseAxis.size() == 1, "Currently only support reverse on one axis");
-            const auto axis = reverseAxis[0];
-            const auto inShape = getShape(source);
-            const auto sliceNums = inShape[Dim(axis)];
+            for (const auto& axis : reverseAxis) {
+                const auto inShape = getShape(source);
+                const auto sliceNums = inShape[Dim(axis)];
 
-            SmallVector<mlir::Value> concatInputs;
-            SmallVector<int64_t> sliceOffset(inShape.size(), 0);
-            SmallVector<int64_t> sliceShape(inShape.begin(), inShape.end());
-            sliceShape[axis] = 1;
-            for (int64_t i = 0; i < sliceNums; i++) {
-                sliceOffset[axis] = i;
-                concatInputs.push_back(rewriter.create<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("slice_{0}"), i),
-                                                                    source, sliceOffset, sliceShape)
-                                               .getResult());
+                SmallVector<mlir::Value> concatInputs;
+                SmallVector<int64_t> sliceOffset(inShape.size(), 0);
+                SmallVector<int64_t> sliceShape(inShape.begin(), inShape.end());
+                sliceShape[axis] = 1;
+                for (int64_t i = 0; i < sliceNums; i++) {
+                    sliceOffset[axis] = i;
+                    concatInputs.push_back(
+                            rewriter.create<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("slice_{0}_{1}"), i, axis),
+                                                         source, sliceOffset, sliceShape)
+                                    .getResult());
+                }
+                std::reverse(concatInputs.begin(), concatInputs.end());
+
+                auto concatOp = rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, StringLiteral("concat_in_{0}"), axis),
+                                                              concatInputs, Dim(axis));
+                source = concatOp.getOutput();
+
+                /* Since the elements along `axis` are being reversed, also need to correct begins and ends indices:
+
+                Example with absolute indices:  T = [0,1,2,3,4,5,6] and Slice = T[2:0:-1] = [2,1]
+                  Slice Plan:   begins = [1], ends = [3], strides = [1], reverse_axes = [0]
+                  Concat is reversing all elements along axis:  T_concat = [6,5,4,3,2,1,0]
+                  corrected_begins = sliceNums - ends   = [4]
+                  corrected_ends   = sliceNums - begins = [6]
+
+                Example with relative indices:   T = [0,1,2,3,4,5,6] and S = T[-1:-3:-1] = [6,5]
+                  Slice Plan:   begins = [5], ends = [7], strides = [1], reverse_axes = [0]
+                  Concat is reversing all elements along axis:  T_concat = [6,5,4,3,2,1,0]
+                  corrected_begins = sliceNums - ends   = [0]
+                  corrected_ends   = sliceNums - begins = [2]
+                */
+
+                const auto temp = plan.begins[axis];
+                plan.begins[axis] = sliceNums - plan.ends[axis];
+                plan.ends[axis] = sliceNums - temp;
+                beginAttr = getIntArrayAttr(getContext(), plan.begins);
             }
-            std::reverse(concatInputs.begin(), concatInputs.end());
-
-            auto concatOp = rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "concat_in"), concatInputs, Dim(axis));
-            source = concatOp.getOutput();
-
-            /* Since the elements along `axis` are being reversed, also need to correct begins and ends indices:
-
-            Example with absolute indices:  T = [0,1,2,3,4,5,6] and Slice = T[2:0:-1] = [2,1]
-              Slice Plan:   begins = [1], ends = [3], strides = [1], reverse_axes = [0]
-              Concat is reversing all elements along axis:  T_concat = [6,5,4,3,2,1,0]
-              corrected_begins = sliceNums - ends   = [4]
-              corrected_ends   = sliceNums - begins = [6]
-
-            Example with relative indices:   T = [0,1,2,3,4,5,6] and S = T[-1:-3:-1] = [6,5]
-              Slice Plan:   begins = [5], ends = [7], strides = [1], reverse_axes = [0]
-              Concat is reversing all elements along axis:  T_concat = [6,5,4,3,2,1,0]
-              corrected_begins = sliceNums - ends   = [0]
-              corrected_ends   = sliceNums - begins = [2]
-            */
-
-            const auto temp = plan.begins[axis];
-            plan.begins[axis] = sliceNums - plan.ends[axis];
-            plan.ends[axis] = sliceNums - temp;
-            beginAttr = getIntArrayAttr(getContext(), plan.begins);
         }
         auto sizes = std::vector<int64_t>(plan.ends.size());
         std::transform(plan.ends.cbegin(), plan.ends.cend(), plan.begins.cbegin(), sizes.begin(),

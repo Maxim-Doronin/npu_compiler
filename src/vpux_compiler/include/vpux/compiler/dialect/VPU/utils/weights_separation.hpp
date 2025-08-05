@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -10,6 +10,7 @@
 #include "vpux/compiler/utils/logging.hpp"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Pass/AnalysisManager.h"
 
 namespace vpux::VPU {
 
@@ -106,8 +107,10 @@ CallChainTree getOutliningRepresentation(mlir::func::FuncOp startFunc);
     output value from init to main.
 */
 class TransformationsSplit {
-    Const::DeclareOp _declareOp;
-    // These ArrayRefs are valid as long as the underlying attribute exists, which is until the context is destroyed.
+    mlir::Location _loc;
+    Const::ContentAttr _contentAttr;
+    // Note: these ArrayRefs are valid as long as the underlying attribute
+    // exists, which is until the context is destroyed.
     ArrayRef<Const::TransformAttrInterface> _inInitTransformations;
     ArrayRef<Const::TransformAttrInterface> _postInitTransformations;
     IoBoundaryAdapter::TypeInfo _ioTypeInfo;
@@ -120,14 +123,19 @@ class TransformationsSplit {
 public:
     TransformationsSplit(Const::DeclareOp declareOp);
 
+    //! @brief Returns location of the associated constant.
+    mlir::Location getLoc() const;
+    //! @brief Returns content attribute associated with this split.
+    Const::ContentAttr getContentAttr() const;
+
     /** @brief A schedule-independent "slice" of the transformation split.
 
         Defines the general set of inputs necessary to convert constant
         transformations to IR form.
     */
     struct Projection {
-        Const::DeclareOp declareOp;  // current constant operation
-        NDTypeInterface argType;     // argument type to be used in function signature
+        Const::ContentAttr contentAttr;  // current content attribute
+        NDTypeInterface argType;         // argument type to be used in function signature
         ArrayRef<Const::TransformAttrInterface> precedingTransformations;  // transformations that are already applied
         ArrayRef<Const::TransformAttrInterface> transformations;           // transformations to convert to IR
         IoBoundaryAdapter::TypeInfo ioTypeInfo;  // I/O metadata associated with this projection
@@ -135,10 +143,6 @@ public:
 
     //! @brief Returns a "projection" of the split according to the schedule.
     Projection take(WeightsSeparationSchedule schedule) const;
-
-    Const::DeclareOp declareOp() const {
-        return _declareOp;
-    }
 };
 
 //! @brief A stable operator<(). Stability is achieved by relying on a
@@ -151,16 +155,8 @@ vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x);
 }  // namespace detail
 
 //! @brief Collects all constant operations that are worth moving to the Init
-//! schedule, and returns them as transformation splits.
-SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log, mlir::func::FuncOp mainFunc);
-
-//! @brief A "local" sorting function that sorts the transformation splits.
-using LocalSortingFunc = FuncRef<void(SmallVector<TransformationsSplit>&)>;
-
-//! @brief Collects all constant operations that are worth moving to the Init
-//! schedule across the full IR (represented as a call-chain tree).
-SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log, const CallChainTree& tree,
-                                                                        LocalSortingFunc sort);
+//! schedule.
+std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir::func::FuncOp mainFunc);
 
 /** @brief Slices the collected transformations splits according to the
     threshold.
@@ -182,7 +178,7 @@ SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Lo
     @note The algorithm requires transformation splits to be sorted according to
     the operator<(const TransformationsSplit&, const TransformationsSplit&).
 */
-SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const Logger& log,
+std::vector<std::vector<TransformationsSplit>> sliceAccordingToMemoryLimit(const Logger& log,
                                                                            ArrayRef<TransformationsSplit> splits,
                                                                            vpux::Byte memoryLimit);
 
@@ -197,9 +193,20 @@ struct ConstArg {
     }
 
     ConstArg(const TransformationsSplit::Projection& proj)
-            : ConstArg(
-                      mlir::dyn_cast<mlir::DenseResourceElementsAttr>(proj.declareOp.getContentAttr().getBaseContent()),
-                      proj.precedingTransformations) {
+            : ConstArg(mlir::dyn_cast<mlir::DenseResourceElementsAttr>(proj.contentAttr.getBaseContent()),
+                       proj.precedingTransformations) {
+    }
+
+    //! @brief Returns a unique name derived from the ConstArg's components.
+    std::string getUniqueName() const;
+
+    // Note: equality comparison is rather slow due to the need to compare
+    // transformation arrays.
+    friend bool operator==(const ConstArg& x, const ConstArg& y) {
+        return x.content == y.content && x.transformations == y.transformations;
+    }
+    friend bool operator!=(const ConstArg& x, const ConstArg& y) {
+        return !(x == y);
     }
 };
 
@@ -254,6 +261,70 @@ public:
         return !firstOccurrence;
     }
 };
+
+/** @brief An analysis object that holds meta information.
+ */
+struct WeightsSeparationInfo {
+    //! @brief Creates the analysis object.
+    WeightsSeparationInfo(mlir::ModuleOp moduleOp);
+
+    /** @brief Returns whether the analysis object must be invalidated.
+
+        This is an analysis "interface" function that tells the analysis
+        management system whether the object has to be invalidated (destroyed).
+        The function is discovered statically via type traits and used
+        implicitly by mlir::detail::AnalysisConcept::invalidate().
+
+        The function returns `false` by default signifying that the analysis
+        must be always preserved.
+    */
+    bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&);
+
+    /** @brief Marks current analysis object as invalidated.
+
+        Changes the internal state of the analysis so that
+        WeightsSeparationInfo::isInvalidated() returns `true`.
+     */
+    void invalidate();
+
+    /** @brief Returns transformation splits collected from IR.
+
+        Returns cached transformation splits constructed from weights found in
+        original IR during analysis.
+     */
+    const std::vector<TransformationsSplit>& getCollectedSplits() const;
+
+private:
+    std::vector<TransformationsSplit> _splits;
+
+    bool _preserved{true};  // participates in invalidation mechanism
+};
+
+using CreateSliceOpFunc = FuncRef<mlir::Operation*(mlir::OpBuilder& builder, mlir::Location l, mlir::Value input,
+                                                   ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes)>;
+/** @brief Converts specific inputs of function into an obfuscated "blob".
+
+    Replaces given function inputs - specified by indices - with a "blob" value
+    (tensor<Nxi8>). The "blob" is sliced within the function and the individual
+    values are type-restored to maintain valid IR.
+
+    Relies on Core::ReinterpretCast operation for type de-obfuscation.
+ */
+void obfuscateInputs(const Logger& log, mlir::Location loc, mlir::func::FuncOp funcOp, ArrayRef<size_t> indices,
+                     CreateSliceOpFunc createSlice);
+
+using CreateConcatOpFunc = FuncRef<mlir::Operation*(mlir::OpBuilder& builder, mlir::Location l,
+                                                    ArrayRef<mlir::Value> inputs, int64_t axis)>;
+/** @brief Converts specific outputs of function into an obfuscated "blob".
+
+    Replaces given function outputs - specified by indices - with a "blob" value
+    (tensor<Nxi8>). The "blob" is constructed by concatenating type-obfuscated
+    outputs to maintain valid IR.
+
+    Relies on Core::ReinterpretCast operation for type obfuscation.
+ */
+void obfuscateOutputs(const Logger& log, mlir::Location loc, mlir::func::FuncOp funcOp, ArrayRef<size_t> indices,
+                      CreateConcatOpFunc createConcat);
 
 }  // namespace vpux::VPU
 

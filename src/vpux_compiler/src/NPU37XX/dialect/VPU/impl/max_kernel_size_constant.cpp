@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/impl/max_kernel_size_constant.hpp"

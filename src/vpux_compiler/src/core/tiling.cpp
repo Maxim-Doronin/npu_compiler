@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -1945,6 +1945,16 @@ DimArr vpux::getTileDimOrder(mlir::Operation* op, TilingMode tilingMode, Logger 
 
                         return tileDimOrder;
                     })
+                    .Case<VPU::CumSumOp>([&](VPU::CumSumOp op) {
+                        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+                        auto tileDimOrder = getTileDimOrderND(outputType.getMemShape(), outputType.getDimsOrder());
+
+                        auto axisValue = mlir::cast<mlir::IntegerAttr>(op.getAxisValueAttr()).getValue().getSExtValue();
+
+                        llvm::erase(tileDimOrder, Dim(axisValue));
+
+                        return tileDimOrder;
+                    })
                     .Case<VPU::DynamicDequantizeOp>([&](VPU::DynamicDequantizeOp) {
                         log.nest(2).trace("Check tile Dim order for Op at {0}", op->getLoc());
                         const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
@@ -2405,15 +2415,22 @@ bool isSupportedTileSizeForLargeFilter(mlir::Operation* origOp, ShapeRef nTilesO
     auto largeFilterSizeThreshold = Byte(checked_cast<int64_t>(
             std::ceil(checked_cast<double>(cmxSize.count()) *
                       VPU::getConstraint<double>(origOp, VPU::FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS))));
-    log.trace(" Tiled filter size : {0}, CMX threshold : {1}", filterSize, largeFilterSizeThreshold);
+    log.trace(" Tiled filter size : {0}, CMX threshold : {1} under tiling number {2}", filterSize,
+              largeFilterSizeThreshold, nTilesOnDim);
 
     return filterSize < largeFilterSizeThreshold;
+}
+
+bool vpux::isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTilesOnDim, Logger log) {
+    return isSupportedTileSizeForLargeActivation(origOp, nTilesOnDim,
+                                                 FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION, log);
 }
 
 // This function determines whether the given operation's activations (inputs & output) tiling size are suitable for CMX
 // especially when considering large activation pipelining. It returns true if the tiling size already fits into CMX
 // with fragments considered. Otherwise, it returns false, indicating that the number of tiles should be increased.
-bool isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTilesOnDim, Logger log) {
+bool vpux::isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTilesOnDim, double fragmentRatio,
+                                                 Logger log) {
     if (VPU::getArch(origOp) <= VPU::ArchKind::NPU40XX) {
         return true;
     }
@@ -2445,10 +2462,10 @@ bool isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTi
     auto tiledOutputType = tiledOperandTypes.size() == 2 ? tiledOperandTypes[1] : tiledOperandTypes[2];
     const auto inputSize = VPU::getRequiredCMXSize({std::move(tiledInputType)});
     const auto outputSize = VPU::getRequiredCMXSize({std::move(tiledOutputType)});
-    auto largeActivationSizeThreshold = Byte(checked_cast<int64_t>(
-            std::ceil(checked_cast<double>(cmxSize.count()) * FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION)));
-    log.trace(" Tiled input size : {0}, Tiled output size : {1}, CMX threshold : {2}", inputSize, outputSize,
-              largeActivationSizeThreshold);
+    auto largeActivationSizeThreshold =
+            Byte(checked_cast<int64_t>(std::ceil(checked_cast<double>(cmxSize.count()) * fragmentRatio)));
+    log.trace(" Tiled input size : {0}, Tiled output size : {1}, CMX threshold : {2} under tiling number {3}",
+              inputSize, outputSize, largeActivationSizeThreshold, nTilesOnDim);
 
     return (!isInputTiled || (inputSize < largeActivationSizeThreshold)) && (outputSize < largeActivationSizeThreshold);
 }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/transforms/passes.hpp"
@@ -103,6 +103,16 @@ mlir::LogicalResult ReorderRewriter::matchAndRewrite(IE::ReorderOp origOp, mlir:
     if (origType == nullptr) {
         return matchFailed(_log.nest(), rewriter, origOp, "NCE task does not implement vpux::NDTypeInterface");
     }
+    // fusion disables implicit reshape, more beneficial to execute
+    // * ShapeCast -> EltwiseOp -> ShapeCast -> Mempermute (DMA/SW) than
+    // * Expand -> Expand -> EltwiseOp (ODU Permute) -> Slice
+    if (mlir::isa_and_nonnull<IE::AddOp, IE::MultiplyOp, IE::SubtractOp>(layerWithPermute)) {
+        auto alignIface = mlir::cast<IE::AlignedChannelsOpInterface>(layerWithPermute.getOperation());
+        if (origType.getShape()[Dims4D::Act::C] < alignIface.getOutputChannelAlignment()) {
+            return matchFailed(_log.nest(), rewriter, origOp, "NCE Eltwise will be implicitly reshaped");
+        }
+    }
+
     const auto newType = origType.changeDimsOrder(DimsOrder::fromAffineMap(origOp.getDstOrder()));
     layerWithPermute->getResult(0).setType(newType);
 

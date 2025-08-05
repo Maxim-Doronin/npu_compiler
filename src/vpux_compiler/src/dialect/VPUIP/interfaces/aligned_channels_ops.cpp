@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/Support/LLVM.h>
@@ -33,6 +33,10 @@ public:
     }
 
     int64_t getInputChannelAlignment(mlir::Operation* op) const {
+        if (VPU::canAutopadInput(op)) {
+            return 1;
+        }
+
         const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
         return VPU::NCEInvariant::getAlignment(inputType.getElementType());
     }

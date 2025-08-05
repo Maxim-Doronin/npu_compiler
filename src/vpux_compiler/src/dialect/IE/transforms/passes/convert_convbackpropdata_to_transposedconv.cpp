@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -73,18 +73,32 @@ mlir::LogicalResult ConvolutionBackpropDataConversion::matchAndRewrite(IE::Convo
     mlir::Value newFilter;
     auto filterOp = filterTensor.getDefiningOp<Const::DeclareOp>();
     if (filterOp == nullptr) {
-        // Create transposeOp
-        auto filterTensorType = mlir::cast<vpux::NDTypeInterface>(filterTensor.getType());
+        const auto filterTensorType = mlir::cast<vpux::NDTypeInterface>(filterTensor.getType());
+        const auto filterRank = filterTensorType.getRank();
         auto permutation = to_small_vector(filterTensorType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
                                                return checked_cast<uint32_t>(dim.ind());
                                            }));
-        std::swap(permutation[Dims4D::Filter::OC.ind()], permutation[Dims4D::Filter::IC.ind()]);
+
+        SmallVector<int64_t> axes;
+        if (filterRank == 5) {
+            axes = SmallVector<int64_t>{Dims5D::Filter::KZ.ind(), Dims5D::Filter::KY.ind(), Dims5D::Filter::KX.ind()};
+            std::swap(permutation[Dims5D::Filter::OC.ind()], permutation[Dims5D::Filter::IC.ind()]);
+        } else if (filterRank == 4) {
+            axes = SmallVector<int64_t>{Dims4D::Filter::KY.ind(), Dims4D::Filter::KX.ind()};
+            std::swap(permutation[Dims4D::Filter::OC.ind()], permutation[Dims4D::Filter::IC.ind()]);
+        } else if (filterRank == 3) {
+            axes = SmallVector<int64_t>{2};
+            std::swap(permutation[0], permutation[1]);
+        } else {
+            VPUX_THROW("Only support 3D, 4D and 5D filter shape rank, but got {0}", filterRank);
+        }
+
+        // Create transposeOp
         auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
         auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "_transpose"), filterTensor,
                                                             /*order=*/nullptr, orderAttr);
 
         // Create reverseOp
-        const auto axes = SmallVector<int64_t>{Dims4D::Act::H.ind(), Dims4D::Act::W.ind()};
         const auto axesAttr = getIntArrayAttr(getContext(), axes);
         IE::ReverseModeAttr modeAttr = IE::ReverseModeAttr::get(getContext(), IE::ReverseMode::INDEX);
         auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "_reverse"),

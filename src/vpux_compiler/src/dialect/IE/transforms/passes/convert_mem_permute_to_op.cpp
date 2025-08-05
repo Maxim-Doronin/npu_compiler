@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -13,6 +13,8 @@
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -129,6 +131,13 @@ SmallVector<std::pair<Shape, DimsOrder>> calculateConversions(ShapeRef originInp
     return newMaxPoolOrder;
 }
 
+bool isSwPermuteEfficient(IE::MemPermuteOp memPermuteOp) {
+    auto arch = VPU::getArch(memPermuteOp);
+    auto inType = mlir::cast<NDTypeInterface>(memPermuteOp.getInput().getType());
+    auto outType = mlir::cast<NDTypeInterface>(memPermuteOp.getOutput().getType());
+    return VPUIP::satisfiesOptimizedMemPermute(arch, inType, outType);
+}
+
 bool isLegalConvertToPool(IE::MemPermuteOp memPermuteOp, mlir::AffineMap memPermMap, mlir::MLIRContext* ctx,
                           int64_t numClusters, StringRef debugName, Logger log) {
     // Pooling op does not support dynamic shapes,
@@ -232,6 +241,10 @@ bool isLegalConvertToPool(IE::MemPermuteOp memPermuteOp, mlir::AffineMap memPerm
         }
     }
 
+    if (isSwPermuteEfficient(memPermuteOp)) {
+        log.trace("Software memPermute is more efficient");
+        return false;
+    }
     return true;
 }
 
@@ -564,8 +577,17 @@ private:
 
 mlir::LogicalResult ConvertMemPermuteToPermuteQuantize::matchAndRewrite(IE::MemPermuteOp origOp,
                                                                         mlir::PatternRewriter& rewriter) const {
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
     const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    const auto inOrder = inType.getDimsOrder();
+    auto memPerm = origOp.getMemPerm();
+    bool inPermuteCastRequired = false;
+    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, outType)) {
+        // There is a chance to convert memPermuteOp to permuteQuantizeOp after inserting a permuteCastOp
+        inType = inType.changeDimsOrder(DimsOrder::NCHW);
+        memPerm = vpux::getPermutationFromOrders(DimsOrder::NCHW, outType.getDimsOrder(), origOp.getContext());
+        inPermuteCastRequired = true;
+    }
 
     const auto isLegalReorderOp = [&]() {
         if (!IE::isLegalReorderLikeToPermuteQuantize(inType, outType, _log)) {
@@ -573,7 +595,7 @@ mlir::LogicalResult ConvertMemPermuteToPermuteQuantize::matchAndRewrite(IE::MemP
             return false;
         }
 
-        if (DimsOrder::fromAffineMap(origOp.getMemPerm()) != DimsOrder::NHWC) {
+        if (DimsOrder::fromAffineMap(memPerm) != DimsOrder::NHWC) {
             _log.trace("Unsupported mem permute {0}", origOp.getMemPerm());
             return false;
         }
@@ -605,13 +627,23 @@ mlir::LogicalResult ConvertMemPermuteToPermuteQuantize::matchAndRewrite(IE::MemP
     }
 
     const auto& ctx = origOp.getContext();
+    auto curInput = origOp.getInput();
+    // Insert permuteCastOp
+    if (inPermuteCastRequired) {
+        const auto inMemPerm = vpux::getPermutationFromOrders(inOrder, DimsOrder::NCHW, ctx);
+        auto inPermuteCastOp =
+                rewriter.create<IE::PermuteCastOp>(appendLoc(origOp->getLoc(), "PermuteCast"), origOp.getInput(),
+                                                   DimsOrder::NCHW.toAffineMap(origOp->getContext()), inMemPerm);
+        curInput = inPermuteCastOp.getResult();
+    }
+
     const auto dstElemTypeAttr = mlir::TypeAttr::get(outType.getElementType());
     const auto noPadBeginEnd = SmallVector<int64_t>(outType.getRank(), 0);
 
     auto permuteQuantizeOp = rewriter.create<IE::PermuteQuantizeOp>(
-            appendLoc(origOp->getLoc(), "PermuteQuantize"), origOp.getOutput().getType(), origOp.getInput(),
-            origOp.getDstOrderAttr(), origOp.getMemPermAttr(), dstElemTypeAttr, getIntArrayAttr(ctx, noPadBeginEnd),
-            getIntArrayAttr(ctx, noPadBeginEnd));
+            appendLoc(origOp->getLoc(), "PermuteQuantize"), origOp.getOutput().getType(), curInput,
+            origOp.getDstOrderAttr(), mlir::AffineMapAttr::get(memPerm), dstElemTypeAttr,
+            getIntArrayAttr(ctx, noPadBeginEnd), getIntArrayAttr(ctx, noPadBeginEnd));
 
     _log.trace("convert to PermuteQuantize {0}", origOp->getLoc());
 

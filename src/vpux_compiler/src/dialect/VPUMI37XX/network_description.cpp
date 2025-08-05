@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <openvino/core/partial_shape.hpp>
@@ -40,11 +40,14 @@ ov::element::Type_t extractPrecisionFromDType(elf::DType dtype) {
             {elf::DType::DType_U16, ov::element::Type_t::u16},
             {elf::DType::DType_U8, ov::element::Type_t::u8},
             {elf::DType::DType_U4, ov::element::Type_t::u4},
+            {elf::DType::DType_I2X, ov::element::Type_t::u2},
             {elf::DType::DType_I64, ov::element::Type_t::i64},
             {elf::DType::DType_I32, ov::element::Type_t::i32},
             {elf::DType::DType_I16, ov::element::Type_t::i16},
             {elf::DType::DType_I8, ov::element::Type_t::i8},
             {elf::DType::DType_I4, ov::element::Type_t::i4},
+            // C#167868 add also below mapping once OV adds support for it.
+            // {elf::DType::DType_I2, ov::element::Type_t::i2},
             {elf::DType::DType_BIN, ov::element::Type_t::u1},
             {elf::DType::DType_BFP16, ov::element::Type_t::bf16},
             {elf::DType::DType_I4X, ov::element::Type_t::nf4},
@@ -68,12 +71,15 @@ const EnumMap<elf::OVNodeType, ov::element::Type_t> mapElementTypeOV = {
         {elf::OVNodeType::OVNodeType_F32, ov::element::Type_t::f32},
         {elf::OVNodeType::OVNodeType_F64, ov::element::Type_t::f64},
         {elf::OVNodeType::OVNodeType_I4, ov::element::Type_t::i4},
+        // C#167868 add also below mapping once OV adds support for it.
+        // {elf::OVNodeType::OVNodeType_I2, ov::element::Type_t::i2},
         {elf::OVNodeType::OVNodeType_I8, ov::element::Type_t::i8},
         {elf::OVNodeType::OVNodeType_I16, ov::element::Type_t::i16},
         {elf::OVNodeType::OVNodeType_I32, ov::element::Type_t::i32},
         {elf::OVNodeType::OVNodeType_I64, ov::element::Type_t::i64},
         {elf::OVNodeType::OVNodeType_U1, ov::element::Type_t::u1},
         {elf::OVNodeType::OVNodeType_U4, ov::element::Type_t::u4},
+        {elf::OVNodeType::OVNodeType_U2, ov::element::Type_t::u2},
         {elf::OVNodeType::OVNodeType_U8, ov::element::Type_t::u8},
         {elf::OVNodeType::OVNodeType_U16, ov::element::Type_t::u16},
         {elf::OVNodeType::OVNodeType_U32, ov::element::Type_t::u32},

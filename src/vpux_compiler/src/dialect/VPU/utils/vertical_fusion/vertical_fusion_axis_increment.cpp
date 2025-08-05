@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_axis_increment.hpp"
@@ -96,8 +96,9 @@ int64_t ChannelsVFAxisIncrement::getLimitValue(mlir::ArrayRef<int64_t> alignedVa
                     "alignedValues and unalignedValues are both empty vectors");
 
     std::function<int64_t(int64_t, int64_t)> gcdNum = [&](int64_t one, int64_t two) {
-        if (one == 0)
+        if (one == 0) {
             return two;
+        }
         return gcdNum(two % one, one);
     };
 

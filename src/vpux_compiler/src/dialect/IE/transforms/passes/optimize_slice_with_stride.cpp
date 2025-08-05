@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -550,8 +550,11 @@ Const::DeclareOp FuseSliceWithConvRewriter::createConstOp(Const::DeclareOp cstOp
                                                           mlir::PatternRewriter& rewriter, bool isFilter) const {
     const auto constValue = cstOp.getOutput();
     auto constShape = to_small_vector(getShape(constValue));
+    auto newInOffset = to_small_vector(inOffset);
     if (isFilter) {
         constShape[vpux::Dims4D::Filter::OC.ind()] = inShape[vpux::Dims4D::Act::C];
+        newInOffset[vpux::Dims4D::Act::C.ind()] = 0;
+        newInOffset[vpux::Dims4D::Act::N.ind()] = inOffset[vpux::Dims4D::Act::C];
     } else {
         if (constShape[vpux::Dims4D::Act::C.ind()] == 1) {
             // broadcasting bias
@@ -560,7 +563,7 @@ Const::DeclareOp FuseSliceWithConvRewriter::createConstOp(Const::DeclareOp cstOp
         constShape[vpux::Dims4D::Act::C.ind()] = inShape[vpux::Dims4D::Act::C];
     }
 
-    auto cstContentAttr = cstOp.transformContentAttr().subview(inOffset, Shape(constShape)).get();
+    auto cstContentAttr = cstOp.transformContentAttr().subview(ShapeRef(newInOffset), Shape(constShape)).get();
     return rewriter.create<Const::DeclareOp>(cstOp.getLoc(), cstContentAttr.getType(), std::move(cstContentAttr));
 }
 

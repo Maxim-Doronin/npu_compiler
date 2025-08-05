@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPURT/interfaces/enqueue_barrier.hpp"
@@ -28,11 +28,7 @@ public:
     }
 
 private:
-#if defined(__clang__)
-    [[maybe_unused]] WorkloadManagementMode _workloadManagementMode;
-#else
     WorkloadManagementMode _workloadManagementMode;
-#endif
     bool _disableDmaSwFifo;
     void safeRunOnFunc() final;
 };
@@ -46,7 +42,8 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
         return;
     }
 
-    if (!VPURT::verifyOneWaitBarrierPerTask(func, _log)) {
+    if (_workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
+        !VPURT::verifyOneWaitBarrierPerTask(func, _log)) {
         _log.warning("WLM cannot be enabled as not all tasks have 1 wait barrier");
         vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
         signalPassFailure();
@@ -61,7 +58,9 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
 
     VPURT::EnqueueBarrierHandler enqueueBarrier(func, barrierInfo, _disableDmaSwFifo, _log);
 
-    const auto enqDmaAtBootstrap = enqDmaAtBootstrapOpt.hasValue() ? enqDmaAtBootstrapOpt.getValue() : false;
+    const auto enqDmaAtBootstrap = enqDmaAtBootstrapOpt.hasValue()
+                                           ? enqDmaAtBootstrapOpt.getValue()
+                                           : _workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES;
 
     mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap;
     if (enqDmaAtBootstrap) {

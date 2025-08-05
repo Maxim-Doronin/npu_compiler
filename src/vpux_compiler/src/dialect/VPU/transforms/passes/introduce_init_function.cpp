@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -13,9 +13,9 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/ir_modification.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/net/network_info_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/dense_map.hpp"
 
 #include <llvm/ADT/Hashing.h>
 #include <llvm/ADT/STLExtras.h>
@@ -64,15 +64,6 @@ mlir::Value castToQuantizedType(mlir::OpBuilder& builder, mlir::Location loc, ml
     return builder.create<VPU::QuantizeCastOp>(appendLoc(loc, "_quant_cast"), input, info.quantizedType);
 }
 
-// Returns a unique name for init result (and, consequently, for main input).
-std::string getUniqueNameOfInitResult(const mlir::ElementsAttr& content,
-                                      ArrayRef<Const::TransformAttrInterface> transformations) {
-    const auto name = getResourceName(content);
-    assert(!name.empty() && "Weights separation only works with dense_resource<>");
-    const size_t hash = Const::ContentAttr::getTransformationHash(transformations);
-    return formatv("out_{0}_hash_{1}", name, hash);
-}
-
 /// Weights-separation specific argument cache.
 using WsArgumentCache = vpux::utils::ArgumentCache<vpux::VPU::ConstArg>;
 
@@ -104,13 +95,13 @@ public:
     std::tuple<mlir::func::FuncOp, WsArgumentCache, InitResults> buildInitFunction(
             mlir::OpBuilder& moduleBuilder, mlir::Location loc, ArrayRef<VPU::TransformationsSplit> splits,
             StringRef name);
-    std::tuple<mlir::func::FuncOp, WsArgumentCache, InitResults> buildInitFunction(mlir::func::FuncOp mainFuncOp,
-                                                                                   const VPU::CallChainTree& tree);
+    std::tuple<mlir::func::FuncOp, WsArgumentCache, InitResults> buildInitFunction(
+            mlir::func::FuncOp mainFuncOp, const VPU::WeightsSeparationInfo& wsAnalysis);
     struct SplitSlice {
-        SmallVector<VPU::TransformationsSplit> splits;
+        std::vector<VPU::TransformationsSplit> splits;
         bool initIsSliced = false;  // specifies whether init schedule was sliced and only a slice is returned.
     };
-    SplitSlice collectSplitsAccordingToSettings(const VPU::CallChainTree& tree);
+    SplitSlice collectSplitsAccordingToSettings(const VPU::WeightsSeparationInfo& wsAnalysis);
 
     WsArgumentCache updateMainAndOutlinedFunctions(mlir::ModuleOp moduleOp, mlir::func::FuncOp mainFuncOp,
                                                    const VPU::CallChainTree& tree);
@@ -149,37 +140,24 @@ void IntroduceInitFunctionPass::setNetworkEntryPointToInit(net::NetworkInfoOp ne
 
     // update input types
     auto& inputsRegion = netInfo.getInputsInfo();
-    inputsRegion.getBlocks().clear();
-    inputsRegion.getBlocks().push_back(new mlir::Block());
+    net::eraseSectionEntries(inputsRegion);
     builder.setInsertionPointToStart(&inputsRegion.front());
 
     for (auto it : argCache.getSortedArgs()) {
         const auto& [entry, blockArg] = *it;
         const auto type = blockArg.getType();
-        const auto name = getResourceName(entry.content);
-        auto inputName = mlir::StringAttr::get(&getContext(), formatv("in_{0}", name));
-        builder.create<net::DataInfoOp>(appendLoc(netInfo.getLoc(), inputName), inputName, type,
-                                        /*OptionalAttr originalShape*/ nullptr,
-                                        /*OptionalAttr friendlyName*/ nullptr,
-                                        /*OptionalAttr inputName*/ nullptr,
-                                        /*OptionalAttr tensorNames*/ nullptr,
-                                        /*profilingSectionsCount=*/0);
+        const auto name = formatv("in_{0}", getResourceName(entry.content)).str();
+        builder.create<net::DataInfoOp>(appendLoc(netInfo.getLoc(), name), name, type);
     }
 
     // update output types
     auto& outputsRegion = netInfo.getOutputsInfo();
-    outputsRegion.getBlocks().clear();
-    outputsRegion.getBlocks().push_back(new mlir::Block());
+    net::eraseSectionEntries(outputsRegion);
     builder.setInsertionPointToStart(&outputsRegion.front());
 
     for (const auto& [entry, value] : initResults) {
-        auto outputName = getUniqueNameOfInitResult(entry.content, entry.transformations);
-        builder.create<net::DataInfoOp>(appendLoc(netInfo.getLoc(), outputName), outputName, value.getType(),
-                                        /*OptionalAttr originalShape*/ nullptr,
-                                        /*OptionalAttr friendlyName*/ nullptr,
-                                        /*OptionalAttr inputName*/ nullptr,
-                                        /*OptionalAttr tensorNames*/ nullptr,
-                                        /*profilingSectionsCount=*/0);
+        const auto outputName = entry.getUniqueName();
+        builder.create<net::DataInfoOp>(appendLoc(netInfo.getLoc(), outputName), outputName, value.getType());
     }
 }
 
@@ -253,7 +231,7 @@ public:
         // when visiting the function, update IR inside the current function
         // according to the main schedule transformations.
         _log.trace("Visiting {0} to update main schedule", currOp.getSymName());
-        const auto splits = VPU::collectMoveWorthyTransformationSplits(_log, currOp);
+        const auto constants = VPU::collectMoveWorthyConstants(_log, currOp);
 
         // in main we only care about input boundary - "quantization" has to be
         // done on input arguments to restore real types.
@@ -265,25 +243,23 @@ public:
         // insertion point.
         VPU::ConstOpConverter funcConverter(currOp, _log);
 
-        // Note: removal of operations is done separately, after construction of
-        // new IR, to ensure that operation builder is not invalidated.
-        std::vector<Const::DeclareOp> opsToRemove;
-        opsToRemove.reserve(splits.size());
-
-        for (const auto& split : splits) {
-            auto declareOp = split.declareOp();
-
+        for (auto it : llvm::enumerate(constants)) {
+            auto declareOp = it.value();
+            auto idx = it.index();
+            VPU::TransformationsSplit split(declareOp);
             auto projection = split.take(VPU::WeightsSeparationSchedule::Main);
             auto mainArg = mainArgDeduplicator.addArgument(VPU::ConstArg(projection), projection.argType);
-            auto valueInMain = funcConverter.convertToIrForm(appendLoc(declareOp.getLoc(), "main"), projection, mainArg,
-                                                             mainIoAdaptor, VPU::WeightsSeparationSchedule::Main);
+            auto valueInMain =
+                    funcConverter.convertToIrForm(appendLoc(declareOp.getLoc(), "main_cstIdx_{0}", idx), projection,
+                                                  mainArg, mainIoAdaptor, VPU::WeightsSeparationSchedule::Main);
 
             _log.trace("Replacing '{0}' with '{1}'", declareOp, valueInMain);
             declareOp.replaceAllUsesWith(valueInMain);
-            opsToRemove.push_back(declareOp);
         }
 
-        for (auto op : opsToRemove) {
+        // Note: removal of operations is done separately, after construction of
+        // new IR, to ensure that operation builder is not invalidated.
+        for (auto op : constants) {
             op.erase();
         }
 
@@ -407,13 +383,11 @@ std::tuple<WsArgumentCache, IntroduceInitFunctionPass::InitResults> IntroduceIni
     vpux::VPU::IoBoundaryAdapter initIoAdaptor{/*wrapInput=*/&vpux::VPU::IoBoundaryAdapter::identity,
                                                /*wrapOutput=*/&castToStorageType};
 
-    for (const auto& split : splits) {
-        auto declareOp = split.declareOp();
-
+    for (const auto& [idx, split] : splits | indexed) {
         auto projection = split.take(VPU::WeightsSeparationSchedule::Init);
         auto initArg = initArgDeduplicator.addArgument(VPU::ConstArg(projection), projection.argType);
-        auto valueInInit = initConverter.convertToIrForm(appendLoc(declareOp.getLoc(), "init"), projection, initArg,
-                                                         initIoAdaptor, VPU::WeightsSeparationSchedule::Init);
+        auto valueInInit = initConverter.convertToIrForm(appendLoc(split.getLoc(), "init_cstIdx_{0}", idx), projection,
+                                                         initArg, initIoAdaptor, VPU::WeightsSeparationSchedule::Init);
         addInitResult(split, valueInInit);
     }
 
@@ -421,34 +395,31 @@ std::tuple<WsArgumentCache, IntroduceInitFunctionPass::InitResults> IntroduceIni
 }
 
 std::tuple<mlir::func::FuncOp, WsArgumentCache, IntroduceInitFunctionPass::InitResults>
-IntroduceInitFunctionPass::buildInitFunction(mlir::func::FuncOp mainFuncOp, const VPU::CallChainTree& tree) {
+IntroduceInitFunctionPass::buildInitFunction(mlir::func::FuncOp mainFuncOp,
+                                             const VPU::WeightsSeparationInfo& wsAnalysis) {
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder moduleBuilder(&getContext(), &builderLog);
     moduleBuilder.setInsertionPoint(mainFuncOp);
 
-    auto [splits, initIsSliced] = collectSplitsAccordingToSettings(tree);
+    auto [splits, initIsSliced] = collectSplitsAccordingToSettings(wsAnalysis);
     const std::string functionName = initIsSliced ? formatv("init_part{0}", _initPart).str() : "init";
     return buildInitFunction(moduleBuilder, appendLoc(mainFuncOp.getLoc(), functionName), splits, functionName);
 }
 
 IntroduceInitFunctionPass::SplitSlice IntroduceInitFunctionPass::collectSplitsAccordingToSettings(
-        const VPU::CallChainTree& tree) {
-    const auto sortSplits = [](SmallVector<VPU::TransformationsSplit>& splits) {
-        llvm::sort(splits);
-    };
+        const VPU::WeightsSeparationInfo& wsAnalysis) {
+    auto splits = wsAnalysis.getCollectedSplits();
     if (_mode == Mode::GenerateAll) {
         // when generating everything, constant collection is aligned to
         // gen-main to ensure init results are aligned to main inputs.
-        return {VPU::collectMoveWorthyTransformationSplits(_log, tree, sortSplits), /*initIsSliced=*/false};
+        return {std::move(splits), /*initIsSliced=*/false};
     }
 
     // when generating init, acknowledge init part and memory limit
     assert(_mode == Mode::GenerateInit && "Init generation only happens in gen-all and gen-init");
-    constexpr auto noopSort = [](SmallVector<VPU::TransformationsSplit>&) {};
-    // Note: sort once "globally" and do not sort while collecting splits.
-    auto splits = VPU::collectMoveWorthyTransformationSplits(_log, tree, noopSort);
     VPUX_THROW_WHEN(splits.empty(), "Cannot generate empty init schedule");
-    sortSplits(splits);
+    // Note: sort "globally" to prepare for slicing
+    llvm::sort(splits);
 
     auto slicedSplits = VPU::sliceAccordingToMemoryLimit(_log, splits, _memoryLimit);
     VPUX_THROW_WHEN((_initPart < 0 || _initPart >= checked_cast<int64_t>(slicedSplits.size())),
@@ -481,13 +452,8 @@ void IntroduceInitFunctionPass::setNetworkEntryPointToMain(net::NetworkInfoOp ne
         // Note: init results match exactly the input arguments of main, so one
         // can "re-create" the unique name of init's result by taking the
         // respective main input argument.
-        auto inputName = getUniqueNameOfInitResult(entry.content, entry.transformations);
-        builder.create<net::DataInfoOp>(appendLoc(netInfo.getLoc(), inputName), inputName, blockArg.getType(),
-                                        /*OptionalAttr originalShape*/ nullptr,
-                                        /*OptionalAttr friendlyName*/ nullptr,
-                                        /*OptionalAttr inputName*/ nullptr,
-                                        /*OptionalAttr tensorNames*/ nullptr,
-                                        /*profilingSectionsCount=*/0);
+        const auto inputName = entry.getUniqueName();
+        builder.create<net::DataInfoOp>(appendLoc(netInfo.getLoc(), inputName), inputName, blockArg.getType());
     }
 }
 
@@ -666,6 +632,8 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
     mlir::func::FuncOp mainFuncOp;
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
 
+    const auto& wsAnalysis = getAnalysis<VPU::WeightsSeparationInfo>();
+
     auto tree = VPU::getOutliningRepresentation(mainFuncOp);
 
     if (_log.isActive(LogLevel::Debug)) {
@@ -677,7 +645,7 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
 
     switch (_mode) {
     case Mode::GenerateInit: {
-        auto [initFuncOp, initArgCache, initResults] = buildInitFunction(mainFuncOp, tree);
+        auto [initFuncOp, initArgCache, initResults] = buildInitFunction(mainFuncOp, wsAnalysis);
         setNetworkEntryPointToInit(netInfo, initFuncOp, initArgCache, initResults);
         eraseMainAndOutlinedFunctions(tree);
         break;
@@ -688,7 +656,7 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
         break;
     }
     case Mode::GenerateAll: {
-        auto [initFuncOp, initArgCache, initResults] = buildInitFunction(mainFuncOp, tree);
+        auto [initFuncOp, initArgCache, initResults] = buildInitFunction(mainFuncOp, wsAnalysis);
         std::ignore = updateMainAndOutlinedFunctions(moduleOp, mainFuncOp, tree);
         initFuncOp.setPrivate();
         mainFuncOp.setPrivate();

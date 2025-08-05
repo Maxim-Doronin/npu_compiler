@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -43,6 +43,9 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
                                    llvm::cl::init(true)};
 
+    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
+                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
+                                    llvm::cl::init(true)};
     BoolOption enableApplyDynamicBoundaryCorrection{*this, "enable-apply-dynamic-boundary-correction",
                                                     llvm::cl::desc("Enable apply-dynamic-boundary-correction pass"),
                                                     llvm::cl::init(false)};
@@ -59,6 +62,14 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption enableDynamicShapeTransformationsPipeline{*this, "enable-dynamic-shape-transformations",
                                                          llvm::cl::desc("Enable DynamicShapeTransformations Pipeline"),
                                                          llvm::cl::init(true)};
+    BoolOption enableMatmulMixedPrecisionDecomposition{
+            *this, "enable-matmul-mixed-precision-decomposition",
+            llvm::cl::desc("Enable mixed precision decomposition for matmul"), llvm::cl::init(true)};
+    DoubleOption matmulMixedPrecisionDecompositionRatio{
+            *this, "matmul-mixed-precision-decomposition-ratio",
+            llvm::cl::desc("Determines when to enable Matmul Mixed Precision Decomposition"
+                           "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"),
+            llvm::cl::init(250.0)};
 };
 
 //

@@ -1,12 +1,19 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/scf_tiling/scf_tiling.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SmallVector.h>
+#include <mlir/Support/LLVM.h>
 
 namespace vpux::VPU {
 
@@ -48,6 +55,9 @@ protected:
 
         auto newShape = getShape(extractTile.getResult());
         auto newType = origType.changeShape(ShapeRef(newShape));
+        if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(newType)) {
+            newType = boundedType.changeBounds(inputTileInfo.bounds);
+        }
 
         // by default output type loses NPU-specific attributes so we have to set it manually
         extractTile->getResult(0).setType(newType);
@@ -55,7 +65,7 @@ protected:
         return extractTile;
     }
 
-    mlir::Type extractResultType(mlir::Type origType, SCFShapeRef newShape) const {
+    mlir::Type extractResultType(mlir::Type origType, SCFShapeRef newShape, BoundsRef bounds) const {
         auto ndTensorType = mlir::cast<vpux::NDTypeInterface>(origType);
         auto origElemType = ndTensorType.getElementType();
 
@@ -63,7 +73,9 @@ protected:
                         "Per axis quantized types are not supported in scf");
 
         const auto tensorDesc =
-                vpux::getTensorAttr(origElemType.getContext(), ndTensorType.getDimsOrder(), ndTensorType.getMemSpace());
+                vpux::getTensorAttr(origElemType.getContext(), ndTensorType.getDimsOrder(), ndTensorType.getMemSpace(),
+                                    mlir::isa<Core::BoundedTensorType>(origType) ? bounds : Bounds{});
+
         SmallVector<mlir::Value> dynamicDims;  // unused cause for shape static dims are enough
         SmallVector<int64_t> staticDims;
         mlir::dispatchIndexOpFoldResults(newShape, dynamicDims, staticDims);
@@ -113,9 +125,17 @@ public:
         SmallVector<mlir::OpFoldResult> axis(resultOffsets.size(), builder.getIndexAttr(1));
         auto origShape = mlir::getAsIndexOpFoldResult(
                 builder.getContext(), mlir::cast<mlir::ShapedType>(operation->getResult(0).getType()).getShape());
+
+        Bounds resultBounds;
+        if (IE::hasDynamicTensors(operation)) {
+            if (mlir::failed(getResultTileBounds(operation, builder, resultNumber, resultBounds))) {
+                return mlir::failure();
+            }
+        }
+
         for (auto index : irange(tilingDims.size())) {
             axis[tilingDims[index].ind()] = builder.getIndexAttr(strategy[tilingDims[index]]);
-            auto outputTile = SCFTileInfo(resultSizes, resultOffsets, axis);
+            auto outputTile = SCFTileInfo(resultSizes, resultOffsets, axis, resultBounds);
             auto inputTiling = backInferSCFTileInfo(operation, builder, outputTile);
             SmallVector<mlir::Value> tiledOperands;
             tiledOperands.reserve(operation->getNumOperands());
@@ -139,7 +159,7 @@ public:
             };
 
             OpGeneratorFunc generatorFunc = [&]() {
-                auto resultDenseTile = extractResultType(operation->getResult(0).getType(), resultSizes);
+                auto resultDenseTile = extractResultType(operation->getResult(0).getType(), resultSizes, resultBounds);
                 auto* tiledOp = mlir::cloneWithoutRegions(builder, operation, {resultDenseTile}, tiledOperands);
                 tiledOp->removeAttr(tilingStrategy);
                 return tiledOp;
@@ -173,6 +193,42 @@ public:
         for (auto dimIndex : irange(tilingDims.size())) {
             resultOffsets[tilingDims[dimIndex].ind()] = offsets[dimIndex];
             resultSizes[tilingDims[dimIndex].ind()] = sizes[dimIndex];
+        }
+
+        return mlir::success();
+    }
+
+    mlir::LogicalResult getResultTileBounds(mlir::Operation* operation, mlir::OpBuilder& builder, unsigned resultNumber,
+                                            Bounds& resultBounds) const {
+        auto outputType = mlir::cast<mlir::ShapedType>(operation->getResult(resultNumber).getType());
+        auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(outputType);
+        if (boundedType == nullptr) {
+            return mlir::failure();
+        }
+
+        const auto strategy =
+                Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy))));
+        SmallVector<mlir::OpFoldResult> steps =
+                VPU::staticTileSizeComputation(builder, operation, strategy, ShapeRef(boundedType.getBounds().raw()));
+        auto extractIndexFromOpFoldResult = [](mlir::OpFoldResult opFoldResult) {
+            if (auto attr = mlir::dyn_cast<mlir::Attribute>(opFoldResult)) {
+                if (auto intAttr = mlir::dyn_cast<mlir::IntegerAttr>(attr)) {
+                    return intAttr.getInt();
+                }
+            }
+            return int64_t(-1);
+        };
+
+        resultBounds = boundedType.getBounds();
+        auto tilingDims = getNonOneDim(strategy);
+        for (auto dimIndex : irange(tilingDims.size())) {
+            resultBounds[tilingDims[dimIndex]] = extractIndexFromOpFoldResult(steps[dimIndex]);
+        }
+
+        if (llvm::any_of(resultBounds, [](auto dim) {
+                return dim <= 0;
+            })) {
+            return mlir::failure();
         }
 
         return mlir::success();

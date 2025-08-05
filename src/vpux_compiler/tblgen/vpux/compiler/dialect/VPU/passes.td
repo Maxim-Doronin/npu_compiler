@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPU_PASSES
@@ -17,7 +17,7 @@ def InitResources : PassBase<"init-resources", "vpux::ModulePass"> {
 
     let description = [{
         This pass attaches VPU related compilation parameters to Module attributes and
-        initializes **IERT Dialect** run-time resources information.
+        initializes run-time resources information.
     }];
 
     let constructor = "vpux::VPU::createInitResourcesPass()";
@@ -61,7 +61,6 @@ def InitResources : PassBase<"init-resources", "vpux::ModulePass"> {
     ];
 
     let dependentDialects = [
-        "vpux::IERT::IERTDialect",
         "vpux::VPU::VPUDialect"
     ];
 }
@@ -96,6 +95,45 @@ def OutputPipelineTiling : PassBase<"output-pipeline-tiling", "vpux::FunctionPas
             "std::string", "",
             "[Optional] Set tiling mode as `ISOLATED` or `PREFETCH`"
         >
+    ];
+}
+
+//
+// Cost model analysis construct
+//
+
+def CostModelAnalysisConstruct : PassBase<"cost-model-analysis-construct", "vpux::ModulePass"> {
+    let summary = "This pass constructs a vpunn cost model instance and preserve it in an analysis";
+
+    let description = [{
+        The pass constructs a VPUNN cost model according to option `version` and preserves it in analysis.
+        The cost model instance exists until the AnalysisManager is cleared
+        or the cost model analysis is cleared explicitly by pass `CostModelAnalysisDestroy`.
+    }];
+
+    let constructor = "vpux::VPU::createCostModelAnalysisConstructPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
+// Cost model analysis destroy
+//
+
+def CostModelAnalysisDestroy : PassBase<"cost-model-analysis-destroy", "vpux::ModulePass"> {
+    let summary = "This pass destroys a vpunn cost model instance if it exists";
+
+    let description = [{
+        The pass destroys the VPUNN cost model instance if it exists
+        The destroyed cost model version is chosen by option `version`
+    }];
+
+    let constructor = "vpux::VPU::createCostModelAnalysisDestroyPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
     ];
 }
 
@@ -247,6 +285,19 @@ def MoveViewOpsToVF : PassBase<"move-view-ops-to-vf", "vpux::FunctionPass"> {
 
     let constructor = "vpux::VPU::createMoveViewOpsToVerticalFusionPass()";
 
+    let options = [
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+            )}]
+        >
+    ];
+
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
     ];
@@ -262,11 +313,10 @@ def MergeVfSubgraphs : PassBase<"merge-vertical-fusion-subgraphs", "vpux::Functi
     let description = [{
         Merge VF blocks and add operations to them recalculating tiling information
         and halo regions in following cases:
-        1. Number of operations which might increase computational cost does not exceed limit
-        2. All operations have same multicluster strategy or don't have them at all
-        3. Region which is supposed to be added doesn't have any other users except current region or
-        all its users point to current region too.
-        4. All operations in new region after merging fit in CMX when they are tiled for VF. In case they don't, number of tiles
+        1. All operations have compatible tensor types (distributed and not distributed)
+        2. Region which is supposed to be added doesn't have any other users except current region or
+        all its users point to current region too. In newest versions the merging process is not skipped for other operands.
+        3. All operations in new region after merging fit in CMX when they are tiled for VF. In case they don't, number of tiles
         increases.
         5. Required CMX memory by constant weights shouldn't exceed the threshold to avoid spilling.
 
@@ -1918,6 +1968,42 @@ def SetupEnableVPUNNPreSplit : PassBase<"setup-vpunn-pre-split", "vpux::ModulePa
 }
 
 //
+// SetupWeightsTableReuseMode
+//
+
+def SetupWeightsTableReuseMode : PassBase<"setup-weights-table-reuse-mode", "vpux::ModulePass"> {
+    let summary = "Set the option of enabling weights table reuse and store it in the model/IR";
+
+    let description = [{
+        Set the option of enabling weights table reuse in the model/IR.
+    }];
+
+    let constructor = "vpux::VPU::createSetupWeightsTableReuseModePass()";
+
+    let options = [
+        Option<
+            "weightsTableReuseMode", "weights-table-reuse-mode",
+            "vpux::WeightsTableReuseMode", "",
+            "Setting the weights table reuse mode",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WeightsTableReuseMode::ENABLED, "ENABLED", "Weights table can be reused for all operations that support it"),
+                clEnumValN(vpux::WeightsTableReuseMode::VF_ENABLED, "VF_ENABLED", "Weights table can be reused for operations in pure-vertical-fusion region, to avoid possible memory fragmentation"),
+                clEnumValN(vpux::WeightsTableReuseMode::DISABLED, "DISABLED", "Weights table cannot be reused")
+            )}]
+        >,
+        Option<
+            "allowCustomValues", "allow-custom-values",
+            "bool", "",
+            "[Optional] Allows keep predefined values in IR"
+        >
+    ];
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
 // ConcatRepeatingBlocksOutlining
 //
 
@@ -2004,9 +2090,29 @@ def OutlineEntireMainContent : PassBase<"outline-entire-main-content", "vpux::Mo
     ];
 }
 
-//
-// IntroduceInitFunction
-//
+def ConstructWsAnalysis : PassBase<"construct-ws-analysis", "vpux::ModulePass"> {
+    let summary = "Create weights separation analysis";
+
+    let description = [{
+        This pass constructs weights separation analysis object used across
+        weights separation passes.
+
+        Note: The analysis is preserved until --destruct-ws-analysis pass.
+    }];
+
+    let constructor = "vpux::VPU::createConstructWsAnalysisPass()";
+}
+
+def DestructWsAnalysis : PassBase<"destruct-ws-analysis", "vpux::ModulePass"> {
+    let summary = "Destroy weights separation analysis";
+
+    let description = [{
+        This pass destroys previously created weights separation analysis
+        object.
+    }];
+
+    let constructor = "vpux::VPU::createDestructWsAnalysisPass()";
+}
 
 def IntroduceInitFunction : PassBase<"introduce-init-function", "vpux::ModulePass"> {
     let summary = "Introduce the `init` function into the IR";
@@ -2114,6 +2220,42 @@ def QueryWSInfo : PassBase<"query-ws-info", "vpux::ModulePass"> {
     let constructor = "vpux::VPU::createQueryWSInfoPass()";
 }
 
+def ConcatInitResults : PassBase<"concat-init-results", "vpux::ModulePass"> {
+    let summary = "Concatenates init function results into a single tensor";
+
+    let description = [{
+        This pass concatenates the results of init function into a single
+        tensor, reducing the overall number of I/O between init and main
+        schedules (note: it is currently highly preferred to limit the amount of
+        inputs of main schedule, when possible, as every main schedule input
+        uses CMX-placed meta information).
+
+        Consequently, the pass also converts the single input (coming from init
+        result) into correct multiple inputs inside the main schedule.
+    }];
+
+    let options = [
+        Option<
+            "wsExtractionMode", "ws-extraction-mode",
+            "std::string", [{"gen-all"}],
+            "Can be one of the following values: 'gen-init', 'gen-main' or 'gen-all'"
+        >,
+        Option<
+            "initPart", "init-part", "int64_t", "-1", "Specifies which part of"
+            "the init schedule to use when it is split by the memory limit."
+            "Note that this option only works in 'gen-init' mode."
+        >,
+        Option<
+            "memoryLimit", "memory-limit", "int64_t",
+            "std::numeric_limits<int64_t>::max()", "Specifies the memory limit"
+            "(in bytes) that init schedule must acknowledge when splitting"
+            "inits into parts in 'gen-init' mode."
+        >
+    ];
+
+    let constructor = "vpux::VPU::createConcatInitResultsPass()";
+}
+
 //
 // BoundedTensorsToDynamicDimsMask
 //
@@ -2203,4 +2345,109 @@ def ScfComputeOpsOutlining : PassBase<"scf-compute-ops-outlining", "vpux::Module
         "mlir::scf::SCFDialect",
         "mlir::tensor::TensorDialect"
     ];
+}
+
+//
+// FinalizeComputeFunctionBoundaries
+//
+
+def FinalizeComputeFunctionBoundaries : PassBase<"finalize-compute-function-boundaries", "vpux::ModulePass"> {
+    let summary = "Finalize compute function boundaries for Host Pipeline";
+
+    let description = [{
+        This pass finalizes the compute function boundaries for the Host Pipeline.
+
+        It ensures that all compute functions are properly outlined and that their
+        boundaries are correctly defined. After executing this pass, @main function
+        can contain only ops/types that can be lowered to something executable
+        on the host.
+
+        The pass will also ensure that all necessary attributes and metadata are set
+        correctly for the outlined compute functions.
+
+        The current contract is that @main function and declarations of compute functions
+        do not contain NPU-specific ops or types.
+        Additionally, NPU-specific layout / memory space information is stripped from
+        the tensor types, making the tensors "compatible" with their upstream MLIR counterparts.
+        Examples:
+
+        ```
+            // before
+            %0 = tensor.empty() : tensor<1x16x720x1000xf16, {order = #NHWC}>
+            // after
+            %0 = tensor.empty() : tensor<1x720x1000x16xf16>
+
+            // function declarations
+            // before
+            func.func private @main_func0(%arg0: tensor<1x16x90x1000xf16, {order = #NHWC}>,
+                                          %arg1: tensor<1x16x90x1000xf16, {order = #NHWC}>)
+                -> tensor<1x16x90x1000xf16, {order = #NHWC}>
+            // after
+            func.func private @main_func0(%arg0: tensor<1x90x1000x16xf16>,
+                                          %arg1: tensor<1x90x1000x16xf16>)
+                -> tensor<1x90x1000x16xf16>
+        ```
+
+        Ops transforming shapes like `tensor.extract_slice` and `tensor.insert_slice`
+        are a special case as they contain shape and offsets as op operands.
+        The pass will transform the operands accordingly.
+        Example:
+
+        ```
+            // before
+            %0 = tensor.extract_slice %arg0[0, 0, 0, 0] [1, 16, 90, 1000] [1, 1, 1, 1]
+                : tensor<1x16x90x1000xf16, {order = #NHWC}>
+                to tensor<1x16x90x1000xf16, {order = #NHWC}>
+            // after
+            %0 = tensor.extract_slice %arg0[0, 0, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
+                : tensor<1x90x1000x16xf16> to tensor<1x90x1000x16xf16>
+        ```
+
+        The above transformations create a gap between Host and NPU functions.
+        To bridge the gap, the pass will insert `VPU.PermuteCast` ops for
+        inputs and outputs of the compute functions.
+
+        ```
+            // before
+            func.func private @main_func0(%arg0: tensor<1x90x1000x16xf16>)
+                -> tensor<1x90x1000x16xf16>
+            // after
+            func.func private @main_func0(%arg0: tensor<1x90x1000x16xf16>)
+                -> tensor<1x90x1000x16xf16> {
+                %0 = VPU.PermuteCast(%arg0) {dst_order = #NHWC, mem_perm = #NCHW}
+                   : tensor<1x90x1000x16xf16>
+                   -> tensor<1x16x90x1000xf16, {order = #NHWC}>
+                ...
+            }
+        ```
+
+    }];
+
+    let constructor = "vpux::VPU::createFinalizeComputeFunctionBoundariesPass()";
+
+    let dependentDialects = [
+        "mlir::func::FuncDialect",
+        "mlir::scf::SCFDialect",
+        "mlir::tensor::TensorDialect",
+        "mlir::arith::ArithDialect",
+        "vpux::VPU::VPUDialect"
+
+    ];
+}
+
+//
+// MoveReflectPadToCMX
+//
+
+def MoveReflectPadToCMX : PassBase<"move-reflect-pad-to-cmx", "vpux::FunctionPass"> {
+    let summary = "Moves Reflect Pad ops to CMX";
+
+    let description = [{
+        This pass moves the Reflect Pad patterns to CMX for better performance. The patterns are formed by Subview ops,
+        Copy ops and each ending with a ConcatView op. The input of the pattern that does padding on a certain dimension will be moved
+        from DDR to CMX, all the ops forming the pattern will be executed in CMX, the output of the ConcatView op
+        will be moved from CMX to DDR. The same will happen for each dimension. The copies are expected to be later optimized by OptimizeCopies.
+    }];
+
+    let constructor = "vpux::VPU::createMoveReflectPadToCMXPass()";
 }

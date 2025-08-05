@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -375,6 +377,65 @@ bool MergeFullyConnectedWithWeightsAsConstant::validateUnrolledMatMulBranch(
         }
         return true;
     };
+
+    auto getSplatZp = [&](IE::FakeQuantizeOp fq) -> mlir::FailureOr<int64_t> {
+        auto inLowConst = fq.getInputLow().getDefiningOp<Const::DeclareOp>();
+        auto inHighConst = fq.getInputHigh().getDefiningOp<Const::DeclareOp>();
+        auto outLowConst = fq.getOutputLow().getDefiningOp<Const::DeclareOp>();
+        auto outHighConst = fq.getOutputHigh().getDefiningOp<Const::DeclareOp>();
+
+        if (inLowConst == nullptr || inHighConst == nullptr || outLowConst == nullptr || outHighConst == nullptr) {
+            return mlir::failure();
+        }
+
+        auto outLowConstAttr = outLowConst.getContentAttr();
+        auto outHighConstAttr = outHighConst.getContentAttr();
+        auto scalesAndZeroPoints = getScalesAndZeroPointsFromContentAttr(
+                outLowConstAttr, outHighConstAttr, fq.getAutoBroadcast(), fq.getLevels(), nullptr,
+                Const::hasNegativeValues(inLowConst.getContent()), _log);
+        if (mlir::failed(scalesAndZeroPoints)) {
+            return mlir::failure();
+        }
+
+        const auto& zeroPoints = std::get<1>(scalesAndZeroPoints.value());
+        const auto zpFront = zeroPoints.front();
+        const bool allZpEqual = std::all_of(zeroPoints.begin(), zeroPoints.end(), [zpFront](auto zp) {
+            return zp == zpFront;
+        });
+        if (allZpEqual) {
+            return zpFront;
+        }
+
+        return mlir::failure();
+    };
+
+    auto firstFq = mlir::dyn_cast<IE::FakeQuantizeOp>(matMulBranches[0].weights);
+    if (firstFq == nullptr) {
+        return false;
+    }
+
+    auto firstSplatZp = getSplatZp(firstFq);
+    if (mlir::failed(firstSplatZp)) {
+        return false;
+    }
+
+    // All merged zero-points should be the same since HW doesn't support multi-zp case
+    auto allZpIsSplatAndEqual =
+            std::all_of(matMulBranches.begin(), matMulBranches.end(), [&](const UnrolledMatMulBranch& branch) -> bool {
+                auto fq = mlir::dyn_cast<IE::FakeQuantizeOp>(branch.weights);
+                if (fq == nullptr) {
+                    return false;
+                }
+
+                auto splatZp = getSplatZp(fq);
+                if (mlir::failed(splatZp)) {
+                    return false;
+                }
+                return splatZp.value() == firstSplatZp.value();
+            });
+    if (!allZpIsSplatAndEqual) {
+        return false;
+    }
 
     const auto operandSize = matMulBranches[0].weights->getNumOperands();
     for (auto operandIdx : irange(operandSize)) {

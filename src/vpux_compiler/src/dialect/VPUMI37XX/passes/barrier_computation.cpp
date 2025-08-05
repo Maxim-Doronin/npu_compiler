@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
@@ -62,17 +62,20 @@ struct VirtualDependencyTracker {
 
         Dependency d{};
 
-        if (!extract(d.consumer_, taskOp.getWaitBarriers()))
+        if (!extract(d.consumer_, taskOp.getWaitBarriers())) {
             return UINT_MAX;
+        }
 
-        if (!extract(d.producer_, taskOp.getUpdateBarriers()))
+        if (!extract(d.producer_, taskOp.getUpdateBarriers())) {
             return UINT_MAX;
+        }
 
         if (d.consumer_.second || d.producer_.second) {
             deps_.push_back(d);
             return deps_.size() - 1;
-        } else
+        } else {
             return 0;
+        }
 
         return 0;
     }

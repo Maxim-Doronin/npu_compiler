@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/barrier_info.hpp"
@@ -19,91 +19,6 @@ namespace vpux::VPUIP {
 
 using namespace vpux;
 namespace {
-
-// remove barrier consumers and/or producers which are controlled
-// by FIFO dependency. DMA[{FIFO}]
-/*
-    DMA[0] DMA[0] DMA[1]       DMA[0] DMA[1]
-        \    |    /               \   /
-            Bar           =>       Bar
-        /    |    \               /   \
-    DMA[0] DMA[0] DMA[1]       DMA[0] DMA[1]
-*/
-void removeRedundantDependencies(BarrierInfo& barrierInfo, bool considerTaskFifoDependency, vpux::Logger log) {
-    const auto findRedundantDependencies = [&](const SmallVector<llvm::BitVector>& taskControlMap,
-                                               size_t taskControlMapOffset, const BarrierInfo::TaskSet& dependencies,
-                                               bool producer = true) {
-        // find dependencies to remove
-        BarrierInfo::TaskSet dependenciesToRemove;
-        for (auto taskIndexIter = dependencies.begin(); taskIndexIter != dependencies.end(); ++taskIndexIter) {
-            if (barrierInfo.isSyncPoint(*taskIndexIter)) {
-                continue;
-            }
-            for (auto nextIndex = std::next(taskIndexIter); nextIndex != dependencies.end(); ++nextIndex) {
-                if (barrierInfo.isSyncPoint(*nextIndex) ||
-                    !barrierInfo.controlPathExistsBetweenTasksInSameBlock(
-                            taskControlMap, *taskIndexIter - taskControlMapOffset, *nextIndex - taskControlMapOffset,
-                            /* biDirection */ false)) {
-                    continue;
-                }
-
-                if (producer) {
-                    dependenciesToRemove.insert(*taskIndexIter);
-                } else {
-                    dependenciesToRemove.insert(*nextIndex);
-                }
-            }
-        }
-        return dependenciesToRemove;
-    };
-
-    // Perform optimization in tasks blocks matching the distribution of synchronization points.
-    for (size_t taskBlockIndex = 0; taskBlockIndex < barrierInfo.getControlGraphBlockCount(); ++taskBlockIndex) {
-        // Build or update the control relationship between any two tasks. Note that the relationship includes the
-        // dependency by the barriers as well as the implicit dependence by FIFO
-        auto [taskControlMap, controlMapOffset] =
-                barrierInfo.buildTaskControlMap(taskBlockIndex, considerTaskFifoDependency);
-
-        // get update barriers range for current block
-        auto blockUpdateBarriers =
-                barrierInfo.getBarriersForTaskBlock(taskBlockIndex, /* blockStartSyncPoint */ true,
-                                                    /* blockEndSyncPoint */ false, /* updateBarriers */ true);
-
-        if (blockUpdateBarriers.empty()) {
-            log.trace("No update barriers found in tasks block {0}", taskBlockIndex);
-        } else {
-            log.trace("Optimize producers for barrier range [{0}, {1}] in tasks block {2}", blockUpdateBarriers.front(),
-                      blockUpdateBarriers.back(), taskBlockIndex);
-        }
-
-        for (auto barrierIdx : blockUpdateBarriers) {
-            // find producers to remove
-            const auto& barrierProducers = barrierInfo.getBarrierProducers(barrierIdx);
-            const auto producersToRemove =
-                    findRedundantDependencies(taskControlMap, controlMapOffset, barrierProducers);
-            barrierInfo.removeProducers(barrierIdx, producersToRemove);
-        }
-
-        // get wait barriers range for current block
-        auto blockWaitBarriers =
-                barrierInfo.getBarriersForTaskBlock(taskBlockIndex, /* blockStartSyncPoint */ false,
-                                                    /* blockEndSyncPoint */ true, /* updateBarriers */ false);
-        if (blockWaitBarriers.empty()) {
-            log.trace("No wait barriers found in tasks block {0}", taskBlockIndex);
-        } else {
-            log.trace("Optimize consumers for barrier range [{0}, {1}] in tasks block {2}", blockWaitBarriers.front(),
-                      blockWaitBarriers.back(), taskBlockIndex);
-        }
-
-        for (auto barrierIdx : blockWaitBarriers) {
-            // find consumers to remove
-            const auto& barrierConsumers = barrierInfo.getBarrierConsumers(barrierIdx);
-            const auto consumersToRemove =
-                    findRedundantDependencies(taskControlMap, controlMapOffset, barrierConsumers, false);
-            barrierInfo.removeConsumers(barrierIdx, consumersToRemove);
-        }
-    }
-}
 
 // Remove explicit barrier dependency between DMAs
 // 1) if a barrier only has DMAs using single port as its producer,
@@ -337,10 +252,10 @@ void DMABarrierOptimizationPass::safeRunOnFunc() {
     // DMA operation in the same FIFO do not require a barrier between them
     // optimize dependencies between DMA tasks in the same FIFO
     // (Some of these dependencies may been removed during optimizeBarriers step, E137500)
-    removeRedundantDependencies(barrierInfo, _considerTaskFifoDependency, _log);
+    barrierInfo.removeRedundantBarrierProducersAndConsumers(_considerTaskFifoDependency);
     removeExplicitDependencies(barrierInfo);
     mergeBarriers(barrierInfo, origWaitBarriersMap);
-    removeRedundantDependencies(barrierInfo, _considerTaskFifoDependency, _log);
+    barrierInfo.removeRedundantBarrierProducersAndConsumers(_considerTaskFifoDependency);
 
     VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");

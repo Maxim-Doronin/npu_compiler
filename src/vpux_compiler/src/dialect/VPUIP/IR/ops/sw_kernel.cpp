@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
@@ -15,9 +15,13 @@
 #include "vpux/compiler/utils/asm.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/utils/core/range.hpp"
 
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/ADT/bit.h>
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <algorithm>
 #define REGION_YOLO_MAX_MASK_SIZE 9   // max mask size for region yolo op
 #define PROPOSAL_MAX_RATIO 3          // max ratio size for proposal op
@@ -121,9 +125,11 @@ void packAsFpIntoU64(const SmallVector<IT>& values, SmallVector<int64_t>& params
     }
 }
 
-void getQuantParamsAttr(mlir::MLIRContext* ctx, mlir::Type qType, mlir::Type pType, mlir::ArrayAttr& paramsAttr) {
+void getQuantParamsAttr(mlir::MLIRContext* ctx, mlir::Value qValue, mlir::Type pType, mlir::ArrayAttr& paramsAttr) {
     SmallVector<double> scales;
     SmallVector<int64_t> zeroes;
+    int64_t quantDim = -1;
+    const auto qType = mlir::cast<vpux::NDTypeInterface>(qValue.getType()).getElementType();
 
     if (mlir::isa<mlir::quant::UniformQuantizedType>(qType)) {
         auto quantParams = mlir::cast<mlir::quant::UniformQuantizedType>(qType);
@@ -131,6 +137,7 @@ void getQuantParamsAttr(mlir::MLIRContext* ctx, mlir::Type qType, mlir::Type pTy
         zeroes = {quantParams.getZeroPoint()};
     } else if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
         auto quantParams = mlir::cast<mlir::quant::UniformQuantizedPerAxisType>(qType);
+        quantDim = computeReverseMemDim(qValue, quantParams.getQuantizedDimension());
         scales = {quantParams.getScales().begin(), quantParams.getScales().end()};
         zeroes = {quantParams.getZeroPoints().begin(), quantParams.getZeroPoints().end()};
     } else {
@@ -142,6 +149,7 @@ void getQuantParamsAttr(mlir::MLIRContext* ctx, mlir::Type qType, mlir::Type pTy
 
     // Convert & pack float values into u64 words for serialization
     llvm::SmallVector<int64_t> params;
+    params.push_back(quantDim);
     params.push_back(scales.size());
     if (pType.isF16()) {
         packAsFpIntoU64<TS, vpux::type::float16>(scales, params);
@@ -167,6 +175,16 @@ mlir::ArrayAttr optionalIoAttr(mlir::Operation* op) {
                 mask |= (mvn.getScale() ? 1 : 0) << 1;
                 mask |= (mvn.getBias() ? 1 : 0) << 2;
                 mask |= 1 << 3;  // output
+            })
+            .Case<VPU::SDPAOp>([&](VPU::SDPAOp sdpa) {
+                mask |= 1 << 0;                               // InputQ
+                mask |= 1 << 1;                               // InputK
+                mask |= 1 << 2;                               // InputV
+                mask |= (sdpa.getInputMask() ? 1 : 0) << 3;   // InputMask
+                mask |= (sdpa.getInputScale() ? 1 : 0) << 4;  // InputScale
+                mask |= (sdpa.getInputBias() ? 1 : 0) << 5;   // InputBias
+                mask |= 1 << 6;                               // InputDataStorage
+                mask |= 1 << 7;                               // output
             })
             .Default([](mlir::Operation* op) {
                 VPUX_THROW("Bit-mask for '{0}' not implemented", op->getName());
@@ -198,10 +216,10 @@ namespace vpux {
 namespace VPUIP {
 
 void vpux::VPUIP::SwKernelOp::print(mlir::OpAsmPrinter& p) {
-    p.printOptionalAttrDict(
-            getOperation()->getAttrs(),
-            /*elidedAttrs=*/{getOperandSegmentSizesAttrName().strref(), getKernelFunctionAttrName().strref(),
-                             getTileIndexAttrName().strref(), getStridesAttrName().strref()});
+    p.printOptionalAttrDict(getOperation()->getAttrs(),
+                            /*elidedAttrs=*/{getOperandSegmentSizesAttrName().strref(),
+                                             getKernelFunctionAttrName().strref(), getTileIndexAttrName().strref(),
+                                             getInputStridesAttrName().strref(), getOutputStridesAttrName().strref()});
     p << ' ';
     p.printAttributeWithoutType(getKernelFunctionAttr());
 
@@ -242,11 +260,19 @@ void vpux::VPUIP::SwKernelOp::print(mlir::OpAsmPrinter& p) {
         p << ")";
     }
 
-    auto opStrides = getStrides();
-    if (opStrides) {
-        p << ' ' << "strides";
+    auto opInputStrides = getInputStrides();
+    if (opInputStrides) {
+        p << ' ' << "inputStrides";
         p << "(";
-        p << opStrides;
+        p << opInputStrides;
+        p << ")";
+    }
+
+    auto opOutputStrides = getOutputStrides();
+    if (opOutputStrides) {
+        p << ' ' << "outputStrides";
+        p << "(";
+        p << opOutputStrides;
         p << ")";
     }
 
@@ -342,13 +368,13 @@ mlir::ParseResult vpux::VPUIP::SwKernelOp::parse(mlir::OpAsmParser& parser, mlir
         }
     }
 
-    if (succeeded(parser.parseOptionalKeyword("strides"))) {
+    if (succeeded(parser.parseOptionalKeyword("inputStrides"))) {
         if (parser.parseLParen()) {
             return mlir::failure();
         }
 
-        mlir::ArrayAttr stridesAttr;
-        parseResult = parser.parseOptionalAttribute(stridesAttr);
+        mlir::ArrayAttr inputStridesAttr;
+        parseResult = parser.parseOptionalAttribute(inputStridesAttr);
         if (!parseResult.has_value() || failed(*parseResult)) {
             return mlir::failure();
         }
@@ -356,7 +382,24 @@ mlir::ParseResult vpux::VPUIP::SwKernelOp::parse(mlir::OpAsmParser& parser, mlir
         if (parser.parseRParen()) {
             return mlir::failure();
         }
-        result.attributes.set("strides", stridesAttr);
+        result.attributes.set("inputStrides", inputStridesAttr);
+    }
+
+    if (succeeded(parser.parseOptionalKeyword("outputStrides"))) {
+        if (parser.parseLParen()) {
+            return mlir::failure();
+        }
+
+        mlir::ArrayAttr outputStridesAttr;
+        parseResult = parser.parseOptionalAttribute(outputStridesAttr);
+        if (!parseResult.has_value() || failed(*parseResult)) {
+            return mlir::failure();
+        }
+
+        if (parser.parseRParen()) {
+            return mlir::failure();
+        }
+        result.attributes.set("outputStrides", outputStridesAttr);
     }
 
     if (succeeded(parser.parseOptionalKeyword("on"))) {
@@ -402,13 +445,27 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
                        mlir::ValueRange results, mlir::SymbolRefAttr kernelFunction, mlir::IntegerAttr tileIndex,
-                       mlir::ArrayAttr stride) {
+                       mlir::ArrayAttr outputStrides) {
     mlir::Value profilingOutput = nullptr;
 
     build(builder, opState, results.getTypes(), /*dynamicOutputShapes types*/ TypeRange{},
           /*profiling_output_type*/ nullptr, kernelFunction, inputs, /*dynamicInputShapes*/ ValueRange{},
           /*dynamicInputShapesMap*/ nullptr, results, /*dynamicOutputShapes*/ ValueRange{},
-          /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, /* listIndex */ nullptr, stride,
+          /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, /* listIndex */ nullptr,
+          /* inputStrides */ nullptr, outputStrides,
+          /*profilingMetadata*/ nullptr);
+}
+
+void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
+                       mlir::ValueRange results, mlir::SymbolRefAttr kernelFunction, mlir::IntegerAttr tileIndex,
+                       mlir::ArrayAttr inputStrides, mlir::ArrayAttr outputStrides) {
+    mlir::Value profilingOutput = nullptr;
+
+    build(builder, opState, results.getTypes(), /*dynamicOutputShapes types*/ TypeRange{},
+          /*profiling_output_type*/ nullptr, kernelFunction, inputs, /*dynamicInputShapes*/ ValueRange{},
+          /*dynamicInputShapesMap*/ nullptr, results, /*dynamicOutputShapes*/ ValueRange{},
+          /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, /* listIndex */ nullptr, inputStrides,
+          outputStrides,
           /*profilingMetadata*/ nullptr);
 }
 
@@ -419,17 +476,18 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs,
           /*dynamicInputShapes*/ ValueRange{}, /*dynamicInputShapesMap*/ nullptr, results,
           /*dynamicOutputShapes*/ ValueRange{}, /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex,
-          /* listIndex */ nullptr, /*stride*/ nullptr, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /* inputStrides */ nullptr, /*outputStrides*/ nullptr,
+          /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
                        mlir::ValueRange results, mlir::Value profilingOutput, mlir::SymbolRefAttr kernelFunction,
-                       mlir::IntegerAttr tileIndex, mlir::ArrayAttr stride) {
+                       mlir::IntegerAttr tileIndex, mlir::ArrayAttr inputStrides, mlir::ArrayAttr outputStrides) {
     build(builder, opState, results.getTypes(), /*dynamicOutputShapes types*/ TypeRange{},
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs,
           /*dynamicInputShapes*/ ValueRange{}, /*dynamicInputShapesMap*/ nullptr, results,
           /*dynamicOutputShapes*/ ValueRange{}, /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex,
-          /* listIndex */ nullptr, stride, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, inputStrides, outputStrides, /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -441,19 +499,20 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), /*profilingOutput*/ nullptr, tileIndex,
-          /* listIndex */ nullptr, /*strides*/ nullptr, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /* inputStrides */ nullptr, /*outputStrides*/ nullptr,
+          /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
                        mlir::ValueRange results, mlir::ValueRange dynamicInputShapes,
                        llvm::ArrayRef<int32_t> dynamicInputShapesMap, mlir::ValueRange dynamicOutputShapes,
                        llvm::ArrayRef<int32_t> dynamicOutputShapesMap, mlir::SymbolRefAttr kernelFunction,
-                       mlir::IntegerAttr tileIndex, mlir::ArrayAttr stride) {
+                       mlir::IntegerAttr tileIndex, mlir::ArrayAttr outputStrides) {
     build(builder, opState, results.getTypes(), dynamicOutputShapes.getTypes(), /*profilingOutputType*/ nullptr,
           kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), /*profilingOutput*/ nullptr, tileIndex,
-          /* listIndex */ nullptr, stride, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /* inputStrides */ nullptr, outputStrides, /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -465,7 +524,8 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
-          /* listIndex */ nullptr, /*strides*/ nullptr, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /* inputStrides */ nullptr, /*outputStrides*/ nullptr,
+          /*profilingMetadata*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, SwKernelOp swOp,
@@ -497,12 +557,25 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
                        mlir::ValueRange results, mlir::ValueRange dynamicInputShapes,
                        llvm::ArrayRef<int32_t> dynamicInputShapesMap, mlir::ValueRange dynamicOutputShapes,
                        llvm::ArrayRef<int32_t> dynamicOutputShapesMap, mlir::Value profilingOutput,
-                       mlir::SymbolRefAttr kernelFunction, mlir::IntegerAttr tileIndex, mlir::ArrayAttr stride) {
+                       mlir::SymbolRefAttr kernelFunction, mlir::IntegerAttr tileIndex, mlir::ArrayAttr outputStrides) {
     build(builder, opState, results.getTypes(), dynamicOutputShapes.getTypes(),
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
-          /* listIndex */ nullptr, stride, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /* inputStrides */ nullptr, outputStrides, /*profilingMetadata*/ nullptr);
+}
+
+void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
+                       mlir::ValueRange results, mlir::ValueRange dynamicInputShapes,
+                       llvm::ArrayRef<int32_t> dynamicInputShapesMap, mlir::ValueRange dynamicOutputShapes,
+                       llvm::ArrayRef<int32_t> dynamicOutputShapesMap, mlir::Value profilingOutput,
+                       mlir::SymbolRefAttr kernelFunction, mlir::IntegerAttr tileIndex, mlir::ArrayAttr inputStrides,
+                       mlir::ArrayAttr outputStrides) {
+    build(builder, opState, results.getTypes(), dynamicOutputShapes.getTypes(),
+          (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs, dynamicInputShapes,
+          DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
+          DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
+          /* listIndex */ nullptr, inputStrides, outputStrides, /*profilingMetadata*/ nullptr);
 }
 
 mlir::LogicalResult SwKernelOp::verify() {
@@ -659,6 +732,14 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{},
                                          {genericSwLayerOp.getCallee().getLeafReference().getValue()},
                                          {"jit_generated"}};
+            })
+            .Case<VPU::ExternalKernelOp>([&](VPU::ExternalKernelOp externalKernelOp) {
+                auto attrDict = externalKernelOp.getAttrDict();
+                auto attrVec = SmallVector<mlir::Attribute>{};
+                for (auto namedAttr : attrDict) {
+                    attrVec.push_back(namedAttr.getValue());
+                }
+                return VPUIP::KernelInfo{attrVec, {externalKernelOp.getUniqueId().str()}};
             })
             .Case<VPU::ExpOp>([&](VPU::ExpOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"activation_exp"}};
@@ -1199,16 +1280,14 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
             })
             .Case<VPU::QuantizeOp>([&](VPU::QuantizeOp op) {
                 const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-                const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
                 mlir::ArrayAttr paramsAttr;
-                getQuantParamsAttr(ctx, oType.getElementType(), iType.getElementType(), paramsAttr);
+                getQuantParamsAttr(ctx, op.getOutput(), iType.getElementType(), paramsAttr);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{paramsAttr}, {"quantize"}};
             })
             .Case<VPU::DequantizeOp>([&](VPU::DequantizeOp op) {
-                const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
                 const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
                 mlir::ArrayAttr paramsAttr;
-                getQuantParamsAttr(ctx, iType.getElementType(), oType.getElementType(), paramsAttr);
+                getQuantParamsAttr(ctx, op.getInput(), oType.getElementType(), paramsAttr);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{paramsAttr}, {"dequantize"}};
             })
             .Case<VPU::DynamicQuantizeOp>([&](VPU::DynamicQuantizeOp) {
@@ -2087,7 +2166,11 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
             .Case<VPU::SDPAOp>([&](VPU::SDPAOp op) {
                 const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInputQ().getType());
                 VPUX_THROW_UNLESS(iType.getRank() == 4, "Supporting only 4D input, got {0}", iType.getRank());
-                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"sdpa"}, {"sdpa.cpp"}};
+
+                const auto useMaskAttr = getIntAttr(ctx, op.getInputMask() == nullptr ? 0 : 1);
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{optionalIoAttr(op), useMaskAttr},
+                                         {"sdpa"},
+                                         {"sdpa.cpp"}};
             })
             .Default([](mlir::Operation* unknownOp) -> VPUIP::KernelInfo {
                 VPUX_THROW("Operation '{0}' is not supported by the act-shaves", unknownOp->getName());

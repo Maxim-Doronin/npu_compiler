@@ -1,11 +1,12 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include <cstdint>
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 
 namespace vpux {
@@ -24,7 +25,7 @@ uint32_t getNumEntries();
 double getProfClk();
 const SmallVector<float>& getBWScales();
 SmallVector<SmallVector<uint64_t>> getBWTicks(mlir::ModuleOp module);
-double getActivityFactor(VPU::ExecutorKind execKind, mlir::ModuleOp module, IERT::ComputeResourceOpInterface res);
+double getActivityFactor(VPU::ExecutorKind execKind, mlir::ModuleOp module, IE::ComputeResourceOpInterface res);
 
 }  // namespace VPU
 }  // namespace vpux

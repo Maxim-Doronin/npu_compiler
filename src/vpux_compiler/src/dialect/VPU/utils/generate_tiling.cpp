@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
@@ -467,7 +467,8 @@ std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bo
     auto isolatedTilingSupported = iface.isSupportedTiling({std::move(outputTile)}, TilingMode::ISOLATED, log.nest());
 
     if (!isolatedTilingSupported) {
-        if (enablePrefetchTiling && (mlir::isa<VPU::NCEOpInterface, VPU::MVN1NormalizeOp>(op))) {
+        if (enablePrefetchTiling &&
+            (mlir::isa<VPU::NCEOpInterface, VPU::MVN1NormalizeOp, VPU::RoPEOp, VPU::CumSumOp>(op))) {
             return std::make_pair(TilingMode::PIPELINING, false);
         }
         return std::make_pair(TilingMode::ISOLATED, false);

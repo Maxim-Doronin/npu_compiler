@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <llvm/ADT/ArrayRef.h>
@@ -52,11 +52,15 @@ public:
 
     llvm::ArrayRef<uint8_t> getElf(llvm::StringRef kernelPath) const;
 
-    void addCompiledElf(llvm::StringRef funcName, std::vector<uint8_t>& binary, llvm::StringRef cpu);
+    void addCompiledElf(llvm::StringRef funcName, std::vector<uint8_t>& binary, llvm::StringRef cpu,
+                        bool overwrite = false);
 
     static void loadElfData(mlir::ModuleOp module);
 
     static vpux::SmallString getSwKernelArchString(VPU::ArchKind archKind);
+
+private:
+    std::vector<std::unique_ptr<uint8_t[]>> _elfPermStorage;
 };
 
 }  // namespace vpux

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/passes.hpp"
@@ -16,15 +16,8 @@ using namespace vpux;
 // Options
 //
 
-std::optional<int> vpux::convertToOptional(const IntOption& intOption) {
-    if (intOption.hasValue()) {
-        return intOption.getValue();
-    }
-    return std::nullopt;
-}
-
 std::optional<std::string> vpux::convertToOptional(const StrOption& strOption) {
-    if (strOption.hasValue()) {
+    if (!strOption.getValue().empty()) {
         return strOption.getValue();
     }
     return std::nullopt;
@@ -55,6 +48,19 @@ StringLiteral vpux::stringifyEnum(DMAFifoType val) {
         return "SW";
     case DMAFifoType::HW:
         return "HW";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+StringLiteral vpux::stringifyEnum(WeightsTableReuseMode val) {
+    switch (val) {
+    case WeightsTableReuseMode::ENABLED:
+        return "ENABLED";
+    case WeightsTableReuseMode::VF_ENABLED:
+        return "VF_ENABLED";
+    case WeightsTableReuseMode::DISABLED:
+        return "DISABLED";
     default:
         return "UNKNOWN";
     }

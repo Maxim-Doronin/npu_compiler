@@ -1,8 +1,9 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
+#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -26,6 +27,11 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool isElementTypeSupported(mlir::Type elementType) {
+    // Conv in NCE only works on some float and quantized types.
+    return mlir::isa<mlir::FloatType>(elementType) || mlir::quant::QuantizedType::castToStorageType(elementType);
+}
 
 //
 // OptimizeConcat
@@ -81,6 +87,12 @@ Converts to:
 */
 
 mlir::LogicalResult OptimizeConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const {
+    const auto elementType = origOp.getOutput().getType().getElementType();
+    if (!isElementTypeSupported(elementType)) {
+        return matchFailed(_log, rewriter, origOp, "Can not apply optimization with element type {0} at '{1}'",
+                           elementType, origOp->getLoc());
+    }
+
     auto dimOrder = DimsOrder::fromValue(origOp);
     if (dimOrder != DimsOrder::NCHW) {
         return matchFailed(_log, rewriter, origOp, "Can not apply optimization with layout {0} at '{1}'", dimOrder,
@@ -282,8 +294,6 @@ mlir::LogicalResult OptimizeConcatWithConvAndAdd::matchAndRewrite(IE::ConcatOp c
     auto accumulateChannels = 0;
 
     SmallVector<mlir::Value> convResults;
-    SmallVector<mlir::Operation*> constVec;
-    SmallVector<mlir::Operation*> convVec;
 
     for (size_t i = 0; i < concatInputs.size(); ++i) {
         auto currentInput = concatInputs[i];
@@ -302,7 +312,6 @@ mlir::LogicalResult OptimizeConcatWithConvAndAdd::matchAndRewrite(IE::ConcatOp c
                 weightsShape.raw(), mlir::cast<NDTypeInterface>(currentInput.getType()).getElementType(),
                 getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
         auto weight = Const::buildWeightsConst(rewriter, currentInput.getLoc(), weightType, ArrayRef(weightsVals));
-        constVec.push_back(weight.getDefiningOp());
 
         const auto strides = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
         const auto kernelPadsBegin = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
@@ -315,19 +324,6 @@ mlir::LogicalResult OptimizeConcatWithConvAndAdd::matchAndRewrite(IE::ConcatOp c
                                                    /*bias=*/nullptr, strides, kernelPadsBegin, kernelPadsEnd, dilations,
                                                    /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
                                                    /*outputChannels=*/nullptr, /*inputChannels=*/nullptr);
-        convVec.push_back(newConv);
-        const auto adjustConvShapeParameters = getAdjustConvShapeParameters(newConv, weight, concatOutShape, _log);
-        if (mlir::failed(adjustConvShapeParameters)) {
-            // If the conv shape is not adjusted successfully, skip the conversion, we need to erase the conv and weight
-            // ops
-            for (auto conv : convVec) {
-                rewriter.eraseOp(conv);
-            }
-            for (auto weight : constVec) {
-                rewriter.eraseOp(weight);
-            }
-            return mlir::failure();
-        }
 
         convResults.push_back(newConv.getOutput());
     }
@@ -346,6 +342,12 @@ mlir::LogicalResult OptimizeConcatWithConvAndAdd::matchAndRewrite(IE::ConcatOp c
 }
 
 bool OptimizeConcatWithConvAndAdd::isBeneficialToConvert(IE::ConcatOp concatOp) const {
+    const auto elementType = concatOp.getOutput().getType().getElementType();
+    if (!isElementTypeSupported(elementType)) {
+        _log.trace("Concat at {0} with element type {1} is not supported", concatOp.getLoc(), elementType);
+        return false;
+    }
+
     auto dimOrder = DimsOrder::fromValue(concatOp);
     if (dimOrder != DimsOrder::NHWC) {
         _log.trace("Concat input at {0} layout not support", concatOp.getLoc());
@@ -366,6 +368,123 @@ bool OptimizeConcatWithConvAndAdd::isBeneficialToConvert(IE::ConcatOp concatOp) 
         CONVERT_CONCAT_RATIO) {
         _log.trace("Concat input at {0} not efficient to convert", concatOp.getLoc());
         return false;
+    }
+
+    // Following check the new Convolution ops can be optimized by AdjustConvShape pass.
+    const auto channelAlignment = VPU::NCEInvariant::getAlignment(
+            mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType()).getElementType());
+
+    auto isQuantizedType = [](NDTypeInterface ndType) {
+        const auto elementType = ndType.getElementType();
+        return mlir::isa<mlir::quant::QuantizedType>(elementType);
+    };
+    const auto concatOutType = mlir::cast<vpux::NDTypeInterface>(concatOutput.getType());
+    if (isQuantizedType(concatOutType)) {
+        _log.trace("Concat input at {0} with unsupported Quantized Type", concatOp.getLoc());
+        return false;
+    }
+    const auto strideX = 1;
+
+    auto concatInputs = concatOp.getInputs();
+    for (size_t i = 0; i < concatInputs.size(); ++i) {
+        const auto currentInput = concatInputs[i];
+        const auto currentType = mlir::cast<vpux::NDTypeInterface>(currentInput.getType());
+
+        Shape filterShape = {concatOutShape[Dims4D::Act::C], currentType.getShape()[Dims4D::Act::C], 1, 1};
+
+        int64_t alignedInputChannel = channelAlignment;
+        int64_t alignedOutputChannel = channelAlignment;
+        auto caculateExpandShapeSize = [](ShapeRef shape, int64_t alignedChannel) {
+            auto expandShape = shape.toValues();
+            expandShape[Dims4D::Act::C] = alignValUp(shape[Dims4D::Act::C], alignedChannel);
+            return expandShape.totalSize();
+        };
+
+        if ((filterShape[Dims4D::Filter::IC] % alignedInputChannel) == 0 &&
+            (filterShape[Dims4D::Filter::OC] % alignedOutputChannel) == 0) {
+            _log.trace("The input/output channels are already aligned");
+            return false;
+        }
+
+        const auto inputShape = currentType.getShape();
+        const auto outputShape = concatOutShape;
+        Shape maybePaddedInputShape(inputShape.raw());
+        auto padNum = 0;
+        const auto wcInDimSize = inputShape[Dims4D::Act::C] * inputShape[Dims4D::Act::W];
+        if (wcInDimSize % alignedInputChannel) {
+            padNum = (alignValUp(wcInDimSize, alignedInputChannel) - wcInDimSize) / inputShape[Dims4D::Act::C];
+            maybePaddedInputShape[Dims4D::Act::W] = inputShape[Dims4D::Act::W] + padNum;
+        }
+
+        const auto wcOutDimSize = outputShape[Dims4D::Act::C] * outputShape[Dims4D::Act::W];
+        if (wcOutDimSize % alignedOutputChannel) {
+            if ((wcOutDimSize % alignedInputChannel) || (alignedOutputChannel % alignedInputChannel)) {
+                _log.trace("The output channel*width ({0}) can't get align factor {1}", wcOutDimSize,
+                           alignedOutputChannel);
+                return false;
+            }
+            alignedOutputChannel = alignedInputChannel;
+        }
+
+        auto calcBorrowFactor = [](int64_t channel, int64_t alignedChannel) {
+            auto leastAlignedChannel = std::lcm(channel, alignedChannel);
+            return (leastAlignedChannel / channel);
+        };
+
+        const auto borrowIn = calcBorrowFactor(maybePaddedInputShape[Dims4D::Act::C], alignedInputChannel);
+        const auto borrowOut = calcBorrowFactor(outputShape[Dims4D::Act::C], alignedOutputChannel);
+
+        auto realInFactor = std::lcm(strideX, borrowIn);
+        if (realInFactor == 0 || maybePaddedInputShape[Dims4D::Act::W] % realInFactor != 0) {
+            _log.trace("Don't have factor {0} in input DimW", realInFactor);
+            return false;
+        }
+
+        if (outputShape[Dims4D::Act::W] % borrowOut) {
+            _log.trace("Don't have factor {0} in output DimW", borrowOut);
+            return false;
+        }
+
+        auto newInputDimW = maybePaddedInputShape[Dims4D::Act::W] / realInFactor;
+        while (realInFactor < filterShape[Dims4D::Filter::KX] && newInputDimW > 1) {
+            auto divisor = vpux::smallestDivisor(newInputDimW);
+            realInFactor *= divisor;
+            newInputDimW /= divisor;
+        }
+
+        Shape newFilterShape(filterShape.raw());
+        const auto borrowFactor = std::max(borrowIn, borrowOut);
+        newFilterShape[Dims4D::Filter::IC] *= borrowFactor;
+        newFilterShape[Dims4D::Filter::OC] *= borrowFactor;
+
+        const auto newFilterSize = newFilterShape.totalSize();
+        const auto expandedInputSize = caculateExpandShapeSize(maybePaddedInputShape, alignedInputChannel);
+        const auto expandedOutputSize = caculateExpandShapeSize(outputShape, alignedOutputChannel);
+        const auto expandedTotalSize = expandedInputSize + expandedOutputSize;
+
+        Byte elemSizeBytes = currentType.getElemTypeSize().to<Byte>();
+        Byte cmxMemSize = (currentType.getTotalAllocSize() + concatOutType.getTotalAllocSize()) / elemSizeBytes.count();
+        const auto elementSize = currentType.getCompactAllocSize().count() / maybePaddedInputShape.totalSize();
+
+        if (expandedTotalSize * elementSize < cmxMemSize.count() || newFilterSize > Byte(1_MB).count()) {
+            _log.trace("CMX size not meet perfromance requirement");
+            return false;
+        }
+
+        constexpr int EFFICIENT_CHANNEL_SIZE = 4;
+        if (inputShape[Dims4D::Act::C] == EFFICIENT_CHANNEL_SIZE) {
+            // For better performance, check the input channel.
+            alignedInputChannel = EFFICIENT_CHANNEL_SIZE;
+        }
+
+        auto kernelScaled =
+                static_cast<float>(newFilterShape.totalSize()) / static_cast<float>(filterShape.totalSize());
+        auto outputTensorScaled = static_cast<float>(expandedOutputSize) / static_cast<float>(outputShape.totalSize());
+        if ((filterShape[Dims4D::Filter::IC] % alignedInputChannel) == 0 &&
+            (kernelScaled / outputTensorScaled) > alignedOutputChannel) {
+            _log.trace("The shape adjust cost greater than expand when input channel already aligned");
+            return false;
+        }
     }
 
     return true;

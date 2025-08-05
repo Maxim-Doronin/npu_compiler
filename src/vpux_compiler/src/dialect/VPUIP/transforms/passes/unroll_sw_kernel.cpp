@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/bounded_buffer.hpp"
@@ -206,12 +206,14 @@ VPURT::TaskOp SwKernelRewriter::createNewTaskOp(VPUIP::SwKernelOp swKernelOp, VP
                     rewriter, origTaskOp.getWaitBarriers(), origTaskOp.getUpdateBarriers(), opLoc, newInputs,
                     newOutBuffers, swKernelInputDynamicShapes, swKernelInputDynamicShapesMap,
                     swKernelOutputDynamicShapes, swKernelOutputDynamicShapesMap, newProfilingBuffer,
-                    swKernelOp.getKernelFunctionAttr(), swKernelOp.getTileIndexAttr(), swKernelOp.getStridesAttr());
+                    swKernelOp.getKernelFunctionAttr(), swKernelOp.getTileIndexAttr(), swKernelOp.getInputStridesAttr(),
+                    swKernelOp.getOutputStridesAttr());
         }
         return newSwKernelOp = VPURT::wrapIntoTaskOp<VPUIP::SwKernelOp>(
                        rewriter, origTaskOp.getWaitBarriers(), origTaskOp.getUpdateBarriers(), opLoc, newInputs,
                        newOutBuffers, newProfilingBuffer, swKernelOp.getKernelFunctionAttr(),
-                       swKernelOp.getTileIndexAttr(), swKernelOp.getStridesAttr());
+                       swKernelOp.getTileIndexAttr(), swKernelOp.getInputStridesAttr(),
+                       swKernelOp.getOutputStridesAttr());
     }();
 
     if (maybeProfMeta != nullptr) {

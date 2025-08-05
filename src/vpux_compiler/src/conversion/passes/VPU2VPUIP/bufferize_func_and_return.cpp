@@ -1,15 +1,18 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h>
 #include <mlir/Dialect/Func/Transforms/FuncConversions.h>
+#include <mlir/Dialect/MemRef/IR/MemRef.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -179,10 +182,22 @@ mlir::LogicalResult CallOpBufferizeModel::bufferizeImpl(mlir::func::CallOp op, m
     }
 
     // 2. Rewrite tensor operands as memrefs based on type of the already bufferized callee.
-    auto newOperands = vpux::bufferizeOperands(rewriter, callOp->getOperands());
+    auto funcOp = getCalledFunction(callOp);
+    auto funcType = funcOp.getFunctionType();
+    SmallVector<mlir::Value> newOperands;
+    newOperands.reserve(llvm::size(callOp->getOperands()));
+    for (auto& opOperand : callOp->getOpOperands()) {
+        auto buffer = vpux::getBuffer(rewriter, opOperand.get());
+        auto memRefType = mlir::cast<mlir::MemRefType>(funcType.getInput(opOperand.getOperandNumber()));
+        // E#169895: This is a workaround: we align arguments with function parameters, if they are misaligned
+        if (buffer.getType() != memRefType) {
+            auto castBufferOp = rewriter.create<mlir::UnrealizedConversionCastOp>(callOp.getLoc(), memRefType, buffer);
+            buffer = castBufferOp.getResult(0);
+        }
+        newOperands.push_back(buffer);
+    }
 
     // 3. Create the new CallOp.
-    auto funcOp = getCalledFunction(callOp);
     auto newCallOp =
             rewriter.create<mlir::func::CallOp>(callOp.getLoc(), funcOp.getSymName(), resultTypes, newOperands);
     newCallOp->setAttrs(callOp->getAttrs());

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/passes_register.hpp"
@@ -50,6 +50,7 @@ void PassesRegistry40XX::registerPasses() {
     vpux::IE::arch37xx::registerOptimizeNetworkInputConvert();
     vpux::IE::arch37xx::registerOptimizeSliceExpand();
     vpux::IE::arch37xx::registerProcessAsymmetricZeroPointsForConvolution();
+    vpux::IE::arch37xx::registerProcessAsymmetricZeroPointsForMatmul();
     vpux::IE::arch37xx::registerPropagateExpand();
     vpux::IE::arch37xx::registerPropagateReorderToNCE();
     vpux::IE::arch37xx::registerSwapMaxPoolWithActivation();

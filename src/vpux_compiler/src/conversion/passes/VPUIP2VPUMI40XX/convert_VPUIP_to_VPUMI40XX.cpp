@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -9,6 +9,7 @@
 #include "vpux/compiler/core/profiling_metadata.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
 
@@ -594,8 +595,9 @@ private:
         irWithMITasksInsideVPURTTaskOp.addLegalOp<VPURT::DeclareBufferOp>();
 
         if (mlir::failed(
-                    mlir::applyPartialConversion(funcOp, irWithMITasksInsideVPURTTaskOp, std::move(tasksConverters))))
+                    mlir::applyPartialConversion(funcOp, irWithMITasksInsideVPURTTaskOp, std::move(tasksConverters)))) {
             return signalPassFailure();
+        }
 
         mlir::ConversionTarget finalConversionTarget(ctx);
         finalConversionTarget.addLegalDialect<VPUMI40XX::VPUMI40XXDialect>();

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_CONVERSION_PASSES
@@ -23,36 +23,6 @@ def ConvertIEToVPUM2I : PassBase<"convert-IE-to-VPU-M2I", "vpux::FunctionPass"> 
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
-    ];
-}
-
-//=================================================================================
-// LowerIE2IERT
-//=================================================================================
-
-//
-// BufferizeIE
-//
-
-def BufferizeIE : PassBase<"bufferize-IE", "vpux::FunctionPass"> {
-    let summary = "Bufferize the IE dialect into the IERT dialect on Function level";
-
-    let description = [{
-        This pass bufferizes **IE Dialect** into **IERT Dialect**:
-
-        * Updates only Function inner regions.
-        * Doesn't change Function signatures.
-        * Replaces Layer Operations with IERT analogues.
-        * Replaces Quant Dialect Operations with IERT analogues.
-    }];
-
-    let constructor = "vpux::createBufferizeIEPass()";
-
-    let dependentDialects = [
-        "vpux::VPUIP::VPUIPDialect",
-        "mlir::func::FuncDialect",
-        "mlir::memref::MemRefDialect",
-        "mlir::bufferization::BufferizationDialect"
     ];
 }
 
@@ -129,7 +99,9 @@ def OneShotBufferizeVPU2VPUIP : PassBase<"one-shot-bufferize-VPU-to-VPUIP", "vpu
         "vpux::VPUIP::VPUIPDialect",
         "vpux::VPURT::VPURTDialect",
         "mlir::memref::MemRefDialect",
-        "mlir::bufferization::BufferizationDialect"
+        "mlir::bufferization::BufferizationDialect",
+        "mlir::scf::SCFDialect",
+        "mlir::tensor::TensorDialect"
     ];
 }
 

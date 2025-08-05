@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "config.hpp"
@@ -103,32 +103,36 @@ string_vector create_data(std::string& value) {
                 if (isdigit(elem[idx])) {
                     start = start * 10 + elem[idx] - '0';
                     state = 2;
-                } else
+                } else {
                     state = 0;
+                }
                 break;
             case 2:
-                if (isdigit(elem[idx]))
+                if (isdigit(elem[idx])) {
                     start = start * 10 + elem[idx] - '0';
-                else if (elem[idx] == '-')
+                } else if (elem[idx] == '-') {
                     state = 3;
-                else
+                } else {
                     state = 0;
+                }
                 break;
             case 3:
                 if (isdigit(elem[idx])) {
                     end = end * 10 + elem[idx] - '0';
                     state = 4;
-                } else
+                } else {
                     state = 0;
+                }
                 break;
             case 4:
-                if (isdigit(elem[idx]))
+                if (isdigit(elem[idx])) {
                     end = end * 10 + elem[idx] - '0';
-                else if (elem[idx] == ']') {
+                } else if (elem[idx] == ']') {
                     match = true;
                     end_idx = idx;
-                } else
+                } else {
                     state = 0;
+                }
                 break;
             default:
                 std::cout << "Unexpected\n";

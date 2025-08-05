@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -1407,6 +1407,17 @@ mlir::LogicalResult ReorderWithLayer::matchAndRewrite(IE::LayoutInfoOpInterface 
         if (!isBeneficialReorderFuse(*tileOp)) {
             if (!isBeneficialSwitch(*tileOp, DimsOrder::fromValue(argReorderOp.getOutput()),
                                     DimsOrder::fromValue(argReorderOp.getInput()))) {
+                return mlir::failure();
+            }
+        }
+    }
+    // Skip reorder propagation for below case to avoid PermuteOp back infer error:
+    // AffineReshape (with changed data rank) -> MemPermute
+    if (auto affineReshapeOp = mlir::dyn_cast<IE::AffineReshapeOp>(&layerOp)) {
+        auto affineInShape = getShape(affineReshapeOp->getInput());
+        auto affineOutShape = getShape(affineReshapeOp->getOutput());
+        if (affineInShape.size() != affineOutShape.size()) {
+            if (auto memPermOp = mlir::dyn_cast<IE::MemPermuteOp>(*affineReshapeOp->getOutput().getUsers().begin())) {
                 return mlir::failure();
             }
         }

@@ -1,17 +1,18 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/utils/convert_utils.hpp"
+#include "vpux/compiler/utils/stable_hash.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 
+#include <llvm/ADT/Hashing.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
-#include <mlir/IR/DialectImplementation.h>
 
 using namespace vpux;
 
@@ -26,12 +27,35 @@ Const::Content convertQuantizedToQuantizedWithSingleZeroPoint(Const::Content& in
 }  // namespace
 
 mlir::LogicalResult vpux::Const::ConvertElemTypeAttr::verify(FuncRef<mlir::InFlightDiagnostic()> emitError,
-                                                             mlir::Type elemType) {
+                                                             mlir::Type elemType, llvm::hash_code) {
     if (elemType == nullptr) {
         return printTo(emitError(), "Got NULL 'elemType' in 'ConvertElemTypeAttr'");
     }
 
     return mlir::success();
+}
+
+void vpux::Const::ConvertElemTypeAttr::print(mlir::AsmPrinter& printer) const {
+    printer << "<";
+    printer.printStrippedAttrOrType(getElemType());
+    printer << ">";
+}
+
+mlir::Attribute vpux::Const::ConvertElemTypeAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+    if (mlir::failed(parser.parseLess())) {
+        return nullptr;
+    }
+
+    mlir::Type elemType;
+    if (mlir::failed(parser.parseType(elemType))) {
+        return nullptr;
+    }
+
+    if (mlir::failed(parser.parseGreater())) {
+        return nullptr;
+    }
+
+    return Const::ConvertElemTypeAttr::get(elemType);
 }
 
 vpux::NDTypeInterface vpux::Const::ConvertElemTypeAttr::inferOutputType(vpux::NDTypeInterface input) const {
@@ -82,7 +106,6 @@ Const::Content vpux::Const::ConvertElemTypeAttr::transform(vpux::Const::Content&
 // ConvertElemTypeAttr::getStableHashValue
 //
 
-llvm::hash_code vpux::Const::ConvertElemTypeAttr::getStableHashValue() const {
-    const auto type = getElemType();
-    return llvm::hash_combine(getMnemonic(), formatv("{0}", type).str());
+llvm::hash_code vpux::Const::stableHashForConvertElemType(mlir::Type type) {
+    return llvm::hash_combine(Const::ConvertElemTypeAttr::getMnemonic(), getStableHash(type));
 }

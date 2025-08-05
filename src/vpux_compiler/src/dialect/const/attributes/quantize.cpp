@@ -1,14 +1,13 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
+#include "vpux/compiler/utils/stable_hash.hpp"
 #include "vpux/compiler/utils/types.hpp"
-
-#include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 
 #include <mlir/IR/DialectImplementation.h>
@@ -217,5 +216,5 @@ Const::Content vpux::Const::QuantizeAttr::transform(vpux::Const::Content& input)
 
 llvm::hash_code vpux::Const::QuantizeAttr::getStableHashValue() const {
     const auto type = getTargetType();
-    return llvm::hash_combine(getMnemonic(), formatv("{0}", type).str());
+    return llvm::hash_combine(getMnemonic(), getStableHash(type));
 }

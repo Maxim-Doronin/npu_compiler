@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
@@ -60,8 +60,9 @@ void UnrollEnqueuePattern::rewrite(VPURegMapped::EnqueueOp enqueueOp, mlir::Patt
                 taskOp.getResult());
         last = newEnqueue.getResult();
 
-        if (!first)
+        if (!first) {
             first = last;
+        }
     }
 
     enqueueOp.getResult().replaceUsesWithIf(first, [](mlir::OpOperand& operand) {
@@ -92,8 +93,9 @@ void UnrollEnqueueOpsPass::safeRunOnFunc() {
     auto mpi = VPUMI40XX::getMPI(netFunc);
     auto firstEnqu = mpi.getWorkItemTasks();
     // if we don't have workItems skip an iteration over the whole IR
-    if (!firstEnqu)
+    if (!firstEnqu) {
         return;
+    }
 
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<UnrollEnqueuePattern>(ctx, _log);

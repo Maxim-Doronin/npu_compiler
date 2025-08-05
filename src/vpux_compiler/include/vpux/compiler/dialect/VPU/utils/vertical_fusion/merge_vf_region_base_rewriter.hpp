@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -63,8 +63,6 @@ public:
               _log(log) {
     }
 
-    mlir::LogicalResult matchAndRewrite(VPU::VerticalFusionOp origOp, mlir::PatternRewriter& rewriter) const final;
-
 protected:
     virtual StrategyCost extractVFCost(VFConfigType& vfConfig) const = 0;
     virtual std::optional<int64_t> getOptimalTilingStrategy(const IVFSchedulingPtr& scheduling, const Dim dim,
@@ -78,6 +76,7 @@ protected:
     virtual IVFSchedulingPtr detectScenario(VFConfigType& vfConfig) const = 0;
     virtual std::optional<VFCaseType> findVFTiling(VPU::VerticalFusionOp mergedOp, VPU::VerticalFusionOp prevOp,
                                                    VPU::VerticalFusionOp currentOp) const = 0;
+    bool checkOtherVFInput(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) const;
     bool checkVFCostFunction(VPU::VerticalFusionOp prevOp, VPU::VerticalFusionOp currentOp,
                              VFCaseType& mergedCase) const;
     bool waitOtherUsers(VPU::VerticalFusionOp newBlock, VPU::VerticalFusionOp parentVFOp) const;

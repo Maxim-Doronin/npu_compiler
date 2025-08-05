@@ -1,12 +1,13 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_CONVERSION_REWRITERS_CONVERT_LAYERS_TO_VPU
 #define VPUX_COMPILER_CONVERSION_REWRITERS_CONVERT_LAYERS_TO_VPU
 
 include "vpux/compiler/dialect/IE/ops.td"
+include "vpux/compiler/dialect/IE/ops/data_movement.td"
 include "vpux/compiler/dialect/VPU/ops.td"
 
 include "mlir/IR/OpBase.td"
@@ -972,8 +973,8 @@ def RewritePerAxisTile :
         >;
 
 //
-// IE.[Add|Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
-//     -> VPU.[Add|Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
+// IE.[Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
+//     -> VPU.[Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
 //
 
 class createEltwiseOp<string type> :
@@ -992,12 +993,6 @@ def RewritePower :
         Pat<
             (IE_PowerOp $input1, $input2, $auto_broadcast),
             (createEltwiseOp<"Power"> $input1, $input2, $auto_broadcast)
-        >;
-
-def RewriteAdd :
-        Pat<
-            (IE_AddOp $input1, $input2, $auto_broadcast, $post_op, $clamp, $output_padding, $input_padding),
-            (createEltwiseOpWithPostOp<"Add"> $input1, $input2, $auto_broadcast, $post_op)
         >;
 
 def RewriteSubtract :
@@ -2269,13 +2264,17 @@ def RewriteRoPE :
 
 def createSDPAOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::SDPAOp>($_loc, $0, $1, $2, $3, nullptr)
+            $_builder.create<vpux::VPU::SDPAOp>($_loc, $0, $1, $2, 
+            $3.size() == 1 ? $3[0] : nullptr, 
+            $4.size() == 1 ? $4[0] : nullptr,
+            $5.size() == 1 ? $5[0] : nullptr,
+            nullptr)
         }]>;
 
 def RewriteSDPA :
         Pat<
-            (IE_SDPAOp $inputQ, $inputK, $inputV, $inputMask),
-            (createSDPAOp $inputQ, $inputK, $inputV, $inputMask)
+            (IE_SDPAOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias),
+            (createSDPAOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias)
         >;
 
 //

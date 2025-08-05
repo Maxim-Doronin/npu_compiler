@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -20,7 +20,7 @@ public:
     virtual mlir::FailureOr<std::vector<uint8_t>> compress(std::vector<uint8_t>& data,
                                                            CompressionMode mode = CompressionMode::UINT8,
                                                            const Logger& _log = vpux::Logger::global()) const = 0;
-    virtual ~ICodec(){};
+    virtual ~ICodec() {};
 
     static std::string compressionModeToStr(ICodec::CompressionMode mode);
 };

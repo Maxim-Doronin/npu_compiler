@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -189,8 +189,8 @@ void SplitNCEOpsOntoWorkloadsPass::safeRunOnFunc() {
 
     const auto numDPUs = dpuExec.getCount();
 
-    const auto costModel = VPU::CostModelConfig::createCostModel(arch);
-    std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModel = nullptr;
+    auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
 
     mlir::ConversionTarget target(ctx);
     target.markUnknownOpDynamicallyLegal([&](mlir::Operation* op) {
@@ -205,20 +205,20 @@ void SplitNCEOpsOntoWorkloadsPass::safeRunOnFunc() {
     const auto enableVPUNNPreSplit = hasVPUNNPreSplit(module);
     if (enableVPUNNPreSplit) {
         const auto numTiles = nceCluster.getCount();
-        layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
-        layerCostModel->getPreloadedCacheCounter().reset();
+        auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
+        auto layerCostModel =
+                VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
         patterns.add<NCEWorkloadSplitPreSplitRewrite>(&ctx, numDPUs, numTiles, arch, layerCostModel, costModel, _log);
+        _log.info("[SplitNCEOpsOntoWorkloads phase]");
+        _log.info("[NN Cache statistics]  {0}", layerCostModel->getDPUPreloadedCacheCounter().printString());
     } else {
         patterns.add<NCEWorkloadSplitRewrite>(&ctx, numDPUs, arch, costModel, _log);
+        _log.info("[SplitNCEOpsOntoWorkloads phase]");
+        _log.info("[NN Cache statistics]  {0}", costModel->getPreloadedCacheCounter().printString());
     }
 
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
-    }
-
-    if (enableVPUNNPreSplit && layerCostModel != nullptr) {
-        _log.info("[SplitNCEOpsOntoWorkloads phase]");
-        _log.info("[NN Cache statistics]  {0}", layerCostModel->getPreloadedCacheCounter().printString());
     }
 }
 

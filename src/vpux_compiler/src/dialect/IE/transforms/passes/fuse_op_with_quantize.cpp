@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -58,9 +58,6 @@ mlir::LogicalResult ConvertQuantizeRewriter::matchAndRewrite(IE::QuantizeOp quan
         return mlir::failure();
     }
 
-    constexpr double inDataScale = 1.0;
-    constexpr int64_t inDataZP = 0;
-    mlir::quant::QuantizedType dstType;
     auto originDstType = quantizeOp.getDstElemType();
     // We don't support quantile type now
     if (mlir::isa_and_nonnull<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(
@@ -68,21 +65,11 @@ mlir::LogicalResult ConvertQuantizeRewriter::matchAndRewrite(IE::QuantizeOp quan
         return mlir::failure();
     }
 
-    if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(originDstType)) {
-        dstType = mlir::quant::UniformQuantizedType::getChecked(
-                quantizeOp.getLoc(), uniformType.isSigned(), uniformType.getStorageType(),
-                uniformType.getExpressedType(), inDataScale, inDataZP, uniformType.getStorageTypeMin(),
-                uniformType.getStorageTypeMax());
-    } else if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(originDstType)) {
-        dstType = mlir::quant::UniformQuantizedPerAxisType::getChecked(
-                quantizeOp.getLoc(), perAxisType.isSigned(), perAxisType.getStorageType(),
-                perAxisType.getExpressedType(), SmallVector<double>(perAxisType.getScales().size(), inDataScale),
-                SmallVector<int64_t>(perAxisType.getScales().size(), inDataZP), perAxisType.getQuantizedDimension(),
-                perAxisType.getStorageTypeMin(), perAxisType.getStorageTypeMax());
-    } else {
-        VPUX_THROW("Unsupported Quantized Type {0}", originDstType);
+    if (!mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(originDstType)) {
+        return mlir::failure();
     }
-    rewriter.replaceOpWithNewOp<IE::QuantizeCastOp>(quantizeOp, convertOp.getInput(), dstType);
+
+    rewriter.replaceOpWithNewOp<IE::QuantizeCastOp>(quantizeOp, convertOp.getInput(), originDstType);
     return mlir::success();
 }
 

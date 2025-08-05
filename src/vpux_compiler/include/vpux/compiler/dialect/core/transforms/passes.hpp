@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -29,6 +29,7 @@ std::unique_ptr<mlir::Pass> createStartLocationVerifierPass(
 std::unique_ptr<mlir::Pass> createStopLocationVerifierPass(vpux::Logger log);
 std::unique_ptr<mlir::Pass> createPackNestedModulesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnpackNestedModulesPass(const Logger& log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddNetInfoToModulePass(Logger log = Logger::global());
 
 //
 // Registration

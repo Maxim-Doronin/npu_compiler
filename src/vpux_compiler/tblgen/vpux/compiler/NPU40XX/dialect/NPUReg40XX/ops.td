@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 include "vpux/compiler/dialect/core/ops_interfaces.td"
@@ -87,7 +87,7 @@ def NPUReg40XX_NNDMAOp :
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 Symbol,
                 IsolatedFromAbove,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>,
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>,
             ],
             "DmaDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::DMARegister"
@@ -127,7 +127,7 @@ def NPUReg40XX_MappedInferenceOp :
             [
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>,
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>,
                 DeclareOpInterfaceMethods<VPURegMapped_SerializedVersionInterface>
             ],
             "MIDescriptorProp",
@@ -202,7 +202,7 @@ def NPUReg40XX_ConfigureBarrierOp :
         NPUReg40XX_ExecutableTaskOpWithProperties<"ConfigureBarrier",
             [
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "ConfigureBarrierDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::VpuBarrierCountConfig"
@@ -256,7 +256,7 @@ def NPUReg40XX_ActKernelRangeOp :
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 Symbol,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "ActKernelRangeDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::VpuActKernelRange"
@@ -294,7 +294,7 @@ def NPUReg40XX_ActKernelInvocationOp :
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 Symbol,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "ActKernelInvocationDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::VpuActKernelInvocation"
@@ -338,7 +338,7 @@ def NPUReg40XX_DPUInvariantOp :
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 Symbol,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>,
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>,
             ],
             "DPUInvariantDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::DpuInvariantRegister"
@@ -404,7 +404,7 @@ def NPUReg40XX_DPUVariantOp :
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 Symbol,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "DPUVariantDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::DpuVariantRegister"
@@ -453,7 +453,7 @@ def NPUReg40XX_M2IOp :
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 Symbol,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "M2IDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::VpuMediaTask"
@@ -492,7 +492,7 @@ def NPUReg40XX_NNrtConfigOp :
             [
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "NNRTCfgDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::VpuNNRTConfig"
@@ -532,7 +532,7 @@ def NPUReg40XX_ManagedMappedInferenceOp :
             [
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>,
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>,
                 DeclareOpInterfaceMethods<VPURegMapped_SerializedVersionInterface>
             ],
             "MMIDescriptorProp",
@@ -578,7 +578,7 @@ def NPUReg40XX_ManagedBarrierOp :
         NPUReg40XX_ExecutableTaskOpWithProperties<"ManagedBarrier",
             [
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "TaskBarrierMapDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::VpuTaskBarrierMap"
@@ -608,7 +608,7 @@ def NPUReg40XX_WorkItemOp :
             [
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<VPURegMapped_RegFieldVersion>
+                DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
             "WorkItenDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::WorkItem"

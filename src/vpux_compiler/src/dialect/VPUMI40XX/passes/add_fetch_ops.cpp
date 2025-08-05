@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -93,9 +93,9 @@ VPUMI40XX::NNDMAOp findFirstDma(llvm::SmallSetVector<VPUMI40XX::ConfigureBarrier
         }
     }
 
-    if (directDmas.size())
+    if (directDmas.size()) {
         return *std::min_element(directDmas.begin(), directDmas.end(), dmaComp);
-    else {
+    } else {
         return nullptr;
     }
 }
@@ -180,12 +180,14 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const size_t
         for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
             auto startingInvValue = mpi.getListHead(taskType, tileIdx, listIdx);
             // theoretically there can be cases where we run for 6 tiles, but only 4 tiles have Variants associated
-            if (!startingInvValue)
+            if (!startingInvValue) {
                 continue;
+            }
 
             auto firstGroup = mlir::dyn_cast_or_null<VPURegMapped::ExecutionGroupOp>(startingInvValue.getDefiningOp());
-            if (!firstGroup)
+            if (!firstGroup) {
                 continue;
+            }
 
             // the first task has the special condition that it's wlm will be added as first DMA with a guaranteed
             // barrier consumption event by a dummy DMA

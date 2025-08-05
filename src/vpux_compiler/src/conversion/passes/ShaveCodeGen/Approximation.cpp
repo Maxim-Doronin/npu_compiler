@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // ============================================================================
@@ -28,7 +28,6 @@
 #include <mlir/Dialect/Math/Transforms/Passes.h>
 #include "mlir/Dialect/Vector/Utils/VectorUtils.h"
 #include "vpux/compiler/conversion.hpp"
-#include "vpux/compiler/dialect/IERT/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -96,8 +95,9 @@ mlir::LogicalResult SinAndCosApproximation<isSine, OpTy>::matchAndRewrite(OpTy o
     static_assert(llvm::is_one_of<OpTy, math::SinOp, math::CosOp>::value,
                   "SinAndCosApproximation pattern expects math::SinOp or math::CosOp");
 
-    if (!getElementTypeOrSelf(op.getOperand()).isF32())
+    if (!getElementTypeOrSelf(op.getOperand()).isF32()) {
         return rewriter.notifyMatchFailure(op, "unsupported operand type");
+    }
 
     ArrayRef<int64_t> shape = vectorShape(op.getOperand());
 

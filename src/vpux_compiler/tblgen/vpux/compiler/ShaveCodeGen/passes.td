@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_SHAVE_CODE_GEN_PASSES
@@ -13,28 +13,48 @@ include "mlir/Pass/PassBase.td"
 //=================================================================================
 
 //
-// OutlineLinalgSwLayers
+// OutlineCodeGenCapsules
 //
 
-def OutlineLinalgSwLayers : PassBase<"outline-linalg-sw-layers", "vpux::ModulePass"> {
-    let summary = "Outline the Linalg-represented sw layers to external functions";
+def OutlineCodeGenCapsules : PassBase<"outline-codegen-capsules", "vpux::ModulePass"> {
+    let summary = "Outline the CodeGenCapsules contents to external functions";
 
     let description = [{
-        The pass outlines the sw layers represented in Linalg to external functions.
-        In place, it introduces VPU::GenericSwLayer ops that now represent calls to the shave functions.
-
-        Pass is very specific at the moment, working only with singular linalg.generic ops
-        A generalization for the pass is required: E#153002
+        The pass outlines the Shave-directed CodeGenCapsules to external functions.
+        In place of the capsules, it introduces VPU::GenericSwLayer ops that now represent calls to the shave functions.
     }];
 
-    let constructor = "vpux::ShaveCodeGen::createOutlineLinalgSwLayersPass()";
+    let constructor = "vpux::ShaveCodeGen::createOutlineCodeGenCapsulesPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect",
+        "mlir::func::FuncDialect"
+    ];
+}
+
+//
+// LowerMathToShaveIntrinsics
+//
+
+def LowerMathToShaveIntrinsics : PassBase<"lower-math-to-shave-intrinsics", "vpux::ModulePass"> {
+    let summary = "Lower math operations to shave intrinsics";
+
+    let description = [{
+        Some math operations directly map to shave intrinsics in cases where there are no
+        equivalent generic LLVM operations (for example tanh). In these cases there is no
+        generic lowering path to the LLVM dialect.
+        This pass inserts the required declarations for the shave intrisics in the software
+        module and replaces the math operations with function calls.
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createLowerMathToShaveIntrinsicsPass()";
 
     let dependentDialects = [
         "mlir::func::FuncDialect",
-        "mlir::linalg::LinalgDialect",
         "mlir::math::MathDialect"
     ];
 }
+
 
 //
 // AdaptLLVMFuncsForShave
@@ -64,7 +84,7 @@ def AdaptLLVMFuncsForShave : PassBase<"adapt-LLVM-funcs-for-shave", "vpux::Modul
 }
 
 //
-// WrapSupportedOpsInCodeGenRegions
+// EncapsulateCodeGenOps
 //
 
 def EncapsulateCodeGenOps : PassBase<"encapsulate-codegen-ops", "vpux::FunctionPass"> {
@@ -88,7 +108,7 @@ def EncapsulateCodeGenOps : PassBase<"encapsulate-codegen-ops", "vpux::FunctionP
 }
 
 //
-// WrapSupportedOpsInCodeGenRegions
+// EarlyCodeGenCapsuleFusion
 //
 
 def EarlyCodeGenCapsuleFusion : PassBase<"early-codegen-capsule-fusion", "vpux::FunctionPass"> {

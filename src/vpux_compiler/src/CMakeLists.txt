@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2023-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 # Set BUILD_SHARED_LIBS=OFF explicitly to ensure files are built in static lib
@@ -23,10 +23,10 @@ add_subdirectory(dialect/config)
 add_subdirectory(dialect/net)
 add_subdirectory(dialect/ELFNPU37XX)
 add_subdirectory(dialect/IE)
-add_subdirectory(dialect/IERT)
 add_subdirectory(dialect/VPU)
 add_subdirectory(dialect/VPUASM)
 add_subdirectory(dialect/VPUIP)
+add_subdirectory(dialect/HostExec)
 add_subdirectory(dialect/VPUIPDPU)
 add_subdirectory(dialect/VPUMI37XX)
 add_subdirectory(dialect/VPUMI40XX)

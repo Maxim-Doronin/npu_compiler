@@ -1,11 +1,13 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
 
+#include <cstdint>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -41,19 +43,26 @@ llvm::ArrayRef<uint8_t> ShaveBinaryResources::getElf(llvm::StringRef kernelPath)
     return llvm::ArrayRef<uint8_t>(symbolData, symbolSize);
 }
 
-void ShaveBinaryResources::addCompiledElf(llvm::StringRef funcName, std::vector<uint8_t>& binary,
-                                          llvm::StringRef arch) {
+void ShaveBinaryResources::addCompiledElf(llvm::StringRef funcName, std::vector<uint8_t>& binary, llvm::StringRef arch,
+                                          bool overwrite) {
     auto symbolName = printToString("{0}_{1}_elf", funcName, arch);
     auto data = shaveBinaryResourcesMap.find(symbolName);
 
     if (data != shaveBinaryResourcesMap.end()) {
+        if (!overwrite) {
+            return;
+        }
         shaveBinaryResourcesMap.erase(symbolName);
     }
 
-    uint8_t* permArray = new uint8_t[binary.size()];
-    memcpy(permArray, binary.data(), binary.size() * sizeof(uint8_t));
+    // Store data in unique_ptr for memory leak prevention
+    auto permArray = std::make_unique<uint8_t[]>(binary.size());
+    // Transfer ownership to vector s.t. the unique_ptr is alive for the lifetime of ShaveBinaryResources
+    _elfPermStorage.push_back(std::move(permArray));
+    auto& ref = _elfPermStorage.back();
 
-    shaveBinaryResourcesMap.insert(std::make_pair(symbolName, std::make_pair(permArray, binary.size())));
+    memcpy(ref.get(), binary.data(), binary.size());
+    shaveBinaryResourcesMap.insert(std::make_pair(symbolName, std::make_pair(ref.get(), binary.size())));
 }
 
 void ShaveBinaryResources::loadElfData(mlir::ModuleOp module) {

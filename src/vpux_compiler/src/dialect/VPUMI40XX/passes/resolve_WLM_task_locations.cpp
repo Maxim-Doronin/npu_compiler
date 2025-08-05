@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -85,8 +85,9 @@ void ResolveWLMTaskLocationPass::safeRunOnFunc() {
     auto solveGroupOps = [&mpi, &populate, &getSize](VPURegMapped::TaskType taskType, size_t tileIdx,
                                                      size_t listIdx = 0) -> void {
         auto listHead = mpi.getListHead(taskType, tileIdx, listIdx);
-        if (!listHead)
+        if (!listHead) {
             return;
+        }
 
         auto groupOp = mlir::cast<VPURegMapped::ExecutionGroupOp>(listHead.getDefiningOp());
 
@@ -105,8 +106,9 @@ void ResolveWLMTaskLocationPass::safeRunOnFunc() {
             int offsetFromStart = groupSize - numberOfOpsInGroup;
             size_t taskCtr = 0;
             for (auto execTaskOp : taskOps) {
-                if (execTaskOp.getTaskType() != taskType)
+                if (execTaskOp.getTaskType() != taskType) {
                     continue;
+                }
                 execTaskOp.setTaskLocation(taskBuffers[groupCtr + taskCtr + offsetFromStart]);
                 taskCtr++;
             }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -270,13 +270,22 @@ mlir::LogicalResult ConvertNegStrideStridedSlice2Reverse::matchAndRewrite(IE::St
     }
 
     const auto inputData = extractData(slice.getLoc(), slice);
+    const auto strides = inputData.strides;
 
-    auto strides = inputData.strides;
-    if (!hasNegativeStride(strides)) {
+    auto countNegativeStrides = [](ArrayRef<int64_t> strides) {
+        auto isNegative = [](auto val) {
+            return val < 0;
+        };
+        return std::count_if(strides.begin(), strides.end(), isNegative);
+    };
+
+    // Currently, only reverse along 1 axis (from the perspective of functionality and performance) supported, the
+    // StridedSlice can be replaced by ReverseSequenceOp
+    auto negativeStridesCount = countNegativeStrides(strides);
+    if (negativeStridesCount != 1) {
         return mlir::failure();
     }
 
-    // If the data is reversed all along 1 axis, the StridedSlice can be replaced by ReverseSequenceOp
     const auto inDataType = mlir::cast<vpux::NDTypeInterface>(slice.getInput().getType());
     const auto inDataShape = inDataType.getShape().raw();
     const auto begins = inputData.begins;

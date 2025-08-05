@@ -7,7 +7,9 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <functional>
 #include <iostream>
+#include <type_traits>
 
 class VCLSingleThreadTest : public VCLTestsUtils::VCLTestsCommon {
 public:
@@ -128,7 +130,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_SingleThreadCompilation, VCLSingleThreadTest, smo
 
 INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLSingleThreadTest, params, VCLSingleThreadTest::getTestCaseName);
 
-class VCLAllocatorSingleThreadTest : public VCLTestsUtils::VCLTestsCommon {
+template <typename VclAllocT>
+class VCLAllocatorSingleThreadTestBase : public VCLTestsUtils::VCLTestsCommon {
 public:
     /**
      * @brief Call L0 compiler to compile model to blob
@@ -138,7 +141,8 @@ public:
     vcl_result_t run(const std::string& options);
 };
 
-vcl_result_t VCLAllocatorSingleThreadTest::run(const std::string& options) {
+template <typename VclAllocT>
+vcl_result_t VCLAllocatorSingleThreadTestBase<VclAllocT>::run(const std::string& options) {
     vcl_result_t ret = VCL_RESULT_SUCCESS;
     /// Default device is 4000, can be updated by test config
     vcl_compiler_desc_t compilerDesc;
@@ -167,14 +171,29 @@ vcl_result_t VCLAllocatorSingleThreadTest::run(const std::string& options) {
               << "\tSupported opsets: " << compilerProp.supportedOpsets << "\n";
     std::cout << "\n############################################\n\n";
 
-    vcl_allocator_t allocator;
-    allocator.allocate = VCLTestsUtils::allocateBlob;
-    allocator.deallocate = VCLTestsUtils::deallocateBlob;
     uint8_t* blob = nullptr;
     uint64_t size = 0;
 
     vcl_executable_desc_t exeDesc = {getModelIR().data(), getModelIRSize(), options.c_str(), options.size() + 1};
-    ret = vclAllocatedExecutableCreate(compiler, exeDesc, &allocator, &blob, &size);
+    VclAllocT allocator;
+    std::function<void()> deallocate;
+
+    if constexpr (std::is_same_v<VclAllocT, vcl_allocator2_t>) {
+        allocator.allocate = VCLTestsUtils::allocateBlob2;
+        allocator.deallocate = VCLTestsUtils::deallocateBlob2;
+        deallocate = [&] {
+            allocator.deallocate(&allocator, blob);
+        };
+        ret = vclAllocatedExecutableCreate2(compiler, exeDesc, &allocator, &blob, &size);
+    } else {
+        static_assert(std::is_same_v<VclAllocT, vcl_allocator_t>);
+        allocator.allocate = VCLTestsUtils::allocateBlob;
+        allocator.deallocate = VCLTestsUtils::deallocateBlob;
+        deallocate = [&] {
+            allocator.deallocate(blob);
+        };
+        ret = vclAllocatedExecutableCreate(compiler, exeDesc, &allocator, &blob, &size);
+    }
 
     if (ret != VCL_RESULT_SUCCESS || blob == nullptr || size == 0) {
         printErrorInfo("Failed to create executable handle! Result: 0x", ret);
@@ -198,7 +217,7 @@ vcl_result_t VCLAllocatorSingleThreadTest::run(const std::string& options) {
     bfos.close();
 #endif  // BLOB_DUMP
 
-    allocator.deallocate(blob);
+    deallocate();
 
     ret = vclCompilerDestroy(compiler);
     if (ret != VCL_RESULT_SUCCESS) {
@@ -208,12 +227,25 @@ vcl_result_t VCLAllocatorSingleThreadTest::run(const std::string& options) {
     return ret;
 }
 
+struct VCLAllocatorSingleThreadTest : public VCLAllocatorSingleThreadTestBase<vcl_allocator_t> {};
+struct VCLAllocator2SingleThreadTest : public VCLAllocatorSingleThreadTestBase<vcl_allocator2_t> {};
+
 TEST_P(VCLAllocatorSingleThreadTest, compileModel) {
+    EXPECT_EQ(run(getNetOptions()), VCL_RESULT_SUCCESS);
+}
+
+TEST_P(VCLAllocator2SingleThreadTest, compileModel) {
     EXPECT_EQ(run(getNetOptions()), VCL_RESULT_SUCCESS);
 }
 
 INSTANTIATE_TEST_SUITE_P(smoke_SingleThreadCompilation, VCLAllocatorSingleThreadTest, smokeParams,
                          VCLAllocatorSingleThreadTest::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_SingleThreadCompilation, VCLAllocator2SingleThreadTest, smokeParams,
+                         VCLAllocatorSingleThreadTest::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLAllocatorSingleThreadTest, params,
+                         VCLAllocatorSingleThreadTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLAllocator2SingleThreadTest, params,
                          VCLAllocatorSingleThreadTest::getTestCaseName);

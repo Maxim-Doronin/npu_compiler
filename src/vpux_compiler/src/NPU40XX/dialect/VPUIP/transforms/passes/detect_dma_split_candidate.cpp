@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/Support/LogicalResult.h>
@@ -261,7 +261,10 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
     const auto arch = VPU::getArch(module);
-    const auto costModel = VPU::CostModelConfig::createCostModel(arch);
+    auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
+
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    CycleCostInfo cycleCostInfo(costModel, func);
 
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
@@ -269,8 +272,6 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
         return;
     }
 
-    CycleCostInfo cycleCostInfo(func);
-    cycleCostInfo.resetNNCacheCounter();
     VPURT::InferenceExecutionSimulator infSim(_log, func, cycleCostInfo);
     infSim.runSim();
     auto dmaTasks = infSim.getTaskCycleConfig(VPU::ExecutorKind::DMA_NN);

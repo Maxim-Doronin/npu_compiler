@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
@@ -22,6 +22,7 @@ namespace vpux {
 namespace VPUIP {
 
 constexpr int64_t NPU40XX_SW_KERNEL_ADDRESS_ALIGNMENT = 32;
+constexpr size_t MIN_FREE_CYCLES_FOR_PREFETCH_280K = 280000;
 
 SmallVector<mlir::Attribute> kernelArgsRange(VPUIP::SwKernelOp swKernelOp) {
     SmallVector<mlir::Attribute> attrStorage;
@@ -115,9 +116,13 @@ mlir::SymbolRefAttr createBuiltInFunction(mlir::ModuleOp module, VPU::LayerOpInt
     OpBuilderLogger builderLog(log);
 
     SmallString builtInFunctionName{VPUIP::SW_KERNEL_NAME_PREFIX};
-    auto nonNamespaceOpName = origOp->getName().getStringRef().slice(origOp->getName().getDialectNamespace().size() + 1,
-                                                                     mlir::StringRef::npos);
-    builtInFunctionName.append(nonNamespaceOpName);
+    if (auto externalKernelOp = mlir::dyn_cast<VPU::ExternalKernelOp>(origOp.getOperation())) {
+        builtInFunctionName.append(externalKernelOp.getUniqueId().str());
+    } else {
+        auto nonNamespaceOpName = origOp->getName().getStringRef().slice(
+                origOp->getName().getDialectNamespace().size() + 1, mlir::StringRef::npos);
+        builtInFunctionName.append(nonNamespaceOpName);
+    }
 
     const auto convertToUnrankedTypes = [](mlir::Value operand) -> SmallVector<mlir::Type> {
         SmallVector<mlir::Type> result;
@@ -435,12 +440,22 @@ bool isDpuShaveKernelType(VPURT::TaskOp taskOp) {
     return true;
 }
 
+bool isStridedMemPermuteSupported(VPUIP::SwKernelOp swKernelOp) {
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(0).getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
+    const auto inOrder = inputType.getDimsOrder();
+    const auto outOrder = outputType.getDimsOrder();
+
+    return inOrder == DimsOrder::NHWC && outOrder == DimsOrder::NCHW;
+}
+
 // Check whether SwKernelOp support discontinuous input/output.
 bool isStridedDataAccessSupported(VPUIP::SwKernelOp swKernelOp) {
     auto kernelEntryName = getSwKernelEntryName(swKernelOp);
     // SubView can be used for Softmax because it is always tilied on the highest dimension.
     if (kernelEntryName == "softmax" ||
-        llvm::find(SW_KERNELS_SUPPORTING_STRIDE, kernelEntryName) != SW_KERNELS_SUPPORTING_STRIDE.end()) {
+        llvm::find(SW_KERNELS_SUPPORTING_STRIDE, kernelEntryName) != SW_KERNELS_SUPPORTING_STRIDE.end() ||
+        (kernelEntryName == "reorder" && isStridedMemPermuteSupported(swKernelOp))) {
         return true;
     }
     return false;
@@ -655,35 +670,79 @@ InputTiling backInferRoPESwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
     return TilingInfo{{std::move(inTile), std::move(cosTile), std::move(sinTile)}};
 }
 
+void adjustMaskOrBiasTile(TileInfo& maskTile, const TileInfo& qTile) {
+    bool is2DMask = maskTile.shape[Dims4D::Act::H] != 1;
+    if (is2DMask) {
+        maskTile.shape[Dims4D::Act::H] = qTile.shape[Dims4D::Act::H];
+        maskTile.offsets[Dims4D::Act::H] = qTile.offsets[Dims4D::Act::H];
+    }
+    bool is3DMask = maskTile.shape[Dims4D::Act::C] != 1;
+    if (is3DMask) {
+        maskTile.shape[Dims4D::Act::C] = qTile.shape[Dims4D::Act::C];
+        maskTile.offsets[Dims4D::Act::C] = qTile.offsets[Dims4D::Act::C];
+    }
+}
+
+void pushSDPAOptionalInputs(const mlir::OperandRange& inputs, InputTiling& inTiles) {
+    int inSize = inputs.size();
+    ShapeRef inputVShape = getShape(inputs[2]);
+    for (int i = 3; i < inSize - 1; i++) {
+        ShapeRef unknownShape = getShape(inputs[i]);
+        TileInfo unknownTile(getShape(inputs[i]));
+        if (unknownShape[Dims4D::Act::W] == inputVShape[Dims4D::Act::W]) {
+            TileInfo inQTile = inTiles.tiles[0];
+            adjustMaskOrBiasTile(unknownTile, inQTile);
+            inTiles.tiles.push_back(unknownTile);
+        } else {
+            // Push input Scale
+            TileInfo inScaleTile(getShape(inputs[i]));
+            inTiles.tiles.push_back(inScaleTile);
+        }
+    }
+}
+
 InputTiling backInferSDPASwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
                                            Logger /*log*/) {
     auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
     VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
                       "SwKernelOp has already been tiled at '{0}'", swKernelOp);
     const auto inputs = swKernelOp.getInputs();
+    TileInfo inQTile(getShape(inputs[0]));
     TileInfo inKTile(getShape(inputs[1]));
     TileInfo inVTile(getShape(inputs[2]));
-    TileInfo inMaskTile(getShape(inputs[3]));
-    TileInfo dataStorageTile(getShape(inputs[4]));
-    auto inQTile = outputTile;
 
-    inKTile.shape[Dim(1)] = outputTile.shape[Dim(1)];
-    inKTile.shape[Dim(0)] = outputTile.shape[Dim(0)];
-    inKTile.offsets[Dim(1)] = outputTile.offsets[Dim(1)];
-    inKTile.offsets[Dim(0)] = outputTile.offsets[Dim(0)];
+    inQTile.shape[Dims4D::Act::H] = outputTile.shape[Dims4D::Act::H];
+    inQTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
+    inQTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
+    inQTile.offsets[Dims4D::Act::H] = outputTile.offsets[Dims4D::Act::H];
+    inQTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
+    inQTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
 
-    inVTile.shape[Dim(1)] = outputTile.shape[Dim(1)];
-    inVTile.shape[Dim(0)] = outputTile.shape[Dim(0)];
-    inVTile.offsets[Dim(1)] = outputTile.offsets[Dim(1)];
-    inVTile.offsets[Dim(0)] = outputTile.offsets[Dim(0)];
+    inKTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
+    inKTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
+    inKTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
+    inKTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
 
-    dataStorageTile.shape[Dim(1)] = outputTile.shape[Dim(1)];
-    dataStorageTile.shape[Dim(0)] = outputTile.shape[Dim(0)];
-    dataStorageTile.offsets[Dim(1)] = outputTile.offsets[Dim(1)];
-    dataStorageTile.offsets[Dim(0)] = outputTile.offsets[Dim(0)];
+    inVTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
+    inVTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
+    inVTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
+    inVTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
 
-    return TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile), std::move(inMaskTile),
-                       std::move(dataStorageTile)}};
+    // InputQ, inputK and InputV are mandatory
+    InputTiling inTiles = TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile)}};
+    pushSDPAOptionalInputs(inputs, inTiles);
+
+    // DataStorage is always present because it's generated if absent, at VPU dialect level
+    TileInfo dataStorageTile(getShape(inputs[inputs.size() - 1]));
+    dataStorageTile.shape[Dims4D::Act::H] = outputTile.shape[Dims4D::Act::H];
+    dataStorageTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
+    dataStorageTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
+    dataStorageTile.offsets[Dims4D::Act::H] = outputTile.offsets[Dims4D::Act::H];
+    dataStorageTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
+    dataStorageTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
+    inTiles.tiles.push_back(dataStorageTile);
+
+    return inTiles;
 }
 
 InputTiling backInferDepthToSpaceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
@@ -1248,7 +1307,8 @@ InputTiling backInferMemPermuteSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, c
     const auto mappingFromOutputToInputMemoryLayout = mlir::inversePermutation(originalMemPermMap);
     const auto mappingOutputToInputLogicalLayout =
             reverseInputLayoutMap.compose(mappingFromOutputToInputMemoryLayout).compose(outputLayoutMap);
-    const auto permutationOrder = DimsOrder::fromAffineMap(mappingOutputToInputLogicalLayout);
+    // Inverse the permutation to get the order of dimensions in the input tile.
+    const auto permutationOrder = DimsOrder::fromAffineMap(mlir::inversePermutation(mappingOutputToInputLogicalLayout));
 
     auto curTile = outputTile;
 
@@ -1282,7 +1342,7 @@ InputTiling backInferMvn1SumSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, cons
     // When tiling at the height dimension, it is a very specific operation
     // where any input H size can only produce one line of output H at each shave excluster
     // The important thing is to establish a rule that can infer the input shape from the output tile shape (1)
-    // Here, the same rule as with TileActShavePass and UnrollClusterTilingPass is maintained
+    // Here, the same rule as with TileActShavePass and UnrollDistributedOpsPass is maintained
     //
     // For example, using 3 clusters and 6 shaves, with an output height of 6 and an input height of 76:
     // If subview is used or MC & MS are tiling on the same dimension,
@@ -1298,7 +1358,7 @@ InputTiling backInferMvn1SumSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, cons
     // At TileActShavePass (outTileShapeH > 1), the Input Tile Info for all clusters at each shave is:
     //   SHV0: data_size: Tile0 + Tile2 + Tile4; data_offset: 0
     //   SHV1: data_size: Tile1 + Tile3 + Tile5; data_offset: Tile0 + Tile2 + Tile4
-    // At UnrollClusterTilingPass (outTileShapeH == 1), the Input Tile Info for each shave and each cluster is:
+    // At UnrollDistributedOpsPass (outTileShapeH == 1), the Input Tile Info for each shave and each cluster is:
     //   Directly get values from splitInShape and inTileOffsetH through the index.
 
     const auto inH = inShape[Dims4D::Act::H];
@@ -1576,7 +1636,9 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
                kernelEntryName == "eltwise_div" || kernelEntryName == "prelu_fp16" ||
                kernelEntryName == "eltwise_greater" || kernelEntryName == "eltwise_less" ||
                kernelEntryName == "eltwise_sub" || kernelEntryName == "eltwise_add" ||
-               kernelEntryName == "eltwise_select") {
+               kernelEntryName == "eltwise_select" || kernelEntryName == "eltwise_bitwise_or" ||
+               kernelEntryName == "eltwise_bitwise_and" || kernelEntryName == "eltwise_bitwise_not" ||
+               kernelEntryName == "eltwise_bitwise_xor") {
         // For SW Eltwise Op with multi inputs
         // Only the input which does not need broadcast and output will be tiled
         SmallVector<vpux::NDTypeInterface> tiledTypes;
@@ -1621,6 +1683,23 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
         }
 
         return {inputType, outputType};
+    } else if (kernelEntryName == "rope") {
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(0).getType());
+        const auto cosType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(1).getType());
+        const auto sinType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(2).getType());
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
+
+        SmallVector<vpux::NDTypeInterface> tiledTypes = {inputType};
+
+        if (cosType.getShape()[tileDim] == inputType.getShape()[tileDim]) {
+            tiledTypes.push_back(cosType);
+        }
+        if (sinType.getShape()[tileDim] == inputType.getShape()[tileDim]) {
+            tiledTypes.push_back(sinType);
+        }
+
+        tiledTypes.push_back(outputType);
+        return tiledTypes;
     } else {
         // By default, all inputs and outputs will be tiled
         SmallVector<vpux::NDTypeInterface> tiledTypes;
@@ -1703,5 +1782,16 @@ int64_t getSwKernelTilingAddressAlignment(VPUIP::SwKernelOp swkernelOp, VPU::Arc
     }
     return NPU40XX_SW_KERNEL_ADDRESS_ALIGNMENT;
 }
+
+std::pair<bool, size_t> getSwKernelInstructionPrefetchConfig(VPU::ArchKind arch) {
+    // Return {useDummyKernelForInstructionPrefetch, minimumShaveStartTimeForPrefetch}
+    switch (arch) {
+    case VPU::ArchKind::NPU40XX:
+        return std::make_pair(true, MIN_FREE_CYCLES_FOR_PREFETCH_280K);
+    default:
+        VPUX_THROW("Unsupported Arch {0} to do Shave Instruction Prefetch", arch);
+    }
+}
+
 }  // namespace VPUIP
 }  // namespace vpux

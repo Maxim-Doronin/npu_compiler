@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -336,12 +336,14 @@ mlir::Value GeneralPoolingBaseRewriter<ConcreteOp>::createFirstSplitOp(ConcreteO
         auto strides = Shape{1, 1};
 
         if (kernel[Dims4D::Kernel::Y] !=
-            (inShape[Dims4D::Act::H] + padBegin[Dims4D::PadsBegin::Top] + padEnd[Dims4D::PadsEnd::Bottom]))
+            (inShape[Dims4D::Act::H] + padBegin[Dims4D::PadsBegin::Top] + padEnd[Dims4D::PadsEnd::Bottom])) {
             strides[Dims4D::Strides::Y] = kernel[Dims4D::Strides::Y];
+        }
 
         if (kernel[Dims4D::Kernel::X] !=
-            (inShape[Dims4D::Act::W] + padBegin[Dims4D::PadsBegin::Left] + padEnd[Dims4D::PadsEnd::Right]))
+            (inShape[Dims4D::Act::W] + padBegin[Dims4D::PadsBegin::Left] + padEnd[Dims4D::PadsEnd::Right])) {
             strides[Dims4D::Strides::X] = kernel[Dims4D::Strides::X];
+        }
 
         return strides;
     };

@@ -1,19 +1,12 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
-#include "vpux/compiler/dialect/const/attributes/content.hpp"
-#include "vpux/compiler/dialect/core/IR/attributes.hpp"
-
 #include "vpux/compiler/dialect/IE/utils/unsqueeze.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/PatternMatch.h>
-#include <mlir/Support/LogicalResult.h>
+#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 
 using namespace vpux;
 
@@ -35,25 +28,28 @@ mlir::LogicalResult vpux::IE::UnsqueezeOp::inferReturnTypeComponents(
 
     const auto input = unsqueeze.getInput();
     const auto inType = mlir::cast<mlir::RankedTensorType>(input.getType());
-    const auto inShape = inType.getShape();
     const auto inOrder = DimsOrder::fromValue(input);
+    const auto outOrder = VPU::inferUnsqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inType.getShape());
 
-    const auto outShape = propagateShape(loc, inShape, axes.value());
-    if (mlir::failed(outShape)) {
+    auto outShapeOrFail =
+            callOnShapeOf(inType, [&](const auto& inShape) -> mlir::FailureOr<std::pair<Shape, TensorAttr>> {
+                const auto outAnyShape = unsqueezeShape(loc, inShape, *axes);
+                if (mlir::failed(outAnyShape)) {
+                    return mlir::failure();
+                }
+
+                auto outShape = extractShape(*outAnyShape);
+                const auto outDesc =
+                        getTensorAttr(inType, outOrder.toAffineMap(ctx), getMemorySpace(inType), *outAnyShape);
+                return std::make_pair(std::move(outShape), outDesc);
+            });
+
+    if (mlir::failed(outShapeOrFail)) {
         return mlir::failure();
     }
+    const auto [outShape, outDesc] = std::move(*outShapeOrFail);
 
-    const auto outBounds = IE::propagateDynamicAttr(loc, input, axes.value());
-    if (mlir::failed(outBounds)) {
-        return mlir::failure();
-    }
-
-    const auto outDesc = vpux::getTensorAttr(
-            ctx, vpux::VPU::inferUnsqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inShape),
-            vpux::getMemorySpace(inType), Bounds(outBounds.value()));
-
-    inferredReturnShapes.emplace_back(ArrayRef(outShape.value()), inType.getElementType(), outDesc);
-
+    inferredReturnShapes.emplace_back(outShape.raw(), inType.getElementType(), outDesc);
     return mlir::success();
 }
 

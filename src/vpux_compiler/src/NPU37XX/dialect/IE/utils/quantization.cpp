@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/utils/quantization.hpp"
@@ -29,8 +29,9 @@ bool IE::arch37xx::isMixPrecisionSupported(mlir::Operation* origOp, const bool i
         auto addOp = mlir::dyn_cast<IE::AddOp>(origOp);
         const auto shape1 = getShape(addOp.getInput1());
         const auto shape2 = getShape(addOp.getInput2());
-        if (shape1 != shape2)
+        if (shape1 != shape2) {
             return false;
+        }
     }
 
     // Float input with quantized output supports leaky ReLU when quantize out is per-tensor.

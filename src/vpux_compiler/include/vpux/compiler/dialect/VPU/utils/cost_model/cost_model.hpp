@@ -18,6 +18,69 @@ namespace vpux {
 float getWeightsSparsityRatio(vpux::NDTypeInterface weightsType, int64_t compressedSize);
 
 namespace VPU {
+
+/**
+ * Analyzes the VPUNN Layer Cost Model with a custom `isInvalidated` function.
+ * This analysis object remains preserved once constructed, until `invalidate` is called
+ * or the AnalysisManager is cleared.
+ */
+class LayerCostModelAnalysis {
+public:
+    explicit LayerCostModelAnalysis(mlir::ModuleOp moduleOp);
+    std::shared_ptr<VPUNN::VPULayerCostModel> getVPUNNLayerCostModel();
+
+    // Used by AnalysisManager to check if this analysis should be preserved.
+    // If return false, preserve this analysis. Otherwise release it.
+    bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&);
+
+    // Invalidate this analysis
+    // The resource will be destroyed after pass
+    void invalidate();
+
+    // If the input analysis is empty, create a layer cost model instance and return it.
+    // Otherwise, return the cached layer cost model instance.
+    static std::shared_ptr<VPUNN::VPULayerCostModel> getOrCreateLayerCostModel(
+            std::optional<std::reference_wrapper<LayerCostModelAnalysis>> analysis, VPU::ArchKind arch,
+            Logger log = Logger::global().nest("layer-cost-model-analysis"));
+
+private:
+    std::shared_ptr<VPUNN::VPULayerCostModel> _layerCostModel;
+
+    // Flag indicating whether the analysis is preserved. Initialized to true.
+    bool _preserved = true;
+};
+
+/**
+ * Analyzes the VPUNN L1 Cost Model with a custom `isInvalidated` function.
+ * This analysis object remains preserved once constructed, until `invalidate` is called
+ * or the AnalysisManager is cleared.
+ */
+class CostModelAnalysis {
+public:
+    explicit CostModelAnalysis(mlir::ModuleOp moduleOp);
+    std::shared_ptr<VPUNN::VPUCostModel> getVPUNNCostModel();
+
+    // Determines if the analysis is invalidated based on preserved analyses.
+    // Returns true if the analysis is invalidated, false otherwise.
+    bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&);
+
+    // Invalidate this analysis
+    // The resource will be destroyed after pass
+    void invalidate();
+
+    // If the input analysis is empty, create a cost model instance and return it.
+    // Otherwise, return the cached cost model instance.
+    static std::shared_ptr<VPUNN::VPUCostModel> getOrCreateCostModel(
+            std::optional<std::reference_wrapper<CostModelAnalysis>> analysis, VPU::ArchKind arch,
+            Logger log = Logger::global().nest("cost-model-analysis"));
+
+private:
+    std::shared_ptr<VPUNN::VPUCostModel> _costModel;
+
+    // Flag indicating whether the analysis is preserved. Initialized to true.
+    bool _preserved = true;
+};
+
 static constexpr uint32_t MAX_VAL = std::numeric_limits<uint32_t>::max();
 // The top 100 maximum UINT32 vals for error codes
 static constexpr uint32_t NO_COST = 0;

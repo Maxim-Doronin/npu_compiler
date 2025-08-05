@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -209,7 +209,7 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
 
     BoolOption enableSwKernelFifoPerShaveEngine{*this, "enable-sw-kernel-fifo-per-shave-engine",
                                                 llvm::cl::desc("Enable dedicated FIFO for each ActShave engine"),
-                                                llvm::cl::init(true)};
+                                                llvm::cl::init(false)};
 
     // SetupChannelsAutoPadding pass options
     BoolOption enableAutoPaddingODU{*this, "enable-auto-padding-odu",
@@ -256,14 +256,27 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
                            "faster when their shapes are static."),
             llvm::cl::init(true)};
 
-    BoolOption enableWeightsTableReuse{*this, "enable-weights-table-reuse",
-                                       llvm::cl::desc("Enable weights table reuse"), llvm::cl::init(false)};
+    mlir::detail::PassOptions::Option<WeightsTableReuseMode> weightsTableReuseMode{
+            *this, "weights-table-reuse-mode",
+            ::llvm::cl::desc("Option for enabling weights table reuse for different modes."),
+            ::llvm::cl::values(clEnumValN(WeightsTableReuseMode::ENABLED, "ENABLED",
+                                          "Fully enable weights table reuse for all operations"),
+                               clEnumValN(WeightsTableReuseMode::VF_ENABLED, "VF_ENABLED",
+                                          "Enable weights table reuse for pure vertical fusion region only"),
+                               clEnumValN(WeightsTableReuseMode::DISABLED, "DISABLED",
+                                          "Disable weights table reuse for all operations")),
+            ::llvm::cl::init(WeightsTableReuseMode::DISABLED)};
 
     // SetupEnableVPUNNPreSplit pass option
     BoolOption enableVPUNNPreSplit{*this, "enable-vpunn-pre-split", llvm::cl::desc("Enable VPUNN pre-split API"),
                                    llvm::cl::init(false)};
+
+    // SetupEnableDCIM pass options
+    BoolOption enableDCIM{*this, "enable-dcim", ::llvm::cl::desc("Enable DCIM"), ::llvm::cl::init(true)};
+
     InitCompilerOptions() = default;
 
+    // options setup and lit-tests
     template <class OtherOptions>
     InitCompilerOptions(ArchKind archParam, config::CompilationMode compilationModeParam, const OtherOptions& options) {
         arch = std::string(VPU::stringifyEnum(archParam));
@@ -272,66 +285,28 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
         this->matchAndCopyOptionValuesFrom(options);
     }
 
-    InitCompilerOptions(ArchKind archParam, config::CompilationMode compilationModeParam,
-                        std::optional<int> revisionIDParam = std::nullopt,
-                        std::optional<int> numberOfDPUGroupsParam = std::nullopt,
-                        std::optional<int> numberOfDMAPortsParam = std::nullopt,
-                        std::optional<bool> workloadManagementEnableParam = std::nullopt,
-                        std::optional<bool> wlmRollbackParam = std::nullopt,
-                        std::optional<bool> enableSwKernelFifoPerShaveEngineParam = std::nullopt,
-                        std::optional<Byte> availableCMXMemoryParam = std::nullopt,
-                        std::optional<bool> enableFP16CompressedConvolutionParam = std::nullopt,
-                        std::optional<bool> enableVPUNNPreSplitParam = std::nullopt,
-                        std::optional<bool> enableAutoPaddingIDUParam = std::nullopt,
-                        std::optional<bool> enableAutoPaddingODUParam = std::nullopt,
-                        std::optional<bool> enableSEPtrsOperationsParam = std::nullopt,
-                        std::optional<bool> enableExperimentalSEPtrsOperationsParam = std::nullopt,
-                        std::optional<bool> enableReduceOperationsParam = std::nullopt,
-                        std::optional<bool> compilerDynamicQuantizationParam = std::nullopt,
-                        std::optional<bool> enableAdaptiveStrippingParam = std::nullopt,
-                        std::optional<bool> enableExtraStaticShapeOpsParam = std::nullopt) {
+    // PSS tests
+    InitCompilerOptions(ArchKind archParam, config::CompilationMode compilationModeParam) {
         arch = std::string(VPU::stringifyEnum(archParam));
         compilationMode = std::string(config::stringifyEnum(compilationModeParam));
-
-        maybeSetValue(revisionID, revisionIDParam);
-        maybeSetValue(numberOfDPUGroups, numberOfDPUGroupsParam);
-        maybeSetValue(numberOfDMAPorts, numberOfDMAPortsParam);
-        setWorkloadManagementEnable(workloadManagementEnableParam);
-        maybeSetValue(wlmRollback, wlmRollbackParam);
-        maybeSetValue(enableSwKernelFifoPerShaveEngine, enableSwKernelFifoPerShaveEngineParam);
-        maybeSetValue(enableFP16CompressedConvolution, enableFP16CompressedConvolutionParam);
-        maybeSetValue(enableVPUNNPreSplit, enableVPUNNPreSplitParam);
-        setAvailableCMXMemory(availableCMXMemoryParam);
-        maybeSetValue(enableAutoPaddingIDU, enableAutoPaddingIDUParam);
-        maybeSetValue(enableAutoPaddingODU, enableAutoPaddingODUParam);
-        maybeSetValue(enableSEPtrsOperations, enableSEPtrsOperationsParam);
-        maybeSetValue(enableExperimentalSEPtrsOperations, enableExperimentalSEPtrsOperationsParam);
-        maybeSetValue(enableIsReduceSupported, enableReduceOperationsParam);
-        maybeSetValue(enableWeightsDynamicDequantization, compilerDynamicQuantizationParam);
-        maybeSetValue(enableAdaptiveStripping, enableAdaptiveStrippingParam);
-        maybeSetValue(enableExtraStaticShapeOps, enableExtraStaticShapeOpsParam);
-        maybeSetValue(enableWeightsTableReuse, compilerDynamicQuantizationParam);
     }
 
 public:
+    // PSS tests
     void setAvailableCMXMemory(std::optional<Byte> maybeAvailableCMXMemory) {
         if (maybeAvailableCMXMemory.has_value()) {
             availableCMXMemory = maybeAvailableCMXMemory.value().count();
         }
     }
 
+    // PSS tests
     void setNumberOfDPUGroups(std::optional<int> maybeNumberOfDPUGroups) {
         maybeSetValue(numberOfDPUGroups, maybeNumberOfDPUGroups);
     }
 
+    // PSS tests
     void setNumberOfDMAPorts(std::optional<int> maybeNumberOfDMAPorts) {
         maybeSetValue(numberOfDMAPorts, maybeNumberOfDMAPorts);
-    }
-
-    void setWorkloadManagementEnable(std::optional<bool> workloadManagementEnableParam) {
-        if (workloadManagementEnableParam.has_value()) {
-            workloadManagementEnable.setValue(workloadManagementEnableParam.value());
-        }
     }
 
 private:
@@ -361,6 +336,8 @@ std::unique_ptr<mlir::Pass> createMakeOpsWithDistributedTensorPass(bool enableEx
 std::unique_ptr<mlir::Pass> createMakeDistributedCopiesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdjustDistributedTensorAroundOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdjustMemorySpacePass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createCostModelAnalysisConstructPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createCostModelAnalysisDestroyPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMultiClusterStrategyAssignmentPass(
         bool enablePrefetchTiling = true, const int clusteredOpThreshold = CLUSTERED_OP_THRESHOLD_FOR_TILING_CACHE,
         StringRef mcOptimizationScope = "subgraph", Logger log = Logger::global());
@@ -406,6 +383,7 @@ std::unique_ptr<mlir::Pass> createConcatRepeatingBlocksOutliningPass(int64_t min
                                                                      const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createOutlineEntireMainContentPass(const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createBoundedTensorsToDynamicDimsMaskPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createMoveReflectPadToCMXPass(Logger log = Logger::global());
 
 void buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::InitCompilerOptions& options,
                                Logger log = Logger::global());
@@ -457,7 +435,9 @@ std::unique_ptr<mlir::Pass> createTilingStrategyAssignmentPass(bool enablePrefet
                                                                Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createApplyTilingPass(bool enableSCFTiling = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWrapVerticalFusionRegionPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createMoveViewOpsToVerticalFusionPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createMoveViewOpsToVerticalFusionPass(
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        Logger log = Logger::global());
 // Tracking number [E#76838]
 // Turn on the enableVerticalFusionPipelining when VF pipelining is enabled
 std::unique_ptr<mlir::Pass> createMergeVfSubgraphsPass(
@@ -556,6 +536,14 @@ std::unique_ptr<mlir::Pass> createSetupEnableVPUNNPreSplitPass(const InitCompile
                                                                Logger log = Logger::global());
 
 //
+// Weights table reuse
+//
+
+std::unique_ptr<mlir::Pass> createSetupWeightsTableReuseModePass();
+std::unique_ptr<mlir::Pass> createSetupWeightsTableReuseModePass(const InitCompilerOptions& initCompilerOptions,
+                                                                 Logger log = Logger::global());
+
+//
 // SEPtrs Operations
 //
 
@@ -575,10 +563,14 @@ std::unique_ptr<mlir::Pass> createSetupTilingConstraintPass(const InitCompilerOp
 // Weights separation
 //
 
+std::unique_ptr<mlir::Pass> createConstructWsAnalysisPass(const Logger& log = Logger::global());
+std::unique_ptr<mlir::Pass> createDestructWsAnalysisPass(const Logger& log = Logger::global());
+
 std::unique_ptr<mlir::Pass> createQueryWSInfoPass(const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createIntroduceInitFunctionPass(const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createIntroduceInitFunctionPass(StringRef wsExtractionModeString,
                                                             const Logger& log = Logger::global());
+std::unique_ptr<mlir::Pass> createConcatInitResultsPass(const Logger& log = Logger::global());
 
 //
 // Adaptive Stripping
@@ -649,6 +641,7 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
 //
 
 std::unique_ptr<mlir::Pass> createScfComputeOpsOutliningPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createFinalizeComputeFunctionBoundariesPass(Logger log = Logger::global());
 
 //
 // Registration

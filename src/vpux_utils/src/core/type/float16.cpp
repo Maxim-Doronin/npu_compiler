@@ -96,10 +96,11 @@ vpux::type::float16::float16(float value) {
     // Will any bits be shifted off?
     uint32_t shift = biased_exp_16 < -30 ? 0 : (1 << (1 - biased_exp_16));
     uint32_t sticky = (frac & (shift - 1)) ? 1 : 0;
-    if (1 + (-biased_exp_16) > 31)
+    if (1 + (-biased_exp_16) > 31) {
         frac = 0;
-    else
+    } else {
         frac >>= 1 + (-biased_exp_16);
+    }
     frac |= sticky;
     if (((frac & rhalf_16) == rodd_16) || ((frac & rnorm_16) != 0)) {
         frac += reven_16;

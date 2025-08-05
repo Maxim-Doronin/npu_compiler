@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
@@ -38,6 +38,20 @@ TypeComponents& TypeComponents::setShape(ShapeRef newShape) {
     shape = Shape(newShape.toValues());
     return *this;
 }
+TypeComponents& TypeComponents::setShapeWithRepresentation(Shape&& newShape) {
+    shape = std::move(newShape);
+    return *this;
+}
+TypeComponents& TypeComponents::setShapeWithRepresentation(BoundedShape&& newShape) {
+    shape = newShape.toShape();
+    setBounds(newShape.toRepresentation());
+    return *this;
+}
+TypeComponents& TypeComponents::setShapeWithRepresentation(DimsMaskedShape&& newShape) {
+    shape = newShape.toReifiedShape();
+    setDynamicDimsMask(newShape.toRepresentation());
+    return *this;
+}
 TypeComponents& TypeComponents::setElementType(mlir::Type newElementType) {
     elementType = newElementType;
     return *this;
@@ -50,14 +64,14 @@ TypeComponents& TypeComponents::setMemSpace(IndexedSymbolAttr newMemSpace) {
     memSpace = newMemSpace;
     return *this;
 }
-TypeComponents& TypeComponents::setBounds(const Bounds& newBounds) {
+TypeComponents& TypeComponents::setBounds(Bounds&& newBounds) {
     bounds = std::move(newBounds);
     if (!bounds->empty()) {
         dynamicDimsMask = DynamicDimsMask{};
     }
     return *this;
 }
-TypeComponents& TypeComponents::setDynamicDimsMask(const DynamicDimsMask& newDynamicDimsMask) {
+TypeComponents& TypeComponents::setDynamicDimsMask(DynamicDimsMask&& newDynamicDimsMask) {
     dynamicDimsMask = std::move(newDynamicDimsMask);
     if (!dynamicDimsMask->empty()) {
         bounds = Bounds{};
@@ -448,7 +462,9 @@ vpux::DimsOrder MemRefNDTypeInterface::getDimsOrder(mlir::Type type) const {
     if (const auto descAttr = mlir::dyn_cast<vpux::MemRefAttr>(layout)) {
         return DimsOrder::fromAffineMap(descAttr.order().getValue());
     }
-    VPUX_THROW("Missing layout information");
+
+    // return default order if no layout is specified
+    return DimsOrder::fromAffineMap(mlir::AffineMap::getMultiDimIdentityMap(getRank(type), type.getContext()));
 }
 
 vpux::IndexedSymbolAttr MemRefNDTypeInterface::getMemSpace(mlir::Type type) const {

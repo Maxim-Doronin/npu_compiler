@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/pipelines_register.hpp"
@@ -26,7 +26,7 @@ using namespace vpux;
 
 void PipelineRegistry40XX::registerPipelines() {
     mlir::PassPipelineRegistration<DefaultHWOptions40XX>(
-            "ShaveCodeGen", "Compile both from IE to VPUIP and from IERT to LLVM for VPU40XX",
+            "ShaveCodeGen", "Compile both from IE to VPUIP for VPU40XX",
             [](mlir::OpPassManager& pm, const DefaultHWOptions40XX& options) {
                 VPU::InitCompilerOptions initCompilerOptions{VPU::ArchKind::NPU40XX,
                                                              config::CompilationMode::ShaveCodeGen, options};

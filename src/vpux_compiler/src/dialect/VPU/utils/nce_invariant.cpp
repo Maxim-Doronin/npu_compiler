@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 
 using namespace vpux;
@@ -272,6 +273,11 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Lo
                     .Case<IE::SubtractOp>([&](auto origOp) {
                         const auto arch = getArch(origOp);
                         if (!isEltwiseMultiplySubtractSupported(arch)) {
+                            return false;
+                        }
+                        // #E172315: Do not set layout for NCE subtract when using dynamic shapes.
+                        auto outType = origOp.getOutput().getType();
+                        if (auto boundedTensor = mlir::dyn_cast<Core::BoundedTensorType>(outType)) {
                             return false;
                         }
                         return VPU::NCEEltwiseOp::isSupported(origOp, allowDifferentScales, allowDifferentZp,

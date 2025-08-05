@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpux/utils/core/error.hpp>
@@ -107,10 +107,12 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
     const auto numClustersAvailableForCompilation = IE::getTileExecutor(module).getCount();
     const auto multiClusterStrategy = op.getMultiClusterStrategy();
 
-    const auto applyMultiClusterTiling = [&](NDTypeInterface type,
+    const auto applyMultiClusterTiling = [&](mlir::Value operand,
                                              VPU::MultiClusterStrategy strategy) -> NDTypeInterface {
+        auto type = mlir::cast<vpux::NDTypeInterface>(operand.getType());
         auto typeShape = to_small_vector(type.getShape());
-        const auto tilingScheme = VPU::getSWInputTensorNumTiles(op, numClustersAvailableForCompilation, strategy, type);
+        const auto tilingScheme =
+                VPU::getSWInputTensorNumTiles(op, numClustersAvailableForCompilation, strategy, operand);
         VPUX_THROW_UNLESS(typeShape.size() == tilingScheme.size(), "Type shape and tiling scheme are not compatible.",
                           typeShape.size(), tilingScheme.size());
         std::transform(typeShape.begin(), typeShape.end(), tilingScheme.begin(), typeShape.begin(),
@@ -121,18 +123,16 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
     };
 
     for (const auto& operand : operands) {
-        auto operandType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
-        if (multiClusterStrategy.has_value()) {
-            operandType = applyMultiClusterTiling(operandType, multiClusterStrategy.value());
-        }
+        auto operandType = multiClusterStrategy.has_value()
+                                   ? applyMultiClusterTiling(operand, multiClusterStrategy.value())
+                                   : mlir::cast<vpux::NDTypeInterface>(operand.getType());
         bufferSizes.push_back(operandType.getTotalAllocSize());
     }
 
     for (const auto& result : results) {
-        auto resultType = mlir::cast<vpux::NDTypeInterface>(result.getType());
-        if (multiClusterStrategy.has_value()) {
-            resultType = applyMultiClusterTiling(resultType, multiClusterStrategy.value());
-        }
+        auto resultType = multiClusterStrategy.has_value()
+                                  ? applyMultiClusterTiling(result, multiClusterStrategy.value())
+                                  : mlir::cast<vpux::NDTypeInterface>(result.getType());
         bufferSizes.push_back(resultType.getTotalAllocSize());
     }
 
@@ -151,10 +151,10 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
     const auto outputHiddenValuesBufferIdx = op.getNumOperands() + outputHiddenValuesResultIdx;
 
     if (multiClusterStrategy.has_value()) {
-        inputData = applyMultiClusterTiling(inputData, multiClusterStrategy.value());
+        inputData = applyMultiClusterTiling(op.getInputData(), multiClusterStrategy.value());
         inputDataShape = Shape(inputData.getShape());
 
-        outputHiddenValues = applyMultiClusterTiling(outputHiddenValues, multiClusterStrategy.value());
+        outputHiddenValues = applyMultiClusterTiling(op.getOutputHiddenValues(), multiClusterStrategy.value());
         outputHiddenValuesShape = Shape(outputHiddenValues.getShape());
     }
 

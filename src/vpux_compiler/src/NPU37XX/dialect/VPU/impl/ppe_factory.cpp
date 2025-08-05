@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/utils/core/checked_cast.hpp"
@@ -398,8 +398,9 @@ vpux::VPU::PPEAttr PpeFactory::intersectClamps(vpux::VPU::PPEAttr orig, double n
 
 SmallVector<double> PpeFactory::getScale(PPEAttr orig) const {
     const auto intPpeAttr = castToConcreteAttr(orig);
-    if (const auto scaleAttr = intPpeAttr.getQuantScale())
+    if (const auto scaleAttr = intPpeAttr.getQuantScale()) {
         return parseFPArrayAttr<double>(scaleAttr);
+    }
     return {1.0};
 }
 
@@ -415,8 +416,9 @@ PPEAttr PpeFactory::updateScale(PPEAttr orig, ArrayRef<double> scale) const {
 
 SmallVector<double> PpeFactory::getFpPreluAlpha(PPEAttr orig) const {
     const auto intPpeAttr = castToConcreteAttr(orig);
-    if (const auto fpPreluAlphaAttr = intPpeAttr.getFpPreluAlpha())
+    if (const auto fpPreluAlphaAttr = intPpeAttr.getFpPreluAlpha()) {
         return {fpPreluAlphaAttr.getValueAsDouble()};
+    }
     return {1.0};
 }
 

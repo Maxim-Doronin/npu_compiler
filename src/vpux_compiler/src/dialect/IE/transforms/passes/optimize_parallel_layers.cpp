@@ -1,12 +1,13 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
@@ -41,20 +42,6 @@ bool isSliceOnHighestDim(IE::SliceOp sliceOp, ArrayRef<uint64_t> sliceAxes) {
 
     const auto highestDim = getHighestNonTrivialDim(shape, dimOrder).value_or(Dim(0));
     return checked_cast<uint64_t>(highestDim.ind()) == sliceAxis;
-}
-
-SmallVector<uint64_t> getSliceAxes(IE::SliceOp sliceOp) {
-    auto sliceInShape = getShape(sliceOp.getSource());
-    auto sizes = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
-
-    SmallVector<uint64_t> sliceAxes;
-    for (size_t dimIdx = 0; dimIdx < sizes.size(); dimIdx++) {
-        if (sliceInShape[Dim(dimIdx)] != sizes[dimIdx]) {
-            sliceAxes.push_back(static_cast<uint64_t>(dimIdx));
-        }
-    }
-
-    return sliceAxes;
 }
 
 bool isSourceFullySlicedWithoutIntervalOrOverlap(mlir::Value source, ArrayRef<IE::SliceOp> sliceOps) {

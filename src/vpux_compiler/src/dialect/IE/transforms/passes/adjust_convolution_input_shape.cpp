@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -213,7 +213,11 @@ private:
 };
 
 //
-// Adjust input shape of AddOp with same input, from C to H and W like [1, C, 1, 1] -> [1, C/16, 4, 4]
+// Adjust input shape of AddOp with same input, from C to H and W
+//   [1, C, 1, 1]      -> [1, C/16, 4, 4]
+//   [1, 108864, 2, 1] -> [1, 108864/4/7, 2*7, 4]
+//   [1, 12096, 9, 2]  -> [1, 12096/2, 9, 2*2]
+//   [1, 256, 2, 1]    -> [1, 256/4, 2, 1*4]
 //
 mlir::LogicalResult ReshapeAddInput::matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const {
     if (VPU::NCEInvariant::isSupported(origOp).failed()) {
@@ -227,8 +231,12 @@ mlir::LogicalResult ReshapeAddInput::matchAndRewrite(IE::AddOp origOp, mlir::Pat
         return matchFailed(_log, rewriter, origOp, "Not a valid addOp with input shape size 4");
     }
 
-    bool isSameInput = true;
-    if (origOp.getInput1() != origOp.getInput2()) {
+    const auto isConstInput = [](mlir::Value input) {
+        return mlir::isa_and_nonnull<Const::DeclareOp>(input.getDefiningOp());
+    };
+
+    bool isSameInput = origOp.getInput1() == origOp.getInput2();
+    if (!isSameInput && !isConstInput(origOp.getInput1()) && !isConstInput(origOp.getInput2())) {
         // Adjust shape on H since eltwise_add just support clustering and SOH when multi-clustering
         // For parallel eltwise ops, to avoid being split to more ops to avoid idle regressions
         // since WLM is not good for NPU40XX and subsequent platforms
@@ -280,16 +288,17 @@ mlir::LogicalResult ReshapeAddInput::matchAndRewrite(IE::AddOp origOp, mlir::Pat
                            "Cannot reshape channels of operation with non-channel-agnostic post-op.");
     }
 
-    if (inputShape[Dims4D::Act::H] != 1 || inputShape[Dims4D::Act::W] != 1) {
-        return matchFailed(_log, rewriter, origOp, "Input shape HxW is not 1x1");
+    const auto needToAdjustChannel = inputShape[Dims4D::Act::C] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
+    if ((inputShape[Dims4D::Act::H] >= 4 || inputShape[Dims4D::Act::W] >= 4) && !needToAdjustChannel) {
+        return matchFailed(_log, rewriter, origOp, "Input shape H or W is greater than 4");
     }
 
     // Adjust the width/height/channel for alignment
     int64_t divider = 1;
-    int64_t widthReshaped, heightReshaped, channelReshaped;
+    int64_t widthReshaped, heightReshaped;
     std::tie(divider, widthReshaped) = calcShapeAligned(divider, inputShape[Dims4D::Act::W]);
     std::tie(divider, heightReshaped) = calcShapeAligned(divider, inputShape[Dims4D::Act::H]);
-    if (divider == 1) {
+    if (divider == 1 && !needToAdjustChannel) {
         return matchFailed(_log, rewriter, origOp, "Don't need to align");
     }
 
@@ -297,7 +306,7 @@ mlir::LogicalResult ReshapeAddInput::matchAndRewrite(IE::AddOp origOp, mlir::Pat
         return matchFailed(_log, rewriter, origOp, "Input shape could not be divided {0}", inputShape[Dims4D::Act::C]);
     }
 
-    channelReshaped = inputShape[Dims4D::Act::C] / divider;
+    auto channelReshaped = inputShape[Dims4D::Act::C] / divider;
     auto alignIface = mlir::cast<IE::AlignedChannelsOpInterface>(origOp.getOperation());
     if (channelReshaped % alignIface.getInputChannelAlignment() != 0) {
         return matchFailed(_log, rewriter, origOp, "Remaining channel is not aligned.");
@@ -336,6 +345,10 @@ mlir::LogicalResult ReshapeAddInput::matchAndRewrite(IE::AddOp origOp, mlir::Pat
                 widthReshaped = newChannelShape[1];
             }
         }
+    }
+
+    if (channelReshaped == inputShape[Dims4D::Act::C]) {
+        return matchFailed(_log, rewriter, origOp, "The final channel is not changed.");
     }
 
     // Reshape Input

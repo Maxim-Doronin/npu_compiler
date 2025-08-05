@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -97,8 +97,9 @@ bool prevHasUniqueUsers(mlir::async::ExecuteOp prevExecOp, mlir::async::ExecuteO
     SmallVector<mlir::async::ExecuteOp> uniqueUsersPrevOp;
     std::set_difference(usersPrevOp.begin(), usersPrevOp.end(), usersOp.begin(), usersOp.end(),
                         std::back_inserter(uniqueUsersPrevOp));
-    if (!uniqueUsersPrevOp.empty())
+    if (!uniqueUsersPrevOp.empty()) {
         return true;
+    }
 
     return false;
 }

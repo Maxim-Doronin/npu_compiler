@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/sprlut_utils.hpp"
@@ -93,7 +93,7 @@ mlir::Value SprLUTConverter::createSprLookupTableConst(VPUIP::NCEClusterTaskOp n
 
 mlir::Value SprLUTConverter::createCopyDestination(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUTConst,
                                                    mlir::PatternRewriter& rewriter) const {
-    const auto input = VPUIP::getTopBufferOfNCEClusterTiling(nceClusterTask, nceClusterTask.getInput());
+    const auto input = nceClusterTask.getInput();
     const auto inputType = input.getType();
 
     return llvm::TypeSwitch<mlir::Type, mlir::Value>(inputType)
@@ -104,9 +104,6 @@ mlir::Value SprLUTConverter::createCopyDestination(VPUIP::NCEClusterTaskOp nceCl
 
                 auto alignment = vpux::getIntAttr(nceClusterTask.getContext(), VPU::SPRLUT_ALIGNMENT_REQUIREMENT);
 
-                if (auto nceClusterTiling = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(nceClusterTask->getParentOp())) {
-                    rewriter.setInsertionPoint(nceClusterTiling);
-                }
                 auto allocDistributed = rewriter.create<VPURT::AllocDistributed>(
                         nceClusterTask.getLoc(), ditributedBufferType, alignment, nullptr);
                 return allocDistributed->getResult(0);
@@ -155,15 +152,12 @@ VPUIP::DistributedBufferType SprLUTConverter::createDistributedBufferType(VPU::D
 void SprLUTConverter::replaceAttrWithConst(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUT,
                                            mlir::PatternRewriter& rewriter) const {
     auto newInput = [&]() -> mlir::Value {
-        if (auto nceClusterTiling = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(nceClusterTask->getParentOp())) {
-            auto& bodyBlock = nceClusterTiling.getBody().front();
+        if (vpux::VPUIP::hasDistributedOperand(nceClusterTask)) {
             const auto sprLUTOutType = mlir::dyn_cast<VPUIP::DistributedBufferType>(sprLUT.getType());
             VPUX_THROW_WHEN(sprLUTOutType == nullptr,
                             "{0}: sprLUT output type is expected to be DistributedBufferType, but got {1}",
                             getDebugName(), sprLUT.getType());
-            nceClusterTiling.getInputsMutable().append(sprLUT);
-            return bodyBlock.insertArgument(bodyBlock.getNumArguments() - nceClusterTiling.getOutputs().size(),
-                                            sprLUTOutType.getCompactType(), sprLUT.getLoc());
+            nceClusterTask.getSprLookupTableMutable().append(sprLUT);
         }
         return sprLUT;
     }();

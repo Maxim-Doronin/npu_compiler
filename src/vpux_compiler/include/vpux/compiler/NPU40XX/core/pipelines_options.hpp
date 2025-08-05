@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -27,7 +27,7 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
 
     BoolOption enableConvertToPalletizationLUT{*this, "enable-convert-to-palletization-lut",
                                                llvm::cl::desc("Enable conversion of certain types to palletized LUT"),
-                                               llvm::cl::init(false)};
+                                               llvm::cl::init(true)};
 
     BoolOption enableM2I{*this, "enable-m2i", llvm::cl::desc("Enable M2I passes"), llvm::cl::init(false)};
 
@@ -84,7 +84,7 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
                                        "Compiler generates DMA to program initial barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
                                        "ALL_BARRIER_DMAS_SCHEDULED",
-                                       "Compiler generates DMA to program initial barriers"))};
+                                       "Compiler generates DMAs to program all barriers"))};
 
     IntOption modelIdentifier{
             *this, "model-identifier",

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -36,7 +36,14 @@ mlir::FailureOr<Shape> getShapeCastExpandedShapeKeepDimC(mlir::Operation* operat
 mlir::FailureOr<Shape> getShapeCastExpandedShapeCanNotAlign(mlir::Operation* operation, ShapeRef inputShape,
                                                             Logger log);
 
+mlir::FailureOr<Shape> getShapeCastExpandedShapeWithMinimalDimChange(mlir::Operation* operation, ShapeRef inputShape,
+                                                                     Logger log);
+
 bool isShapeCompatibleWithODUPermute(const ShapeRef shape, const int64_t alignment);
 bool isODUPermuteEffectiveForShape(const ShapeRef shape, const int64_t alignment);
+
+SmallVector<int64_t> dispatchBounds(const mlir::Value operand);
+SmallVector<int64_t> inferOutputBounds(const mlir::Value lhs, const mlir::Value rhs, const ShapeRef outputShape,
+                                       const IE::AutoBroadcastType autoBroadcast);
 }  // namespace IE
 }  // namespace vpux

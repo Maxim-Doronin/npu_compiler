@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -80,12 +80,16 @@ mlir::LogicalResult MultiplyRewriter::matchAndRewrite(IE::MultiplyOp origOp, mli
 
     auto smallestSizeInput = getInputWithSmallerSize(origOpSmallSizeInput, producerSmallSizeInput);
     auto middleSizeInput = smallestSizeInput == origOpSmallSizeInput ? producerSmallSizeInput : origOpSmallSizeInput;
-    const auto canBroadcast = IE::broadcastEltwiseShape(getShape(middleSizeInput), getShape(smallestSizeInput),
-                                                        IE::AutoBroadcastType::NUMPY, origOp.getLoc());
-    if (mlir::failed(canBroadcast)) {
+    const auto validBroadcastShape = IE::broadcastEltwiseShape(getShape(middleSizeInput), getShape(smallestSizeInput),
+                                                               IE::AutoBroadcastType::NUMPY, origOp.getLoc());
+    if (mlir::failed(validBroadcastShape)) {
         return matchFailed(_log, rewriter, origOp, "broadcast input failed");
     }
+    const auto newMultiplyOutShape = Shape(validBroadcastShape.value());
 
+    if (newMultiplyOutShape.totalSize() > getShape(producerLargeSizeInput).totalSize()) {
+        return matchFailed(_log, rewriter, origOp, "new multiply output is too big");
+    }
     auto multiply_1 = rewriter.create<IE::MultiplyOp>(appendLoc(origOp.getLoc(), "_new_multiply_1"), middleSizeInput,
                                                       smallestSizeInput, IE::AutoBroadcastType::NUMPY, nullptr, nullptr,
                                                       nullptr, nullptr);

@@ -1,17 +1,19 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/utils/profiling/reports/api.hpp"
 
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/logger/logger.hpp"
+#include "vpux/utils/profiling/common.hpp"
 #include "vpux/utils/profiling/reports/stats.hpp"
 #include "vpux/utils/profiling/reports/tasklist.hpp"
 #include "vpux/utils/profiling/reports/ted.hpp"
 #include "vpux/utils/profiling/taskinfo.hpp"
 #include "vpux/utils/profiling/tasknames.hpp"
+#include "vpux/utils/profiling/utils.hpp"
 
 #include <exception>
 #include <iomanip>
@@ -141,21 +143,6 @@ std::string getTaskCategory(TaskInfo::ExecType type) {
     }
 }
 
-std::string formatDuration(uint64_t timeNs) {
-    uint64_t ms = timeNs / 1000000;
-    uint64_t us = (timeNs / 1000) % 1000;
-    uint64_t ns = timeNs % 1000;
-    std::string timeString;
-    if (ms != 0) {
-        timeString += printToString("{0}ms ", ms);
-    }
-    if (us != 0) {
-        timeString += printToString("{0}us ", us);
-    }
-    timeString += printToString("{0}ns", ns);
-    return timeString;
-}
-
 TraceEventDesc makeTaskTraceEvent(const TaskInfo& task, int pid, int tid) {
     TraceEventDesc ted;
     ted.name = task.name;
@@ -166,21 +153,7 @@ TraceEventDesc makeTaskTraceEvent(const TaskInfo& task, int pid, int tid) {
     ted.timestamp = task.start_time_ns / 1000.;
     ted.duration = task.duration_ns / 1000.;
 
-    if (task.total_cycles != 0) {
-        ted.customArgs.push_back({"Total cycles:", std::to_string(task.total_cycles)});
-    }
-    if (task.stall_cycles != 0) {
-        ted.customArgs.push_back({"Stall cycles:", std::to_string(task.stall_cycles)});
-    }
-    if (task.stall_counters.lsu0_stalls != 0) {
-        ted.customArgs.push_back({"LSU0 stall cycles:", std::to_string(task.stall_counters.lsu0_stalls)});
-    }
-    if (task.stall_counters.lsu1_stalls != 0) {
-        ted.customArgs.push_back({"LSU1 stall cycles:", std::to_string(task.stall_counters.lsu1_stalls)});
-    }
-    if (task.stall_counters.instruction_stalls != 0) {
-        ted.customArgs.push_back({"Instruction stall cycles:", std::to_string(task.stall_counters.instruction_stalls)});
-    }
+    ted.customArgs = task.customArgs;
     return ted;
 }
 

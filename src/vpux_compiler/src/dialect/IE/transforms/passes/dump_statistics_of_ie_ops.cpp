@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -159,7 +159,7 @@ utils::OpCounterTree collectCounters(const ExternalCounterState& state) {
                                [&](mlir::Operation* op) {
                                    // Note: ignore meta-info ops (e.g. IE.MemoryResource)
                                    return mlir::isa<IE::IEDialect>(op->getDialect()) &&
-                                          !op->hasTrait<IERT::ResourceOpInterface::Trait>();
+                                          !op->hasTrait<IE::ResourceOpInterface::Trait>();
                                },
                                /* unrecognized op handler = */ getOpName),
                        std::move(ieOps));

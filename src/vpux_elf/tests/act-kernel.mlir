@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 module @Test attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {

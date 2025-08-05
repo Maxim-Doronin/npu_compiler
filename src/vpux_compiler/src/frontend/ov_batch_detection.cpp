@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/frontend/ov_batch_detection.hpp"
@@ -93,11 +93,6 @@ std::tuple<bool, std::string> isBatchDetectedByUserLayouts(const std::shared_ptr
         const auto& shape = input->get_partial_shape();
         ov::Layout layout = ov::layout::get_layout(input);
         logger.trace("input: {0}, layout: {1}, shape: {2}", input_id, layout.to_string(), shape.to_string());
-        if (shape.is_dynamic()) {
-            return std::make_tuple(false,
-                                   "Dynamic networks are not supported when batching is handled by the compiler. "
-                                   "Batch-network auto detection will be skipped");
-        }
         if (collectDebatchCoeffDescriptionIfPossible(debatchingCoefficientsStream, layout, shape)) {
             successfulBatchCoeffCollectionCount++;
         }
@@ -108,11 +103,6 @@ std::tuple<bool, std::string> isBatchDetectedByUserLayouts(const std::shared_ptr
         const auto& shape = output->get_output_partial_shape(0);
         ov::Layout layout = ov::layout::get_layout(output);
         logger.trace("output layout: {0}, shape: {1}", layout.to_string(), shape.to_string());
-        if (shape.is_dynamic()) {
-            return std::make_tuple(false,
-                                   "Dynamic networks are not supported when batching is handled by the compiler. "
-                                   "Batch-network auto detection will be skipped");
-        }
         if (collectDebatchCoeffDescriptionIfPossible(debatchingCoefficientsStream, layout, shape)) {
             successfulBatchCoeffCollectionCount++;
         }
@@ -146,7 +136,7 @@ std::tuple<bool, std::string> isBatchDetectedByOVHeuristic(const std::shared_ptr
         passManager.run_passes(testBatchModel);
     } catch (const std::exception& ex) {
         std::stringstream stream;
-        stream << "A batch-network auto detection heutistics have been failed with the error: " << ex.what()
+        stream << "A batch-network auto detection heuristics have been failed with the error: " << ex.what()
                << "\nPlease specify model inputs/outputs layouts manually so that the compiler could reuse that "
                   "information to bypass "
                   "the auto detection algorithm!"
@@ -163,11 +153,6 @@ std::tuple<bool, std::string> isBatchDetectedByOVHeuristic(const std::shared_ptr
             const auto& input = params[input_id];
             const auto& shape = input->get_partial_shape();
             logger.trace("input: {0}, has shape: {1}", input_id, shape.to_string());
-            if (shape.is_dynamic()) {
-                return std::make_tuple(false,
-                                       "Dynamic networks are not supported when batching is handled by the compiler. "
-                                       "Batch-network auto detection will be skipped");
-            }
             if (collectDebatchCoeffDescriptionIfPossible(debatchingCoefficientsStream, shape, realBatchShapesCount)) {
                 successfulBatchCoeffCollectionCount++;
             }
@@ -177,11 +162,6 @@ std::tuple<bool, std::string> isBatchDetectedByOVHeuristic(const std::shared_ptr
         for (const auto& output : testBatchModel->get_results()) {
             const auto& shape = output->get_output_partial_shape(0);
             logger.trace("output has shape: {0}", shape.to_string());
-            if (shape.is_dynamic()) {
-                return std::make_tuple(false,
-                                       "Dynamic networks are not supported when batching is handled by the compiler. "
-                                       "Batch-network auto detection will be skipped");
-            }
             if (collectDebatchCoeffDescriptionIfPossible(debatchingCoefficientsStream, shape, realBatchShapesCount)) {
                 successfulBatchCoeffCollectionCount++;
             }
@@ -319,7 +299,7 @@ std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::
         return newConfig;
     };
 
-    logger.debug("=== Run batch-network auto detection heutistics based on model layouts information ===");
+    logger.debug("=== Run batch-network auto detection heuristics based on model layouts information ===");
     std::tie(batchDetected, debatchingCoefficients) = isBatchDetectedByUserLayouts(model, logger);
     if (batchDetected) {
         if (isModelSuitableForDebatching(model, config, logger)) {
@@ -329,7 +309,7 @@ std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::
     }
     logger.debug("{0}", debatchingCoefficients);
 
-    logger.debug("=== Run OpenVINO batch-network auto detection heutistics ===");
+    logger.debug("=== Run OpenVINO batch-network auto detection heuristics ===");
     std::tie(batchDetected, debatchingCoefficients) = isBatchDetectedByOVHeuristic(model, logger);
     if (batchDetected) {
         if (isModelSuitableForDebatching(model, config, logger)) {
@@ -348,5 +328,50 @@ bool checkCfgOnBatchOptionConsistency(const intel_npu::Config& config, std::ostr
         return false;
     }
     return true;
+}
+
+std::shared_ptr<ov::Model> debatchDynamicModel(const std::shared_ptr<ov::Model>& origModel, Logger& logger) {
+    bool batchDetected = false;
+    std::string debatchingCoefficients;
+    auto debatchModel = [&logger, &origModel](const std::string& debatcherParams) -> std::shared_ptr<ov::Model> {
+        logger.debug("Trying to apply model debatching coefficients: {0}", debatcherParams);
+        auto debatchedModel = origModel->clone();
+        auto coefficients = DebatchCoefficients::create(debatcherParams);
+        VPUX_THROW_UNLESS(coefficients.has_value(), "Cannot create DebatchCoefficients from string: {0}",
+                          debatcherParams);
+        size_t inputIdx = 0;
+        std::map<std::string, ov::PartialShape> newShapes;
+        for (auto&& item : debatchedModel->get_parameters()) {
+            auto layout = item->get_layout();
+            auto partShape = item->get_partial_shape();
+            if (!ov::layout::has_batch(layout)) {
+                std::optional<DebatchCoeffDescription> coeff = coefficients->getCoefficient(inputIdx);
+                if (coeff.has_value()) {
+                    partShape[coeff.value().batchPositionIndex.ind()] = 1;
+                }
+            } else {
+                partShape[ov::layout::batch_idx(layout)] = 1;
+            }
+            logger.debug("Input: {0} will use the new shape: {1}", item->get_friendly_name(), partShape.to_string());
+            newShapes.emplace(item->get_friendly_name(), partShape);
+            inputIdx++;
+        }
+        debatchedModel->reshape(newShapes);
+        return debatchedModel;
+    };
+
+    logger.debug("=== Run batch-network auto detection heuristics based on model layouts information ===");
+    std::tie(batchDetected, debatchingCoefficients) = isBatchDetectedByUserLayouts(origModel, logger);
+    if (batchDetected) {
+        return debatchModel(debatchingCoefficients);
+    }
+
+    logger.debug("=== Run OpenVINO batch-network auto detection heuristics ===");
+    std::tie(batchDetected, debatchingCoefficients) = isBatchDetectedByOVHeuristic(origModel, logger);
+    if (batchDetected) {
+        return debatchModel(debatchingCoefficients);
+    }
+
+    return {nullptr};
 }
 }  // namespace vpux

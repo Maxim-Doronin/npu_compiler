@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <llvm/ADT/STLExtras.h>
@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -317,9 +318,65 @@ bool ExpandEltwisePattern::init() {
             return false;
         }
     }
+    auto expandedShape = getShape(_eltwiseOp->getOperand(0));
+    auto onlyExpandOnDimC = llvm::all_of(irange(expandedShape.size()), [&](auto idx) {
+        if (Dim(idx) == Dims4D::Act::C) {
+            return true;
+        }
+        return expandedShape[Dim(idx)] == _unExpandedShape[Dim(idx)];
+    });
+
+    auto hasEfficientWorkload = [&]() {
+        auto moduleOp = _eltwiseOp->getParentOfType<mlir::ModuleOp>();
+        const auto numCluster = IE::getTileExecutor(moduleOp).getCount();
+        VPUX_THROW_WHEN(numCluster <= 0, "Number of clusters should be a positive integer, while it is {0}",
+                        numCluster);
+
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(_eltwiseOp->getOperand(0).getType());
+        const auto sizeToAlign = VPU::NCEInvariant::getAlignment(inputType.getElementType());
+        auto dimSizeForWC = _unExpandedShape[Dims4D::Act::W] * _unExpandedShape[Dims4D::Act::C];
+        if (dimSizeForWC % sizeToAlign != 0) {
+            return false;
+        }
+
+        return _unExpandedShape[Dims4D::Act::H] % VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT == 0 &&
+               (_unExpandedShape[Dims4D::Act::H] / VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT) >= numCluster &&
+               (dimSizeForWC / sizeToAlign) % VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT == 0 &&
+               sizeToAlign <= _unExpandedShape[Dims4D::Act::H] * dimSizeForWC / sizeToAlign;
+    };
+
+    auto isLargeOpNeedTiling = [&]() {
+        auto module = _eltwiseOp->getParentOfType<mlir::ModuleOp>();
+        const auto numClusters = IE::getTileExecutor(module).getCount();
+        const auto availableCMXSizePerCluster = vpux::VPU::getTotalCMXSize(_eltwiseOp).count();
+        const auto totalAvailableCMXSize = availableCMXSizePerCluster * numClusters;
+        SmallVector<Byte> buffSizes;
+        for (auto operand : _eltwiseOp->getOperands()) {
+            auto inType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
+            buffSizes.push_back(_unExpandedShape.totalSize() * inType.getElemTypeSize());
+        }
+
+        for (auto output : _eltwiseOp->getResults()) {
+            auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
+            buffSizes.push_back(_unExpandedShape.totalSize() * outputType.getElemTypeSize());
+        }
+
+        const auto arch = VPU::getArch(_eltwiseOp);
+        auto requiredCMXSize = vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffSizes).count();
+        return requiredCMXSize > totalAvailableCMXSize;
+    };
 
     auto newExpandedShapeResult = getShapeCastExpandedShape(_eltwiseOp, getShape(_eltwiseOp->getOperand(0)).toValues(),
                                                             _unExpandedShape, _log.nest());
+
+    if (onlyExpandOnDimC && hasEfficientWorkload() && isLargeOpNeedTiling()) {
+        auto _newExpandedShapeWithMinimalDimChange =
+                getShapeCastExpandedShapeWithMinimalDimChange(_eltwiseOp, _unExpandedShape, _log.nest());
+        if (mlir::succeeded(_newExpandedShapeWithMinimalDimChange)) {
+            newExpandedShapeResult = _newExpandedShapeWithMinimalDimChange.value();
+        }
+    }
+
     if (mlir::failed(newExpandedShapeResult)) {
         return false;
     }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/interfaces/common_rewriters/convert_to_palletization_lut.hpp"
@@ -8,7 +8,6 @@
 
 using namespace vpux;
 
-// Returns false when type conversion is required;
 bool vpux::IE::isLegalTensorElemForPalletization(mlir::Type elementType, const bool convertOnlyAsymmetricZp) {
     const auto isQuantizedTypeLegal = [convertOnlyAsymmetricZp](mlir::quant::QuantizedType quantizedType) -> bool {
         auto storageTypeInt = mlir::dyn_cast<mlir::IntegerType>(quantizedType.getStorageType());

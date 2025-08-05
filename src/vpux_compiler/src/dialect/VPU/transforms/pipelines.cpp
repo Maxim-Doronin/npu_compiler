@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
@@ -79,6 +79,7 @@ void vpux::VPU::buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::In
     pm.addPass(VPU::createSetupIsReduceSupportedPass(options, log));
     pm.addPass(VPU::createSetupEnableFP16CompressedConvPass(options, log));
     pm.addPass(VPU::createSetupEnableVPUNNPreSplitPass(options, log));
+    pm.addPass(VPU::createSetupWeightsTableReuseModePass(options, log));
     pm.addPass(VPU::createSetupEnableSEPtrsOperationsPass(options, log));
     pm.addPass(VPU::createSetupEnableAdaptiveStrippingPass(options, log));
     pm.addPass(VPU::createSetupEnableExtraStaticShapeOpsPass(options, log));
@@ -186,7 +187,7 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
 
 void vpux::VPU::buildVFPipeline(mlir::OpPassManager& pm, const VPU::TilingOptions& options, Logger log) {
     pm.addPass(VPU::createWrapVerticalFusionRegionPass(log));
-    pm.addPass(VPU::createMoveViewOpsToVerticalFusionPass(log));
+    pm.addPass(VPU::createMoveViewOpsToVerticalFusionPass(options.workloadManagementMode, log));
     pm.addPass(VPU::createMergeVfSubgraphsPass(options.enableVerticalFusionPipelining, options.enablePrefetchTiling,
                                                options.workloadManagementMode, log));
     pm.addPass(VPU::createEfficientIROrderPass(log));

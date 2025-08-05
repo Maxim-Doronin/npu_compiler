@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -34,6 +34,8 @@ public:
 
     explicit LayerCostModel(mlir::func::FuncOp func, bool enablePrefetchTiling, Logger log,
                             SiblingOpsAnalysis& siblingsOpsAnalysis);
+    explicit LayerCostModel(mlir::func::FuncOp func, bool enablePrefetchTiling, SiblingOpsAnalysis& siblingsOpsAnalysis,
+                            std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModelPtr, Logger log);
     ~LayerCostModel() = default;
 
     double getLayerCost(VPU::ClusteredOpInterface clusteredOp, VPU::MultiClusterStrategy strategy,
@@ -211,5 +213,6 @@ bool setSOKForRuntimeDequantConvolution(VPU::NCEOpInterface nceOp, LayerCostMode
 
 bool alignStrategyWithParentRuntimeDequant(VPU::ClusteredOpInterface clusteredOp, LayerCostModel& costModel);
 
+double getStrideDMACorrectionThresholdByArch([[maybe_unused]] VPU::ArchKind arch);
 }  // namespace VPU
 }  // namespace vpux

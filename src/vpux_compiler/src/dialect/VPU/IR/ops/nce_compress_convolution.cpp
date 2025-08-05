@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -303,8 +303,8 @@ bool VPU::NCECompressConvolutionOp::doesLayerFitIntoCMX(VPU::MultiClusterStrateg
 
     SmallVector<Byte> buffers = {
             VPU::getTotalAllocSizeWithDistribution(
-                    getInput().getType(), getActivationDistributionAttrFromOp(nceOp, getInput().getType(), numClusters,
-                                                                              strategy, siblingsAnalysis)),
+                    getInput().getType(), getActivationDistributionAttrFromOp(nceOp, getInput(), getInput().getType(),
+                                                                              numClusters, strategy, siblingsAnalysis)),
             VPU::getTotalAllocSizeWithDistribution(
                     getFilter().getType(),
                     getFilterDistributionAttrFromOp(nceOpInterface, getFilter().getType(), numClusters, strategy)),
@@ -329,8 +329,8 @@ bool VPU::NCECompressConvolutionOp::doesLayerChangeOutputAlignmentFitIntoCMX(
     auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
             nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
-    auto distributedInputType =
-            getDistributedActivationTypeFromOp(nceOp, nceOp.getInput().getType(), numClusters, strategy);
+    auto distributedInputType = getDistributedActivationTypeFromOp(nceOp, nceOp.getInput(), nceOp.getInput().getType(),
+                                                                   numClusters, strategy);
     auto distributedFilterType =
             getDistributedFilterTypeFromOp(nceOpInterface, nceOp.getFilter().getType(), numClusters, strategy);
     return fitIntoCMX(distributedInputType, distributedFilterType, newDistributedTensorType);

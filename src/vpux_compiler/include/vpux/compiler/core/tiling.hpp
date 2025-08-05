@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -30,6 +30,7 @@ static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING = 0.85;
 
 // Experimental number to avoid memory fragmentation caused by large activations (input & output) when pipelining
 static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION = 0.27;
+static constexpr double FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION_MAXPOOL = 0.2;
 
 // Experimental number to define large constant size
 // The constant filter is considered as large constant value
@@ -463,6 +464,19 @@ bool isMultiClusterCompatibleForTiling(mlir::Operation* op, const OutputTiling& 
  * Check if the shape can be split on the specific dimension
  */
 bool isDimLeftToTile(ShapeRef curNumTiles, ArrayRef<int64_t> maxNumTiles, Dim testTileDim);
+
+/*
+ * Check if the tile size is suitable for large activation operations
+ * to avoid memory fragmentation
+ */
+bool isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTilesOnDim, double fragmentRatio,
+                                           Logger log);
+
+/*
+ * Check if the tile size is suitable for large activation operations
+ * to avoid memory fragmentation
+ */
+bool isSupportedTileSizeForLargeActivation(mlir::Operation* origOp, ShapeRef nTilesOnDim, Logger log);
 
 /*
  * Check if the tiling strategy is supported

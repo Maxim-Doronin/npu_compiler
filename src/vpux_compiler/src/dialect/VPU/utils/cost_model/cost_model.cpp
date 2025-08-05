@@ -5,7 +5,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model_data.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
@@ -188,6 +188,8 @@ std::optional<VPUNN::DataType> vpux::VPU::getVPUNNElementType(mlir::Type type) {
             return qType.isSigned() ? VPUNN::DataType::INT8 : VPUNN::DataType::UINT8;
         } else if (qType.getStorageTypeIntegralWidth() == 4) {
             return qType.isSigned() ? VPUNN::DataType::INT4 : VPUNN::DataType::UINT4;
+        } else if (qType.getStorageTypeIntegralWidth() == 2) {
+            return qType.isSigned() ? VPUNN::DataType::INT2 : VPUNN::DataType::UINT2;
             // To do: provide proper cost for I16/U16: #E-160697
         } else if (qType.getStorageTypeIntegralWidth() == 16) {
             return VPUNN::DataType::FLOAT16;
@@ -474,8 +476,8 @@ std::vector<VPUNN::DPULayer> vpux::VPU::getPerClusterDPULayers(VPU::NCEOpInterfa
             inType = mlir::cast<vpux::NDTypeInterface>(getEffectiveSparseOutputType(inType));
         }
         inType = inType.extractDenseTile(offsets, params.inputShape);
-        actInputDistributedType = mlir::cast<VPU::DistributedTensorType>(
-                getDistributedActivationTypeFromOp(clusteredOp, inType, numClusters, strategy));
+        actInputDistributedType = mlir::cast<VPU::DistributedTensorType>(getDistributedActivationTypeFromOp(
+                clusteredOp, clusteredOp->getOperand(0), inType, numClusters, strategy));
     }
     auto outputPerClusterShapes = getPerClusterShapes(outputDistributedType, true);
     auto actInputPerClusterShapes = getPerClusterShapes(actInputDistributedType);
@@ -865,4 +867,59 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
                 VPUX_THROW("Unsupported NCE operation '{0}' at '{1}'", op->getName(), op->getLoc());
             });
     return params;
+}
+
+vpux::VPU::LayerCostModelAnalysis::LayerCostModelAnalysis(mlir::ModuleOp module) {
+    auto arch = VPU::getArch(module);
+    _layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
+}
+
+std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::getVPUNNLayerCostModel() {
+    return _layerCostModel;
+}
+
+bool vpux::VPU::LayerCostModelAnalysis::isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&) {
+    return !_preserved;
+}
+
+void vpux::VPU::LayerCostModelAnalysis::invalidate() {
+    _preserved = false;
+}
+
+std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(
+        std::optional<std::reference_wrapper<vpux::VPU::LayerCostModelAnalysis>> analysis, VPU::ArchKind arch,
+        Logger log) {
+    if (analysis.has_value()) {
+        log.trace("Load preserved layer cost model");
+        return analysis.value().get().getVPUNNLayerCostModel();
+    }
+    log.warning("Create new layer cost model instance");
+    return VPU::CostModelConfig::createLayerCostModel(arch);
+}
+
+vpux::VPU::CostModelAnalysis::CostModelAnalysis(mlir::ModuleOp module) {
+    auto arch = VPU::getArch(module);
+    _costModel = VPU::CostModelConfig::createCostModel(arch);
+}
+
+std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelAnalysis::getVPUNNCostModel() {
+    return _costModel;
+}
+
+bool vpux::VPU::CostModelAnalysis::isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&) {
+    return !_preserved;
+}
+
+void vpux::VPU::CostModelAnalysis::invalidate() {
+    _preserved = false;
+}
+
+std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelAnalysis::getOrCreateCostModel(
+        std::optional<std::reference_wrapper<vpux::VPU::CostModelAnalysis>> analysis, VPU::ArchKind arch, Logger log) {
+    if (analysis.has_value()) {
+        log.trace("Load preserved cost model");
+        return analysis.value().get().getVPUNNCostModel();
+    }
+    log.warning("Create new cost model instance");
+    return VPU::CostModelConfig::createCostModel(arch);
 }

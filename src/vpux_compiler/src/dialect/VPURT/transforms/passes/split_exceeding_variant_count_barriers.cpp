@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/barrier_info.hpp"
@@ -51,8 +51,8 @@ void SplitExceedingVariantCountBarriersPass::safeRunOnFunc() {
     const auto availableSlots = vpux::VPUIP::getAvailableSlots(maxSlotsSum, maxAvailableSlots);
     // verify each task individually satisfies variant count
     func->walk([&](VPURT::TaskOp taskOp) {
-        VPUX_THROW_UNLESS(!mlir::isa<VPUIP::NCEClusterTilingOp>(taskOp.getInnerTaskOp()),
-                          "Inner task op wrapped with NCEClusterTilingOp '{0}'", taskOp);
+        VPUX_THROW_UNLESS(!vpux::VPUIP::hasDistributedOperand(taskOp), "Task op should not be distributed: '{0}'",
+                          taskOp);
         VPUX_THROW_UNLESS(barrierInfo.getNumOfSlotsUsed(taskOp) <= availableSlots,
                           "Task '{0}' uses too many barrier slots '{1}', available slots are '{2}' for producers "
                           "or consumers",

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -39,9 +39,7 @@ std::unique_ptr<mlir::Pass> createConvertWeightsTableOp2ConstPass(Logger log = L
 std::unique_ptr<mlir::Pass> createUpdateSwKernelParamsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSyncShvDpuPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDumpStatisticsOfTaskOpsPass(Logger log = Logger::global(), bool forceLogging = true);
-std::unique_ptr<mlir::Pass> createUnrollClusterTilingPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createWrapVPUIPOpsInNCEClusterTilingPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createUnwrapClusterTilingPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnrollDistributedOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollSwKernelPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDMABarrierOptimizationPass(Logger log = Logger::global());
 
@@ -49,7 +47,9 @@ std::unique_ptr<mlir::Pass> createFuseConstantsPass(Logger log = Logger::global(
 std::unique_ptr<mlir::Pass> createResolveDMAWithSwizzlingPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createMovePureViewOpBeforeCopyPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createOptimizeCopiesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createOptimizeCopiesPass(
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUniquifyWeightsTableCopiesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeConcatViewCopiesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeSubviewCopiesPass(Logger log = Logger::global());
@@ -108,7 +108,7 @@ std::unique_ptr<mlir::Pass> createLegalizeRepeatingFuncCallsPass(Logger log = Lo
 std::unique_ptr<mlir::Pass> createConvertVPUIPCopyToSWCopyPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddCopyBetweenSWKernelsAndNetworkIOPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDispatchedInlinerPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createMoveReflectPadToCMXPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddSwKernelInstructionPrefetchPass(Logger log = Logger::global());
 
 //
 // Asynchronous Scheduling pipeline
@@ -167,14 +167,6 @@ std::unique_ptr<mlir::Pass> createUnrollPermuteToNNDMAPass(Logger log = Logger::
 std::unique_ptr<mlir::Pass> createUnrollExpandDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollPerAxisTileDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInvalidateUnrollDMAAnalysisPass(Logger log = Logger::global());
-
-//
-// Host Compilation pipeline
-//
-// TODO : move passes to dedicated dialect E#162135
-std::unique_ptr<mlir::Pass> createSerializeELFToBinaryPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createConvertToLLVMUMDCallsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createWrapFuncCallsIntoAsyncRegionsPass(Logger log = Logger::global());
 
 //
 // DefaultHWOptions(for all devices)

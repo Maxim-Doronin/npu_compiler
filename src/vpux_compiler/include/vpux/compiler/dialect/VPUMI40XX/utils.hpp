@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -116,6 +116,8 @@ size_t reindexEnqueueList(VPURegMapped::EnqueueOp head);
 constexpr StringLiteral lastSecondaryTaskInExecutionGroup = "lastSecondaryTaskInExecutionGroup";
 
 uint32_t generateTileMask(mlir::ArrayRef<uint32_t> usedTileIndexes);
+
+void reindexTaskLinkAttrForDMA(VPURegMapped::TaskOpInterface head);
 
 //
 // Resolve Task Location utils

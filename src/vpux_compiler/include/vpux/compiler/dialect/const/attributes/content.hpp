@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -151,12 +151,17 @@ public:
 };
 // ctad's explicit deduction guide for "Get" method
 template <typename Callable>
-SpecializedContentSetup(mlir::Type, ArrayRef<TransformAttrInterface>, Callable &&)->SpecializedContentSetup<Callable>;
+SpecializedContentSetup(mlir::Type, ArrayRef<TransformAttrInterface>, Callable&&) -> SpecializedContentSetup<Callable>;
 
 /// Default version of the content setup object. Users are highly recommended to
 /// use this instead of the "specialized" version: prefer explicit content
 /// construction (from setup's transformations) to implicit `.get()`.
 using ContentSetup = SpecializedContentSetup<detail::NoopGet>;
+
+llvm::hash_code stableHashForCastElemType(mlir::Type type);
+llvm::hash_code stableHashForConvertElemType(mlir::Type type);
+llvm::hash_code stableHashForChangeShapeAndElemType(mlir::ArrayAttr shape, mlir::Type type);
+
 }  // namespace vpux::Const
 
 //

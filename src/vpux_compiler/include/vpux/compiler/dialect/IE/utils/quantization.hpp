@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -20,6 +20,7 @@ namespace IE {
 
 static constexpr float QUANT_RANGE_RATIO = 5.0;
 
+std::optional<int64_t> getFQAxisIndex(IE::FakeQuantizeOp fq, Logger log = Logger::global());
 std::optional<int64_t> getQuantAxisIndex(mlir::Operation* fq, Logger log = Logger::global());
 bool areAnyUserQuantizeOps(mlir::Operation* op);
 bool areAllUsersQuantized(mlir::Operation* op);
@@ -37,6 +38,8 @@ SmallVector<float> getConst(Const::DeclareOp declOp);
 mlir::Value findQuantizedInput(mlir::Value opInput, bool allowPerAxisQuantize);
 bool isSymmetricQuantType(mlir::quant::QuantizedType type);
 bool hasLeakyReLUPostOp(mlir::Operation* op);
+bool hasReLUPostOp(mlir::Operation* op);
+bool hasNegativeScales(mlir::quant::QuantizedType type);
 mlir::quant::UniformQuantizedType getQuantizedTypeFromFakeQuantize(IE::FakeQuantizeOp fqOp);
 bool hasFQSameZeroPoint(IE::FakeQuantizeOp fqOp);
 

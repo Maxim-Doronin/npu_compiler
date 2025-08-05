@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -73,6 +73,7 @@ public:
     class ConvertToStridedConcat;
     class ConvertToSliceConcat;
     class ConvertNDUpdateDataToSliceConcat;
+    class SplitToMultiScatterNDUpdateOp;
 
 private:
     void safeRunOnFunc() final;
@@ -509,6 +510,10 @@ ConvertScatterNDUpdateToStridedConcatPass::ConvertNDUpdateDataToSliceConcat::get
 
     auto indicesShape = getShape(indicesConst);
     const auto coordSize = indicesShape.back();
+
+    if (coordSize >= checked_cast<int64_t>(indicesShape.size())) {
+        return std::nullopt;
+    }
     // Verifies whether the update range forms a continuous block
     for (auto dimIdx = 0; dimIdx < coordSize; dimIdx++) {
         auto patternRepeatCount = std::accumulate(indicesShape.begin(), indicesShape.begin() + dimIdx, int64_t(1),
@@ -556,7 +561,7 @@ mlir::LogicalResult ConvertScatterNDUpdateToStridedConcatPass::ConvertNDUpdateDa
     }
 
     const auto indicesShape = getShape(indices);
-    if (indicesShape.size() - 1 != inputTensorRank || indicesShape.back() != checked_cast<int64_t>(inputTensorRank)) {
+    if (indicesShape.size() - 1 > inputTensorRank || indicesShape.back() > checked_cast<int64_t>(inputTensorRank)) {
         _log.trace("ScatterNDUpdate Op requires element wise updates");
         return mlir::failure();
     }
@@ -566,18 +571,26 @@ mlir::LogicalResult ConvertScatterNDUpdateToStridedConcatPass::ConvertNDUpdateDa
         _log.trace("Updates range is not continuous");
         return mlir::failure();
     }
-    const auto minRange = updateRange.value().first;
-    const auto maxRange = updateRange.value().second;
+
+    auto minRange = to_small_vector(updateRange.value().first);
+    auto maxRange = to_small_vector(updateRange.value().second);
+    // If indicesShape.back() < inputTensorRank, we need to update range data. Indices are starting from the outer most
+    // dim, so for inner most dim that hasn't specified in indices, slicing from the beginning to the end.
+    if (indicesShape.back() < checked_cast<int64_t>(inputTensorRank)) {
+        auto origInShape = to_small_vector(inputShape);
+        minRange.insert(minRange.end(), inputTensorRank - indicesShape.back(), 0);
+        maxRange.insert(maxRange.end(), origInShape.end() + indicesShape.back() - inputTensorRank, origInShape.end());
+    }
 
     auto updateIn = origOp.getUpdates();
     for (int64_t dimIdx = inputTensorRank - 1; dimIdx >= 0; dimIdx--) {
         SmallVector<mlir::Value> concatInputs;
         auto updatesShape = getShape(updateIn);
         // Slice data at begin
-        auto beginSliceOffset = to_small_vector(minRange);
+        auto beginSliceOffset = minRange;
         std::fill(beginSliceOffset.begin() + dimIdx, beginSliceOffset.end(), 0);
         auto beginSliceShape = to_small_vector(updatesShape.raw());
-        beginSliceShape[dimIdx] = minRange[Dim(dimIdx)];
+        beginSliceShape[dimIdx] = minRange[dimIdx];
         if (beginSliceShape[dimIdx] > 0) {
             auto beginSliceLoc = takeOpLoc(origOp, StringLiteral("slice_begin_at_Dim{0}"), dimIdx);
             concatInputs.push_back(
@@ -588,7 +601,7 @@ mlir::LogicalResult ConvertScatterNDUpdateToStridedConcatPass::ConvertNDUpdateDa
         concatInputs.push_back(updateIn);
         // Slice data at end
         auto endSliceOffset = std::move(beginSliceOffset);
-        endSliceOffset[dimIdx] = maxRange[Dim(dimIdx)] + 1;
+        endSliceOffset[dimIdx] = maxRange[dimIdx] + 1;
         auto endSliceShape = to_small_vector(updatesShape.raw());
         endSliceShape[dimIdx] = inputShape[Dim(dimIdx)] - endSliceOffset[dimIdx];
         if (endSliceShape[dimIdx] > 0) {
@@ -609,6 +622,173 @@ mlir::LogicalResult ConvertScatterNDUpdateToStridedConcatPass::ConvertNDUpdateDa
 }
 
 //
+// SplitToMultiScatterNDUpdateOp
+//
+
+struct SplitParams {
+    Dim tileDim;
+    int64_t splitOffset;
+    int64_t splitSize;
+};
+
+class ConvertScatterNDUpdateToStridedConcatPass::SplitToMultiScatterNDUpdateOp final :
+        public mlir::OpRewritePattern<IE::ScatterNDUpdateOp> {
+public:
+    SplitToMultiScatterNDUpdateOp(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ScatterNDUpdateOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ScatterNDUpdateOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+    std::optional<SmallVector<SplitParams>> getSplitInfo(ShapeRef inputShape, ShapeRef indicesShape,
+                                                         Const::DeclareOp indicesConst) const;
+
+private:
+    Logger _log;
+};
+
+std::optional<SmallVector<SplitParams>>
+ConvertScatterNDUpdateToStridedConcatPass::SplitToMultiScatterNDUpdateOp::getSplitInfo(
+        ShapeRef inputShape, ShapeRef indicesShape, Const::DeclareOp indicesConst) const {
+    const auto greaterThanOne = [](auto dimSize) {
+        return dimSize > 1;
+    };
+
+    const auto indicesShapeGreaterThanOne = std::count_if(indicesShape.begin(), indicesShape.end() - 1, greaterThanOne);
+    if (indicesShapeGreaterThanOne != 1) {
+        _log.trace("Elements Update: Only support ScatterNDUpdate Op update at one axis");
+        return std::nullopt;
+    }
+
+    auto inAxis = llvm::find_if(inputShape, greaterThanOne);
+    auto indicesAxis = llvm::find_if(indicesShape, greaterThanOne);
+
+    VPUX_THROW_UNLESS(inAxis != inputShape.end() && indicesAxis != indicesShape.end() - 1, "Can not get correct Axis");
+    auto inAxisDim = std::distance(inputShape.begin(), inAxis);
+    auto indicesAxisDim = std::distance(indicesShape.begin(), indicesAxis);
+    VPUX_THROW_UNLESS(inAxisDim == indicesAxisDim, "Can not get same Axis");
+    const auto updateDim = inAxisDim;
+
+    const auto indicesConstValue = indicesConst.getContent();
+    const auto indicesData = indicesConstValue.getValues<int64_t>();
+    const auto indicesDataRank = checked_cast<int64_t>(indicesShape.size() - 1);
+
+    SmallVector<SplitParams> splitInfos;
+    int64_t currentStart = indicesData[updateDim];
+    int64_t currentLength = 0;
+    int64_t currentOffset = 0;
+
+    constexpr size_t SPLIT_NUMBER_THRESHOLD = 4;
+    for (int64_t idx = 1; idx < indicesShape[Dim(updateDim)]; ++idx) {
+        const int64_t dataIdx = updateDim + indicesDataRank * idx;
+        VPUX_THROW_UNLESS(dataIdx < checked_cast<int64_t>(indicesData.size()), "Indices data access out of bounds");
+
+        if (indicesData[dataIdx] != currentStart + currentLength + 1) {
+            splitInfos.emplace_back(SplitParams{Dim(updateDim), currentOffset, currentLength + 1});
+            if (splitInfos.size() > SPLIT_NUMBER_THRESHOLD) {
+                _log.trace("Split number is larger than {0}", SPLIT_NUMBER_THRESHOLD);
+                return std::nullopt;
+            }
+            currentStart = indicesData[dataIdx];
+            currentLength = 0;
+            currentOffset = idx;
+        } else {
+            currentLength++;
+        }
+
+        if (idx == indicesShape[Dim(updateDim)] - 1) {
+            splitInfos.emplace_back(SplitParams{Dim(updateDim), currentOffset, currentLength + 1});
+        }
+    }
+
+    const auto splitSizeEqualOne = [](SplitParams splitInfo) {
+        return splitInfo.splitSize == 1;
+    };
+
+    if (llvm::all_of(splitInfos, splitSizeEqualOne)) {
+        _log.trace("All of split size is one");
+        return std::nullopt;
+    }
+
+    return splitInfos;
+}
+
+// Handle ScatterNDUpdate with indices containing several contiguous blocks
+// For example: Indices [24, 25, 26, 31, 32, 41, 42, 43]
+// can be split into three ScatterNDUpdate operations with indices: [24, 25, 26], [31, 32], [41, 42, 43]
+// Each ScatterNDUpdate can then be converted to a slice and concat operation
+// To avoid splitting into too many small blocks, a threshold of 5 is used
+// The pattern converted by this rewriter looks like:
+
+//  Input  Indices[B1, B2]  Update[B1, B2]       ->       Input  Indices[B1]  Update[B1]
+//     |          |             |                           |          |         |
+//     \          |             /                           \          |         /
+//         ScatterNDUpdate                                      ScatterNDUpdate
+//                                                                  |
+//                                                                  |         Indices[B2]  Update[B2]
+//                                                                  |            |             |
+//                                                                  \            |             /
+//                                                                        ScatterNDUpdate
+
+mlir::LogicalResult ConvertScatterNDUpdateToStridedConcatPass::SplitToMultiScatterNDUpdateOp::matchAndRewrite(
+        IE::ScatterNDUpdateOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    const auto inputShape = getShape(origOp.getInput());
+    const auto indices = origOp.getIndices();
+    const auto indicesShape = getShape(indices);
+    const auto updates = origOp.getUpdates();
+    const auto updatesShape = getShape(updates);
+    auto indicesConst = indices.getDefiningOp<Const::DeclareOp>();
+    if (!indicesConst) {
+        _log.trace("ScatterNDUpdate Op should have constant indices");
+        return mlir::failure();
+    }
+
+    auto splitInfo = getSplitInfo(inputShape, indicesShape, indicesConst);
+    if (!splitInfo.has_value() || splitInfo.value().size() <= 1) {
+        _log.trace("ScatterNDUpdate Op cannot be split");
+        return mlir::failure();
+    }
+
+    auto nextSliceInput = origOp.getInput();
+    const auto& splits = splitInfo.value();
+    for (const auto& split : splits) {
+        auto offset = split.splitOffset;
+        auto size = split.splitSize;
+        auto tileDim = split.tileDim;
+
+        // Create indices slice
+        auto indicesOffset = Shape(indicesShape.size(), 0);
+        auto indicesSize = Shape(indicesShape.raw());
+        indicesOffset[tileDim] = offset;
+        indicesSize[tileDim] = size;
+        auto indicesSlice = rewriter.createOrFold<IE::SliceOp>(
+                takeOpLoc(origOp, StringLiteral("slice_indices_{0}"), offset), indices, indicesOffset, indicesSize);
+
+        // Create update slice
+        auto updateOffset = Shape(updatesShape.size(), 0);
+        auto updateSize = Shape(updatesShape.raw());
+        updateOffset[tileDim] = offset;
+        updateSize[tileDim] = size;
+        auto updateSlice = rewriter.createOrFold<IE::SliceOp>(
+                takeOpLoc(origOp, StringLiteral("slice_update_{0}"), offset), updates, updateOffset, updateSize);
+
+        // Create new ScatterNDUpdateOp
+        auto newScatter = rewriter.create<IE::ScatterNDUpdateOp>(
+                takeOpLoc(origOp, StringLiteral("slice_ND_{0}"), offset), nextSliceInput, indicesSlice, updateSlice);
+
+        nextSliceInput = newScatter.getOutput();
+    }
+
+    _log.trace("Replace '{0}' at '{1}' with multi ScatterNDUpdate", origOp->getName(), origOp->getLoc());
+    origOp.replaceAllUsesWith(nextSliceInput);
+
+    return mlir::success();
+}
+
+//
 // safeRunOnFunc
 //
 
@@ -619,6 +799,7 @@ void ConvertScatterNDUpdateToStridedConcatPass::safeRunOnFunc() {
     patterns.add<ConvertToStridedConcat>(&ctx, _log);
     patterns.add<ConvertToSliceConcat>(&ctx, _log);
     patterns.add<ConvertNDUpdateDataToSliceConcat>(&ctx, _log);
+    patterns.add<SplitToMultiScatterNDUpdateOp>(&ctx, _log);
 
     auto func = getOperation();
     if (mlir::failed(applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {

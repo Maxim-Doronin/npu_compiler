@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
@@ -136,6 +136,12 @@ bool vpux::VPU::NCEEltwiseOp::checkStrategyCompatibility(VPU::MultiClusterStrate
                strategy == VPU::MultiClusterStrategy::SplitOverHeight;
     }
 
+    // Support SplitOverKernel for eltwise Multiply operation
+    // More eltwise types support need implement E#164581
+    if (strategy == VPU::MultiClusterStrategy::SplitOverKernel) {
+        return getOpType() == VPU::EltwiseType::MULTIPLY;
+    }
+
     return strategy == VPU::MultiClusterStrategy::Clustering ||
            strategy == VPU::MultiClusterStrategy::SplitOverHeight || strategy == VPU::MultiClusterStrategy::HKSwitch;
 }
@@ -172,12 +178,12 @@ bool VPU::NCEEltwiseOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, 
 
     SmallVector<Byte> buffers = {VPU::getTotalAllocSizeWithDistribution(
                                          getInput1().getType(),
-                                         getActivationDistributionAttrFromOp(nceOp, getInput1().getType(), numClusters,
-                                                                             strategy, siblingsAnalysis)),
+                                         getActivationDistributionAttrFromOp(nceOp, getInput1(), getInput1().getType(),
+                                                                             numClusters, strategy, siblingsAnalysis)),
                                  VPU::getTotalAllocSizeWithDistribution(
                                          getInput2().getType(),
-                                         getActivationDistributionAttrFromOp(nceOp, getInput2().getType(), numClusters,
-                                                                             strategy, siblingsAnalysis))};
+                                         getActivationDistributionAttrFromOp(nceOp, getInput2(), getInput2().getType(),
+                                                                             numClusters, strategy, siblingsAnalysis))};
 
     if (!this->getIsInplace().value_or(false)) {
         buffers.push_back(VPU::getTotalAllocSizeWithDistribution(
@@ -251,7 +257,6 @@ mlir::LogicalResult vpux::VPU::NCEEltwiseOp::verify() {
     if (mlir::failed(vpux::VPU::verifyNCEOp(op))) {
         return mlir::failure();
     }
-
     return mlir::success();
 }
 
@@ -267,8 +272,9 @@ static mlir::LogicalResult verifyEltwiseKernel(vpux::NDTypeInterface input1, vpu
         return mlir::failure();
     }
 
-    if (input1.getShape() != input2.getShape())
+    if (input1.getShape() != input2.getShape()) {
         return mlir::failure();
+    }
 
     // Output type can differ from input type. In case of quantization
     // this can be different quant scale value.

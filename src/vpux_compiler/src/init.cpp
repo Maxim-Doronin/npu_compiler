@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/init.hpp"
@@ -13,7 +13,7 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IERT/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -87,7 +87,6 @@ void registerDialects(mlir::DialectRegistry& registry) {
                     vpux::net::NetDialect,                    //
                     vpux::IE::IEDialect,                      //
                     vpux::VPU::VPUDialect,                    //
-                    vpux::IERT::IERTDialect,                  //
                     vpux::VPUIP::VPUIPDialect,                //
                     vpux::VPUIPDPU::VPUIPDPUDialect,          //
                     vpux::VPURT::VPURTDialect,                //
@@ -137,7 +136,6 @@ mlir::DialectRegistry vpux::createDialectRegistry(DummyOpMode dummyOpMode) {
 
     Const::ConstDialect::setupExtraInterfaces(registry);
     Core::CoreDialect::setupExtraInterfaces(registry);
-    IERT::IERTDialect::setupExtraInterfaces(registry);
     VPUIP::VPUIPDialect::setupExtraInterfaces(registry);
     VPU::registerAlignedChannelsOpInterfacesVPU(registry);
 

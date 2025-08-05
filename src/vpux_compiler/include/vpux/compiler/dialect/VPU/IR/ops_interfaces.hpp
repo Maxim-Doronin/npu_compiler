@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -56,6 +56,7 @@ mlir::Operation* addWorkload(mlir::Region& workloads, mlir::OpBuilder& builder, 
                              ShapeRef sizes, PaddingAttr pad, MPEMode mpeMode, mlir::IntegerAttr clusterId);
 
 mlir::LogicalResult verifyInputTypeOp(mlir::Operation* op, vpux::NDTypeInterface inputType);
+mlir::LogicalResult verifyInputQuantization(mlir::Operation* op);
 
 }  // namespace details
 

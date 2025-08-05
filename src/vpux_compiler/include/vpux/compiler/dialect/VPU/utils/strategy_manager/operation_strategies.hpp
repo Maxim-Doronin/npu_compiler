@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -103,7 +103,7 @@ struct hashCombinedKey {
 
 class OperationStrategies final {
 public:
-    OperationStrategies(){};
+    OperationStrategies() {};
 
     /*
        Add new strategy for operation with cost

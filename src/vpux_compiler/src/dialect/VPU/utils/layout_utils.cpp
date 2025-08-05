@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
@@ -612,8 +612,9 @@ DimsOrder vpux::VPU::inferSqueezeOutputLayout(const DimArr& inPerm, const SmallV
     // Iterate over input dims in the given order and push back corresponding output dims.
     for (const auto& p : inPerm) {
         // Skip over squeezed dim
-        if (llvm::find(axes, p.ind()) != axes.end())
+        if (llvm::find(axes, p.ind()) != axes.end()) {
             continue;
+        }
 
         auto dim = p.ind();
         // Decrement input dim index by the number of squeezed axes smaller than itself

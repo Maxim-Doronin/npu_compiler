@@ -1,11 +1,11 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
-
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 using namespace vpux;
 
 mlir::LogicalResult vpux::IE::LessEqualOp::inferReturnTypeComponents(
@@ -22,12 +22,26 @@ mlir::LogicalResult vpux::IE::LessEqualOp::inferReturnTypeComponents(
     const auto in1Type = mlir::cast<mlir::ShapedType>(lessEqual.getInput1().getType());
     const auto in2Type = mlir::cast<mlir::ShapedType>(lessEqual.getInput2().getType());
 
-    const auto outShapeRes =
-            IE::broadcastEltwiseShape(in1Type.getShape(), in2Type.getShape(), lessEqual.getAutoBroadcast(), loc);
+    const auto outShapeInfo = inferEltwiseOutputShapeInfo(
+            ShapeInfo::fromNDType(in1Type), ShapeInfo::fromNDType(in2Type), lessEqual.getAutoBroadcast(), loc);
 
-    if (mlir::succeeded(outShapeRes)) {
-        inferredReturnShapes.emplace_back(outShapeRes.value(), getBool8Type(ctx));
+    const auto outDesc =
+            vpux::getTensorAttr(ctx, inferOrder(in1Type, in2Type), /*memSpace=*/nullptr, Bounds(outShapeInfo.bounds));
+
+    inferredReturnShapes.emplace_back(outShapeInfo.shape, getBool8Type(ctx), outDesc);
+    return mlir::success();
+}
+
+mlir::LogicalResult vpux::IE::LessEqualOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                             mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    auto outShape = reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
+
+    if (mlir::failed(outShape)) {
+        return outShape;
     }
 
-    return outShapeRes;
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }

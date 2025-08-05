@@ -181,7 +181,7 @@ protected:
 ```
 
 Pass such types **by value**, not by reference
-The same rule applies to all operations from MLIR dialects: `IE`, `IERT`, `VPUIP`, etc.
+The same rule applies to all operations from MLIR dialects: `IE`, `VPUIP`, etc.
 
 ```cpp
 void someFunction(mlir::Value functionOperand);  // OK
@@ -462,6 +462,68 @@ So we get a dangling pointer:
     // The lifetime of 'computerShape' is over. 'inputShape' contains a dangling pointer
     return isSOHSupportedByDPU(inputShape, _numTiles, false, VPU::getArch(nceOp.getOperation()));
 ```
+
+### Working with dynamic shapes
+
+**Dynamic shapes** are shapes for which the size of at least one of its axes can only be determined during inference. For such axes we must know the maximum size which it can attain (a.k.a. its bound). Except from the input layer's bounds, all bounds can be inferred from the topology during network compilation.
+
+They come in two representations:
+* `BoundedShape`: Each dim is paired with its bound. Dynamic dims are marked using `mlir::ShapedType::kDynamic`. This is the default form for the IE dialect, more similar to `ov::PartialShape`.
+* `DimsMaskedShape`: Each dim holds its bound and is paired with a flag. Dynamic dims are marked by setting the flag to `true`. This form is preferred later in compilation, because it simplifies multi-cluster tiling and similar logic by behaving more like a static shape, while still propagating the dynamic dim property.
+
+Similar to `Shape`, dynamic shapes (`BoundedShape`, `DimsMaskedShape`) and their representations (`Bounds`, `DynamicDimsMask`) are all [`DimValues<D, T, Tag>`](../include/vpux/compiler/core/attributes/dim_values.hpp) instances. Same for their corresponding reference (*"Ref"*) types.
+
+Consider a method which fuses the channels and depth of a >4D shape in-place:
+```cpp
+void foo(Shape& shape) {
+    if(shape.size() >= 5) {
+        shape[Dims5D::Act::C] *= shape[Dims5D::Act::D];     // Fuse D in C
+        shape.erase(shape.begin() + Dims5D::Act::D.ind());  // Remove D
+    }
+}
+```
+To support dynamic shapes (and implicitly also `MemDim` variants), all one has to do is template the function:
+```cpp
+template <typename D, typename T, template <class> class Tag>
+void foo(details::DimValues<D, T, Tag>& shape) {
+    if(shape.size() >= 5) {
+        shape[Dims5D::Act::C] *= shape[Dims5D::Act::D];     // Fuse D in C
+        shape.erase(shape.begin() + Dims5D::Act::D.ind());  // Remove D
+    }
+}
+```
+or even simpler (where possible):
+```cpp
+template <typename ShapeType>
+void foo(ShapeType& shape) { ... }
+```
+
+To aid future dynamic shape support, it's recommended to use `Shape`/`ShapeRef` when implementing new shape-handling methods:
+```cpp
+void foo(Shape& shape)                     // GOOD
+void foo(ShapeRef shape)                   // GOOD
+
+void foo(SmallVector<int64_t>& shape)      // BAD
+void foo(ArrayRef<int64_t> shape)          // BAD
+```
+
+In practice, shapes are usually extracted from types (`mlir::RankedTensorType`|`Core::BoundedTensorType`|`Core::DynamicDimsMaskTensorType`). To call `foo(...)` on a `TensorType`'s shape it's recommended to use `callOnShapeOf(NDTypeInterface, Func, Args&&...)`:
+```cpp
+const auto type = mlir::cast<NDTypeInterface>(op.getInput().getType());
+
+const auto newType = callOnShapeOf(type, [&](const auto& shape) {
+    // auto = ShapeRef | BoundedShape | DimsMaskedShape
+    auto tempShape = copyShape(shape);
+    foo(tempShape);
+
+    return type.changeTypeComponents(TypeComponents()
+        .setShapeWithRepresentation(std::move(tempShape))
+        .setDimsOrder(DimsOrder::NCHW));
+});
+```
+<u>Note:</u> For static-shaped types the callable will receive a `ShapeRef` (instead of `Shape`). For dynamic-shaped types passing a *"Ref"* is not possible because the shape and representation are stored separately and must be *"zipped"* together before being passed to the callable.
+
+<u>Note:</u> The return type of the callable must be the same regardless of the input shape type.
 
 ### Using method 'llvm::make_early_inc_range'
 

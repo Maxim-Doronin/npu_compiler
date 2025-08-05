@@ -114,7 +114,6 @@ mlir::LogicalResult MoveConvertBeforeAffineReshape::matchAndRewrite(VPU::Convert
         nestedLogger.trace("AffineReshape input is not 4D {0}", affineReshapeOp->getName());
         return mlir::failure();
     }
-    // Move ConvertOp before AffineReshape so we can wrap ConvertOp in NCEClusterTiling with all 4 Dims
     auto originOpType = mlir::cast<vpux::NDTypeInterface>(originOp->getResult(0).getType());
     auto newConvertOp = rewriter.create<VPU::ConvertOp>(originOp.getLoc(), affineReshapeOp.getInput(),
                                                         originOp.getDstElemTypeAttr());

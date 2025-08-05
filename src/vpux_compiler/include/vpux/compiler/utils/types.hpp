@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -122,7 +122,7 @@ mlir::SmallVector<float> getFloatStrides(StridesRef strides);
 
 mlir::RankedTensorType getTensorType(ShapeRef shape, mlir::Type elemType, DimsOrder order, IndexedSymbolAttr memSpace);
 mlir::RankedTensorType getTensorType(ShapeRef shape, mlir::Type elemType, DimsOrder order, IndexedSymbolAttr memSpace,
-                                     Bounds bounds, DynamicDimsMask dynamicDimsMask);
+                                     BoundsRef bounds, DynamicDimsMaskRef dynamicDimsMask);
 
 ///
 /// \brief Convert RankedTensor type to Memref type

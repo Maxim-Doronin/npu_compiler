@@ -413,12 +413,15 @@ void checkedMemcpy(void* destination, size_t destinationSize, void const* source
         return;
     }
 
-    if (destination == nullptr)
+    if (destination == nullptr) {
         throw std::runtime_error("Memcpy: received a null destination address");
-    if (source == nullptr)
+    }
+    if (source == nullptr) {
         throw std::runtime_error("Memcpy: received a null source address");
-    if (numberOfBytes > destinationSize)
+    }
+    if (numberOfBytes > destinationSize) {
         throw std::runtime_error("Memcpy: the source buffer does not fit inside the destination one");
+    }
 
     memmove(destination, source, numberOfBytes);
 }

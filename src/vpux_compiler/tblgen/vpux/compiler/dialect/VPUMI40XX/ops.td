@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUMI40XX_OPS
@@ -756,7 +756,7 @@ def VPUMI40XX_DPUInvariantOp :
         Variadic<MemRefOf<[F16, F32, BF16, quant_QuantizedType]>>:$output_buffs,
         Variadic<MemRefOf<[I1]>>:$output_sparsity_map_buffs,
         Optional<MemRefOf<[UI64]>>:$profiling_data,
-        Optional<MemRefOf<[I32]>>:$dynamic_sequence_length, // 1x1x1xVALUExi32
+        Optional<MemRefOf<[I32]>>:$dynamic_sequence_length,
 
         Optional<MemRefOf<[F16, BF16, quant_QuantizedType]>>:$max_per_xy,
         Optional<MemRefOf<[F16, BF16, quant_QuantizedType]>>:$min_per_xy,
@@ -789,7 +789,7 @@ def VPUMI40XX_DPUInvariantOp :
         UI64Attr:$clean_after,
         Optional<VPURegMapped_IndexType>:$enqueueBarrier,
         OptionalAttr<IntAttr>:$wlmPage,
-        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config
     );
 
     let results = (outs

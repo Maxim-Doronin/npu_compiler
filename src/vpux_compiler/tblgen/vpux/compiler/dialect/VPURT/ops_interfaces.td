@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPURT_OPS_INTERFACES
@@ -42,6 +42,14 @@ def VPURT_BarrierOpInterface : OpInterface<"BarrierOpInterface"> {
             [{}],
             [{
                 return $_op.getIsFinalBarrier();
+            }]
+        >,
+        InterfaceMethod<
+            "Get WLM Page attribute of this barrier",
+            "std::optional<int>", "getWlmPage", (ins),
+            [{}],
+            [{
+                return $_op.getWlmPage();
             }]
         >
     ];

@@ -1,20 +1,11 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/utils/core/error.hpp"
-
-#include <mlir/IR/Value.h>
-#include <mlir/Support/LLVM.h>
-
-#include <utility>
 
 using namespace vpux;
 
@@ -69,7 +60,8 @@ Const::OpaqueI64ElementsAttr createOpaqueI64ElementsAttr(mlir::MLIRContext* cont
 }
 
 TensorAttr vpux::TensorAttr::get(mlir::MLIRContext* context, mlir::AffineMapAttr order,
-                                 vpux::IndexedSymbolAttr memSpace, Bounds bounds, DynamicDimsMask dynamicDimsMask) {
+                                 vpux::IndexedSymbolAttr memSpace, BoundsRef bounds,
+                                 DynamicDimsMaskRef dynamicDimsMask) {
     VPUX_THROW_WHEN(!bounds.empty() && !dynamicDimsMask.empty(),
                     "Ambiguous tensor representation. Both Bounds {0} and DynamicDimsMask {1} were provided.", bounds,
                     dynamicDimsMask);
@@ -162,7 +154,7 @@ DynamicDimsMask TensorAttr::getDynamicDimsMask() const {
 //
 
 TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, mlir::AffineMapAttr order, IndexedSymbolAttr memSpace,
-                               Bounds bounds, DynamicDimsMask dynamicDimsMask) {
+                               BoundsRef bounds, DynamicDimsMaskRef dynamicDimsMask) {
     // Initially, tensors do not have an encoding attribute, which is equivalent to an empty TensorAttr.
     // But in fact, such tensors have a different type: `tensor<1x8x4x2xf16> != tensor<1x8x4x2xf16, {}>`.
     // So let's not use empty attributes to avoid ambiguous representation of the same type.
@@ -171,18 +163,17 @@ TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, mlir::AffineMapAttr order
         return nullptr;
     }
 
-    return TensorAttr::get(ctx, order, memSpace, std::move(bounds), std::move(dynamicDimsMask));
+    return TensorAttr::get(ctx, order, memSpace, bounds, dynamicDimsMask);
 }
 
-TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, mlir::AffineMap order, IndexedSymbolAttr memSpace, Bounds bounds,
-                               DynamicDimsMask dynamicDimsMask) {
-    return vpux::getTensorAttr(ctx, mlir::AffineMapAttr::get(order), memSpace, std::move(bounds),
-                               std::move(dynamicDimsMask));
+TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, mlir::AffineMap order, IndexedSymbolAttr memSpace,
+                               BoundsRef bounds, DynamicDimsMaskRef dynamicDimsMask) {
+    return vpux::getTensorAttr(ctx, mlir::AffineMapAttr::get(order), memSpace, bounds, dynamicDimsMask);
 }
 
-TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, DimsOrder order, IndexedSymbolAttr memSpace, Bounds bounds,
-                               DynamicDimsMask dynamicDimsMask) {
-    return vpux::getTensorAttr(ctx, order.toAffineMap(ctx), memSpace, std::move(bounds), std::move(dynamicDimsMask));
+TensorAttr vpux::getTensorAttr(mlir::MLIRContext* ctx, DimsOrder order, IndexedSymbolAttr memSpace, BoundsRef bounds,
+                               DynamicDimsMaskRef dynamicDimsMask) {
+    return vpux::getTensorAttr(ctx, order.toAffineMap(ctx), memSpace, bounds, dynamicDimsMask);
 }
 
 TensorAttr vpux::getTensorAttr(mlir::RankedTensorType type) {

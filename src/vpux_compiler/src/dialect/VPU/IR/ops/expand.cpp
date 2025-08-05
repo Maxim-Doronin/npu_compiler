@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -29,4 +29,19 @@ mlir::LogicalResult vpux::VPU::ExpandOp::inferReturnTypes(mlir::MLIRContext* ctx
     inferredReturnTypes.push_back(newType);
 
     return mlir::success();
+}
+
+mlir::OpFoldResult vpux::VPU::ExpandOp::fold(FoldAdaptor adaptor) {
+    if (getInput().getType() == getOutput().getType()) {
+        return getInput();
+    }
+
+    auto operands = adaptor.getOperands();
+    if (const auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
+        const auto padsBefore = Shape(parseIntArrayAttr<int64_t>(getPadsBegin()));
+        const auto padsAfter = Shape(parseIntArrayAttr<int64_t>(getPadsEnd()));
+        return static_cast<Const::ContentAttr>(attr).transform().padWithZero(padsBefore, padsAfter).get();
+    }
+
+    return nullptr;
 }

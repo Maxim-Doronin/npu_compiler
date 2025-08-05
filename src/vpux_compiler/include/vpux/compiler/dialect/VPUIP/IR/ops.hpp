@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -54,9 +54,5 @@ VPUIP::PPETaskOp NCEClusterTaskOp::addPPETask(mlir::OpBuilder& builder, Args&&..
     return builder.create<VPUIP::PPETaskOp>(getLoc(), std::forward<Args>(args)...);
 }
 
-template <typename T>
-T vpux::VPUIP::NCEClusterTilingOp::getInnerTaskOpOfType() {
-    return mlir::dyn_cast<T>(&getBody().front().front());
-}
 }  // namespace VPUIP
 }  // namespace vpux

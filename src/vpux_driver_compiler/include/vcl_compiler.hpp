@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 /**
@@ -50,6 +50,15 @@ public:
     }
 
     /**
+     * @brief Get the device info status
+     *
+     * @return bool Returns device info status
+     */
+    bool isDeviceDescEmpty() const {
+        return _isDeviceDescEmpty;
+    }
+
+    /**
      * @brief Get the info of default device info
      *
      * @return vcl_device_desc_t Include device capabilities
@@ -94,7 +103,7 @@ public:
      * @param allocator Allocator for blob storage allocation
      * @return vpux::NetworkDescriptionView Include non-owning view into blob and metadata
      */
-    vpux::NetworkDescriptionView importNetwork(BuildInfo& buildInfo, const vcl_allocator_t* allocator);
+    vpux::NetworkDescriptionView importNetwork(BuildInfo& buildInfo, vpux::BlobAllocator& allocator);
 
     /**
      * @brief Check if a model can be supported by current compiler
@@ -137,6 +146,7 @@ private:
     vcl_compiler_properties_t _compilerProp;           ///< The capabilities of compiler
     vcl_compiler_desc_t _compilerDesc;                 ///< The info of platform and debug level
     vcl_device_desc_t _deviceDesc;                     ///< The info of device
+    bool _isDeviceDescEmpty;                           ///< The info of deviceDesc status
     VCLLogger* _logger;
 };
 

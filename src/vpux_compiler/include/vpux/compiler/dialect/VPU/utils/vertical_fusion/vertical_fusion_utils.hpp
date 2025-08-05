@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -97,20 +97,21 @@ VPU::VerticalFusionOp fuseOpsInBlock(mlir::PatternRewriter& rewriter, VPU::Verti
                                      mlir::Operation* prevOp, mlir::ArrayAttr tilingInfo = nullptr);
 
 template <typename VFConfigType>
-SmallVector<SmallVector<int64_t>> backInferVFTilingStrategy(
+mlir::FailureOr<SmallVector<SmallVector<int64_t>>> backInferVFTilingStrategy(
         VFConfigType& config, ArrayRef<int64_t> tilingStrategy,
         std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap);
 
 template <typename VFConfigType>
-SmallVector<vpux::Dim> backInferVFTilingDim(VFConfigType& config, vpux::Dim outputDim,
-                                            std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap);
+mlir::FailureOr<SmallVector<vpux::Dim>> backInferVFTilingDim(VFConfigType& config, vpux::Dim outputDim,
+                                                             std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap);
 
 template <typename ArgType, typename ResultType>
 ResultType backInfer(VPU::TilingViewLikeOpInterface opIf, ArgType tiling, VPU::BackInferStrategy strategy);
 
 template <typename ArgType, typename ResultType, typename VFConfigType>
-SmallVector<ResultType> backInferVFTiling(VFConfigType& vfConfig, ArgType outputTiling, BackInferStrategy strategy,
-                                          std::unordered_map<mlir::Operation*, ResultType>& opTilingMap);
+mlir::FailureOr<SmallVector<ResultType>> backInferVFTiling(
+        VFConfigType& vfConfig, ArgType outputTiling, BackInferStrategy strategy,
+        std::unordered_map<mlir::Operation*, ResultType>& opTilingMap);
 
 // Check if spilling read and write operations can be overlapped
 // For DMA ops with different source memory kind, if the HW supports VPUIP.ChannelType, the spilling read and write ops
@@ -120,5 +121,7 @@ bool spillingCopyOpsCanBeOverlapped(VPU::ArchKind arch);
 // Check if the op is tiled or not
 bool isOpTiled(mlir::Operation* op);
 
+// Check if the tiling view op does not support tiling on all possible dimensions
+bool onlySupportPartialTilingDims(vpux::VPU::TilingViewLikeOpInterface viewOp);
 }  // namespace VPU
 }  // namespace vpux

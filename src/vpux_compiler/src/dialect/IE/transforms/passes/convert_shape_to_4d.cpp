@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -591,6 +591,50 @@ private:
 // GenericConverter
 //
 
+// Returns true if any of the operands or result values has a per-axis quantized type.
+bool isPerAxisQuantizedOp(mlir::Operation* op) {
+    const auto isPerAxisQuantized = [](mlir::Type type) {
+        return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(mlir::cast<NDTypeInterface>(type).getElementType());
+    };
+    const auto isAnyOperandPerAxis = llvm::any_of(op->getOperandTypes(), isPerAxisQuantized);
+    const auto isAnyResultPerAxis = llvm::any_of(op->getResultTypes(), isPerAxisQuantized);
+    return isAnyOperandPerAxis || isAnyResultPerAxis;
+}
+
+// This is analogous to convertGeneric but has the additional ability to update the required destination type attribute
+// for certain operations.
+mlir::LogicalResult convertLowPrecisionConversionOp(mlir::Operation* origOp, mlir::ValueRange operands,
+                                                    mlir::ConversionPatternRewriter& rewriter,
+                                                    const mlir::TypeConverter& typeConverter) {
+    const auto origOperands = origOp->getOperands();
+    VPUX_THROW_UNLESS(origOperands.size() == operands.size(), "Wrong operands size : {0}", operands.size());
+
+    mlir::IRMapping mapper;
+    mapper.map(origOperands, operands);
+
+    assert(origOp->getNumResults() == 1 && "Element type conversion operations should have exactly one result");
+    const auto newType = typeConverter.convertType(origOp->getResult(0).getType());
+    const auto newElementType = mlir::cast<NDTypeInterface>(newType).getElementType();
+
+    assert(origOp->getNumOperands() == 1 && "Element type conversion operations should have exactly one operand");
+    const auto input = mapper.lookup(origOp->getOperand(0));
+
+    mlir::Operation* newOp = nullptr;
+    if (mlir::isa<IE::QuantizeOp>(origOp)) {
+        newOp = rewriter.create<IE::QuantizeOp>(origOp->getLoc(), input, newElementType);
+    } else if (mlir::isa<IE::DequantizeOp>(origOp)) {
+        newOp = rewriter.create<IE::DequantizeOp>(origOp->getLoc(), input, newElementType);
+    } else if (mlir::isa<IE::QuantizeCastOp>(origOp)) {
+        newOp = rewriter.create<IE::QuantizeCastOp>(origOp->getLoc(), input, newElementType);
+    } else {
+        return matchFailed(rewriter, origOp, "Unsupported conversion operation: {0}", origOp->getName());
+    }
+
+    assert(newOp != nullptr);
+    rewriter.replaceOp(origOp, newOp->getResults());
+    return mlir::success();
+}
+
 mlir::LogicalResult convertGeneric(mlir::Operation* origOp, mlir::ValueRange operands,
                                    mlir::ConversionPatternRewriter& rewriter, const mlir::TypeConverter& typeConverter,
                                    Logger log) {
@@ -625,6 +669,21 @@ public:
                                         mlir::ConversionPatternRewriter& rewriter) const final {
         const auto* typeConverter = this->getTypeConverter();
         VPUX_THROW_UNLESS(typeConverter != nullptr, "TypeConverter was not set");
+
+        // TODO: E#-171827 Support operands with 2 inputs as well.
+        // If we have any operand or result that uses per-axis quantized types, we have to do some special handling.
+        // Also for now, only operations with a single input are handles.
+        if (isPerAxisQuantizedOp(origOp.getOperation())) {
+            // These operations need to some of their attributes to be updated, that's why they're special.
+            const auto isLowPresicsionConversionOp =
+                    mlir::isa<IE::QuantizeOp, IE::DequantizeOp, IE::QuantizeCastOp>(origOp.getOperation());
+            if (isLowPresicsionConversionOp) {
+                return convertLowPrecisionConversionOp(origOp, newArgs.getOperands(), rewriter, *typeConverter);
+            }
+
+            // For now, we use the generic converter for all other operations.
+            return convertGeneric(origOp, newArgs.getOperands(), rewriter, *typeConverter, _log);
+        }
 
         if (origOp->getOperands().size() == 2) {
             return convertWith2Inputs(origOp, newArgs.getOperands(), rewriter);
@@ -1041,10 +1100,12 @@ mlir::LogicalResult RMSOpConverter::matchAndRewrite(IE::RMSOp origOp, OpAdaptor,
 // SDPAOpConverter
 //
 
-auto fillWithOnes(vpux::NDTypeInterface inType) {
+auto fillWithOnes(vpux::NDTypeInterface inType, int64_t targetRank) {
     auto newInShape = to_small_vector(inType.getShape());
-    auto inRank = newInShape.size();
-    const int64_t newInDims = TARGET_TENSOR_DIM - inRank;
+    int64_t inRank = newInShape.size();
+    VPUX_THROW_UNLESS(targetRank >= inRank, "Input {0} has target rank {1}, less than current rank {2}", inType,
+                      targetRank, inRank);
+    const int64_t newInDims = targetRank - inRank;
     newInShape.insert(newInShape.begin(), newInDims, 1);
     return newInShape;
 }
@@ -1052,10 +1113,12 @@ auto fillWithOnes(vpux::NDTypeInterface inType) {
 int getMaxInRank(IE::SDPAOp origOp) {
     int maxRank = 0;
     for (size_t i = 0; i < origOp->getNumOperands(); i++) {
-        auto inType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(i).getType());
-        auto inRank = inType.getRank();
-        if (inRank > maxRank) {
-            maxRank = inRank;
+        if (origOp->getOperand(i)) {
+            auto inType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(i).getType());
+            auto inRank = inType.getRank();
+            if (inRank > maxRank) {
+                maxRank = inRank;
+            }
         }
     }
     return maxRank;
@@ -1084,30 +1147,55 @@ mlir::LogicalResult SDPAOpConverter::matchAndRewrite(IE::SDPAOp origOp, OpAdapto
     const auto inQType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
     const auto inKType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(1).getType());
     const auto inVType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(2).getType());
-    const auto inMType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(3).getType());
 
-    auto newInQShape = fillWithOnes(inQType);
-    auto newInKShape = fillWithOnes(inKType);
-    auto newInVShape = fillWithOnes(inVType);
-    auto newInMShape = fillWithOnes(inMType);
+    auto newInQShape = fillWithOnes(inQType, TARGET_TENSOR_DIM);
+    auto newInKShape = fillWithOnes(inKType, TARGET_TENSOR_DIM);
+    auto newInVShape = fillWithOnes(inVType, TARGET_TENSOR_DIM);
 
     const auto newInQShapeAttr = getIntArrayAttr(origOp->getContext(), newInQShape);
     const auto newInKShapeAttr = getIntArrayAttr(origOp->getContext(), newInKShape);
     const auto newInVShapeAttr = getIntArrayAttr(origOp->getContext(), newInVShape);
-    const auto newInMShapeAttr = getIntArrayAttr(origOp->getContext(), newInMShape);
+
     const auto outShapeAttr = getIntArrayAttr(origOp->getContext(), getShape(origOp.getOutput()));
 
-    const auto inQReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInputQ(),
+    const auto inQReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_inQ"), origOp.getInputQ(),
                                                                  nullptr, false, newInQShapeAttr);
-    const auto inKReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInputK(),
+    const auto inKReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_inK"), origOp.getInputK(),
                                                                  nullptr, false, newInKShapeAttr);
-    const auto inVReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInputV(),
+    const auto inVReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_inV"), origOp.getInputV(),
                                                                  nullptr, false, newInVShapeAttr);
-    const auto inMReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInputMask(),
-                                                                 nullptr, false, newInMShapeAttr);
-    auto newSDPAOp = rewriter.create<IE::SDPAOp>(origOp->getLoc(), inQReshape, inKReshape, inVReshape, inMReshape);
+    mlir::Value maskReshape = nullptr;
+    if (origOp.getInputMask()) {
+        const auto inMType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputMask().getType());
+        const auto newInMShape = fillWithOnes(inMType, TARGET_TENSOR_DIM);
+        const auto newInMShapeAttr = getIntArrayAttr(origOp->getContext(), newInMShape);
+        maskReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_inM"), origOp.getInputMask(),
+                                                           nullptr, false, newInMShapeAttr);
+    }
+
+    mlir::Value scaleReshape = nullptr;
+    if (origOp.getInputScale()) {
+        const auto inSType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputScale().getType());
+        const auto newInSShape = fillWithOnes(inSType, TARGET_TENSOR_DIM);
+        const auto newInSShapeAttr = getIntArrayAttr(origOp->getContext(), newInSShape);
+        scaleReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_inS"), origOp.getInputScale(),
+                                                            nullptr, false, newInSShapeAttr);
+    }
+
+    mlir::Value biasReshape = nullptr;
+    if (origOp.getInputBias()) {
+        const auto inBType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputBias().getType());
+        const auto newInBShape = fillWithOnes(inBType, TARGET_TENSOR_DIM);
+        const auto newInBShapeAttr = getIntArrayAttr(origOp->getContext(), newInBShape);
+        biasReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_inB"), origOp.getInputBias(),
+                                                           nullptr, false, newInBShapeAttr);
+    }
+
+    auto newSDPAOp = rewriter.create<IE::SDPAOp>(origOp->getLoc(), inQReshape, inKReshape, inVReshape, maskReshape,
+                                                 scaleReshape, biasReshape);
     auto outReshape =
             rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newSDPAOp.getOutput(), nullptr, false, outShapeAttr);
+
     extendOpLoc(outReshape, "reshape_out");
 
     return mlir::success();
@@ -3010,6 +3098,100 @@ mlir::LogicalResult InterleavedDimsRewriter::matchAndRewrite(mlir::Operation* el
 }
 
 //
+// ReverseConverter
+//
+
+class ReverseConverter final : public mlir::OpConversionPattern<IE::ReverseOp> {
+public:
+    ReverseConverter(mlir::TypeConverter& typeConverter, mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpConversionPattern<IE::ReverseOp>(typeConverter, ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ReverseOp origOp, OpAdaptor newArgs,
+                                        mlir::ConversionPatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+std::pair<Shape, Shape> mergeAxes(ShapeRef inputShape, ShapeRef axes) {
+    const auto inputRank = inputShape.size();
+    VPUX_THROW_UNLESS(std::all_of(axes.begin(), axes.end(),
+                                  [&](int64_t idx) {
+                                      return idx >= 0 && idx < checked_cast<int64_t>(inputRank);
+                                  }),
+                      "Axis value out of range in inputShape");
+
+    SmallVector<int64_t> mergedShape;
+    SmallVector<int64_t> updatedAxes;
+    int64_t currentProduct = 1;
+    bool isMerging = false;
+
+    std::unordered_set<int64_t> axesSet(axes.begin(), axes.end());
+    for (size_t idx = 0; idx < inputRank; ++idx) {
+        if (axesSet.find(idx) != axesSet.end()) {
+            if (isMerging) {
+                mergedShape.push_back(currentProduct);
+                currentProduct = 1;
+                isMerging = false;
+            }
+            mergedShape.push_back(inputShape[Dim(idx)]);
+            updatedAxes.push_back(mergedShape.size() - 1);
+        } else {
+            currentProduct *= inputShape[Dim(idx)];
+            isMerging = true;
+        }
+    }
+
+    if (isMerging) {
+        mergedShape.push_back(currentProduct);
+    }
+
+    return std::make_pair(Shape(mergedShape), Shape(updatedAxes));
+}
+
+mlir::LogicalResult ReverseConverter::matchAndRewrite(IE::ReverseOp origOp, OpAdaptor,
+                                                      mlir::ConversionPatternRewriter& rewriter) const {
+    _log.trace("[{0}] Found '{1}' Operation '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+
+    const auto ctx = rewriter.getContext();
+    const auto inputType = mlir::cast<NDTypeInterface>(origOp.getInput().getType());
+    const auto inputShape = inputType.getShape();
+    const auto inputRank = inputType.getRank();
+    const auto axes = parseIntArrayAttr<int64_t>(origOp.getAxisValueAttr());
+
+    Shape targetShape = Shape(inputShape.raw());
+    Shape targetAxes = Shape(axes);
+    if (inputRank > 4) {
+        auto mergedInfo = mergeAxes(targetShape, targetAxes);
+        targetShape = mergedInfo.first;
+        targetAxes = mergedInfo.second;
+        VPUX_THROW_UNLESS(targetShape.size() <= TARGET_TENSOR_DIM, "Cannot convert ReverseOp to 4D");
+    }
+
+    int64_t expandDimNum = TARGET_TENSOR_DIM - targetShape.size();
+    SmallVector<int64_t> newInputShape(targetShape.begin(), targetShape.end());
+    newInputShape.resize(newInputShape.size() + expandDimNum, 1);
+
+    const auto newInputShapeAttr = getIntArrayAttr(ctx, newInputShape);
+    const auto newAxesAttr = getIntArrayAttr(ctx, targetAxes);
+
+    auto inputReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_input"), origOp.getInput(),
+                                                             nullptr, false, newInputShapeAttr);
+
+    auto newReverseOp =
+            rewriter.create<IE::ReverseOp>(origOp->getLoc(), inputReshape, nullptr, newAxesAttr, origOp.getModeAttr());
+
+    const auto outputShapeAttr = getIntArrayAttr(ctx, getShape(origOp.getOutput()));
+    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newReverseOp.getOutput(), nullptr, false,
+                                                                 outputShapeAttr);
+    extendOpLoc(outReshape, "reshape_out");
+
+    return mlir::success();
+}
+
+//
 // safeRunOnFunc
 //
 
@@ -3018,9 +3200,46 @@ auto buildReshapeMaterializer(StringRef locSuffix) {
                                  mlir::Location loc) -> mlir::Value {
         VPUX_THROW_UNLESS(inputs.size() == 1, "Got wrong number of inputs : {0}", inputs.size());
 
+        // TODO: E#-171827 It might be beneficial to use AffineReshape for all cases, as it has well defined semantics
+        // for per-axis quantized types and layout information propagation.
+        const auto inputType = mlir::cast<NDTypeInterface>(inputs[0].getType());
+        const auto isPerAxisQuantized = mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(inputType.getElementType());
         const auto outShapeAttr = builder.getI64ArrayAttr(dstType.getShape());
-        return builder.createOrFold<IE::ReshapeOp>(appendLoc(loc, locSuffix), inputs.front(), nullptr, false,
-                                                   outShapeAttr);
+
+        if (!isPerAxisQuantized) {
+            return builder.createOrFold<IE::ReshapeOp>(appendLoc(loc, locSuffix), inputs.front(), nullptr, false,
+                                                       outShapeAttr);
+        }
+
+        // If we have a per-axis quantized type, we need to use AffineReshapeOp because it can properly handle the axis
+        // change.
+        SmallVector<SmallVector<int64_t>> dimMapping;
+
+        const auto dimOffset = dstType.getRank() - inputType.getRank();
+        if (dimOffset >= 0) {
+            dimMapping.push_back({});
+            // map dimension s0 to 1 x ... x 1 x s0
+            for (int64_t i = 0; i <= dimOffset; ++i) {
+                dimMapping.front().push_back(i);
+            }
+            // map the remaining dimensions si to s(i + dimOffset)
+            for (int64_t i = 1; i < inputType.getRank(); ++i) {
+                dimMapping.push_back({i + dimOffset});
+            }
+        } else {
+            // map dimensions s0, ..., s(-dimOffset - 1) to s0
+            for (int64_t i = 0; i < -dimOffset; ++i) {
+                dimMapping.push_back({0});
+            }
+            // map dimensions s(-dimOffset), ..., s(inputType.getRank() - 1) to s0, s1, ...
+            for (int64_t i = -dimOffset; i < inputType.getRank(); ++i) {
+                dimMapping.push_back({i + dimOffset});
+            }
+        }
+
+        const auto dimMappingAttr = getIntArrayOfArray(dstType.getContext(), dimMapping);
+        return builder.createOrFold<IE::AffineReshapeOp>(appendLoc(loc, locSuffix), inputs.front(), dimMappingAttr,
+                                                         outShapeAttr);
     };
     return reshapeFunc;
 }
@@ -3060,6 +3279,16 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
         return IE::hasDynamicTensors(op) || typeConverter.isLegal(op);
     };
 
+    // TODO: E#-171827 Ideally we want to use `isLegalOp` also for quantized ops, but for now we don't modify per-tensor
+    // quant ops, only per-axis.
+    const auto isLegalQuantOp = [&](mlir::Operation* op) {
+        if (!isPerAxisQuantizedOp(op)) {
+            return true;
+        }
+
+        return IE::hasDynamicTensors(op) || typeConverter.isLegal(op);
+    };
+
     const auto isLegalFqOp = [&](IE::FakeQuantizeOp op) {
         const auto inShape = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getShape();
         const auto outShape = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getShape();
@@ -3076,6 +3305,26 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
             auto shape = getShape(value);
             return shape.size() == TARGET_TENSOR_DIM;
         });
+    };
+
+    const auto isLegalSDPAOp = [&](IE::SDPAOp op) {
+        const auto inQRank = mlir::cast<vpux::NDTypeInterface>(op.getInputQ().getType()).getRank();
+        const auto inKRank = mlir::cast<vpux::NDTypeInterface>(op.getInputK().getType()).getRank();
+        const auto inVRank = mlir::cast<vpux::NDTypeInterface>(op.getInputV().getType()).getRank();
+        bool isLegalSDPA = inQRank == TARGET_TENSOR_DIM && inKRank == TARGET_TENSOR_DIM && inVRank == TARGET_TENSOR_DIM;
+        if (op.getInputMask()) {
+            const auto inMRank = mlir::cast<vpux::NDTypeInterface>(op.getInputMask().getType()).getRank();
+            isLegalSDPA = isLegalSDPA && inMRank == TARGET_TENSOR_DIM;
+        }
+        if (op.getInputScale()) {
+            const auto inSRank = mlir::cast<vpux::NDTypeInterface>(op.getInputScale().getType()).getRank();
+            isLegalSDPA = isLegalSDPA && inSRank == TARGET_TENSOR_DIM;
+        }
+        if (op.getInputBias()) {
+            const auto inBRank = mlir::cast<vpux::NDTypeInterface>(op.getInputBias().getType()).getRank();
+            isLegalSDPA = isLegalSDPA && inBRank == TARGET_TENSOR_DIM;
+        }
+        return isLegalSDPA;
     };
 
     const auto isLegalEltwiseOp = [&](mlir::Operation* op) {
@@ -3224,6 +3473,20 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
         return !validAdjustedShape.has_value();
     };
 
+    const auto isLegalReverseOp = [&](IE::ReverseOp op) {
+        const auto inputType = mlir::cast<NDTypeInterface>(op.getInput().getType());
+
+        if (inputType.getRank() < TARGET_TENSOR_DIM) {
+            return false;
+        } else if (inputType.getRank() == TARGET_TENSOR_DIM) {
+            return true;
+        }
+
+        const auto axesShape = Shape(parseIntArrayAttr<int64_t>(op.getAxisValueAttr()));
+        const auto [mergedShape, _] = mergeAxes(inputType.getShape(), axesShape);
+        return mergedShape.size() > TARGET_TENSOR_DIM;
+    };
+
     mlir::ConversionTarget target(ctx);
     target.addLegalDialect<Const::ConstDialect>();
     target.addLegalDialect<IE::IEDialect>();
@@ -3319,11 +3582,15 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<IE::ErfOp>(isLegalOp);
     target.addDynamicallyLegalOp<IE::DynamicDequantizeOp>(isLegalOp);
     target.addDynamicallyLegalOp<IE::RMSOp>(allOperandsAre4D);
-    target.addDynamicallyLegalOp<IE::SDPAOp>(allOperandsAre4D);
+    target.addDynamicallyLegalOp<IE::SDPAOp>(isLegalSDPAOp);
     target.addDynamicallyLegalOp<IE::RandomUniformOp>(is4DLegalOp);
     target.addDynamicallyLegalOp<IE::GRUGatesOp>(is4DLegalOp);
     target.addDynamicallyLegalOp<IE::SplitOp>(isLegalSplitOp);
     target.addDynamicallyLegalOp<IE::RollOp>(isLegalRollOp);
+    target.addDynamicallyLegalOp<IE::ReverseOp>(isLegalReverseOp);
+    target.addDynamicallyLegalOp<IE::QuantizeOp>(isLegalQuantOp);
+    target.addDynamicallyLegalOp<IE::DequantizeOp>(isLegalQuantOp);
+    target.addDynamicallyLegalOp<IE::QuantizeCastOp>(isLegalQuantOp);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<InterleavedDimsRewriter>(&ctx, _log);
@@ -3386,6 +3653,9 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
     patterns.add<GenericConverter<IE::DynamicQuantizeOp>>(typeConverter, &ctx, _log);
     patterns.add<GenericConverter<IE::FakeConvertOp>>(typeConverter, &ctx, _log);
     patterns.add<GenericConverter<IE::SignOp>>(typeConverter, &ctx, _log);
+    patterns.add<GenericConverter<IE::QuantizeCastOp>>(typeConverter, &ctx, _log);
+    patterns.add<GenericConverter<IE::QuantizeOp>>(typeConverter, &ctx, _log);
+    patterns.add<GenericConverter<IE::DequantizeOp>>(typeConverter, &ctx, _log);
 
     patterns.add<GatherConverter>(typeConverter, &ctx, _log);
     patterns.add<GatherNDConverter>(typeConverter, &ctx, _log);
@@ -3421,6 +3691,7 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
     patterns.add<GRUGatesConverter>(typeConverter, &ctx, _log);
     patterns.add<SplitConverter>(typeConverter, &ctx, _log);
     patterns.add<RollConverter>(typeConverter, &ctx, _log);
+    patterns.add<ReverseConverter>(typeConverter, &ctx, _log);
 
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();

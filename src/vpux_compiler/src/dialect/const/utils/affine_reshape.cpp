@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
@@ -25,8 +25,11 @@ std::optional<mlir::Type> vpux::Const::inferElemTypeAffineReshape(ShapeRef input
     int64_t inputQAxisSize = inputShape.raw()[inputQAxis];
 
     if (inputQAxisSize == 1) {
-        // Per tensor, but must be per channel, do not handle it here
-        return std::nullopt;
+        // Convert per-axis quantized type to per-tensor quantized type
+        return mlir::quant::UniformQuantizedType::get(
+                perAxisQType.getFlags(), perAxisQType.getStorageType(), perAxisQType.getExpressedType(),
+                perAxisQType.getScales().front(), perAxisQType.getZeroPoints().front(),
+                perAxisQType.getStorageTypeMin(), perAxisQType.getStorageTypeMax());
     }
 
     for (const auto& dim : outputDims) {

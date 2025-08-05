@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -44,7 +44,21 @@ def VPURegMapped_TaskOpInterface : OpInterface<"TaskOpInterface"> {
             }]
         >,
         InterfaceMethod<
-            "Get the previous task inside list",
+            [{All task ops are distributed among task lists, that are mapped to fields in
+             Mapped Inference struct (legacy/non-WLM mode), such as dma_tasks_ddr_ or
+             act_kernel_invocations. Task lists exist even for WLM mode, but are not
+             represented explicitly in Managed Mapped Inference. For example, DMA task on
+             engine 0, link agent 'from DDR', at index 5, is linked with DMA tasks on engine
+             0, link agent 'from DDR' at index 4 and 6 (even if there are DMA tasks on other
+             engines and/or link agents with similar indexes).
+
+             This method returns previous task in the same task list.
+
+             Note: due to SSA-dominance relationship we can return previous task directly from
+             Op's arguments, in contrast with getNextTask method.
+
+             Note: the previousTask argument not to be confused with taskLinkAttr (see below).}],
+
             "vpux::VPURegMapped::TaskOpInterface", "getPreviousTask", (ins),
             [{
                 auto prev = $_op.getPreviousTask();
@@ -81,18 +95,28 @@ def VPURegMapped_TaskOpInterface : OpInterface<"TaskOpInterface"> {
             }]
         >,
         InterfaceMethod<
-            "Link the op to previous task in FIFO",
+            [{Some adjacent task ops from a given task list can form a 'linked list of enqueued tasks'.
+             The idea is when a task op is processed and dequeued from the HW FIFO, next task to
+             be executed can be reached directly using corresponding 'link'
+             (typically in task's descriptor).
+
+             This method links current task op to a task defining given index.
+
+             Note: not all tasks are necessarily linked, especially for the case of
+             partial WLM."}],
+
+            "void", "linkToTask", (ins "vpux::VPURegMapped::IndexTypeAttr":$task), [{}], [{
+                $_op.getOperation()->setAttr("taskLinkAttrName", task);
+            }]
+        >,
+        InterfaceMethod<
+            "Link current task op to previous task in the same task list (see linkToTask)",
+
             "void", "linkToPreviousTask", (ins ), [{}], [{
                 auto ctx = $_op.getOperation()->getContext();
                 auto previousTaskIndex = mlir::cast<vpux::VPURegMapped::IndexType>($_op.getPreviousTask().getType());
                 auto index = vpux::VPURegMapped::IndexTypeAttr::get(ctx, previousTaskIndex);
                 $_op.getOperation()->setAttr("taskLinkAttrName", index);
-            }]
-        >,
-        InterfaceMethod<
-            "Link the op to given task",
-            "void", "linkToTask", (ins "vpux::VPURegMapped::IndexTypeAttr":$task), [{}], [{
-                $_op.getOperation()->setAttr("taskLinkAttrName", task);
             }]
         >,
         InterfaceMethod<
@@ -120,7 +144,7 @@ def VPURegMapped_TaskOpInterface : OpInterface<"TaskOpInterface"> {
                 return false;
             }]
         >,
-        
+
         InterfaceMethod<
             "Returns wlmPageAttr",
             "mlir::IntegerAttr", "getWlmPageAttr", (ins), [{}], [{
@@ -138,11 +162,11 @@ def VPURegMapped_TaskOpInterface : OpInterface<"TaskOpInterface"> {
 }
 
 //
-// RegFieldVersion
+// NPURegDescriptorOpInterface
 //
 
-def VPURegMapped_RegFieldVersion : OpInterface<"RegFieldVersion"> {
-    let description = "Interface for the ELF nnrt version";
+def VPURegMapped_NPURegDescriptorOpInterface: OpInterface<"NPURegDescriptorOpInterface"> {
+    let description = "Interface used to mark ops that have NPUReg field descriptor.";
     let cppNamespace = "vpux::VPURegMapped";
 
     let methods = [
@@ -154,6 +178,15 @@ def VPURegMapped_RegFieldVersion : OpInterface<"RegFieldVersion"> {
                 auto returnVersion = $_op.getProperties().getDescriptor().getDescriptorVersion();
                 VPUX_THROW_UNLESS(returnVersion.has_value(), "Descriptor does not have version attached.");
                 return returnVersion.value();
+            }]
+        >,
+        InterfaceMethod<
+            "Get raw pointer to descriptor storage.",
+            "llvm::MutableArrayRef<uint8_t>",
+            "getDescriptorStorage", (ins), [{}],
+            /*defaultImplementation=*/[{
+                auto& descriptor = $_op.getProperties().descriptor;
+                return descriptor.getStorage();
             }]
         >,
     ];

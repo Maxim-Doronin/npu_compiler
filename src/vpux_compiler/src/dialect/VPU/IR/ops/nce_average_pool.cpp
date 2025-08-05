@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
@@ -296,8 +296,8 @@ bool VPU::NCEAveragePoolOp::doesLayerChangeOutputAlignmentFitIntoCMX(
     auto nceOp = mlir::cast<NCEAveragePoolOp>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
             nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
-    auto distributedInputType =
-            getDistributedActivationTypeFromOp(nceOp, nceOp.getInput().getType(), numClusters, strategy);
+    auto distributedInputType = getDistributedActivationTypeFromOp(nceOp, nceOp.getInput(), nceOp.getInput().getType(),
+                                                                   numClusters, strategy);
     return fitIntoCMX(distributedInputType, newDistributedTensorType);
 }
 

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -20,6 +20,8 @@ constexpr StringLiteral cycleEnd = "cycleEnd";
 
 size_t getDMACost(mlir::Value input, mlir::Value output, VPU::ArchKind archKind,
                   const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts = 1);
+size_t getDMACost(vpux::NDTypeInterface inTensorType, vpux::NDTypeInterface outTensorType, VPUNN::VPUDevice vpuDevice,
+                  const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts);
 size_t getDMACost(vpux::NDTypeInterface tensorType, VPUNN::VPUDevice vpuDevice,
                   const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts);
 size_t getDPUCost(mlir::Operation* op);

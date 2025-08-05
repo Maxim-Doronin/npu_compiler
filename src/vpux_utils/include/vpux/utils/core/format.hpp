@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -197,14 +197,14 @@ struct format_provider<std::tuple<Args...>> final {
 
 private:
     template <size_t Index = 0>
-    static auto printItems(const std::tuple<Args...>& val, llvm::raw_ostream& stream, StringRef style)
-            -> std::enable_if_t<Index + 1 == sizeof...(Args)> {
+    static auto printItems(const std::tuple<Args...>& val, llvm::raw_ostream& stream,
+                           StringRef style) -> std::enable_if_t<Index + 1 == sizeof...(Args)> {
         llvm::support::detail::build_format_adapter(std::get<Index>(val)).format(stream, style);
     }
 
     template <size_t Index = 0>
-    static auto printItems(const std::tuple<Args...>& val, llvm::raw_ostream& stream, StringRef style)
-            -> std::enable_if_t<Index + 1 < sizeof...(Args)> {
+    static auto printItems(const std::tuple<Args...>& val, llvm::raw_ostream& stream,
+                           StringRef style) -> std::enable_if_t<Index + 1 < sizeof...(Args)> {
         llvm::support::detail::build_format_adapter(std::get<Index>(val)).format(stream, style);
         stream << ", ";
 

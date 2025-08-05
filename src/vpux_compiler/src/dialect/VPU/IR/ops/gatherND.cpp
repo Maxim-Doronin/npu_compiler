@@ -1,7 +1,7 @@
 
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -51,7 +51,7 @@ mlir::LogicalResult vpux::VPU::GatherNDOp::inferReturnTypes(mlir::MLIRContext* c
     if (auto boundedIndices = mlir::dyn_cast<Core::BoundedTensorType>(indicesType)) {
         auto indicesBounds = boundedIndices.getBounds();
 
-        SmallVector<int64_t> outBounds(indicesBounds.begin(), indicesBounds.end() - 1);
+        Bounds outBounds(indicesBounds.begin(), indicesBounds.end() - 1);
         if (batchDims + lastIndices != inputRank) {
             outBounds.append(inputShape.begin() + batchDims + lastIndices, inputShape.end());
         }

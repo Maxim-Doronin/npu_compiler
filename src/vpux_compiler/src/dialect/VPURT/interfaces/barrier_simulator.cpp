@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_simulator.hpp"
@@ -278,9 +278,6 @@ void vpux::VPURT::BarrierSimulator::parseTasks(mlir::Operation* parentOp) {
 
     parentOp->walk([&](VPURT::TaskOp taskOp) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
-        if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(wrappedTaskOp)) {
-            wrappedTaskOp = clusterTilingOp.getInnerTaskOp();
-        }
 
         const auto virtualDep = _vdt.add(taskOp);
 
@@ -1047,11 +1044,12 @@ void vpux::VPURT::BarrierSimulator::linkNextIds(Logger log) {
         auto& current = _barriers[i];
         current.nextSameId = -1;
 
-        for (auto j = i + 1; j < _barriers.size(); ++j)
+        for (auto j = i + 1; j < _barriers.size(); ++j) {
             if (_barriers[j].realId == current.realId) {
                 current.nextSameId = j;
                 break;
             }
+        }
 
         log.nest().trace("VID: {0}, PHYS ID: {1}, NEXT SAME PHYS ID: {2}", i, current.realId, current.nextSameId);
     }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -28,7 +28,7 @@ public:
         return retrieveMPEEngineAttribute(operation);
     }
 
-    static bool useNewWeightTableFormat(mlir::Operation*, MPEEngineAttr) {
+    static bool useNewWeightTableFormat(mlir::Operation*, bool) {
         return false;
     }
 };

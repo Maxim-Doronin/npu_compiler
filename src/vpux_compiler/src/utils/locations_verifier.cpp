@@ -1,13 +1,12 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/locations_verifier.hpp"
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/IERT/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -16,6 +15,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/dialect.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
@@ -53,8 +53,8 @@ bool isOpFromAnyDialect(mlir::Operation* op) {
 
 bool isOpFromIgnoredDialect(mlir::Operation* op) {
     // ELF dialects are ignored because locations are serialized before.
-    return !isOpFromAnyDialect<Const::ConstDialect, IE::IEDialect, VPU::VPUDialect, IERT::IERTDialect,
-                               VPUIP::VPUIPDialect, VPURT::VPURTDialect, config::ConfigDialect, mlir::BuiltinDialect,
+    return !isOpFromAnyDialect<Const::ConstDialect, IE::IEDialect, VPU::VPUDialect, VPUIP::VPUIPDialect,
+                               VPURT::VPURTDialect, config::ConfigDialect, mlir::BuiltinDialect,
                                mlir::func::FuncDialect, net::NetDialect>(op);
 }
 
@@ -72,10 +72,9 @@ bool isIgnoredOpType(mlir::Operation* op) {
     // Similarly to memory allocations this operations aren't real tasks, they represent setup of hardware
     const bool isSetupOp = mlir::isa<VPURT::DeclareVirtualBarrierOp, VPURT::TaskOp, VPURT::ConfigureBarrierOp,
                                      VPUIP::PPETaskOp, Const::DeclareOp>(op);
-    // Other locations. NCEClusterTilingOp is just wrapper, usually have same loc as inner. SparseBuffer[Un]Group is
-    // just change of type representation, so no need to verify it
-    bool isIgnoredOp = mlir::isa<VPUIP::NCEClusterTilingOp, VPUIP::GroupSparseBufferOp, VPUIP::UngroupSparseBufferOp,
-                                 net::DataInfoOp, mlir::UnrealizedConversionCastOp>(op);
+    // Other locations. SparseBuffer[Un]Group is just change of type representation, so no need to verify it
+    bool isIgnoredOp = mlir::isa<VPUIP::GroupSparseBufferOp, VPUIP::UngroupSparseBufferOp, net::DataInfoOp,
+                                 mlir::UnrealizedConversionCastOp>(op);
     return isViewLikeOp || isControlFlowOp || isMemoryAllocOp || isSetupOp || isIgnoredOp;
 }
 
@@ -172,7 +171,7 @@ public:
                 }
             }
             if (!message.empty()) {
-                log.trace("{0}", message);
+                log.error("{0}", message);
             }
         }
     }

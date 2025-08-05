@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUIP_ARCH_37XX_PASSES
@@ -9,17 +9,17 @@
 include "mlir/Pass/PassBase.td"
 
 //
-// UnrollClusterTiling
+// UnrollDistributedOps
 //
 
-def UnrollClusterTiling : PassBase<"unroll-cluster-tiling", "vpux::FunctionPass"> {
-    let summary = "Extracts child operations from ClusterTiling operation";
+def UnrollDistributedOps : PassBase<"unroll-distributed-ops", "vpux::FunctionPass"> {
+    let summary = "Extracts child operations from distributed operation";
 
     let description = [{
-        Legalizes chain of ClusterTiling operations according to the tile schema
+        Legalizes chain of distributed operations according to the tile schema
     }];
 
-    let constructor = "vpux::VPUIP::arch37xx::createUnrollClusterTilingPass()";
+    let constructor = "vpux::VPUIP::arch37xx::createUnrollDistributedOpsPass()";
 }
 
 //
@@ -36,7 +36,7 @@ def AddSwKernelCacheHandlingOps : PassBase<"add-sw-kernel-cache-handling-ops", "
         consumers is not an ActSHAVE such that the ActSHAVE cache is flushed after the ActSHAVE Kernel writes
         to DDR through the cache.
 
-        CACHE_FLUSH_INVALIDATE will be added when at least one input buffer is located in DDR and it is not 
+        CACHE_FLUSH_INVALIDATE will be added when at least one input buffer is located in DDR and it is not
         produced by an ActSHAVE or is a constant, such that the ActSHAVE cache is invalidated before the
         ActSHAVE Kernel reads from DDR through the cache.
 

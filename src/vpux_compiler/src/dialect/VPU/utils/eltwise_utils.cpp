@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
@@ -55,15 +55,8 @@ bool vpux::VPU::isNCEEltwiseSupported(mlir::Operation* op, vpux::NDTypeInterface
         auto iface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op);
         auto outputAlignment = iface != nullptr ? iface.getOutputChannelAlignment()
                                                 : vpux::VPU::NCEInvariant::getAlignment(outputType.getElementType());
-        bool hasAutoPad = VPU::hasAutoPaddingIDU(getModuleOp(op));
-        auto inputAlignmentFirst = hasAutoPad && VPU::inputCompatibleWithAutoPad(input1Type)
-                                           ? 1
-                                           : vpux::VPU::NCEInvariant::getAlignment(input1Type.getElementType());
-
-        auto inputAlignmentSecond = hasAutoPad && VPU::inputCompatibleWithAutoPad(input2Type)
-                                            ? 1
-                                            : vpux::VPU::NCEInvariant::getAlignment(input2Type.getElementType());
-
+        auto inputAlignmentFirst = VPU::NCEInvariant::getAlignment(input1Type.getElementType());
+        auto inputAlignmentSecond = VPU::NCEInvariant::getAlignment(input2Type.getElementType());
         if (!NCEInvariant::isInputActTypeSupported(input1Type, inputAlignmentFirst, false) ||
             !NCEInvariant::isInputActTypeSupported(input2Type, inputAlignmentSecond, false) ||
             !NCEInvariant::isOutputActTypeSupported(outputType, outputAlignment)) {

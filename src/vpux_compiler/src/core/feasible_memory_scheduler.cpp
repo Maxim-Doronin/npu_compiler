@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/feasible_memory_scheduler.hpp"
@@ -211,7 +211,7 @@ size_t FeasibleMemoryScheduler::getOpDemandForExecutorsInstances(operationIdxTyp
 
     // Current only for DMA tasks:
     // Check if operation works on DistributedBuffers with SEGMENTED mode. In such case
-    // such DMA will be later split into per-cluster DMA tasks (unroll-cluster-tiling pass).
+    // such DMA will be later split into per-cluster DMA tasks (unroll-distributed-ops pass).
     // Here assume that this operation will use all executors
     if (queueType.execKind == VPU::ExecutorKind::DMA_NN) {
         const auto usedBufs = _liveRangeInfo.getUsedBuffers(execOp);

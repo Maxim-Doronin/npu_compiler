@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_variant_idu.hpp"
@@ -9,20 +9,12 @@
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
 
-namespace {
-
-int64_t size(int64_t start, int64_t end) {
-    return end - start + 1;
-}
-
-}  // namespace
-
 namespace vpux::VPUIPDPU::arch40xx::IDU {
 
 mlir::LogicalResult buildIDUWorkloadSet(mlir::OpBuilder& builder, const mlir::Location& loc,
                                         const SmallVector<int64_t>&& inStart, const SmallVector<int64_t>&& inEnd) {
-    builder.create<IDUWorkloadSetOp>(loc, inStart[0], inStart[1], inStart[2], size(inStart[0], inEnd[0]),
-                                     size(inStart[1], inEnd[1]), size(inStart[2], inEnd[2]));
+    builder.create<IDUWorkloadSetOp>(loc, inStart[0], inStart[1], inStart[2], getRangeSize(inStart[0], inEnd[0]),
+                                     getRangeSize(inStart[1], inEnd[1]), getRangeSize(inStart[2], inEnd[2]));
 
     return mlir::success();
 }
@@ -39,12 +31,12 @@ mlir::LogicalResult buildIDUWeightSet(mlir::OpBuilder& builder, const mlir::Loca
     weightStart <<= 4;
 
     auto inputZ = inActType.getShape()[Dims4D::Act::C];
-    auto inSizeZ = size(inStartZ, inEndZ);
-    auto outSizeZ = size(outStartZ, outEndZ);
+    auto inSizeZ = getRangeSize(inStartZ, inEndZ);
+    auto outSizeZ = getRangeSize(outStartZ, outEndZ);
     auto weightNum = outSizeZ;
     int64_t weightSize = 0;
-    int64_t kernelX = 1, kernelY = 1;
 
+    int64_t kernelX = 1, kernelY = 1;
     if (kernelSize.has_value()) {
         auto kernelSizeArray = parseIntArrayAttr<int64_t>(kernelSize.value());
         kernelX = kernelSizeArray[1];

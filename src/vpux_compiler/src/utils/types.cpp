@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/types.hpp"
@@ -305,7 +305,8 @@ mlir::RankedTensorType vpux::getTensorType(ShapeRef shape, mlir::Type elemType, 
 }
 
 mlir::RankedTensorType vpux::getTensorType(ShapeRef shape, mlir::Type elemType, DimsOrder order,
-                                           IndexedSymbolAttr memSpace, Bounds bounds, DynamicDimsMask dynamicDimsMask) {
+                                           IndexedSymbolAttr memSpace, BoundsRef bounds,
+                                           DynamicDimsMaskRef dynamicDimsMask) {
     VPUX_THROW_UNLESS(order.numDims() == shape.size(), "DimsOrder '{0}' doesn't match to shape '{1}'", order, shape);
 
     VPUX_THROW_WHEN(!bounds.empty() && !dynamicDimsMask.empty(),

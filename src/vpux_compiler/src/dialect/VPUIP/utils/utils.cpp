@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
@@ -29,9 +30,8 @@
 #include "vpux/compiler/utils/types.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
-#include <mlir/IR/AffineMap.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <algorithm>
+#include <mlir/IR/Operation.h>
+#include <mlir/Support/LLVM.h>
 
 using namespace vpux;
 
@@ -329,26 +329,6 @@ mlir::Value vpux::VPUIP::alignDepthWiseWeightsTensor(mlir::OpBuilder& builder, m
     }
 }
 
-// TODO: remove this when finalizing E#73766
-// In case operation is wrapped in NCEClusterTiling this method will return mlir::Value at parent level
-// corresponding to mlir::Value used by wrapped operation
-// In case operation is not wrapped in NCEClusterTiling then just return same mlir::Value
-mlir::Value vpux::VPUIP::getTopBufferOfNCEClusterTiling(mlir::Operation* innerOp, mlir::Value buffer) {
-    if (buffer == nullptr) {
-        return buffer;
-    }
-
-    if (auto nceClustOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(innerOp->getParentOp())) {
-        auto* bodyBlock = &nceClustOp.getBody().front();
-        const auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(buffer);
-        VPUX_THROW_WHEN(blockArg == nullptr || blockArg.getOwner() != bodyBlock,
-                        "Matching argument was not identified");
-
-        return nceClustOp->getOperand(blockArg.getArgNumber());
-    }
-    return buffer;
-}
-
 void vpux::VPUIP::moveRootAllocBefore(mlir::Operation* root, mlir::Operation* targetOp) {
     root->moveBefore(targetOp);
     if (mlir::isa<VPUIP::GroupSparseBufferOp>(root)) {
@@ -565,6 +545,7 @@ bool isBrodcastingDistributionMode(const vpux::VPU::DistributionMode distributio
 }
 SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Location loc, StringRef bufferName,
                                                 VPUIP::SwKernelOp swTaskOp, mlir::Value operand,
+                                                VPUIP::OperandType operandType,
                                                 VPUIP::DistributedBufferType distributedType,
                                                 ArrayRef<Shape> perClusterShapes,
                                                 ArrayRef<Shape> perClusterShapeOffsets, int64_t tileCount,
@@ -573,10 +554,11 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
         return SmallVector<mlir::Value>(tileCount, nullptr);
     }
 
-    auto operandType = operand.getType();
-    vpux::NDTypeInterface compactType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType) == nullptr
-                                                ? operandType
-                                                : mlir::cast<vpux::NDTypeInterface>(distributedType.getCompactType());
+    auto operandSpecificType = operand.getType();
+    vpux::NDTypeInterface compactType =
+            mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandSpecificType) == nullptr
+                    ? operandSpecificType
+                    : mlir::cast<vpux::NDTypeInterface>(distributedType.getCompactType());
     const auto strideReqs = StrideReqs::compact(compactType.getShape().size());
     const auto isContinuousBufferType = strideReqs.checkStrides(compactType);
 
@@ -594,9 +576,13 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
             auto buffType = changeShape(compactType, perClusterShapes[clusterId], perClusterShapeOffsets[clusterId]);
             if (allowDiscontinuousBuffers && !isContinuousBufferType) {
                 auto newStrides = compactType.getStrides();
-                if (swTaskOp.getStridesAttr() != nullptr) {
+                if (swTaskOp.getOutputStridesAttr() != nullptr) {
+                    auto relatedStrides = swTaskOp.getOutputStridesAttr();
+                    if (operandType == VPUIP::OperandType::input && swTaskOp.getInputStridesAttr() != nullptr) {
+                        relatedStrides = swTaskOp.getInputStridesAttr();
+                    }
                     newStrides.clear();
-                    auto perClusterStrides = parseIntArrayOfArrayAttr<int64_t>(swTaskOp.getStridesAttr());
+                    auto perClusterStrides = parseIntArrayOfArrayAttr<int64_t>(relatedStrides);
                     Bit elemSize = distributedType.getElemTypeSize();
                     for (auto val : perClusterStrides[clusterId]) {
                         newStrides.push_back(Bit(val * elemSize.count()));
@@ -1130,15 +1116,15 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterComputeBuffers(mlir::MLIRCont
 
 SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWMemoryBuffers(mlir::MLIRContext* ctx, mlir::Location loc,
                                                                    StringRef bufferName, VPUIP::SwKernelOp swTaskOp,
-                                                                   mlir::Value operand, int64_t tileCount,
-                                                                   mlir::OpBuilder& builder, Logger log,
-                                                                   bool allowDiscontinuousBuffers) {
+                                                                   mlir::Value operand, OperandType operandType,
+                                                                   int64_t tileCount, mlir::OpBuilder& builder,
+                                                                   Logger log, bool allowDiscontinuousBuffers) {
     if (operand == nullptr) {
         return SmallVector<mlir::Value>(tileCount, nullptr);
     }
 
-    auto operandType = operand.getType();
-    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
+    auto operandSpecificType = operand.getType();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandSpecificType);
 
     if (distributedType == nullptr) {  // input type is memref, need to use infos from output type
         auto resultType = swTaskOp->getResults().front().getType();
@@ -1153,8 +1139,9 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWMemoryBuffers(mlir::MLIRCon
     VPUX_THROW_UNLESS(perClusterShapeOffsets.size() == checked_cast<size_t>(tileCount),
                       "Mismatch in shape offsets '{0}' and clusters '{1}'", perClusterShapeOffsets.size(), tileCount);
 
-    return getPerClusterSWBuffers(ctx, loc, bufferName, swTaskOp, operand, distributedType, perClusterShapes,
-                                  perClusterShapeOffsets, tileCount, builder, log, allowDiscontinuousBuffers);
+    return getPerClusterSWBuffers(ctx, loc, bufferName, swTaskOp, operand, operandType, distributedType,
+                                  perClusterShapes, perClusterShapeOffsets, tileCount, builder, log,
+                                  allowDiscontinuousBuffers);
 }
 
 //
@@ -1189,15 +1176,15 @@ std::optional<int64_t> getSWLayerDistributedTilingDimIndex(T distributedType) {
 
 SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWComputeBuffers(mlir::MLIRContext* ctx, mlir::Location loc,
                                                                     StringRef bufferName, VPUIP::SwKernelOp swTaskOp,
-                                                                    mlir::Value operand, int64_t tileCount,
-                                                                    mlir::OpBuilder& builder, Logger log,
-                                                                    bool allowDiscontinuousBuffers) {
+                                                                    mlir::Value operand, OperandType operandType,
+                                                                    int64_t tileCount, mlir::OpBuilder& builder,
+                                                                    Logger log, bool allowDiscontinuousBuffers) {
     if (operand == nullptr) {
         return SmallVector<mlir::Value>(tileCount, nullptr);
     }
 
-    auto operandType = operand.getType();
-    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
+    auto operandSpecificType = operand.getType();
+    auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandSpecificType);
 
     if (distributedType == nullptr) {
         auto inputType = swTaskOp->getOperand(0).getType();
@@ -1211,8 +1198,9 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWComputeBuffers(mlir::MLIRCo
     VPUX_THROW_UNLESS(perClusterShapeOffsets.size() == checked_cast<size_t>(tileCount),
                       "Mismatch in shape offsets '{0}' and clusters '{1}'", perClusterShapeOffsets.size(), tileCount);
 
-    return getPerClusterSWBuffers(ctx, loc, bufferName, swTaskOp, operand, distributedType, perClusterShapes,
-                                  perClusterShapeOffsets, tileCount, builder, log, allowDiscontinuousBuffers);
+    return getPerClusterSWBuffers(ctx, loc, bufferName, swTaskOp, operand, operandType, distributedType,
+                                  perClusterShapes, perClusterShapeOffsets, tileCount, builder, log,
+                                  allowDiscontinuousBuffers);
 }
 
 // Get split buffers of single-cluster CMX or DDR to match with subshapes
@@ -1682,21 +1670,16 @@ bool vpux::VPUIP::canTilingWeightsBeCompressed(VPUIP::NCEClusterTaskOp nceOp) {
         return false;
     }
 
-    auto weights = VPUIP::getTopBufferOfNCEClusterTiling(nceOp, nceOp.getWeights());
+    auto weights = nceOp.getWeights();
     if (weights == nullptr) {
         return false;
     }
 
-    auto weightsBufferTilingOp = weights.getDefiningOp<VPUIP::NCEClusterTilingOp>();
-    if (weightsBufferTilingOp == nullptr) {
+    auto weightsCopyOp = weights.getDefiningOp<VPUIP::CopyOp>();
+    if (!vpux::VPUIP::hasDistributedOperand(weightsCopyOp)) {
         return false;
     }
-    auto weightsCopyOp = weightsBufferTilingOp.getInnerTaskOpOfType<VPUIP::CopyOp>();
-    if (weightsCopyOp == nullptr) {
-        return false;
-    }
-    auto weightsInput = VPUIP::getTopBufferOfNCEClusterTiling(weightsCopyOp, weightsCopyOp.getInput())
-                                .getDefiningOp<Const::DeclareOp>();
+    auto weightsInput = weightsCopyOp.getInput().getDefiningOp<Const::DeclareOp>();
     if (weightsInput == nullptr) {
         return false;
     }
@@ -1775,15 +1758,11 @@ bool vpux::VPUIP::isCopyWithStaticStrides(VPUIP::CopyOp copyOp) {
 }
 
 bool vpux::VPUIP::isCopyToDDR(VPUIP::CopyOp copyOp) {
-    auto origOp = copyOp->getParentOfType<VPUIP::NCEClusterTilingOp>() == nullptr ? copyOp.getOperation()
-                                                                                  : copyOp->getParentOp();
-    return mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getMemoryKind() == VPU::MemoryKind::DDR;
+    return mlir::cast<vpux::NDTypeInterface>(copyOp->getResult(0).getType()).getMemoryKind() == VPU::MemoryKind::DDR;
 }
 
 bool vpux::VPUIP::isCopyFromDDR(VPUIP::CopyOp copyOp) {
-    auto origOp = copyOp->getParentOfType<VPUIP::NCEClusterTilingOp>() == nullptr ? copyOp.getOperation()
-                                                                                  : copyOp->getParentOp();
-    return mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType()).getMemoryKind() == VPU::MemoryKind::DDR;
+    return mlir::cast<vpux::NDTypeInterface>(copyOp->getOperand(0).getType()).getMemoryKind() == VPU::MemoryKind::DDR;
 }
 
 // The concept of striding levels means that tensor is not contiguous in some number of dimensions.
@@ -2080,6 +2059,11 @@ Shape VPUIP::backInferD2SInputShape(Shape outShape, int64_t paddedOC, int64_t pa
 
 mlir::Operation* VPUIP::findSETableOp(mlir::Value value) {
     auto parentOp = value.getDefiningOp();
+    if (vpux::VPUIP::hasDistributedOperand(parentOp)) {
+        VPUX_THROW_UNLESS(!mlir::isa<VPUIP::CopyOp>(parentOp), "Unexpected NCE parent operation at '{0}'",
+                          parentOp->getLoc());
+        return findSETableOp(parentOp->getOperand(0));
+    }
     return llvm::TypeSwitch<mlir::Operation*, mlir::Operation*>(parentOp)
             .Case<VPUIP::StorageElementTableOp, Const::DeclareOp>([](mlir::Operation* op) {
                 return op;
@@ -2094,12 +2078,6 @@ mlir::Operation* VPUIP::findSETableOp(mlir::Value value) {
                                   groupOp->getLoc(), groupOp->getNumOperands());
                 return findSETableOp(groupOp->getOperand(numOperands - 1));
             })
-            .Case<VPUIP::NCEClusterTilingOp>([](VPUIP::NCEClusterTilingOp nceClusterTilingOp) {
-                auto taskOp = nceClusterTilingOp.getInnerTaskOpOfType<VPUIP::CopyOp>();
-                VPUX_THROW_UNLESS(taskOp != nullptr, "Unexpected NCE parent operation at '{0}'",
-                                  nceClusterTilingOp->getLoc());
-                return findSETableOp(nceClusterTilingOp->getOperand(0));
-            })
             .Case<VPUIP::CopyOp>([](VPUIP::CopyOp copyOp) {
                 return findSETableOp(copyOp.getInput());
             })
@@ -2107,10 +2085,10 @@ mlir::Operation* VPUIP::findSETableOp(mlir::Value value) {
                 return findSETableOp(viewOp.getViewSource());
             })
             .Case<vpux::MultiViewOpInterface>([&](vpux::MultiViewOpInterface viewOp) {
-                if (auto nceClusterOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(parentOp)) {
-                    auto taskOp = nceClusterOp.getInnerTaskOp();
-                    VPUX_THROW_UNLESS(mlir::isa<VPUIP::CopyOp>(taskOp), "Expected copy operation, got '{0}' at '{1}'",
-                                      taskOp->getName(), taskOp->getLoc());
+                if (vpux::VPUIP::hasDistributedOperand(parentOp)) {
+                    VPUX_THROW_UNLESS(!mlir::isa<VPUIP::CopyOp>(parentOp),
+                                      "Expected copy operation, got '{0}' at '{1}'", parentOp->getName(),
+                                      parentOp->getLoc());
                 }
                 auto opResult = mlir::dyn_cast<mlir::OpResult>(value);
                 VPUX_THROW_WHEN(opResult == nullptr, "Value '{0}' cannot be converted to an op result", value);
@@ -2771,4 +2749,28 @@ void VPUIP::splitSpaceToDepth(mlir::PatternRewriter& rewriter,
         builder(internalSpaceSideMemRef, newSpaceSideBuffer, internalChannelSideMemRef, newChannelSideBuffer,
                 internalInToOutPermutation, index);
     }
+}
+
+// SubView is not compatible with distributed buffer when:
+// 1. Distributed buffer is segmented
+// 2. SubView shrinks segmented axis
+bool vpux::VPUIP::isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp,
+                                                           VPUIP::DistributedBufferType distributedType) {
+    const auto tileIndex = VPUIP::getTilingDimIndex(distributedType);
+    if (!tileIndex.has_value()) {
+        // DUPLICATED | MULTICASTED
+        return true;
+    }
+
+    auto tileIndexVal = tileIndex.value();
+    auto origShape = getShape(subViewOp.getSource());
+    auto subShape = getShape(subViewOp.getResult());
+
+    if (!VPUIP::isChannelOffsetsAndTileDimCompatibleWithDistributedCopy(
+                parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsetsAttr()), tileIndexVal, distributedType)) {
+        return false;
+    }
+
+    // Be compatible if SubView does not shrink segmented axis
+    return origShape[Dim(tileIndexVal)] == subShape[Dim(tileIndexVal)];
 }

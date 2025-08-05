@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -45,15 +45,11 @@ public:
                                                            getArchKind(config));
         VPUX_THROW_WHEN(_options == nullptr, "Failed to parse COMPILATION_MODE_PARAMS");
 
-        _initCompilerOptions = vpux::getInitCompilerOptions(config);
-        const auto& numOfDPUGroups = _initCompilerOptions->numberOfDPUGroups;
-        const auto& numOfDMAPorts = _initCompilerOptions->numberOfDMAPorts;
-        VPUX_THROW_WHEN(
-                numOfDPUGroups.hasValue() && numOfDMAPorts.hasValue() &&
-                        numOfDMAPorts.getValue() > numOfDPUGroups.getValue(),
-                "Requested configuration not supported by runtime. Number of DMA ports ({0}) larger than NCE clusters "
-                "({1})",
-                numOfDMAPorts.getValue(), numOfDPUGroups.getValue());
+        // it makes sense to call getArchKind/getCompilationMode even though they will be "symbolized" and "stringified"
+        // back since parameters will be verified
+        auto arch = getArchKind(config);
+        auto compilationMode = getCompilationMode(config);
+        _initCompilerOptions = std::make_unique<VPU::InitCompilerOptions>(arch, compilationMode, *_options);
 
         setupOptions();
     }
@@ -89,12 +85,40 @@ protected:
 
 private:
     void setupOptions() {
-        _options->matchAndCopyOptionValuesFrom(*_initCompilerOptions);
-
         // this way user can setup specific option values
         // for different platforms and compilation modes
         if (_config.has_value()) {
-            ConcreteModel::setupOptionsImpl(*_options.get(), _config.value());
+            const auto& configVal = _config.value();
+
+            // Note that all of the following options are explicit OV/Plugin options.
+            // Don't parse COMPILATION_MODE_PARAMS again!
+
+            // reuse PSS tests API
+            _initCompilerOptions->setAvailableCMXMemory(getAvailableCmx(configVal));
+
+            maybeSetValue(_initCompilerOptions->revisionID, getRevisionID(configVal));
+            maybeSetValue(_initCompilerOptions->numberOfDPUGroups, getNumberOfDPUGroups(configVal));
+            maybeSetValue(_initCompilerOptions->numberOfDMAPorts, getNumberOfDMAEngines(configVal));
+            const auto dynamicQuantization = getCompilerDynamicQuantization(configVal);
+            maybeSetValue(_initCompilerOptions->enableWeightsDynamicDequantization, dynamicQuantization);
+            if (dynamicQuantization.has_value() && dynamicQuantization.value()) {
+                _initCompilerOptions->weightsTableReuseMode = vpux::WeightsTableReuseMode::ENABLED;
+            }
+            maybeSetValue(_initCompilerOptions->enableAdaptiveStripping, getQDQOptimization(configVal));
+
+            const auto& numOfDPUGroups = _initCompilerOptions->numberOfDPUGroups;
+            const auto& numOfDMAPorts = _initCompilerOptions->numberOfDMAPorts;
+            VPUX_THROW_WHEN(numOfDPUGroups.hasValue() && numOfDMAPorts.hasValue() &&
+                                    numOfDMAPorts.getValue() > numOfDPUGroups.getValue(),
+                            "Requested configuration not supported by runtime. Number of DMA ports ({0}) larger than "
+                            "NCE clusters "
+                            "({1})",
+                            numOfDMAPorts.getValue(), numOfDPUGroups.getValue());
+
+            // TODO: #169147 remove this WA
+            _options->matchAndCopyOptionValuesFrom(*_initCompilerOptions);
+
+            ConcreteModel::setupOptionsImpl(*_options.get(), configVal);
         } else {
             ConcreteModel::setupLitTestOptionsImpl(*_options.get());
         }
@@ -106,6 +130,14 @@ private:
     std::optional<intel_npu::Config> _config;
     std::unique_ptr<OptionsType> _options;
     std::unique_ptr<VPU::InitCompilerOptions> _initCompilerOptions;
+
+private:
+    template <typename OptionType, typename ValType>
+    static void maybeSetValue(OptionType& option, std::optional<ValType> value) {
+        if (value.has_value()) {
+            option = value.value();
+        }
+    }
 };
 
 template <class OptionType, class ValueType>

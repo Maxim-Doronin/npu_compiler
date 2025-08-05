@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
@@ -188,13 +188,6 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, VPU::ArchKin
     auto inputOneType = nceClusterOp->getOperand(0).getType();
     auto outputType = nceClusterOp->getResult(0).getType();
     auto inputTwoType = nceClusterOp->getNumOperands() > 1 ? nceClusterOp->getOperand(1).getType() : nullptr;
-
-    // E#73766: delete this check in the end of epic
-    if (auto nceTilingParent = nceClusterOp->getParentOfType<VPUIP::NCEClusterTilingOp>()) {
-        inputOneType = nceTilingParent.getInputs()[0].getType();
-        outputType = nceTilingParent.getOutputs()[0].getType();
-        inputTwoType = nceTilingParent.getInputs().size() > 1 ? nceTilingParent.getInputs()[1].getType() : nullptr;
-    }
 
     auto inputElemType = mlir::cast<vpux::NDTypeInterface>(inputOneType).getElementType();
     auto inputTwoElemType =
@@ -433,7 +426,7 @@ size_t getSpillingCostForSegmented(vpux::NDTypeInterface tensorType, VPUNN::VPUD
     if (numDMAPorts > 1) {
         // For distributed segmented DMA, transaction will be split between ports and executing
         // in parallel when there are multiple DMA ports available.
-        // When enabling VPU4 whose number of tiles is not equal to number of DMA ports, using
+        // When enabling architectures whose number of tiles is not equal to number of DMA ports, using
         // simply the largest size in tiles to calculate cost is not accurate, see E#84432
         shapes.push_back(distributedTensorType.getLargestCompactShape());
     } else {
@@ -441,6 +434,43 @@ size_t getSpillingCostForSegmented(vpux::NDTypeInterface tensorType, VPUNN::VPUD
     }
     auto vpuTensor = getVPUNNTensorMultiCluster(shapes, getElementType(elemType, vpuDevice));
     return costModel->DMA(vpuDevice, vpuTensor, vpuTensor);
+}
+
+size_t getSpillingCostForSegmented(vpux::NDTypeInterface inTensorType, vpux::NDTypeInterface outTensorType,
+                                   VPUNN::VPUDevice vpuDevice, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
+                                   int64_t numDMAPorts) {
+    VPUX_THROW_UNLESS(numDMAPorts >= 1, "DMA ports is at least one but got {0}", numDMAPorts);
+
+    auto inDistributedTensorType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(inTensorType);
+    auto outDistributedTensorType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(outTensorType);
+    VPUX_THROW_WHEN(inDistributedTensorType == nullptr || outDistributedTensorType == nullptr, "Invalid type.");
+
+    auto inElemType = inTensorType.getElementType();
+    auto outElemType = outTensorType.getElementType();
+
+    auto getShapes = [&](auto distributedType, auto plainType) -> SmallVector<Shape> {
+        if (distributedType) {
+            // For distributed segmented DMA, transaction will be split between ports and executing
+            // in parallel when there are multiple DMA ports available.
+            // When enabling architectures whose number of tiles is not equal to number of DMA ports, using
+            // simply the largest size in tiles to calculate cost is not accurate, see E#84432
+            return (numDMAPorts > 1) ? SmallVector<Shape>{distributedType.getLargestCompactShape()}
+                                     : distributedType.getPerClusterComputeShapes();
+        }
+        return SmallVector<Shape>{plainType.getShape().raw()};
+    };
+    SmallVector<Shape> inShapes = getShapes(inDistributedTensorType, inTensorType);
+    SmallVector<Shape> outShapes = getShapes(outDistributedTensorType, outTensorType);
+
+    auto inTensor = inDistributedTensorType
+                            ? getVPUNNTensorMultiCluster(inShapes, getElementType(inElemType, vpuDevice))
+                            : getVPUNNTensor(inShapes[0], getElementType(inElemType, vpuDevice));
+    auto outTensor = outDistributedTensorType
+                             ? getVPUNNTensorMultiCluster(outShapes, getElementType(outElemType, vpuDevice))
+                             : getVPUNNTensor(outShapes[0], getElementType(outElemType, vpuDevice));
+
+    return costModel->DMA(vpuDevice, inTensor, outTensor, getMemoryLocation(inTensorType),
+                          getMemoryLocation(outTensorType));
 }
 
 size_t getSpillingCostForDuplicated(vpux::NDTypeInterface tensorType, VPUNN::VPUDevice vpuDevice,
@@ -451,9 +481,32 @@ size_t getSpillingCostForDuplicated(vpux::NDTypeInterface tensorType, VPUNN::VPU
     return costModel->DMA(vpuDevice, vpuTensor, vpuTensor);
 }
 
+size_t getSpillingCostForDuplicated(vpux::NDTypeInterface inTensorType, vpux::NDTypeInterface outTensorType,
+                                    VPUNN::VPUDevice vpuDevice, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
+                                    int64_t /*numDMAPorts*/) {
+    auto inVpuTensor =
+            getVPUNNTensor(inTensorType.getShape(), getElementType(inTensorType.getElementType(), vpuDevice));
+    auto outVpuTensor =
+            getVPUNNTensor(outTensorType.getShape(), getElementType(outTensorType.getElementType(), vpuDevice));
+    return costModel->DMA(vpuDevice, inVpuTensor, outVpuTensor, getMemoryLocation(inTensorType),
+                          getMemoryLocation(outTensorType));
+}
+
 using GetDMAOnVPUNN = size_t (*)(vpux::NDTypeInterface tensortType, VPUNN::VPUDevice vpuDevice,
                                  const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts);
 const EnumMap<VPU::DistributionMode, GetDMAOnVPUNN> spillingCostMapVPUNN{
+        {VPU::DistributionMode::DUPLICATED, getSpillingCostForDuplicated},
+        {VPU::DistributionMode::SEGMENTED, getSpillingCostForSegmented},
+        {VPU::DistributionMode::OVERLAPPED, getSpillingCostForSegmented},
+        {VPU::DistributionMode::MULTICASTED, getSpillingCostForDuplicated},
+        {VPU::DistributionMode::DUPLICATED | VPU::DistributionMode::SEGMENTED, getSpillingCostForDuplicated},
+        {VPU::DistributionMode::MULTICASTED | VPU::DistributionMode::SEGMENTED, getSpillingCostForDuplicated},
+};
+
+using GetIODMAOnVPUNN = size_t (*)(vpux::NDTypeInterface inTensorType, vpux::NDTypeInterface outTensorType,
+                                   VPUNN::VPUDevice vpuDevice, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
+                                   int64_t numDMAPorts);
+const EnumMap<VPU::DistributionMode, GetIODMAOnVPUNN> spillingIOCostMapVPUNN{
         {VPU::DistributionMode::DUPLICATED, getSpillingCostForDuplicated},
         {VPU::DistributionMode::SEGMENTED, getSpillingCostForSegmented},
         {VPU::DistributionMode::OVERLAPPED, getSpillingCostForSegmented},
@@ -482,6 +535,38 @@ size_t vpux::getDMACost(vpux::NDTypeInterface tensorType, VPUNN::VPUDevice vpuDe
 
     const auto vpunnTensor = getVPUNNTensor(tensorType.getShape(), getElementType(elementType, vpuDevice));
     return costModel->DMA(vpuDevice, vpunnTensor, vpunnTensor);
+}
+
+size_t vpux::getDMACost(vpux::NDTypeInterface inTensorType, vpux::NDTypeInterface outTensorType,
+                        VPUNN::VPUDevice vpuDevice, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
+                        int64_t numDMAPorts) {
+    VPUX_THROW_WHEN(costModel == nullptr, "Incorrect pointer to vpunn library");
+
+    if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(inTensorType)) {
+        inTensorType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
+    }
+    if (auto sparseTensorType = mlir::dyn_cast<vpux::VPU::SparseTensorType>(outTensorType)) {
+        outTensorType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
+    }
+
+    const auto inElementType = inTensorType.getElementType();
+    const auto outElementType = outTensorType.getElementType();
+
+    auto inDistributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(inTensorType);
+    auto outDistributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(outTensorType);
+
+    if (inDistributedType || outDistributedType) {
+        auto distributionMode = inDistributedType ? inDistributedType.getDistribution().getMode().getValue()
+                                                  : outDistributedType.getDistribution().getMode().getValue();
+        const auto dmaCostFunc = spillingIOCostMapVPUNN.at(distributionMode);
+        return dmaCostFunc(inTensorType, outTensorType, vpuDevice, costModel, numDMAPorts);
+    }
+
+    const auto inVpunnTensor = getVPUNNTensor(inTensorType.getShape(), getElementType(inElementType, vpuDevice));
+    const auto outVpunnTensor = getVPUNNTensor(outTensorType.getShape(), getElementType(outElementType, vpuDevice));
+    auto cost = costModel->DMA(vpuDevice, inVpunnTensor, outVpunnTensor, getMemoryLocation(inTensorType),
+                               getMemoryLocation(outTensorType));
+    return static_cast<size_t>(cost);
 }
 
 size_t vpux::getDPUCost(mlir::Operation* op) {
@@ -600,20 +685,16 @@ std::string getSwKernelOperationName(VPUIP::SwKernelOp swKernelOp) {
     return strKernelOp.substr(prefEndIndex, nameSize);
 }
 
-#define SW_KERNEL_NAME_TO_VPUNN_1_IN_ELEMENT(_NAME_STR_, _VPUNN_TYPE_)                                         \
-    {                                                                                                          \
-        _NAME_STR_, [](VPUNN::VPUDevice vpuDev, VPUNN::VPUTensor inputTensor, VPUNN::VPUTensor outputTensor) { \
-            return std::make_unique<_VPUNN_TYPE_>(vpuDev, inputTensor, outputTensor);                          \
-        }                                                                                                      \
-    }
+#define SW_KERNEL_NAME_TO_VPUNN_1_IN_ELEMENT(_NAME_STR_, _VPUNN_TYPE_)                                      \
+    {_NAME_STR_, [](VPUNN::VPUDevice vpuDev, VPUNN::VPUTensor inputTensor, VPUNN::VPUTensor outputTensor) { \
+         return std::make_unique<_VPUNN_TYPE_>(vpuDev, inputTensor, outputTensor);                          \
+     }}
 
-#define SW_KERNEL_NAME_TO_VPUNN_VEC_IN_ELEMENT(_NAME_STR_, _VPUNN_TYPE_)                           \
-    {                                                                                              \
-        _NAME_STR_, [](VPUNN::VPUDevice vpuDev, const std::vector<VPUNN::VPUTensor>& inputTensors, \
-                       VPUNN::VPUTensor outputTensor) {                                            \
-            return std::make_unique<_VPUNN_TYPE_>(vpuDev, inputTensors, outputTensor);             \
-        }                                                                                          \
-    }
+#define SW_KERNEL_NAME_TO_VPUNN_VEC_IN_ELEMENT(_NAME_STR_, _VPUNN_TYPE_)                                             \
+    {_NAME_STR_,                                                                                                     \
+     [](VPUNN::VPUDevice vpuDev, const std::vector<VPUNN::VPUTensor>& inputTensors, VPUNN::VPUTensor outputTensor) { \
+         return std::make_unique<_VPUNN_TYPE_>(vpuDev, inputTensors, outputTensor);                                  \
+     }}
 
 std::map<std::string,
          std::function<std::unique_ptr<VPUNN::SWOperation>(VPUNN::VPUDevice, VPUNN::VPUTensor, VPUNN::VPUTensor)>>
@@ -735,9 +816,6 @@ size_t getShaveActCycleForSwKernelFunc(const std::string& swKernelName, VPU::Arc
 }
 
 std::unique_ptr<VPUNN::SWOperation> vpux::getVPUNNSWKernelOp(VPUIP::SwKernelOp swKernelOp) {
-    // E#73766: delete this check in the end of epic
-    VPUX_THROW_WHEN(mlir::isa<VPUIP::NCEClusterTilingOp>(swKernelOp->getParentOp()),
-                    "Only single cluster task is supported by this method, op - {0}", swKernelOp->getLoc());
     // Exclude strange sw ops produced by compiler like cache_flush_invalidate op
     if (swKernelOp.getInputs().empty() || swKernelOp.getOutputBuffs().empty()) {
         return nullptr;
@@ -797,12 +875,6 @@ size_t vpux::calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp,
     auto inputs = to_small_vector(swKernelOp.getInputs());
     auto outputs = to_small_vector(swKernelOp.getOutputBuffs());
 
-    // E#73766: delete this check in the end of epic
-    if (auto parentOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(swKernelOp->getParentOp())) {
-        inputs = to_small_vector(parentOp.getInputs());
-        outputs = to_small_vector(parentOp.getOutputBuffs());
-    }
-
     SmallVector<mlir::Value> inputsForLargestKernelRun(inputs.begin(), inputs.end());
     SmallVector<mlir::Value> outputsForLargestKernelRun{outputs[0]};
     auto largestSwKernelRunSize = vpux::Byte(0);
@@ -837,12 +909,6 @@ size_t vpux::getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<
                     dpuTaskOp->getLoc());
     auto inputOneType = nceOp->getOperand(0).getType();
     auto outputType = nceOp->getResult(0).getType();
-
-    // E#73766: delete this check in the end of epic
-    if (auto nceTilingParent = nceOp->getParentOfType<VPUIP::NCEClusterTilingOp>()) {
-        inputOneType = nceTilingParent.getInputs()[0].getType();
-        outputType = nceTilingParent.getOutputs()[0].getType();
-    }
 
     auto inputElemType = mlir::cast<vpux::NDTypeInterface>(inputOneType).getElementType();
     auto outputElemType = mlir::cast<vpux::NDTypeInterface>(outputType).getElementType();

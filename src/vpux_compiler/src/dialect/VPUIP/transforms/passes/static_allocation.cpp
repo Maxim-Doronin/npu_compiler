@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -19,6 +19,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -256,11 +257,6 @@ void StaticAllocationPass::safeRunOnFunc() {
         auto* bodyBlock = execOp.getBody();
 
         for (auto& op : bodyBlock->getOperations()) {
-            // Distributed operations are skipped
-            if (mlir::isa<VPUIP::NCEClusterTilingOp>(op)) {
-                continue;
-            }
-
             if (auto dmaOp = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(op)) {
                 // If the port of DMA operation is not initialized, it is set to 0
                 if (!dmaOp.getPortVal().has_value()) {

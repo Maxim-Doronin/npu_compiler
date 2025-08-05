@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect_interfaces.hpp"
@@ -264,8 +264,9 @@ bool BatchedCallOpReorderingPreInliner::isApplicable(mlir::Operation* call) cons
 
 mlir::func::FuncOp getCalledFunction(mlir::func::CallOp callOp) {
     mlir::SymbolRefAttr sym = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(callOp.getCallableForCallee());
-    if (!sym)
+    if (!sym) {
         return nullptr;
+    }
     return mlir::dyn_cast_or_null<mlir::func::FuncOp>(mlir::SymbolTable::lookupNearestSymbolFrom(callOp, sym));
 }
 
@@ -779,7 +780,7 @@ bool CallOPPreInliner::Dispatcher::FuncArgumentDeclareModifier::apply(mlir::Oper
                           argIndex);
         auto opBytesOffset = declareOp.getByteOffset();
 
-        // If unroll-cluster-tiling has been executed, an original buffer at a fixed offset position
+        // If unroll-distributed-ops has been executed, an original buffer at a fixed offset position
         // will be superseded by its shards, which occupy the fixed offset position plus a shard specific offset
         // so that we must preserve this offset during our func args inlining
         size_t newOffset = 0;

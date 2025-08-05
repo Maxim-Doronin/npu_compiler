@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vcl_common.hpp"
@@ -131,6 +131,30 @@ VAL getElementFromCon(KEY& key, bool& matched, const std::unordered_map<KEY, VAL
     }
 }
 
+/**
+ * @brief Return the valid tile value based on user config and deviceDesc
+ *
+ * @param config The passed user config
+ * @param deviceDesc The default compiler info
+ * @return std::string
+ */
+std::string getValidTileValue(std::map<std::string, std::string>& config, vcl_device_desc_t deviceDesc) {
+    auto isValidTileConfig = [](const std::string& v) {
+        return v[0] != '-' && v != "0";
+    };
+    // If maxTile in the user config is valid, use the smaller value between user config and deviceDesc
+    if (config.find(ov::intel_npu::max_tiles.name()) != config.end() &&
+        isValidTileConfig(config[ov::intel_npu::max_tiles.name()])) {
+        std::string validTileValue = std::stoi(config[ov::intel_npu::max_tiles.name()]) < deviceDesc.tileCount
+                                             ? config[ov::intel_npu::max_tiles.name()]
+                                             : std::to_string(deviceDesc.tileCount);
+        return validTileValue;
+    }
+
+    // If maxTile does not exist in the user config, use the value from deviceDesc
+    return std::to_string(deviceDesc.tileCount);
+}
+
 BuildInfo::BuildInfo(VPUXCompilerL0* pvc): pvc(pvc), parsedConfig(pvc->getOptions()), logger(pvc->getLogger()) {
 }
 
@@ -145,10 +169,10 @@ ov::element::Type_t BuildInfo::stringToOVPrecision(std::string value, bool& matc
             {"FP64", ov::element::Type_t::f64},        {"I4", ov::element::Type_t::i4},
             {"I8", ov::element::Type_t::i8},           {"I16", ov::element::Type_t::i16},
             {"I32", ov::element::Type_t::i32},         {"I64", ov::element::Type_t::i64},
-            {"BIN", ov::element::Type_t::u1},          {"U4", ov::element::Type_t::u4},
-            {"U8", ov::element::Type_t::u8},           {"U16", ov::element::Type_t::u16},
-            {"U32", ov::element::Type_t::u32},         {"U64", ov::element::Type_t::u64},
-            {"NF4", ov::element::Type_t::nf4},
+            {"BIN", ov::element::Type_t::u1},          {"U2", ov::element::Type_t::u2},
+            {"U4", ov::element::Type_t::u4},           {"U8", ov::element::Type_t::u8},
+            {"U16", ov::element::Type_t::u16},         {"U32", ov::element::Type_t::u32},
+            {"U64", ov::element::Type_t::u64},         {"NF4", ov::element::Type_t::nf4},
     };
 
     return getElementFromCon<std::string, ov::element::Type_t>(value, matched, supported_precisions,
@@ -182,8 +206,9 @@ vcl_result_t BuildInfo::parseIOOption(const std::vector<std::string>& ioInfoOpti
             logger->outputError(formatv("Invalid key in option! Option: {0}", option));
             return VCL_RESULT_ERROR_INVALID_ARGUMENT;
         }
-        if (ret != VCL_RESULT_SUCCESS)
+        if (ret != VCL_RESULT_SUCCESS) {
             return ret;
+        }
     }
     return VCL_RESULT_SUCCESS;
 }
@@ -239,6 +264,8 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
                                      getStringReplacement(ov::hint::Priority::MEDIUM));
         content = std::regex_replace(content, getTargetRegex(ov::intel_npu::LegacyPriority::HIGH),
                                      getStringReplacement(ov::hint::Priority::HIGH));
+        // Replace NPU_DPU_GROUPS with NPU_TILES since NPU_DPU_GROUPS is deprecated in OV
+        content = std::regex_replace(content, std::regex("NPU_DPU_GROUPS"), "NPU_TILES");
 
         std::stringstream input(content);
 
@@ -279,18 +306,17 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
     std::map<std::string, std::string> config;
     vcl_compiler_desc_t compilerDesc = pvc->getCompilerDesc();
     vcl_device_desc_t deviceDesc = pvc->getDeviceDesc();
-    if (static_cast<size_t>(deviceDesc.size) != sizeof(vcl_device_desc_t)) {
-        logger->warning("Host VCL version:{0}.{1}, device VCL version:{2}.{3}", compilerDesc.version.major,
-                        compilerDesc.version.minor, VCL_COMPILER_VERSION_MAJOR, VCL_COMPILER_VERSION_MINOR);
-    }
+    if (!pvc->isDeviceDescEmpty()) {
+        if (static_cast<size_t>(deviceDesc.size) != sizeof(vcl_device_desc_t)) {
+            logger->warning("Host VCL version:{0}.{1}, device VCL version:{2}.{3}", compilerDesc.version.major,
+                            compilerDesc.version.minor, VCL_COMPILER_VERSION_MAJOR, VCL_COMPILER_VERSION_MINOR);
+        }
 
-    /// Set default value of NPU_STEPPING property, -1u is invalid value
-    if (deviceDesc.revision != static_cast<uint16_t>(-1)) {
-        config[ov::intel_npu::stepping.name()] = std::to_string(deviceDesc.revision);
+        /// Set default value of NPU_STEPPING property, -1u is invalid value
+        if (deviceDesc.revision != static_cast<uint16_t>(-1)) {
+            config[ov::intel_npu::stepping.name()] = std::to_string(deviceDesc.revision);
+        }
     }
-
-    /// Set default value of NPU_MAX_TILES property
-    config[ov::intel_npu::max_tiles.name()] = std::to_string(deviceDesc.tileCount);
 
     /// Pase compilation options and save to config
     /// User options will overwrite default values in config
@@ -339,8 +365,8 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
     }
 
     // Use platform information provided by driver if platform config is either not found or set on AUTO_DETECT
-    if (config.find(ov::intel_npu::platform.name()) == config.end() ||
-        "AUTO_DETECT" == config[ov::intel_npu::platform.name()]) {
+    if ((!pvc->isDeviceDescEmpty()) && (config.find(ov::intel_npu::platform.name()) == config.end() ||
+                                        "AUTO_DETECT" == config[ov::intel_npu::platform.name()])) {
         /// Set NPU_PLATFORM and DEVICE_ID
         /// Value from VpuFamilyId.h
         switch (deviceDesc.deviceID) {
@@ -359,11 +385,20 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
         };
     }
 
+    /// Update maxtiles config with compiler desc
+    ///  - If deviceDesc is valid, compare its tileCount with user config and use the smaller value
+    ///  - If deviceDesc is empty, its tileCount is invalid, then just handle it according to the config
+    if (!pvc->isDeviceDescEmpty()) {
+        config[ov::intel_npu::max_tiles.name()] = getValidTileValue(config, deviceDesc);
+        logger->debug("NPU_MAX_TILES is updated to {0}", config[ov::intel_npu::max_tiles.name()]);
+    }
+
     /// When we use LOG_INFO, show vcl level profiling log
     std::map<std::string, std::string>::iterator iter = config.find(ov::log::level.name());
     if (iter != config.end()) {
-        if (iter->second == "LOG_INFO")
+        if (iter->second == "LOG_INFO") {
             enableProfiling = true;
+        }
     }
 
     /// Remove runtime option MODEL_PRIORITY passed by plugin versions <= OV25.1
@@ -389,8 +424,13 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     }
 
-    logger->debug("Current compiler desc: deviceID:{0:X}, revision:{1}, tileCount:{2}", deviceDesc.deviceID,
-                  deviceDesc.revision, deviceDesc.tileCount);
+    if (!pvc->isDeviceDescEmpty()) {
+        logger->debug("Current compiler desc: deviceID:{0:X}, revision:{1}, tileCount:{2}", deviceDesc.deviceID,
+                      deviceDesc.revision, deviceDesc.tileCount);
+    } else {
+        logger->debug("Current compiler desc is empty! No default setting for platform, deviceid, stepping and tile "
+                      "config. If you need to configure them, please set them in compilation config.");
+    }
     logger->debug("Final compilation configs: {0}", parsedConfig.toString());
     return VCL_RESULT_SUCCESS;
 }
@@ -443,18 +483,7 @@ vcl_result_t BuildInfo::prepareBuildFlags(const std::string& descOptions) {
             }
         }
     } else {
-        /// Return error if the mandatory ioInfo options are not passed
-        /// Skip ioInfo missing if is used for debug.
-        bool skipIOInfo = false;
-#if defined(VPUX_DEVELOPER_BUILD)
-        if (const auto env = std::getenv("IE_VPUX_VCL_SKIP_IOINFO")) {
-            skipIOInfo = std::stoi(env);
-        }
-#endif
-        if (skipIOInfo == false) {
-            logger->outputError(formatv("Mandatory ioInfo options are missing! DescOptions: {0}", descOptions));
-            return VCL_RESULT_ERROR_INVALID_ARGUMENT;
-        }
+        logger->warning("The ioInfo options are missing! DescOptions: {0}", descOptions);
     }
 
     /// Parse and update config
@@ -559,8 +588,9 @@ vcl_result_t BuildInfo::prepareModel(const uint8_t* modelIR, uint64_t modelIRSiz
         std::string modelData(buffer, buffer + bufferSize);
 
         ov::Tensor weightsTensor;
-        if (weightsSize > 0)
+        if (weightsSize > 0) {
             weightsTensor = ov::Tensor(ov::element::u8, {weightsSize}, const_cast<uint8_t*>(weights));
+        }
         ov::Core core;
         // core needs to add internal operators via extensions
         // might need to refactor if extension list will have many elements

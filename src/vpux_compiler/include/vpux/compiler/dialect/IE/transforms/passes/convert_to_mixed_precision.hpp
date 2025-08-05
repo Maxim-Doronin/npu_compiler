@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -193,6 +193,17 @@ mlir::LogicalResult MixedFloatInQuantWeightsRewriter<ConcreteOp>::matchAndRewrit
 
     if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(quantFilterDequantizeType) &&
         (hasLeakyReLUConsumer || IE::hasLeakyReLUPostOp(convOp))) {
+        return mlir::failure();
+    }
+
+    const auto hasReLUConsumer = llvm::any_of(convOp->getUsers(), [](mlir::Operation* op) {
+        return mlir::isa<IE::ReLUOp>(op);
+    });
+
+    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(quantFilterDequantizeType) &&
+        (hasReLUConsumer || IE::hasReLUPostOp(convOp)) &&
+        IE::hasNegativeScales(quantFilterDequantizeType)) {  // ReLU post-op with negative scales introduces inaccuracy.
+                                                             // Tracking number [E#174751]
         return mlir::failure();
     }
 

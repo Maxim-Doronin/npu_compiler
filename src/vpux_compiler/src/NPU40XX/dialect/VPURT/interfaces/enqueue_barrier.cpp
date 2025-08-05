@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPURT/interfaces/enqueue_barrier.hpp"
@@ -21,9 +21,15 @@ vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(mlir::func::FuncOp fun
     _taskQueueTypeMap = VPURT::getTaskOpQueues(func, _barrierInfo);
     initPrevPhysBarrierData(func);
     _startBarrierIndex = getStartBarrierIndex(func);
+    _swFifosPerShaveEngineEnabled = VPU::isFifoPerShaveEngineEnabled(func);
+
+    mlir::DenseSet<vpux::VPU::ExecutorKind> executorsKind{VPU::ExecutorKind::DMA_NN, VPU::ExecutorKind::DPU};
+    if (_swFifosPerShaveEngineEnabled) {
+        executorsKind.insert(VPU::ExecutorKind::SHAVE_ACT);
+    }
+    _barrierInfo.initializeTaskQueueTypeMap(executorsKind);
     _barrierInfo.buildTaskQueueTypeMap();
     findShvTasksWithDpu();
-    _swFifosPerShaveEngineEnabled = VPU::isFifoPerShaveEngineEnabled(func);
 }
 
 vpux::VPURT::EnqueueBarrierHandler::EnqueueBarrierHandler(

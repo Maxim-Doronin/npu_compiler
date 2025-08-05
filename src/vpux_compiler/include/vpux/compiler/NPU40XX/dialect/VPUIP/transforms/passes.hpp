@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -31,8 +31,8 @@ std::unique_ptr<mlir::Pass> createConstantDpuProfHwpBasePass(Logger log = Logger
 std::unique_ptr<mlir::Pass> createCompressSpillDmaPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDMAOutOfOrderOptimizationPass(Logger log = Logger::global());
 
-std::unique_ptr<mlir::Pass> createUnrollClusterTilingPass(Logger log = Logger::global(),
-                                                          bool enableSegmentedDmaFusion = false);
+std::unique_ptr<mlir::Pass> createUnrollDistributedOpsPass(Logger log = Logger::global(),
+                                                           bool enableSegmentedDmaFusion = false);
 std::unique_ptr<mlir::Pass> createOptimizeConvertDMAOpPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddStartBarrierPass(bool compilerBarrierProgramming = false,
                                                       Logger log = Logger::global());
@@ -57,7 +57,7 @@ struct MemoryAllocationOptions final : public VPUIP::MemoryAllocationOptionsBase
 
     template <class OtherOptions>
     MemoryAllocationOptions(const OtherOptions& options) {
-        enableCompressActivationSpill = options.enableCompressActivationSpill;
+        this->matchAndCopyOptionValuesFrom(options);
     }
 };
 
@@ -92,6 +92,14 @@ struct DefaultHWOptions :
             *this, "barrier-sched-with-function-outlining",
             llvm::cl::desc("Enable barrier scheduling passes with IR split into multiple functions"),
             llvm::cl::init(false)};
+
+    BoolOption enableSwKernelsCachePrefetch{*this, "enable-sw-kernels-cache-prefetch",
+                                            llvm::cl::desc("Enable SW kernel cache prefetch"), llvm::cl::init(false)};
+
+    BoolOption configureUpdateBarriersForSwPrefetch{
+            *this, "configure-update-barriers-for-sw-prefetch",
+            llvm::cl::desc("Configure update barrier to block shave execution until prefetch finishes"),
+            llvm::cl::init(true)};
 
     BoolOption enableSWKernelPrefetchingReserveMem{
             *this, "enable-sw-kernel-prefetching-reserve-mem",

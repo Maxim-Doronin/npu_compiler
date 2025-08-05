@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
@@ -143,20 +143,169 @@ void rearrangeOperations(mlir::Operation* buffer, mlir::Operation* copy, const b
     }
 }
 
+bool areDistributedBufferTypesCompatible(vpux::VPUIP::DistributedBufferType inDistributedType,
+                                         vpux::VPUIP::DistributedBufferType outDistributedType,
+                                         bool allowDifferentPerClusterMemoryView) {
+    if (mlir::succeeded(VPU::isDistributedCastCompatible(inDistributedType, outDistributedType))) {
+        return true;
+    }
+
+    if (!allowDifferentPerClusterMemoryView) {
+        return false;
+    }
+
+    auto inDistribution = VPU::DistributionInfo::getClassFromAttr(inDistributedType.getDistribution());
+    auto outDistribution = VPU::DistributionInfo::getClassFromAttr(outDistributedType.getDistribution());
+    auto inType = mlir::cast<vpux::NDTypeInterface>(inDistributedType);
+    auto outType = mlir::cast<vpux::NDTypeInterface>(outDistributedType);
+    if (mlir::failed(areDistributionsCompatible(inType, inDistribution, outType, outDistribution,
+                                                allowDifferentPerClusterMemoryView))) {
+        return false;
+    }
+
+    SmallVector<Shape> sourceMemoryOffsets = inDistributedType.getPerClusterMemoryShapeOffsets();
+    SmallVector<Shape> targetMemoryOffsets = outDistributedType.getPerClusterMemoryShapeOffsets();
+    SmallVector<Shape> sourceMemoryShapes = inDistributedType.getPerClusterMemoryShapes();
+    SmallVector<Shape> targetMemoryShapes = outDistributedType.getPerClusterMemoryShapes();
+
+    // Check if the data range in target memory is included in the source memory on each cluster.
+    for (size_t i = 0; i < sourceMemoryOffsets.size(); i++) {
+        auto sourceMemoryOffset = sourceMemoryOffsets[i].raw();
+        auto targetMemoryOffset = targetMemoryOffsets[i].raw();
+        auto sourceMemoryShape = sourceMemoryShapes[i].raw();
+        auto targetMemoryShape = targetMemoryShapes[i].raw();
+        for (size_t j = 0; j < sourceMemoryOffset.size(); j++) {
+            if ((sourceMemoryOffset[j] > targetMemoryOffset[j]) ||
+                ((sourceMemoryOffset[j] + sourceMemoryShape[j]) < (targetMemoryOffset[j] + targetMemoryShape[j]))) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool isLegalAndBenefitCreateCopyFromCMXToCMX(mlir::Operation* grandparentOp, VPUIP::CopyOp parentCopyOp,
+                                             VPUIP::CopyOp copyOp, vpux::Logger& nestedLogger) {
+    auto availableCMXSize = VPU::getTotalCMXSize(copyOp);
+    auto srcDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(parentCopyOp.getInput().getType());
+    auto dstDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(copyOp.getOutput().getType());
+
+    if (srcDistributedType == nullptr || dstDistributedType == nullptr) {
+        return false;
+    }
+
+    auto isDistributedTypeCompatibleWithCMXCopy =
+            areDistributedBufferTypesCompatible(srcDistributedType, dstDistributedType, true);
+    if (!isDistributedTypeCompatibleWithCMXCopy) {
+        return false;
+    }
+
+    // check CMX
+    if ((srcDistributedType.getTotalAllocSize() + dstDistributedType.getTotalAllocSize()) > availableCMXSize) {
+        nestedLogger.trace("Cannot create Copy from CMX to CMX because memory is not enough");
+        return false;
+    }
+
+    // avoid long spilling
+    auto module = copyOp->getParentOfType<mlir::ModuleOp>();
+    auto thresholdCMXSize = VPU::getTotalCMXFragmentationAwareSize(module);
+    auto hasLongSpilling = [&](mlir::Value value) -> bool {
+        // If the output buffer has a stride, it indicates that the output buffer is a part of a larger root buffer, and
+        // other operations must be filling the remaining parts of the root buffer. Avoid applying the optimization in
+        // this case, as the pre-reserved CMX memory could lead to performance issues with other operations, such as
+        // causing dynamic spilling.
+        const auto strideReqs = StrideReqs::compact(dstDistributedType.getShape().size());
+        return !strideReqs.checkStrides(dstDistributedType) || llvm::any_of(value.getUsers(), [&](auto user) {
+            auto userClusterTaskOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(user);
+            if (userClusterTaskOp != nullptr && userClusterTaskOp.getTaskType() == VPUIP::NCETaskType::ELTWISE) {
+                SmallVector<mlir::Operation*> producerChain;
+                auto producer = userClusterTaskOp.getInput() == value ? userClusterTaskOp.getWeights().getDefiningOp()
+                                                                      : userClusterTaskOp.getInput().getDefiningOp();
+                while (producer != nullptr && !producer->isBeforeInBlock(grandparentOp)) {
+                    if (auto clusterTaskOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(producer)) {
+                        Byte requiredCMX = VPUIP::getRequiredCMXSize(clusterTaskOp);
+                        if (requiredCMX + srcDistributedType.getTotalAllocSize() > thresholdCMXSize) {
+                            return true;
+                        }
+                        producer = clusterTaskOp.getInput().getDefiningOp();
+                    } else if (auto viewOp = mlir::dyn_cast<mlir::ViewLikeOpInterface>(producer)) {
+                        producer = viewOp->getOperand(0).getDefiningOp();
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            return false;
+        });
+    };
+
+    if (hasLongSpilling(copyOp.getOutput())) {
+        nestedLogger.trace("Cannot create Copy from CMX to CMX because the copyOp output has long spilling");
+        return false;
+    }
+
+    if (!parentCopyOp->hasOneUse()) {
+        auto allCopyUsersAreCompatible = [&](mlir::Value value) -> bool {
+            return llvm::all_of(value.getUsers(), [&](auto user) {
+                if (auto userCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(user)) {
+                    auto dstDistributedType = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(
+                            VPUIP::extractDataType(userCopyOp.getResult()));
+
+                    return (dstDistributedType != nullptr) &&
+                           areDistributedBufferTypesCompatible(srcDistributedType, dstDistributedType, true);
+                }
+
+                if (auto userSubViewOp = mlir::dyn_cast<VPUIP::SubViewOp>(user)) {
+                    if (!userSubViewOp->hasOneUse()) {
+                        return false;
+                    }
+
+                    auto userCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(*userSubViewOp.getResult().getUsers().begin());
+                    if (userCopyOp == nullptr) {
+                        return false;
+                    }
+
+                    auto dstDistributedType = mlir::dyn_cast_or_null<VPUIP::DistributedBufferType>(
+                            VPUIP::extractDataType(userCopyOp.getResult()));
+
+                    return (dstDistributedType != nullptr) &&
+                           areDistributedBufferTypesCompatible(srcDistributedType, dstDistributedType, true);
+                }
+
+                return false;
+            });
+        };
+
+        if (!allCopyUsersAreCompatible(parentCopyOp.getOutput())) {
+            nestedLogger.trace("Cannot create Copy from CMX to CMX because parent CopyOp has multiple uses and not all "
+                               "of them are compatible");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 //
 // CopyOpSequence
 //
 
 class CopyOpSequence final : public mlir::OpRewritePattern<VPUIP::CopyOp> {
 public:
-    CopyOpSequence(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
-            : mlir::OpRewritePattern<VPUIP::CopyOp>(ctx, benefit), log(log) {
+    CopyOpSequence(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, WorkloadManagementMode workloadManagementMode,
+                   Logger log)
+            : mlir::OpRewritePattern<VPUIP::CopyOp>(ctx, benefit),
+              _workloadManagementMode(workloadManagementMode),
+              log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(VPUIP::CopyOp copyOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
     Logger log;
 };
 
@@ -241,7 +390,8 @@ mlir::LogicalResult CopyOpSequence::matchAndRewrite(VPUIP::CopyOp copyOp, mlir::
     auto copyOutput = copyOp.getOutputBuff();
     auto copyOutputType = mlir::cast<vpux::NDTypeInterface>(copyOutput.getType());
 
-    auto areValuesCompatible = [&](mlir::Value input, mlir::Value output, vpux::Logger& nestedLogger) -> bool {
+    auto areValuesCompatible = [&](mlir::Value input, mlir::Value output, vpux::Logger& nestedLogger,
+                                   bool allowDifferentPerClusterMemoryView) -> bool {
         VPUX_THROW_UNLESS(mlir::isa<mlir::MemRefType>(input.getType()) ||
                                   mlir::isa<vpux::VPUIP::DistributedBufferType>(input.getType()),
                           "Unsupported buffer type");
@@ -257,13 +407,8 @@ mlir::LogicalResult CopyOpSequence::matchAndRewrite(VPUIP::CopyOp copyOp, mlir::
             return false;
         }
 
-        if (VPU::isDistributedCastCompatible(inDistributedType, outDistributedType).failed()) {
-            nestedLogger.trace("CopyOpSequence: types are incompatible: '{0}' != '{1}'", inDistributedType,
-                               outDistributedType);
-            return false;
-        }
-
-        return true;
+        return areDistributedBufferTypesCompatible(inDistributedType, outDistributedType,
+                                                   allowDifferentPerClusterMemoryView);
     };
 
     if (!isCopyOpDistributed && !isCMX2CMXCopy(parentCopyOpInputType.getMemoryKind(), copyOutputType.getMemoryKind())) {
@@ -280,12 +425,13 @@ mlir::LogicalResult CopyOpSequence::matchAndRewrite(VPUIP::CopyOp copyOp, mlir::
         nestedLogger.trace("CopyOpSequence: cannot match because grandparent of current CopyOp is not an operation");
         return mlir::failure();
     }
-    auto isGrandparentCompatible = areValuesCompatible(grandparentOp->getResult(0), copyOp.getResult(), nestedLogger);
+    auto isGrandparentCompatible =
+            areValuesCompatible(grandparentOp->getResult(0), copyOp.getResult(), nestedLogger, false);
 
     if (auto eltwiseInPlaceUser = getEltwiseInplaceUser(copyOp)) {
         nestedLogger.trace("CopyOpSequence: CopyOp is an eltwise in_place NCEClusterTask user");
         auto isUserClusterTaskCompatible =
-                areValuesCompatible(eltwiseInPlaceUser->getResult(0), copyOp.getResult(), nestedLogger);
+                areValuesCompatible(eltwiseInPlaceUser->getResult(0), copyOp.getResult(), nestedLogger, false);
 
         if (isCopyOpDistributed && !vpux::VPUIP::hasDistributedOperand(eltwiseInPlaceUser)) {
             nestedLogger.trace(
@@ -388,12 +534,58 @@ mlir::LogicalResult CopyOpSequence::matchAndRewrite(VPUIP::CopyOp copyOp, mlir::
             }
         }
     }
+
     if (isCopyOpDistributed && grandparentOp->getResult(0).getType() != copyOp.getResult().getType()) {
         if (!isGrandparentCompatible) {
-            nestedLogger.trace(
-                    "CopyOpSequence: cannot match because types aren't compatible when current CopyOp is distributed");
-            return mlir::failure();
+            // it may cause WLM failure in V0 PWLM mode
+            if ((_workloadManagementMode > WorkloadManagementMode::PWLM_V0_LCA) &&
+                isLegalAndBenefitCreateCopyFromCMXToCMX(grandparentOp, parentCopyOp, copyOp, nestedLogger)) {
+                // rewrite with a new CMX2CMX copy
+                rewriter.setInsertionPointAfter(copyOp);
+                rewriter.replaceOpWithNewOp<VPUIP::CopyOp>(copyOp, parentCopyOp.getInput(), copyOp.getOutputBuff());
+
+                if (distributedCastOp && distributedCastOp->use_empty()) {
+                    rewriter.eraseOp(distributedCastOp);
+                }
+
+                if (parentCopyOp->use_empty()) {
+                    rewriter.eraseOp(parentCopyOp);
+                }
+
+                nestedLogger.trace(
+                        "CopyOpSequence: successfully fused sequence of distributed copies into one CMX2CMX "
+                        "Copy when the input type and output type have different memory views on each cluster");
+
+                return mlir::success();
+            } else {
+                nestedLogger.trace("CopyOpSequence: cannot match because types aren't compatible when current CopyOp "
+                                   "is distributed");
+                return mlir::failure();
+            }
         }
+
+        // check CMX
+        auto availableCMXSize = VPU::getTotalCMXSize(copyOp);
+        auto rootBuffer = getRootBuffer(parentCopyOp.getInput());
+        auto rootBufferType = mlir::dyn_cast<vpux::NDTypeInterface>(rootBuffer.getType());
+        auto rootBufferSize = rootBufferType.getTotalAllocSize();
+        auto copyOutputType = mlir::dyn_cast<vpux::NDTypeInterface>(copyOp.getOutput().getType());
+        auto copyOutputSize = copyOutputType.getTotalAllocSize();
+
+        if (rootBufferSize > copyOutputSize) {
+            auto increasedBufferSize = rootBufferSize - copyOutputSize;
+            for (auto user : copyOp.getOutput().getUsers()) {
+                if (mlir::isa<VPUIP::NCEClusterTaskOp>(user)) {
+                    Byte requiredCMX = VPUIP::getRequiredCMXSize(user);
+                    if ((requiredCMX + increasedBufferSize) > availableCMXSize) {
+                        nestedLogger.trace("CopyOpSequence: cannot match because CMX size is not enough for the "
+                                           "increased size from root buffer");
+                        return mlir::failure();
+                    }
+                }
+            }
+        }
+
         rewriter.setInsertionPointAfter(parentCopyOp);
         rewriter.replaceOpWithNewOp<VPUIP::DistributedCastOp>(copyOp, copyOp.getResult().getType(),
                                                               parentCopyOp.getInput());
@@ -1616,8 +1808,9 @@ bool hasLegalCopyUser(VPUIP::ConcatViewOp sourceOp, vpux::Logger log) {
         auto tileAxisIndex = outputLayout.dimPos(Dim(tileAxis));
         auto isOutmostDimension = [&]() {
             for (auto i : concatDims) {
-                if (tileAxisIndex > outputLayout.dimPos(i))
+                if (tileAxisIndex > outputLayout.dimPos(i)) {
                     return false;
+                }
             }
             return true;
         };
@@ -2085,19 +2278,19 @@ mlir::LogicalResult SubViewWithDistributedCopy::matchAndRewrite(VPUIP::CopyOp or
                 mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(siblingCopyOp->getResult(0).getType());
         auto siblingDistribution = siblingCopyOutType.getDistribution();
 
-        const auto targetDistributionModeAttr = VPU::DistributionModeAttr::get(
+        const auto outDistributionModeAttr = VPU::DistributionModeAttr::get(
                 ctx, VPU::DistributionMode::DUPLICATED | VPU::DistributionMode::SEGMENTED);
         VPU::DistributionInfoAttr targetDistributedAttr = nullptr;
         // If siblingDistribution has shapes and offsets set then call getNonOverlappedDistributedAttr to recompute them
         // else set them to nullptr
         if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(siblingDistribution)) {
             targetDistributedAttr = VPU::getNonOverlappedDistributedAttr(
-                    siblingCopyOutType.getShape(), targetDistributionModeAttr, siblingDistribution.getNumTiles(),
+                    siblingCopyOutType.getShape(), outDistributionModeAttr, siblingDistribution.getNumTiles(),
                     siblingDistribution.getNumClusters(), siblingDistribution.getAlignment(),
                     siblingDistribution.getUniformDistributedSegments(), ctx);
         } else {
             targetDistributedAttr = VPU::DistributionInfoAttr::get(
-                    ctx, targetDistributionModeAttr, siblingDistribution.getNumTiles(), siblingDistribution.getKernel(),
+                    ctx, outDistributionModeAttr, siblingDistribution.getNumTiles(), siblingDistribution.getKernel(),
                     siblingDistribution.getPads(), siblingDistribution.getStrides(),
                     siblingDistribution.getNumClusters(), siblingDistribution.getAlignment(),
                     siblingDistribution.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr,
@@ -2545,16 +2738,135 @@ mlir::LogicalResult SubViewWithCopy::matchAndRewrite(VPUIP::CopyOp origOp, mlir:
 }
 
 //
+// CopyOpSequenceWithSubview
+//
+/*
+Convert DistributedCopy(CMX2DDR) -> SubView -> DistributedCopy(DDR2CMX) to SubView -> DistributedCopy(CMX2CMX)
+
+DistributedCopy(CMX2DDR)
+           |
+        subview
+           |
+DistributedCopy(DDR2CMX)
+           |
+         Conv
+
+            =>
+
+        subview
+           |
+DistributedCopy(CMX2CMX)
+           |
+         Conv
+
+*/
+
+class CopyOpSequenceWithSubview final : public mlir::OpRewritePattern<VPUIP::CopyOp> {
+public:
+    CopyOpSequenceWithSubview(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit,
+                              WorkloadManagementMode workloadManagementMode, Logger log)
+            : mlir::OpRewritePattern<VPUIP::CopyOp>(ctx, benefit),
+              _workloadManagementMode(workloadManagementMode),
+              log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(VPUIP::CopyOp copyOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
+    Logger log;
+};
+
+mlir::LogicalResult CopyOpSequenceWithSubview::matchAndRewrite(VPUIP::CopyOp copyOp,
+                                                               mlir::PatternRewriter& rewriter) const {
+    log.trace("CopyOpSequenceWithSubview: Copy at {0}", copyOp->getLoc());
+    auto nestedLogger = log.nest();
+
+    if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_LCA) {
+        return mlir::failure();
+    }
+
+    auto outputDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(copyOp.getOutput().getType());
+    if (outputDistributedType == nullptr) {
+        nestedLogger.trace("CopyOpSequenceWithSubview: Copy has no distributed output, skipping");
+        return mlir::failure();
+    }
+
+    auto subViewOp = copyOp.getInput().getDefiningOp<VPUIP::SubViewOp>();
+    if (subViewOp == nullptr) {
+        return mlir::failure();
+    }
+
+    auto parentCopyOp = subViewOp.getSource().getDefiningOp<VPUIP::CopyOp>();
+    if (parentCopyOp == nullptr) {
+        return mlir::failure();
+    }
+
+    auto inputDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(parentCopyOp.getInput().getType());
+    if (inputDistributedType == nullptr) {
+        nestedLogger.trace("CopyOpSequenceWithSubview: Parent copy has no distributed input, skipping");
+        return mlir::failure();
+    }
+
+    auto grandparentOp = parentCopyOp.getInput().getDefiningOp();
+    if (grandparentOp == nullptr) {
+        nestedLogger.trace(
+                "CopyOpSequenceWithSubview: cannot match because grandparent of current CopyOp is not an operation");
+        return mlir::failure();
+    }
+
+    // perform this optimization only when distributed buffer is compatible with subview
+    // otherwise an accuracy degradation may occur
+    if (!isSubViewCompatibleWithDistributedBuffer(subViewOp, inputDistributedType)) {
+        return mlir::failure();
+    }
+
+    if (isLegalAndBenefitCreateCopyFromCMXToCMX(grandparentOp, parentCopyOp, copyOp, nestedLogger)) {
+        rewriter.setInsertionPointAfter(copyOp);
+        // create and insert a new subview
+        auto newSubViewOp = rewriter.create<VPUIP::SubViewOp>(
+                subViewOp->getLoc(), parentCopyOp.getInput(), subViewOp.getStaticOffsetsAttr(),
+                subViewOp.getStaticSizesAttr(), subViewOp.getStaticStridesAttr());
+        nestedLogger.trace("CopyOpSequenceWithSubview: created new subview at '{0}' with type {1}",
+                           newSubViewOp->getLoc(), newSubViewOp->getResult(0).getType());
+
+        // rewrite with a new CMX2CMX copy
+        rewriter.replaceOpWithNewOp<VPUIP::CopyOp>(copyOp, newSubViewOp->getResult(0), copyOp.getOutputBuff());
+
+        if (subViewOp->use_empty()) {
+            rewriter.eraseOp(subViewOp);
+        }
+
+        if (parentCopyOp->use_empty()) {
+            rewriter.eraseOp(parentCopyOp);
+        }
+
+        nestedLogger.trace(
+                "CopyOpSequenceWithSubview: successfully fused sequence of distributed copies into one CMX2CMX "
+                "Copy when the input type and output type have different memory views on each cluster");
+        return mlir::success();
+    }
+
+    nestedLogger.trace("CopyOpSequenceWithSubview: cannot match because distributed types are incompatible with "
+                       "CMX2CMX Copy: '{0}' != '{1}'",
+                       inputDistributedType, outputDistributedType);
+    return mlir::failure();
+}
+
+//
 // OptimizeCopiesPass
 //
 
 class OptimizeCopiesPass final : public VPUIP::impl::OptimizeCopiesBase<OptimizeCopiesPass> {
 public:
-    explicit OptimizeCopiesPass(Logger log) {
+    explicit OptimizeCopiesPass(const WorkloadManagementMode workloadManagementMode, Logger log)
+            : _workloadManagementMode(workloadManagementMode) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
+    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
     void safeRunOnFunc() final;
 };
 
@@ -2566,12 +2878,16 @@ void OptimizeCopiesPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
+    if (workloadManagementModeOpt.hasValue()) {
+        _workloadManagementMode = workloadManagementModeOpt;
+    }
+
     auto module = func->getParentOfType<mlir::ModuleOp>();
     auto cmxSize = VPU::getTotalCMXSize(module).count();
 
     // Note the below patterns exec order is defined by "benefitLevels" at the head
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<CopyOpSequence>(&ctx, benefitLevels[0], _log);
+    patterns.add<CopyOpSequence>(&ctx, benefitLevels[0], _workloadManagementMode, _log);
     patterns.add<CMXToCMXCopy>(&ctx, benefitLevels[1], _log);
     patterns.add<DDRToDDRCopy>(&ctx, benefitLevels[2], _log);
     patterns.add<ConcatViewWithCopy>(&ctx, benefitLevels[3], _log);
@@ -2585,6 +2901,16 @@ void OptimizeCopiesPass::safeRunOnFunc() {
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
+
+    // Please note that the following optimization must be applied after the above patterns, as some condition checks
+    // depend on the results of the previous optimizations. For example, determining if a buffer has a stride.
+    mlir::RewritePatternSet patternsCopyOpSequenceWithSubview(&ctx);
+    patternsCopyOpSequenceWithSubview.add<CopyOpSequenceWithSubview>(&ctx, benefitLevels[0], _workloadManagementMode,
+                                                                     _log);
+    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patternsCopyOpSequenceWithSubview),
+                                                        getDefaultGreedyRewriteConfig()))) {
+        signalPassFailure();
+    }
 }
 
 }  // namespace
@@ -2593,6 +2919,7 @@ void OptimizeCopiesPass::safeRunOnFunc() {
 // createOptimizeCopiesPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUIP::createOptimizeCopiesPass(Logger log) {
-    return std::make_unique<OptimizeCopiesPass>(log);
+std::unique_ptr<mlir::Pass> vpux::VPUIP::createOptimizeCopiesPass(WorkloadManagementMode workloadManagementMode,
+                                                                  Logger log) {
+    return std::make_unique<OptimizeCopiesPass>(workloadManagementMode, log);
 }

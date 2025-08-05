@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUMI40XX/wlm_utils.hpp"
@@ -99,8 +99,9 @@ void dfs(mlir::Value val, llvm::SetVector<mlir::Value>& visited, size_t indexMax
     visited.insert(val);
     for (auto user : val.getUsers()) {
         auto barOp = mlir::dyn_cast<VPUMI40XX::ConfigureBarrierOp>(user);
-        if (!barOp)
+        if (!barOp) {
             continue;
+        }
 
         auto bar = barOp.getResult();
 
@@ -116,8 +117,9 @@ void dfs(mlir::Value val, llvm::SetVector<mlir::Value>& visited, size_t indexMax
 }
 
 llvm::SmallVector<mlir::Value> lca(mlir::Value lhs, mlir::Value rhs, lcaCache& cache, size_t indexMax) {
-    if (lhs == rhs)
+    if (lhs == rhs) {
         return {lhs};
+    }
 
     auto lhsBar = mlir::cast<VPUMI40XX::ConfigureBarrierOp>(lhs.getDefiningOp());
     auto rhsBarr = mlir::cast<VPUMI40XX::ConfigureBarrierOp>(rhs.getDefiningOp());

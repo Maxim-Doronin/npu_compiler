@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -430,6 +430,6 @@ private:
 
     ////////////////////////////////////////////////////////////////////////////
     EndPointTreeType _tree;  // balanced search tree on EndPointType //
-};                           // class DisjointIntervalSet //
+};  // class DisjointIntervalSet //
 
 }  // namespace vpux

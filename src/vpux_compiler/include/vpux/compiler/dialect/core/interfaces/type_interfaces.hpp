@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -36,12 +36,15 @@ struct TypeComponents {
     std::optional<DynamicDimsMask> dynamicDimsMask = std::nullopt;
 
     TypeComponents& setShape(ShapeRef newShape);
+    TypeComponents& setShapeWithRepresentation(Shape&& newShape);
+    TypeComponents& setShapeWithRepresentation(BoundedShape&& newShape);
+    TypeComponents& setShapeWithRepresentation(DimsMaskedShape&& newShape);
     TypeComponents& setElementType(mlir::Type newElementType);
     TypeComponents& setDimsOrder(DimsOrder newDimsOrder);
     TypeComponents& setMemSpace(IndexedSymbolAttr newMemSpace);
     TypeComponents& setStrides(StridesRef newStrides);
-    TypeComponents& setBounds(const Bounds& newBounds);
-    TypeComponents& setDynamicDimsMask(const DynamicDimsMask& newDynamicDimsMask);
+    TypeComponents& setBounds(Bounds&& newBounds);
+    TypeComponents& setDynamicDimsMask(DynamicDimsMask&& newDynamicDimsMask);
 };
 
 }  // namespace vpux

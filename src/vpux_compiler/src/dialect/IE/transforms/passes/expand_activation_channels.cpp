@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes/expand_activation_channels.hpp"
@@ -197,14 +197,32 @@ mlir::LogicalResult IE::MatMulRewriter::matchAndRewrite(IE::MatMulOp origOp, mli
         return std::make_pair(inputChannelPad, outputChannelPad);
     };
 
-    auto expandDimension = [origOp, &rewriter](auto dataToExpand, auto dimToExpand, auto pad, auto rank) mutable {
-        const Shape padsBegin(rank, 0);
-        Shape padsEnd(rank, 0);
-        padsEnd[dimToExpand] = pad;
+    auto expandDimension = [&](auto dataToExpand, auto dimToExpand, auto pad, auto rank, bool isInput) mutable {
+        const auto dataType = mlir::cast<vpux::NDTypeInterface>(dataToExpand.getType());
+        const auto quantizedType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(dataType.getElementType());
+        if (quantizedType && isInput) {
+            // For quantized type, we need to create a zero constant with the same type as the dataToExpand
+            Shape padsEnd(getShape(dataToExpand));
+            padsEnd[dimToExpand] = pad;
 
-        return rewriter.createOrFold<IE::ExpandOp>(origOp.getLoc(), dataToExpand,
-                                                   getIntArrayAttr(rewriter, ArrayRef(padsBegin.raw())),
-                                                   getIntArrayAttr(rewriter, ArrayRef(padsEnd.raw())));
+            SmallVector<mlir::Value> concatInputs;
+            concatInputs.push_back(dataToExpand);
+            concatInputs.push_back(generateZeroConst(origOp.getLoc(), dataType, ShapeRef(padsEnd), rewriter));
+
+            return rewriter.createOrFold<IE::ConcatOp>(origOp.getLoc(), concatInputs, dimToExpand);
+        } else {
+            if (!mlir::isa<mlir::FloatType>(dataType.getElementType())) {
+                _log.trace("[{0}] Data type {1} is not float.", getDebugName(), dataType.getElementType());
+            }
+
+            const Shape padsBegin(rank, 0);
+            Shape padsEnd(rank, 0);
+            padsEnd[dimToExpand] = pad;
+
+            return rewriter.createOrFold<IE::ExpandOp>(origOp.getLoc(), dataToExpand,
+                                                       getIntArrayAttr(rewriter, ArrayRef(padsBegin.raw())),
+                                                       getIntArrayAttr(rewriter, ArrayRef(padsEnd.raw())));
+        }
     };
 
     auto expandInputs = [origOp, &expandDimension](auto inputChannelPad, auto outputChannelPad) mutable {
@@ -220,16 +238,16 @@ mlir::LogicalResult IE::MatMulRewriter::matchAndRewrite(IE::MatMulOp origOp, mli
         if (inputChannelPad != 0) {
             expandedInput1 =
                     expandDimension(expandedInput1, origOp.getTransposeA() ? Dim(input1Rank - 2) : Dim(input1Rank - 1),
-                                    inputChannelPad, input1Rank);
+                                    inputChannelPad, input1Rank, true);
             expandedInput2 =
                     expandDimension(expandedInput2, origOp.getTransposeB() ? Dim(input2Rank - 1) : Dim(input2Rank - 2),
-                                    inputChannelPad, input2Rank);
+                                    inputChannelPad, input2Rank, true);
         }
 
         if (outputChannelPad != 0) {
             expandedInput2 =
                     expandDimension(expandedInput2, origOp.getTransposeB() ? Dim(input2Rank - 2) : Dim(input2Rank - 1),
-                                    outputChannelPad, input2Rank);
+                                    outputChannelPad, input2Rank, false);
         }
 
         return std::make_pair(expandedInput1, expandedInput2);

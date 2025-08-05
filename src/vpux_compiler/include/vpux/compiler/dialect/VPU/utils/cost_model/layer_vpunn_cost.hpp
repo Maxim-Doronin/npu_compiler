@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -53,23 +53,17 @@ private:
 
 class LayerVPUNNCost final {
 public:
-    LayerVPUNNCost(mlir::func::FuncOp func, Logger log = Logger::global()): _log(log) {
-        auto module = func->getParentOfType<mlir::ModuleOp>();
-        _arch = VPU::getArch(module);
-        _vpunnCostModel = VPU::CostModelConfig::createLayerCostModel(_arch);
-        resetNNCacheCounter();
+    /*
+     * Constructor with function op
+     */
+    LayerVPUNNCost(mlir::func::FuncOp func, Logger log = Logger::global());
 
-        auto tileOp = IE::getTileExecutor(module);
-        auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
-        _numTiles = tileOp.getCount();
-        _numDPUs = dpuExec.getCount();
-        _vpuDevice = getVPUDeviceType(_arch);
-        _numShaveActs = 0;
-        _numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
-        if (auto shaveActExec = tileOp.getSubExecutor(ExecutorKind::SHAVE_ACT)) {
-            _numShaveActs = shaveActExec.getCount();
-        }
-    };
+    /*
+     * Constructor with function op and existing layerCostModel pointer
+     * to avoid creating a new layerCostModel object
+     */
+    LayerVPUNNCost(mlir::func::FuncOp func, std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModel,
+                   Logger log = Logger::global());
 
     /*
      *  Get the cost for operation for particular parameters

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -200,6 +200,15 @@ public:
     size_t addNewTaskOp(VPURT::TaskOp taskOp);
     bool controlPathExistsBetweenTasksInSameBlock(const SmallVector<llvm::BitVector>& taskControlMap, size_t taskAInd,
                                                   size_t taskBInd, bool biDirection = true) const;
+    bool isDepFromTaskAToTaskB(size_t taskA, size_t taskB,
+                               std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+                               std::optional<size_t>& blockIdxOfTaskControlMap);
+    bool isDepFromTaskToBarrier(size_t taskInd, size_t barInd,
+                                std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+                                std::optional<size_t>& blockIdxOfTaskControlMap);
+    bool isDepFromBarAToBarB(size_t barA, size_t barB,
+                             std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+                             std::optional<size_t>& blockIdxOfTaskControlMap);
     size_t getProducerSlotCount(VPURT::BarrierOpInterface barrierOp);
     size_t getConsumerSlotCount(VPURT::BarrierOpInterface barrierOp);
     void addProducer(size_t barrierInd, size_t taskInd);
@@ -228,6 +237,7 @@ public:
     bool canBarriersBeMerged(const TaskSet& barrierProducersA, const TaskSet& barrierConsumersA,
                              const TaskSet& barrierProducersB, const TaskSet& barrierConsumersB,
                              ArrayRef<TaskSet> origWaitBarriersMap);
+    void removeRedundantBarrierProducersAndConsumers(bool considerTaskFifoDependency);
     SmallVector<TaskSet> getWaitBarriersMap();
     void dumpBarrierDependencies(const SmallVector<BarrierInfo::TaskSet>& depsMap, std::string fileName);
     void dumpQueues(const std::map<VPURT::TaskQueueType, llvm::BitVector>& queueMap, std::string fileName);

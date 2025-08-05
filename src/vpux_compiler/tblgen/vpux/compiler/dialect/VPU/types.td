@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPU_TYPES
@@ -37,8 +37,7 @@ def VPU_DistributedTensor :
             ]
         > {
     let summary = "VPU tensor type to describe the tensor tiling";
-    let description = [{ This type of tensor is used together with the ClusterTiling operation
-                            to describe a tile operation between clusters }];
+    let description = [{ This type of tensor is used to describe a tile operation between clusters }];
     let parameters = (ins
         ArrayRefParameter<"int64_t">:$shape,
         "mlir::Type":$elementType,

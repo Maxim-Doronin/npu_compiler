@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -53,6 +53,10 @@ std::unique_ptr<mlir::Pass> createAddBarrierConfigurationOps(
         WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
         WorkloadManagementBarrierProgrammingMode WorkloadManagementBarrierProgrammingMode =
                 WorkloadManagementBarrierProgrammingMode::LEGACY,
+        Logger log = Logger::global());
+
+std::unique_ptr<mlir::Pass> createAddEnqueueDMAOps(
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::FWLM_V1_PAGES,
         Logger log = Logger::global());
 
 //

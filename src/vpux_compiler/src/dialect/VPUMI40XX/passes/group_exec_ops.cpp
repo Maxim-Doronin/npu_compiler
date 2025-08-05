@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -26,7 +26,7 @@ namespace {
 
 template <class PredicateT, class... Args>
 struct FilterRangeTag final {
-    FilterRangeTag(Args... args): pred(args...){};
+    FilterRangeTag(Args... args): pred(args...) {};
 
     PredicateT pred;
 };
@@ -151,14 +151,16 @@ void groupExecOps(VPUMI40XX::MappedInferenceOp mpi, const VPURegMapped::TaskType
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
             auto startingVal = mpi.getListHead(primary, tileIdx, listIdx);
-            if (!startingVal)
+            if (!startingVal) {
                 continue;
+            }
 
             mlir::OpBuilder groupBuilder(startingVal.getDefiningOp());
 
             auto traveler = mlir::dyn_cast_or_null<VPURegMapped::TaskOpInterface>(startingVal.getDefiningOp());
-            if (!traveler)
+            if (!traveler) {
                 continue;
+            }
 
             auto taskOpCompare = [](mlir::Operation* lhs, mlir::Operation* rhs) {
                 auto lhsTask = mlir::cast<VPURegMapped::TaskOpInterface>(lhs);

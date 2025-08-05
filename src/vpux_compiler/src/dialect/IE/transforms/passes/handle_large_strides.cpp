@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -332,8 +332,9 @@ mlir::LogicalResult opWithMaxPoolOptimization(
 
     auto getSmallerStride = [](const int64_t stride) -> int64_t {
         for (int64_t k = MAX_STRIDE; k > 1; --k) {
-            if (stride % k == 0)
+            if (stride % k == 0) {
                 return k;
+            }
         }
 
         return stride;
@@ -342,8 +343,9 @@ mlir::LogicalResult opWithMaxPoolOptimization(
     const SmallVector<int64_t> newStride = {(SY > MAX_STRIDE) ? getSmallerStride(SY) : SY,
                                             (SX > MAX_STRIDE) ? getSmallerStride(SX) : SX};
 
-    if (newStride[0] > MAX_STRIDE || newStride[1] > MAX_STRIDE)
+    if (newStride[0] > MAX_STRIDE || newStride[1] > MAX_STRIDE) {
         return mlir::failure();
+    }
 
     log.trace("New strides for {0} are {1}", origOp->getLoc(), newStride);
 
@@ -393,9 +395,46 @@ private:
 mlir::LogicalResult ConvMPOptimizationRewriter::matchAndRewrite(IE::ConvolutionOp origOp,
                                                                 mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Convolution layer at '{1}'", getDebugName(), origOp->getLoc());
-    const auto kernelStrides = parseIntArrayAttr<int64_t>(origOp.getStrides());
+    auto kernelStrides = parseIntArrayAttr<int64_t>(origOp.getStrides());
     if (hasSupportedStrides(kernelStrides)) {
         return mlir::failure();
+    }
+
+    const auto inputType = mlir::cast<NDTypeInterface>(origOp.getInput().getType());
+    const auto filterType = mlir::cast<NDTypeInterface>(origOp.getFilter().getType());
+    const auto outType = mlir::cast<NDTypeInterface>(origOp.getOutput().getType());
+    const auto inputShape = inputType.getShape();
+    const auto filterShape = filterType.getShape();
+    const auto outShape = outType.getShape();
+    const auto padsBegin = parseIntArrayAttr<int64_t>(origOp.getPadsBegin());
+    const auto padsEnd = parseIntArrayAttr<int64_t>(origOp.getPadsEnd());
+    auto updateStrides = false;
+
+    if (kernelStrides[Dims4D::Strides::Y.ind()] > MAX_STRIDE && outShape[Dims4D::Act::H] == 1 &&
+        inputShape[Dims4D::Act::H] + padsBegin[Dims4D::PadsBegin::Top.ind()] + padsEnd[Dims4D::PadsEnd::Bottom.ind()] -
+                        1 <
+                filterShape[Dims4D::Act::H]) {
+        kernelStrides[Dims4D::Strides::Y.ind()] = 1;
+        updateStrides = true;
+    }
+
+    if (kernelStrides[Dims4D::Strides::X.ind()] > MAX_STRIDE && outShape[Dims4D::Act::W] == 1 &&
+        inputShape[Dims4D::Act::W] + padsBegin[Dims4D::PadsBegin::Left.ind()] + padsEnd[Dims4D::PadsEnd::Right.ind()] -
+                        1 <
+                filterShape[Dims4D::Act::W]) {
+        kernelStrides[Dims4D::Strides::X.ind()] = 1;
+        updateStrides = true;
+    }
+
+    if (updateStrides) {
+        const auto newStridesAttr = getIntArrayAttr(getContext(), kernelStrides);
+        rewriter.modifyOpInPlace(origOp, [&] {
+            origOp.setStridesAttr(newStridesAttr);
+        });
+
+        if (hasSupportedStrides(kernelStrides)) {
+            return mlir::success();
+        }
     }
 
     return opWithMaxPoolOptimization(

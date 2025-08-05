@@ -104,6 +104,7 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
     -D ENABLE_INTEL_NPU_PROTOPIPE=OFF \
     -D BUILD_COMPILER_FOR_DRIVER=ON \
     -D ENABLE_PRIVATE_TESTS=OFF \
+    -D ENABLE_DIRECTML=OFF \
     -D ENABLE_NPU_LSP_SERVER=OFF \
     ..
 
@@ -204,6 +205,9 @@ Driver Compiler is built with OpenVINO static runtime. To build the library and 
 
         # Compiler private tests
         ENABLE_PRIVATE_TESTS
+
+        # for Windows system
+        ENABLE_DIRECTML
 
         # Debug tools
         ENABLE_NPU_LSP_SERVER        

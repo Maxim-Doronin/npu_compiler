@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -50,8 +50,8 @@ bool isCompatibleWithMultiClusterNNDMA(VPU::SpaceToDepthOp op, vpux::ShapeRef nu
         auto userInputType = mlir::cast<vpux::NDTypeInterface>(userOp->getOperand(0).getType());
         auto userOutputType = mlir::cast<vpux::NDTypeInterface>(userOp->getResult(0).getType());
         auto numClusters = VPU::getOptimalNumClusters(userOp, userOutputType.getShape(), userStrategy.value());
-        auto userInputDistType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(
-                getDistributedActivationTypeFromOp(userClusteredOp, userInputType, numClusters, userStrategy.value()));
+        auto userInputDistType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(getDistributedActivationTypeFromOp(
+                userClusteredOp, userOp->getOperand(0), userInputType, numClusters, userStrategy.value()));
         if (userInputDistType == nullptr) {
             return false;
         }

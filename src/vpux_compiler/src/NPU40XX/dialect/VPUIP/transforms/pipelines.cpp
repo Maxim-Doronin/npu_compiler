@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
@@ -9,6 +9,7 @@
 #include "vpux/compiler/NPU40XX/dialect/VPURT/transforms/passes.hpp"
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
@@ -84,7 +85,6 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPUIP::createUngroupBoundedBuffersPass(log));
 
-    pm.addPass(VPUIP::createMoveReflectPadToCMXPass(log));
     VPUIP::arch37xx::buildOptimizeCopiesPipeline(pm, VPUIP::arch37xx::OptimizeCopiesOptions(options), log);
 
     pm.addPass(VPUIP::createConvertDynamicReshapeToInPlacePass(log));
@@ -173,7 +173,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     // Level 1 : VPU RunTime
     pm.addPass(VPUIP::createUnrollSwKernelPass(log));
 
-    pm.addPass(VPUIP::arch40xx::createUnrollClusterTilingPass(log, options.enableSegmentedDmaFusion));
+    pm.addPass(VPUIP::arch40xx::createUnrollDistributedOpsPass(log, options.enableSegmentedDmaFusion));
     pm.addPass(VPUIP::createBatchMatMulToMatMulPass(log));
     pm.addPass(VPUIP::arch40xx::createDetectDMASplitCandidatePass(log));
     pm.addPass(VPUIP::createNNDMATilingPass(log));
@@ -209,10 +209,6 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPUIP::arch40xx::createSplitDMAToBalanceLoadPass(log));
     if (options.enableSegmentedDmaFusion) {
         pm.addPass(VPUIP::arch40xx::createFuseSegmentedDmaPass(log));
-    }
-
-    if (options.enableCompressActivationSpill) {
-        pm.addPass(VPUIP::arch40xx::createCompressSpillDmaPass(log));
     }
 
     // TODO: E#140041 enable profiling with outlining
@@ -251,6 +247,11 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     auto dpuDryRunMode = VPU::getDPUDryRunMode(options.dpuDryRun);
     if (dpuDryRunMode == VPU::DPUDryRunMode::STRIP || options.shaveDryRun == true) {
         pm.addPass(VPUIP::arch40xx::createComputeTaskStrippingPass(log, dpuDryRunMode, options.shaveDryRun));
+    }
+
+    // LNL Shave Kernel prefetch with profiling fails compiling. Track Number: E#169656
+    if (options.enableSwKernelsCachePrefetch && !(options.enableProfiling && options.enableSWProfiling)) {
+        pm.addPass(vpux::VPUIP::createAddSwKernelInstructionPrefetchPass(log));
     }
 
     // Ensures legal schedule in the case of a WLM rollback
@@ -295,6 +296,13 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
             WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED) {
             pm.addPass(VPURT::arch40xx::createWlmLegalizePagesForBarrierDmasPass(log));
         }
+        if (options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+            pm.addPass(VPURT::arch40xx::createWlmInsertDummyDmasInPagesPass(log));
+        }
+    }
+
+    if (options.enableCompressActivationSpill) {
+        pm.addPass(VPUIP::arch40xx::createCompressSpillDmaPass(log));
     }
 
     if (options.enableDmaOutOfOrder) {
@@ -313,6 +321,11 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPURT::createAssignPhysicalBarriersPass(options.enableColorBinPhysicalBarrierAssignment,
                                                        options.workloadManagementMode,
                                                        options.workloadManagementBarrierCountThreshold, log));
+
+    if (options.workloadManagementEnable && options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPURT::arch40xx::createFindWlmEnqueueDmasBarrierPass(log));
+    }
+
     pm.addPass(VPURT::createBarrierSimulationPass(log));
     pm.addPass(VPUIP::createUpdateSwKernelParamsPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
@@ -325,6 +338,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPURT::createInferenceExecutionAnalysisPass(options.scheduleTraceFile, options.enableScheduleTrace,
                                                                options.enableActivityFactor, log));
     }
+    pm.addPass(VPU::createCostModelAnalysisDestroyPass(log));
     if (options.enableDumpTaskStats) {
         // Force logging if dump-task-stats was enabled explicitly on the command line
         pm.addPass(VPUIP::createDumpStatisticsOfTaskOpsPass(

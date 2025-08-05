@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
@@ -148,9 +148,11 @@ private:
 
 void InferenceExecutionAnalysisPass::safeRunOnFunc() {
     auto funcOp = getOperation();
-    CycleCostInfo cycleCostInfo(funcOp);
-    cycleCostInfo.resetNNCacheCounter();
     auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
+    const auto arch = VPU::getArch(moduleOp);
+    auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(moduleOp);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);
 
     VPURT::InferenceExecutionSimulator infSim(_log, funcOp, cycleCostInfo);
 

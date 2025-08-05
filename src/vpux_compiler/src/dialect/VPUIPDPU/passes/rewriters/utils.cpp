@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
@@ -201,6 +201,10 @@ std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType) {
     }
 
     return outDataWidth;
+}
+
+int64_t getRangeSize(int64_t start, int64_t end) {
+    return end - start + 1;
 }
 
 }  // namespace VPUIPDPU

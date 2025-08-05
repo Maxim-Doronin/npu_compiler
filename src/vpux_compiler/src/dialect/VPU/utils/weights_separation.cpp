@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -20,7 +21,8 @@
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/ErrorHandling.h>
-#include <limits>
+#include <mlir/IR/Value.h>
+#include <algorithm>
 
 using namespace vpux;
 
@@ -106,7 +108,7 @@ bool hasOnlyViewLikeTransformations(const Const::ContentAttr& contentAttr) {
 }  // namespace ViewLikeUtils
 
 namespace conversions {  // forward declarations
-bool isSupportedTransformation(Const::TransformAttrInterface t);
+bool isSupportedTransformation(vpux::NDTypeInterface inType, Const::TransformAttrInterface t);
 }
 
 bool shouldProcessThisConstant(Const::DeclareOp constOp) {
@@ -133,9 +135,23 @@ bool shouldProcessThisConstant(Const::DeclareOp constOp) {
         return false;
     }
 
-    const bool hasOnlySupportedTransformations =
-            llvm::all_of(constOp.getContentAttr().getTransformations(), conversions::isSupportedTransformation);
-    return hasOnlySupportedTransformations;
+    auto hasOnlySupportedTransformations = [](Const::DeclareOp constOp) {
+        auto contentAttr = constOp.getContentAttr();
+        auto baseType = contentAttr.getBaseContent().getType();
+        auto transformations = contentAttr.getTransformations();
+
+        for (auto t : transformations.drop_back(1)) {
+            if (!conversions::isSupportedTransformation(baseType, t)) {
+                return false;
+            }
+
+            baseType = t.inferOutputType(baseType);
+        }
+
+        return conversions::isSupportedTransformation(baseType, transformations.back());
+    };
+
+    return hasOnlySupportedTransformations(constOp);
 }
 
 /// Utilities related to converting const transformations to IR operations.
@@ -514,14 +530,27 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
 }
 
 /// Returns an IE operation for the given constant transformation.
-bool isSupportedTransformation(Const::TransformAttrInterface t) {
+bool isSupportedTransformation(vpux::NDTypeInterface inType, Const::TransformAttrInterface t) {
+    if (mlir::isa<Const::DequantizeAttr>(t)) {
+        if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inType.getElementType())) {
+            auto axis = perAxisType.getQuantizedDimension();
+            auto rank = inType.getRank();
+            auto isRank4Compatible = rank == 4 && axis == Dims4D::Act::C.ind();
+            auto isRank5Compatible = rank == 5 && axis == Dims5D::Act::C.ind();
+
+            return isRank4Compatible || isRank5Compatible;
+        }
+
+        return true;
+    }
+
     // Note: this *has* to be aligned with createMatchingIeOperation and
     // createMatchingVpuOperation (mostly with the former).
     return mlir::isa<Const::AddAttr, Const::BroadcastAttr, Const::ChangeShapeAndElemTypeAttr, Const::CastElemTypeAttr,
-                     Const::ConvertElemTypeAttr, Const::DequantizeAttr, Const::QuantizeAttr, Const::LayoutCastAttr,
-                     Const::MemPermuteAttr, Const::PadWithZeroAttr, Const::ReorderAttr, Const::RescaleAttr,
-                     Const::ReshapeAttr, Const::ScalarMultInverseAttr, Const::SubViewAttr, Const::TransposeAttr,
-                     Const::SparsifyAttr, Const::AffineReshapeAttr>(t);
+                     Const::ConvertElemTypeAttr, Const::QuantizeAttr, Const::LayoutCastAttr, Const::MemPermuteAttr,
+                     Const::PadWithZeroAttr, Const::ReorderAttr, Const::RescaleAttr, Const::ReshapeAttr,
+                     Const::ScalarMultInverseAttr, Const::SubViewAttr, Const::TransposeAttr, Const::SparsifyAttr,
+                     Const::AffineReshapeAttr>(t);
 }
 
 /// Returns a VPU operation for the given constant transformation.
@@ -539,7 +568,8 @@ mlir::Value createMatchingVpuOperation(mlir::OpBuilder& builder, mlir::Location 
 /// A simple dispatch around IE and VPU operation creation functions.
 mlir::Value createMatchingOperation(WeightsSeparationSchedule scheduleKind, mlir::OpBuilder& builder,
                                     mlir::Location loc, mlir::Value input, Const::TransformAttrInterface t) {
-    VPUX_THROW_UNLESS(isSupportedTransformation(t), "Found non-supported transformation {0}", t);
+    VPUX_THROW_UNLESS(isSupportedTransformation(mlir::cast<vpux::NDTypeInterface>(input.getType()), t),
+                      "Found non-supported transformation {0}", t);
     switch (scheduleKind) {
     case WeightsSeparationSchedule::Init:
         return createMatchingIeOperation(builder, loc, input, t);
@@ -588,29 +618,6 @@ std::vector<VPU::CallChainData> findChildren(const VPU::CallChainTree::Node& nod
     });
 
     return chains;
-}
-
-SmallVector<TransformationsSplit> collectMoveWorthySplitsUnstable(const Logger& log, mlir::func::FuncOp mainFunc,
-                                                                  VPU::LocalSortingFunc sort) {
-    SmallVector<TransformationsSplit> splits;
-    mainFunc.walk([&](Const::DeclareOp constOp) {
-        if (!shouldProcessThisConstant(constOp)) {
-            log.trace("Constant is NOT used in init schedule: {0}", constOp);
-            return;
-        }
-        splits.emplace_back(constOp);
-    });
-
-    sort(splits);
-
-    if (log.isActive(LogLevel::Trace)) {
-        log.trace("Found the following constants in {0}:", mainFunc.getSymName());
-        for (const auto& [index, split] : splits | indexed) {
-            log.trace("  {0}: {1}", index, split.declareOp());
-        }
-    }
-
-    return splits;
 }
 
 /// Helper utility that recognizes that duplicate transformation chains.
@@ -670,7 +677,7 @@ struct GroupedTransformationSplits {
     }
 };
 
-using SplitPosition = SmallVector<TransformationsSplit>::const_iterator;
+using SplitPosition = ArrayRef<TransformationsSplit>::const_iterator;
 /// Groups transformation splits by dense_resource<>. Requires sorted
 /// transformations splits.
 SmallVector<GroupedTransformationSplits<SplitPosition>> groupTransformationSplitsByName(
@@ -681,13 +688,13 @@ SmallVector<GroupedTransformationSplits<SplitPosition>> groupTransformationSplit
 
     assert(!splits.empty());
     auto prev = splits.begin();
-    auto prevResource = prev->declareOp().getContentAttr().getBaseContent();
+    auto prevResource = prev->getContentAttr().getBaseContent();
 
     // Note: since splits are sorted, we're guaranteed to have
     // same-resource-name constants to be together in sequence
     for (auto first = std::next(prev); first != splits.end(); ++first) {
         const auto& split = *first;
-        const auto currResource = split.declareOp().getContentAttr().getBaseContent();
+        const auto currResource = split.getContentAttr().getBaseContent();
         if (bool newConstant = (prevResource != currResource); newConstant) {
             groupedByName.emplace_back(prev, first, prevResource);
             prevResource = currResource;
@@ -734,14 +741,14 @@ void shuffleGroupedTransformationSplitsForBetterInitSchedule(
 
 /// Linearly traverses the specified groups of transformations splits, merging
 /// neighbouring groups if the threshold allows.
-SmallVector<SmallVector<TransformationsSplit>> getConstantsForInitSchedules(
+std::vector<std::vector<TransformationsSplit>> getConstantsForInitSchedules(
         const SmallVector<GroupedTransformationSplits<SplitPosition>>& groupedSplits, vpux::Byte threshold) {
     // Note: instead of doing a greedy merging here, it may make sense to
     // implement something a bit more advanced such as FFD (see
     // https://en.wikipedia.org/wiki/First-fit-decreasing_bin_packing).
 
     assert(!groupedSplits.empty());
-    SmallVector<SmallVector<TransformationsSplit>> slices;
+    std::vector<std::vector<TransformationsSplit>> slices;
 
     auto currGroupPosition = groupedSplits.begin();
     slices.emplace_back(std::make_move_iterator(currGroupPosition->begin()),
@@ -753,7 +760,7 @@ SmallVector<SmallVector<TransformationsSplit>> getConstantsForInitSchedules(
         const bool canAddConstantToCurrentInit = (accumulatedMemoryUsage + currMemoryUsage) <= threshold;
         if (canAddConstantToCurrentInit) {
             accumulatedMemoryUsage += currMemoryUsage;
-            slices.back().append(std::make_move_iterator(currGroupPosition->begin()),
+            slices.back().insert(slices.back().end(), std::make_move_iterator(currGroupPosition->begin()),
                                  std::make_move_iterator(currGroupPosition->end()));
             continue;
         }
@@ -773,7 +780,8 @@ CallChainTree getOutliningRepresentation(mlir::func::FuncOp startFunc) {
     return tree;
 }
 
-TransformationsSplit::TransformationsSplit(Const::DeclareOp declareOp): _declareOp(declareOp) {
+TransformationsSplit::TransformationsSplit(Const::DeclareOp declareOp)
+        : _loc(declareOp.getLoc()), _contentAttr(declareOp.getContentAttr()) {
     const auto contentAttr = declareOp.getContentAttr();
     auto transformations = contentAttr.getTransformations();
 
@@ -798,7 +806,7 @@ TransformationsSplit::TransformationsSplit(Const::DeclareOp declareOp): _declare
 }
 
 NDTypeInterface TransformationsSplit::getBaseType() const {
-    return mlir::cast<NDTypeInterface>(_declareOp.getContentAttr().getBaseContent().getType());
+    return mlir::cast<NDTypeInterface>(_contentAttr.getBaseContent().getType());
 }
 
 NDTypeInterface TransformationsSplit::getBoundaryType() const {
@@ -818,7 +826,15 @@ TransformationsSplit::Projection TransformationsSplit::take(WeightsSeparationSch
         }
         return {getBoundaryType(), _inInitTransformations, _postInitTransformations};
     }();
-    return Projection{_declareOp, argType, precedingTransformations, transformations, _ioTypeInfo};
+    return Projection{_contentAttr, argType, precedingTransformations, transformations, _ioTypeInfo};
+}
+
+Const::ContentAttr TransformationsSplit::getContentAttr() const {
+    return _contentAttr;
+}
+
+mlir::Location TransformationsSplit::getLoc() const {
+    return _loc;
 }
 
 namespace detail {
@@ -830,9 +846,13 @@ vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x) {
 }
 }  // namespace detail
 
-bool operator<(const TransformationsSplit& x, const TransformationsSplit& y) {
-    const auto& xContent = x.declareOp().getContentAttr();
-    const auto& yContent = y.declareOp().getContentAttr();
+namespace {
+// comparison template that serves both TransformationsSplit and
+// Const::DeclareOp
+template <typename T>
+bool stableCompare(const T& x, const T& y) {
+    const auto& xContent = x.getContentAttr();
+    const auto& yContent = y.getContentAttr();
 
     const auto xName = getResourceName(xContent.getBaseContent());
     const auto yName = getResourceName(yContent.getBaseContent());
@@ -850,20 +870,41 @@ bool operator<(const TransformationsSplit& x, const TransformationsSplit& y) {
     }
     return false;  // xName > yName
 }
+}  // namespace
 
-SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log,
-                                                                        mlir::func::FuncOp mainFunc) {
-    // sort the found constants. this ensures that the schedule stays the same
-    // even when constant operation order changes.
-    const auto sortSplits = [](SmallVector<TransformationsSplit>& splits) {
-        llvm::sort(splits);
-    };
-    return collectMoveWorthySplitsUnstable(log, mainFunc, sortSplits);
+bool operator<(const TransformationsSplit& x, const TransformationsSplit& y) {
+    return stableCompare(x, y);
 }
 
-SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Logger& log, const CallChainTree& tree,
-                                                                        LocalSortingFunc sort) {
-    SmallVector<TransformationsSplit> splits;
+std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir::func::FuncOp mainFunc) {
+    std::vector<Const::DeclareOp> ops;
+    mainFunc.walk([&](Const::DeclareOp constOp) {
+        if (!shouldProcessThisConstant(constOp)) {
+            log.trace("Constant is NOT used in init schedule: {0}", constOp);
+            return;
+        }
+        ops.emplace_back(constOp);
+    });
+
+    // sort the found constants. this ensures that the schedule stays the same
+    // even when constant operation order changes.
+    llvm::sort(ops, stableCompare<Const::DeclareOp>);
+
+    if (log.isActive(LogLevel::Trace)) {
+        log.trace("Found the following constants in {0}:", mainFunc.getSymName());
+        for (const auto& [index, declareOp] : ops | indexed) {
+            log.trace("  {0}: {1}", index, declareOp);
+        }
+    }
+
+    return ops;
+}
+
+namespace {
+/// Collects all constant operations that are worth moving to the Init schedule
+/// across the full IR (represented as a call-chain tree).
+std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, const CallChainTree& tree) {
+    std::vector<Const::DeclareOp> ops;
 
     FuncOpVisitor hasSeenThisFunction;
     utils::CallbackVisitor<CallChainData> splitCollector(
@@ -873,16 +914,18 @@ SmallVector<TransformationsSplit> collectMoveWorthyTransformationSplits(const Lo
                     return false;
                 }
 
-                splits.append(collectMoveWorthySplitsUnstable(log, currOp, sort));
+                auto locals = VPU::collectMoveWorthyConstants(log, currOp);
+                ops.insert(ops.end(), std::make_move_iterator(locals.begin()), std::make_move_iterator(locals.end()));
                 return true;
             },
             nullptr);
     tree.apply(splitCollector);
 
-    return splits;
+    return ops;
 }
+}  // namespace
 
-SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const Logger& log,
+std::vector<std::vector<TransformationsSplit>> sliceAccordingToMemoryLimit(const Logger& log,
                                                                            ArrayRef<TransformationsSplit> splits,
                                                                            vpux::Byte memoryLimit) {
     // Note: by default, splits are sorted "locally" to the function that uses
@@ -901,7 +944,7 @@ SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const
     if (log.isActive(LogLevel::Trace)) {
         log.trace("Slicing the following constants:");
         for (const auto& split : splits) {
-            log.nest().trace("{0}", split.declareOp());
+            log.nest().trace("{0}", split.getContentAttr());
         }
     }
 
@@ -916,7 +959,7 @@ SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const
         log.trace("Constants grouped by names:");
         for (const auto& [index, range] : groupedByName | indexed) {
             for (const auto& split : range) {
-                log.nest().trace("group #{0}: {1}", index, split.declareOp());
+                log.nest().trace("group #{0}: {1}", index, split.getContentAttr());
             }
         }
     }
@@ -929,12 +972,19 @@ SmallVector<SmallVector<TransformationsSplit>> sliceAccordingToMemoryLimit(const
         log.trace("Constants merged together:");
         for (const auto& [index, slice] : constantsForInits | indexed) {
             for (const auto& split : slice) {
-                log.nest().trace("init #{0}: {1}", index, split.declareOp());
+                log.nest().trace("init #{0}: {1}", index, split.getContentAttr());
             }
         }
     }
 
     return constantsForInits;
+}
+
+std::string ConstArg::getUniqueName() const {
+    const auto name = getResourceName(content);
+    assert(!name.empty() && "Weights separation only works with dense_resource<>");
+    const size_t hash = Const::ContentAttr::getTransformationHash(transformations);
+    return formatv("out_{0}_hash_{1}", name, hash).str();
 }
 
 // We want to cache the results of mapping a list of transformations to operations to avoid the call of a
@@ -997,13 +1047,10 @@ std::tuple<ArrayRef<Const::TransformAttrInterface>, mlir::Value> ConstOpConverte
     return {transformations.drop_front(), outputValue};
 }
 
-mlir::Value ConstOpConverter::convertToIrForm(mlir::Location baseLoc,
-                                              const VPU::TransformationsSplit::Projection& split,
+mlir::Value ConstOpConverter::convertToIrForm(mlir::Location loc, const VPU::TransformationsSplit::Projection& split,
                                               mlir::BlockArgument argValue, const IoBoundaryAdapter& ioAdaptor,
                                               WeightsSeparationSchedule scheduleKind) {
-    auto [declareOp, argType, precedingTransformations, transformations, typeInfo] = split;
-
-    auto loc = appendLoc(baseLoc, "arg{0}", argValue.getArgNumber());
+    auto [contentAttr, argType, precedingTransformations, transformations, typeInfo] = split;
 
     mlir::Value value = argValue;
 
@@ -1017,7 +1064,7 @@ mlir::Value ConstOpConverter::convertToIrForm(mlir::Location baseLoc,
         value = newValue;
     }
 
-    _log.trace("Creating matching operations for '{0}'", declareOp);
+    _log.trace("Creating matching operations for '{0}'", contentAttr);
     _log.trace("  These transformations are converted into IR '{0}'", transformations);
 
     // convert transformation chain to operations
@@ -1045,6 +1092,161 @@ mlir::Value ConstOpConverter::convertToIrForm(mlir::Location baseLoc,
     }
 
     return value;
+}
+
+WeightsSeparationInfo::WeightsSeparationInfo(mlir::ModuleOp moduleOp) {
+    auto log = Logger::global().nest("weights-separation-info", 0);
+    net::NetworkInfoOp netInfo;
+    mlir::func::FuncOp mainFuncOp;
+    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+
+    auto tree = VPU::getOutliningRepresentation(mainFuncOp);
+    auto constants = collectMoveWorthyConstants(log, tree);
+    _splits.reserve(constants.size());
+    std::move(constants.begin(), constants.end(), std::back_inserter(_splits));
+}
+
+const std::vector<TransformationsSplit>& WeightsSeparationInfo::getCollectedSplits() const {
+    return _splits;
+}
+
+bool WeightsSeparationInfo::isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&) {
+    return !_preserved;
+}
+
+void WeightsSeparationInfo::invalidate() {
+    _preserved = false;
+}
+
+namespace {
+mlir::RankedTensorType obfuscateType(ArrayRef<mlir::Type> originals) {
+    const auto totalSize = std::accumulate(originals.begin(), originals.end(), vpux::Byte(0),
+                                           [](vpux::Byte i, NDTypeInterface original) {
+                                               return i + vpux::getExpectedBufferSize(original);
+                                           });
+
+    SmallVector<int64_t> shape({totalSize.count()});
+    return mlir::RankedTensorType::get(shape, getInt8Type(originals.front().getContext()));
+}
+
+mlir::RankedTensorType obfuscateType(mlir::Type original) {
+    return obfuscateType(ArrayRef{original});
+}
+}  // namespace
+
+void obfuscateInputs(const Logger& log, mlir::Location loc, mlir::func::FuncOp funcOp, ArrayRef<size_t> indices,
+                     CreateSliceOpFunc createSlice) {
+    VPUX_THROW_WHEN(indices.empty(), "At least 1 input index is expected");
+
+    auto& bodyBlock = funcOp.getFunctionBody().front();
+    OpBuilderLogger builderLog(log.nest());
+    auto builder = mlir::OpBuilder::atBlockBegin(&bodyBlock, &builderLog);
+
+    if (bool singleInput = (indices.size() == 1); singleInput) {
+        // Note: to simplify the external code, the procedure still has to
+        // maintain relative order of arguments given multiple init schedules,
+        // thus, one has to "push" block argument to the end.
+        const size_t i = indices.front();
+        auto oldArg = bodyBlock.getArgument(i);
+        auto newArg = bodyBlock.addArgument(oldArg.getType(), oldArg.getLoc());
+        oldArg.replaceAllUsesWith(newArg);
+        bodyBlock.eraseArgument(i);
+
+        funcOp.setFunctionType(
+                mlir::FunctionType::get(builder.getContext(), bodyBlock.getArgumentTypes(), funcOp.getResultTypes()));
+        return;
+    }
+
+    // obfuscate tensors to tensor<(TOTAL_SHAPE * ELEM_SIZE)xi8> - as specified
+    // by indices
+    auto inputs = to_std_vector(indices | transformed([&](size_t index) {
+                                    return bodyBlock.getArgument(index);
+                                }));
+    auto inputTypes = to_std_vector(inputs | transformed([](mlir::BlockArgument x) {
+                                        return x.getType();
+                                    }));
+    const auto blobType = obfuscateType(inputTypes);
+    auto blobArg = bodyBlock.addArgument(blobType, loc);
+
+    // slice obfuscated blob into deobfuscated tensors
+    SmallVector<int64_t> offsets({0});  // updated in the loop
+    for (auto [index, inputValue] : inputs | indexed) {
+        const auto obfuscatedType = obfuscateType(inputValue.getType());
+
+        const auto shape = mlir::cast<NDTypeInterface>(obfuscatedType).getShape();
+        auto sliceOp =
+                createSlice(builder, appendLoc(blobArg.getLoc(), "slice{0}", index), blobArg, offsets, shape.raw());
+        auto castOp = builder.create<Core::ReinterpretCastOp>(appendLoc(sliceOp->getLoc(), "deobfuscated"),
+                                                              inputValue.getType(), sliceOp->getResult(0));
+        inputValue.replaceAllUsesWith(castOp.getResult());
+
+        offsets[0] += shape[Dim(0)];
+    }
+
+    // Note: avoid index recalculation by deleting from the end first
+    SmallVector<size_t> sorted(indices);
+    llvm::sort(sorted, std::not_fn(std::less<size_t>{}));
+    for (size_t index : sorted) {
+        bodyBlock.eraseArgument(index);
+    }
+
+    funcOp.setFunctionType(
+            mlir::FunctionType::get(builder.getContext(), bodyBlock.getArgumentTypes(), funcOp.getResultTypes()));
+}
+
+void obfuscateOutputs(const Logger& log, mlir::Location loc, mlir::func::FuncOp funcOp, ArrayRef<size_t> indices,
+                      CreateConcatOpFunc createConcat) {
+    VPUX_THROW_WHEN(indices.empty(), "At least 1 output index is expected");
+    if (bool singleOutput = (indices.size() == 1); singleOutput) {
+        return;
+    }
+
+    OpBuilderLogger builderLog(log.nest());
+    mlir::OpBuilder builder(funcOp, &builderLog);
+
+    // locate the return op
+    const auto returns = funcOp.getOps<mlir::func::ReturnOp>();
+    const size_t returnOpsCount = std::distance(returns.begin(), returns.end());
+    VPUX_THROW_WHEN(returnOpsCount != 1, "Expected exactly 1 return op in function '{0}', found {1}",
+                    funcOp.getSymName(), returnOpsCount);
+
+    mlir::func::ReturnOp returnOp = *returns.begin();
+    builder.setInsertionPoint(returnOp);
+
+    // obfuscate tensors to tensor<(TOTAL_SHAPE * ELEM_SIZE)xi8> - as specified
+    // by indices
+    auto allReturns = to_std_vector(returnOp->getOperands());
+    for (size_t index : indices) {
+        auto returnValue = allReturns[index];
+        const auto type = obfuscateType(returnValue.getType());
+        auto castOp = builder.create<Core::ReinterpretCastOp>(appendLoc(returnOp.getLoc(), "obfuscated{0}", index),
+                                                              type, returnValue);
+        allReturns[index] = castOp.getResult();
+    }
+
+    // concatenate obfuscated tensors
+    const auto isObfuscated = [](mlir::Value x) {
+        return x.getDefiningOp<Core::ReinterpretCastOp>() != nullptr;
+    };
+
+    std::vector<mlir::Value> concatReturns;
+    concatReturns.reserve(indices.size());
+    std::copy_if(allReturns.begin(), allReturns.end(), std::back_inserter(concatReturns), isObfuscated);
+    auto concatOp = createConcat(builder, loc, concatReturns, 0);
+
+    // rewrite the return statement to return a concatenated "blob", where new
+    // returns = unmodified returns + single blob from concat
+    std::vector<mlir::Value> newReturns;
+    newReturns.reserve(allReturns.size() - concatReturns.size() + 1);
+    std::copy_if(allReturns.begin(), allReturns.end(), std::back_inserter(newReturns), std::not_fn(isObfuscated));
+    newReturns.push_back(concatOp->getResult(0));
+    auto newReturnOp = builder.create<mlir::func::ReturnOp>(returnOp.getLoc(), newReturns);
+
+    returnOp->replaceAllUsesWith(newReturnOp);
+    returnOp->erase();
+
+    funcOp.setFunctionType(mlir::FunctionType::get(builder.getContext(), funcOp.getArgumentTypes(),
+                                                   newReturnOp.getOperands().getTypes()));
 }
 
 }  // namespace vpux::VPU

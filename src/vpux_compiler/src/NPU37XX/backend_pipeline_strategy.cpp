@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/backend_pipeline_strategy.hpp"
@@ -13,7 +13,7 @@ using namespace vpux;
 // BackendPipelineStrategy37XX::buildELFPipeline
 //
 
-void BackendPipelineStrategy37XX::buildELFPipeline(mlir::PassManager& pm, const intel_npu::Config&,
+void BackendPipelineStrategy37XX::buildELFPipeline(mlir::OpPassManager& pm, const intel_npu::Config&,
                                                    mlir::TimingScope& rootTiming, Logger log, bool /*useWlm*/) {
     auto buildTiming = rootTiming.nest("Build compilation pipeline");
     arch37xx::buildLowerVPUIP2ELFPipeline(pm, log.nest());

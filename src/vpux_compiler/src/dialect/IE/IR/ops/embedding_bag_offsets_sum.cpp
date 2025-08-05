@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -56,8 +56,9 @@ mlir::LogicalResult vpux::IE::EmbeddingBagOffsetsSumOp::inferReturnTypeComponent
     } else if (embeddingBag.getOffsetsValue().has_value()) {
         const auto offsetsAttr = parseIntArrayAttr<int32_t>(embeddingBag.getOffsetsValue().value());
         outShape[0] = offsetsAttr.size();
-    } else
+    } else {
         return errorAt(loc, "Offsets input was not provided properly");
+    }
 
     inferredReturnShapes.emplace_back(outShape, inTypeEmbTable.getElementType());
     return mlir::success();

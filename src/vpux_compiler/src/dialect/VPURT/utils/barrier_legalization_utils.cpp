@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
@@ -385,7 +385,7 @@ bool VPURT::addFinalBarrierIfNotExists(mlir::func::FuncOp funcOp, Logger log) {
 }
 
 bool VPURT::isShareWaitAndUpdateBarriersNeeded(std::optional<WorkloadManagementMode> workloadManagementMode) {
-    // Disable share wait and update barriers for PWLM_V2_PAGE mode only for now
+    // Disable share wait and update barriers for PWLM_V2_PAGE and FWLM_V1_PAGES mode only for now
     // For PWLM_V0_LCA mode enable shared barriers in order to avoid performance regressions
     // For PWLM_V0_LCA/PWLM_V1_BARRIER_FIFO mode use shareWaitAndUpdateBarriers to avoid issues in case of
     // rollback to nonWLM and lack of legalization of DMA descriptor fetch and potential issues in enqueue

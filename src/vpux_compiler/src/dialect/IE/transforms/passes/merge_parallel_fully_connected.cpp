@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -204,7 +204,7 @@ std::optional<SmallVector<IE::TransposeOp>> getTransposeOpWithSameAttr(
 std::optional<SmallVector<IE::AffineReshapeOp>> getAffineReshapeOpWithSameAttr(ArrayRef<IE::TransposeOp> transposeOps) {
     SmallVector<IE::AffineReshapeOp> affineReshapeOps;
     for (auto transpose : transposeOps) {
-        auto affineReshape = mlir::dyn_cast_or_null<IE::AffineReshapeOp>(transpose.getInput().getDefiningOp());
+        auto affineReshape = mlir::dyn_cast_if_present<IE::AffineReshapeOp>(transpose.getInput().getDefiningOp());
         if (affineReshape == nullptr || !affineReshape->hasOneUse()) {
             return std::nullopt;
         }
@@ -229,7 +229,7 @@ namespace TranposeAffineReshapeOrder {
 std::optional<SmallVector<IE::AffineReshapeOp>> getAffineReshapeOpWithSameAttr(ArrayRef<IE::FullyConnectedOp> fcOps) {
     SmallVector<IE::AffineReshapeOp> affineReshapeOps;
     for (auto fc : fcOps) {
-        auto affineReshape = mlir::dyn_cast_or_null<IE::AffineReshapeOp>(fc.getWeights().getDefiningOp());
+        auto affineReshape = mlir::dyn_cast_if_present<IE::AffineReshapeOp>(fc.getWeights().getDefiningOp());
         if (affineReshape == nullptr || !affineReshape->hasOneUse()) {
             return std::nullopt;
         }
@@ -252,7 +252,7 @@ std::optional<SmallVector<IE::AffineReshapeOp>> getAffineReshapeOpWithSameAttr(A
 std::optional<SmallVector<IE::TransposeOp>> getTransposeOpWithSameAttr(ArrayRef<IE::AffineReshapeOp> affineReshapeOps) {
     SmallVector<IE::TransposeOp> transposeOps;
     for (auto reshape : affineReshapeOps) {
-        auto transpose = mlir::dyn_cast<IE::TransposeOp>(reshape.getInput().getDefiningOp());
+        auto transpose = mlir::dyn_cast_if_present<IE::TransposeOp>(reshape.getInput().getDefiningOp());
         if (transpose == nullptr || !transpose->hasOneUse() || !transpose.getOrderValue().has_value()) {
             return std::nullopt;
         }
@@ -513,11 +513,11 @@ mlir::LogicalResult MergeParallelFullyConnected::matchAndRewrite(IE::FullyConnec
 
     auto parentIsTransposeOp = [](IE::FullyConnectedOp fcOp) {
         auto lhsOp = fcOp.getWeights().getDefiningOp();
-        return mlir::dyn_cast_or_null<IE::TransposeOp>(lhsOp) != nullptr;
+        return mlir::dyn_cast_if_present<IE::TransposeOp>(lhsOp) != nullptr;
     };
     auto parentIsAffineReshapeOp = [](IE::FullyConnectedOp fcOp) {
         auto lhsOp = fcOp.getWeights().getDefiningOp();
-        return mlir::dyn_cast_or_null<IE::AffineReshapeOp>(lhsOp) != nullptr;
+        return mlir::dyn_cast_if_present<IE::AffineReshapeOp>(lhsOp) != nullptr;
     };
     auto maybeReshapeTranspose = llvm::all_of(fullyConnectedOps, parentIsTransposeOp);
     auto maybeTransposeReshape = llvm::all_of(fullyConnectedOps, parentIsAffineReshapeOp);

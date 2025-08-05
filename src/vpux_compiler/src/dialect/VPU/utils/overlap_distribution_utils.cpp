@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/overlap_distribution_utils.hpp"
@@ -46,6 +46,14 @@ bool isDistributedTensorSOH(VPU::DistributedTensorType distributedTensorType) {
 bool isValidCandidateForCMXConcat(mlir::Operation* maybeConcat) {
     auto concat = mlir::dyn_cast_or_null<VPU::ConcatOp>(maybeConcat);
     if (concat == nullptr) {
+        return false;
+    }
+
+    // Minimal memory requirement for cmx concat - the concat's size should fit into CMX
+    auto concatOutType = mlir::cast<vpux::NDTypeInterface>(concat.getOutput().getType());
+    const auto concatSize = concatOutType.getTotalAllocSize().count();
+    const auto totalCMX = getTotalCMXSize(maybeConcat).count();
+    if (concatSize > totalCMX) {
         return false;
     }
 
@@ -289,6 +297,19 @@ OverlapDistributionParams vpux::VPU::getOverlappedDistributionParameters(ArrayRe
     return OverlapDistributionParams(kernel, pads, strides, equalComputeAndMemoryView);
 }
 
+std::pair<Shape, Shape> getActualDataMemOffsetsAndShapes(VPU::SparseTensorType sparseNceOpInputType,
+                                                         ShapeRef effectiveMemOffsets, ShapeRef effectiveMemShape) {
+    auto dataType = mlir::dyn_cast_or_null<NDTypeInterface>(sparseNceOpInputType.getData());
+    const auto dataShape = dataType.getShape();
+
+    auto memOffsets = Shape(dataShape.size());
+    auto memShapes = Shape(dataShape.size());
+    sparseNceOpInputType.getSeAttr().extractTile(effectiveMemOffsets, effectiveMemShape, dataShape, memOffsets,
+                                                 memShapes);
+
+    return {memOffsets, memShapes};
+}
+
 // Version with extension of halo
 OverlapDistributionParams vpux::VPU::getOverlappedDistributionParameters(
         NDTypeInterface tensorType, ArrayRef<VPU::ClusteredOpInterface> consumerSubgraph, const int64_t numClusters,
@@ -388,15 +409,27 @@ OverlapDistributionParams vpux::VPU::getOverlappedDistributionParameters(
 
         const bool opHasConsumerWithSETable = currentNceOpHasSETable && !origTensorHasSETable;
         // E#112803 support for SEP should be added
-        if (opHasConsumerWithSETable) {
+        // E#173578 restricting to child op DepthConvolution, this will improve Geekbench models.
+        // For other ops, it is possible to cause WLM rollback, caused by scheduler.
+        if (opHasConsumerWithSETable &&
+            (nceOpCandidates.size() != 1 || !mlir::isa_and_nonnull<VPU::NCEDepthConvolutionOp>(nceOp))) {
             continue;
         }
+
+        auto initDistribution =
+                OverlapDistributionParams(arrayOfArrayFromShape(memoryShapes), arrayOfArrayFromShape(memoryOffsets),
+                                          arrayOfArrayFromShape(computeShapes), arrayOfArrayFromShape(computeOffsets));
+
         for (int64_t cluster = 0; cluster < numClusters; ++cluster) {
             auto& crtClusterMemoryOffsets = memoryOffsets[cluster];
             auto& crtClusterMemoryShapes = memoryShapes[cluster];
 
             auto crtClusterConsMemOffsets = consumerMemoryOffsets[cluster];
             auto crtClusterConsMemShapes = consumerMemoryShapes[cluster];
+            if (opHasConsumerWithSETable) {
+                std::tie(crtClusterConsMemOffsets, crtClusterConsMemShapes) = getActualDataMemOffsetsAndShapes(
+                        sparseNceOpInputType, crtClusterConsMemOffsets, crtClusterConsMemShapes);
+            }
 
             auto endOffset =
                     crtClusterMemoryOffsets[Dim(clusteringAxis)] + crtClusterMemoryShapes[Dim(clusteringAxis)] - 1;
@@ -408,14 +441,24 @@ OverlapDistributionParams vpux::VPU::getOverlappedDistributionParameters(
 
             if (endOffset < candidateEndOffset) {
                 endOffset = candidateEndOffset;
+            } else if (opHasConsumerWithSETable && endOffset > candidateEndOffset) {
+                return initDistribution;
             }
 
             if (startOffset > candidateStartOffset) {
                 startOffset = candidateStartOffset;
+            } else if (opHasConsumerWithSETable && startOffset < candidateStartOffset) {
+                return initDistribution;
             }
 
             crtClusterMemoryOffsets[Dim(clusteringAxis)] = startOffset;
             crtClusterMemoryShapes[Dim(clusteringAxis)] = endOffset - startOffset + 1;
+
+            // checking this in case the second operation is tiled. Because it is possible to have endOffset > shape.
+            if (crtClusterMemoryOffsets[Dim(clusteringAxis)] + crtClusterMemoryShapes[Dim(clusteringAxis)] >
+                shape[Dim(clusteringAxis)]) {
+                return initDistribution;
+            }
         }
     }
 

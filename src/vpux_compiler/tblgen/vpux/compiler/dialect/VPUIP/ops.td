@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUIP_OPS
@@ -19,7 +19,6 @@ include "vpux/compiler/dialect/VPUIP/dialect.td"
 include "vpux/compiler/dialect/VPUIP/ops_interfaces.td"
 include "vpux/compiler/dialect/VPUIP/types.td"
 include "vpux/compiler/dialect/VPURT/types.td"
-include "vpux/compiler/dialect/IERT/types.td"
 
 include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -769,7 +768,7 @@ def VPUIP_NCEClusterTaskOp :
         AnyTypeOf<[MemRefOf<[F16, F32, BF16, quant_QuantizedType]>, VPUIP_DistributedBuffer, VPUIP_ITIBuffer]>:$output_buff,
         Optional<AnyTypeOf<[MemRefOf<[I1]>, VPUIP_DistributedBuffer, VPUIP_ITIBuffer]>>:$output_sparsity_map_buff,
         Optional<AnyTypeOf<[MemRefOf<[UI64]>, VPUIP_DistributedBuffer]>>:$profiling_data,
-        Optional<AnyTypeOf<[MemRefOf<[I32]>, VPUIP_DistributedBuffer]>>:$dynamic_sequence_length, // 1x1x1xVALUExi32
+        Optional<AnyTypeOf<[MemRefOf<[I32]>, VPUIP_DistributedBuffer]>>:$dynamic_sequence_length,
 
         Optional<AnyMemRef>:$max_per_xy,
         Optional<AnyMemRef>:$min_per_xy,
@@ -794,7 +793,7 @@ def VPUIP_NCEClusterTaskOp :
         UnitAttr:$is_small_kernel_optimized,
         OptionalAttr<VPUIP_DpuProfilingMetadataAttr>:$profilingMetadata,
         OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine,
-        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config
     );
 
     let results = (outs
@@ -934,6 +933,7 @@ def VPUIP_NCEClusterTaskOp :
             "mlir::Value":$parent_input, "mlir::Value":$parent_input_sparsity_map, "mlir::Value":$parent_input_storage_element_table,
             "mlir::Value":$parent_output, "mlir::Value":$parent_output_sparsity_map,
             "mlir::Value":$output_buff, "mlir::Value":$output_sparsity_map_buff, "mlir::Value":$profiling_data,
+            "mlir::Value":$dynamic_sequence_length,
             "mlir::Value":$max_per_xy, "mlir::Value":$min_per_xy,"mlir::ValueRange":$min_max_per_tensor,
             "vpux::VPUIP::NCETaskType":$task_type,
             "mlir::ArrayAttr":$kernel_size, "mlir::ArrayAttr":$kernel_strides, "vpux::VPU::PaddingAttr":$kernel_padding,
@@ -950,7 +950,8 @@ def VPUIP_NCEClusterTaskOp :
             CArg<"mlir::UnitAttr", "nullptr">:$is_permute_quantize,
             CArg<"mlir::UnitAttr", "nullptr">:$is_small_kernel_optimized,
             CArg<"VPU::MPEEngineAttr", "nullptr">:$mpe_engine,
-            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type
+            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type,
+            CArg<"VPUIP::DynamicScaleConfigAttr", "nullptr">:$dynamic_scale_config
         )>,
 
         OpBuilder<(ins
@@ -965,6 +966,7 @@ def VPUIP_NCEClusterTaskOp :
             "mlir::Value":$parent_input, "mlir::Value":$parent_input_sparsity_map, "mlir::Value":$parent_input_storage_element_table,
             "mlir::Value":$parent_output, "mlir::Value":$parent_output_sparsity_map,
             "mlir::Value":$output_buff, "mlir::Value":$output_sparsity_map_buff, "mlir::Value":$profiling_data,
+            "mlir::Value":$dynamic_sequence_length,
             "mlir::Value":$max_per_xy, "mlir::Value":$min_per_xy,"mlir::ValueRange":$min_max_per_tensor,
             "vpux::VPUIP::NCETaskType":$task_type,
             "mlir::ArrayAttr":$kernel_size, "mlir::ArrayAttr":$kernel_strides, "vpux::VPU::PaddingAttr":$kernel_padding,
@@ -981,7 +983,8 @@ def VPUIP_NCEClusterTaskOp :
             CArg<"mlir::UnitAttr", "nullptr">:$is_permute_quantize,
             CArg<"mlir::UnitAttr", "nullptr">:$is_small_kernel_optimized,
             CArg<"VPU::MPEEngineAttr", "nullptr">:$mpe_engine,
-            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type
+            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type,
+            CArg<"VPUIP::DynamicScaleConfigAttr", "nullptr">:$dynamic_scale_config
         )>,
 
         OpBuilder<(ins
@@ -995,6 +998,7 @@ def VPUIP_NCEClusterTaskOp :
             "mlir::Value":$parent_input, "mlir::Value":$parent_input_sparsity_map, "mlir::Value":$parent_input_storage_element_table,
             "mlir::Value":$parent_output, "mlir::Value":$parent_output_sparsity_map, "mlir::ValueRange":$output_ITI_buff,
             "mlir::Value":$output_buff, "mlir::Value":$output_sparsity_map_buff, "mlir::Value":$profiling_data,
+            "mlir::Value":$dynamic_sequence_length,
             "mlir::Value":$max_per_xy, "mlir::Value":$min_per_xy,"mlir::ValueRange":$min_max_per_tensor,
             "vpux::VPUIP::NCETaskType":$task_type,
             "mlir::ArrayAttr":$kernel_size, "mlir::ArrayAttr":$kernel_strides, "vpux::VPU::PaddingAttr":$kernel_padding,
@@ -1011,7 +1015,8 @@ def VPUIP_NCEClusterTaskOp :
             CArg<"mlir::UnitAttr", "nullptr">:$is_permute_quantize,
             CArg<"mlir::UnitAttr", "nullptr">:$is_small_kernel_optimized,
             CArg<"VPU::MPEEngineAttr", "nullptr">:$mpe_engine,
-            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type
+            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type,
+            CArg<"VPUIP::DynamicScaleConfigAttr", "nullptr">:$dynamic_scale_config
         )>
     ];
 
@@ -1058,6 +1063,10 @@ def VPUIP_NCEClusterTaskOp :
         vpux::VPUIP::DPUTaskOp addDPUTask(mlir::OpBuilder& builder,
                                           mlir::ArrayAttr outStart, mlir::ArrayAttr outEnd,
                                           mlir::ArrayAttr inStart, mlir::ArrayAttr inEnd,
+                                          vpux::VPU::PaddingAttr pad, vpux::VPU::MPEMode mpeMode, mlir::ArrayAttr variant_primitive_id);
+        vpux::VPUIP::DPUTaskOp addDPUTask(mlir::OpBuilder& builder,
+                                          mlir::ArrayAttr outStart, mlir::ArrayAttr outEnd,
+                                          mlir::ArrayAttr inStart, mlir::ArrayAttr inEnd,
                                           vpux::VPU::PaddingAttr pad, vpux::VPU::MPEMode mpeMode,
                                           mlir::IntegerAttr clusterId, mlir::ArrayAttr haloRegions);
         vpux::VPUIP::DPUTaskOp addDPUTask(mlir::OpBuilder& builder,
@@ -1096,7 +1105,7 @@ def VPUIP_SwKernelRun
     : VPUIP_Op<"SW.Kernel.run"> {
 
     let arguments  = (ins
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_BoundedBuffer, IERT_PackedParams]>>:$args,
+        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_BoundedBuffer]>>:$args,
         OptionalAttr<ArrayAttr>:$attrs
     );
 
@@ -1151,7 +1160,8 @@ def VPUIP_SwKernelOp :
         Optional<AnyTypeOf<[MemRefOf<[UI32]>, VPUIP_DistributedBuffer]>>:$profiling_data,
         OptionalAttr<IntAttr>:$tileIndex,
         OptionalAttr<IntAttr>:$listIndex,
-        OptionalAttr<I64ArrayOfArraysAttr>:$strides,
+        OptionalAttr<I64ArrayOfArraysAttr>:$inputStrides,
+        OptionalAttr<I64ArrayOfArraysAttr>:$outputStrides,
         OptionalAttr<VPUIP_SwProfilingMetadataAttr>:$profilingMetadata
     );
 
@@ -1184,7 +1194,15 @@ def VPUIP_SwKernelOp :
             "mlir::ValueRange":$output_buffs,
             "mlir::SymbolRefAttr":$kernelFunction,
             "mlir::IntegerAttr":$tileIndex,
-            "mlir::ArrayAttr":$strides
+            "mlir::ArrayAttr":$outputStrides
+        )>,
+        OpBuilder<(ins
+            "mlir::ValueRange":$inputs,
+            "mlir::ValueRange":$output_buffs,
+            "mlir::SymbolRefAttr":$kernelFunction,
+            "mlir::IntegerAttr":$tileIndex,
+            "mlir::ArrayAttr":$inputStrides,
+            "mlir::ArrayAttr":$outputStrides
         )>,
         OpBuilder<(ins
             "mlir::ValueRange":$inputs,
@@ -1192,7 +1210,8 @@ def VPUIP_SwKernelOp :
             "mlir::Value":$profiling_data,
             "mlir::SymbolRefAttr":$kernelFunction,
             "mlir::IntegerAttr":$tileIndex,
-            "mlir::ArrayAttr":$strides
+            "mlir::ArrayAttr":$inputStrides,
+            "mlir::ArrayAttr":$outputStrides
         )>,
         OpBuilder<(ins
             "mlir::ValueRange":$inputs,
@@ -1224,7 +1243,7 @@ def VPUIP_SwKernelOp :
             "llvm::ArrayRef<int32_t>":$dynamicOutputShapesMap,
             "mlir::SymbolRefAttr":$kernelFunction,
             "mlir::IntegerAttr":$tileIndex,
-            "mlir::ArrayAttr":$strides
+            "mlir::ArrayAttr":$outputStrides
         )>,
         OpBuilder<(ins
             "mlir::ValueRange":$inputs,
@@ -1236,8 +1255,22 @@ def VPUIP_SwKernelOp :
             "mlir::Value":$profiling_data,
             "mlir::SymbolRefAttr":$kernelFunction,
             "mlir::IntegerAttr":$tileIndex,
-            "mlir::ArrayAttr":$strides
+            "mlir::ArrayAttr":$outputStrides
         )>,
+        OpBuilder<(ins
+            "mlir::ValueRange":$inputs,
+            "mlir::ValueRange":$output_buffs,
+            "mlir::ValueRange":$dynamicInputShapes,
+            "llvm::ArrayRef<int32_t>":$dynamicInputShapesMap,
+            "mlir::ValueRange":$dynamicOutputShapeBuffs,
+            "llvm::ArrayRef<int32_t>":$dynamicOutputShapesMap,
+            "mlir::Value":$profiling_data,
+            "mlir::SymbolRefAttr":$kernelFunction,
+            "mlir::IntegerAttr":$tileIndex,
+            "mlir::ArrayAttr":$inputStrides,
+            "mlir::ArrayAttr":$outputStrides
+        )>,
+
         // used by profiling pass to keep op attributes intact
         OpBuilder<(ins
             "SwKernelOp":$swOp,
@@ -1512,62 +1545,6 @@ def VPUIP_M2ITaskOp :
                                                     mlir::ValueRange operands, mlir::DictionaryAttr attrs, mlir::OpaqueProperties,
                                                     mlir::RegionRange regions,
                                                     mlir::SmallVectorImpl<mlir::Type>& inferredTypes);
-    }];
-}
-
-//
-// NCEClusterTiling
-//
-
-def VPUIP_NCEClusterTilingOp :
-        VPUIP_Op<
-            "NCEClusterTiling",
-            [
-                NoTerminator,
-                IsolatedFromAbove,
-                MultiViewOpInterface,
-                AttrSizedOperandSegments,
-                MemoryEffectsOpInterface,
-                DeclareOpInterfaceMethods<VPUIP_LayerOpInterface>,
-                VPUIP_AsyncLayerOpInterface,
-                DeclareOpInterfaceMethods<VPUIP_CycleCostInterface>,
-            ] # GraphRegionNoTerminator.traits
-        > {
-    let summary = "Operation that encapsulates details of tiling operation between clusters";
-
-    let arguments = (ins
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$inputs,
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$output_buffs
-    );
-
-    let results = (outs
-        Variadic<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>>:$results
-    );
-
-    let regions = (region SizedRegion<1>:$body);
-
-    let hasVerifier = 1;
-
-    let skipDefaultBuilders = 1;
-    let builders = [
-        OpBuilder<(ins "mlir::TypeRange":$resultTypes, "mlir::ValueRange":$operands,
-            "llvm::function_ref<void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange)>":$bodyBuilder)>,
-    ];
-
-    let extraClassDeclaration = [{
-        using BodyBuilderFn =
-            llvm::function_ref<void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange)>;
-
-        mlir::Operation* getInnerTaskOp();
-        template <typename T>
-        T getInnerTaskOpOfType();
-        mlir::MutableArrayRef<mlir::BlockArgument> getInnerInputs();
-        mlir::MutableArrayRef<mlir::BlockArgument> getInnerOutputs();
-
-        vpux::IndexedSymbolAttr getExecutor();
-
-        void print(::mlir::OpAsmPrinter& p);
-        static ::mlir::ParseResult parse(::mlir::OpAsmParser& parser, ::mlir::OperationState& result);
     }];
 }
 
@@ -2313,15 +2290,15 @@ def VPUIP_ExpandOp :
     let summary = "Expand layer";
 
     let arguments = (ins
-        AnyMemRef:$input,
-        AnyMemRef:$output_buff,
+        AnyTypeOf<[AnyMemRef, VPUIP_SparseBuffer]>:$input,
+        AnyTypeOf<[AnyMemRef, VPUIP_SparseBuffer]>:$output_buff,
 
         I64ArrayAttr:$pads_begin,
         I64ArrayAttr:$pads_end
     );
 
     let results = (outs
-        AnyMemRef:$output
+        AnyTypeOf<[AnyMemRef, VPUIP_SparseBuffer]>:$output
     );
 
     let assemblyFormat = [{
@@ -2677,94 +2654,6 @@ def VPUIP_UpsamplingOp :
     }] # VPUIP_InferLayerReturnTypes<1>.impl;
 }
 
-//
-// VPUIP_BinaryOp
-//
-
-def VPUIP_BinaryOp :
-        VPUIP_Op<
-            "Binary",
-            [
-                SingleBlock,
-                IsolatedFromAbove,
-                NoTerminator,
-                // must be directly under ModuleOp
-                HasParent<"mlir::ModuleOp">,
-                // disallow any other ops other than const.Rodata in body
-                Core_HasChild<["vpux::VPUIP::BinaryDataOp", "mlir::func::FuncOp"]>,
-                SymbolTable,
-                Symbol
-            ]
-        > {
-    let summary = "Container op that holds serialized ELF binary data and function call declarations in ELF binary";
-
-    let description = [{
-        This operation is a container that holds serialized ELF binary data.
-        Along with binary data, it holds external function declarations that represent
-        the entry point functions in serialized ELF compute function.
-
-        Example:
-
-        ``` MLIR
-        VPUIP.Binary (symbolTable) {
-            VPUIP.BinaryDataOp @kernel <object = "\7FELF\02\01\00\00\00\{{.*}}">
-            func.func private @kernel (...) -> (...)
-        }
-
-        ```
-    }];
-
-    let arguments = (ins SymbolNameAttr:$sym_name);
-    let regions = (region SizedRegion<1>:$body);
-
-    let assemblyFormat = [{
-        $sym_name $body attr-dict
-    }];
-
-    // we need a custom builder to add a single empty block
-    let skipDefaultBuilders = 1;
-    let builders = [
-        OpBuilder<(ins "mlir::StringRef":$sym_name), [{
-            $_state.getOrAddProperties<Properties>().sym_name = $_builder.getStringAttr(sym_name);
-            auto region = $_state.addRegion();
-            region->push_back(new mlir::Block());
-        }]>
-    ];
-}
-
-//
-// VPUIP_BinaryOp
-//
-
-def VPUIP_BinaryDataOp :
-        VPUIP_Op<
-            "BinaryData",
-            [
-                Symbol,
-                HasParent<"vpux::VPUIP::BinaryOp">
-            ]
-            > {
-  let summary = "An Op for storing serialized VPUIP binary objects.";
-
-  let description = [{
-    An Object attribute that holds binary string of serialized ELF data.
-    This binary object is lowered down to LLVM IR in host compilation pipeline
-  }];
-
-  let arguments = (ins
-        SymbolNameAttr:$sym_name,
-        VPUIP_ObjectAttr:$object
-    );
-
-  let builders = [
-    OpBuilder<(ins "mlir::StringRef":$name,
-                   "mlir::Attribute":$object)>,
-  ];
-
-  let assemblyFormat = [{
-    $sym_name attr-dict $object
-  }];
-}
 
 //
 // BarProgDMAOp

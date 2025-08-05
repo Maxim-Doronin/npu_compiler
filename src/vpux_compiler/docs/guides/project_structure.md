@@ -11,10 +11,7 @@ This document is written on the basis of discussions taken as part of the task o
 
 ![NPU compilation pipeline](images/compilation_flow.png)
 
-Regardless of the device version, the compilation flow has the same appearance at the dialect level. These dialects represent different levels of de
-tail. The IR is lowered from high level abstractions to more detailed representation step-by-step during compilation. The compilation pipeline consis
-ts of the "atomic“ passes. Each pass in compilation pipeline must represent one single transformation to reach one specific goal (either IR adaptatio
-n or IR optimization).
+Regardless of the device version, the compilation flow has the same appearance at the dialect level. These dialects represent different levels of detail. The IR is lowered from high level abstractions to more detailed representation step-by-step during compilation. The compilation pipeline consists of the "atomic“ passes. Each pass in compilation pipeline must represent one single transformation to reach one specific goal (either IR adaptation or IR optimization). More information is available from the [Compiler HLD](https://docs.intel.com/documents/MovidiusExternal/vpu27/Common/SW/HLD/external/VPUX_NN_Compiler.html) or the [presentation](https://videoportal.intel.com/media/0_dnxf87in).
 
 It is also necessary to describe the dependence of dialects from an architectural point of view:
 
@@ -115,14 +112,14 @@ This approach is adopted as the main one, as it reduces duplication and decrease
 
 ![Rewriter-based approach scheme](images/rewriter_base.png)
 
-In this example, the different behavior of the pass for different HWs is achieved by adding special rewriters. To do this, we use the interface again: `UnrollClusterTilingPass` depends on [`IGreedilyPassStrategy`](../../include/vpux/compiler/core/interfaces/rewriter_pattern_strategies.hpp). And here is possible implementation of `UnrollClusterTilingPass::safeRunOnFunc` method:
+In this example, the different behavior of the pass for different HWs is achieved by adding special rewriters. To do this, we use the interface again: `UnrollDistributedOpsPass` depends on [`IGreedilyPassStrategy`](../../include/vpux/compiler/core/interfaces/rewriter_pattern_strategies.hpp). And here is possible implementation of `UnrollDistributedOpsPass::safeRunOnFunc` method:
 
 ```C++
-void UnrollClusterTilingPass::safeRunOnFunc() {
+void UnrollDistributedOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto strategy = createUnrollClusterTilingStrategy(func, _log);
+    auto strategy = createUnrollDistributedOpsStrategy(func, _log);
 
     mlir::RewritePatternSet patterns(&ctx);
     // add necessary rewriters here
@@ -140,7 +137,7 @@ where `strategy` is `IGreedilyPassStrategy` and it can be implemented in differe
 ```C++
 
 // 37XX
-void UnrollClusterTilingStrategy::addPatterns(mlir::RewritePatternSet& patterns) {
+void UnrollDistributedOpsStrategy::addPatterns(mlir::RewritePatternSet& patterns) {
     auto module = _func->getParentOfType<mlir::ModuleOp>();
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
@@ -151,7 +148,7 @@ void UnrollClusterTilingStrategy::addPatterns(mlir::RewritePatternSet& patterns)
 }
 
 // 40XX
-void UnrollClusterTilingStrategy::addPatterns(mlir::RewritePatternSet& patterns) {
+void UnrollDistributedOpsStrategy::addPatterns(mlir::RewritePatternSet& patterns) {
     auto module = _func->getParentOfType<mlir::ModuleOp>();
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
@@ -171,13 +168,13 @@ Rewriters can also depend on interfaces to write them in the most general form �
 This approach also helps reducing code duplication since it doesn't require passes to be registered for each device. Then we can use the same name in `vpux-opt` and manage behavior of pass using only `vpu-arch`:
 
 ```MLIR
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=NPU40XX allow-custom-values=true" --unroll-cluster-tiling  %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=NPU40XX allow-custom-values=true" --unroll-distributed-ops  %s | FileCheck %s
 ```
 
 instead of, for example, duplicating the device version in the pass name:
 
 ```MLIR
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=NPU40XX allow-custom-values=true" --unroll-cluster-tiling-VPUX40XX  %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=NPU40XX allow-custom-values=true" --unroll-distributed-ops-VPUX40XX  %s | FileCheck %s
 ```
 
 More detailed information about vpux-opt can be found in the [how-to-test](../../../../guides/how-to-test.md) document.
@@ -454,3 +451,105 @@ A rough sketch of the Monolithic WS pipeline looks like this:
 <img src="images/ws-monolithic-compilation-flow.png" alt="drawing" width="400"/>
 
 Up until `IntroduceInitFunctionPass`, we have the normal IR structure with a single `@main(...) -> (...)` function. This pass then creates the `@init(...) -> (...)` function. The pass strips away the transformations from `const.Declare` operations and converts them into `IE`-dialect operations in `@init`. The `WSInit` pipeline is then executed only on the `@init` function. After that, the `UnpackNestedModulesPass`, together with the `InlinerPass`, converts the multiple nested functions back into a single network function. Then, the default hardware `VPUIP` pipeline is executed.
+
+
+## HostCompile Compilation Pipeline
+
+The HostCompile pipeline is a specialized compilation mode designed to partition a neural network into multiple independently compilable functions. Each function contains NPU code, which is subsequently compiled into separate ELF blobs, along with the main function, which contains CPU host code that manages these compiled blobs using the LevelZero API.
+
+<img src="images/1_ir_levels_HostCompile.drawio.svg" alt="drawing" width="600"/>
+
+### Overview
+
+In the HostCompile pipeline, the network is divided into kernel functions and host functions. Kernel functions contain the NPU-specific code and are compiled into ELF blobs as usual. Host function, on the other hand, consist of operations from MLIR upstream dialects such as tensor, scf, async, memref and arith. This code is later compiled into CPU code responsible for orchestrating the execution of kernel functions, passing various input data, and aggregating their outputs.
+
+### Example
+
+Consider the following example:
+
+```mlir
+module @StaticEltwiseNHWC attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+  module @Module_1 {
+    // function which contains the NPU-specific code and supposed to be compiled into ELF blobs
+    func.func private @main_func0(%arg0: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>, %arg1: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}> {
+        %0 = VPU.NCE.Eltwise(%arg0, %arg1) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}> 
+        return %0 : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>
+    }
+  }
+  // Host function which will be compiled into CPU code responsible for orchestrating the execution of kernel functions
+  func.func @main(%arg0: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>, %arg1: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}> {
+    %c100 = arith.constant 100 : index
+    %c0 = arith.constant 0 : index
+    %c3 = arith.constant 3 : index
+    %dim = tensor.dim %arg0, %c3 : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
+    %0 = tensor.empty(%dim) : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
+    %dim_0 = tensor.dim %arg0, %c3 : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
+    %1 = scf.for %arg2 = %c0 to %dim_0 step %c100 iter_args(%arg3 = %0) -> (tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>) {
+      %2 = affine.min #map(%arg2)[%dim_0]
+      %extracted_slice = tensor.extract_slice %arg0[0, 0, 0, %arg2] [1, 16, 720, %2] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}> to tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>
+      %extracted_slice_1 = tensor.extract_slice %arg1[0, 0, 0, %arg2] [1, 16, 720, %2] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}> to tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>
+      %3 = Core.NestedCall @Module_1::@main_func0(%extracted_slice, %extracted_slice_1) : (tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>
+      %inserted_slice = tensor.insert_slice %3 into %arg3[0, 0, 0, %arg2] [1, 16, 720, %2] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}> into tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
+      scf.yield %inserted_slice : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
+    }
+    return %1 : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
+  }
+}
+```
+In the HostCompile pipeline, as demonstrated in the example, the code is distinctly divided into NPU kernel functions, such as `@Module_1::@main_func0`, and the host function `@main`, which orchestrates their execution.
+This contrasts with the `DefaultHW` pipeline, where the compilation process generates a single ELF blob that encapsulates all NPU code, without including any CPU code for orchestration.
+
+### How to use HostCompile mode
+
+#### Locally
+
+To compile a network end to end with `HostCompile` pipeline use one of the following options:
+
+- Provide `NPU_COMPILATION_MODE` environment variable while using compile_tool:
+
+`NPU_COMPILATION_MODE="HostCompile" ./compile_tool -d NPU.4000 -m ./net.onnx -o ./net.blob  -shape [1,3,4..6,7..10]`
+- Create config file, specify compilation mode and use this config for compilation:
+
+`./compile_tool -d NPU.4000 -m ./net.onnx -o ./net.blob -c ./extra_config_net.conf -shape [1,3,4..6,7..10]`
+
+Below is the content of the `extra_config_net.conf` file 
+
+```plaintext
+NPU_COMPILATION_MODE HostCompile
+```
+
+
+
+#### In CI
+Specify "NPU_COMPILATION_MODE": "HostCompile" in `extra_config` section of JSON config file:
+```json
+  "networks": [
+    {
+      "name": "Model",
+      "ir": "net.onnx",
+      "category": "CID/precommit/VPU4000",
+      "extra_config": {
+        "NPU_PLATFORM": "VPU4000",
+        "NPU_COMPILATION_MODE": "HostCompile"
+      },
+      "Compile": {
+        "shape": "[1,3,10..1600,10..2560]"
+      },
+      "BenchmarkApp": {
+        "disabled": true
+      },
+      "NetTest-CalcRef": {
+        "disabled": true
+      },
+      "NetTest-Validate": {
+        "disabled": true
+      },
+      "AccuracyCheck": {
+        "disabled": true
+      },
+      "IMD": {
+        "disabled": false
+      }
+    }
+  ]
+```

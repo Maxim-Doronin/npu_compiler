@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -120,25 +120,22 @@ class WeightsDequantizeStructureInfo final {
     //   Subtract and Multiply operation are optional in the dequantization pattern, because they can be folded
 
 private:
-    Const::ContentAttr shift = {};  // From subtract op (if present)
-    Const::ContentAttr scale = {};  // From multiply op (if present)
-    mlir::Value dynamicShift = {};  // From subtract op (if present), coming from blockArgument
-    mlir::Value dynamicScale = {};  // From multiply op (if present), coming from blockArgument
+    mlir::Value shift = nullptr;  // From subtract op (if present)
+    mlir::Value scale = nullptr;  // From multiply op (if present)
 
     mlir::Value inputValue = nullptr;            // Input of the WD structure (sometimes with Convert Op)
     SmallVector<mlir::Operation*> opChain = {};  // The operations that are part of WD structure
-    bool inputIsConst = true;
 
     [[nodiscard]] mlir::LogicalResult initializeStructure(IE::MultiplyOp& multiplyOp);
     [[nodiscard]] mlir::LogicalResult initializeStructure(IE::SubtractOp& subtractOp);
     [[nodiscard]] mlir::LogicalResult initializeStructure(IE::ConvertOp& convertOp);
-    [[nodiscard]] mlir::LogicalResult initializeStructure(IE::AffineReshapeOp& affineReshapeOp);
-    [[nodiscard]] mlir::LogicalResult initializeStructure(IE::TransposeOp& transposeOp);
     [[nodiscard]] mlir::LogicalResult initializeStructure(Const::DeclareOp& declareOp);
+
+    mlir::LogicalResult checkAndSet(mlir::Value& out, mlir::Value value, bool allowConstant) const;
 
     vpux::NDTypeInterface getInputType() const;
 
-    WeightsDequantizeStructureInfo(bool constInput, const Logger& log);
+    WeightsDequantizeStructureInfo(const Logger& log);
 
 public:
     const Logger log;
@@ -148,6 +145,8 @@ public:
 
     // Rewriting-related APIs:
     mlir::Operation* getLastOp() const;
+
+    SmallVector<mlir::Operation*> getOpChain() const;
 
     mlir::Value getInput() const;
 
@@ -164,10 +163,19 @@ public:
                                                                                     mlir::Location loc, float low,
                                                                                     float high) const;
 
+    bool hasConstWeights() const;
+    bool hasScale() const;
+    bool hasShift() const;
+
+    Const::ContentAttr getStaticScale() const;
+    Const::ContentAttr getStaticShift() const;
     mlir::Value getDynamicScale() const;
     mlir::Value getDynamicShift() const;
-    Const::ContentAttr getScale() const;
-    Const::ContentAttr getShift() const;
+
+    vpux::NDTypeInterface getScaleType() const;
+    vpux::NDTypeInterface getShiftType() const;
+
+    int64_t getQuantizedAxisCount() const;
 };
 
 std::set<int64_t> findAxes(IE::FakeQuantizeOp origOp);

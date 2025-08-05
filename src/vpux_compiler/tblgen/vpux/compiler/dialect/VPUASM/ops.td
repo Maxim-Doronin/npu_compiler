@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUASM_OPS
@@ -1043,7 +1043,7 @@ def VPUASM_DPUInvariantOp :
         OptionalAttr<IntAttr>:$output_se_size,
         UnitAttr:$is_permute_quantize,
         UnitAttr:$is_small_kernel_optimized,
-        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig,
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config,
 
         UI64Attr:$start_after,
         UI64Attr:$clean_after,

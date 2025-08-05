@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
@@ -94,4 +94,20 @@ bool vpux::VPU::AddOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers)
 
 bool vpux::VPU::AddOp::supportCycleCostCalculation() {
     return false;
+}
+
+//
+// verify
+//
+
+mlir::LogicalResult vpux::VPU::AddOp::verify() {
+    const auto op = getOperation();
+    for (auto input : getInputs()) {
+        auto inputRank = mlir::cast<vpux::NDTypeInterface>(input.getType()).getRank();
+        if (inputRank != 4) {
+            return errorAt(op, "AddOp only supports 4D input in SW kernel, but got {0}D", inputRank);
+        }
+    }
+
+    return mlir::success();
 }

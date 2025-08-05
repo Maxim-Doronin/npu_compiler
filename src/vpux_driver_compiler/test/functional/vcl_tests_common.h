@@ -37,9 +37,12 @@ const std::string SMOKE_TEST_CONFIG = "/test_smoke.json";
 /// The file contains the models and their configuration for normal tests
 const std::string TEST_CONFIG = "/test.json";
 
-/// The two functions are prepared to call the vclAllocatedExecutableCreate.
+// The two functions are prepared to call the vclAllocatedExecutableCreate.
 uint8_t* allocateBlob(uint64_t size);
 void deallocateBlob(uint8_t* ptr);
+// Used with vclAllocatedExecutableCreate2
+uint8_t* allocateBlob2(vcl_allocator2_t*, uint64_t size);
+void deallocateBlob2(vcl_allocator2_t*, uint8_t* ptr);
 
 /**
  * @brief Base class to parse config file to get test cases and provide helper functions

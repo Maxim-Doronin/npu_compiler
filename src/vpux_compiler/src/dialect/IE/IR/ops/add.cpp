@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -14,30 +14,6 @@
 #include "vpux/utils/core/range.hpp"
 
 using namespace vpux;
-
-namespace {
-SmallVector<int64_t> dispatchBounds(const mlir::Value operand) {
-    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(operand.getType())) {
-        return boundedType.getBounds().raw();
-    }
-
-    return to_small_vector(getShape(operand));
-}
-
-SmallVector<int64_t> inferOutputBounds(const mlir::Value lhs, const mlir::Value rhs, const ShapeRef outputShape,
-                                       const IE::AutoBroadcastType autoBroadcast) {
-    if (outputShape.isStatic()) {
-        return {};
-    }
-    const auto lhsBounds = dispatchBounds(lhs);
-    const auto rhsBounds = dispatchBounds(rhs);
-    auto outBoundsRes = IE::broadcastEltwiseShape(lhsBounds, rhsBounds, autoBroadcast, lhs.getLoc());
-    if (mlir::failed(outBoundsRes)) {
-        return {};
-    }
-    return outBoundsRes.value();
-}
-};  // namespace
 
 mlir::LogicalResult vpux::IE::AddOp::inferReturnTypeComponents(
         mlir::MLIRContext* ctx, std::optional<mlir::Location> optLoc, mlir::ValueShapeRange operands,
@@ -110,4 +86,12 @@ mlir::LogicalResult vpux::IE::AddOp::reifyResultShapes(mlir::OpBuilder& builder,
 
     reifiedReturnShapes.emplace_back(std::move(outShape.value()));
     return mlir::success();
+}
+
+//
+// ShaveCodeGenSupportedOpInterface
+//
+
+bool vpux::IE::AddOp::shouldJITCompile() {
+    return true;
 }

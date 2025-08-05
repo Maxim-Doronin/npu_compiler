@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -104,6 +104,15 @@ private:
     Logger _log;
 };
 
+template <typename T>
+void handleTransposedConvOpOutPaddingAttr(mlir::Operation* origOp, mlir::Operation* newConvOp, mlir::MLIRContext* ctx,
+                                          const Dim nonTrivialAxis) {
+    if (auto transposedConv = mlir::dyn_cast<T>(origOp)) {
+        const auto newOutputPadding = append(ctx, transposedConv.getSpatialOutputPadding(), 0, nonTrivialAxis);
+        newConvOp->setAttr("spatial_output_padding", newOutputPadding);
+    }
+}
+
 template <class ConcreteOp>
 mlir::LogicalResult ConvGeneralExpansion<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
                                                                       mlir::PatternRewriter& rewriter) const {
@@ -136,10 +145,10 @@ mlir::LogicalResult ConvGeneralExpansion<ConcreteOp>::matchAndRewrite(ConcreteOp
     newConvOp->setAttr("strides", newStrides);
     newConvOp->setAttr("dilations", newDilations);
 
-    if (auto transposedConv = mlir::dyn_cast<IE::TransposedConvolutionOp>(origOp.getOperation())) {
-        const auto newOutputPadding = append(ctx, transposedConv.getSpatialOutputPadding(), 0, nonTrivialAxis);
-        newConvOp->setAttr("spatial_output_padding", newOutputPadding);
-    }
+    handleTransposedConvOpOutPaddingAttr<IE::TransposedConvolutionOp>(origOp.getOperation(), newConvOp, ctx,
+                                                                      nonTrivialAxis);
+    handleTransposedConvOpOutPaddingAttr<IE::GroupTransposedConvolutionOp>(origOp.getOperation(), newConvOp, ctx,
+                                                                           nonTrivialAxis);
 
     // Note: only infer shape (and layout because it is related to shape).
     // inferring other parameters (element type, memory space) may result in
@@ -283,6 +292,7 @@ void ConvertNceOpsTo4DPass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<IE::ConvolutionOp>(isLegalNceOp);
     target.addDynamicallyLegalOp<IE::GroupConvolutionOp>(isLegalGroupConvOp);
     target.addDynamicallyLegalOp<IE::TransposedConvolutionOp>(isLegalNceOp);
+    target.addDynamicallyLegalOp<IE::GroupTransposedConvolutionOp>(isLegalNceOp);
     target.addDynamicallyLegalOp<IE::MaxPoolOp>(&isLegalPoolNceOp<IE::MaxPoolOp>);
     target.addDynamicallyLegalOp<IE::AvgPoolOp>(&isLegalPoolNceOp<IE::AvgPoolOp>);
     target.addLegalOp<IE::ReshapeOp>();
@@ -292,6 +302,7 @@ void ConvertNceOpsTo4DPass::safeRunOnFunc() {
     patterns.add<ConvGeneralExpansion<IE::ConvolutionOp>>(&ctx, _log);
     patterns.add<ConvGeneralExpansion<IE::GroupConvolutionOp>>(&ctx, _log);
     patterns.add<ConvGeneralExpansion<IE::TransposedConvolutionOp>>(&ctx, _log);
+    patterns.add<ConvGeneralExpansion<IE::GroupTransposedConvolutionOp>>(&ctx, _log);
     patterns.add<PoolingGeneralExpansion<IE::MaxPoolOp>>(&ctx, _log);
     patterns.add<PoolingGeneralExpansion<IE::AvgPoolOp>>(&ctx, _log);
 

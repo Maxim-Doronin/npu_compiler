@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_NET_OPS
@@ -137,6 +137,11 @@ def Net_DataInfoOp :
     }];
 
     let hasVerifier = 1;
+
+    let builders = [
+        // Additional simplified builder used internally within the compiler.
+        OpBuilder<(ins "mlir::StringRef":$name, "mlir::Type":$userType)>
+    ];
 }
 
 def Net_SparsityStatisticsOp :

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -21,11 +21,23 @@ public:
     /**
      * @brief Constructor for CycleCostInfo class.
      *
-     * Initializes architecture kind, cost model, and DPU count based on the provided function.
+     * Initializes architecture kind and DPU count based on the provided function.
+     * Creates a new cost model
      *
      * @param func The mlir::func::FuncOp representing the function for cycle cost analysis.
      */
     explicit CycleCostInfo(mlir::func::FuncOp);
+
+    /**
+     * @brief Constructor for CycleCostInfo class.
+     *
+     * Initializes architecture kind and DPU count based on the provided function
+     * Initializes cost model with an existing instance
+     *
+     * @param costModel The std::shared_ptr<VPUNN::VPUCostModel> representing a pointer to an existing cost model.
+     * @param func The mlir::func::FuncOp representing the function for cycle cost analysis.
+     */
+    CycleCostInfo(std::shared_ptr<VPUNN::VPUCostModel>, mlir::func::FuncOp);
 
     /**
      * @brief Checks and stores cycle cost for the operation.

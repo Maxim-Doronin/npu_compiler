@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/barrier_info.hpp"
@@ -333,8 +333,11 @@ void SimplifySchedulePass::safeRunOnFunc() {
     _log.trace("Sharing wait and update barriers: {0}", shareWaitAndUpdateBarriers);
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
-    auto& cycleCostInfo = getAnalysis<CycleCostInfo>();
-    cycleCostInfo.resetNNCacheCounter();
+    auto module = funcOp->getParentOfType<mlir::ModuleOp>();
+    const auto arch = VPU::getArch(module);
+    auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);
 
     // If barrier order by producer, some task's wait barrier number is bigger than update barrier, but some functions
     // in this pass like resolveOutOfOrderDependencies and reduceParallelControlFlows need task's wait barrier number

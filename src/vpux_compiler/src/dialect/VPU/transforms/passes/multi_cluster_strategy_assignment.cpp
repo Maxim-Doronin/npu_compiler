@@ -1,10 +1,11 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
@@ -91,14 +92,19 @@ void MultiClusterStrategyAssignmentPass::safeRunOnFunc() {
         return;
     }
 
+    const auto arch = VPU::getArch(module);
+    auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
+    auto layerCostModel =
+            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+
     auto clusteredOps = func.getOps<ClusteredOpInterface>();
     auto clusteredOpCount = std::distance(clusteredOps.begin(), clusteredOps.end());
     auto& cache = VPU::OpTilingCache::instance();
     cache.enableIfNecessary(clusteredOpCount > _clusteredOpThreshold);
 
     auto& siblingAnalysis = getAnalysis<SiblingOpsAnalysis>();
-    StrategyManager strategyManager(func, tileOp.getCount(), _enablePrefetchTiling, _mcOptimizationScope, _log.nest(),
-                                    siblingAnalysis);
+    StrategyManager strategyManager(func, tileOp.getCount(), _enablePrefetchTiling, _mcOptimizationScope,
+                                    siblingAnalysis, std::move(layerCostModel), _log.nest());
     _log.debug("Greedy Strategy Assignment");
     auto enableMultiClusterForSWLayer = IE::getAvailableExecutor(module, VPU::ExecutorKind::SHAVE_ACT) != nullptr;
     strategyManager.assignMultiClusterStrategy(enableMultiClusterForSWLayer);

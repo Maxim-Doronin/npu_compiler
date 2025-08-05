@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpux_elf/writer.hpp>
@@ -37,8 +37,9 @@ mlir::Operation* getParentSectionOp(mlir::Value val) {
 }  // namespace
 
 void vpux::ELFNPU37XX::SymbolOp::serialize(elf::writer::Symbol* symbol, vpux::ELFNPU37XX::SectionMapType& sectionMap) {
-    if (getIsBuiltin())
+    if (getIsBuiltin()) {
         return;
+    }
 
     auto symName = getName().value_or("");
     auto symType = getSymType().value_or(vpux::ELFNPU37XX::SymbolTypeEnum::STT_NOTYPE);

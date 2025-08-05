@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
@@ -136,6 +136,7 @@ private:
     void convertSpillsToCompressOps(mlir::MLIRContext* ctx, const SmallVector<VPURT::TaskOp>& taskOpsVec,
                                     std::map<SpillDataKey, SpillDataVal>& spillDataMap);
 
+    void adjustSpillIds(const SmallVector<VPURT::TaskOp>& taskOpsVec);
     void initIndexAttr(mlir::MLIRContext* ctx, const SmallVector<VPURT::TaskOp>& taskOpsVec);
     void clearIndexAttr(const SmallVector<VPURT::TaskOp>& taskOpsVec);
     size_t getTaskIndex(VPURT::TaskOp taskOp);
@@ -152,6 +153,68 @@ private:
     // time bottleneck in case of big models with multiple spills
     static constexpr size_t _safeDeallocBfsDepthLimit = 200;
 };
+
+// Adjust spill-ids to be unique after function inlining which will cause multiple spill-write/read pairs
+// to use the same spill-id. Since outlined functions are always sequential once same spill-id is used for
+// spill-write that was already encountered before it means that it is part of new inlined function and
+// ids can be adjusted (add offset) to be unique for rest of the methods in this pass
+void CompressSpillDmaPass::adjustSpillIds(const SmallVector<VPURT::TaskOp>& taskOpsVec) {
+    _log.trace("Traverse spill ops and adjust spill-ids to be unique");
+    int64_t spillIdOffset = 0;
+    mlir::DenseSet<std::tuple<int64_t, int64_t, int64_t>> encounteredSpillWritesKeys;
+    int64_t prevMaxSpillIdForSpillWrite = 0;
+    for (size_t i = 0; i < taskOpsVec.size(); i++) {
+        auto taskOp = taskOpsVec[i];
+
+        auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(taskOp.getInnerTaskOp());
+        if (dmaOp == nullptr) {
+            continue;
+        }
+
+        if (!dmaOp.getSpillId().has_value()) {
+            continue;
+        }
+
+        auto spillId = dmaOp.getSpillId().value();
+
+        const auto port = dmaOp.getPort();
+        VPUX_THROW_UNLESS(port.has_value(), "DMA port has not been set");
+        const auto portValue = port.value();
+
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutput().getType());
+
+        auto newSpillId = spillId + spillIdOffset;
+
+        if (inType.getMemoryKind() == VPU::MemoryKind::CMX_NN && outType.getMemoryKind() == VPU::MemoryKind::DDR) {
+            auto cmxIdx = inType.getMemSpace().getIndex().value_or(0);
+
+            std::tuple<int64_t, int64_t, int64_t> spillWriteKey{spillId, cmxIdx, portValue};
+
+            prevMaxSpillIdForSpillWrite = std::max(prevMaxSpillIdForSpillWrite, newSpillId);
+
+            if (encounteredSpillWritesKeys.find(spillWriteKey) != encounteredSpillWritesKeys.end()) {
+                spillIdOffset = prevMaxSpillIdForSpillWrite + 1;
+                newSpillId = spillId + spillIdOffset;
+                encounteredSpillWritesKeys.clear();
+            }
+            encounteredSpillWritesKeys.insert(spillWriteKey);
+
+            _log.trace(
+                    "Spill-write op, index - '{0}', port - '{1}', cmxIdx - '{2}', spillId - '{3}', newSpillId - '{4}'",
+                    i, portValue, cmxIdx, spillId, newSpillId);
+        } else if (inType.getMemoryKind() == VPU::MemoryKind::DDR &&
+                   outType.getMemoryKind() == VPU::MemoryKind::CMX_NN) {
+            auto cmxIdx = outType.getMemSpace().getIndex().value_or(0);
+
+            _log.trace(
+                    "Spill-read op, index - '{0}', port - '{1}', cmxIdx - '{2}', spillId - '{3}', newSpillId - '{4}'",
+                    i, portValue, cmxIdx, spillId, newSpillId);
+        }
+
+        dmaOp.setSpillId(newSpillId);
+    }
+}
 
 void CompressSpillDmaPass::initIndexAttr(mlir::MLIRContext* ctx, const SmallVector<VPURT::TaskOp>& taskOpsVec) {
     _taskIndexAttrName = mlir::StringAttr::get(ctx, "task-index");
@@ -513,8 +576,6 @@ void CompressSpillDmaPass::convertSpillsToCompressOps(mlir::MLIRContext* ctx,
 }
 
 void CompressSpillDmaPass::safeRunOnModule() {
-    // TODO: E#116060 This pass needs to work on function level
-    // as spill ids are only unique within single function
     auto module = getOperation();
     auto* ctx = module->getContext();
 
@@ -541,6 +602,10 @@ void CompressSpillDmaPass::safeRunOnModule() {
     _dmaCount = dmaPorts.getCount();
 
     const auto taskOpsVec = to_small_vector(func.getOps<VPURT::TaskOp>());
+
+    // Update SpillIds so that they are unique on whole module op level
+    // This is needed in case of previously done function inlining
+    adjustSpillIds(taskOpsVec);
 
     // Since this pass processing uses task index for each task add
     // a temporary task-index attribute to enable easy retrieval of index from VPURT::TaskOp

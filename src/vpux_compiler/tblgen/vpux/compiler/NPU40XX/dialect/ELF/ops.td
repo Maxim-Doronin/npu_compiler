@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_ELF_OPS
@@ -313,8 +313,8 @@ def SymbolOp :
           SymbolNameAttr:$sym_name,
           SymbolRefAttr:$reference,
           DefaultValuedAttr<ELF_SymbolTypeAttr,"ELF::SymbolType::STT_OBJECT">:$type,
-          DefaultValuedAttr<UI64Attr,"0">:$size,
-          DefaultValuedAttr<UI64Attr,"0">:$value
+          OptionalAttr<UI64Attr>:$size,
+          OptionalAttr<UI64Attr>:$value
         );
 
     let extraClassDeclaration = [{
@@ -327,13 +327,14 @@ def SymbolOp :
         $sym_name
         `of` `(` $reference `)`
         `type` `(` $type `)`
-        `size` `(` $size `)`
-        `value` `(` $value `)`
+        (`size` `(` $size^ `)`)?
+        (`value` `(` $value^ `)`)?
         attr-dict
     }];
 
     let builders = [
-        OpBuilder<(ins "vpux::ELF::SymbolSignature&":$signature)>
+        OpBuilder<(ins "vpux::ELF::SymbolSignature&":$signature)>,
+        OpBuilder<(ins "::llvm::StringRef":$symName, "::mlir::SymbolRefAttr":$reference, "vpux::ELF::SymbolType":$type)>
     ];
 }
 

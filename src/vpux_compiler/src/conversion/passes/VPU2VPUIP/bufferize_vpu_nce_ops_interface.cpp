@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferize_vpu_nce_ops_interface.hpp"
@@ -11,8 +11,10 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/mpe_engine_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
@@ -173,6 +175,7 @@ mlir::Value createNCEClusterTask(mlir::OpBuilder& rewriter, mlir::Location loc, 
             /*weight_zero_points=*/nullptr,
             /*sprLookupTable=*/nullptr, /*palletLookupTable=*/nullptr, inputData, inputSparsityMap, inputSETable,
             outputBuffData, outputBuffSparsityMap, outputBuffData, outputBuffSparsityMap, /*profiling_data=*/nullptr,
+            /*dynamic_sequence_length*/ nullptr,
             /*max_per_xy=*/nullptr, /*min_per_xy=*/nullptr, /*min_max_per_tensor=*/mlir::ValueRange(), taskType,
             kernelSizeAttr, kernelStridesAttr, kernelPaddingAttr,
             /*is_continued=*/nullptr, cmSpPattern,
@@ -180,7 +183,8 @@ mlir::Value createNCEClusterTask(mlir::OpBuilder& rewriter, mlir::Location loc, 
             /*out_channel_offset=*/nullptr, inputChannelsCompression, /*isZeroOffsetWeightsTable=*/nullptr,
             isSuperdenseAttr, isInplace,
             /*input_se_size=*/nullptr,
-            /*output_se_size=*/nullptr, isPermuteQuantize, smallKernelOptimization, mpeEngineAttr, eltwiseType);
+            /*output_se_size=*/nullptr, isPermuteQuantize, smallKernelOptimization, mpeEngineAttr, eltwiseType,
+            /*dynamicScaleConfig=*/nullptr);
 
     addDPUTasks(log, nceClusterTask, rewriter, workloads, isNCEPermute);
     addppeAttr(log, rewriter, nceClusterTask, ppeAttr);
@@ -298,11 +302,18 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEConvolutio
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
 
+    mlir::IntegerAttr cmSpPattern = nullptr;
+    auto inputShape = mlir::cast<NDTypeInterface>(newArgs.getInput().getType()).getShape();
+    if (inputShape.size() == 4 && inputShape[Dims4D::Act::C] < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT) {
+        const auto pattern = (static_cast<int64_t>(1) << inputShape[Dims4D::Act::C]) - 1;
+        cmSpPattern = getIntAttr(ctx, pattern);
+    }
+
     auto nceOp = createNCEClusterTask(
             rewriter, origOp->getLoc(), newArgs.getInput(), newArgs.getFilter(), newArgs.getWeightsTable(),
             newArgs.getWeightTableScale(), newArgs.getWeightTableBias(), outputBuffers, taskType, kernelSizeAttr,
             origOp.getStrides(), origOp.getPadAttr(), origOp.getWorkloads(), isSuperdenseAttr, ppeAttr, dpuCostAttr,
-            /*isInplace=*/nullptr, /*isPermuteQuantize=*/nullptr, /*cmSpPattern=*/nullptr,
+            /*isInplace=*/nullptr, /*isPermuteQuantize=*/nullptr, cmSpPattern,
             /*inputChannelsCompression=*/nullptr, /*isNCEPermute*/ false,
             /*smallKernelOptimization=*/nullptr, origOp.getMpeEngineAttr(), log);
 

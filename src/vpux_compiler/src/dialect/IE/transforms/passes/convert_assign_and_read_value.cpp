@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -61,16 +61,9 @@ mlir::LogicalResult AssignRewriter::matchAndRewrite(IE::AssignOp origOp, mlir::P
     OpBuilderLogger builderLog(_log.nest());
     auto builder = mlir::OpBuilder::atBlockBegin(&_topModule->getRegion(0).front(), &builderLog);
     auto outputsInfoBuilder = mlir::OpBuilder::atBlockEnd(&netInfo.getOutputsInfo().front(), builder.getListener());
-    auto* ctx = builder.getContext();
-    const auto outputTypeAttr = mlir::TypeAttr::get(assignInputType);
-    const auto outputNameAttr = mlir::StringAttr::get(ctx, std::string(intel_npu::ASSIGN_PREFIX) + origOp.getName());
+    const auto outputName = std::string(intel_npu::ASSIGN_PREFIX) + origOp.getName().str();
     outputsInfoBuilder.create<net::DataInfoOp>(takeOpLoc(origOp, llvm::StringLiteral("assign_{0}"), origOp.getName()),
-                                               outputNameAttr, outputTypeAttr,
-                                               /*OptionalAttr originalShape*/ nullptr,
-                                               /*OptionalAttr friendlyName*/ nullptr,
-                                               /*OptionalAttr inputName*/ nullptr,
-                                               /*OptionalAttr tensorNames*/ nullptr,
-                                               /*profilingSectionsCount=*/0);
+                                               outputName, assignInputType);
 
     rewriter.replaceOp(origOp, origOp.getInput());
 
@@ -122,16 +115,9 @@ mlir::LogicalResult ReadValueRewriter::matchAndRewrite(IE::ReadValueOp origOp, m
     OpBuilderLogger builderLog(_log.nest());
     auto builder = mlir::OpBuilder::atBlockBegin(&_topModule->getRegion(0).front(), &builderLog);
     auto inputsInfoBuilder = mlir::OpBuilder::atBlockEnd(&netInfo.getInputsInfo().front(), builder.getListener());
-    auto* ctx = builder.getContext();
-    const auto inputTypeAttr = mlir::TypeAttr::get(readValueInputType);
-    const auto inputNameAttr = mlir::StringAttr::get(ctx, std::string(intel_npu::READVALUE_PREFIX) + origOp.getName());
+    const auto inputName = std::string(intel_npu::READVALUE_PREFIX) + origOp.getName().str();
     inputsInfoBuilder.create<net::DataInfoOp>(takeOpLoc(origOp, llvm::StringLiteral("read_{0}"), origOp.getName()),
-                                              inputNameAttr, inputTypeAttr,
-                                              /*OptionalAttr originalShape*/ nullptr,
-                                              /*OptionalAttr friendlyName*/ nullptr,
-                                              /*OptionalAttr inputName*/ nullptr,
-                                              /*OptionalAttr tensorNames*/ nullptr,
-                                              /*profilingSectionsCount=*/0);
+                                              inputName, readValueInputType);
 
     rewriter.replaceOp(origOp, mainFunc.getArgument(newInputIndex));
 

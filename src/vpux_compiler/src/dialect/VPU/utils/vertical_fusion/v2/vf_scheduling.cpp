@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
@@ -245,6 +245,10 @@ StrategyCost VFScheduling::getLinearCost(VFConfig& config, int64_t tilesNumber,
             auto opIndex = item.index();
             auto op = item.value();
             auto costParameters = fillInCostParam(op, tilingInfo, index);
+            if (costParameters._tiling.empty()) {
+                _log.warning("No tiling information for VF op at '{0}'", op->getLoc());
+                return std::numeric_limits<StrategyCost>::max();
+            }
 
             // isolated operation cost
             auto isolatedCost = costFunction->getStrategyCost(op, costParameters);

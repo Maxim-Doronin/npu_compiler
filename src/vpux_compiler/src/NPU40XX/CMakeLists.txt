@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2023-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 file(GLOB_RECURSE SRC_FILES *.cpp)
@@ -9,6 +9,8 @@ add_npu_library(npu_compiler_npu40xx
     LINK_LIBS PRIVATE
         npu_compiler_conversion
         npu_compiler_shave_code_gen
+        npu_compiler_dialect_hostexec
+        npu_compiler_dialect_hostexec_transforms
         npu_compiler_dialect_vpurt
         npu_compiler_dialect_vpurt_transforms
         npu_compiler_dialect_vpurt_utils

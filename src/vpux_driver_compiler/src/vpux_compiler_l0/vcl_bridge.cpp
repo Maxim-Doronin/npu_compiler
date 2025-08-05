@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 /**
@@ -17,6 +17,88 @@
 #include "intel_npu/config/options.hpp"
 
 using namespace vpux;
+
+template <typename Allocator>
+class VCLBlobAllocator : public BlobAllocator {
+public:
+    explicit VCLBlobAllocator(Allocator* allocator): allocator_(allocator) {
+        static_assert(std::is_same_v<Allocator, const vcl_allocator_t> || std::is_same_v<Allocator, vcl_allocator2_t>,
+                      "VCLBlobAllocator only supports vcl_allocator_t and vcl_allocator2_t");
+    }
+
+    uint8_t* allocate(Byte size) override {
+        if constexpr (std::is_same_v<Allocator, const vcl_allocator_t>) {
+            return allocator_->allocate(static_cast<uint64_t>(size.count()));
+        } else {
+            return allocator_->allocate(allocator_, static_cast<uint64_t>(size.count()));
+        }
+    }
+
+    void deallocate(uint8_t* ptr) override {
+        if constexpr (std::is_same_v<Allocator, const vcl_allocator_t>) {
+            allocator_->deallocate(ptr);
+        } else {
+            allocator_->deallocate(allocator_, ptr);
+        }
+    }
+
+private:
+    Allocator* allocator_;
+};
+
+// outside of the extern "C" block to allow C++ templates
+template <typename Allocator>
+vcl_result_t allocatedExecutableCreate(vcl_compiler_handle_t compiler, vcl_executable_desc_t desc, Allocator* allocator,
+                                       uint8_t** blob, uint64_t* size) {
+    uint8_t* blobResult = nullptr;
+    uint64_t sizeResult = 0;
+    auto scoped = VPUXDriverCompiler::Scoped{[&]() {
+        *blob = blobResult;
+        *size = sizeResult;
+    }};
+
+    if (!compiler || !allocator || !blob || !size || !desc.modelIRData) {
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    VPUXDriverCompiler::VPUXCompilerL0* pCompiler = reinterpret_cast<VPUXDriverCompiler::VPUXCompilerL0*>(compiler);
+    VPUXDriverCompiler::VCLLogger* vclLogger = pCompiler->getLogger();
+
+    /// To avoid access violation, need to convert to string
+    std::string descOptions(desc.options, desc.optionsSize);
+    vclLogger->info("config: {0}", descOptions);
+
+    /// Create info parser
+    VPUXDriverCompiler::BuildInfo buildInfo(pCompiler);
+    /// Parse user descriptions and store the input && output settings, compilation configs
+    if (auto ret = buildInfo.prepareBuildFlags(descOptions); ret != VCL_RESULT_SUCCESS) {
+        vclLogger->outputError(formatv("Failed to prepare io info and config! DescOptions: {0}", descOptions));
+        return ret;
+    }
+
+    /// Parse serialized model data and create the model container for compiler
+    if (auto ret = buildInfo.prepareModel(desc.modelIRData, desc.modelIRSize); ret != VCL_RESULT_SUCCESS) {
+        vclLogger->outputError("Failed to parse model info! Incorrect format!");
+        return ret;
+    }
+
+    try {
+        // NetworkMetadata is part of the result, but unused in VCL
+        // it'd just get destroyed at function call here
+        VCLBlobAllocator vcl_allocator{allocator};
+        auto result = pCompiler->importNetwork(buildInfo, vcl_allocator);
+        blobResult = result.compiledNetwork.ptr;
+        sizeResult = result.compiledNetwork.size;
+    } catch (const std::exception& error) {
+        vclLogger->outputError(formatv("Compiler returned msg:\n{0}", error.what()));
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    } catch (...) {
+        vclLogger->outputError("Internal exception! Can't compile model!");
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    return VCL_RESULT_SUCCESS;
+}
 
 #ifdef __cplusplus
 extern "C" {
@@ -216,8 +298,9 @@ DLLEXPORT vcl_result_t vclExecutableCreate(vcl_compiler_handle_t compiler, vcl_e
 
     if (status.second != VCL_RESULT_SUCCESS || ret != VCL_RESULT_SUCCESS) {
         /// Release memory if we failed to compile model
-        if (status.first != nullptr)
+        if (status.first != nullptr) {
             delete status.first;
+        }
         *executable = nullptr;
         vclLogger->outputError("Failed to create executable");
         return status.second;
@@ -237,55 +320,14 @@ DLLEXPORT vcl_result_t vclExecutableCreate(vcl_compiler_handle_t compiler, vcl_e
     return ret;
 }
 
+DLLEXPORT vcl_result_t vclAllocatedExecutableCreate2(vcl_compiler_handle_t compiler, vcl_executable_desc_t desc,
+                                                     vcl_allocator2_t* allocator, uint8_t** blob, uint64_t* size) {
+    return allocatedExecutableCreate(compiler, desc, allocator, blob, size);
+}
+
 DLLEXPORT vcl_result_t vclAllocatedExecutableCreate(vcl_compiler_handle_t compiler, vcl_executable_desc_t desc,
                                                     vcl_allocator_t const* allocator, uint8_t** blob, uint64_t* size) {
-    uint8_t* blobResult = nullptr;
-    uint64_t sizeResult = 0;
-    auto scoped = VPUXDriverCompiler::Scoped{[&]() {
-        *blob = blobResult;
-        *size = sizeResult;
-    }};
-
-    if (!compiler || !allocator || !blob || !size || !desc.modelIRData) {
-        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
-    }
-
-    VPUXDriverCompiler::VPUXCompilerL0* pCompiler = reinterpret_cast<VPUXDriverCompiler::VPUXCompilerL0*>(compiler);
-    VPUXDriverCompiler::VCLLogger* vclLogger = pCompiler->getLogger();
-
-    /// To avoid access violation, need to convert to string
-    std::string descOptions(desc.options, desc.optionsSize);
-    vclLogger->info("config: {0}", descOptions);
-
-    /// Create info parser
-    VPUXDriverCompiler::BuildInfo buildInfo(pCompiler);
-    /// Parse user descriptions and store the input && output settings, compilation configs
-    if (auto ret = buildInfo.prepareBuildFlags(descOptions); ret != VCL_RESULT_SUCCESS) {
-        vclLogger->outputError(formatv("Failed to prepare io info and config! DescOptions: {0}", descOptions));
-        return ret;
-    }
-
-    /// Parse serialized model data and create the model container for compiler
-    if (auto ret = buildInfo.prepareModel(desc.modelIRData, desc.modelIRSize); ret != VCL_RESULT_SUCCESS) {
-        vclLogger->outputError("Failed to parse model info! Incorrect format!");
-        return ret;
-    }
-
-    try {
-        // NetworkMetadata is part of the result, but unused in VCL
-        // it'd just get destroyed at function call here
-        auto result = pCompiler->importNetwork(buildInfo, allocator);
-        blobResult = result.compiledNetwork.ptr;
-        sizeResult = result.compiledNetwork.size;
-    } catch (const std::exception& error) {
-        vclLogger->outputError(formatv("Compiler returned msg:\n{0}", error.what()));
-        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
-    } catch (...) {
-        vclLogger->outputError("Internal exception! Can't compile model!");
-        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
-    }
-
-    return VCL_RESULT_SUCCESS;
+    return allocatedExecutableCreate(compiler, desc, allocator, blob, size);
 }
 
 DLLEXPORT vcl_result_t vclExecutableGetSerializableBlob(vcl_executable_handle_t executable, uint8_t* blobBuffer,

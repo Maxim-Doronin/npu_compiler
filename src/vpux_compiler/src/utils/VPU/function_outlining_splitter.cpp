@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/VPU/function_outlining_splitter.hpp"
@@ -51,7 +51,8 @@ private:
 
 bool isSupportedSkipOp(mlir::Operation* op) {
     // TODO: E#140556 include more view ops
-    return mlir::isa<VPU::ShapeCastOp, VPU::AffineReshapeOp, VPU::PermuteCastOp, VPU::ExpandOp>(op);
+    return mlir::isa<VPU::QuantizeCastOp, VPU::ShapeCastOp, VPU::AffineReshapeOp, VPU::PermuteCastOp, VPU::ExpandOp>(
+            op);
 }
 
 mlir::Operation* trySearchForRootOp(mlir::Operation* op) {

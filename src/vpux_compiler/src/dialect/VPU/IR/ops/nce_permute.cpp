@@ -1,10 +1,11 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -112,13 +113,8 @@ bool vpux::VPU::NCEPermuteOp::isSupported(IE::PermuteQuantizeOp op, LogCb logCb,
 
     if (checkAlignment) {
         const auto alignment = VPU::NCEInvariant::getAlignment(outElemType);
-        if (!IE::isShapeCompatibleWithODUPermute(inputShape, alignment)) {
-            logCb(formatv("Cannot cast input shape {0} to 1xWxCxH", inputShape));
-            return false;
-        }
-
-        if (!IE::isShapeCompatibleWithODUPermute(outputShape, alignment)) {
-            logCb(formatv("Cannot cast output shape {0} to 1xWxCxH", outputShape));
+        if (!IE::checkNCEPermuteShapeCompatibility(inputShape, outputShape, alignment)) {
+            logCb(formatv("Cannot cast input shape {0} or output shape {1} to 1xWxCxH", inputShape, outputShape));
             return false;
         }
     }

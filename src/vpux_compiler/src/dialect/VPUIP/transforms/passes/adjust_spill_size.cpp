@@ -1,10 +1,11 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
 
@@ -62,18 +63,7 @@ void AdjustSpillSizePass::updateSpillWrite(VPUIP::NNDMAOp dmaOp) {
     auto spillBuffer = dmaOp.getOutputBuff();
 
     auto asyncOp = dmaOp->getParentOfType<mlir::async::ExecuteOp>();
-    auto clusterOp = dmaOp->getParentOfType<VPUIP::NCEClusterTilingOp>();
-    mlir::BlockArgument blockArg;
-    mlir::Type spillSourceBufferType;
-    if (clusterOp) {
-        asyncOp = clusterOp->getParentOfType<mlir::async::ExecuteOp>();
-        blockArg = mlir::cast<mlir::BlockArgument>(dmaOp.getOutputBuff());
-        spillBuffer = clusterOp->getOperand(blockArg.getArgNumber());
-        spillSourceBufferType =
-                clusterOp->getOperand(mlir::cast<mlir::BlockArgument>(dmaOp.getInput()).getArgNumber()).getType();
-    } else {
-        spillSourceBufferType = dmaOp.getInput().getType();
-    }
+    mlir::Type spillSourceBufferType = dmaOp.getInput().getType();
     VPUX_THROW_WHEN(asyncOp == nullptr, "No async execute identified for given SpillWrite DmaOp - '{0}'",
                     dmaOp->getLoc());
 
@@ -98,11 +88,6 @@ void AdjustSpillSizePass::updateSpillWrite(VPUIP::NNDMAOp dmaOp) {
     spillAllocOpResult.setType(newSpillType);
     dmaOp->getResult(0).setType(newSpillType);
 
-    if (clusterOp) {
-        blockArg.setType(newSpillType);
-        clusterOp->getResult(0).setType(newSpillType);
-    }
-
     auto asyncSpillResult = asyncOp.getBodyResults()[0];
     asyncSpillResult.setType(mlir::async::ValueType::get(newSpillType));
 
@@ -125,16 +110,6 @@ void AdjustSpillSizePass::updateSpillRead(VPUIP::NNDMAOp dmaOp) {
 
     // Update type block args of operations which wrap spill read NNDMA op
     auto asyncOp = dmaOp->getParentOfType<mlir::async::ExecuteOp>();
-    auto clusterOp = dmaOp->getParentOfType<VPUIP::NCEClusterTilingOp>();
-
-    if (clusterOp) {
-        asyncOp = clusterOp->getParentOfType<mlir::async::ExecuteOp>();
-        auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(dmaOp.getInput());
-
-        spillBuffer = clusterOp->getOperand(blockArg.getArgNumber());
-
-        blockArg.setType(newSpillTypeMemref);
-    }
 
     VPUX_THROW_WHEN(asyncOp == nullptr, "No async execute identified for given SpillRead DmaOp - '{0}'",
                     dmaOp->getLoc());

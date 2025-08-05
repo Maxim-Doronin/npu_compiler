@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/profiling.hpp"
@@ -47,7 +47,6 @@ private:
     void safeRunOnModule() final;
 
     mlir::Operation* getDmaTask(VPURT::TaskOp taskOp);
-    bool isDmaTask(VPURT::TaskOp taskOp);
     int64_t getDMAPortValue(VPURT::TaskOp taskOp);
     uint32_t getHwProfAddress(VPU::ArchKind arch);
     VPURT::TaskOp createProfTask(mlir::OpBuilder& builder, mlir::ValueRange updateBarriers,
@@ -77,19 +76,7 @@ uint32_t DMATaskProfilingAfterBarrierSchedPass::getHwProfAddress(VPU::ArchKind a
 int64_t DMATaskProfilingAfterBarrierSchedPass::getDMAPortValue(VPURT::TaskOp taskOp) {
     auto* wrappedTaskOp = taskOp.getInnerTaskOp();
 
-    VPUX_THROW_WHEN(mlir::isa<VPUIP::NCEClusterTilingOp>(wrappedTaskOp),
-                    "NCEClusterTiling is not expected at this stage of compilation");
-
     return vpux::getDMAPortValue(wrappedTaskOp);
-}
-
-bool DMATaskProfilingAfterBarrierSchedPass::isDmaTask(VPURT::TaskOp taskOp) {
-    auto* wrappedTaskOp = taskOp.getInnerTaskOp();
-
-    VPUX_THROW_WHEN(mlir::isa<VPUIP::NCEClusterTilingOp>(wrappedTaskOp),
-                    "NCEClusterTiling is not expected at this stage of compilation");
-
-    return mlir::isa_and_nonnull<VPUIP::DMATypeOpInterface>(wrappedTaskOp);
 }
 
 VPURT::TaskOp DMATaskProfilingAfterBarrierSchedPass::createProfTask(
@@ -191,7 +178,8 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     // Gather information about DMA tasks and their port so that total number is known
     // before inserting profiling tasks.
     func->walk([&](VPURT::TaskOp taskOp) {
-        if (!isDmaTask(taskOp)) {
+        auto* wrappedTaskOp = taskOp.getInnerTaskOp();
+        if (!mlir::isa_and_nonnull<VPUIP::DMATypeOpInterface>(wrappedTaskOp)) {
             return;
         }
 

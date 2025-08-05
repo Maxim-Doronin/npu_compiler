@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
@@ -492,6 +492,20 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
 }
 
 template <class ConcreteOp>
+bool isOutputPipeliningEnabled(ConcreteOp origOp) {
+    if (!origOp->hasAttr(outputPipelining)) {
+        return false;
+    }
+
+    auto outputPipeliningAttr = mlir::dyn_cast<mlir::BoolAttr>(origOp->getAttr(outputPipelining));
+    if (outputPipeliningAttr == nullptr) {
+        return false;
+    }
+
+    return outputPipeliningAttr.getValue();
+};
+
+template <class ConcreteOp>
 SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredOperandsForPipeliningConvBased(
         ConcreteOp origOp, const OutputTiling& tiling) {
     // The tiling strategy follows last-tile-not-biggest
@@ -501,19 +515,6 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
 
     const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
     const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
-
-    const auto isOutputPipeliningEnabled = [](ConcreteOp origOp) {
-        if (!origOp->hasAttr(outputPipelining)) {
-            return false;
-        }
-
-        auto outputPipeliningAttr = mlir::dyn_cast<mlir::BoolAttr>(origOp->getAttr(outputPipelining));
-        if (outputPipeliningAttr == nullptr) {
-            return false;
-        }
-
-        return outputPipeliningAttr.getValue();
-    };
 
     if (isOutputPipeliningEnabled(origOp)) {
         return {curTileTypes[0],  curTileTypes[1],  curTileTypes[2],
@@ -753,9 +754,80 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyPipeliningCMX(VPU::MaxPoolO
     return mlir::success();
 }
 
+bool isDMABoundNCEMaxpool(VPU::NCEMaxPoolOp origOp) {
+    auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    auto inOrder = inType.getDimsOrder();
+    auto outOrder = outType.getDimsOrder();
+
+    auto op = origOp.getOperation();
+    auto clusteredIface = mlir::cast<VPU::ClusteredOpInterface>(op);
+    bool splitOnHighestDim = false;
+    bool tilingOnHighestDim = false;
+    const auto getOutputDistributedType =
+            [](VPU::ClusteredOpInterface clusteredOp) -> std::optional<VPU::DistributedTensorType> {
+        if (!clusteredOp.getMultiClusterStrategy().has_value()) {
+            return std::nullopt;
+        }
+        const auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
+        const auto numClusters =
+                clusteredOp.getOptimalNumClusters(outputType.getShape(), clusteredOp.getMultiClusterStrategy().value());
+
+        auto distributedTypeIf = VPU::getDistributedOutputTypeFromOp(clusteredOp, outputType, numClusters);
+        if (!distributedTypeIf.containsDistributedTypes()) {
+            return std::nullopt;
+        }
+        return mlir::dyn_cast_or_null<VPU::DistributedTensorType>(distributedTypeIf.getDistributedTypes().front());
+    };
+    auto maxpoolIsTranspose = [&](VPU::NCEMaxPoolOp origOp) {
+        auto kernel = parseIntArrayAttr<int64_t>(origOp.getKernelSize());
+        auto strides = parseIntArrayAttr<int64_t>(origOp.getStrides());
+        auto pad = origOp.getPad();
+        return inOrder != outOrder && kernel[0] == 1 && kernel[1] == 1 && strides[0] == 1 && strides[1] == 1 &&
+               VPU::hasZeroPadding(pad);
+    };
+
+    auto outDistributionType = getOutputDistributedType(clusteredIface);
+    if (outDistributionType.has_value()) {
+        auto outDistribution = outDistributionType.value().getDistribution();
+        auto numTiles = outDistribution.getNumTiles();
+        if (numTiles != nullptr) {
+            auto index = size_t(VPU::getDistributedTilingAxis(parseIntArrayAttr<int64_t>(numTiles)));
+            if (index < numTiles.size()) {
+                auto splitDim = vpux::Dim(index);
+                if (outOrder.dimPos(splitDim) <= 1) {
+                    splitOnHighestDim = true;
+                }
+            } else {
+                splitOnHighestDim = true;
+            }
+        } else {
+            splitOnHighestDim = true;
+        }
+    } else {
+        splitOnHighestDim = true;
+    }
+
+    if (op->hasAttr(tilingStrategy)) {
+        const auto strategy = mlir::cast<mlir::ArrayAttr>(op->getAttr(tilingStrategy));
+        auto index = size_t(VPU::getDistributedTilingAxis(parseIntArrayAttr<int64_t>(strategy)));
+        if (index < strategy.size()) {
+            auto tilingDim = vpux::Dim(index);
+            if (outOrder.dimPos(tilingDim) <= 1) {
+                tilingOnHighestDim = true;
+            }
+        } else {
+            tilingOnHighestDim = true;
+        }
+    }
+
+    // Maxpool converted from Transpose usually is a DMA bound task as DPU is very fast
+    // Especially with strided DMAs
+    return maxpoolIsTranspose(origOp) && (!splitOnHighestDim && !tilingOnHighestDim);
+}
+
 mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyPipeliningCMX(VPU::NCEMaxPoolOp origOp, const OutputTiling& tiling,
                                                                    Logger log) {
-    log.setName("NCEInvariant");
     if (tiling.size() <= 1) {
         return mlir::failure();
     }
@@ -773,8 +845,23 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyPipeliningCMX(VPU::NCEMaxPo
     requiredCMX = VPU::getRequiredCMXSizeForNCEOps(getRequiredOperandsForPipelining(origOp, tiling),
                                                    getRequiredChannelSizeForPipelining(origOp, tiling));
     if (requiredCMX > cmxWithFragmentationRatio) {
-        log.trace("[{0}] CMX memory is not enough for prefetch pipeline, available '{1}', required '{2}'",
+        log.trace(" [{0}] CMX memory is not enough for prefetch pipeline, available '{1}', required '{2}'",
                   origOp->getLoc(), cmxWithFragmentationRatio, requiredCMX);
+        return mlir::failure();
+    }
+
+    // Check fragments by large activations when output pipelining
+    auto nTilesOnDim = tiling[0].axis;
+    if (isOutputPipeliningEnabled(origOp) && origOp->hasAttr(vpux::tilingStrategy) &&
+        !vpux::isSupportedTileSizeForLargeActivation(origOp.getOperation(), nTilesOnDim,
+                                                     FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_ACTIVATION_MAXPOOL,
+                                                     log)) {
+        log.trace(" [{0}] CMX memory is not enough for pipelining considering fragments by large activation",
+                  origOp->getLoc());
+        if (isDMABoundNCEMaxpool(origOp)) {
+            log.debug(" DMA bound op so that won't increase tiling number - {0}", origOp->getLoc());
+            return mlir::success();
+        }
         return mlir::failure();
     }
 

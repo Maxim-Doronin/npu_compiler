@@ -1,6 +1,6 @@
 //
-// Copyright (C) 2024 - 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// Copyright (C) 2024-2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/interfaces/d2s_to_transposed_conv_verifier.hpp"
@@ -21,12 +21,10 @@ mlir::LogicalResult D2SToTransposedConvVerifierBase::isBeneficialConversion(Logg
 
 std::unique_ptr<D2SToTransposedConvVerifierBase> createD2SToTransposedConvVerifier(VPU::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX: {
+    case VPU::ArchKind::NPU37XX:
         return std::make_unique<IE::arch37xx::D2SToTransposedConvVerifier>();
-    }
-    case VPU::ArchKind::NPU40XX: {
+    case VPU::ArchKind::NPU40XX:
         return std::make_unique<IE::arch40xx::D2SToTransposedConvVerifier>();
-    }
     default: {
         return std::make_unique<D2SToTransposedConvVerifierBase>();
     }

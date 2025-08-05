@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUIP_TYPES
@@ -35,8 +35,7 @@ def VPUIP_DistributedBuffer :
             ]
         > {
     let summary = "VPUIP buffer type to describe the buffer tiling";
-    let description = [{ This type of buffer is used together with the ClusterTiling operation
-                            to describe a tile operation between clusters }];
+    let description = [{ This type of buffer is used to describe an operation tiled across clusters }];
     let genAccessors = 0;
 
     let parameters = (ins

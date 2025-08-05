@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -108,5 +108,8 @@ auto getZeroPoint(vpux::NDTypeInterface type) {
     // Return only the first element as the zero point bias
     return quantZeroPoints[0];
 }
+
+int64_t getRangeSize(int64_t start, int64_t end);
+
 }  // namespace VPUIPDPU
 }  // namespace vpux

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -51,6 +51,7 @@ private:
                                    mlir::async::ExecuteOp spillReadExecOp);
     SmallVector<mlir::Value> getAsyncResultsForBuffer(mlir::async::ExecuteOp opThatWasSpilled, mlir::Value buffer);
     mlir::Value getBufferFromAsyncResult(mlir::Value asyncResult);
+    llvm::DenseSet<size_t> identifyDataOpsWithInputOverwrite(FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps);
 
     // Below nested class is intended to handle data dependency updates
     // for users of spilled buffers

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
@@ -330,8 +330,8 @@ bool VPU::NCEMaxPoolOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, 
 
     SmallVector<Byte> buffers = {
             VPU::getTotalAllocSizeWithDistribution(
-                    getInput().getType(), getActivationDistributionAttrFromOp(nceOp, getInput().getType(), numClusters,
-                                                                              strategy, siblingsAnalysis)),
+                    getInput().getType(), getActivationDistributionAttrFromOp(nceOp, getInput(), getInput().getType(),
+                                                                              numClusters, strategy, siblingsAnalysis)),
             VPU::getTotalAllocSizeWithDistribution(
                     getOutput().getType(), getOutputDistributionAttrFromOp(nceOp, getOutput().getType(), numClusters,
                                                                            strategy, siblingsAnalysis))};
@@ -353,8 +353,8 @@ bool VPU::NCEMaxPoolOp::doesLayerChangeOutputAlignmentFitIntoCMX(
     auto nceOp = mlir::cast<NCEMaxPoolOp>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
             nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
-    auto distributedInputType =
-            getDistributedActivationTypeFromOp(nceOp, nceOp.getInput().getType(), numClusters, strategy);
+    auto distributedInputType = getDistributedActivationTypeFromOp(nceOp, nceOp.getInput(), nceOp.getInput().getType(),
+                                                                   numClusters, strategy);
     return fitIntoCMX(distributedInputType, newDistributedTensorType);
 }
 

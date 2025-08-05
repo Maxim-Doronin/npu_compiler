@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUIP_ARCH_40XX_PASSES
@@ -82,17 +82,17 @@ def CompressSpillDma : PassBase<"compress-spill-dma", "vpux::ModulePass"> {
 }
 
 //
-// UnrollClusterTiling
+// UnrollDistributedOps
 //
 
-def UnrollClusterTiling : PassBase<"unroll-cluster-tiling", "vpux::FunctionPass"> {
-    let summary = "Extracts child operations from ClusterTiling operation";
+def UnrollDistributedOps : PassBase<"unroll-distributed-ops", "vpux::FunctionPass"> {
+    let summary = "Extracts child operations from distributed operation";
 
     let description = [{
-        Legalizes chain of ClusterTiling operations according to the tile schema
+        Legalizes chain of distributed operations according to the tile schema
     }];
 
-    let constructor = "vpux::VPUIP::arch40xx::createUnrollClusterTilingPass()";
+    let constructor = "vpux::VPUIP::arch40xx::createUnrollDistributedOpsPass()";
 }
 
 //

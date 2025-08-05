@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUMI40XX_PASSES
@@ -379,6 +379,25 @@ def AddMappedInferenceVersionOp : PassBase<"add-mapped-inference-version-op", "v
     let summary = "Add explicit operation for Mapped Inference and Managed Mapped inference version representation";
 
     let constructor = "vpux::VPUMI40XX::createAddMappedInferenceVersionOpPass()";
+}
+
+
+def AddEnqueueDMAOps : PassBase<"add-enqueue-dma-ops", "vpux::FunctionPass"> {
+    let summary = "Add DMAOps performing task enqueues";
+
+    let constructor = "vpux::VPUMI40XX::createAddEnqueueDMAOps()";
+
+    let description = [{
+        This pass inserts DMAOps that perform enqueuing of DPU and SHAVE (SHV) tasks into the appropriate hardware FIFOs.
+
+        The overall graph is partitioned into WLM pages such that each page uses only half of the available physical barriers.
+        This design guarantees that enqueuing a task in page N can safely occur in page N-1 without causing barrier conflicts,
+        as the previous page will use the other half of the physical barriers.
+
+        For each EnqueueOp, it determines the task being enqueued and retrieves the corresponding WLM (Workload Management) page.
+        Based on this page, it finds a suitable DMAOp from the previous page to serve as the insertion point. The DMA is then
+        created with appropriate parameters (e.g., fifo addr based on tile and list index) to enqueue the task correctly.
+    }];
 }
 
 #endif

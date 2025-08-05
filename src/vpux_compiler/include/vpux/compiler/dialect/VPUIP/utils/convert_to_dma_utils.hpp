@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -51,6 +51,9 @@ bool doesPermuteDMATileDimSupportWrapInCluster(vpux::NDTypeInterface inputType, 
                                                VPUIP::DistributedBufferType distributedOutputType, vpux::Logger log);
 
 std::optional<mlir::AffineMap> getMemPermFromSwKernel(VPUIP::SwKernelOp swKernelTask);
+
+// Check if MemPermute satisfies the condition of optimal SW implementation
+bool satisfiesOptimizedMemPermute(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType);
 
 /**
  * Cost function to evaluate whether it's beneficial to implement the operation using DMA for

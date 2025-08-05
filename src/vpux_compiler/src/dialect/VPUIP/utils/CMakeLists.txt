@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2024-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 set(TARGET_NAME "npu_compiler_dialect_vpuip_utils")

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
@@ -38,18 +38,12 @@ private:
 };
 
 void QueryWSInfo::safeRunOnModule() {
-    auto moduleOp = getOperation();
-
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
-
-    auto tree = VPU::getOutliningRepresentation(mainFuncOp);
-    auto splits = VPU::collectMoveWorthyTransformationSplits(_log, tree, [](auto&) {});
-    llvm::sort(splits.begin(), splits.end());
-
+    const auto& info = getAnalysis<VPU::WeightsSeparationInfo>();
+    auto splits = info.getCollectedSplits();
+    llvm::sort(splits);
     auto slicedSplits = VPU::sliceAccordingToMemoryLimit(_log, splits, getMemoryLimit());
 
+    auto moduleOp = getOperation();
     moduleOp->setAttr("VPU.WsTotalInitPartCount", getIntAttr(&getContext(), slicedSplits.size()));
 }
 

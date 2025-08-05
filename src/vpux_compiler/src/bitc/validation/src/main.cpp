@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <cassert>
@@ -17,12 +17,13 @@ using namespace vpux;
 using std::string_literals::operator""s;
 
 bitc::ArchType string_to_arch(const std::string& arch_type) {
-    if (arch_type == "NPU27"s)
+    if (arch_type == "NPU27"s) {
         return bitc::ArchType::NPU27;
-    else if (arch_type == "NPU4"s)
+    } else if (arch_type == "NPU4"s) {
         return bitc::ArchType::NPU4;
-    else
+    } else {
         return;
+    }
 }
 
 int check_dataset_compression(const config_map& config_test, bitc::BitCompactorConfig& config) {

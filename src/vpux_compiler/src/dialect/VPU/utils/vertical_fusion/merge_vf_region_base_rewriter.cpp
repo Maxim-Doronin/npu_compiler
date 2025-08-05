@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/merge_vf_region_base_rewriter.hpp"
@@ -95,8 +95,9 @@ mlir::FailureOr<VPU::VerticalFusionOp> findMergeableVFInput(VFConfigType& vfConf
 
 // This function checks if other inputs of currentOp can be merged
 // If prevOp was tried to merge with currentOp, return false
-template <typename VFConfigType>
-bool checkOtherVFInput(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) {
+template <typename VFCaseType>
+bool MergeVFRegionBaseRewriter<VFCaseType>::checkOtherVFInput(VPU::VerticalFusionOp currentOp,
+                                                              VPU::VerticalFusionOp prevOp) const {
     // Check if currentOp has mergeable input
     VFConfigType vfConfig(currentOp);
     auto mergeableOp = findMergeableVFInput(vfConfig);
@@ -225,8 +226,8 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
         auto ndType = (nceOp != nullptr && nceOp.getWeightsOperand() == inputOperand)
                               ? mlir::cast<NDTypeInterface>(
                                         VPU::getDistributedFilterTypeFromOp(nceOp, inputType, numClusters))
-                              : mlir::cast<NDTypeInterface>(
-                                        VPU::getDistributedActivationTypeFromOp(clusteredOp, inputType, numClusters));
+                              : mlir::cast<NDTypeInterface>(VPU::getDistributedActivationTypeFromOp(
+                                        clusteredOp, inputOperand, inputType, numClusters));
         if (auto sparseTensorType = mlir::dyn_cast<VPU::SparseTensorType>(ndType)) {
             ndType = mlir::cast<NDTypeInterface>(sparseTensorType.getData());
             isSparsed = true;
@@ -416,63 +417,6 @@ std::optional<VFCaseType> MergeVFRegionBaseRewriter<VFCaseType>::findVFCase(VPU:
         return std::nullopt;
     }
     return findVFTiling(mergedVFOp, prevOp, currentOp);
-}
-
-template <typename VFCaseType>
-mlir::LogicalResult MergeVFRegionBaseRewriter<VFCaseType>::matchAndRewrite(VPU::VerticalFusionOp vfOp,
-                                                                           mlir::PatternRewriter& rewriter) const {
-    _log.trace("Starting vertical fusion for region with VerticalFusionOp {0} at location {1}", vfOp, vfOp->getLoc());
-
-    VPU::VerticalFusionOp vfBlock = nullptr;
-    VPU::VerticalFusionOp parentVFOp = nullptr;
-    for (auto operand : vfOp->getOperands()) {
-        parentVFOp = operand.getDefiningOp<VPU::VerticalFusionOp>();
-        vfBlock = nullptr;
-
-        if (parentVFOp == nullptr) {
-            continue;
-        }
-
-        _log.trace("Analyzing vertical fusion region with parent VerticalFusionOp {0} at location {1}", parentVFOp,
-                   parentVFOp->getLoc());
-
-        const bool allInOldBlock = llvm::all_of(parentVFOp->getUsers(), [&](auto user) {
-            return user == vfOp;
-        });
-        if (!allInOldBlock) {
-            if (waitOtherUsers(parentVFOp, vfOp)) {
-                continue;
-            }
-            return mlir::failure();
-        }
-
-        vfBlock = fuseOpsInBlock(rewriter, vfOp, parentVFOp.getOperation());
-        auto vfCase = findVFCase(parentVFOp, vfOp, vfBlock);
-        if (!vfCase.has_value() || !checkVFCostFunction(parentVFOp, vfOp, vfCase.value())) {
-            // Drop all references to vfBlock to avoid it being added back to the rewriter
-            // worklist.
-            vfBlock->dropAllReferences();
-            rewriter.eraseOp(vfBlock);
-            vfBlock = nullptr;
-            // Add support for NCE task, if merging activation failed, continue to merge weights.
-            // E-141686: A general solution to merge more subgraph for more VF ops.
-            if (checkOtherVFInput<VFConfigType>(vfOp, parentVFOp)) {
-                continue;
-            }
-            return mlir::failure();
-        }
-
-        break;
-    }
-
-    if (vfBlock == nullptr) {
-        return mlir::failure();
-    }
-
-    _log.trace("Merged subgraph {0}", vfBlock);
-    fuseBlocks(rewriter, vfOp, vfBlock);
-
-    return mlir::success();
 }
 
 template <typename VFCaseType>

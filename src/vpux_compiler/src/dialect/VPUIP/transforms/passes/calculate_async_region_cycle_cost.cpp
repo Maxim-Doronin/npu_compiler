@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
@@ -32,7 +32,11 @@ private:
 
 void CalculateAsyncRegionCycleCostPass::safeRunOnFunc() {
     auto funcOp = getOperation();
-    CycleCostInfo cycleCostInfo(funcOp);
+    auto module = funcOp->getParentOfType<mlir::ModuleOp>();
+    const auto arch = VPU::getArch(module);
+    auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);
     funcOp->walk([&](mlir::async::ExecuteOp execOp) {
         if (auto costInterface = mlir::dyn_cast_or_null<VPUIP::CycleCostInterface>(execOp.getOperation())) {
             auto cycleCost = cycleCostInfo.getCycleCost(costInterface);

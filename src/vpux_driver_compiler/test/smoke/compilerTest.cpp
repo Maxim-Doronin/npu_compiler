@@ -96,8 +96,9 @@ static llvm::cl::opt<bool> api1HelpInfo("api1", llvm::cl::init(false));
 
 namespace {
 std::vector<std::string> splitStringList(const std::string& str, char delim) {
-    if (str.empty())
+    if (str.empty()) {
         return {};
+    }
 
     std::istringstream istr(str);
 
@@ -295,8 +296,9 @@ void configurePrePostProcessing(std::shared_ptr<ov::Model>& model, const std::st
 
 inline std::string fileNameNoExt(const std::string& filePath) {
     auto pos = filePath.rfind('.');
-    if (pos == std::string::npos)
+    if (pos == std::string::npos) {
         return filePath;
+    }
     return filePath.substr(0, pos);
 }
 

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
@@ -73,9 +73,7 @@ void UniquifyWeightsTableCopiesPass::safeRunOnFunc() {
     });
 
     for (auto constDeclare : wtConstants) {
-        VPUIP::CopyOp firstCopyUser = nullptr;
-        mlir::DenseSet<VPUIP::CopyOp> optimizableCopyOps{};
-
+        mlir::DenseMap<mlir::Type, OpOrderedSet> optimizableCopyOps;
         for (auto user : constDeclare->getUsers()) {
             if (auto copyUser = mlir::dyn_cast<VPUIP::CopyOp>(user)) {
                 if (!copyUser->hasOneUse()) {
@@ -88,24 +86,17 @@ void UniquifyWeightsTableCopiesPass::safeRunOnFunc() {
                         continue;
                     }
                 }
-                if (firstCopyUser == nullptr) {
-                    firstCopyUser = copyUser;
-                }
-                if (copyUser->isBeforeInBlock(firstCopyUser)) {
-                    firstCopyUser = copyUser;
-                }
-                if (copyUser.getType() != firstCopyUser.getType()) {
-                    continue;
-                }
-                optimizableCopyOps.insert(copyUser);
+                optimizableCopyOps[copyUser.getType()].insert(user);
             }
         }
-        for (auto copyOp : optimizableCopyOps) {
-            if (copyOp == firstCopyUser) {
-                continue;
+        for (auto& entry : optimizableCopyOps) {
+            for (auto [idx, copyOp] : entry.second | indexed) {
+                if (idx < 1) {
+                    continue;
+                }
+                copyOp->getResult(0).replaceAllUsesWith((*entry.second.begin())->getResult(0));
+                copyOp->erase();
             }
-            copyOp->replaceAllUsesWith(firstCopyUser);
-            copyOp->erase();
         }
     }
 }

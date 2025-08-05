@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -29,6 +29,8 @@ public:
             : MergeVFRegionBaseRewriter<VFCase>(ctx, enableVerticalFusionPipelining, enablePrefetchTiling, costFunction,
                                                 log) {
     }
+
+    mlir::LogicalResult matchAndRewrite(VPU::VerticalFusionOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 protected:
     bool canMergeVFOpsWithoutCostCheck(VFCase& mergedCase) const override;

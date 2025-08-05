@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/transforms/passes.hpp"
@@ -130,6 +130,7 @@ void vpux::IE::arch37xx::buildInitialLowPrecisionTransformationsPipeline(
         mlir::OpPassManager& pm, const IE::LowPrecisionTransformOptions& options, Logger log) {
     pm.addPass(IE::createConvertScalarToTensorPass(log));
     pm.addPass(IE::createConsolidateNF4WeightsPatternPass(log));
+    pm.addPass(IE::createDecomposeMultiZPQuantizationPatternPass(log));
     pm.addPass(IE::createWeightsDequantizeToFakeQuantizePass(log));
     pm.addPass(IE::createFuseInputScaleShiftPass(log));
     pm.addPass(IE::createConsolidateWeightsDequantizationPass(options, log));
@@ -205,6 +206,10 @@ void vpux::IE::arch37xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     }
     if (options.enableConvolutionMixedPrecisionDecomposition) {
         pm.addPass(IE::arch37xx::createProcessAsymmetricZeroPointsForConvolutionPass(log));
+    }
+    if (options.enableMatmulMixedPrecisionDecomposition) {
+        pm.addPass(IE::arch37xx::createProcessAsymmetricZeroPointsForMatmulPass(
+                options.matmulMixedPrecisionDecompositionRatio.getValue(), log));
     }
 
     pm.addPass(IE::createSplitFakeQuantPass(log));
@@ -359,6 +364,14 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
         pm.addPass(IE::createLogOpOptimizationsPass());
     }
 
+    if (options.enableOnlineSDPAConversion) {
+        pm.addPass(IE::createConvertSDPAToOnlineSDPAPass());
+        pm.addPass(IE::createTileOnlineSDPAPass());
+        pm.addPass(IE::createDecomposeOnlineSDPAPass());
+        pm.addPass(IE::createTileIncrementalSDPAPass());
+        pm.addPass(IE::createDecomposeIncrementalSDPAPass());
+    }
+
     IE::arch37xx::buildDynamicShapeTransformationsPipeline(pm, IE::DynamicShapeTransformOptions(), log);
     pm.addPass(IE::createReshapeMatMulInputsPass(options.enableGroupedMatMul, log));
     IE::arch37xx::buildInitialLowPrecisionTransformationsPipeline(pm, IE::LowPrecisionTransformOptions(options), log);
@@ -379,6 +392,8 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
         pm.addPass(IE::createConvertAvgPoolToDWConvPass(log));
     }
 
+    pm.addPass(IE::createConvertDivideToMultiplyPass(log));
+    pm.addPass(IE::createReassociateMultiplyPass(log));
     pm.addPass(IE::createAdaptShapesForScaleShiftPass(log));
     pm.addPass(IE::createResolveStridedSlicePass(log));
     pm.addPass(IE::createSwapTransposeConcatPass(log));
@@ -395,7 +410,6 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
                                                     isOptionEnabled(options.enableExperimentalSEPtrsOperations),
                                             log));
     pm.addPass(IE::createSwapPadLayerPass(log));
-    pm.addPass(IE::createConvertDivideToMultiplyPass(log));
     // Note: apply FuseStaticScale after ConvertDivideToMultiply to increase
     // the applicability
     pm.addPass(IE::arch37xx::createFuseStaticScalePass(log));
@@ -407,12 +421,6 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     // So convert it's shape to 4D and then convert this AddOp to ScaleShift.
     pm.addPass(IE::createConvertShapeTo4DPass(log));
     pm.addPass(IE::createConvertToScaleShiftPass(log));
-    // Place ReassociateMultiply pass here to ensure that no multiply is converted to DW conv later.
-    // Applying this optimization and subsequently converting to a DW conv might introduce unnecessary expansion
-    // to make channel aligned. A better long-term solution should be that this optimization does not break a DW conv
-    // optimization in a different place. Either by extending the logic of this pass or the rules for rewriting
-    // multiplications to a DW conv.
-    pm.addPass(IE::createReassociateMultiplyPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
     pm.addPass(IE::createConvertGroupConvToConvPass(log));
@@ -423,6 +431,7 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     pm.addPass(IE::createConvertDepth2SpaceToTransposedConvPass(log));
     pm.addPass(IE::createSwapD2SAndScaleShiftPass(log));
     pm.addPass(IE::createConvertReverseToDWConvPass(log));
+    pm.addPass(IE::createConvertDeformableConvToConvPass(log));
 
     IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
     pm.addPass(Core::createStopLocationVerifierPass(log));

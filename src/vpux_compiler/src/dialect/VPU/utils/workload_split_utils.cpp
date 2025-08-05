@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
@@ -205,7 +205,7 @@ void splitOntoWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp, VP
         const auto output = *outputs.begin();
 
         auto distributedOutputType = getDistributedTensor(output);
-        VPUX_THROW_WHEN(distributedOutputType == nullptr, "Wrong output type {0} for NCEClusterTilingOp",
+        VPUX_THROW_WHEN(distributedOutputType == nullptr, "Wrong output type {0} for distributed operation",
                         output.getType());
 
         const auto outputSubTensorShapes = distributedOutputType.getPerClusterComputeShapes();
@@ -219,7 +219,7 @@ void splitOntoWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp, VP
 
         const auto input = *inputs.begin();
         auto distributedInputType = getDistributedTensor(input);
-        VPUX_THROW_WHEN(distributedInputType == nullptr, "Wrong input type {0} for NCEClusterTilingOp",
+        VPUX_THROW_WHEN(distributedInputType == nullptr, "Wrong input type {0} for distributed operation",
                         input.getType());
 
         // @todo When halos supported in VPUNN, we need use computeShape instead of memory shape

@@ -1,18 +1,18 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IERT/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/unified_func_inliner_interface.hpp"
@@ -20,6 +20,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Dialect/Quant/QuantOps.h>
 #include <mlir/Transforms/BufferizationUtils.h>
 #include <mlir/Transforms/InliningUtils.h>
@@ -111,9 +112,6 @@ void vpux::VPUIP::VPUIPDialect::setExecutorInstanceMask(mlir::async::ExecuteOp e
         auto* bodyBlock = execOp.getBody();
         for (auto& op : bodyBlock->getOperations()) {
             auto opToCheck = &op;
-            if (auto nceClustOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(opToCheck)) {
-                opToCheck = nceClustOp.getInnerTaskOp();
-            }
 
             if (auto dmaOp = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(opToCheck)) {
                 dmaOp.setPortAttribute(portIdxAttr);

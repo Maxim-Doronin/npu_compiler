@@ -1,12 +1,13 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPU/utils/weights_table_reuse_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
@@ -67,6 +68,14 @@ private:
 
 void RelocateWeightTableForReusePass::safeRunOnFunc() {
     auto func = getOperation();
+
+    // If neither weights-table-reuse is enabled nor the function is a pure vertical fusion region,
+    // skip the relocation of weights table for reuse.
+    if (!VPU::isWeightsTableReuseEnabled(func)) {
+        _log.trace("Skipping relocation of weights table for reuse because the function is not supported {0}",
+                   func->getLoc());
+        return;
+    }
 
     func.walk([&](VPU::NCEOpInterface nceOp) {
         if (!mlir::isa<VPU::NCEMatMulOp, VPU::NCEConvolutionOp>(nceOp)) {

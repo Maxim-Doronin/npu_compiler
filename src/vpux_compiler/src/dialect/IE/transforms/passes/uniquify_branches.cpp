@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -9,6 +9,7 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -38,20 +39,6 @@ bool doesSliceAndPermutationModifySameAxis(DimsOrder perm, ArrayRef<uint64_t> sl
     }
 
     return false;
-}
-
-SmallVector<uint64_t> getSliceAxes(IE::SliceOp sliceOp) {
-    auto sliceInShape = getShape(sliceOp.getSource());
-    auto sizes = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
-
-    SmallVector<uint64_t> sliceAxes;
-    for (size_t dimIdx = 0; dimIdx < sizes.size(); dimIdx++) {
-        if (sliceInShape[Dim(dimIdx)] != sizes[dimIdx]) {
-            sliceAxes.push_back(static_cast<uint64_t>(dimIdx));
-        }
-    }
-
-    return sliceAxes;
 }
 
 template <typename ConcreteOp>
@@ -614,6 +601,58 @@ SmallVector<int64_t> MoveMemPermuteBeforeSlice::getNewSizes(IE::SliceOp, IE::Mem
 }
 
 //
+// MoveQuantizeCastBeforeSlice
+//
+
+class MoveQuantizeCastBeforeSlice final : public MoveLayerBeforeSlice<IE::QuantizeCastOp> {
+public:
+    MoveQuantizeCastBeforeSlice(mlir::MLIRContext* ctx, Logger log)
+            : MoveLayerBeforeSlice<IE::QuantizeCastOp>(ctx, log) {
+    }
+
+public:
+    bool doesSliceAndLayerOpModifySameAxis(IE::SliceOp sliceOp, ArrayRef<uint64_t> sliceAxes,
+                                           IE::QuantizeCastOp layerOp) const override;
+    bool isBeneficialTransformation(IE::SliceOp, IE::QuantizeCastOp layerOp,
+                                    ArrayRef<IE::QuantizeCastOp>) const override;
+    bool sameAttributes(IE::QuantizeCastOp layerOp, IE::QuantizeCastOp currLayerOp) const override;
+    SmallVector<int64_t> getNewSizes(IE::SliceOp sliceOp, IE::QuantizeCastOp layerOp) const override;
+};
+
+bool MoveQuantizeCastBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp, ArrayRef<uint64_t> sliceAxes,
+                                                                    IE::QuantizeCastOp layerOp) const {
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(layerOp.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
+
+    auto doesSliceModifySameAxis = [&](vpux::NDTypeInterface ndType) {
+        if (const auto perAxisType =
+                    mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(ndType.getElementType())) {
+            const auto axis = perAxisType.getQuantizedDimension();
+            return llvm::is_contained(sliceAxes, axis);
+        }
+        return false;
+    };
+
+    return doesSliceModifySameAxis(inType) || doesSliceModifySameAxis(outType);
+}
+
+// #E168219 only beneficial for quantile type
+bool MoveQuantizeCastBeforeSlice::isBeneficialTransformation(IE::SliceOp, IE::QuantizeCastOp layerOp,
+                                                             ArrayRef<IE::QuantizeCastOp>) const {
+    auto dstElemType = layerOp.getDstElemType();
+    return mlir::isa<mlir::quant::QuantileQuantizedPerAxisType>(dstElemType) ||
+           mlir::isa<mlir::quant::QuantileQuantizedType>(dstElemType);
+}
+
+bool MoveQuantizeCastBeforeSlice::sameAttributes(IE::QuantizeCastOp layerOp, IE::QuantizeCastOp currLayerOp) const {
+    return layerOp.getDstElemType() == currLayerOp.getDstElemType();
+}
+
+SmallVector<int64_t> MoveQuantizeCastBeforeSlice::getNewSizes(IE::SliceOp sliceOp, IE::QuantizeCastOp) const {
+    return parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
+}
+
+//
 // MoveReorderBeforeSplit
 //
 class MoveReorderBeforeSplit final : public mlir::OpRewritePattern<IE::ReorderOp> {
@@ -701,6 +740,7 @@ void UniquifyBranches::safeRunOnFunc() {
     patterns.add<MovePermuteCastBeforeSlice>(&ctx, _log);
     patterns.add<MoveAffineReshapeBeforeSlice>(&ctx, _log);
     patterns.add<MoveMemPermuteBeforeSlice>(&ctx, _log);
+    patterns.add<MoveQuantizeCastBeforeSlice>(&ctx, _log);
     patterns.add<MoveReorderBeforeSplit>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {

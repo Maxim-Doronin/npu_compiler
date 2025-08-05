@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_CONST_ATTRIBUTES
@@ -328,13 +328,15 @@ def Const_CastElemTypeAttr : Const_Attr<"CastElemType",
     let summary = "Cast constant content element type";
 
     let parameters = (ins
-        "mlir::Type":$elemType
+        "mlir::Type":$elemType,
+        "llvm::hash_code":$stableHashValue
     );
 
     let builders = [
         AttrBuilderWithInferredContext<
             (ins "mlir::Type":$elemType), [{
-                return $_get(elemType.getContext(), elemType);
+                auto hash = stableHashForCastElemType(elemType);
+                return $_get(elemType.getContext(), elemType, hash);
             }]
         >
     ];
@@ -342,7 +344,7 @@ def Const_CastElemTypeAttr : Const_Attr<"CastElemType",
     let storageNamespace = "details";
     let genVerifyDecl = 1;
     let skipDefaultBuilders = 1;
-    let assemblyFormat = "`<` $elemType `>`";
+    let hasCustomAssemblyFormat = 1;
 }
 
 //
@@ -361,13 +363,15 @@ def Const_ConvertElemTypeAttr : Const_Attr<"ConvertElemType",
     }];
 
     let parameters = (ins
-        "mlir::Type":$elemType
+        "mlir::Type":$elemType,
+        "llvm::hash_code":$stableHashValue
     );
 
     let builders = [
         AttrBuilderWithInferredContext<
             (ins "mlir::Type":$elemType), [{
-                return $_get(elemType.getContext(), elemType);
+                auto hash = stableHashForConvertElemType(elemType);
+                return $_get(elemType.getContext(), elemType, hash);
             }]
         >
     ];
@@ -375,7 +379,7 @@ def Const_ConvertElemTypeAttr : Const_Attr<"ConvertElemType",
     let storageNamespace = "details";
     let genVerifyDecl = 1;
     let skipDefaultBuilders = 1;
-    let assemblyFormat = "`<` $elemType `>`";
+    let hasCustomAssemblyFormat = 1;
 }
 
 //
@@ -979,13 +983,15 @@ def Const_ChangeShapeAndElemTypeAttr : Const_Attr<"ChangeShapeAndElemType",
 
     let parameters = (ins
         "mlir::ArrayAttr":$shape,
-        "mlir::Type":$elemType
+        "mlir::Type":$elemType,
+        "llvm::hash_code":$stableHashValue
     );
 
     let builders = [
         AttrBuilderWithInferredContext<
             (ins "mlir::ArrayAttr":$shape, "mlir::Type":$elemType), [{
-                return $_get(shape.getContext(), shape, elemType);
+                auto hash = stableHashForChangeShapeAndElemType(shape, elemType);
+                return $_get(shape.getContext(), shape, elemType, hash);
             }]
         >
     ];

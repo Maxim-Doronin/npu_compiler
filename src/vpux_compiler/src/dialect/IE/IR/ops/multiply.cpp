@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -44,10 +44,12 @@ mlir::LogicalResult vpux::IE::MultiplyOp::inferReturnTypeComponents(
         if (mlir::failed(IE::padOutputShape(outShape, multiply.getOutputPaddingAttr(), loc))) {
             return mlir::failure();
         }
+        const auto outBounds = inferOutputBounds(multiply.getInput1(), multiply.getInput2(), Shape(outShape),
+                                                 multiply.getAutoBroadcast());
         const auto outOrder =
                 in1Type.getRank() >= in2Type.getRank() ? vpux::getOrder(in1Type) : vpux::getOrder(in2Type);
 
-        const auto tensorAttr = getTensorAttr(ctx, outOrder, getMemorySpace(in1Type), getBounds(in1Type));
+        const auto tensorAttr = getTensorAttr(ctx, outOrder, getMemorySpace(in1Type), Bounds(outBounds));
         inferredReturnShapes.emplace_back(outShape, in1Type.getElementType(), tensorAttr);
     }
 

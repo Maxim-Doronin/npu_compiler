@@ -1,10 +1,15 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
+#include <mlir/IR/BuiltinAttributes.h>
+
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include "vpux/compiler/utils/permute_utils.hpp"
 
@@ -91,4 +96,67 @@ mlir::FailureOr<OutputTiling> vpux::VPU::MemPermuteOp::getTilingStrategy(TilingM
 void vpux::VPU::MemPermuteOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
                                                           mlir::MLIRContext* context) {
     patterns.add<ConvertToPermuteCast>(context);
+}
+
+//
+// ClusteredOpInterface
+//
+
+void vpux::VPU::MemPermuteOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
+                                    ::mlir::Value input, ::mlir::AffineMapAttr dstOrder,
+                                    ::mlir::AffineMapAttr memPerm) {
+    build(odsBuilder, odsState, input, dstOrder, memPerm, nullptr);
+}
+
+bool vpux::VPU::MemPermuteOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
+    auto inputType = mlir::cast<NDTypeInterface>(getInput().getType());
+    auto outputType = mlir::cast<NDTypeInterface>(getOutput().getType());
+    if (VPUIP::satisfiesOptimizedMemPermute(VPU::getArch(getOperation()), inputType, outputType)) {
+        // Optimal MemPermute kernel is most performant with SOH
+        // Should remove this experimental condition when shave cost is supported
+        // Track E#170850
+        return strategy == VPU::MultiClusterStrategy::Clustering ||
+               strategy == VPU::MultiClusterStrategy::SplitOverHeight;
+    }
+    return strategy == VPU::MultiClusterStrategy::Clustering ||
+           strategy == VPU::MultiClusterStrategy::SplitOverKernel ||
+           strategy == VPU::MultiClusterStrategy::SplitOverHeight;
+}
+
+vpux::VPU::DistributionInfo vpux::VPU::MemPermuteOp::getExplicitDistributionInfoAttr(
+        vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
+        const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
+        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+    return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
+                                              numTiles, numClusters, alignment, uniformDistributedSegments,
+                                              overlapParams);
+}
+
+//
+// SWOpInterface
+//
+
+bool vpux::VPU::MemPermuteOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem) {
+    VPUX_THROW_UNLESS(buffers.size() == 2,
+                      "MemPermuteOp requires 1 input and 1 output, but the number of buffers is {0}", buffers.size());
+
+    SmallVector<Byte> buffersSize;
+    std::transform(buffers.begin(), buffers.end(), std::back_inserter(buffersSize), [](const auto buffer) {
+        return buffer.getTotalAllocSize();
+    });
+
+    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
+                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
+
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+                   reservedMem.count() <=
+           totalAvailableCMXSize;
+}
+
+bool vpux::VPU::MemPermuteOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers) {
+    return fitIntoCMX(buffers, Byte(0));
+}
+
+bool vpux::VPU::MemPermuteOp::supportCycleCostCalculation() {
+    return false;
 }

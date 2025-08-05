@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2022-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 if (ENABLE_MLIR_COMPILER AND (NOT BUILD_COMPILER_FOR_DRIVER) AND (NOT BUILD_SHARED_LIBS))

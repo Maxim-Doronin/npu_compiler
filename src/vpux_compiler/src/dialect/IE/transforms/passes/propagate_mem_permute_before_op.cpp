@@ -1,12 +1,15 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -375,29 +378,42 @@ mlir::LogicalResult PropagatePermuteQuantize::movePermuteQuantize(mlir::Value af
     const auto ctx = rewriter.getContext();
     auto affineReshapeOp = affineReshape.getDefiningOp<IE::AffineReshapeOp>();
     VPUX_THROW_WHEN(affineReshapeOp == nullptr, "Not an AffineReshape operation");
-    auto permuteQuantizeOp = permuteQuantize.getDefiningOp();
-    VPUX_THROW_WHEN(!mlir::isa<IE::PermuteQuantizeOp>(permuteQuantizeOp), "Not a PermuteQuantize operation");
+    auto permuteQuantizeOp = mlir::dyn_cast_or_null<IE::PermuteQuantizeOp>(permuteQuantize.getDefiningOp());
+    VPUX_THROW_WHEN(permuteQuantizeOp == nullptr, "Not a PermuteQuantize operation");
 
-    // Create new PermuteQuantizeOp
-    auto origPermuteQuantize = mlir::dyn_cast<IE::PermuteQuantizeOp>(permuteQuantizeOp);
-    mlir::IRMapping mapper;
-    mapper.map(origPermuteQuantize.getInput(), affineReshapeOp.getInput());
-    auto newOp = rewriter.clone(*origPermuteQuantize, mapper);
-    inferReturnTypes(newOp, InferShapedTypeMode::ALL);
+    auto isSupportedNCEPermuteAfterPropagation = [](IE::AffineReshapeOp affineReshapeOp,
+                                                    IE::PermuteQuantizeOp permuteQuantizeOp) {
+        const auto reshapeInType = mlir::cast<NDTypeInterface>(affineReshapeOp.getInput().getType());
+        const auto reshapeOutType = mlir::cast<NDTypeInterface>(affineReshapeOp.getOutput().getType());
+        const auto reshapeInOrder = reshapeInType.getDimsOrder();
+        const auto reshapeOutOrder = reshapeOutType.getDimsOrder();
+        if (reshapeInOrder != reshapeOutOrder) {
+            return false;
+        }
 
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.nest().trace("{0}", msg.str());
+        const auto newPermuteQuantizeInShape = reshapeInType.getShape();
+        mlir::SmallVector<mlir::ShapedTypeComponents> inferredReturnShapes;
+        inferPermuteReturnTypeComponents(affineReshapeOp->getOperand(0), permuteQuantizeOp.getMemPerm(),
+                                         permuteQuantizeOp.getDstOrder(), inferredReturnShapes, false);
+        VPUX_THROW_WHEN(inferredReturnShapes.size() != 1, "Should be 1 but got {0}", inferredReturnShapes.size());
+        const auto newPermuteQuantizeOutShape = ShapeRef(inferredReturnShapes.front().getDims());
+
+        const auto alignment = VPU::NCEInvariant::getAlignment(reshapeInType.getElementType());
+        return IE::checkNCEPermuteShapeCompatibility(newPermuteQuantizeInShape, newPermuteQuantizeOutShape, alignment);
     };
-    if (!VPU::NCEPermuteOp::isSupported(mlir::cast<IE::PermuteQuantizeOp>(newOp), logCb, /*checkLayout=*/true,
-                                        /*checkChannelAlignment=*/true)) {
-        _log.nest().trace("Not supported by NCEPermute");
-        newOp->dropAllReferences();
-        rewriter.eraseOp(newOp);
+    if (!isSupportedNCEPermuteAfterPropagation(affineReshapeOp, permuteQuantizeOp)) {
+        _log.nest().warning("Not supported by NCEPermute after propagation");
         return mlir::failure();
     }
 
+    // Create new PermuteQuantizeOp
+    mlir::IRMapping mapper;
+    mapper.map(permuteQuantizeOp.getInput(), affineReshapeOp.getInput());
+    auto newOp = rewriter.clone(*permuteQuantizeOp, mapper);
+    inferReturnTypes(newOp, InferShapedTypeMode::ALL);
+
     // Reshape to original output shape
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(permuteQuantizeOp->getResult(0).getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(permuteQuantizeOp.getOutput().getType());
     auto outputShape = outputType.getShape();
     auto outputShapeAttr = getIntArrayAttr(ctx, outputShape);
     auto outputReshape = rewriter.create<IE::ShapeCastOp>(
@@ -699,20 +715,6 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::isPropagationBeneficialForConcatAndSli
     const auto beneficialStrideDMA = isBeneficialStrideDMA(parentInShape, parentOutShape);
 
     auto isInputWithDuplicateSlice = [&](mlir::Value input) {
-        auto getSliceAxes = [&](IE::SliceOp sliceOp) -> SmallVector<uint64_t> {
-            auto sliceInShape = getShape(sliceOp.getSource());
-            auto sizes = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
-
-            SmallVector<uint64_t> sliceAxes;
-            for (size_t dimIdx = 0; dimIdx < sizes.size(); dimIdx++) {
-                if (sliceInShape[Dim(dimIdx)] != sizes[dimIdx]) {
-                    sliceAxes.push_back(static_cast<uint64_t>(dimIdx));
-                }
-            }
-
-            return sliceAxes;
-        };
-
         IE::SliceOp firstSliceOp = nullptr;
         for (auto user : input.getUsers()) {
             firstSliceOp = mlir::dyn_cast_or_null<IE::SliceOp>(user);

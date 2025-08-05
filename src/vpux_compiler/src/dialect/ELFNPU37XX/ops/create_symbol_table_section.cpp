@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpux_elf/writer.hpp>
@@ -9,8 +9,9 @@
 void vpux::ELFNPU37XX::CreateSymbolTableSectionOp::serialize(elf::Writer& writer,
                                                              vpux::ELFNPU37XX::SectionMapType& sectionMap,
                                                              vpux::ELFNPU37XX::SymbolMapType& symbolMap) {
-    if (getIsBuiltin())
+    if (getIsBuiltin()) {
         return;
+    }
 
     const auto name = getSecName().str();
     auto section = writer.addSymbolSection(name);

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_CORE_PASSES
@@ -204,6 +204,20 @@ def UnpackNestedModules : PassBase<"unpack-nested-modules", "vpux::ModulePass"> 
         Note: This pass additionally replaces all 'Core.Call' operations with
         'func.call'.
     }];
+}
+
+//
+// AddNetInfoToModule
+// 
+
+def AddNetInfoToModule : PassBase<"add-netinfo-to-module", "vpux::ModulePass"> {
+    let summary = "add net::NetInfoOp to a nested module based on function argument and results inside the module";
+
+    let description = [{
+        This pass adds NetInfo to nested ModuleOp for vpux passes that require the inputInfos and outputInfos information.
+    }];
+
+    let constructor = "vpux::Core::createAddNetInfoToModulePass()";
 }
 
 #endif

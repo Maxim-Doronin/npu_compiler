@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/Pass/PassManager.h>
@@ -176,24 +176,79 @@ void insertExperimentalDetectronROIFeatureExtractorBuffer(Logger& log,
 void insertSDPABuffer(Logger& log, VPU::SDPAOp origOp) {
     log.trace("Found SDPA Operation '{0}'", origOp->getLoc());
 
-    const auto inputKType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputK().getType());
-    const auto inputShape = inputKType.getShape();
-    const auto numHeads = inputShape[Dim(1)];
-    const auto H = inputShape[Dim(2)];
-    const int bufferSize = 4 * H * numHeads;
-    const SmallVector<int64_t> shape({1, numHeads, 1, 4 * H});
+    const auto inputVType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputV().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    const auto inputVShape = inputVType.getShape();
+    const auto outputShape = outputType.getShape();
+    const auto vH = inputVShape[Dim(3)];
+    const auto numHeads = outputShape[Dim(1)];
+    const auto oH = outputShape[Dim(2)];
+    const int bufferSize = 4 * vH * numHeads * oH;
+    const SmallVector<int64_t> shape({1, numHeads, oH, 4 * vH});
     const auto sdpaBufferType = mlir::RankedTensorType::get(shape, getUInt8Type(origOp.getContext()));
-    std::vector<uint8_t> values(bufferSize, 0.0f);
+    std::vector<uint8_t> values(bufferSize, 0);
+
+    mlir::OpBuilder builder(origOp);
+    auto sdpaBuffer =
+            Const::createConst(builder, mlir::UnknownLoc::get(origOp.getContext()), sdpaBufferType, ArrayRef(values));
+    auto newSDPAOp = builder.create<VPU::SDPAOp>(origOp->getLoc(), origOp.getInputQ(), origOp.getInputK(),
+                                                 origOp.getInputV(), origOp.getInputMask(), origOp.getInputScale(),
+                                                 origOp.getInputBias(), sdpaBuffer);
+
+    origOp.replaceAllUsesWith(newSDPAOp.getOperation());
+    origOp->erase();
+}
+
+//
+// insertNMSBuffer
+//
+
+void insertNMSBuffer(Logger& log, VPU::NonMaxSuppressionOp origOp) {
+    log.trace("Found NonMaxSuppression Operation '{0}'", origOp->getLoc());
+    const auto inBoxCoordsType = mlir::cast<vpux::NDTypeInterface>(origOp.getInBoxCoords().getType());
+    auto elemType = inBoxCoordsType.getElementType();
+    size_t elemTypeSize = Byte(vpux::getElemTypeSize(elemType)).count();
+    const auto inputShape = inBoxCoordsType.getShape();
+    const auto numBoxes = inputShape[Dim(1)];
+    auto softNmsSigmaAttr = origOp.getSoftNmsSigmaValueAttr();
+    float softNmsSigma = softNmsSigmaAttr ? softNmsSigmaAttr.getValueAsDouble() : 0.0f;
+
+    size_t offset = 0;
+
+    // boxesPtrCMXbuffer should be allocated only if softNmsSigma is 0.0f
+    size_t boxesPtrCMXbufferSize = 0;
+    if (softNmsSigma == 0.0f) {
+        boxesPtrCMXbufferSize = 4 * numBoxes * elemTypeSize;
+        offset += boxesPtrCMXbufferSize;
+    }
+
+    // scoresPtrCMX buffer
+    size_t scoresPtrCMXbufferSize = numBoxes * elemTypeSize;
+    offset += scoresPtrCMXbufferSize;
+
+    offset = (offset + 3) & ~3;  // Align offset for boxIdxPtrCMX (int32_t)
+
+    // boxIdxPtrCMX buffer
+    size_t boxIdxPtrCMX = numBoxes * sizeof(int32_t);
+    offset += boxIdxPtrCMX;
+
+    const size_t dataBufferSize = offset;
+
+    const SmallVector<int64_t> dataBufferShape({1, 1, 1, static_cast<int64_t>(dataBufferSize)});
+    const auto boxesPtrCMXType = mlir::RankedTensorType::get(dataBufferShape, getUInt8Type(origOp.getContext()));
+    std::vector<uint8_t> values(dataBufferSize, 0.0f);
 
     mlir::OpBuilder builder(origOp);
 
-    auto sdpaBuffer =
-            Const::createConst(builder, mlir::UnknownLoc::get(origOp.getContext()), sdpaBufferType, ArrayRef(values));
+    auto boxesPtrCMXBuffer =
+            Const::createConst(builder, mlir::UnknownLoc::get(origOp.getContext()), boxesPtrCMXType, ArrayRef(values));
 
-    auto newSDPAOp = builder.create<VPU::SDPAOp>(origOp->getLoc(), origOp.getInputQ(), origOp.getInputK(),
-                                                 origOp.getInputV(), origOp.getInputMask(), sdpaBuffer);
+    auto newNonMaxSuppressionOp = builder.create<VPU::NonMaxSuppressionOp>(
+            origOp->getLoc(), origOp.getInBoxCoords(), origOp.getInBoxScores(), boxesPtrCMXBuffer,
+            origOp.getBoxEncoding(), origOp.getSortResultDescending(), origOp.getMaxOutputBoxesPerClassValueAttr(),
+            origOp.getIouThresholdValueAttr(), origOp.getScoreThresholdValueAttr(), origOp.getSoftNmsSigmaValueAttr());
 
-    origOp.replaceAllUsesWith(newSDPAOp.getOperation());
+    origOp.replaceAllUsesWith(newNonMaxSuppressionOp.getOperation());
     origOp->erase();
 }
 
@@ -226,6 +281,12 @@ void AddSwOpAuxiliaryBufferPass::safeRunOnFunc() {
     func.walk([&](VPU::SDPAOp origOp) {
         if (origOp.getDataStorage() == nullptr) {
             insertSDPABuffer(_log, origOp);
+        }
+    });
+
+    func.walk([&](VPU::NonMaxSuppressionOp origOp) {
+        if (origOp.getDataBuffer() == nullptr) {
+            insertNMSBuffer(_log, origOp);
         }
     });
 }

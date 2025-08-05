@@ -1,9 +1,10 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/BuiltinTypes.h>
+#include <cstdint>
 #include <npu_40xx_nnrt.hpp>
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"

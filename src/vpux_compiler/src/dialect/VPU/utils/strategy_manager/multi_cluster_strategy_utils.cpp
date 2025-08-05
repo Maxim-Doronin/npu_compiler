@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
@@ -8,6 +8,7 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
@@ -32,12 +33,8 @@ using namespace VPU;
 namespace {
 
 // Stride DMA cost is inaccurate by cost model, so use this variable to help correct the cost value
-// TODO: Ticket E#135490, remove this variable when stride DMA cost is accurate by VPUNN cost model
+// TODO: Ticket E#171462, remove this variable when stride DMA cost is accurate by VPUNN cost model
 constexpr double strideDMACorrectionThresholdInBitsV1 = 512;
-
-double getStrideDMACorrectionThresholdByArch([[maybe_unused]] VPU::ArchKind arch) {
-    return strideDMACorrectionThresholdInBitsV1;
-}
 
 double getSpillingCostForNonMultiCluster(vpux::NDTypeInterface tensorType, const VPU::DistributionInfo&,
                                          SpillingType /*spillingType*/, double ddrLatency, double ddrBandwidth,
@@ -290,15 +287,40 @@ LayerCostModel::LayerCostModel(mlir::func::FuncOp func, bool enablePrefetchTilin
     _arch = VPU::getArch(module);
     _vpuDeviceType = VPU::getVPUDeviceType(_arch);
     _layerCostModel = VPU::CostModelConfig::createLayerCostModel(_arch);
-    resetNNCacheCounter();
+}
+
+LayerCostModel::LayerCostModel(mlir::func::FuncOp func, bool enablePrefetchTiling,
+                               SiblingOpsAnalysis& siblingsOpsAnalysis,
+                               std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModelPtr, Logger log)
+        : _layerCostModel(std::move(layerCostModelPtr)),
+          _func(func),
+          _enablePrefetchTiling(enablePrefetchTiling),
+          _log(log),
+          _siblingsOpsAnalysis(siblingsOpsAnalysis) {
+    auto module = func->getParentOfType<mlir::ModuleOp>();
+
+    if (auto tileOp = IE::getTileExecutor(module)) {
+        auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
+        _NCEFrequency = tileOp.getProcessorFrequency().getValueAsDouble();
+        _numTiles = tileOp.getCount();
+        _numDPUs = dpuExec.getCount();
+        _NCEThroughput = getNCEThroughput();
+        _DMABandwidth = getDMABandwidth(VPU::getArch(tileOp), VPU::getRevisionID(module));
+        if (auto shaveActExec = tileOp.getSubExecutor(ExecutorKind::SHAVE_ACT)) {
+            _numShaveActs = shaveActExec.getCount();
+        }
+    }
+    _numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    _arch = VPU::getArch(module);
+    _vpuDeviceType = VPU::getVPUDeviceType(_arch);
 }
 
 void LayerCostModel::resetNNCacheCounter() {
-    _layerCostModel->getPreloadedCacheCounter().reset();
+    _layerCostModel->getDPUPreloadedCacheCounter().reset();
 }
 
 void LayerCostModel::printNNCacheStatistics() const {
-    _log.info("[NN Cache statistics]  {0}", _layerCostModel->getPreloadedCacheCounter().printString());
+    _log.info("[NN Cache statistics]  {0}", _layerCostModel->getDPUPreloadedCacheCounter().printString());
 }
 
 vpux::NDTypeInterface LayerCostModel::getNormalInputType(VPU::ClusteredOpInterface origOp,
@@ -327,7 +349,7 @@ std::pair<mlir::Type, TensorDistributionMap> LayerCostModel::getInputWithDistrib
         }
     }
     return std::make_pair(input.getType(),
-                          getActivationDistributionAttrFromOp(origOp, input.getType(), numClustersAttr,
+                          getActivationDistributionAttrFromOp(origOp, input, input.getType(), numClustersAttr,
                                                               specifiedStrategy, _siblingsOpsAnalysis));
 }
 
@@ -337,9 +359,9 @@ std::pair<mlir::Type, TensorDistributionMap> LayerCostModel::getInputWithDistrib
     auto input = getInputFromClusteredOp(origOp, parentOp);
     auto numClustersAttr = VPU::getOptimalNumClusters(
             origOp, mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getShape(), specifiedStrategy);
-    return std::make_pair(input.getType(), getActivationDistributionAttrFromOp(origOp, input.getType(), numClustersAttr,
-                                                                               specifiedStrategy, _siblingsOpsAnalysis,
-                                                                               customAlignment));
+    return std::make_pair(input.getType(), getActivationDistributionAttrFromOp(origOp, input, input.getType(),
+                                                                               numClustersAttr, specifiedStrategy,
+                                                                               _siblingsOpsAnalysis, customAlignment));
 }
 
 VPU::DistributedTypeInterface LayerCostModel::getDistributedInputType(
@@ -424,7 +446,8 @@ double LayerCostModel::getDMACostOfType(vpux::NDTypeInterface srcType, SpillingT
                                                  : VPU::DistributionMode::NONE;
 
     if (_arch == VPU::ArchKind::NPU37XX) {
-        return static_cast<double>(getDMACost(srcType, _vpuDeviceType, _layerCostModel, _numDMAPorts));
+        return static_cast<double>(getDMACost(srcType, _vpuDeviceType,
+                                              _layerCostModel->get_TheoreticalDMA_cost_model_shared(), _numDMAPorts));
     }
 
     auto spillingReadCostFunc = spillingCostMap.at(srcMode);
@@ -456,7 +479,8 @@ double LayerCostModel::getDMACostOfType(vpux::NDTypeInterface srcType, const VPU
         TensorDistributionMap distributionMap;
         distributionMap.insert(std::make_pair(srcType, distribution));
         auto distributedType = getDistributedTypeFromDistributionMap(srcType, distributionMap);
-        return static_cast<double>(getDMACost(distributedType, _vpuDeviceType, _layerCostModel, _numDMAPorts));
+        return static_cast<double>(getDMACost(distributedType, _vpuDeviceType,
+                                              _layerCostModel->get_TheoreticalDMA_cost_model_shared(), _numDMAPorts));
     }
     auto srcMode = distribution.getDistributionMode();
     auto spillingReadCostFunc = spillingCostMap.at(srcMode);
@@ -860,6 +884,12 @@ double LayerCostModel::getSWLayerCost(VPU::SWOpInterface swOp, VPU::MultiCluster
             })
             .Case<VPU::AddOp>([&](VPU::AddOp) {
                 vpunnLayer = std::make_shared<VPUNN::SHVAdd>(device, inputTensors, outputTensors.front());
+            })
+            .Case<VPU::NegativeOp>([&](VPU::NegativeOp) {
+                vpunnLayer = std::make_shared<VPUNN::SHVNegative>(device, inputTensors.front(), outputTensors.front());
+            })
+            .Case<VPU::LogicalNotOp>([&](VPU::LogicalNotOp) {
+                vpunnLayer = std::make_shared<VPUNN::SHVLogicalNot>(device, inputTensors, outputTensors.front());
             })
             .Default([&](mlir::Operation* op) {
                 VPUX_THROW("SW op {0} has no VPUNN support", op->getName());
@@ -1529,10 +1559,12 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
     auto module = clusteredOp->getParentOfType<mlir::ModuleOp>();
     auto tileOp = IE::getTileExecutor(module);
     const auto numTiles = tileOp.getCount();
-
-    // Try parent's strategy first
+    // Try parent's strategy first for ops that do not support cycle cost calculation
     auto parent = clusteredOp->getOperand(0);
-    if (parent != nullptr) {
+    auto swOp = mlir::dyn_cast_or_null<VPU::SWOpInterface>(clusteredOp.getOperation());
+    bool useParentStrategy =
+            mlir::isa<VPU::ConcatOp>(clusteredOp.getOperation()) || !swOp.supportCycleCostCalculation();
+    if (parent != nullptr && useParentStrategy) {
         if (auto parentClusterOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(parent.getDefiningOp())) {
             auto strategyAttr = parentClusterOp.getMultiClusterStrategy();
             if (strategyAttr.has_value()) {
@@ -1554,7 +1586,6 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
             }
         }
     }
-
     // Only the highest dimension is prioritized
     // Need to investigate if the complete layout order could be optimal
     // Track E#124146
@@ -1844,7 +1875,8 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
                                                     VPUNN::VPULayerStrategy vpunnStrategy,
                                                     const std::shared_ptr<VPUNN::VPULayerCostModel>& vpunnCostModel,
                                                     Logger log) {
-    if (!VPU::isArchVPUX3XXX(costParams.arch) && VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
+    // E#160175 Apply workaround only for VPUX4XXX architecture
+    if (costParams.arch == VPU::ArchKind::NPU40XX && VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
         return SmallVector<uint32_t>(outTiles.size(), 1);
     }
 
@@ -2009,7 +2041,7 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
              mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceOp->getResult(0).getType())) &&
             (mcStrategy == VPU::MultiClusterStrategy::SplitOverKernel)) {
             // op with SEP activation should not use this ratio
-            if (!VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
+            if (!VPU::isNCEWithSEPActivation(nceOp.getOperation()) && !VPU::isArchVPUX3XXX(arch)) {
                 // The VPUNN cost of ACT-SPARSITY is inaccurate
                 // Multiply a ratio to correct the cost
                 // Track [E#117195]
@@ -2287,7 +2319,7 @@ bool vpux::VPU::hasLayerWithMultipleInputs(mlir::Operation* op) {
 
 bool vpux::VPU::isSingleBatchRequired(mlir::Operation* op) {
     return !mlir::isa<VPU::MVN1NormalizeOp, VPU::MVN1SumOp, VPU::LSTMSequenceOp, VPU::DequantizeOp, VPU::ReverseOp,
-                      VPU::GridSampleOp>(op);
+                      VPU::GridSampleOp, VPU::MemPermuteOp>(op);
 }
 
 bool vpux::VPU::setSOKForRuntimeDequantConvolution(VPU::NCEOpInterface nceOp, LayerCostModel& costModel) {
@@ -2354,4 +2386,8 @@ bool vpux::VPU::alignStrategyWithParentRuntimeDequant(VPU::ClusteredOpInterface 
     }
 
     return setSOKForRuntimeDequantConvolution(nceOp, costModel);
+}
+
+double vpux::VPU::getStrideDMACorrectionThresholdByArch([[maybe_unused]] VPU::ArchKind arch) {
+    return strideDMACorrectionThresholdInBitsV1;
 }

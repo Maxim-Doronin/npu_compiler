@@ -1,11 +1,10 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
-#include "vpux/compiler/dialect/IERT/ops.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 namespace vpux {
@@ -255,10 +254,8 @@ SmallVector<uint8_t> KernelParamsSerializer::createKernelParams(VPUIP::SwKernelO
 
     const auto kernelOpArgsCount = insSize + outsSize;
 
-    mlir::Operation* firstInnerOp = &(swKernelOp.getBody().front().front());
-    auto firstInnerOpPackMemrefs = mlir::dyn_cast<vpux::IERT::PackMemrefsOp>(firstInnerOp);
-    if (firstInnerOpPackMemrefs != nullptr) {
-        for (auto&& operand : firstInnerOpPackMemrefs.getOperands()) {
+    for (auto&& kernelRun : swKernelOp.getBody().getOps<VPUIP::SwKernelRun>()) {
+        for (auto&& operand : kernelRun.getArgs()) {
             auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(operand);
             if (blockArg) {
                 auto blockId = blockArg.getArgNumber();
@@ -273,56 +270,23 @@ SmallVector<uint8_t> KernelParamsSerializer::createKernelParams(VPUIP::SwKernelO
                 auto ioNdTypeIf = mlir::cast<vpux::NDTypeInterface>(ioType);
                 VPUX_THROW_UNLESS(blockArgNdTypeIf != nullptr || ioNdTypeIf != nullptr,
                                   "createKernelParams: sw kernel I/O does not implement NDTypeInterface");
-                // The types can differ w.r.t. the address space (e.g., memref<1x1000xf16> and memref<1x1000xf16, @DDR>)
+                VPUX_THROW_UNLESS(vpux::areTypesCompatible(blockArgType, ioType,
+                                                           vpux::IE::TypeComparisonMode::STRICT_EQUAL, true, true),
+                                  "createKernelParams: types of sw kernel I/O do not match");
                 VPUX_THROW_UNLESS(blockArgNdTypeIf.getShape() == ioNdTypeIf.getShape(),
                                   "createKernelParams: shapes of I/O do not match");
-                VPUX_THROW_UNLESS(blockArgNdTypeIf.getElementType() == ioNdTypeIf.getElementType(),
-                                  "createKernelParams: the element types of I/O do not match");
 
-                const auto operandVal = swKernelOp->getOpOperand(blockId).get();
-                // We serialize the data pointed to by the pointer passed to the SHAVE sw kernel.
-                // We make this serialization in the compiler since we want
-                //   execution on LeonRT to be as efficient as possible.
-                addLLVMMemrefArgToVector(paramsVector, operandVal);
+                const auto [buffer, isDynamic] = extractKernelBuffer(swKernelOp, dynInputShapesSize, blockId);
+                addTensorArgToVector(paramsVector, buffer, isDynamic);
             } else {
                 VPUX_THROW("Only block arguments are supported");
             }
         }
-    } else {
-        for (auto&& kernelRun : swKernelOp.getBody().getOps<VPUIP::SwKernelRun>()) {
-            for (auto&& operand : kernelRun.getArgs()) {
-                auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(operand);
-                if (blockArg) {
-                    auto blockId = blockArg.getArgNumber();
-                    VPUX_THROW_UNLESS(blockId < kernelOpArgsCount,
-                                      "Index '{0}' of argument of Kernel.Run operation is out of range {1}'", blockId,
-                                      kernelOpArgsCount);
-
-                    auto blockArgType = blockArg.getType();
-                    auto blockArgNdTypeIf = mlir::cast<vpux::NDTypeInterface>(blockArgType);
-                    auto ioType = blockId < insSize ? swKernelOp.getInputs()[blockId].getType()
-                                                    : swKernelOp.getOutputBuffs()[blockId - insSize].getType();
-                    auto ioNdTypeIf = mlir::cast<vpux::NDTypeInterface>(ioType);
-                    VPUX_THROW_UNLESS(blockArgNdTypeIf != nullptr || ioNdTypeIf != nullptr,
-                                      "createKernelParams: sw kernel I/O does not implement NDTypeInterface");
-                    VPUX_THROW_UNLESS(vpux::areTypesCompatible(blockArgType, ioType,
-                                                               vpux::IE::TypeComparisonMode::STRICT_EQUAL, true, true),
-                                      "createKernelParams: types of sw kernel I/O do not match");
-                    VPUX_THROW_UNLESS(blockArgNdTypeIf.getShape() == ioNdTypeIf.getShape(),
-                                      "createKernelParams: shapes of I/O do not match");
-
-                    const auto [buffer, isDynamic] = extractKernelBuffer(swKernelOp, dynInputShapesSize, blockId);
-                    addTensorArgToVector(paramsVector, buffer, isDynamic);
-                } else {
-                    VPUX_THROW("Only block arguments are supported");
-                }
-            }
-            if (kernelRun.getAttrs().has_value()) {
-                const mlir::ArrayAttr arrayAttrs = kernelRun.getAttrs().value();
-                const auto& attrs = arrayAttrs.getValue();
-                for (const auto& attr : attrs) {
-                    addAttrsToVector(paramsVector, attr);
-                }
+        if (kernelRun.getAttrs().has_value()) {
+            const mlir::ArrayAttr arrayAttrs = kernelRun.getAttrs().value();
+            const auto& attrs = arrayAttrs.getValue();
+            for (const auto& attr : attrs) {
+                addAttrsToVector(paramsVector, attr);
             }
         }
     }

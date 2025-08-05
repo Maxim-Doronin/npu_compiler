@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -313,6 +313,24 @@ IE::MemoryResourceOp vpux::IE::getSWKernelPrefetchingReservedMemory(mlir::Module
 
 SmallVector<IE::MemoryResourceOp> vpux::IE::getSWKernelPrefetchingReservedMemory(mlir::ModuleOp mainModule) {
     return details::getReservedMemoryResource(mainModule, swKernelPrefetchingResMemModuleName);
+}
+
+//
+// SW Kernel cache prefetching reserved memory
+//
+
+IE::MemoryResourceOp vpux::IE::setSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule,
+                                                                         mlir::SymbolRefAttr memSpace, int64_t size) {
+    return details::addReservedMemoryResource(mainModule, swKernelCachePrefetchingResMemModuleName, memSpace, size);
+}
+
+IE::MemoryResourceOp vpux::IE::getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule,
+                                                                         mlir::SymbolRefAttr memSpace) {
+    return details::getReservedMemoryResource(mainModule, swKernelCachePrefetchingResMemModuleName, memSpace);
+}
+
+SmallVector<IE::MemoryResourceOp> vpux::IE::getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule) {
+    return details::getReservedMemoryResource(mainModule, swKernelCachePrefetchingResMemModuleName);
 }
 
 //

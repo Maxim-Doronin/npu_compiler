@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -74,16 +74,6 @@ mlir::LogicalResult TransposedConvolutionConversion::matchAndRewrite(IE::Transpo
     auto padsEnd = getIntArrayAttr(getContext(), SmallVector<int64_t>{0, 0});
     auto dilations = getIntArrayAttr(getContext(), SmallVector<int64_t>{1, 1});
 
-    const auto outputFQ = mlir::dyn_cast<IE::FakeQuantizeOp>(*(origOp.getOutput().user_begin()));
-    if (padsOutput[Dims4D::PadsOutput::Y] > 0) {
-        paddingOutput = createPadding(rewriter, takeOpLoc(origOp, "width"), paddingOutput, Dims4D::Act::H,
-                                      padsOutput[Dims4D::PadsOutput::Y], outputFQ);
-    }
-    if (padsOutput[Dims4D::PadsOutput::X] > 0) {
-        paddingOutput = createPadding(rewriter, takeOpLoc(origOp, "heigth"), paddingOutput, Dims4D::Act::W,
-                                      padsOutput[Dims4D::PadsOutput::X], outputFQ);
-    }
-
     auto resultOP = rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), paddingOutput, origOp.getFilter(),
                                                        origOp.getBias(), strides, padsBegin, padsEnd, dilations,
                                                        origOp.getPostOpAttr(), origOp.getClampAttr(),
@@ -111,6 +101,8 @@ mlir::LogicalResult TransposedConvolutionConversion::matchAndRewrite(IE::Transpo
                                                 getIntArrayAttr(getContext(), offsets),
                                                 getIntArrayAttr(getContext(), sizes))
                            .getResult();
+
+        const auto outputFQ = mlir::dyn_cast<IE::FakeQuantizeOp>(*(origOp.getOutput().user_begin()));
         if (outputFQ != nullptr) {
             resultOP = vpux::IE::createFQ(rewriter, resultOP, outputFQ, takeOpLoc(outputFQ, "fq_out")).getOutput();
         }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
@@ -160,7 +160,6 @@ mlir::LogicalResult RemoveWait::matchAndRewrite(mlir::async::AwaitOp waitOp, OpA
 
     // If you faced with "'async.await' has more than one consumer" make sure you add your layer
     // into src/vpux_compiler/src/dialect/VPUIP/ops.cpp `redirectOpInterfacesForIE(...)`
-    // and `redirectOpInterfacesForIERT(...)`
     VPUX_THROW_UNLESS(waitOp.getResult().hasOneUse(), "'async.await' doesn't have only one consumer");
     VPUX_THROW_UNLESS(mlir::isa<mlir::func::ReturnOp>(*waitOp.getResult().user_begin()),
                       "'async.await' has non 'return' consumer");

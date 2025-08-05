@@ -1,12 +1,69 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUIP_PASSES
 #define VPUX_COMPILER_DIALECT_VPUIP_PASSES
 
 include "mlir/Pass/PassBase.td"
+
+//
+// AddSwKernelInstructionPrefetch
+//
+
+def AddSwKernelInstructionPrefetch : PassBase<"add-sw-kernel-instruction-prefetch", "vpux::FunctionPass"> {
+    let summary = "Add SW kernel instruction prefetch ops";
+
+    let description = [{
+        This pass adds a CACHE_PREFETCH SwKernel which loads specified kernel's instructions into L2 cache.
+        Prefetch operations are added at the beginning of the inference if there is enough idle time on shave
+        which can be configured via minimumShaveStartTimeForPrefetch option.
+        
+        Pass will first go over SW kernels present in the inference and gather unique kernels until it runs out of
+        free cache space or until it encounters a cache handling operation. After gathering prefetch candidates it
+        checks if first SW kernel start time is greater than minimumShaveStartTimeForPrefetch and inserts prefetch
+        operations at inference start until it runs out of ActShaves. All kernels are prefetched in parallel and
+        sequential prefetch is not supported right now. Cache is assumed to be shared between all ActShaves so it
+        doesn't matter which ActShave runs prefetch.
+
+        The reason for such a simplistic algorithm, which doesn't attempt to insert prefetch operations in the
+        middle of the execution, is sensitivity to cost model scoring of different tasks, and regressions which
+        appear when cost model has inaccurately predicted shave idle time. One way to mitigate the impact of those inaccuracies
+        is to penalize prefetch task cost by some very large constant which eliminates the regressions but it also
+        eliminates most of the beneficial prefetch operations except for those at the start of inference.
+
+        Example of schedule before and after this pass:
+
+        Before:
+        DMA             | DMA ... DMA             DMA ... DMA
+        Cluster0 DPU    |             DPU ... DPU             
+        Cluster0 SHAVE0 |                                     softmax, convert
+        Cluster0 SHAVE1 |                                     softmax
+        Cluster1 DPU    |             DPU ... DPU             
+        Cluster1 SHAVE0 |                                     topk
+        Cluster1 SHAVE1 |                                     topk
+
+        After:
+        DMA             | DMA ... DMA             DMA ... DMA
+        Cluster0 DPU    |             DPU ... DPU             
+        Cluster0 SHAVE0 | prefetch softmax                    softmax, convert
+        Cluster0 SHAVE1 | prefetch convert                    softmax
+        Cluster1 DPU    |             DPU ... DPU             
+        Cluster1 SHAVE0 | prefetch topk                       topk
+        Cluster1 SHAVE1 |                                     topk
+    }];
+
+    let options = [
+        Option<
+            "minimumShaveStartTimeForPrefetch", "minimum-shave-start-time-for-prefetch",
+            "size_t", "250000",
+            "Specifies the minimum idle time of all ActShaves that is needed for the pass to insert prefetch operations"
+        >
+    ];
+
+    let constructor = "vpux::VPUIP::createAddSwKernelInstructionPrefetchPass()";
+}
 
 //
 // MovePureViewOpBeforeCopy
@@ -33,7 +90,22 @@ def OptimizeCopies : PassBase<"optimize-copies", "vpux::FunctionPass"> {
 
     let description = [{
         This pass checks if Copy Op can be optimized out to reduce the amount of unnecessary DMAs and intermediate buffers.
+        We need to check the workload management mode to determine if we can apply certain optimizations to the Copy Op sequence.
+        This is necessary because the vpux::WorkloadManagementMode::PWLM_V0_LCA mode may fail with these optimizations, potentially causing performance regressions.
     }];
+
+    let options = [
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+            )}]
+        >
+    ];
 
     let constructor = "vpux::VPUIP::createOptimizeCopiesPass()";
 }
@@ -477,7 +549,7 @@ def WrapIntoAsyncRegions : PassBase<"wrap-into-async-regions", "vpux::FunctionPa
     let summary = "Wraps layer operations into asynchronous regions";
 
     let description = [{
-        This pass wraps each IERT and VPUIP layer operation into async region preserving linear execution.
+        This pass wraps each VPUIP layer operation into async region preserving linear execution.
     }];
 
     let constructor = "vpux::VPUIP::createWrapIntoAsyncRegionsPass()";
@@ -1008,10 +1080,9 @@ def CompressWeightsBTC : PassBase<"compress-weights-btc", "vpux::FunctionPass"> 
         4. Wrap compressed weights to flat tensor shapes with UInt8 data type.
         5. Replace original VPUIP::NNDMAOp with VPUIP::DecompressDMAOp
 
-        This pass also handles multicluster cases, where NNDMAOp is wrapped in NCEClusterTiling with
-        DistributedBuffer output type (with DUPLICATED). SOK case is supported as well since this pass
-        is set to be executed after unroll-cluster-tiling, which splits SEGMENTED buffers into per-cluster
-        chunks.
+        This pass also handles multicluster cases, where NNDMAOp has DistributedBuffer output type (with DUPLICATED).
+        SOK case is supported as well since this pass is set to be executed after unroll-distributed-ops,
+        which splits SEGMENTED buffers into per-cluster chunks.
 
         This pass behaves differently for pre-NPU37XX and post-NPU37XX platforms. For former the compression
         is done using huffman encoding and applied only to quantized data types, for the latter the
@@ -1020,38 +1091,6 @@ def CompressWeightsBTC : PassBase<"compress-weights-btc", "vpux::FunctionPass"> 
 
     let constructor = "vpux::VPUIP::createCompressWeightsBTCPass()";
 }
-
-//
-// UnwrapClusterTiling
-//
-
-def UnwrapClusterTiling : PassBase<"unwrap-cluster-tiling", "vpux::FunctionPass"> {
-    let summary = "Uwraps operations covered with NCEClusterTiling";
-
-    let description = [{
-        Remove NCEClusterTiling wrapper op and update inner task to use DistributedBuffer operands directly
-        NOTE: This is temporary pass to be removed once NCEClusterTilingOp is no longer used
-    }];
-
-    let constructor = "vpux::VPUIP::createUnwrapClusterTilingPass()";
-
-}
-
-//
-// WrapVPUIPOpsInNCEClusterTiling
-//
-
-def WrapVPUIPOpsInNCEClusterTiling : PassBase<"wrap-vpuip-ops-in-cluster-tiling", "vpux::FunctionPass"> {
-    let summary = "Wrap operations that have distributed tensors for input or output, into NCEClusterTilingOps";
-
-    let description = [{
-        Wrap operations that use Distributed tensors either for input or output in NCEClusterTiling op
-        TODO:E#158598 This pass is to be removed once NCEClusterTilingOp is no longer used
-    }];
-
-    let constructor = "vpux::VPUIP::createWrapVPUIPOpsInNCEClusterTilingPass()";
-}
-
 
 //
 // UnrollExpandDMA
@@ -1735,7 +1774,7 @@ def NNDMATiling : PassBase<"nn-dma-tiling", "vpux::FunctionPass"> {
     let summary = "Legalizes NNDMA Ops which do not fit hardware capabilities";
 
     let description = [{
-        This pass splits NNDMAOp if DMA data size is greater than 16MB(2**24 bytes) or it has more than 256 planes after unroll-cluster-tiling.
+        This pass splits NNDMAOp if DMA data size is greater than 16MB(2**24 bytes) or it has more than 256 planes after unroll-distributed-ops.
         CopyOpTiling pass has similar logic to tile CopyOp, but Distributed CopyOp can not be handled.
         This pass is added to legalize NNDMAOp so that each DMA job can fit hardware capabilities as a timely solution.
         The refactoring in E#84706 will provide a more maintainable long term solution.
@@ -1899,90 +1938,4 @@ def DispatchedInliner : PassBase<"dispatched-inliner", "vpux::ModulePass"> {
     ];
 }
 
-//
-// MoveReflectPadToCMX
-//
-
-def MoveReflectPadToCMX : PassBase<"move-reflect-pad-to-cmx", "vpux::FunctionPass"> {
-    let summary = "Moves Reflect Pad ops to CMX";
-
-    let description = [{
-        This pass moves the Reflect Pad patterns to CMX for better performance. The patterns are formed by Subview ops,
-        Copy ops and each ending with a ConcatView op. The input of the pattern that does padding on a certain dimention will be moved
-        from DDR to CMX, all the ops forming the pattern will be executed in CMX, the output of the ConcatView op
-        will be moved from CMX to DDR. The same will happen for each dimension. The copies are expected to be later optimized by OptimizeCopies.
-    }];
-
-    let constructor = "vpux::VPUIP::createMoveReflectPadToCMXPass()";
-}
-
-//
-// SerializeELFToBinary
-//
-
-def SerializeELFToBinary : PassBase<"serialize-elf-to-binary", "vpux::FunctionPass"> {
-    let summary = "Serialize ELF module to binary";
-
-    let description = [{
-        The pass serializes NPU code in the ELF dialect into a binary and stores the binary in IR as a VPUIP.Binary op.
-        An extern func op is created with the call signature the same as the entry point into the ELF binary.
-
-        The resultant ELF files will be used within the host function.
-    }];
-
-    let constructor = "vpux::VPUIP::createSerializeELFToBinaryPass()";
-
-    let dependentDialects = [
-        "vpux::VPUIP::VPUIPDialect"
-    ];
-}
-
-
-def ConvertToLLVMUMDCalls : PassBase<"convert-to-llvm-umd-calls", "vpux::ModulePass"> {
-    let summary = "Converts MLIR operations to LLVM UMD runtime API calls";
-
-    let description = [{
-        This pass converts higher-level MLIR operations into LLVM dialect operations that make calls
-        to the UMD (User Mode Driver) runtime API. The resulting code can be executed by the host CPU
-        and interfaces with the NPU device through the UMD wrapper library.
-    }];
-
-    let constructor = "vpux::VPUIP::createConvertToLLVMUMDCallsPass()";
-
-    let dependentDialects = [
-        "vpux::VPUIP::VPUIPDialect",
-        "mlir::memref::MemRefDialect",
-        "mlir::LLVM::LLVMDialect",
-        "mlir::func::FuncDialect",
-        "mlir::async::AsyncDialect"
-    ];
-}
-
-//
-// WrapFuncCallsIntoAsyncRegions
-//
-
-def WrapFuncCallsIntoAsyncRegions : PassBase<"wrap-func-calls-into-async-regions", "vpux::FunctionPass"> {
-    let summary = "Wraps function calls into async regions";
-
-    let description = [{
-        The pass wraps operations implementing CallOpInterface into async regions preserving linear execution.
-
-        The special case of the pass is handling scf.for operations. Every scf.for operation assigned with an async group.
-        It is expected that scf.for region contains at least one CallOpInterface operation.
-        Those ops are wrapped into async regions and tokens produced by async.execute are added to the group.
-        After the loop is finished, the async group is awaited by async.await_all.
-
-        The pass is designed to be used to express execution based on Level Zero submission model. It is expected that
-        async ops will be replaced with the corresponding Level Zero calls. Some ops like async.await and async_add_to_group
-        can be mapped to no-op while lowering to Level Zero as they do not have a direct equivalent in the Level Zero
-        and needed just to satisfy the async dialect requirements.
-    }];
-
-    let constructor = "vpux::VPUIP::createWrapFuncCallsIntoAsyncRegionsPass()";
-
-    let dependentDialects = [
-        "mlir::async::AsyncDialect"
-    ];
-}
 #endif

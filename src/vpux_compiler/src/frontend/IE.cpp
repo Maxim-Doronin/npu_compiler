@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/frontend/IE.hpp"
@@ -25,6 +25,7 @@
 #include "vpux/compiler/utils/cal_range_data.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/net/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -34,6 +35,10 @@
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
+
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+#include "vpux/compiler/core/developer_build_utils.hpp"
+#endif
 
 #include "intel_npu/config/config.hpp"
 
@@ -131,6 +136,120 @@ namespace {
 
 const std::string NGRAPH_ACT_SPARSITY_STATS_KEY = "activation_sparsity_statistic";
 const int64_t STATIC_RANK_MAX_DIMS = 5;
+
+class CustomOperatorAttrVisitor : public ov::AttributeVisitor {
+public:
+    CustomOperatorAttrVisitor(mlir::MLIRContext* ctx): _ctx(ctx) {};
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<void>&) override {
+        VPUX_THROW("Attribute {0} can't be processed", name);
+    }
+
+    // The remaining adapter methods fall back on the void adapter if not implemented
+    // Only string attr that is supported is "kernel_path"
+    void on_adapter(const std::string& name, ov::ValueAccessor<std::string>& adapter) override {
+        VPUX_THROW_WHEN(name != "kernel_path", "String attribute {0} is not supported", name);
+        _kernelPathAttr = mlir::StringAttr::get(_ctx, adapter.get());
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<bool>& adapter) override {
+        auto boolAttr = mlir::BoolAttr::get(_ctx, adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, boolAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<int8_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getInt8Type(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<int16_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getInt16Type(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<int32_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getInt32Type(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<int64_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getInt64Type(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<uint8_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getUInt8Type(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<uint16_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getUInt16Type(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<uint32_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getUInt32Type(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<uint64_t>& adapter) override {
+        auto intAttr = mlir::IntegerAttr::get(getUInt64Type(_ctx), static_cast<int64_t>(adapter.get()));
+        _attrs.emplace(_order, getNamedAttr(name, intAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<float>& adapter) override {
+        auto floatAttr = mlir::FloatAttr::get(mlir::FloatType::getF32(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, floatAttr));
+        _order++;
+    }
+
+    void on_adapter(const std::string& name, ov::ValueAccessor<double>& adapter) override {
+        auto floatAttr = mlir::FloatAttr::get(mlir::FloatType::getF64(_ctx), adapter.get());
+        _attrs.emplace(_order, getNamedAttr(name, floatAttr));
+        _order++;
+    }
+
+public:
+    // Gets final Attr Dictionary containing all registered valid Operator attributes
+    // kernel_path is ommited
+    mlir::DictionaryAttr getAttrDict() {
+        std::vector<mlir::NamedAttribute> sortedAttrs;
+
+        for (auto& [id, namedAttr] : _attrs) {
+            // Rename by adding id prefix for to ensure DictionaryAttr preserves order
+            namedAttr.setName(mlir::StringAttr::get(_ctx, to_string(id) + "_" + namedAttr.getName().str()));
+            sortedAttrs.push_back(namedAttr);
+        }
+
+        return mlir::DictionaryAttr::getWithSorted(_ctx, sortedAttrs);
+    }
+
+    mlir::StringAttr getKernelPath() {
+        return _kernelPathAttr;
+    }
+
+private:
+    mlir::NamedAttribute getNamedAttr(const std::string& name, mlir::Attribute valAttr) {
+        return mlir::NamedAttribute(mlir::StringAttr::get(_ctx, name), valAttr);
+    }
+
+    mlir::StringAttr _kernelPathAttr = nullptr;
+
+    // Ordered map with int key to ensure ordering of attributes
+    std::map<uint64_t, mlir::NamedAttribute> _attrs = {};
+
+    mlir::MLIRContext* _ctx = nullptr;
+    uint64_t _order = 0;
+};
 
 template <typename ResType>
 ResType getSparsityStatsFieldChecked(const std::shared_ptr<ov::Model>& model, const std::string& primaryKey,
@@ -353,12 +472,18 @@ NGraphImporter::Callback NGraphImporter::getParser(const std::shared_ptr<ov::Nod
             MAP_ENTRY(ov::opset8::DeformableConvolution),
             MAP_ENTRY(ov::opset1::VariadicSplit),
             MAP_ENTRY(ov::op::internal::RoPE),
+            MAP_ENTRY(ov::opset13::ScaledDotProductAttention),
     };
 
 #undef MAP_ENTRY
 
     const auto dispatchIt = dispatchMap.find(op->get_type_info());
-    return (dispatchIt != dispatchMap.end()) ? dispatchIt->second : nullptr;
+
+    // Default Op dispatch to OV base Op class
+    auto defaultDispatch = &NGraphImporter::parseDispatch<ov::op::Op>;
+
+    // If no match is found, dispatch to OV base Op
+    return (dispatchIt != dispatchMap.end()) ? dispatchIt->second : defaultDispatch;
 }
 
 // TODO Extend implementation to check architecture, limitation and can we really compile it
@@ -439,11 +564,11 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
         if (isBoundedShape) {
             std::transform(partialShape.begin(), partialShape.end(), std::back_inserter(boundedOutShape), toBoundedDim);
             const auto boundShape = boundedOutShape.to_shape();
-            const SmallVector<int64_t> boundedOutShapeVec(boundShape.begin(), boundShape.end());
+            const Bounds outBounds(boundShape.begin(), boundShape.end());
             if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(ndType)) {
-                ndType = boundedType.changeBounds(boundedOutShapeVec);
+                ndType = boundedType.changeBounds(outBounds);
             } else {
-                ndType = Core::BoundedTensorType::get(ndType, boundedOutShapeVec);
+                ndType = Core::BoundedTensorType::get(ndType, outBounds);
             }
         }
 
@@ -455,12 +580,12 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
                 auto inputParent = iter.get_source_output().get_node_shared_ptr();
                 if (auto ovStridedSlice = ov::as_type_ptr<const ov::op::v1::StridedSlice>(inputParent)) {
                     auto inputDataShape = ovStridedSlice->get_input_tensor(0).get_partial_shape().get_max_shape();
-                    const SmallVector<int64_t> inShapeVec(inputDataShape.begin(), inputDataShape.end());
+                    const Bounds inBounds(inputDataShape.begin(), inputDataShape.end());
 
                     if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(ndType)) {
-                        ndType = boundedType.changeBounds(inShapeVec);
+                        ndType = boundedType.changeBounds(inBounds);
                     } else {
-                        ndType = Core::BoundedTensorType::get(ndType, inShapeVec);
+                        ndType = Core::BoundedTensorType::get(ndType, inBounds);
                     }
                     return;
                 }
@@ -548,8 +673,8 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
                     dynBroadcast.setOutputBoundsAttr(getIntArrayAttr(builder.getContext(), boundedOutShape.to_shape()));
                 }
                 const auto boundedShape = boundedOutShape.to_shape();
-                const SmallVector<int64_t> boundedShapeVec(boundedShape.begin(), boundedShape.end());
-                ndType = Core::BoundedTensorType::get(ndType, boundedShapeVec);
+                const Bounds bounds(boundedShape.begin(), boundedShape.end());
+                ndType = Core::BoundedTensorType::get(ndType, bounds);
             }
             for (const auto& input : origNode->input(i).get_node()->inputs()) {
                 auto inputParent = input.get_source_output().get_node_shared_ptr();
@@ -565,20 +690,19 @@ void NGraphImporter::saveInfoAboutBounds(mlir::OpBuilder& builder, const OrigNod
                 boundedOutShape = ov::PartialShape{static_cast<int64_t>(RANGEBOUND)};
                 range->set_output_type(0, range->get_output_type(), boundedOutShape);
 
-                auto bounds = boundedOutShape.to_shape();
-                const SmallVector<int64_t> boundsVec(bounds.begin(), bounds.end());
+                const auto boundedShape = boundedOutShape.to_shape();
+                const auto bounds = Bounds(boundedShape.begin(), boundedShape.end());
 
                 // Update the bounded tensor type with the new bounds
                 if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(ndType)) {
-                    ndType = boundedType.changeBounds(boundsVec);
+                    ndType = boundedType.changeBounds(bounds);
                 } else {
-                    ndType = Core::BoundedTensorType::get(ndType, boundsVec);
+                    ndType = Core::BoundedTensorType::get(ndType, bounds);
                 }
             }
         }
         const auto outShape = boundedOutShape.to_shape();
-        const SmallVector<int64_t> outShapeVec(outShape.begin(), outShape.end());
-        const auto newTypeComponents = TypeComponents().setBounds(Bounds(outShapeVec));
+        const auto newTypeComponents = TypeComponents().setBounds(Bounds(outShape.begin(), outShape.end()));
         const auto changedTypeComponents = ndType.changeTypeComponents(newTypeComponents);
         inputs[i].setType(changedTypeComponents);
     }
@@ -637,9 +761,9 @@ mlir::func::FuncOp NGraphImporter::buildMainFunc(mlir::OpBuilder& moduleBuilder,
         const auto partialShape = paramNode->output(0).get_partial_shape();
         if (partialShape.is_dynamic()) {
             const ov::Shape ovShape = partialShape.get_max_shape();
-            const SmallVector<int64_t> ovToShapeVec(ovShape.begin(), ovShape.end());
+            const Bounds bounds(ovShape.begin(), ovShape.end());
             auto ndType = mlir::cast<NDTypeInterface>(funcInputVal.getType());
-            funcInputVal.setType(Core::BoundedTensorType::get(ndType, ovToShapeVec));
+            funcInputVal.setType(Core::BoundedTensorType::get(ndType, bounds));
         }
         _importedVals.emplace(paramNode->output(0), funcInputVal);
     }
@@ -3009,6 +3133,43 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
     addOutputs(origNode, op);
 }
 
+void NGraphImporter::parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset14::ScaledDotProductAttention>& origNode) {
+    static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::opset14::ScaledDotProductAttention>::value,
+                  "opset operation mismatch");
+
+    const auto causal = origNode->get_causal();
+    VPUX_THROW_UNLESS(causal == false, "ScaledDotProductAttention with 'causal == true' attribute is not supported.");
+
+    const auto inputs = getInputs(origNode);
+    const auto size = inputs.size();
+    VPUX_THROW_UNLESS(size >= 3 && size <= 5,
+                      "nGraph ScaledDotProductAttention node '{0}' has unsupported number of inputs '{1}'",
+                      origNode->get_friendly_name(), inputs.size());
+
+    auto getSDPAArgs = [&](size_t size) {
+        mlir::Value arg3 = nullptr, arg4 = nullptr, arg5 = nullptr;
+        if (size == 5) {
+            arg3 = inputs[3];
+            arg4 = inputs[4];
+        } else if (size == 4) {
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(inputs[3].getType());
+            const auto isMaskInput = inputType.getShape().totalSize() > 1;
+            if (isMaskInput) {
+                arg3 = inputs[3];
+            } else {
+                arg4 = inputs[3];
+            }
+        }
+        // For size == 3, all are nullptr
+        return std::make_tuple(inputs[0], inputs[1], inputs[2], arg3, arg4, arg5);
+    };
+
+    auto [inQ, inK, inV, inM, inS, inB] = getSDPAArgs(size);
+    auto op = builder.create<IE::SDPAOp>(createLocation(origNode), inQ, inK, inV, inM, inS, inB);
+    addOutputs(origNode, op);
+}
+
 void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReverseSequence>& origNode) {
     static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::op::v0::ReverseSequence>::value,
                   "opset operation mismatch");
@@ -3950,6 +4111,39 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
     addOutputs(origNode, op);
 }
 
+// Node parsing for default OV Op dispatch
+// Such cases are treated as OV Custom Operators
+void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::Op>& origNode) {
+    static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::op::Op>::value, "opset operation mismatch");
+
+    const auto inputs = getInputs(origNode);
+
+    CustomOperatorAttrVisitor collector(_ctx);
+    origNode->visit_attributes(collector);
+
+    // Use Node type as the UniqueId for the CustomOp
+    auto customOpName = origNode->get_type_name();
+    auto opUniqueIdStrAttr = mlir::StringAttr::get(_ctx, customOpName);
+
+    auto dictAttr = collector.getAttrDict();
+    auto kernelPathAttr = collector.getKernelPath();
+    VPUX_THROW_UNLESS(kernelPathAttr != nullptr,
+                      "Node {0} doesn't respect Custom Operator format or is an unrecognized operator.");
+
+    auto outputsSize = origNode->get_output_size();
+    SmallVector<mlir::Type> outputTypes;
+    for (auto i : irange(outputsSize)) {
+        auto type = importTensor(origNode->get_output_shape(i), origNode->get_output_element_type(i));
+        outputTypes.push_back(type);
+    }
+
+    auto op =
+            builder.create<IE::ExternalKernelOp>(createLocation(origNode), mlir::TypeRange(outputTypes),
+                                                 mlir::ValueRange(inputs), dictAttr, opUniqueIdStrAttr, kernelPathAttr);
+
+    addOutputs(origNode, op);
+}
+
 //
 // IR builder helpers
 //
@@ -4537,14 +4731,14 @@ mlir::RankedTensorType importUserTensor(mlir::MLIRContext* ctx, const ov::descri
             std::transform(partialShape.begin(), partialShape.end(), std::back_inserter(boundedOutShape), toBoundedDim);
         } catch (...) {
             // FIXME(E#151586) remove this try-catch block
-            Logger::global().error("Found partialShape without bounds: {0}", partialShape.to_string());
+            Logger::global().warning("Found partialShape without bounds: {0}", partialShape.to_string());
             return importedTensor;
         }
 
         auto ndType = mlir::cast<NDTypeInterface>(importedTensor);
         const auto boundShape = boundedOutShape.to_shape();
-        const SmallVector<int64_t> boundedOutShapeVec(boundShape.begin(), boundShape.end());
-        ndType = Core::BoundedTensorType::get(ndType, boundedOutShapeVec);
+        const Bounds bounds(boundShape.begin(), boundShape.end());
+        ndType = Core::BoundedTensorType::get(ndType, bounds);
 
         return mlir::cast<mlir::RankedTensorType>(ndType);
     }
@@ -4741,7 +4935,15 @@ static void addCommonOptimizationsPasses(ov::pass::Manager& manager) {
     decomp->add_matcher<ov::pass::BatchNormDecomposition>();
     decomp->add_matcher<ov::pass::EinsumDecomposition>();
     decomp->add_matcher<ov::pass::DropoutWithRandomUniformReplacer>();
-    decomp->add_matcher<ov::pass::ScaledDotProductAttentionDecomposition>();
+
+    bool enableDecompositionForSDPA = true;
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+    parseEnv("NPU_DECOMPOSE_SDPA", enableDecompositionForSDPA);
+#endif
+    if (enableDecompositionForSDPA) {
+        decomp->add_matcher<ov::pass::ScaledDotProductAttentionDecomposition>();
+    }
+
     decomp->add_matcher<ov::pass::GroupNormalizationDecomposition>();
     decomp->set_name("ov::pass::CommonDecompositions");
 
@@ -4789,10 +4991,15 @@ void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, m
 
     // Dequantization of the constants with types specified here will not be folded. If folding occurs the compiler will
     // think weights are FP16/FP32 resulting in high-precision execution.
-    ov::element::TypeVector decompression_precisions{ov::element::u2,     ov::element::u4,     ov::element::i4,
-                                                     ov::element::nf4,    ov::element::u8,     ov::element::i8,
-                                                     ov::element::f8e4m3, ov::element::f8e5m2, ov::element::f8e8m0};
+    ov::element::TypeVector decompression_precisions{ov::element::u4,     ov::element::i4,    ov::element::nf4,
+                                                     ov::element::u8,     ov::element::i8,    ov::element::f8e4m3,
+                                                     ov::element::f8e5m2, ov::element::f8e8m0};
     manager.register_pass<ov::pass::MarkDequantization>(decompression_precisions, /*fold_subtract_const=*/true);
+    // Prevent 2bit zero-point constants from being folded by OV.
+    // We need to use the sub-byte unpacking order from compiler.
+    ov::element::TypeVector decompression_precisions_keep_lp_zp{ov::element::u2};
+    manager.register_pass<ov::pass::MarkDequantization>(decompression_precisions_keep_lp_zp,
+                                                        /*fold_subtract_const=*/false);
     manager.register_pass<ov::pass::KeepConstPrecision>(decompression_precisions, /*fold_subtract_const=*/true);
     manager.register_pass<ov::pass::KeepConstAndDecompression>();
     passConfig->set_callback<ov::pass::KeepConstAndDecompression>(
@@ -4920,11 +5127,7 @@ void addNetworkInfoOp(mlir::OpBuilder& builder, mlir::FlatSymbolRefAttr mainFunc
     auto* ctx = builder.getContext();
 
     auto netInfo = builder.create<net::NetworkInfoOp>(mlir::UnknownLoc::get(ctx), mainFuncName, enableProfiling);
-    netInfo.getInputsInfo().emplaceBlock();
-    netInfo.getOutputsInfo().emplaceBlock();
-    if (enableProfiling) {
-        netInfo.getProfilingOutputsInfo().front().emplaceBlock();
-    }
+    net::setupSections(netInfo, enableProfiling);
 
     VPUX_THROW_UNLESS(parameters.size() == originalParameters.size(),
                       "Number of parameters are different between actual ({0}) and original model ({1})",
