@@ -29,7 +29,7 @@ jobs:
       build-cache: false
       build-cache-key-suffix: cache_${{ github.ref_name }}
       build-mlir: true
-      build-driver: false
+      build-driver: true
       run-unit-tests: true
       run-lit-tests: true
       run-compilation-tests: true
