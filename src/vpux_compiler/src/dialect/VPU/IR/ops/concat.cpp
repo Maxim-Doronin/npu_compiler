@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -744,7 +744,8 @@ mlir::LogicalResult FuseConcatsWithDifferentAxes::matchAndRewrite(VPU::ConcatOp 
             auto inType = sliceOp.getResult().getType();
             SmallVector<int64_t> tilingScheme;
             if (mlir::isa<VPU::SWOpInterface>(nextUser)) {
-                tilingScheme = VPU::getSWInputTensorNumTiles(clusteredOp, numCluster, strategy, inType);
+                tilingScheme =
+                        VPU::getSWInputTensorNumTiles(clusteredOp, numCluster, strategy, sliceOp.getResult(), inType);
             } else {
                 auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(nextUser);
                 auto isFilter = !mlir::isa<VPU::NCEEltwiseOp>(nceOp.getOperation()) &&

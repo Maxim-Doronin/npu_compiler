@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -174,8 +174,9 @@ void vpux::Logger::addEntryPackedActive(LogLevel msgLevel, const formatv_object_
     printTo(tempStream, "[{0}] {1}.{2,0+3} [{3}] ", logLevelPrintout[static_cast<uint8_t>(msgLevel)], timeStr, ms,
             _name);
 
-    for (size_t i = 0; i < _indentLevel; ++i)
+    for (size_t i = 0; i < _indentLevel; ++i) {
         tempStream << "  ";
+    }
 
     msg.format(tempStream);
     tempStream << "\n";

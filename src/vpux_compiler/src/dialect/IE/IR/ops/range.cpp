@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -30,13 +30,12 @@ mlir::LogicalResult vpux::IE::RangeOp::inferReturnTypeComponents(
     auto inType = mlir::cast<NDTypeInterface>(range.getStart().getType());
 
     const auto outShape = Shape{mlir::ShapedType::kDynamic};
-    const auto bounds = Bounds{RANGEBOUND};
 
     const auto typeComponents = TypeComponents()
                                         .setShape(outShape)
                                         .setDimsOrder(DimsOrder::fromNumDims(outShape.size()))
                                         .setElementType(range.getDstElemType())
-                                        .setBounds(bounds);
+                                        .setBounds(Bounds{RANGEBOUND});
 
     auto outType = inType.changeTypeComponents(typeComponents);
 

@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2022-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 #
@@ -192,3 +192,4 @@ endif()
 #
 
 ov_cpack(${NPU_CPACK_COMPONENTS_ALL})
+

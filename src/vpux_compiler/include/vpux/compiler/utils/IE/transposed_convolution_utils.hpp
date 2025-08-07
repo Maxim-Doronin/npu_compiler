@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -75,25 +75,24 @@ mlir::FailureOr<mlir::Value> createUpsampling(mlir::PatternRewriter& rewriter, m
         }
     }
 
-    // Output padding refers to copying convolutional input data. If the value of output padding is less than the value
-    // of PadR&PadB, the copied data will be 0, so it can be merged with PadR&PadB.
-    if ((padsOutput[Dims4D::PadsOutput::Y] > 0) && (padsOutput[Dims4D::PadsOutput::Y] <= padB)) {
+    // Output padding refers to padding 0 for convolutional input data.
+    if (padsOutput[Dims4D::PadsOutput::Y] > 0) {
         padB += padsOutput[Dims4D::PadsOutput::Y];
         padsOutput[Dims4D::PadsOutput::Y] = 0;
     }
-    if ((padsOutput[Dims4D::PadsOutput::X] > 0) && (padsOutput[Dims4D::PadsOutput::X] <= padR)) {
+    if (padsOutput[Dims4D::PadsOutput::X] > 0) {
         padR += padsOutput[Dims4D::PadsOutput::X];
         padsOutput[Dims4D::PadsOutput::X] = 0;
+    }
+
+    if ((padL < 0) || (padR < 0) || (padT < 0) || (padB < 0)) {
+        return errorAt(origOp, "Upsampling layer does not support negative paddings");
     }
 
     auto padChannelAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
     auto padHeightAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{padT, padB});
     auto padWidthAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{padL, padR});
     auto padAttr = IE::UpsamplingPadAttr::get(ctx, padChannelAttr, padHeightAttr, padWidthAttr);
-
-    if ((padL < 0) || (padR < 0) || (padT < 0) || (padB < 0)) {
-        return errorAt(origOp, "Upsampling layer does not support negative paddings");
-    }
 
     auto upsamplingFactor = getIntArrayAttr(
             ctx, SmallVector<int64_t>{stridesVector[Dims4D::Strides::X], stridesVector[Dims4D::Strides::Y], 1});

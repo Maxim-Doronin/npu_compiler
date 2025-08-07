@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -23,7 +23,7 @@ llvm::hash_code hash_value(const elf::Version& version);
 
 namespace vpux::VPURegMapped {
 struct RegFieldValue {
-    RegFieldValue(uint64_t value = 0, elf::Version version = elf::Version()): value(value), version(version){};
+    RegFieldValue(uint64_t value = 0, elf::Version version = elf::Version()): value(value), version(version) {};
 
     uint64_t value{};
     elf::Version version{};

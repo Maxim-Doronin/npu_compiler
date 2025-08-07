@@ -131,7 +131,7 @@ private:
         configuration.emplace(ov::enable_profiling.name(), true);
         configuration.emplace(ov::intel_npu::compiler_type.name(), compilerType);
         if (nTiles.has_value()) {
-            configuration.emplace(ov::intel_npu::dpu_groups.name(), nTiles.value());
+            configuration.emplace(ov::intel_npu::tiles.name(), nTiles.value());
         }
 
         ProfilingSubgraphTestBase::SetUp();

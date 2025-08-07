@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
@@ -190,4 +190,16 @@ bool IE::isODUPermuteEffectiveForShape(const ShapeRef shape, const int64_t align
     // PermuteQuantize has to process a tensor which is 16 times bigger than the original.
     const int64_t minimalEffectiveWidth = 2;
     return IH * IW % alignment == 0 || IW >= minimalEffectiveWidth;
+}
+
+bool IE::canConvertToNCHWInOrderWithPermuteCast(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType) {
+    const auto inOrder = inType.getDimsOrder();
+    const auto inShape = inType.getShape();
+    const auto outOrder = outType.getDimsOrder();
+    return inOrder == DimsOrder::CNHW && inShape[Dims4D::Act::N] == 1 && outOrder == DimsOrder::NHWC;
+}
+
+bool IE::checkNCEPermuteShapeCompatibility(ShapeRef inShape, ShapeRef outShape, int64_t alignment) {
+    return IE::isShapeCompatibleWithODUPermute(inShape, alignment) &&
+           IE::isShapeCompatibleWithODUPermute(outShape, alignment);
 }

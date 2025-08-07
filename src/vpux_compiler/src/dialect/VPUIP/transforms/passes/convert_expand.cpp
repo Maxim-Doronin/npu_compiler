@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
@@ -28,7 +28,7 @@ class PaddingContext {
 public:
     PaddingContext(const mlir::Location loc, const ShapeRef inShape, const mlir::Value expandedBuffer,
                    const mlir::Value constantBuffer)
-            : _loc(loc), _inShape(inShape), _expandedBuffer(expandedBuffer), _constantBuffer(constantBuffer){};
+            : _loc(loc), _inShape(inShape), _expandedBuffer(expandedBuffer), _constantBuffer(constantBuffer) {};
     PaddingContext(const PaddingContext&) = delete;
     PaddingContext(const PaddingContext&&) = delete;
     PaddingContext& operator=(const PaddingContext&) = delete;

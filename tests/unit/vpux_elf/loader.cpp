@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -283,8 +283,8 @@ TEST(ELFLoader, ThrowWhenBadSectionType) {
     OV_ASSERT_NO_THROW(elf = generateBadSectionTypeElf());
 
     DDRAccessManager<elf::DDRAlwaysEmplace> accessor(reinterpret_cast<const uint8_t*>(elf.data()), elf.size());
-    VPUXLoader loader(&accessor, &bufMgr);
-    ASSERT_THROW(loader.load(gSymTab.symTab(), false, {}), ImplausibleState);
+
+    ASSERT_THROW(VPUXLoader(&accessor, &bufMgr), ImplausibleState);
 }
 
 TEST(ELFLoader, NoThrowWhenUnrecognizedUserSectionType) {

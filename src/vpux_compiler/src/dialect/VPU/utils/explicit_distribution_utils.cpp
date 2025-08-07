@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
@@ -15,7 +15,8 @@ using namespace vpux;
 
 VPU::OverlapDistributionParams VPU::getExplicitOverlapParamsForSWOpInput(VPU::SWOpInterface swOp, ShapeRef outShape,
                                                                          ArrayRef<int64_t> numTiles,
-                                                                         ArrayRef<int64_t> alignment) {
+                                                                         ArrayRef<int64_t> alignment,
+                                                                         const vpux::TileInfo& origOutTile) {
     VPUX_THROW_WHEN(swOp == nullptr, "Cannot get SW DistributionInfoAttr, is not a SW op");
     VPUX_THROW_WHEN(swOp->getNumResults() != 1, "More than one result for Sw op: {0}", swOp);
 
@@ -27,7 +28,7 @@ VPU::OverlapDistributionParams VPU::getExplicitOverlapParamsForSWOpInput(VPU::SW
     VPUX_THROW_WHEN(clusteredOp == nullptr, "Sw op {0} is not a ClusteredOp", swOp->getLoc());
     for (const auto& [index, operand] : operands | indexed) {
         const auto ndTypeInterface = mlir::dyn_cast<vpux::NDTypeInterface>(operand.getType());
-        if (getSWInputTensorDistributionMode(clusteredOp, strategy, ndTypeInterface) ==
+        if (getSWInputTensorDistributionMode(clusteredOp, strategy, operand, ndTypeInterface) ==
             VPU::DistributionMode::OVERLAPPED) {
             VPUX_THROW_WHEN(overlappedInputIdx.has_value(), "More than one OVERLAPPED input for Sw op: {0}", swOp);
             overlappedInputIdx = index;
@@ -40,18 +41,77 @@ VPU::OverlapDistributionParams VPU::getExplicitOverlapParamsForSWOpInput(VPU::SW
         alignmentValue = alignment;
     }
 
+    auto tilingBuilder = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(swOp.getOperation());
+    VPUX_THROW_WHEN(tilingBuilder == nullptr, "Cannot cast op to TilingBuilderOpInterface at {0}", swOp.getLoc());
+
+    std::optional<InputTiling> origInputsTileInfo = std::nullopt;
+    if (origOutTile != vpux::TileInfo(ShapeRef())) {
+        origInputsTileInfo = tilingBuilder.backInferTileInfo(origOutTile, Logger::global());
+    }
+
     const auto tiles = fillDividedTiles(Shape(numTiles), outShape, alignmentValue);
     VPUX_THROW_WHEN(mlir::failed(tiles), "Incorrect tiles at {0}", swOp.getLoc());
     const auto& outTiles = tiles.value();
 
-    auto tilingBuilder = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(swOp.getOperation());
-    VPUX_THROW_WHEN(tilingBuilder == nullptr, "Cannot cast op to TilingBuilderOpInterface at {0}", swOp.getLoc());
+    // When we multicluster a slice of the original op, we need to locate
+    // the multicluster slice relative to the full tensor. Otherwise, the
+    // back-infer algorithm might fail due to not also getting the updated
+    // attributes for the original op slice.
+
+    // At first, we take the multicluster slice (subTile) and add to it the
+    // original offsets of the tile to it (if we do have tile information).
+    // E.g. orig output tensor 1x512x256x122
+    //       -> we're looking to multicluster slice:
+    //     origOutTile = off[0, 0, 120, 10] sz[1, 512, 100, 50]
+    //       -> for 2 clusters we get on W:
+    //     cl0: off[0, 0, 120, 10] sz[1, 512, 100, 25]
+    //     cl1: off[0, 0, 120, 35] sz[1, 512, 100, 25]
+    auto getOutTileInFullOutput = [&](const TileInfo& subTile) -> TileInfo {
+        if (origOutTile == vpux::TileInfo(ShapeRef())) {
+            return subTile;
+        }
+
+        auto adjustedTile = subTile;
+        for (auto idx : irange(subTile.offsets.size())) {
+            adjustedTile.offsets[Dim(idx)] += origOutTile.offsets[Dim(idx)];
+            adjustedTile.axis[Dim(idx)] *= origOutTile.axis[Dim(idx)];
+        }
+
+        return adjustedTile;
+    };
+
+    // After back-inferring, we use the generated slice in the full tensor
+    // and the back-inferred input of origOutTile to represent the input slice
+    // relative to the tile we got for origOp
+    // E.g. orig back-inferred input tensor
+    //          off [0, 30, 15, 0] sz[1, 13, 26, 40]
+    //       -> for 2 clusters, we got the following slices in full tensor:
+    //     cl0: off[0, 30, 15, 0] sz[1, 7, 26, 40]
+    //     cl1: off[0, 37, 15, 0] sz[1, 6, 26, 40]
+    //       -> after adjusting offsets relative to the tile slice:
+    //     cl0: off[0, 0, 0, 0] sz[1, 7, 26, 40]
+    //     cl1: off[0, 7, 0, 0] sz[1, 6, 26, 40]
+    auto getClusterTileFromTileInFullTensor = [&](InputTiling& inTiles) {
+        if (!origInputsTileInfo.has_value()) {
+            return;
+        }
+
+        const auto& overlappedInputOrigOffests = origInputsTileInfo.value().tiles[overlappedInputIdx.value()].offsets;
+        for (auto idx : irange(overlappedInputOrigOffests.size())) {
+            inTiles.tiles[overlappedInputIdx.value()].offsets[Dim(idx)] -= overlappedInputOrigOffests[Dim(idx)];
+        }
+    };
+
     SmallVector<InputTiling> inputTiles;
     for (const auto& outTile : outTiles) {
-        inputTiles.push_back(tilingBuilder.backInferTileInfo(outTile, Logger::global()));
-        VPUX_THROW_UNLESS(inputTiles.back().tiles.size() == operands.size(),
+        auto outTileInFullTensor = getOutTileInFullOutput(outTile);
+        auto inputTiling = tilingBuilder.backInferTileInfo(outTileInFullTensor, Logger::global());
+        VPUX_THROW_UNLESS(inputTiling.tiles.size() == operands.size(),
                           "Unexpected input operands size: expected {0}, but got {1}", operands.size(),
-                          inputTiles.back().tiles.size());
+                          inputTiling.tiles.size());
+
+        getClusterTileFromTileInFullTensor(inputTiling);
+        inputTiles.push_back(inputTiling);
     }
 
     SmallVector<SmallVector<int64_t>> inputPerClusterShape;
@@ -76,7 +136,7 @@ VPU::DistributionInfoAttr VPU::getSWExplicitDistributionInfoAttr(
     return vpux::VPU::DistributionInfo::getAttrFromClass(
             swOp.getContext(),
             getSWExplicitDistributionInfo(swOp, shape, distributionMode, numTilesArr, numClusters.getInt(),
-                                          alignmentArr, uniformDistributedSegments ? true : false, overlapParams));
+                                          alignmentArr, uniformDistributedSegments != nullptr, overlapParams));
 }
 
 VPU::DistributionInfo VPU::getSWExplicitDistributionInfo(VPU::SWOpInterface swOp, ShapeRef shape,

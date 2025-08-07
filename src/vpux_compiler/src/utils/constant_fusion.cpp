@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/constant_fusion.hpp"
@@ -141,30 +141,6 @@ Const::DeclareOp ConstantFusing::getConstAndDma(mlir::Value constant, mlir::Oper
     }
 
     return constDeclareOp;
-}
-
-int32_t ConstantFusing::getOffsetForConstant(VPUIP::NCEClusterTaskOp& nceOp, mlir::Value constant) {
-    int32_t offset = 0;
-    VPUIP::ViewOp viewOp = nullptr;
-    if (constant == nullptr) {
-        return offset;
-    }
-
-    auto arg = mlir::dyn_cast<mlir::BlockArgument>(constant);
-    if (arg != nullptr) {
-        auto execParentOp = nceOp->getParentOfType<VPUIP::NCEClusterTilingOp>();
-        viewOp = execParentOp->getOperand(arg.getArgNumber()).getDefiningOp<VPUIP::ViewOp>();
-        VPUX_THROW_UNLESS(viewOp != nullptr, "Tiled Constant found without a ViewOp");
-    } else {
-        viewOp = constant.getDefiningOp<VPUIP::ViewOp>();
-        VPUX_THROW_UNLESS(viewOp != nullptr, "Getting Offset: Constant found without a ViewOp");
-    }
-
-    auto subViewOp = viewOp.getSource().getDefiningOp<VPUIP::SubViewOp>();
-    VPUX_THROW_UNLESS(subViewOp != nullptr, "SubViewOp expected as source for ViewOp for tensor fusion");
-
-    auto offsets = subViewOp.getStaticOffsets();
-    return parseIntArrayAttr<int32_t>(offsets).back();
 }
 
 VPUIP::DistributedBufferType ConstantFusing::getDistributedBufferType(VPUIP::DistributedBufferType origDistType,

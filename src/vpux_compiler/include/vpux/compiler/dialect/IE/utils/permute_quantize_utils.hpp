@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -18,6 +18,8 @@ bool isLegalReorderLikeToPermuteQuantize(vpux::NDTypeInterface inType, vpux::NDT
 std::optional<SmallVector<int64_t>> getAdjustHW(int64_t alignment, int64_t width, int64_t height);
 bool isODUPermuteEffectiveForShape(const ShapeRef shape, const int64_t alignment);
 bool isShapeCompatibleWithODUPermute(const ShapeRef shape, const int64_t alignment);
+bool canConvertToNCHWInOrderWithPermuteCast(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType);
+bool checkNCEPermuteShapeCompatibility(ShapeRef inShape, ShapeRef outShape, int64_t alignment);
 
 }  // namespace IE
 }  // namespace vpux

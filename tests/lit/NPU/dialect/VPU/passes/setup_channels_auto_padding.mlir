@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --vpu-arch=%arch% --setup-channels-auto-padding="enable-auto-padding-odu enable-auto-padding-idu" %s | FileCheck %s --strict-whitespace

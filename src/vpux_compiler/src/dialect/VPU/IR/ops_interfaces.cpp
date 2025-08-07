@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -120,6 +120,20 @@ mlir::LogicalResult vpux::VPU::details::verifyInputTypeOp(mlir::Operation* op, v
             vpux::VPU::NCEInvariant::isInputActTypeSupported(inputType, alignment, supportsInputActCompression));
 }
 
+mlir::LogicalResult vpux::VPU::details::verifyInputQuantization(mlir::Operation* op) {
+    for (auto operand : op->getOperands()) {
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
+        auto elemType = inputType.getElementType();
+        if (auto inputQType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
+            bool is16BitsQuantization = inputQType.getStorageType().isInteger(16);
+            if (is16BitsQuantization) {
+                return mlir::failure();
+            }
+        }
+    }
+    return mlir::success();
+}
+
 //
 // TilingBuilderOpInterface
 //
@@ -208,6 +222,9 @@ mlir::LogicalResult vpux::VPU::verifyNCEOp(mlir::Operation* op) {
         return errorAt(op, "NCE Operation '{0}' must attach AlignedChannelsOpInterface", op->getName());
     }
 
+    if (vpux::VPU::details::verifyInputQuantization(op).failed()) {
+        return errorAt(op, "Invalid quantization type");
+    }
     return iface.verifyChannels();
 }
 

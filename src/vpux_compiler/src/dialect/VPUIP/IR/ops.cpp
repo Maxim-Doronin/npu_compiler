@@ -1,14 +1,12 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/IERT/dialect.hpp"
-#include "vpux/compiler/dialect/IERT/types.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -79,8 +77,8 @@ bool isSupportedIsolatedTilingConvBased(ConcreteOp origOp, const OutputTiling& t
             auto numClusters = vpux::VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
                                                                 clusteredOp.getMultiClusterStrategy().value());
             return origOp.fitIntoCMX(
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, nullptr,
-                                                            inputTile),
+                    VPU::getDistributedActivationTypeFromOp(clusteredOp, clusteredOp->getOperand(0), inputTileType,
+                                                            numClusters, nullptr, inputTile),
                     VPU::getDistributedFilterTypeFromOp(nceOp, filterTileType, numClusters),
                     VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outputTile));
         }
@@ -137,7 +135,8 @@ bool isSupportedIsolatedTiling(VPU::NCEReduceOp origOp, const OutputTiling& tile
         auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
                                                       clusteredOp.getMultiClusterStrategy().value());
         return origOp.fitIntoCMX(
-                VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, nullptr, inputTile),
+                VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                        nullptr, inputTile),
                 VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outputTile));
     });
 }
@@ -231,8 +230,8 @@ bool isSupportedIsolatedTiling(VPU::NCEMaxPoolOp origOp, const OutputTiling& til
             auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
                                                           clusteredOp.getMultiClusterStrategy().value());
             return origOp.fitIntoCMX(
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, nullptr,
-                                                            inputTile),
+                    VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                            nullptr, inputTile),
                     VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outputTile));
         }
         return origOp.fitIntoCMX(inputTileType, outputTileType);
@@ -270,8 +269,8 @@ bool isSupportedIsolatedTiling(VPU::NCEAveragePoolOp origOp, const OutputTiling&
             auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
                                                           clusteredOp.getMultiClusterStrategy().value());
             return origOp.fitIntoCMX(
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, nullptr,
-                                                            inputTile),
+                    VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                            nullptr, inputTile),
                     VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outputTile));
         }
         return origOp.fitIntoCMX(inputTileType, outputTileType);
@@ -304,10 +303,10 @@ bool isSupportedIsolatedTilingEltwise(mlir::Operation* origOp, const OutputTilin
 
             return mlir::succeeded(VPU::NCEEltwiseOp::verifyEltwiseCMX(
                     origOp->getLoc(), module, isInplace,
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, input1TileType, numClusters, outputTileType,
-                                                            tile),
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, input2TileType, numClusters, outputTileType,
-                                                            tile),
+                    VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp->getOperand(0), input1TileType,
+                                                            numClusters, outputTileType, tile),
+                    VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp->getOperand(1), input2TileType,
+                                                            numClusters, outputTileType, tile),
                     VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters,
                                                         {input1TileType, input2TileType})));
         }
@@ -364,9 +363,9 @@ SmallVector<vpux::NDTypeInterface> getAllOperandsSwInterface(VPU::SWOpInterface 
     }
 
     SmallVector<vpux::NDTypeInterface> distributedTensorTypes;
-    for (auto inputTileType : inputTileTypes) {
-        auto inDistributedType =
-                VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, outputTileTypes[0]);
+    for (auto [idx, inputTileType] : inputTileTypes | indexed) {
+        auto inDistributedType = VPU::getDistributedActivationTypeFromOp(
+                clusteredOp, clusteredOp->getOperand(idx), inputTileType, numClusters, outputTileTypes[0], outputTile);
         distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
     }
 
@@ -607,8 +606,8 @@ bool isSupportedIsolatedTiling(VPU::NCEPermuteOp origOp, const OutputTiling& til
                     mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                             .getValue());
             return origOp.fitIntoCMX(
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, outputTileType,
-                                                            inputTile),
+                    VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                            outputTileType, inputTile),
                     VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outputTile));
         }
         return origOp.fitIntoCMX(inputTileType, outputTileType);
@@ -653,7 +652,8 @@ bool isSupportedIsolatedTilingDetectionOutputSort(VPU::DetectionOutputSortOp ori
         for (const auto& [operand, tile] : zip(operands, inputTiles)) {
             const auto tensorType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
             const auto denseTile = tensorType.extractDenseTile(tile.offsets, tile.shape);
-            const auto denseInputTile = getDistributedActivationTypeFromOp(clusteredOp, denseTile, numClusters);
+            const auto denseInputTile =
+                    getDistributedActivationTypeFromOp(clusteredOp, operand, denseTile, numClusters);
             distributedTiles.push_back(denseInputTile);
         }
 
@@ -732,8 +732,9 @@ bool isSupportedPipeliningTilingSwLayer(mlir::Operation* origOp, const OutputTil
 SmallVector<Dim> getTileDims(ShapeRef tileAxis) {
     SmallVector<Dim> tileDims;
     for (unsigned i = 0; i < tileAxis.size(); i++) {
-        if (tileAxis[Dim(i)] > 1)
+        if (tileAxis[Dim(i)] > 1) {
             tileDims.emplace_back(Dim(i));
+        }
     }
     return tileDims;
 }
@@ -1255,6 +1256,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::TileOp::attachInterface<SwLayerTilingInfoOpModel<VPU::TileOp>>(*ctx);
         VPU::DynamicTileOp::attachInterface<SwLayerTilingInfoOpModel<VPU::DynamicTileOp>>(*ctx);
         VPU::NormalizeL2Op::attachInterface<SwLayerTilingInfoOpModel<VPU::NormalizeL2Op>>(*ctx);
+        VPU::CumSumOp::attachInterface<SwLayerTilingInfoOpModel<VPU::CumSumOp>>(*ctx);
         VPU::YuvToRgbOp::attachInterface<SwLayerTilingInfoOpModel<VPU::YuvToRgbOp>>(*ctx);
         VPU::SquaredDifferenceOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SquaredDifferenceOp>>(*ctx);
         VPU::GeluOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GeluOp>>(*ctx);
@@ -1467,6 +1469,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::RoPEOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::DynamicDataMaskOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::SDPAOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::ExternalKernelOp::attachInterface<SoftwareLayerOpModel>(*ctx);
     });
 
     // When implementing a new SW core, remove the corresponding operation from setupExtraInterfacesAdditional
@@ -1553,7 +1556,7 @@ Byte vpux::VPUIP::SubViewOp::getByteOffset() {
             return std::nullopt;
         }
 
-        // ClusterTiling and subview are done on the same axis+
+        // Distributed and subview are done on the same axis+
         if (origShape[Dim(tileIndexVal)] != subShape[Dim(tileIndexVal)]) {
             VPUX_THROW_WHEN(distribution.getMode().getValue() == VPU::DistributionMode::OVERLAPPED,
                             "Cannot extract correct address for subview with OVERLAPPED distribution mode and "
@@ -1648,16 +1651,6 @@ Byte vpux::VPUIP::ExtractFlatSliceOp::getByteOffset() {
     Byte offset = strides[tileDim] * dimOffset;
 
     return offset;
-}
-
-//
-// VPUIP_BinaryOp
-//
-void vpux::VPUIP::BinaryDataOp::build(mlir::OpBuilder& builder, mlir::OperationState& result, mlir::StringRef name,
-                                      mlir::Attribute object) {
-    result.attributes.push_back(
-            builder.getNamedAttr(mlir::SymbolTable::getSymbolAttrName(), builder.getStringAttr(name)));
-    result.attributes.push_back(builder.getNamedAttr("object", object));
 }
 
 //

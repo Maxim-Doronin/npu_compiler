@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
@@ -39,6 +39,12 @@ func.func @Fold(%arg0: memref<1x3x8x4xf32, #NHWC>) -> memref<1x3x8x4xf32, #NHWC>
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
+module @VPU.SW {
+func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {
+        VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE
+    }
+}
+
 // CHECK-LABEL: @ComposeSubView
 func.func @ComposeSubView(%arg0: memref<1x3x8x4xf32>) -> memref<1x3x8x4xf32> {
     %0 = memref.alloc() : memref<1x3x16x16xf32>
@@ -51,10 +57,11 @@ func.func @ComposeSubView(%arg0: memref<1x3x8x4xf32>) -> memref<1x3x8x4xf32> {
         memref<1x3x16x8xf32, {order = #NCHW, strides = [768, 256, 16, 1]}> to
         memref<1x3x8x4xf32, {order = #NCHW, strides = [768, 256, 16, 1]}>
 
-    %3 = IERT.ReLU
-        inputs(%2 : memref<1x3x8x4xf32, {order = #NCHW, strides = [768, 256, 16, 1]}>)
-        outputs(%arg0 : memref<1x3x8x4xf32>)
-        -> memref<1x3x8x4xf32>
+    %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+        inputs(%2 as %input: memref<1x3x8x4xf32, {order = #NCHW, strides = [768, 256, 16, 1]}>)
+        outputs(%arg0 as %output: memref<1x3x8x4xf32>) on tile 0 -> memref<1x3x8x4xf32> {
+        VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x3x8x4xf32, {order = #NCHW, strides = [768, 256, 16, 1]}>, memref<1x3x8x4xf32>
+    }
 
     return %3 : memref<1x3x8x4xf32>
 
@@ -63,9 +70,9 @@ func.func @ComposeSubView(%arg0: memref<1x3x8x4xf32>) -> memref<1x3x8x4xf32> {
     // CHECK:       [[VAR1:%.*]] = VPUIP.SubView [[VAR0]] [0, 0, 8, 12] [1, 3, 8, 4] :
     // CHECK-SAME:      memref<1x3x16x16xf32> to memref<1x3x8x4xf32, {order = #NCHW, strides = [768, 256, 16, 1]}>
 
-    // CHECK:       [[VAR2:%.*]] = IERT.ReLU
-    // CHECK-SAME:      inputs([[VAR1]] : memref<1x3x8x4xf32, {order = #NCHW, strides = [768, 256, 16, 1]}>)
-    // CHECK-SAME:      outputs(%arg0 : memref<1x3x8x4xf32>)
+    // CHECK:       [[VAR2:%.*]] = VPUIP.SW.Kernel
+    // CHECK-SAME:      inputs([[VAR1]]
+    // CHECK-SAME:      outputs(%arg0
     // CHECK-SAME:      -> memref<1x3x8x4xf32>
 
     // CHECK:       return [[VAR2]] : memref<1x3x8x4xf32>

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -37,11 +37,12 @@ struct SCFTileInfo {
     SCFShape shape;
     SCFShape offsets;
     SCFShape axis;
+    Bounds bounds;
 
     SCFTileInfo() = delete;
 
-    explicit SCFTileInfo(SCFShapeRef shape, SCFShapeRef offsets, SCFShapeRef axis)
-            : shape(shape), offsets(offsets), axis(axis) {
+    explicit SCFTileInfo(SCFShapeRef shape, SCFShapeRef offsets, SCFShapeRef axis, BoundsRef bounds = {})
+            : shape(shape), offsets(offsets), axis(axis), bounds(bounds) {
     }
 
     explicit SCFTileInfo(ArrayRef<int64_t> shapeInt, mlir::OpBuilder& builder)
@@ -54,6 +55,13 @@ struct SCFTileInfo {
             : shape(shape),
               offsets(SCFShape(shape.size(), builder.getIndexAttr(0))),
               axis(SCFShape(shape.size(), builder.getIndexAttr(1))) {
+    }
+
+    explicit SCFTileInfo(SCFShapeRef shape, BoundsRef bounds, mlir::OpBuilder& builder)
+            : shape(shape),
+              offsets(SCFShape(shape.size(), builder.getIndexAttr(0))),
+              axis(SCFShape(shape.size(), builder.getIndexAttr(1))),
+              bounds(bounds) {
     }
 };
 

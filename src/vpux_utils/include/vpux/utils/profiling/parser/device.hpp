@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -36,8 +36,9 @@ inline const char* const* EnumNamesTargetDevice() {
 }
 
 inline const char* EnumNameTargetDevice(TargetDevice e) {
-    if (IsOutRange(e, TargetDevice_NONE, TargetDevice_VPUX311X))
+    if (IsOutRange(e, TargetDevice_NONE, TargetDevice_VPUX311X)) {
         return "";
+    }
     const size_t index = static_cast<size_t>(e);
     return EnumNamesTargetDevice()[index];
 }
@@ -48,8 +49,9 @@ inline const char* const* EnumNamesTargetDeviceRevision() {
 }
 
 inline const char* EnumNameTargetDeviceRevision(TargetDeviceRevision e) {
-    if (IsOutRange(e, TargetDeviceRevision_NONE, TargetDeviceRevision_B0))
+    if (IsOutRange(e, TargetDeviceRevision_NONE, TargetDeviceRevision_B0)) {
         return "";
+    }
     const size_t index = static_cast<size_t>(e);
     return EnumNamesTargetDeviceRevision()[index];
 }

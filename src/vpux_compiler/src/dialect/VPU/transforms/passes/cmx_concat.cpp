@@ -886,14 +886,14 @@ size_t OutputConcatPattern::getConcatSize() {
 bool OutputConcatPattern::areConcatPartsTypesConsistent(ArrayRef<OutputConcatPart> parts) const {
     // Check if all branches are of the same type
     // Either all or none should be in multi cluster mode
-    size_t nceClusterTilingParts = 0;
+    size_t distributedOpParts = 0;
     for (auto concatPart : parts) {
         if (concatPart.isMultiCluster()) {
-            nceClusterTilingParts++;
+            distributedOpParts++;
         }
     }
 
-    if (nceClusterTilingParts > 0 && nceClusterTilingParts != parts.size()) {
+    if (distributedOpParts > 0 && distributedOpParts != parts.size()) {
         return false;
     }
 
@@ -1097,9 +1097,9 @@ mlir::FailureOr<InputConcatPattern> CMXConcatPass::getInputPattern(VPU::ConcatOp
 
         if (isDistributedType(inputCopyOp->getOperand(0)) || isDistributedType(inputCopyOp->getResult(0))) {
             if (parentNCEOp) {
-                // ViewOp is inserted between NCEPermuteOp and ClusterTiling copy(CMX2CMX) when bufferizing for
+                // ViewOp is inserted between NCEPermuteOp and distributed copy(CMX2CMX) when bufferizing for
                 // NCEPermuteOp.
-                // The ViewOp would block removing this CMX2CMX ClusterTiling copy and lead to unrolling error
+                // The ViewOp would block removing this CMX2CMX distributed copy and lead to unrolling error
                 // because the input and ouput are both distributed.
                 // So skip CMXConcat for NCEPermuteOp, see E#118060 for details.
                 if (mlir::isa<VPU::NCEPermuteOp>(parentNCEOp)) {
@@ -1148,7 +1148,7 @@ mlir::FailureOr<OutputConcatPattern> CMXConcatPass::getOutputPattern(VPU::Concat
         auto outputSliceOp = mlir::dyn_cast<VPU::SliceOp>(user);
         auto outputCopyOp = mlir::dyn_cast<VPU::CopyOp>(user);
 
-        // Store the CopyOp or ClusterTiling(CopyOp)
+        // Store the CopyOp
         SmallVector<mlir::Operation*> copyOutOps;
         if (outputSliceOp) {
             // case 1. if the child of concat is SliceOp

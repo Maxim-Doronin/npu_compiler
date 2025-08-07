@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -40,9 +40,9 @@ public:
         Byte maxRequiredCMX;
         SmallVector<VPUIP::SubViewOp> subviews;
 
-        SubviewSubgraphInfo(): maxRequiredCMX(Byte(0)){};
+        SubviewSubgraphInfo(): maxRequiredCMX(Byte(0)) {};
         SubviewSubgraphInfo(const Byte& maxCMX, ArrayRef<VPUIP::SubViewOp> subviewOps)
-                : maxRequiredCMX(maxCMX), subviews(subviewOps){};
+                : maxRequiredCMX(maxCMX), subviews(subviewOps) {};
 
         ~SubviewSubgraphInfo() = default;
     };

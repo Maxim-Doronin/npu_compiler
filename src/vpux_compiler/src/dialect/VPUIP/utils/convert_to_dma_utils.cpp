@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -122,21 +122,63 @@ SmallVector<Shape> computeDMASubShape(VPU::ArchKind arch, ShapeRef shape, Dim nu
 }
 }  // namespace
 
-bool vpux::VPUIP::isBeneficialForUsingPermuteDMA(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType,
-                                                 mlir::AffineMap memPerm, int64_t dmaPortCount, vpux::Logger log) {
-    // Checking Shave optimizations
-    if (arch != VPU::ArchKind::NPU37XX) {
+bool vpux::VPUIP::satisfiesOptimizedMemPermute(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType) {
+    // MemPermute kernel is specially optimized for the conditions below
+    if (arch == VPU::ArchKind::NPU37XX) {
+        return false;
+    }
+    const auto inBits = inType.getElemTypeSize().count();
+    const auto inOrder = inType.getDimsOrder();
+    const auto outOrder = outType.getDimsOrder();
+
+    if ((inOrder == DimsOrder::NHWC) && (outOrder == DimsOrder::NCHW)) {
         const auto inC = inType.getShape()[Dims4D::Act::C];
         const auto inW = inType.getShape()[Dims4D::Act::W];
-        const auto inBits = inType.getElemTypeSize().count();
-        const auto inOrder = inType.getDimsOrder();
-        const auto outOrder = outType.getDimsOrder();
-
-        if ((inOrder == DimsOrder::NHWC) && (outOrder == DimsOrder::NCHW)) {
-            if ((inC == 4) && (inW >= 256) && (inBits == 8)) {
-                return false;
-            }
+        if ((inC == 4) && (inW >= 256) && (inBits == 8)) {
+            return true;
         }
+    }
+    return false;
+}
+
+bool isDMASupportedMemPermuteDistribution(vpux::NDTypeInterface inputType, vpux::NDTypeInterface outputType) {
+    auto inDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType);
+    auto outDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType);
+    // If both input/output is not distributed type we can convert to DMA.
+    if (inDistributedType == nullptr && outDistributedType == nullptr) {
+        return true;
+    }
+
+    if (inDistributedType != nullptr) {
+        const auto inMode = inDistributedType.getDistribution().getMode().getValue();
+        if (outDistributedType != nullptr) {
+            const auto outMode = outDistributedType.getDistribution().getMode().getValue();
+            auto areBothDuplicated =
+                    inMode == VPU::DistributionMode::DUPLICATED && outMode == VPU::DistributionMode::DUPLICATED;
+            return areBothDuplicated;
+        }
+        auto duplicatedInput = inMode == VPU::DistributionMode::DUPLICATED;
+        return duplicatedInput;
+    }
+
+    // Input is not distributed, Output is distributed
+    const auto outMode = outDistributedType.getDistribution().getMode().getValue();
+    const auto supportedOutputMode =
+            outMode == VPU::DistributionMode::SEGMENTED || outMode == VPU::DistributionMode::OVERLAPPED ||
+            outMode == VPU::DistributionMode::DUPLICATED || outMode == VPU::DistributionMode::MULTICASTED;
+    return supportedOutputMode;
+}
+
+bool vpux::VPUIP::isBeneficialForUsingPermuteDMA(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType,
+                                                 mlir::AffineMap memPerm, int64_t dmaPortCount, vpux::Logger log) {
+    // Check if the memory permutation satisfies optimized conditions for Shave optimizations
+    // If it does, using PermuteDMA is not beneficial
+    if (satisfiesOptimizedMemPermute(arch, inType, outType)) {
+        return false;
+    }
+
+    if (!isDMASupportedMemPermuteDistribution(inType, outType)) {
+        return false;
     }
 
     auto subShapes = VPUIP::getPermuteDMASubInputShapes(arch, inType, outType, memPerm, dmaPortCount, log);
@@ -789,22 +831,25 @@ bool isDistributedOutputTypeIncompatibleOverlapped(VPU::ClusteredOpInterface pre
     }
     auto resultType = mlir::cast<vpux::NDTypeInterface>(prevOp->getResult(0).getType());
     auto outputDistributedType = getDistributedOutputTypeFromOp(prevOp, resultType, numClusters);
-    if (auto distributedTensor = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(outputDistributedType)) {
-        auto mode = distributedTensor.getDistribution().getMode().getValue();
-        if (mode == VPU::DistributionMode::OVERLAPPED) {
-            // check if the overlapped mode is compatible with the curOp
-            auto curOpInputDistributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(
-                    getDistributedActivationTypeFromOp(curOp, curOp->getOperand(0).getType(), numClusters));
-            if (curOpInputDistributedType == nullptr) {
-                return false;
-            }
-            return mlir::failed(
-                    VPU::areDistributionAttrsCompatible(distributedTensor, curOpInputDistributedType, false));
-        } else {
-            return false;
-        }
+    auto distributedTensor = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(outputDistributedType);
+
+    if (distributedTensor == nullptr) {
+        return false;
     }
-    return false;
+
+    auto mode = distributedTensor.getDistribution().getMode().getValue();
+    if (mode != VPU::DistributionMode::OVERLAPPED) {
+        return false;
+    }
+
+    // check if the overlapped mode is compatible with the curOp
+    auto curOpInputDistributedType =
+            mlir::dyn_cast<vpux::VPU::DistributedTensorType>(getDistributedActivationTypeFromOp(
+                    curOp, curOp->getOperand(0), curOp->getOperand(0).getType(), numClusters));
+    if (curOpInputDistributedType == nullptr) {
+        return false;
+    }
+    return mlir::failed(VPU::areDistributionAttrsCompatible(distributedTensor, curOpInputDistributedType, false));
 }
 
 bool vpux::VPUIP::isCompatibleWithMultiClusterNNDMA(VPU::DepthToSpaceOp op, vpux::ShapeRef nTilesOnDim) {

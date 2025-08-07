@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
@@ -42,8 +42,9 @@ mlir::Operation* linearizeOps(
 
     mlir::Operation* lastOp = nullptr;
     for (auto op : llvm::make_early_inc_range(ops)) {
-        if (!condition(op))
+        if (!condition(op)) {
             continue;
+        }
 
         lastOp = builder.clone(*op.getOperation());
 

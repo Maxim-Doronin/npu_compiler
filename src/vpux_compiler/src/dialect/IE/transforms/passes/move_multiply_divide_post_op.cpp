@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -222,7 +222,7 @@ mlir::LogicalResult MoveMultiplyDividePostConcat::matchAndRewrite(IE::ConcatOp o
     auto ctx = origOp.getContext();
     // if concat doesn't have static offst attr, then it is single axis concat
     if (origOp.getStaticOffsetsAttr() != nullptr) {
-        auto axis = IE::getConcatModifiedAxis(origOp);
+        auto axis = IE::getConcatAxes(origOp);
         if (axis.size() > 1) {
             return matchFailed(rewriter, origOp, "concat has multi axis");
         }

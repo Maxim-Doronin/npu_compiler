@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -34,8 +34,9 @@ namespace ShaveCodeGen {
 
 std::unique_ptr<mlir::Pass> createEncapsulateCodeGenOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createEarlyCodeGenCapsuleFusionPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createOutlineLinalgSwLayersPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createOutlineCodeGenCapsulesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdaptLLVMFuncsForShavePass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createLowerMathToShaveIntrinsicsPass(Logger log = Logger::global());
 
 //
 // Registration

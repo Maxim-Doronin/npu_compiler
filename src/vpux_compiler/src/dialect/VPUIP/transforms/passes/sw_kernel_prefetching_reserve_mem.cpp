@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/BuiltinOps.h>
@@ -56,7 +56,6 @@ void SWKernelPrefetchingReserveMemPass::safeRunOnModule() {
     }
 
     auto maxPrefetchDataSize = VPUIP::getMaximalSWKernelPrefetchDataSize(module);
-
     auto memSpaceAttr = mlir::SymbolRefAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN));
     auto available = IE::getAvailableMemory(module, memSpaceAttr);
     const auto maxSize = available.size();

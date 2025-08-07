@@ -80,7 +80,7 @@ vpux::type::float8_e5m2::float8_e5m2(uint32_t sign, uint32_t biased_exponent, ui
                   (biased_exponent & (f8e5m2_e_mask >> f8e5m2_m_size)) << f8e5m2_m_size | (fraction & f8e5m2_m_mask)) {
 }
 
-vpux::type::float8_e5m2::float8_e5m2(const float value): m_value(f32_to_f8e5m2_bits(value)){};
+vpux::type::float8_e5m2::float8_e5m2(const float value): m_value(f32_to_f8e5m2_bits(value)) {};
 
 size_t vpux::type::float8_e5m2::size() const {
     return sizeof(m_value);

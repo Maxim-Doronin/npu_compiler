@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_IE_PASSES
@@ -857,6 +857,24 @@ def ConvertSpace2DepthLayer : PassBase<"convert-spaceToDepth", "vpux::FunctionPa
     }];
 
     let constructor = "vpux::IE::createConvertSpace2DepthLayerPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// ConvertDeformableConvToConv
+//
+
+def ConvertDeformableConvToConv : PassBase<"convert-deformable-conv-to-conv", "vpux::FunctionPass"> {
+    let summary = "Convert DeformableConv layers to Conv";
+
+    let description = [{
+        Convert DeformableConv layers to GridSample and standard Convolution.
+    }];
+
+    let constructor = "vpux::IE::createConvertDeformableConvToConvPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -3085,9 +3103,9 @@ def UniquifyBranches : PassBase<"uniquify-branches", "vpux::FunctionPass"> {
                 Producer -> Layer -> Slice -> Consumer
                                   -> Slice -> Consumer
 
-            Now at the place of "Layer" supported Reorder, Expand, Transpose, PermuteCast, AffineReshape and MemPermute operations.
-            Most of the time, the conversion is valid in case Slice and Layer transform different axes.
-            But there is no such restriction for the swap of Slice and Reorder.
+            Now at the place of "Layer" supported Reorder, Expand, Transpose, PermuteCast, AffineReshape MemPermute
+            and QuantizeCast operations. Most of the time, the conversion is valid in case Slice and Layer transform
+            different axes. But there is no such restriction for the swap of Slice and Reorder.
 
         * Convert this subgraph:
                                   -> Reorder -> Consumer
@@ -5081,6 +5099,39 @@ def FuseInputScaleShift : PassBase<"fuse-input-scale-shift", "vpux::FunctionPass
 }
 
 //
+// InputQuantizationRestoration
+//
+
+def InputQuantizationRestoration : PassBase<"input-quantization-restoration", "vpux::FunctionPass"> {
+    let summary = "Support ONNX style quantized network input";
+
+    let description = [{
+        The pass is a part of `PostImportPipeline` pipeline.
+        And is executed just before PropagateFQ pass.
+
+        The purpose of this pass is to keep input quantized by introducing a proper FakeQuantize operation
+        in the place of the Multiply operation that is not present in the original ONNX model.
+        In cases where ONNX models have quantized inputs, the first layer may only include a Dequantize
+        operation without a corresponding Quantize operation.
+
+        Example:
+        ```
+            Input (u8) -> Convert (f32) -> Multiply (f32)
+        ```
+        To:
+        ```
+            Input (u8) -> Convert (f32) -> FakeQuantize (f32)
+        ```
+    }];
+
+    let constructor = "vpux::IE::createInputQuantizationRestorationPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
 // PropagateFQ
 //
 
@@ -5254,6 +5305,10 @@ def ConsolidateNF4WeightsPattern : PassBase<"consolidate-nf4-weights-pattern", "
     ];
 }
 
+//
+// DumpStatisticsOfIeOps
+//
+
 def DumpStatisticsOfIeOps : PassBase<"dump-statistics-of-ie-ops", "vpux::ModulePass"> {
     let summary = "Reports operations found in IE dialect IR";
 
@@ -5266,6 +5321,154 @@ def DumpStatisticsOfIeOps : PassBase<"dump-statistics-of-ie-ops", "vpux::ModuleP
     }];
 
     let constructor = "vpux::IE::createDumpStatisticsOfIeOpsPass()";
+}
+
+//
+// ConvertSDPAToOnlineSDPA
+//
+
+def ConvertSDPAToOnlineSDPA : PassBase<"convert-sdpa-to-online-sdpa", "vpux::FunctionPass"> {
+    let summary = "Converts IE.SDPA to IE.OnlineSDPA";
+
+    let description = [{
+        Converts IE.SDPAOp into IE.OnlineSDPAOp
+    }];
+
+    let constructor = "vpux::IE::createConvertSDPAToOnlineSDPAPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// DecomposeOnlineSDPA
+//
+
+def DecomposeOnlineSDPA : PassBase<"decompose-online-sdpa", "vpux::FunctionPass"> {
+    let summary = "Decomposes IE.OnlineSDPAOp into IE.IncrementalSDPAOp subgraph";
+
+    let description = [{
+        Converts IE.OnlineSDPAOp into IE.IncrementalSDPAOp with initial values for intermediate tensors
+        for RunningMax, RunningSum and RunningPartialOutput.
+        The last IE.DivideOp computes the final result.
+        Represents an outer loop of FlashAttention-2 algorithm.
+    }];
+
+    let constructor = "vpux::IE::createDecomposeOnlineSDPAPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// DecomposeIncrementalSDPA
+//
+
+def DecomposeIncrementalSDPA : PassBase<"decompose-incremental-sdpa", "vpux::FunctionPass"> {
+    let summary = "Decomposes IE.IncrementalSDPA into an SDPA subgraph";
+
+    let description = [{
+        Decomposes IE.IncrementalSDPAOp into a subgraph that implements
+        SDPA operation with OnlineSoftmax approach.
+        Represents an inner loop of FlashAttention-2 algorithm.
+    }];
+
+    let constructor = "vpux::IE::createDecomposeIncrementalSDPAPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// TileOnlineSDPA
+//
+
+def TileOnlineSDPA : PassBase<"tile-online-sdpa", "vpux::FunctionPass"> {
+    let summary = "Tiles IE.OnlineSDPA on Query tensor";
+
+    let description = [{
+        Compute tiling for both Query and Key-Value tensors.
+        Apply isolated tiling for IE.OnlineSDPAOp on Query tensor.
+        Assign Key-Value tiling attribute to propagate it to the IE.IncrementalSDPAOp.
+    }];
+
+    let constructor = "vpux::IE::createTileOnlineSDPAPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// TileIncrementalSDPA
+//
+
+def TileIncrementalSDPA : PassBase<"tile-incremental-sdpa", "vpux::FunctionPass"> {
+    let summary = "Tiles IE.IncrementalSDPA on Key and Value tensors";
+
+    let description = [{
+        Unroll IE.IncrementalSDPAOp based on pre-computed Key-Value tiling attribute.
+        Propagate RunningMax, RunningSum and PartialOutput through each operation.
+    }];
+
+    let constructor = "vpux::IE::createTileIncrementalSDPAPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// DecomposeMultiZPQuantizationPattern
+//
+
+def DecomposeMultiZPQuantizationPattern : PassBase<"decompose-multi-zp-quantization-pattern", "vpux::FunctionPass"> {
+    let summary = "Decompose multi zero-point quantization pattern";
+
+    let description = [{
+        Due to the limitation that HW doesn't have support for per-channel zero-point,
+        this pass applies the solution described below to decompose the original quantization pattern
+        with per-channel zero-point into the proposed pattern.
+        Only group-wise quantization with quant params constants is supported by this pass for now.
+
+                   Weights        Zero-points    weights                  Parameter   Zero-points
+                        |          |                  |                   /   |            |
+                   Convert        Convert        Convert       Scales    / Reshape     Convert Scales
+                         \        /                    \        /       /     |           |    /
+                          Subtract  Scales    =>        Multiply       /  ReduceSum    Multiply
+                             |     /                           \      /        \      /
+            Parameter      Multiply                             MatMul          MatMul
+                     \      /                                         \        /
+                      MatMul                                           Subtract
+    }];
+
+    let constructor = "vpux::IE::createDecomposeMultiZPQuantizationPatternPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+// 
+// LoadExternalKernelResources
+//
+
+def LoadExternalKernelResources : PassBase<"load-external-kernel-resources", "vpux::FunctionPass"> {
+    let summary = "Loads the implementations of the IE.ExternalKernelOps into ShaveBinary resources";
+
+    let description = [{
+        Loads the implementations of the IE.ExternalKernelOps into ShaveBinary resources.
+        Represents a base for external resource referencing and loading.
+    }];
+
+    let constructor = "vpux::IE::createLoadExternalKernelResourcesPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
 }
 
 #endif

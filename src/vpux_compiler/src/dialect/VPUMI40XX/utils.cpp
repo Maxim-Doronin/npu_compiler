@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
@@ -46,8 +46,9 @@ bool isConfigureBarrierOpType(const mlir::Operation::operand_range& barriers) {
 
 // Update indexes in list of operations
 size_t reindexList(VPURegMapped::TaskOpInterface head) {
-    if (!head)
+    if (!head) {
         return 0;
+    }
 
     auto ctx = head.getOperation()->getContext();
     const uint32_t listIdx = head.getIndexType().getListIdx();
@@ -60,8 +61,9 @@ size_t reindexList(VPURegMapped::TaskOpInterface head) {
 
         auto headId = llvm::find_if(head.getOperation()->getResult(0).getUsers(), [&head](mlir::Operation* op) {
             if (auto prev = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(op)) {
-                if (prev.getPreviousTask() == head)
+                if (prev.getPreviousTask() == head) {
                     return true;
+                }
             }
             return false;
         });
@@ -113,8 +115,9 @@ bool checkBarrierProductionRelationship(mlir::Operation* barr, VPUMI40XX::Execut
 }
 
 size_t reindexEnqueueList(VPURegMapped::EnqueueOp head) {
-    if (!head)
+    if (!head) {
         return 0;
+    }
 
     auto ctx = head.getOperation()->getContext();
     const uint32_t listIdx = head.getType().getListIdx();
@@ -127,8 +130,9 @@ size_t reindexEnqueueList(VPURegMapped::EnqueueOp head) {
 
         auto headId = llvm::find_if(head.getOperation()->getResult(0).getUsers(), [&head](mlir::Operation* op) {
             if (auto next = mlir::dyn_cast<VPURegMapped::EnqueueOp>(op)) {
-                if (next.getPreviousTaskIdx() == head)
+                if (next.getPreviousTaskIdx() == head) {
                     return true;
+                }
             }
             return false;
         });
@@ -182,6 +186,24 @@ void reindexList(VPUMI40XX::MappedInferenceOp mpi, TaskOpType firstTask, size_t 
 template void reindexList<VPUMI40XX::NNDMAOp>(VPUMI40XX::MappedInferenceOp, VPUMI40XX::NNDMAOp, size_t, size_t);
 template void reindexList<VPURegMapped::FetchTaskOp>(VPUMI40XX::MappedInferenceOp, VPURegMapped::FetchTaskOp, size_t,
                                                      size_t);
+
+//
+// AddEnqueueDMAops Util
+//
+void reindexTaskLinkAttrForDMA(VPURegMapped::TaskOpInterface head) {
+    if (!head) {
+        return;
+    }
+
+    // Start from second DMA in the list as first doesn't have previous DMA
+    head = head.getNextTask();
+    while (head) {
+        if (head.getTaskLink().has_value()) {
+            head.linkToPreviousTask();
+        }
+        head = head.getNextTask();
+    }
+}
 
 //
 // Resolve Task Location utils

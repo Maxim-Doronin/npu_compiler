@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_IE_OPS_INTERFACES
@@ -180,10 +180,10 @@ def IE_LayoutInfoOpInterface : OpInterface<"LayoutInfoOpInterface"> {
 // ResourceOpBase
 //
 
-def IERT_ResourceOpInterface : OpInterface<"ResourceOpInterface"> {
+def IE_ResourceOpInterface : OpInterface<"ResourceOpInterface"> {
     let description = "Base interface for a meta-like operation containing information about a runtime resource";
 
-    let cppNamespace = "vpux::IERT";
+    let cppNamespace = "vpux::IE";
 
     let methods = [
         InterfaceMethod<
@@ -201,10 +201,10 @@ def IERT_ResourceOpInterface : OpInterface<"ResourceOpInterface"> {
 // ComputeResourceOp base
 //
 
-def IERT_ComputeResourceOpInterface : OpInterface<"ComputeResourceOpInterface"> {
+def IE_ComputeResourceOpInterface : OpInterface<"ComputeResourceOpInterface"> {
     let description = "Base interface for a meta-like operation containing information about a runtime compute resource";
 
-    let cppNamespace = "vpux::IERT";
+    let cppNamespace = "vpux::IE";
 
     let methods = [
         InterfaceMethod<
@@ -325,6 +325,16 @@ def IE_ShaveCodeGenSupportedOpInterface: OpInterface<"ShaveCodeGenSupportedOpInt
     let description = "Interface for operations which support Shave Code Generation";
 
     let cppNamespace = "vpux::IE";
+
+    let methods = [
+        InterfaceMethod<"Determines the benefit & decision to JIT compile based on op-specific properties",
+            "bool", "shouldJITCompile", (ins),
+            [{}],
+            [{
+                return true;
+            }]
+        >
+    ];
 }
 
 #endif

@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2022-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 function(vpux_add_native_tool NATIVE_NAME NATIVE_SOURCE_DIR)

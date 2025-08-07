@@ -1,5 +1,5 @@
 // Copyright (C) 2022-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
@@ -118,8 +118,8 @@ bool vpux::Const::SparsifyAttr::inferOutputSplat(bool, vpux::NDTypeInterface) {
 namespace {
 
 template <typename StorageType>
-Const::Content sparsify(const Const::Content& content, int64_t sparsifyValue, NDTypeInterface inputType,
-                        NDTypeInterface outputType) {
+Const::Content sparsify(const Const::Content& content, const std::vector<int64_t>& sparsifyValue,
+                        NDTypeInterface inputType, NDTypeInterface outputType) {
     auto output = Const::Content::allocTempBuffer(outputType, outputType.getElementType(),
                                                   Const::SparsifyAttr::inferOutputSplat(content.isSplat(), inputType));
     output.fillWithZero();
@@ -137,13 +137,15 @@ Const::Content sparsify(const Const::Content& content, int64_t sparsifyValue, ND
     const auto KX = inputShape[Dims4D::Filter::KX];
     const auto workloadSize = IC * KY * KX;
 
-    const auto castedSparsifyValue = checked_cast<StorageType>(sparsifyValue);
-    constexpr auto byteSize = sizeof(castedSparsifyValue);
-
     int64_t outputIndex = 0;
+    auto castedSparsifyValue = checked_cast<StorageType>(sparsifyValue.front());
+    const auto byteSize = sizeof(castedSparsifyValue);
     for (int64_t oc = 0; oc < OC; ++oc) {
         auto begin = oc * workloadSize;
         auto end = (oc + 1) * workloadSize;
+        if (sparsifyValue.size() > 1) {
+            castedSparsifyValue = checked_cast<StorageType>(sparsifyValue.at(oc));
+        }
         for (auto inputIndex = begin; inputIndex < end; ++inputIndex) {
             const auto inputValue = inputValues[inputIndex];
             if (inputValue == castedSparsifyValue) {
@@ -182,22 +184,22 @@ Const::Content Const::SparsifyAttr::transform(Const::Content& input) const {
     const auto outputType = compressType(inputType, numElemsPerOC);
 
     auto inputElementType = inputType.getElementType();
-    int64_t sparsifyValue = getSparsifyValue(inputElementType);
+    std::vector<int64_t> sparsifyValues = getSparsifyValues(inputElementType);
 
     if (inputElementType.isSignedInteger(8)) {
-        return sparsify<int8_t>(input, sparsifyValue, inputType, outputType);
+        return sparsify<int8_t>(input, sparsifyValues, inputType, outputType);
     } else if (inputElementType.isUnsignedInteger(8)) {
-        return sparsify<uint8_t>(input, sparsifyValue, inputType, outputType);
+        return sparsify<uint8_t>(input, sparsifyValues, inputType, outputType);
     } else if (inputElementType.isF16()) {
-        return sparsify<vpux::type::float16>(input, sparsifyValue, inputType, outputType);
+        return sparsify<vpux::type::float16>(input, sparsifyValues, inputType, outputType);
     } else if (inputElementType.isBF16()) {
-        return sparsify<vpux::type::bfloat16>(input, sparsifyValue, inputType, outputType);
+        return sparsify<vpux::type::bfloat16>(input, sparsifyValues, inputType, outputType);
     } else if (inputElementType.isF32()) {
-        return sparsify<float>(input, sparsifyValue, inputType, outputType);
+        return sparsify<float>(input, sparsifyValues, inputType, outputType);
     } else if (inputElementType.isFloat8E5M2()) {
-        return sparsify<vpux::type::float8_e5m2>(input, sparsifyValue, inputType, outputType);
+        return sparsify<vpux::type::float8_e5m2>(input, sparsifyValues, inputType, outputType);
     } else if (inputElementType.isFloat8E4M3FN()) {
-        return sparsify<vpux::type::float8_e4m3>(input, sparsifyValue, inputType, outputType);
+        return sparsify<vpux::type::float8_e4m3>(input, sparsifyValues, inputType, outputType);
     }
     VPUX_THROW("Unexpected weights data type: {0}", inputElementType);
 }
@@ -216,6 +218,10 @@ Const::details::PositionRequirement Const::SparsifyAttr::getPositionRequirement(
 
 llvm::hash_code vpux::Const::SparsifyAttr::getStableHashValue() const {
     const bool returnCompressed = getCompressOutputType().getValue();
+    if (!returnCompressed) {
+        return llvm::hash_combine(getMnemonic(), returnCompressed);
+    }
+    VPUX_THROW_WHEN(getNumActualElements() == nullptr, "Missing number of actual elements");
     const auto numElems = getNumActualElements().getValues<int64_t>();
     return llvm::hash_combine(getMnemonic(), returnCompressed,
                               llvm::hash_combine_range(numElems.begin(), numElems.end()));

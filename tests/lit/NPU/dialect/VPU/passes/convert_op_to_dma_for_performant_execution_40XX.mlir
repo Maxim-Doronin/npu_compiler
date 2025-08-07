@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-op-to-dma-for-performant-execution %s | FileCheck %s
@@ -168,13 +168,11 @@ func.func @GatherMoveToDMAWithNegativeIndices(%arg0: tensor<1x1x8404x512xf16>) -
 
     return %1 :  tensor<1x1x6x512xf16>
 
-    // CHECK-DAG:   [[ORG_INDICES:%.+]] = const.Declare tensor<1x6x1x1xsi32> = dense<
-    // CHECK-SAME{LITERAL}:         [[[[0]], [[-10]], [[8]], [[100]], [[-20]], [[4]]]]> : tensor<1x6x1x1xsi32>
-    // CHECK-DAG:   [[NEW_INDICES:%.+]] = const.Declare tensor<1x6x1x1xi64> = dense<
-    // CHECK-SAME{LITERAL}:         [[[[0]], [[8394]], [[8]], [[100]], [[8384]], [[4]]]]> : tensor<1x6x1x1xi64>
+    // CHECK:   const.Declare tensor<1x1x6x1xi64>
+    // CHECK:   [[NEW_INDICES:%.+]] = const.Declare tensor<1x1x6x1xi64> = dense<
+    // CHECK-SAME{LITERAL}:         [[[[0]], [[8394]], [[8]], [[100]], [[8384]], [[4]]]]> : tensor<1x6x1x1xi64>, [#const.Reshape<[1, 1, 6, 1]>, #const.CastElemType<i64>]
 
-    // CHECK:   [[RESHAPE_IN:%.+]] = VPU.Reshape([[NEW_INDICES]]) {shape_value = [1, 1, 6, 1]} : tensor<1x6x1x1xi64> -> tensor<1x1x6x1xi64>
-    // CHECK:   [[GATHER_DMA:%.+]] = VPU.GatherDMA([[ARG0]], [[RESHAPE_IN]]) {
+    // CHECK:   [[GATHER_DMA:%.+]] = VPU.GatherDMA([[ARG0]], [[NEW_INDICES]]) {
     // CHECK-SAME:      axis_value = 2 : i64, batch_dims = 1 : i64} : tensor<1x1x8404x512xf16>, tensor<1x1x6x1xi64> -> tensor<1x1x6x512xf16>
     // CHECK:   [[RESHAPE_OUT:%.+]] = VPU.Reshape([[GATHER_DMA]]) {shape_value = [1, 1, 6, 512]} : tensor<1x1x6x512xf16> -> tensor<1x1x6x512xf16>
 

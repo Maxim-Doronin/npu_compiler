@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -22,7 +22,7 @@
 #include <sstream>
 #include <string>
 
-// E#73766: merge NCETiledActShaveProfiler and UniformNonTiledActShaveProfiler in the end of epic
+// E#171862: merge NCETiledActShaveProfiler and UniformNonTiledActShaveProfiler
 
 namespace vpux {
 

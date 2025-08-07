@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPURT
@@ -32,7 +32,6 @@ It handles such VPU-specifics as:
 
     let dependentDialects = [
         "mlir::func::FuncDialect",
-        "vpux::IERT::IERTDialect",
         "vpux::VPU::VPUDialect",
         "vpux::VPUIP::VPUIPDialect",
     ];

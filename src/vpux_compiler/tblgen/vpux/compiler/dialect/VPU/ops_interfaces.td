@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPU_OPS_INTERFACES
@@ -420,7 +420,27 @@ def VPU_TilingViewLikeOpInterface : OpInterface<"TilingViewLikeOpInterface"> {
             "Adjust the operation attributes to the current tile properties",
             "void", "adjustAttrs",
             (ins "const vpux::TilingInfo&":$inputTiling, "const TileInfo&":$outputTile, "vpux::ShapeRef":$outputShape)
-        >
+        >,
+
+        InterfaceMethod<
+            "Check if the tiling dim is supported or not",
+            "bool", "isSupportedTilingDim",
+            (ins "DimArrRef":$tilingDims),
+            [{}],
+            [{
+                return true;
+            }]
+        >,
+
+        InterfaceMethod<
+            "Check if the output tile is supported or not",
+            "bool", "isSupportedOutTile",
+            (ins "const TileInfo&":$outputTile),
+            [{}],
+            [{
+                return true;
+            }]
+        >,
     ];
 }
 

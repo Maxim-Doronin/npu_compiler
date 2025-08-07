@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -18,8 +18,8 @@ class SubgraphOptimizer final {
 public:
     using ShortcutMapTy =
             std::unordered_map<mlir::Operation*, std::pair<mlir::Operation*, SmallVector<mlir::Operation*>>>;
-    SubgraphOptimizer(mlir::func::FuncOp func, bool enablePrefetchTiling, Logger log,
-                      SiblingOpsAnalysis& siblingsOpsAnalysis);
+    SubgraphOptimizer(mlir::func::FuncOp func, bool enablePrefetchTiling, SiblingOpsAnalysis& siblingsOpsAnalysis,
+                      std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModelPtr, Logger log);
     void optimizeStrategyAvoidSpillingOnModel();
 
 private:

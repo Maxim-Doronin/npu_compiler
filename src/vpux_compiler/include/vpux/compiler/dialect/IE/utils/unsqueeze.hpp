@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -13,10 +13,51 @@
 namespace vpux {
 namespace IE {
 
-mlir::FailureOr<SmallVector<int64_t>> propagateShape(mlir::Location loc, ArrayRef<int64_t> inShape,
-                                                     ArrayRef<int64_t> axes);
-mlir::FailureOr<SmallVector<int64_t>> propagateDynamicAttr(mlir::Location loc, mlir::Value value,
-                                                           ArrayRef<int64_t> axes);
+// Unsqueezes the given shape (static or dynamic) by inserting trivial dimensions (1) at the specified axes.
+// Axes must be sorted and unique.
+// Example: inShape=8x16, axes={0, 2, 4} => outShape=1x8x1x16x1
+template <typename D, typename T, template <class> class Tag>
+mlir::FailureOr<details::DimValues<D, T, Tag>> unsqueezeShape(mlir::Location loc,
+                                                              details::DimValuesRef<D, T, Tag> inShape,
+                                                              ArrayRef<int64_t> axes) {
+    auto outShape = makeShape(inShape, inShape.size() + axes.size(), 1);
+
+    size_t inInd = 0;
+    size_t axesInd = 0;
+    for (auto outInd : irange(outShape.size())) {
+        if (axesInd < axes.size()) {
+            const auto nextAxisInd = checked_cast<size_t>(axes[axesInd]);
+
+            if (nextAxisInd < outInd) {
+                return errorAt(loc, "Axis '{0}' occurred twice", nextAxisInd);
+            }
+
+            if (nextAxisInd == outInd) {
+                outShape[D(outInd)] = 1;
+                ++axesInd;
+                continue;
+            }
+        }
+
+        if (inInd < inShape.size()) {
+            outShape[D(outInd)] = inShape[D(inInd)];
+            ++inInd;
+            continue;
+        }
+    }
+    if (inInd != inShape.size() || axesInd != axes.size()) {
+        return errorAt(loc, "Inconsistent parameters");
+    }
+
+    return outShape;
+}
+
+template <typename D, typename T, template <class> class Tag>
+mlir::FailureOr<details::DimValues<D, T, Tag>> unsqueezeShape(mlir::Location loc,
+                                                              const details::DimValues<D, T, Tag>& inShape,
+                                                              ArrayRef<int64_t> axes) {
+    return unsqueezeShape(loc, details::DimValuesRef<D, T, Tag>(inShape), axes);
+}
 
 template <typename UnsqueezeType>
 mlir::FailureOr<SmallVector<int64_t>> getAxes(UnsqueezeType unsqueeze, mlir::Location loc) {

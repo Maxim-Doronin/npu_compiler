@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -37,12 +37,6 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
             *this, "enable-function-statistics-instrumentation",
             llvm::cl::desc("Enable printing statistics for functions after each pass"), llvm::cl::init(false)};
 
-    // InitCompiler
-    IntOption revisionID{*this, "revision-id", ::llvm::cl::desc("[Optional] Revision ID of the platform")};
-    IntOption numberOfDPUGroups{*this, "num-of-dpu-groups",
-                                ::llvm::cl::desc("[Optional] Number of available DPU groups")};
-    IntOption numberOfDMAPorts{*this, "num-of-dma-ports", ::llvm::cl::desc("[Optional] Number of available DMA ports")};
-    IntOption availableCMXMemory{*this, "available-cmx-memory", ::llvm::cl::desc("[Optional] Available CMX memory")};
     BoolOption allowCustomValues{*this, "allow-custom-values",
                                  ::llvm::cl::desc("[Optional] Allows keep predefined values in IR")};
 
@@ -149,6 +143,9 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
                                                   llvm::cl::desc("Enable weights dequantization for weights as input"),
                                                   llvm::cl::init(false)};
 
+    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
+                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
+                                    llvm::cl::init(false)};
     Int64Option runtimeDequantizationLimit{
             *this, "runtime-dequantization-limit",
             llvm::cl::desc("Lower limit on weight size for runtime dequantization"
@@ -164,6 +161,15 @@ struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
     BoolOption useMemrefForHostFunctionBufferization{
             *this, "use-memref-for-host-function-bufferization",
             llvm::cl::desc("Enable memref bufferization for host function ops"), llvm::cl::init(false)};
+
+    BoolOption enableMatmulMixedPrecisionDecomposition{
+            *this, "enable-matmul-mixed-precision-decomposition",
+            llvm::cl::desc("Enable mixed precision decomposition for matmul"), llvm::cl::init(true)};
+    DoubleOption matmulMixedPrecisionDecompositionRatio{
+            *this, "matmul-mixed-precision-decomposition-ratio",
+            llvm::cl::desc("Determines when to enable Matmul Mixed Precision Decomposition"
+                           "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"),
+            llvm::cl::init(250.0)};
 
     bool enableForceZMajorConcat = false;
     bool enableSwapTransposeWithFQ = false;
@@ -326,12 +332,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
             llvm::cl::desc("Enable scales fusing to following Accumulate op from GPTQ Matmul unrolling"),
             llvm::cl::init(false)};
 
-    // InitCompiler
-    IntOption revisionID{*this, "revision-id", ::llvm::cl::desc("[Optional] Revision ID of the platform")};
-    IntOption numberOfDPUGroups{*this, "num-of-dpu-groups",
-                                ::llvm::cl::desc("[Optional] Number of available DPU groups")};
-    IntOption numberOfDMAPorts{*this, "num-of-dma-ports", ::llvm::cl::desc("[Optional] Number of available DMA ports")};
-    IntOption availableCMXMemory{*this, "available-cmx-memory", ::llvm::cl::desc("[Optional] Available CMX memory")};
     BoolOption allowCustomValues{*this, "allow-custom-values",
                                  ::llvm::cl::desc("[Optional] Allows keep predefined values in IR")};
 
@@ -400,9 +400,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
             llvm::cl::desc("Attach StaticShapeOpInterface trait to operations that perform "
                            "faster when their shapes are static."),
             llvm::cl::init(true)};
-
-    BoolOption enableWeightsTableReuse{*this, "enable-weights-table-reuse",
-                                       llvm::cl::desc("Enable weights table reuse"), llvm::cl::init(false)};
 
     BoolOption useMemrefForHostFunctionBufferization{
             *this, "use-memref-for-host-function-bufferization",
@@ -485,9 +482,6 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
             llvm::cl::desc("Enable DistributionInfoAttr with explicit per cluster memory/compute shapes & offsets"),
             llvm::cl::init(false)};
 
-    BoolOption enableWeightsTableReuse{*this, "enable-weights-table-reuse",
-                                       llvm::cl::desc("Enable weights table reuse"), llvm::cl::init(false)};
-
     mlir::detail::PassOptions::Option<WorkloadManagementMode> workloadManagementMode{
             *this, "workload-management-mode",
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
@@ -522,7 +516,6 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
         writeStrategyToJson = options.writeStrategyToJson;
         dumpStrategyToLog = options.dumpStrategyToLog;
         enableExplicitDistributionInfoAttr = options.enableExplicitDistributionInfoAttr;
-        enableWeightsTableReuse = options.enableWeightsTableReuse;
         workloadManagementMode = options.workloadManagementMode;
         enableSCFTiling = options.enableSCFTiling;
         enableScfComputeOpsOutlining = options.enableSCFTiling;
@@ -549,6 +542,8 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
                              "experiments."),
             ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_LCA),
             ::llvm::cl::values(
+                    clEnumValN(WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES",
+                               "Full WLM with split into pages"),
                     clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
                                "Partial WLM with split into pages"),
                     clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
@@ -596,7 +591,7 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
                                        "Compiler generates DMA to program initial barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
                                        "ALL_BARRIER_DMAS_SCHEDULED",
-                                       "Compiler generates DMA to program initial barriers"))};
+                                       "Compiler generates DMAs to program all barriers"))};
 
     IntOption modelIdentifier{
             *this, "model-identifier",

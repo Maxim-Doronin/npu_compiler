@@ -62,9 +62,9 @@ IE::AffineReshapeOp reshapeInput(mlir::Location loc, mlir::Value input, ShapeRef
 
 IE::AffineReshapeOp reshapeInputFromHeightToChannel(mlir::Location loc, mlir::Value input, ShapeRef origShape,
                                                     const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
-    const auto batch = origShape[Dims4D::Act::N];
+    const auto batch = 1;
     const auto channels = origShape[Dims4D::Act::C] * channelAlignment;
-    const auto height = origShape[Dims4D::Act::H] / channelAlignment;
+    const auto height = origShape[Dims4D::Act::N] * origShape[Dims4D::Act::H] / channelAlignment;
     const auto width = origShape[Dims4D::Act::W];
 
     const SmallVector<int64_t> targetShape = {batch, channels, height, width};
@@ -163,11 +163,7 @@ IE::AffineReshapeOp unpadWReshapeOutput(mlir::Location loc, ShapeRef origOutShap
 
 IE::AffineReshapeOp channelToHeightReshapeOutput(mlir::Location loc, ShapeRef origOutShape, mlir::Value convOutput,
                                                  mlir::PatternRewriter& rewriter) {
-    auto outShape = origOutShape.toValues();
-    const auto convShape = getShape(convOutput);
-    outShape[Dims4D::Act::H] = convShape[Dims4D::Act::C] * convShape[Dims4D::Act::H] / outShape[Dims4D::Act::C];
-
-    return reshapeOutput(loc, convOutput, outShape, rewriter);
+    return reshapeOutput(loc, convOutput, origOutShape, rewriter);
 }
 
 // The idea is to create the following structure:
@@ -673,18 +669,18 @@ mlir::LogicalResult DPUExpandRewriter::matchAndRewrite(IE::ExpandOp origOp, mlir
     const auto expandOutShape = getShape(origOp.getOutput());
 
     enum ReshapeMode { RESHAPE_H_TO_C, PAD_W_RESHAPE, PAD_H_RESHAPE };
-    ReshapeMode reshapeMode = IE::beneficialToReshapeHeightToChannel(origOp)
-                                      ? RESHAPE_H_TO_C
-                                      : IE::beneficialToPadWidth(origOp) ? PAD_W_RESHAPE : PAD_H_RESHAPE;
+    ReshapeMode reshapeMode = IE::beneficialToReshapeHeightToChannel(origOp) ? RESHAPE_H_TO_C
+                              : IE::beneficialToPadWidth(origOp)             ? PAD_W_RESHAPE
+                                                                             : PAD_H_RESHAPE;
 
     auto reshapeIn = (reshapeMode == RESHAPE_H_TO_C)
                              ? reshapeInputFromHeightToChannel(origOp.getLoc(), expandInput, getShape(expandInput),
                                                                convolutionAlignment, rewriter)
-                             : (reshapeMode == PAD_W_RESHAPE)
-                                       ? padWReshapeInput(origOp.getLoc(), expandInput, getShape(expandInput),
-                                                          convolutionAlignment, rewriter)
-                                       : padHReshapeInput(origOp.getLoc(), expandInput, getShape(expandInput),
-                                                          convolutionAlignment, rewriter);
+                     : (reshapeMode == PAD_W_RESHAPE)
+                             ? padWReshapeInput(origOp.getLoc(), expandInput, getShape(expandInput),
+                                                convolutionAlignment, rewriter)
+                             : padHReshapeInput(origOp.getLoc(), expandInput, getShape(expandInput),
+                                                convolutionAlignment, rewriter);
 
     auto weights = composeWeights(origOp.getLoc(), expandInShape, expandOutShape, expandInType.getElementType(),
                                   convolutionAlignment, rewriter);
@@ -692,10 +688,9 @@ mlir::LogicalResult DPUExpandRewriter::matchAndRewrite(IE::ExpandOp origOp, mlir
     const auto convOutElemType = expandOutType.getElementType();
     auto convOp = buildConvolution(origOp, reshapeIn.getOutput(), weights, convOutElemType, rewriter);
 
-    auto reshapeOut =
-            (reshapeMode == RESHAPE_H_TO_C)
-                    ? channelToHeightReshapeOutput(origOp.getLoc(), expandOutShape, convOp.getOutput(), rewriter)
-                    : (reshapeMode == PAD_W_RESHAPE)
+    auto reshapeOut = (reshapeMode == RESHAPE_H_TO_C) ? channelToHeightReshapeOutput(origOp.getLoc(), expandOutShape,
+                                                                                     convOp.getOutput(), rewriter)
+                      : (reshapeMode == PAD_W_RESHAPE)
                               ? unpadWReshapeOutput(origOp.getLoc(), expandOutShape, convOp.getOutput(), rewriter)
                               : unpadHReshapeOutput(origOp.getLoc(), expandOutShape, convOp.getOutput(),
                                                     convolutionAlignment, rewriter);

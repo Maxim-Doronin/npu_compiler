@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -62,8 +62,7 @@ private:
     }
 
     template <size_t Index = 0>
-            static auto hashItems(const tuple<Args...>& val, size_t& seed)
-                    -> std::enable_if_t < Index<sizeof...(Args)> {
+    static auto hashItems(const tuple<Args...>& val, size_t& seed) -> std::enable_if_t < Index<sizeof...(Args)> {
         seed = vpux::getHash(seed, get<Index>(val));
         hashItems<Index + 1>(val, seed);
     }

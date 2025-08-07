@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -50,12 +50,14 @@ public:
     // Below constructor is meant to be used only for unit testing purpose
     BarrierPagesSplitHandler(BarrierInfoTest& barrierInfoTest,
                              std::map<VPURT::TaskQueueType, SmallVector<uint32_t>>& taskQueueTypeMap, size_t pageSize,
-                             size_t _barrierFifoDepth = 1, Logger log = Logger::global());
+                             size_t _barrierFifoDepth = 1, const SmallVector<size_t>& shvTasksWithDpu = {},
+                             Logger log = Logger::global());
 
     // Reconfigure barrier FIFO depth. Meant to be used in case of LIT tests
     void reconfigureBarrierFifoDepth(size_t barrierFifoDepth);
     void initializeForAssignment(mlir::func::FuncOp func);
     void initializeForLegalization();
+    void initializeForEnqueue(mlir::func::FuncOp func);
 
     SmallVector<size_t> getFirstAndLastBoundaryTasksForPage(size_t pageInd);
 
@@ -95,6 +97,7 @@ public:
     DmaProgrammingBarrierPosition getDmaProgrammingBarrierPosition(size_t pageInd);
     SmallVector<DmaProgrammingBarrierPosition> getDmaProgrammingBarrierPositions();
     void legalizeForDmaProgrammingBarriers();
+    void updateTaskPageAssignmentForQueue(size_t startTaskIndex, size_t newPageIndex, VPURT::TaskQueueType queueType);
 
     struct DummyDmaInsertionData {
         size_t pageInd;
@@ -104,6 +107,11 @@ public:
         size_t insertAfter;
     };
     SmallVector<DummyDmaInsertionData> getAndLegalizeDummyDmaInsertionData();
+
+    void initPrevPhysBarrierData(SmallVector<size_t>& barrierToPidVec);
+    void initPrevPhysBarrierData(mlir::func::FuncOp func);
+    SmallVector<std::optional<size_t>> prepareEnqueueDmaBarForFullWlm(
+            const mlir::DenseSet<vpux::VPU::ExecutorKind>& executorEnqAtBootstrap);
 
 private:
     size_t getBarrierPage(size_t barInd);
@@ -149,6 +157,10 @@ private:
     BarrierInfo::TaskSet getDummyDmaUpdateBars(size_t pageInd, size_t insertionPoint,
                                                SmallVector<std::pair<size_t, size_t>>& firstAndLastBarIndPerPage);
 
+    SmallVector<mlir::DenseMap<VPURT::TaskQueueType, size_t>> getLastDmaOfTypePerPage();
+
+    void findShvTasksWithDpu();
+
     // In assignment calculate barrier to page assignment but in
     // legalization mode read barrier to page assignment from IR
     bool _readPageAssignmentFromIr = false;
@@ -181,6 +193,17 @@ private:
     size_t _barrierFifoDepth;
 
     SmallVector<DmaProgrammingBarrierPosition> _barProgDmaPosVec;
+
+    std::optional<size_t> _startBarrierIndex;
+
+    // For each barrier index store index of barrier with same PID
+    // If there is no value set it means barrier is the first one to use given PID
+    SmallVector<std::optional<size_t>> _barrierPidPrevUsageVec;
+
+    // Store information about SHV tasks which can submit DPU ops as
+    // subsequent DPUs might need to have their enqueue delayed to guarantee
+    // DPU submitted by SHV is not blocked in the DPU FIFO
+    mlir::DenseMap<size_t, SmallVector<size_t>> _shvTasksWithDpuPerTile;
 
     // Store information about task control map that will be initialized through
     // barrierInfo for given control graph split block index

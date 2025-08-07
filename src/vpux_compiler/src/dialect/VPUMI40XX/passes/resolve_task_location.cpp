@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -29,7 +29,7 @@ public:
 
 private:
     struct TaskBufferSize {
-        TaskBufferSize(size_t dynamicSize, size_t staticSize): dynamicSize(dynamicSize), staticSize(staticSize){};
+        TaskBufferSize(size_t dynamicSize, size_t staticSize): dynamicSize(dynamicSize), staticSize(staticSize) {};
         TaskBufferSize() = default;
 
         size_t dynamicSize = 0;

@@ -1,14 +1,18 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -21,6 +25,55 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool isSupportedElemType(IE::ReduceSumOp origOp) {
+    const auto inputType = mlir::cast<NDTypeInterface>(origOp.getInput().getType());
+    const auto inputElemType = inputType.getElementType();
+    return mlir::isa<mlir::quant::QuantizedType, mlir::Float16Type>(inputElemType);
+}
+
+IE::ConvolutionOp createConvolution(mlir::Value activation, mlir::Value weights, mlir::Location newLoc,
+                                    mlir::PatternRewriter& rewriter, NDTypeInterface outType = nullptr) {
+    const auto ctx = rewriter.getContext();
+    const auto strides = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
+    const auto kernelPadsBegin = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
+    const auto kernelPadsEnd = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
+    const auto dilations = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
+
+    return (outType == nullptr) ? rewriter.create<IE::ConvolutionOp>(newLoc, activation, weights, nullptr, strides,
+                                                                     kernelPadsBegin, kernelPadsEnd, dilations, nullptr,
+                                                                     nullptr, nullptr, nullptr, nullptr)
+                                : rewriter.create<IE::ConvolutionOp>(newLoc, outType, activation, weights, nullptr,
+                                                                     strides, kernelPadsBegin, kernelPadsEnd, dilations,
+                                                                     nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+
+//
+// For example, a ReduceSum operation with 1x16x8x8@NCHW input tensor
+// Create 1x16x1x1 convolution filter, the weights value should be:
+// 1 1 1 1 | 1 1 1 1 | 1 1 1 1 | 1 1 1 1
+//
+mlir::Value createConvFilter(mlir::Value activation, mlir::PatternRewriter& rewriter) {
+    const auto IC = getShape(activation)[Dims4D::Act::C];
+    const auto KX = 1;
+    const auto KY = 1;
+    const auto OC = 1;
+
+    const Shape weightShape = {OC, IC, KX, KY};
+
+    SmallVector<float> weights(weightShape.totalSize(), .0f);
+
+    // assign values
+    for (auto i = 0; i < IC; ++i) {
+        weights[i] = 1.0f;
+    }
+
+    const DimsOrder weightOrder = DimsOrder::OIYX;
+    const auto weightType = mlir::RankedTensorType::get(
+            weightShape.raw(), mlir::cast<NDTypeInterface>(activation.getType()).getElementType(),
+            getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
+    return Const::buildWeightsConst(rewriter, activation.getLoc(), weightType, ArrayRef(weights));
+}
 
 //
 // ReduceSumToConvRewriter
@@ -38,11 +91,6 @@ public:
 private:
     bool isValidShape(vpux::ShapeRef inputShape, Logger log) const;
     bool isSupportedReduceSum(IE::ReduceSumOp origOp, Logger log) const;
-
-    IE::ConvolutionOp createConvolution(mlir::Value activation, mlir::Value weights, mlir::Location newLoc,
-                                        mlir::PatternRewriter& rewriter) const;
-
-    mlir::Value createConvFilter(mlir::Value activation, mlir::PatternRewriter& rewriter) const;
 
     Logger _log;
 };
@@ -94,6 +142,9 @@ bool isBeneficialToConvert(IE::ReduceSumOp origOp, Logger log) {
 }
 
 bool ReduceSumToConvRewriter::isSupportedReduceSum(IE::ReduceSumOp origOp, Logger log) const {
+    if (!isSupportedElemType(origOp)) {
+        return false;
+    }
     // Check shape
     const auto inputShape = getShape(origOp.getInput());
     if (!isValidShape(inputShape, log)) {
@@ -123,45 +174,6 @@ bool ReduceSumToConvRewriter::isSupportedReduceSum(IE::ReduceSumOp origOp, Logge
     return true;
 }
 
-IE::ConvolutionOp ReduceSumToConvRewriter::createConvolution(mlir::Value activation, mlir::Value weights,
-                                                             mlir::Location newLoc,
-                                                             mlir::PatternRewriter& rewriter) const {
-    const auto ctx = rewriter.getContext();
-    const auto strides = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
-    const auto kernelPadsBegin = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
-    const auto kernelPadsEnd = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
-    const auto dilations = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
-    return rewriter.create<IE::ConvolutionOp>(newLoc, activation, weights, nullptr, strides, kernelPadsBegin,
-                                              kernelPadsEnd, dilations, nullptr, nullptr, nullptr, nullptr, nullptr);
-}
-
-//
-// For example, a ReduceSum operation with 1x16x8x8@NCHW input tensor
-// Create 1x16x1x1 convolution filter, the weights value should be:
-// 1 1 1 1 | 1 1 1 1 | 1 1 1 1 | 1 1 1 1
-//
-mlir::Value ReduceSumToConvRewriter::createConvFilter(mlir::Value activation, mlir::PatternRewriter& rewriter) const {
-    const auto IC = getShape(activation)[Dims4D::Act::C];
-    const auto KX = 1;
-    const auto KY = 1;
-    const auto OC = 1;
-
-    const Shape weightShape = {OC, IC, KX, KY};
-
-    SmallVector<float> weights(weightShape.totalSize(), .0f);
-
-    // assign values
-    for (auto i = 0; i < IC; ++i) {
-        weights[i] = 1.0f;
-    }
-
-    const DimsOrder weightOrder = DimsOrder::OIYX;
-    const auto weightType = mlir::RankedTensorType::get(
-            weightShape.raw(), mlir::cast<NDTypeInterface>(activation.getType()).getElementType(),
-            getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
-    return Const::buildWeightsConst(rewriter, activation.getLoc(), weightType, ArrayRef(weights));
-}
-
 mlir::LogicalResult ReduceSumToConvRewriter::matchAndRewrite(IE::ReduceSumOp origOp,
                                                              mlir::PatternRewriter& rewriter) const {
     if (!isSupportedReduceSum(origOp, _log)) {
@@ -189,6 +201,125 @@ mlir::LogicalResult ReduceSumToConvRewriter::matchAndRewrite(IE::ReduceSumOp ori
 }
 
 //
+// InnerDimReduceSumToConvRewriter
+//
+
+class InnerDimReduceSumToConvRewriter final : public mlir::OpRewritePattern<IE::ReduceSumOp> {
+public:
+    InnerDimReduceSumToConvRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ReduceSumOp>(ctx), _log(log) {
+        setDebugName("InnerDimReduceSumToConvRewriter");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::ReduceSumOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    bool isValidReduceSum(IE::ReduceSumOp origOp) const;
+
+    bool isBeneficialTransformation(IE::ReduceSumOp origOp) const;
+
+    mutable int64_t _reduceAxis = -1;
+
+    Logger _log;
+};
+
+bool InnerDimReduceSumToConvRewriter::isValidReduceSum(IE::ReduceSumOp origOp) const {
+    if (!isSupportedElemType(origOp)) {
+        return false;
+    }
+
+    auto axesAttr = origOp.getAxesValue();
+    if (!axesAttr.has_value()) {
+        return false;
+    }
+
+    auto axes = parseIntArrayAttr<int64_t>(axesAttr.value());
+    if (axes.size() != 1) {
+        _log.trace("Only support ReduceSum reduce on one dimension");
+        return false;
+    }
+
+    _reduceAxis = axes[0];
+    auto inputType = mlir::cast<NDTypeInterface>(origOp.getInput().getType());
+    auto order = inputType.getDimsOrder();
+    if (order.dimAt(order.numDims() - 1) != Dim(_reduceAxis)) {
+        _log.trace("Only support ReduceSum reduce on the inner most dimension");
+        return false;
+    }
+
+    return true;
+}
+
+bool InnerDimReduceSumToConvRewriter::isBeneficialTransformation(IE::ReduceSumOp origOp) const {
+    const auto inputShape = getShape(origOp.getInput());
+    constexpr int64_t THRESHOLD_FOR_BENEFICIAL_TRANSFORMATION = 4096;
+    return inputShape.totalSize() >= THRESHOLD_FOR_BENEFICIAL_TRANSFORMATION;
+}
+
+mlir::LogicalResult InnerDimReduceSumToConvRewriter::matchAndRewrite(IE::ReduceSumOp origOp,
+                                                                     mlir::PatternRewriter& rewriter) const {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+    if (VPU::isReduceOpSupportedOnNCE(origOp) && VPU::isNCEReduceSupported(origOp, logCb)) {
+        return mlir::failure();
+    }
+
+    if (!isValidReduceSum(origOp) || !isBeneficialTransformation(origOp)) {
+        return mlir::failure();
+    }
+
+    auto inputType = mlir::cast<NDTypeInterface>(origOp.getInput().getType());
+    // Calculate the total dim size on the non-reduction axes
+    int64_t mergedShape = 1;
+    auto inputShape = inputType.getShape();
+    for (int64_t i = 0; i < inputType.getRank(); i++) {
+        if (i == _reduceAxis) {
+            continue;
+        }
+        mergedShape *= inputShape[Dim(i)];
+    }
+
+    auto ctx = rewriter.getContext();
+    const auto origLoc = origOp->getLoc();
+
+    // Reshape input to handle the case where the original shape is not 4D
+    auto newH = mergedShape;
+    auto newW = 1;
+    auto newC = inputShape[Dim(_reduceAxis)];
+
+    auto newInputShape = Shape({1, newH, newW, newC});
+    const auto newInShapeAttr = getIntArrayAttr(getContext(), newInputShape);
+    auto inReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "input_reshape"), origOp->getOperand(0),
+                                                      nullptr, false, newInShapeAttr);
+
+    // Cast input to NHWC as Conv activation
+    auto identityMap = mlir::AffineMap::getMultiDimIdentityMap(checked_cast<uint32_t>(newInputShape.size()), ctx);
+    auto inPermuteCastOp =
+            rewriter.create<IE::PermuteCastOp>(appendLoc(origLoc, "input_permute_cast"), inReshapeOp.getOutput(),
+                                               DimsOrder::NHWC.toAffineMap(ctx), identityMap);
+
+    // Create filter and Conv
+    auto weights = createConvFilter(inPermuteCastOp.getOutput(), rewriter);
+
+    const auto convLoc = appendLoc(origLoc, "reducesum_as_conv");
+    auto convOutputType = mlir::cast<NDTypeInterface>(inPermuteCastOp.getOutput().getType());
+    convOutputType = convOutputType.changeShape(ShapeRef({1, 1, newH, newW}));
+    auto conv = createConvolution(inPermuteCastOp.getOutput(), weights, convLoc, rewriter, convOutputType);
+
+    // Cast Conv output to the original order and shape
+    auto outPermuteCast = rewriter.create<IE::PermuteCastOp>(
+            appendLoc(origLoc, "output_permute_cast"), conv.getOutput(), DimsOrder::NCHW.toAffineMap(ctx), identityMap);
+    auto outReshapeOp =
+            rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "output_reshape"), outPermuteCast.getOutput(), nullptr,
+                                           false, getIntArrayAttr(ctx, getShape(origOp.getOutput())));
+
+    rewriter.replaceOp(origOp, outReshapeOp);
+
+    return mlir::success();
+}
+
+//
 // ConvertReduceSumToConvPass
 //
 
@@ -209,6 +340,7 @@ void ConvertReduceSumToConvPass::safeRunOnFunc() {
     // Convert ReduceSum to Convolution operation is optimum solution in case reduce axis is C
     mlir::RewritePatternSet pattern(&ctx);
     pattern.add<ReduceSumToConvRewriter>(&ctx, _log);
+    pattern.add<InnerDimReduceSumToConvRewriter>(&ctx, _log);
 
     if (mlir::failed(applyPatternsAndFoldGreedily(func, std::move(pattern), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

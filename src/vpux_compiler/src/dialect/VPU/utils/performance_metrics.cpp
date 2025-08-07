@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/performance_metrics.hpp"
@@ -85,7 +85,7 @@ SmallVector<SmallVector<uint64_t>> getBWTicks(mlir::ModuleOp module) {
     return ret;
 }
 
-double getActivityFactor(VPU::ExecutorKind execKind, mlir::ModuleOp module, IERT::ComputeResourceOpInterface res) {
+double getActivityFactor(VPU::ExecutorKind execKind, mlir::ModuleOp module, IE::ComputeResourceOpInterface res) {
     // 0.5 is a recommanded default value for AF by VPUNN team
     double activityFactor = 0.5;
     const auto arch = VPU::getArch(module);

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
@@ -76,7 +76,9 @@ mlir::LogicalResult vpux::VPUIP::PermuteCastOp::verify() {
     const auto outType = mlir::cast<vpux::NDTypeInterface>(getResult().getType());
 
     if (inType.getNumElements() != outType.getNumElements()) {
-        return errorAt(op, "PermuteCast input and output must have the same number of elements");
+        return errorAt(op,
+                       "PermuteCast input and output must have the same number of elements. inType {0}, outType {1}",
+                       inType, outType);
     }
 
     const auto inRank = inType.getRank();

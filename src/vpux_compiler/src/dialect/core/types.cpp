@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
@@ -34,7 +34,7 @@ bool BoundedTensorType::classof(mlir::Type type) {
     return false;
 }
 
-BoundedTensorType BoundedTensorType::get(mlir::Type type, mlir::ArrayRef<int64_t> bounds) {
+BoundedTensorType BoundedTensorType::get(mlir::Type type, BoundsRef bounds) {
     auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
 
     VPUX_THROW_UNLESS(ndType.getShape().isDynamic(), "Failed to create BoundedTensorType with static tensor shape {0}",
@@ -45,7 +45,7 @@ BoundedTensorType BoundedTensorType::get(mlir::Type type, mlir::ArrayRef<int64_t
                       type);
 
     auto tensorType = vpux::getTensorType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(),
-                                          ndType.getMemSpace(), Bounds(bounds), {});
+                                          ndType.getMemSpace(), bounds, {});
 
     return mlir::cast<BoundedTensorType>(tensorType);
 }
@@ -60,11 +60,14 @@ Bounds BoundedTensorType::getBounds() const {
     return {};
 }
 
-BoundedTensorType BoundedTensorType::changeBounds(ArrayRef<int64_t> bounds) const {
-    auto ndType = mlir::cast<vpux::NDTypeInterface>(*this);
+BoundedShape BoundedTensorType::getDynamicShape() const {
+    return makeShape<BoundedShape>(mlir::cast<NDTypeInterface>(*this).getShape(), getBounds());
+}
 
-    auto tensorType = vpux::getTensorType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(),
-                                          ndType.getMemSpace(), Bounds(bounds), {});
+BoundedTensorType BoundedTensorType::changeBounds(BoundsRef bounds) const {
+    const auto ndType = mlir::cast<vpux::NDTypeInterface>(*this);
+    const auto tensorType = vpux::getTensorType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(),
+                                                ndType.getMemSpace(), bounds, {});
 
     return mlir::cast<BoundedTensorType>(tensorType);
 }
@@ -92,7 +95,7 @@ bool DynamicDimsMaskTensorType::classof(mlir::Type type) {
             });
 }
 
-DynamicDimsMaskTensorType DynamicDimsMaskTensorType::get(mlir::Type type, mlir::ArrayRef<int64_t> dynamicDimsMask) {
+DynamicDimsMaskTensorType DynamicDimsMaskTensorType::get(mlir::Type type, DynamicDimsMaskRef dynamicDimsMask) {
     auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
 
     VPUX_THROW_UNLESS(ndType.getShape().isStatic(),
@@ -103,7 +106,7 @@ DynamicDimsMaskTensorType DynamicDimsMaskTensorType::get(mlir::Type type, mlir::
                       "DynamicDimsMaskTensorType must be created with tensor without dynamic dims mask, got {0}", type);
 
     auto tensorType = vpux::getTensorType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(),
-                                          ndType.getMemSpace(), {}, DynamicDimsMask(dynamicDimsMask));
+                                          ndType.getMemSpace(), {}, dynamicDimsMask);
 
     return mlir::cast<DynamicDimsMaskTensorType>(tensorType);
 }
@@ -118,11 +121,14 @@ DynamicDimsMask DynamicDimsMaskTensorType::getDynamicDimsMask() const {
     return {};
 }
 
-DynamicDimsMaskTensorType DynamicDimsMaskTensorType::changeDynamicDimsMask(ArrayRef<int64_t> dynamicDimsMask) const {
-    auto ndType = mlir::cast<vpux::NDTypeInterface>(*this);
+DimsMaskedShape DynamicDimsMaskTensorType::getDynamicShape() const {
+    return makeShape<DimsMaskedShape>(mlir::cast<NDTypeInterface>(*this).getShape(), getDynamicDimsMask());
+}
 
-    auto tensorType = vpux::getTensorType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(),
-                                          ndType.getMemSpace(), {}, DynamicDimsMask(dynamicDimsMask));
+DynamicDimsMaskTensorType DynamicDimsMaskTensorType::changeDynamicDimsMask(DynamicDimsMaskRef dynamicDimsMask) const {
+    const auto ndType = mlir::cast<vpux::NDTypeInterface>(*this);
+    const auto tensorType = vpux::getTensorType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(),
+                                                ndType.getMemSpace(), {}, dynamicDimsMask);
 
     return mlir::cast<DynamicDimsMaskTensorType>(tensorType);
 }

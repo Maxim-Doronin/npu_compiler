@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
@@ -10,89 +10,103 @@
 namespace vpux {
 namespace IE {
 
-mlir::ArrayAttr getNewConcatOffsetsParameters(mlir::ArrayAttr oldOffsets, mlir::ArrayAttr dimsMappingAttr,
-                                              mlir::OperandRange oldInputs, ArrayRef<vpux::ShapeRef> newInputShapes,
-                                              ShapeRef reshapeShape, mlir::DenseSet<int64_t> modifiedAxes) {
-    const auto oldOffsetsList = parseIntArrayOfArrayAttr<int64_t>(oldOffsets);
-    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(dimsMappingAttr);
+mlir::DenseSet<int64_t> getConcatAxes(IE::ConcatOp concatOp) {
+    auto outputShape = getShape(concatOp.getResult());
+    mlir::DenseSet<int64_t> affectedAxes;
 
-    SmallVector<SmallVector<int64_t>> newOffsetsList;
-    newOffsetsList.reserve(oldOffsetsList.size());
-
-    for (auto inputIndex : irange(oldOffsetsList.size())) {
-        const auto oldInputShape = getShape(oldInputs[inputIndex]).raw();
-        const auto newInputShape = newInputShapes[inputIndex].raw();
-        const auto oldOffset = oldOffsetsList[inputIndex];
-
-        SmallVector<int64_t> newOffset(newInputShape.size(), 0);
-        for (const auto oldConcatDim : modifiedAxes) {
-            for (const auto& dim : dimMapping[oldConcatDim]) {
-                // Condition "reshapeShape[Dim(dim)] != 1" is added to handle the following case:
-                // Concat on a dimension and then unsqueeze that dimension, e.g.:
-                // 2 x ([1, 3]) -> Concat -> ([2, 3]) -> AffineReshape: dimMapping={[0, 1, 2], [3]} -> ([1, 2, 1, 3])
-                if (oldInputShape[oldConcatDim] == newInputShape[dim] && reshapeShape[Dim(dim)] != 1) {
-                    newOffset[dim] = oldOffset[oldConcatDim];
-                    break;
-                }
-            }
-        }
-
-        newOffsetsList.push_back(newOffset);
-    }
-
-    // Make sure that there is at least one offset is set
-    bool isOffsetSet = std::any_of(newOffsetsList.begin(), newOffsetsList.end(), [](ArrayRef<int64_t> v) {
-        return std::any_of(v.begin(), v.end(), [](int64_t i) {
-            return i != 0;
-        });
-    });
-    VPUX_THROW_UNLESS(isOffsetSet == true, "No valid concat offset was found during ConcatReshapeConcat rewritten");
-
-    return getIntArrayOfArray(dimsMappingAttr.getContext(), ArrayRef(newOffsetsList));
-}
-
-mlir::DenseSet<int64_t> getConcatModifiedAxis(IE::ConcatOp origOp) {
-    mlir::DenseSet<int64_t> modifiedAxes;
-    const auto offsets = parseIntArrayOfArrayAttr<int64_t>(origOp.getStaticOffsetsAttr());
-
-    for (size_t i = 0; i < offsets.size(); i++) {
-        for (size_t j = 0; j < offsets[i].size(); ++j) {
-            if (offsets[i][j] != 0) {
-                modifiedAxes.insert(j);
+    for (auto input : concatOp.getInputs()) {
+        auto inputShape = getShape(input);
+        for (size_t ind = 0; ind < outputShape.size(); ++ind) {
+            const auto dim = Dim(ind);
+            if (inputShape[dim] != outputShape[dim]) {
+                affectedAxes.insert(dim.ind());
             }
         }
     }
 
-    return modifiedAxes;
+    return affectedAxes;
 }
 
-SmallVector<int64_t> calculateInputShapeAfterSwitchConcatAndAffineReshape(mlir::Value input, IE::ConcatOp concatOp,
-                                                                          IE::AffineReshapeOp reshapeOp) {
+std::optional<std::pair<Dim, Shape>> inferOutputShapeAfterAffineReshapeBeforeConcat(mlir::Value curInput,
+                                                                                    IE::ConcatOp concatOp,
+                                                                                    IE::AffineReshapeOp reshapeOp) {
+    const auto concatAxes = getConcatAxes(concatOp);
+    if (concatAxes.size() != 1) {
+        return std::nullopt;
+    }
+
+    const auto curInputShape = getShape(curInput);
+    const auto concatAxis = Dim(*concatAxes.begin());
     const auto affineOutShape = getShape(reshapeOp.getOutput());
-    const auto modifiedAxes = getConcatModifiedAxis(concatOp);
-
     const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(reshapeOp.getDimMapping());
-    SmallVector<int64_t> newShapeVec(affineOutShape.size());
-    for (size_t dimIdx = 0; dimIdx < affineOutShape.size(); dimIdx++) {
-        auto axisIt = llvm::find_if(modifiedAxes, [&](int64_t modifiedAxis) {
-            for (auto& mappedIdx : dimMapping[modifiedAxis]) {
-                if (affineOutShape[Dim(mappedIdx)] == 1) {
-                    continue;
-                } else {
-                    return dimIdx == checked_cast<size_t>(mappedIdx);
-                }
+
+    const auto concatDimMapping = dimMapping[concatAxis.ind()];
+    auto newConcatAxis = Dim(concatDimMapping[0]);
+    size_t newConcatAxisSize = 1;
+    auto newAffineOutShape = Shape(affineOutShape.raw());
+
+    // There are three scenarios for the "Concat -> AffineReshape" pattern:
+    // Pattern 1. Concat axis size remains unchanged after AffineReshape:
+    //    - Concat example: [2, 3, 4] + [3, 3, 4] = [5, 3, 4]
+    //    - AffineReshape example: [[0], [1], [1]] results in [5, 12]
+    //    - newConcatAxis: Dim(0); newAffineOutShape: [2, 12] + [3, 12]
+    // Pattern 2. Concat axis size is merged after AffineReshape:
+    //    - Concat example: [3, 3, 4] + [3, 6, 4] = [3, 9, 4]
+    //    - AffineReshape example: [[0], [1], [1]] results in [3, 36]
+    //    - newConcatAxis: Dim(1); newAffineOutShape: [3, 12] + [3, 24]
+    // Pattern 3. Concat axis size is split after AffineReshape:
+    //    - Concat example: [3, 4] + [6, 4] = [9, 4]
+    //    - AffineReshape example: [[0, 1], [2]] results in [3, 3, 4]
+    //    - newConcatAxis: Dim(1); newAffineOutShape: [3, 1, 4] + [3, 2, 4]
+    if (concatDimMapping.size() > 1) {
+        size_t accumuVal = 1;
+        bool axisFound = false;
+
+        for (size_t idx = 0; idx < concatDimMapping.size(); ++idx) {
+            const auto dim = Dim(concatDimMapping[idx]);
+            if (!axisFound && affineOutShape[dim] > 1) {
+                axisFound = true;
+                newConcatAxis = dim;
+            } else {
+                accumuVal *= affineOutShape[dim];
             }
-            return false;
-        });
-        if (axisIt != modifiedAxes.end() && affineOutShape[Dim(dimIdx)] != 1) {
-            newShapeVec[dimIdx] = getShape(input)[Dim(*axisIt)];
-        } else if (affineOutShape[Dim(dimIdx)] == 1) {
-            newShapeVec[dimIdx] = 1;
-        } else {
-            newShapeVec[dimIdx] = affineOutShape[Dim(dimIdx)];
+        }
+
+        // Pattern 3 negative scenario
+        // - Concat example: [2, 4] + [7, 4] = [9, 4]
+        // - AffineReshape example: [[0, 1], [2]] results in [3, 3, 4]
+        if (curInputShape[concatAxis] % accumuVal != 0) {
+            return std::nullopt;
+        }
+
+        newConcatAxisSize = curInputShape[concatAxis] / accumuVal;
+    } else {
+        // Handle Pattern 1 and Pattern 2
+        for (size_t dimIdx = 0; dimIdx < dimMapping.size(); ++dimIdx) {
+            const auto& curDimMapping = dimMapping[dimIdx];
+            if (curDimMapping.size() == 1 && curDimMapping[0] == newConcatAxis.ind()) {
+                newConcatAxisSize *= curInputShape[Dim(dimIdx)];
+            }
         }
     }
-    return newShapeVec;
+
+    newAffineOutShape[newConcatAxis] = newConcatAxisSize;
+    return std::make_pair(newConcatAxis, std::move(newAffineOutShape));
+}
+
+mlir::ArrayAttr inferConcatOffsets(ArrayRef<ShapeRef> concatInShapes, const Dim concatDim, mlir::MLIRContext* ctx) {
+    SmallVector<SmallVector<int64_t>> offsetsList(concatInShapes.size(),
+                                                  SmallVector<int64_t>(concatInShapes[0].size(), 0));
+    int64_t currentOffset = 0;
+
+    for (size_t idx = 0; idx < concatInShapes.size(); idx++) {
+        auto shape = concatInShapes[idx];
+        int64_t dimSize = shape[concatDim];
+        offsetsList[idx][concatDim.ind()] = currentOffset;
+        currentOffset += dimSize;
+    }
+
+    return getIntArrayOfArray(ctx, ArrayRef(offsetsList));
 }
 
 mlir::Value createPaddingConstForConcat(ArrayRef<int64_t> constShape, mlir::Location loc,

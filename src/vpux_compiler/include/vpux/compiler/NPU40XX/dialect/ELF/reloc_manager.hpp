@@ -1,12 +1,13 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
+#include "vpux/compiler/utils/options.hpp"
 
 namespace vpux {
 namespace ELF {
@@ -36,7 +37,6 @@ private:
     void constructSymbolMap(ELF::MainOp elfMain);
 
     ELF::SymbolOp getSymbolOfBinOpOrEncapsulatingSection(mlir::Operation* binOp);
-    ELF::SymbolOp getCMXBaseAddressSym();
 
     ELF::CreateRelocationSectionOp getRelocationSection(ELF::ElfSectionInterface targetSection,
                                                         ELF::CreateSymbolTableSectionOp symbolTable);

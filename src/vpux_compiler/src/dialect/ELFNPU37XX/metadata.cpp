@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/ELFNPU37XX/metadata.hpp"
@@ -49,6 +49,8 @@ elf::DType ELFNPU37XX::createDType(mlir::Type type) {
         return elf::DType::DType_I8;
     } else if (type.isSignedInteger(4)) {
         return elf::DType::DType_I4;
+    } else if (type.isSignedInteger(2)) {
+        return elf::DType::DType_I2;
     } else if (type.isInteger(CHAR_BIT * sizeof(uint64_t))) {
         return elf::DType::DType_U64;
     } else if (type.isInteger(CHAR_BIT * sizeof(uint32_t))) {
@@ -60,7 +62,7 @@ elf::DType ELFNPU37XX::createDType(mlir::Type type) {
     } else if (type.isInteger(4)) {
         return elf::DType::DType_U4;
     } else if (type.isInteger(2)) {
-        return elf::DType::DType_I2;
+        return elf::DType::DType_I2X;
     } else if (type.isInteger(1)) {
         return elf::DType::DType_BIN;
     } else if (mlir::isa<mlir::quant::QuantizedType>(type)) {
@@ -90,7 +92,7 @@ elf::TensorRef ELFNPU37XX::createTensorRef(vpux::NDTypeInterface type, StringRef
     if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(type)) {
         auto bounds = boundedType.getBounds();
         for (auto [ind, dim] : bounds | indexed) {
-            out.dimensions[ind] = checked_cast<uint32_t>(bounds[ind]);
+            out.dimensions[ind] = checked_cast<uint32_t>(bounds[Dim(ind)]);
         }
     } else {
         for (auto [ind, dim] : shape | indexed) {
@@ -152,6 +154,8 @@ elf::OVNodeType ELFNPU37XX::createOVNodeType(mlir::Type type) {
         return elf::OVNodeType::OVNodeType_I8;
     } else if (type.isSignedInteger(4)) {
         return elf::OVNodeType::OVNodeType_I4;
+    } else if (type.isSignedInteger(2)) {
+        return elf::OVNodeType::OVNodeType_I2;
     } else if (type.isSignlessInteger(8)) {
         // In frontend signless 8-bit integer is used for BOOL, to distinguish it from U8
         // This if else statement should come before the check for U8 to distinguish between these two types
@@ -166,6 +170,8 @@ elf::OVNodeType ELFNPU37XX::createOVNodeType(mlir::Type type) {
         return elf::OVNodeType::OVNodeType_U8;
     } else if (type.isInteger(4)) {
         return elf::OVNodeType::OVNodeType_U4;
+    } else if (type.isInteger(2)) {
+        return elf::OVNodeType::OVNodeType_U2;
     } else if (type.isInteger(1)) {
         // Both signed and unsigned 1-bit integers are converted to U1
         return elf::OVNodeType::OVNodeType_U1;
@@ -274,6 +280,8 @@ std::string stringifyOVNodeType(elf::OVNodeType val) {
         return "I8";
     case elf::OVNodeType::OVNodeType_I4:
         return "I4";
+    case elf::OVNodeType::OVNodeType_I2:
+        return "I2";
     case elf::OVNodeType::OVNodeType_U64:
         return "U64";
     case elf::OVNodeType::OVNodeType_U32:
@@ -284,6 +292,8 @@ std::string stringifyOVNodeType(elf::OVNodeType val) {
         return "U8";
     case elf::OVNodeType::OVNodeType_U4:
         return "U4";
+    case elf::OVNodeType::OVNodeType_U2:
+        return "U2";
     case elf::OVNodeType::OVNodeType_U1:
         return "U1";
     case elf::OVNodeType::OVNodeType_BOOLEAN:

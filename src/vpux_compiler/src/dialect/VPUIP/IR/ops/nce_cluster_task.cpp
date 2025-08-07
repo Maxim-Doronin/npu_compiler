@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/dim.hpp"
@@ -10,6 +10,7 @@
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
@@ -69,10 +70,11 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
     build(builder, state, output_buff.getType(), nullptr, nullptr, input, nullptr, nullptr, weights, nullptr,
           weight_table, weight_table_data_ptr, weight_table_sp_ptr, weight_table_scale, weight_table_bias,
           weight_zero_points, spr_lookup_table, pallet_lookup_table, parent_input, nullptr, nullptr, parent_output,
-          nullptr, mlir::ValueRange(), output_buff, nullptr, nullptr, nullptr, nullptr, mlir::ValueRange(), task_type,
-          kernel_size, kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset,
-          input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size,
-          output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType);
+          nullptr, mlir::ValueRange(), output_buff, nullptr, nullptr, nullptr, nullptr, nullptr, mlir::ValueRange(),
+          task_type, kernel_size, kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented,
+          out_channel_offset, input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace,
+          input_se_size, output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType,
+          nullptr);
 }
 
 void vpux::VPUIP::NCEClusterTaskOp::build(
@@ -90,10 +92,10 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
     build(builder, state, output, nullptr, nullptr, input, nullptr, nullptr, weights, nullptr, weight_table,
           weight_table_data_ptr, weight_table_sp_ptr, weight_table_scale, weight_table_bias, weight_zero_points,
           spr_lookup_table, pallet_lookup_table, parent_input, nullptr, nullptr, parent_output, nullptr,
-          mlir::ValueRange(), output_buff, nullptr, nullptr, nullptr, nullptr, mlir::ValueRange(), task_type,
+          mlir::ValueRange(), output_buff, nullptr, nullptr, nullptr, nullptr, nullptr, mlir::ValueRange(), task_type,
           kernel_size, kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset,
           input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size,
-          output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType);
+          output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType, nullptr);
 }
 
 void vpux::VPUIP::NCEClusterTaskOp::build(
@@ -112,10 +114,10 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
           nullptr, nullptr, weights, nullptr, weight_table, weight_table_data_ptr, weight_table_sp_ptr,
           weight_table_scale, weight_table_bias, weight_zero_points, spr_lookup_table, pallet_lookup_table,
           parent_input, nullptr, nullptr, parent_output, nullptr, mlir::ValueRange(), output_buff, nullptr,
-          profiling_data, nullptr, nullptr, mlir::ValueRange(), task_type, kernel_size, kernel_strides, kernel_padding,
-          is_continued, cm_sp_pattern, is_segmented, out_channel_offset, input_channels_compression,
+          profiling_data, nullptr, nullptr, nullptr, mlir::ValueRange(), task_type, kernel_size, kernel_strides,
+          kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset, input_channels_compression,
           is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size, output_se_size, isPermuteQuantize,
-          isSmallKernelOptimized, mpeEngineAttr, eltwiseType);
+          isSmallKernelOptimized, mpeEngineAttr, eltwiseType, nullptr);
 }
 
 void vpux::VPUIP::NCEClusterTaskOp::build(
@@ -133,10 +135,11 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
     build(builder, state, output, nullptr, profiling_output, input, nullptr, nullptr, weights, nullptr, weight_table,
           weight_table_data_ptr, weight_table_sp_ptr, weight_table_scale, weight_table_bias, weight_zero_points,
           spr_lookup_table, pallet_lookup_table, parent_input, nullptr, nullptr, parent_output, nullptr,
-          mlir::ValueRange(), output_buff, nullptr, profiling_data, nullptr, nullptr, mlir::ValueRange(), task_type,
-          kernel_size, kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset,
-          input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size,
-          output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType);
+          mlir::ValueRange(), output_buff, nullptr, profiling_data, nullptr, nullptr, nullptr, mlir::ValueRange(),
+          task_type, kernel_size, kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented,
+          out_channel_offset, input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace,
+          input_se_size, output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType,
+          nullptr);
 }
 
 void vpux::VPUIP::NCEClusterTaskOp::build(
@@ -147,14 +150,15 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
         mlir::Value spr_lookup_table, mlir::Value pallet_lookup_table, mlir::Value parent_input,
         mlir::Value parent_input_sparsity_map, mlir::Value parent_input_storage_element_table,
         mlir::Value parent_output, mlir::Value parent_output_sparsity_map, mlir::Value output_buff,
-        mlir::Value output_sparsity_map_buff, mlir::Value profiling_data, mlir::Value max_per_xy,
-        mlir::Value min_per_xy, mlir::ValueRange min_max_per_tensor, vpux::VPUIP::NCETaskType task_type,
-        mlir::ArrayAttr kernel_size, mlir::ArrayAttr kernel_strides, vpux::VPU::PaddingAttr kernel_padding,
-        mlir::UnitAttr is_continued, mlir::IntegerAttr cm_sp_pattern, mlir::UnitAttr is_segmented,
-        mlir::IntegerAttr out_channel_offset, mlir::UnitAttr input_channels_compression,
+        mlir::Value output_sparsity_map_buff, mlir::Value profiling_data, mlir::Value dynamic_sequence_length,
+        mlir::Value max_per_xy, mlir::Value min_per_xy, mlir::ValueRange min_max_per_tensor,
+        vpux::VPUIP::NCETaskType task_type, mlir::ArrayAttr kernel_size, mlir::ArrayAttr kernel_strides,
+        vpux::VPU::PaddingAttr kernel_padding, mlir::UnitAttr is_continued, mlir::IntegerAttr cm_sp_pattern,
+        mlir::UnitAttr is_segmented, mlir::IntegerAttr out_channel_offset, mlir::UnitAttr input_channels_compression,
         mlir::UnitAttr is_zero_offset_weights_table, mlir::UnitAttr is_superdense, mlir::BoolAttr is_inplace,
         mlir::IntegerAttr input_se_size, mlir::IntegerAttr output_se_size, mlir::UnitAttr isPermuteQuantize,
-        mlir::UnitAttr isSmallKernelOptimized, VPU::MPEEngineAttr mpeEngineAttr, VPU::EltwiseTypeAttr eltwiseType) {
+        mlir::UnitAttr isSmallKernelOptimized, VPU::MPEEngineAttr mpeEngineAttr, VPU::EltwiseTypeAttr eltwiseType,
+        vpux::VPUIP::DynamicScaleConfigAttr dynamicScaleConfig) {
     build(builder, state, output_buff.getType(),
           output_sparsity_map_buff ? output_sparsity_map_buff.getType() : nullptr,
           (profiling_data != nullptr) ? profiling_data.getType() : nullptr, input, input_sparsity_map,
@@ -162,10 +166,10 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
           weight_table_sp_ptr, weight_table_scale, weight_table_bias, weight_zero_points, spr_lookup_table,
           pallet_lookup_table, parent_input, parent_input_sparsity_map, parent_input_storage_element_table,
           parent_output, parent_output_sparsity_map, mlir::ValueRange(), output_buff, output_sparsity_map_buff,
-          profiling_data, max_per_xy, min_per_xy, min_max_per_tensor, task_type, kernel_size, kernel_strides,
-          kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset, input_channels_compression,
-          is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size, output_se_size, isPermuteQuantize,
-          isSmallKernelOptimized, mpeEngineAttr, eltwiseType);
+          profiling_data, dynamic_sequence_length, max_per_xy, min_per_xy, min_max_per_tensor, task_type, kernel_size,
+          kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset,
+          input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size,
+          output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType, dynamicScaleConfig);
 }
 
 void vpux::VPUIP::NCEClusterTaskOp::build(
@@ -177,23 +181,24 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
         mlir::Value spr_lookup_table, mlir::Value pallet_lookup_table, mlir::Value parent_input,
         mlir::Value parent_input_sparsity_map, mlir::Value parent_input_storage_element_table,
         mlir::Value parent_output, mlir::Value parent_output_sparsity_map, mlir::Value output_buff,
-        mlir::Value output_sparsity_map_buff, mlir::Value profiling_data, mlir::Value max_per_xy,
-        mlir::Value min_per_xy, mlir::ValueRange min_max_per_tensor, vpux::VPUIP::NCETaskType task_type,
-        mlir::ArrayAttr kernel_size, mlir::ArrayAttr kernel_strides, vpux::VPU::PaddingAttr kernel_padding,
-        mlir::UnitAttr is_continued, mlir::IntegerAttr cm_sp_pattern, mlir::UnitAttr is_segmented,
-        mlir::IntegerAttr out_channel_offset, mlir::UnitAttr input_channels_compression,
+        mlir::Value output_sparsity_map_buff, mlir::Value profiling_data, mlir::Value dynamic_sequence_length,
+        mlir::Value max_per_xy, mlir::Value min_per_xy, mlir::ValueRange min_max_per_tensor,
+        vpux::VPUIP::NCETaskType task_type, mlir::ArrayAttr kernel_size, mlir::ArrayAttr kernel_strides,
+        vpux::VPU::PaddingAttr kernel_padding, mlir::UnitAttr is_continued, mlir::IntegerAttr cm_sp_pattern,
+        mlir::UnitAttr is_segmented, mlir::IntegerAttr out_channel_offset, mlir::UnitAttr input_channels_compression,
         mlir::UnitAttr is_zero_offset_weights_table, mlir::UnitAttr is_superdense, mlir::BoolAttr is_inplace,
         mlir::IntegerAttr input_se_size, mlir::IntegerAttr output_se_size, mlir::UnitAttr isPermuteQuantize,
-        mlir::UnitAttr isSmallKernelOptimized, VPU::MPEEngineAttr mpeEngineAttr, VPU::EltwiseTypeAttr eltwiseType) {
+        mlir::UnitAttr isSmallKernelOptimized, VPU::MPEEngineAttr mpeEngineAttr, VPU::EltwiseTypeAttr eltwiseType,
+        vpux::VPUIP::DynamicScaleConfigAttr dynamicScaleConfig) {
     build(builder, state, output, output_sparsity_map, profiling_output, input, input_sparsity_map,
           input_storage_element_table, weights, weights_sparsity_map, weight_table, weight_table_data_ptr,
           weight_table_sp_ptr, weight_table_scale, weight_table_bias, weight_zero_points, spr_lookup_table,
           pallet_lookup_table, parent_input, parent_input_sparsity_map, parent_input_storage_element_table,
           parent_output, parent_output_sparsity_map, mlir::ValueRange(), output_buff, output_sparsity_map_buff,
-          profiling_data, max_per_xy, min_per_xy, min_max_per_tensor, task_type, kernel_size, kernel_strides,
-          kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset, input_channels_compression,
-          is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size, output_se_size, isPermuteQuantize,
-          isSmallKernelOptimized, mpeEngineAttr, eltwiseType);
+          profiling_data, dynamic_sequence_length, max_per_xy, min_per_xy, min_max_per_tensor, task_type, kernel_size,
+          kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented, out_channel_offset,
+          input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace, input_se_size,
+          output_se_size, isPermuteQuantize, isSmallKernelOptimized, mpeEngineAttr, eltwiseType, dynamicScaleConfig);
 }
 
 void vpux::VPUIP::NCEClusterTaskOp::build(
@@ -206,13 +211,15 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
         mlir::Value parent_input_sparsity_map, mlir::Value parent_input_storage_element_table,
         mlir::Value parent_output, mlir::Value parent_output_sparsity_map, mlir::ValueRange output_ITI_buff,
         mlir::Value output_buff, mlir::Value output_sparsity_map_buff, mlir::Value profiling_data,
-        mlir::Value max_per_xy, mlir::Value min_per_xy, mlir::ValueRange min_max_per_tensor,
-        vpux::VPUIP::NCETaskType task_type, mlir::ArrayAttr kernel_size, mlir::ArrayAttr kernel_strides,
-        vpux::VPU::PaddingAttr kernel_padding, mlir::UnitAttr is_continued, mlir::IntegerAttr cm_sp_pattern,
-        mlir::UnitAttr is_segmented, mlir::IntegerAttr out_channel_offset, mlir::UnitAttr input_channels_compression,
-        mlir::UnitAttr is_zero_offset_weights_table, mlir::UnitAttr is_superdense, mlir::BoolAttr is_inplace,
-        mlir::IntegerAttr input_se_size, mlir::IntegerAttr output_se_size, mlir::UnitAttr isPermuteQuantize,
-        mlir::UnitAttr isSmallKernelOptimized, VPU::MPEEngineAttr mpeEngineAttr, VPU::EltwiseTypeAttr eltwiseType) {
+        mlir::Value dynamic_sequence_length, mlir::Value max_per_xy, mlir::Value min_per_xy,
+        mlir::ValueRange min_max_per_tensor, vpux::VPUIP::NCETaskType task_type, mlir::ArrayAttr kernel_size,
+        mlir::ArrayAttr kernel_strides, vpux::VPU::PaddingAttr kernel_padding, mlir::UnitAttr is_continued,
+        mlir::IntegerAttr cm_sp_pattern, mlir::UnitAttr is_segmented, mlir::IntegerAttr out_channel_offset,
+        mlir::UnitAttr input_channels_compression, mlir::UnitAttr is_zero_offset_weights_table,
+        mlir::UnitAttr is_superdense, mlir::BoolAttr is_inplace, mlir::IntegerAttr input_se_size,
+        mlir::IntegerAttr output_se_size, mlir::UnitAttr isPermuteQuantize, mlir::UnitAttr isSmallKernelOptimized,
+        VPU::MPEEngineAttr mpeEngineAttr, VPU::EltwiseTypeAttr eltwiseType,
+        vpux::VPUIP::DynamicScaleConfigAttr dynamicScaleConfig) {
     auto taskTypeAttr = vpux::VPUIP::NCETaskTypeAttr::get(builder.getContext(), task_type);
 
     build(builder, state, output, output_sparsity_map, profiling_output, input, input_sparsity_map,
@@ -220,11 +227,11 @@ void vpux::VPUIP::NCEClusterTaskOp::build(
           weight_table_sp_ptr, weight_table_scale, weight_table_bias, weight_zero_points, spr_lookup_table,
           pallet_lookup_table, parent_input, parent_input_sparsity_map, parent_input_storage_element_table,
           parent_output, parent_output_sparsity_map, output_ITI_buff, output_buff, output_sparsity_map_buff,
-          profiling_data, /*dynamic_sequence_length=*/nullptr, max_per_xy, min_per_xy, min_max_per_tensor, taskTypeAttr,
+          profiling_data, dynamic_sequence_length, max_per_xy, min_per_xy, min_max_per_tensor, taskTypeAttr,
           eltwiseType, kernel_size, kernel_strides, kernel_padding, is_continued, cm_sp_pattern, is_segmented,
           out_channel_offset, input_channels_compression, is_zero_offset_weights_table, is_superdense, is_inplace,
           input_se_size, output_se_size, isPermuteQuantize, isSmallKernelOptimized,
-          /*profilingMetadata=*/nullptr, mpeEngineAttr, /*dynamicScaleConfig*/ nullptr);
+          /*profilingMetadata=*/nullptr, mpeEngineAttr, dynamicScaleConfig);
 
     // The auto-generated builders don't populate the regions even if SizedRegion<1> is specified.
     for (auto& region : state.regions) {
@@ -277,6 +284,22 @@ VPUIP::DPUTaskOp vpux::VPUIP::NCEClusterTaskOp::addDPUTask(mlir::OpBuilder& buil
     builder.setInsertionPointToEnd(&getVariants().front());
 
     return builder.create<VPUIP::DPUTaskOp>(getLoc(), outStart, outEnd, pad, mpeMode, clusterId);
+}
+
+VPUIP::DPUTaskOp vpux::VPUIP::NCEClusterTaskOp::addDPUTask(mlir::OpBuilder& builder, mlir::ArrayAttr outStart,
+                                                           mlir::ArrayAttr outEnd, mlir::ArrayAttr inStart,
+                                                           mlir::ArrayAttr inEnd, VPU::PaddingAttr pad,
+                                                           VPU::MPEMode mpeMode, mlir::ArrayAttr variant_primitive_id) {
+    if (getVariants().empty()) {
+        getVariants().emplaceBlock();
+    }
+
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToEnd(&getVariants().front());
+
+    return builder.create<VPUIP::DPUTaskOp>(getLoc(), outStart, outEnd, inStart, inEnd, pad, mpeMode,
+                                            /*cluster_id=*/nullptr,
+                                            /*halo_regions=*/nullptr, /*workload_id =*/nullptr, variant_primitive_id);
 }
 
 //
@@ -465,17 +488,6 @@ mlir::LogicalResult verifyNCEPool(VPUIP::NCEClusterTaskOp op) {
     return verifyInOutOrder(op, "Pooling");
 }
 
-bool hasZeroPadding(const VPU::PaddingAttr padAttr) {
-    if (padAttr == nullptr) {
-        return true;
-    }
-    const auto top = padAttr.getTop().getInt();
-    const auto bottom = padAttr.getBottom().getInt();
-    const auto left = padAttr.getLeft().getInt();
-    const auto right = padAttr.getRight().getInt();
-    return top == 0 && bottom == 0 && left == 0 && right == 0;
-}
-
 mlir::LogicalResult verifyNCEEltwise(VPUIP::NCEClusterTaskOp op, VPU::ArchKind) {
     VPUX_THROW_UNLESS(op.getTaskType() == VPUIP::NCETaskType::ELTWISE, "Expected task type '{0}', but got '{1}'",
                       VPUIP::NCETaskType::ELTWISE, op.getTaskType());
@@ -485,7 +497,7 @@ mlir::LogicalResult verifyNCEEltwise(VPUIP::NCEClusterTaskOp op, VPU::ArchKind) 
     if (op.getKernelStridesAttr() != nullptr) {
         return errorAt(op, "kernel_strides should be empty for NCETaskType : '{0}'", op.getTaskType());
     }
-    if (!hasZeroPadding(op.getKernelPaddingAttr())) {
+    if (!VPU::hasZeroPadding(op.getKernelPaddingAttr())) {
         return errorAt(op, "kernel_padding should be empty for NCETaskType : '{0}'", op.getTaskType());
     }
 
@@ -635,8 +647,9 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
     }
 
     const auto appendToVector = [](SmallVector<mlir::Value>& operands, mlir::Value val) {
-        if (val != nullptr)
+        if (val != nullptr) {
             operands.push_back(val);
+        }
     };
     auto nnCMXOperands = SmallVector<mlir::Value>();
 
@@ -656,9 +669,8 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
                 return errorAt(op, "Got unsupported input batch '{0}' expected to be less than or equal to '{1}'",
                                inputBatch, getNumTilesUsed(module));
             }
-            if (auto nceTilingParent = op->getParentOfType<VPUIP::NCEClusterTilingOp>()) {
-                auto outputType =
-                        mlir::cast<vpux::VPUIP::DistributedBufferType>(nceTilingParent->getResult(0).getType());
+            if (vpux::VPUIP::hasDistributedOperand(op)) {
+                auto outputType = mlir::cast<vpux::VPUIP::DistributedBufferType>(op->getResult(0).getType());
                 const auto numClusters = outputType.getDistribution().getNumClusters().getInt();
                 if (inputBatch != numClusters) {
                     return errorAt(op, "Got unsupported input batch '{0}' expected '{1}'", inputBatch, numClusters);
@@ -683,16 +695,18 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
             const auto type = mlir::cast<vpux::NDTypeInterface>(val.getType());
 
             const auto mem = type.getMemoryKind();
-            if (llvm::find(acceptedMemoryKinds, mem) == acceptedMemoryKinds.end())
+            if (llvm::find(acceptedMemoryKinds, mem) == acceptedMemoryKinds.end()) {
                 return errorAt(op, "Can't operate with '{0}' MemoryKind.", mem);
+            }
         }
         return mlir::success();
     };
 
     const auto nncmxStatus = checkMemoryKind(
             nnCMXOperands, EnumSet<VPU::MemoryKind>({VPU::MemoryKind::CMX_NN, VPU::MemoryKind::Register}));
-    if (nncmxStatus.failed())
+    if (nncmxStatus.failed()) {
         return nncmxStatus;
+    }
 
     // TODO revisit memory checks for parent operands
 

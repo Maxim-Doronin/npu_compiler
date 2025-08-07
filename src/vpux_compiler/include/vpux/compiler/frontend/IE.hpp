@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -16,6 +16,7 @@
 // Opset versions supported
 #include <openvino/opsets/opset1.hpp>
 #include <openvino/opsets/opset12.hpp>
+#include <openvino/opsets/opset13.hpp>
 #include <openvino/opsets/opset14.hpp>
 #include <openvino/opsets/opset2.hpp>
 #include <openvino/opsets/opset3.hpp>
@@ -263,6 +264,8 @@ private:
     void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset14::Inverse>& origNode);
     void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::DeformableConvolution>& origNode);
     void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::VariadicSplit>& origNode);
+    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset13::ScaledDotProductAttention>& origNode);
+    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::Op>& origNode);
 
     SmallVector<mlir::Value> getInputs(const OrigNodePtr& node);
     void addOutputs(const OrigNodePtr& node, mlir::Operation* op);

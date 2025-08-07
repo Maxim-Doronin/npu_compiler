@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-scatterndupdate-to-strided-concat
@@ -136,16 +136,36 @@ func.func @ConvertToSliceConcatElementsUpdateWithLeftSlice(%arg0:  tensor<1x326x
 
 // -----
 
-// CHECK-LABEL: @NotConvertToSliceConcatElementsUpdateWithIllegalIndicesData
-func.func @NotConvertToSliceConcatElementsUpdateWithIllegalIndicesData(%arg0:  tensor<1x326x1xf16>, %arg1 : tensor<1x7x1xf16> ) -> tensor<1x326x1xf16>{
-    %cst = const.Declare tensor<1x7x1x3xsi32> = dense<[[[[0, 319, 0]], [[0, 320, 0]], [[0, 100, 0]], [[0, 322, 0]], [[0, 323, 0]], [[0, 324, 0]], [[0, 325, 0]]]]> : tensor<1x7x1x3xsi64>, [#const.CastElemType<si32>]
+// CHECK-LABEL: @ConvertToSliceConcatElementsUpdateWithSplit
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x326x1xf16>, [[UPDATE:%.+]]: tensor<1x7x1xf16>)
+func.func @ConvertToSliceConcatElementsUpdateWithSplit(%arg0:  tensor<1x326x1xf16>, %arg1 : tensor<1x7x1xf16> ) -> tensor<1x326x1xf16>{
+    %cst = const.Declare tensor<1x7x1x3xsi32> = dense<[[
+                [[0, 319, 0]], [[0, 320, 0]],
+                [[0, 100, 0]],
+                [[0, 322, 0]], [[0, 323, 0]], [[0, 324, 0]], [[0, 325, 0]]
+            ]]> : tensor<1x7x1x3xsi64>, [#const.CastElemType<si32>]
     %0 = IE.ScatterNDUpdate(%arg0, %cst, %arg1) : tensor<1x326x1xf16>, tensor<1x7x1x3xsi32>, tensor<1x7x1xf16> -> tensor<1x326x1xf16>
 
     return %0 : tensor<1x326x1xf16>
 
-    // CHECK-DAG: [[CST:%.*]] = const.Declare
-    // CHECK: [[RESULT:%.*]] = IE.ScatterNDUpdate
-    // CHECK: return [[RESULT]] : tensor<1x326x1xf16>
+    // CHECK:   [[SLICE_0:%.+]] = IE.Slice [[UPDATE]] [0, 0, 0] [1, 2, 1] : tensor<1x7x1xf16> to tensor<1x2x1xf16>
+    // CHECK:   [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 0, 0] [1, 319, 1] : tensor<1x326x1xf16> to tensor<1x319x1xf16>
+    // CHECK:   [[SLICE_2:%.+]] = IE.Slice [[INPUT]] [0, 321, 0] [1, 5, 1] : tensor<1x326x1xf16> to tensor<1x5x1xf16>
+    // CHECK:   [[CONCAT_0:%.+]] = IE.Concat([[SLICE_1]], [[SLICE_0]], [[SLICE_2]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 319, 0], [0, 321, 0]]} : tensor<1x319x1xf16>, tensor<1x2x1xf16>, tensor<1x5x1xf16> -> tensor<1x326x1xf16>
+
+    // CHECK:   [[SLICE_3:%.+]] = IE.Slice [[UPDATE]] [0, 2, 0] [1, 1, 1] : tensor<1x7x1xf16> to tensor<1x1x1xf16>
+    // CHECK:   [[SLICE_4:%.+]] = IE.Slice [[CONCAT_0]] [0, 0, 0] [1, 100, 1] : tensor<1x326x1xf16> to tensor<1x100x1xf16>
+    // CHECK:   [[SLICE_5:%.+]] = IE.Slice [[CONCAT_0]] [0, 101, 0] [1, 225, 1] : tensor<1x326x1xf16> to tensor<1x225x1xf16>
+    // CHECK:   [[CONCAT_1:%.+]] = IE.Concat([[SLICE_4]], [[SLICE_3]], [[SLICE_5]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 100, 0], [0, 101, 0]]} : tensor<1x100x1xf16>, tensor<1x1x1xf16>, tensor<1x225x1xf16> -> tensor<1x326x1xf16>
+
+    // CHECK:   [[SLICE_6:%.+]] = IE.Slice [[UPDATE]] [0, 3, 0] [1, 4, 1] : tensor<1x7x1xf16> to tensor<1x4x1xf16>
+    // CHECK:   [[SLICE_7:%.+]] = IE.Slice [[CONCAT_1]] [0, 0, 0] [1, 322, 1] : tensor<1x326x1xf16> to tensor<1x322x1xf16>
+    // CHECK:   [[CONCAT_2:%.+]] = IE.Concat([[SLICE_7]], [[SLICE_6]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 322, 0]]} : tensor<1x322x1xf16>, tensor<1x4x1xf16> -> tensor<1x326x1xf16>
+
+    // CHECK:   return [[CONCAT_2]] : tensor<1x326x1xf16>
 }
 
 // -----
@@ -396,4 +416,143 @@ func.func @Convert5DUpdateDataToSliceConcat(%arg0:  tensor<1x4x5x6x7xf16>, %arg1
     // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0, 0, 0], [0, 2, 0, 0, 0]]} : tensor<1x2x5x6x7xf16>, tensor<1x2x5x6x7xf16> -> tensor<1x4x5x6x7xf16>
 
     // CHECK:   return [[CONCAT_C]] : tensor<1x4x5x6x7xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @Convert5DUpdateDataToSliceConcatSmallIndices
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x4x5x6x7x3xf16>, [[UPDATE:%.+]]: tensor<1x2x1x2x2x3xf16>)
+func.func @Convert5DUpdateDataToSliceConcatSmallIndices(%arg0:  tensor<1x4x5x6x7x3xf16>, %arg1: tensor<1x2x1x2x2x3xf16> ) -> tensor<1x4x5x6x7x3xf16>{
+    %cst = const.Declare tensor<1x2x1x2x2x5xsi32> = dense<[[[[[[0, 2, 3, 0, 2], [0, 2, 3, 0, 3]],
+                                                              [[0, 2, 3, 1, 2], [0, 2, 3, 1, 3]]]],
+                                                            [[[[0, 3, 3, 0, 2], [0, 3, 3, 0, 3]],
+                                                              [[0, 3, 3, 1, 2], [0, 3, 3, 1, 3]]]]]]> : tensor<1x2x1x2x2x5xsi32>
+    %0 = IE.ScatterNDUpdate(%arg0, %cst, %arg1) : tensor<1x4x5x6x7x3xf16>, tensor<1x2x1x2x2x5xsi32>, tensor<1x2x1x2x2x3xf16> -> tensor<1x4x5x6x7x3xf16>
+    return %0 : tensor<1x4x5x6x7x3xf16>
+
+    // CHECK-NOT:   IE.ScatterNDUpdate
+    // CHECK:   [[SLICE_W_BEGIN:%.+]] = IE.Slice [[INPUT]] [0, 2, 3, 0, 0, 0] [1, 2, 1, 2, 2, 3] : tensor<1x4x5x6x7x3xf16> to tensor<1x2x1x2x2x3xf16>
+    // CHECK:   [[SLICE_W_END:%.+]] = IE.Slice [[INPUT]] [0, 2, 3, 0, 4, 0] [1, 2, 1, 2, 3, 3] : tensor<1x4x5x6x7x3xf16> to tensor<1x2x1x2x3x3xf16>
+    // CHECK:   [[CONCAT_W:%.+]] = IE.Concat([[SLICE_W_BEGIN]], [[UPDATE]], [[SLICE_W_END]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 2, 0], [0, 0, 0, 0, 4, 0]]} : tensor<1x2x1x2x2x3xf16>, tensor<1x2x1x2x2x3xf16>, tensor<1x2x1x2x3x3xf16> -> tensor<1x2x1x2x7x3xf16>
+
+    // CHECK:   [[SLICE_H_END:%.+]] = IE.Slice [[INPUT]] [0, 2, 3, 2, 0, 0] [1, 2, 1, 4, 7, 3] : tensor<1x4x5x6x7x3xf16> to tensor<1x2x1x4x7x3xf16>
+    // CHECK:   [[CONCAT_H:%.+]] = IE.Concat([[CONCAT_W]], [[SLICE_H_END]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 2, 0, 0]]} : tensor<1x2x1x2x7x3xf16>, tensor<1x2x1x4x7x3xf16> -> tensor<1x2x1x6x7x3xf16>
+
+    // CHECK:   [[SLICE_D_BEGIN:%.+]] = IE.Slice [[INPUT]] [0, 2, 0, 0, 0, 0] [1, 2, 3, 6, 7, 3] : tensor<1x4x5x6x7x3xf16> to tensor<1x2x3x6x7x3xf16>
+    // CHECK:   [[SLICE_D_END:%.+]] = IE.Slice [[INPUT]] [0, 2, 4, 0, 0, 0] [1, 2, 1, 6, 7, 3] : tensor<1x4x5x6x7x3xf16> to tensor<1x2x1x6x7x3xf16>
+    // CHECK:   [[CONCAT_D:%.+]] = IE.Concat([[SLICE_D_BEGIN]], [[CONCAT_H]], [[SLICE_D_END]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0, 0, 0, 0], [0, 0, 3, 0, 0, 0], [0, 0, 4, 0, 0, 0]]} : tensor<1x2x3x6x7x3xf16>, tensor<1x2x1x6x7x3xf16>, tensor<1x2x1x6x7x3xf16> -> tensor<1x2x5x6x7x3xf16>
+
+    // CHECK:   [[SLICE_C_BEGIN:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0, 0, 0] [1, 2, 5, 6, 7, 3] : tensor<1x4x5x6x7x3xf16> to tensor<1x2x5x6x7x3xf16>
+    // CHECK:   [[CONCAT_C:%.+]] = IE.Concat([[SLICE_C_BEGIN]], [[CONCAT_D]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0, 0, 0, 0], [0, 2, 0, 0, 0, 0]]} : tensor<1x2x5x6x7x3xf16>, tensor<1x2x5x6x7x3xf16> -> tensor<1x4x5x6x7x3xf16>
+
+    // CHECK:   return [[CONCAT_C]] : tensor<1x4x5x6x7x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @SplitToMultiScatterNDUpdateOpWithTensorReplace
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x326x1xf16>, [[UPDATE:%.+]]: tensor<1x7x1xf16>)
+func.func @SplitToMultiScatterNDUpdateOpWithTensorReplace(%arg0:  tensor<1x326x1xf16>, %arg1 : tensor<1x7x1xf16> ) -> tensor<1x326x1xf16>{
+    %cst = const.Declare tensor<1x7x1x3xsi32> = dense<[[
+                    [[0, 249, 0]], [[0, 250, 0]], [[0, 251, 0]],
+                    [[0, 258, 0]], [[0, 259, 0]], [[0, 260, 0]],
+                    [[0, 300, 0]]
+                ]]> : tensor<1x7x1x3xsi64>, [#const.CastElemType<si32>]
+    %0 = IE.ScatterNDUpdate(%arg0, %cst, %arg1) : tensor<1x326x1xf16>, tensor<1x7x1x3xsi32>, tensor<1x7x1xf16> -> tensor<1x326x1xf16>
+
+    return %0 : tensor<1x326x1xf16>
+
+    // CHECK:   [[SLICE_0:%.+]] = IE.Slice [[UPDATE]] [0, 0, 0] [1, 3, 1] : tensor<1x7x1xf16> to tensor<1x3x1xf16>
+    // CHECK:   [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 0, 0] [1, 249, 1] : tensor<1x326x1xf16> to tensor<1x249x1xf16>
+    // CHECK:   [[SLICE_2:%.+]] = IE.Slice [[INPUT]] [0, 252, 0] [1, 74, 1] : tensor<1x326x1xf16> to tensor<1x74x1xf16>
+    // CHECK:   [[CONCAT_0:%.+]] = IE.Concat([[SLICE_1]], [[SLICE_0]], [[SLICE_2]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 249, 0], [0, 252, 0]]} : tensor<1x249x1xf16>, tensor<1x3x1xf16>, tensor<1x74x1xf16> -> tensor<1x326x1xf16>
+
+    // CHECK:   [[SLICE_3:%.+]] = IE.Slice [[UPDATE]] [0, 3, 0] [1, 3, 1] : tensor<1x7x1xf16> to tensor<1x3x1xf16>
+    // CHECK:   [[SLICE_4:%.+]] = IE.Slice [[CONCAT_0]] [0, 0, 0] [1, 258, 1] : tensor<1x326x1xf16> to tensor<1x258x1xf16>
+    // CHECK:   [[SLICE_5:%.+]] = IE.Slice [[CONCAT_0]] [0, 261, 0] [1, 65, 1] : tensor<1x326x1xf16> to tensor<1x65x1xf16>
+    // CHECK:   [[CONCAT_1:%.+]] = IE.Concat([[SLICE_4]], [[SLICE_3]], [[SLICE_5]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 258, 0], [0, 261, 0]]} : tensor<1x258x1xf16>, tensor<1x3x1xf16>, tensor<1x65x1xf16> -> tensor<1x326x1xf16>
+
+    // CHECK:   [[SLICE_6:%.+]] = IE.Slice [[UPDATE]] [0, 6, 0] [1, 1, 1] : tensor<1x7x1xf16> to tensor<1x1x1xf16>
+    // CHECK:   [[SLICE_7:%.+]] = IE.Slice [[CONCAT_1]] [0, 0, 0] [1, 300, 1] : tensor<1x326x1xf16> to tensor<1x300x1xf16>
+    // CHECK:   [[SLICE_8:%.+]] = IE.Slice [[CONCAT_1]] [0, 301, 0] [1, 25, 1] : tensor<1x326x1xf16> to tensor<1x25x1xf16>
+    // CHECK:   [[CONCAT_2:%.+]] = IE.Concat([[SLICE_7]], [[SLICE_6]], [[SLICE_8]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 300, 0], [0, 301, 0]]} : tensor<1x300x1xf16>, tensor<1x1x1xf16>, tensor<1x25x1xf16> -> tensor<1x326x1xf16>
+
+    // CHECK:   return [[CONCAT_2]] : tensor<1x326x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @SplitToMultiScatterNDUpdateOpElementReplace
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<326xf16>, [[UPDATE:%.+]]: tensor<7xf16>)
+func.func @SplitToMultiScatterNDUpdateOpElementReplace(%arg0:  tensor<326xf16>, %arg1 : tensor<7xf16> ) -> tensor<326xf16>{
+    %cst = const.Declare tensor<7x1xsi32> = dense<[
+                    [249], [250], [251],
+                    [258], [259], [260],
+                    [300]
+                ]> : tensor<7x1xsi64>, [#const.CastElemType<si32>]
+    %0 = IE.ScatterNDUpdate(%arg0, %cst, %arg1) : tensor<326xf16>, tensor<7x1xsi32>, tensor<7xf16> -> tensor<326xf16>
+
+    return %0 : tensor<326xf16>
+
+    // CHECK:   [[SLICE_0:%.+]] = IE.Slice [[UPDATE]] [0] [3] : tensor<7xf16> to tensor<3xf16>
+    // CHECK:   [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0] [249] : tensor<326xf16> to tensor<249xf16>
+    // CHECK:   [[SLICE_2:%.+]] = IE.Slice [[INPUT]] [252] [74] : tensor<326xf16> to tensor<74xf16>
+    // CHECK:   [[CONCAT_0:%.+]] = IE.Concat([[SLICE_1]], [[SLICE_0]], [[SLICE_2]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0], [249], [252]]} : tensor<249xf16>, tensor<3xf16>, tensor<74xf16> -> tensor<326xf16>
+
+    // CHECK:   [[SLICE_3:%.+]] = IE.Slice [[UPDATE]] [3] [3] : tensor<7xf16> to tensor<3xf16>
+    // CHECK:   [[SLICE_4:%.+]] = IE.Slice [[CONCAT_0]] [0] [258] : tensor<326xf16> to tensor<258xf16>
+    // CHECK:   [[SLICE_5:%.+]] = IE.Slice [[CONCAT_0]] [261] [65] : tensor<326xf16> to tensor<65xf16>
+    // CHECK:   [[CONCAT_1:%.+]] = IE.Concat([[SLICE_4]], [[SLICE_3]], [[SLICE_5]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0], [258], [261]]} : tensor<258xf16>, tensor<3xf16>, tensor<65xf16> -> tensor<326xf16>
+
+    // CHECK:   [[SLICE_6:%.+]] = IE.Slice [[UPDATE]] [6] [1] : tensor<7xf16> to tensor<1xf16>
+    // CHECK:   [[SLICE_7:%.+]] = IE.Slice [[CONCAT_1]] [0] [300] : tensor<326xf16> to tensor<300xf16>
+    // CHECK:   [[SLICE_8:%.+]] = IE.Slice [[CONCAT_1]] [301] [25] : tensor<326xf16> to tensor<25xf16>
+    // CHECK:   [[CONCAT_2:%.+]] = IE.Concat([[SLICE_7]], [[SLICE_6]], [[SLICE_8]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0], [300], [301]]} : tensor<300xf16>, tensor<1xf16>, tensor<25xf16> -> tensor<326xf16>
+
+    // CHECK:   return [[CONCAT_2]] : tensor<326xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @SplitToMultiScatterNDUpdateOpWithIndicesRankSmallerThanInput
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x326x16xf16>, [[UPDATE:%.+]]: tensor<1x7x16xf16>)
+func.func @SplitToMultiScatterNDUpdateOpWithIndicesRankSmallerThanInput(%arg0:  tensor<1x326x16xf16>, %arg1 : tensor<1x7x16xf16> ) -> tensor<1x326x16xf16>{
+    %cst = const.Declare tensor<1x7x2xsi32> = dense<[[
+                    [0, 249], [0, 250], [0, 251],
+                    [0, 258], [0, 259], [0, 260],
+                    [0, 300]
+                ]]> : tensor<1x7x2xsi64>, [#const.CastElemType<si32>]
+    %0 = IE.ScatterNDUpdate(%arg0, %cst, %arg1) : tensor<1x326x16xf16>, tensor<1x7x2xsi32>, tensor<1x7x16xf16> -> tensor<1x326x16xf16>
+
+    return %0 : tensor<1x326x16xf16>
+
+    // CHECK:   [[SLICE_0:%.+]] = IE.Slice [[UPDATE]] [0, 0, 0] [1, 3, 16] : tensor<1x7x16xf16> to tensor<1x3x16xf16>
+    // CHECK:   [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 0, 0] [1, 249, 16] : tensor<1x326x16xf16> to tensor<1x249x16xf16>
+    // CHECK:   [[SLICE_2:%.+]] = IE.Slice [[INPUT]] [0, 252, 0] [1, 74, 16] : tensor<1x326x16xf16> to tensor<1x74x16xf16>
+    // CHECK:   [[CONCAT_0:%.+]] = IE.Concat([[SLICE_1]], [[SLICE_0]], [[SLICE_2]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 249, 0], [0, 252, 0]]} : tensor<1x249x16xf16>, tensor<1x3x16xf16>, tensor<1x74x16xf16> -> tensor<1x326x16xf16>
+
+    // CHECK:   [[SLICE_3:%.+]] = IE.Slice [[UPDATE]] [0, 3, 0] [1, 3, 16] : tensor<1x7x16xf16> to tensor<1x3x16xf16>
+    // CHECK:   [[SLICE_4:%.+]] = IE.Slice [[CONCAT_0]] [0, 0, 0] [1, 258, 16] : tensor<1x326x16xf16> to tensor<1x258x16xf16>
+    // CHECK:   [[SLICE_5:%.+]] = IE.Slice [[CONCAT_0]] [0, 261, 0] [1, 65, 16] : tensor<1x326x16xf16> to tensor<1x65x16xf16>
+    // CHECK:   [[CONCAT_1:%.+]] = IE.Concat([[SLICE_4]], [[SLICE_3]], [[SLICE_5]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 258, 0], [0, 261, 0]]} : tensor<1x258x16xf16>, tensor<1x3x16xf16>, tensor<1x65x16xf16> -> tensor<1x326x16xf16>
+
+    // CHECK:   [[SLICE_6:%.+]] = IE.Slice [[UPDATE]] [0, 6, 0] [1, 1, 16] : tensor<1x7x16xf16> to tensor<1x1x16xf16>
+    // CHECK:   [[SLICE_7:%.+]] = IE.Slice [[CONCAT_1]] [0, 0, 0] [1, 300, 16] : tensor<1x326x16xf16> to tensor<1x300x16xf16>
+    // CHECK:   [[SLICE_8:%.+]] = IE.Slice [[CONCAT_1]] [0, 301, 0] [1, 25, 16] : tensor<1x326x16xf16> to tensor<1x25x16xf16>
+    // CHECK:   [[CONCAT_2:%.+]] = IE.Concat([[SLICE_7]], [[SLICE_6]], [[SLICE_8]]) {
+    // CHECK-SAME{LITERAL}:      static_offsets = [[0, 0, 0], [0, 300, 0], [0, 301, 0]]} : tensor<1x300x16xf16>, tensor<1x1x16xf16>, tensor<1x25x16xf16> -> tensor<1x326x16xf16>
+
+    // CHECK:   return [[CONCAT_2]] : tensor<1x326x16xf16>
 }

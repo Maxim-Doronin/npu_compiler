@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/BuiltinTypes.h>
@@ -51,17 +51,18 @@ void vpux::VPUMI37XX::ActKernelRangeOp::serialize(elf::writer::BinaryDataSection
     uint32_t invo_count = 0;
 
     for (auto use = uses.begin(); use != uses.end(); use++) {
-        if (mlir::isa<VPUMI37XX::ActKernelInvocationOp>(use.getUser()))
+        if (mlir::isa<VPUMI37XX::ActKernelInvocationOp>(use.getUser())) {
             invo_count++;
+        }
     }
 
     nn_public::VpuActKernelRange actKernelRange;
 
     memset(reinterpret_cast<void*>(&actKernelRange), 0, sizeof(actKernelRange));
 
-    if (!isCacheOp)
+    if (!isCacheOp) {
         actKernelRange.type = nn_public::VpuActWLType::WL_KERNEL;
-    else {
+    } else {
         auto taskType = VPU::symbolizeActShaveTaskType(kernel_task_type.getLeafReference().strref());
         switch (taskType.value()) {
         case VPU::ActShaveTaskType::CACHE_FLUSH:

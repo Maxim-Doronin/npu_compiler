@@ -1,15 +1,19 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
-#include <llvm/ADT/ArrayRef.h>
-#include <mlir/IR/BuiltinAttributes.h>
-#include <mlir/IR/MLIRContext.h>
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/MLIRContext.h>
 
 using namespace vpux;
 
@@ -101,84 +105,298 @@ class MoveViewLikeOps final : public mlir::OpRewritePattern<VPU::GroupSparseTens
 public:
     using OpRewritePattern::OpRewritePattern;
 
-    mlir::LogicalResult matchAndRewrite(VPU::GroupSparseTensorOp op, mlir::PatternRewriter& rewriter) const final;
-};
-
-mlir::LogicalResult MoveViewLikeOps::matchAndRewrite(VPU::GroupSparseTensorOp origOp,
-                                                     mlir::PatternRewriter& rewriter) const {
-    auto origDataValue = origOp.getData();
-    if (origDataValue == nullptr) {
-        return mlir::failure();
-    }
-    auto sparsityMapValue = origOp.getSparsityMap();
-
-    VPU::StorageElementTableOp seTableOp = nullptr;
-    if (origOp.getStorageElementTable() != nullptr) {
-        seTableOp = origOp.getStorageElementTable().getDefiningOp<VPU::StorageElementTableOp>();
-        if (seTableOp == nullptr) {
+    mlir::LogicalResult matchAndRewrite(VPU::GroupSparseTensorOp origOp, mlir::PatternRewriter& rewriter) const final {
+        if (origOp.getData() == nullptr) {
             return mlir::failure();
         }
-    }
-
-    auto ctx = getContext();
-    for (auto userOp : llvm::make_early_inc_range(origOp.getOutput().getUsers())) {
-        if (auto sliceUserOp = mlir::dyn_cast<VPU::SliceOp>(userOp)) {
-            const auto sliceOffsets = parseIntArrayAttr<int64_t>(sliceUserOp.getStaticOffsets());
-            const auto sliceSizes = parseIntArrayAttr<int64_t>(sliceUserOp.getStaticSizes());
-
-            auto seAttr = origOp.getSeAttr().value_or(nullptr);
-            auto sparsityCompressionAttr = origOp.getSparsityCompression().value_or(nullptr);
-            if (sparsityCompressionAttr != nullptr) {
-                sparsityCompressionAttr =
-                        VPU::tileSparsityCompression(sparsityCompressionAttr, Shape(sliceOffsets), Shape(sliceSizes));
+        VPU::StorageElementTableOp seTableOp = nullptr;
+        if (origOp.getStorageElementTable() != nullptr) {
+            seTableOp = origOp.getStorageElementTable().getDefiningOp<VPU::StorageElementTableOp>();
+            if (seTableOp == nullptr) {
+                return mlir::failure();
             }
-
-            auto rewriteInput = [&](mlir::Value value, ShapeRef offsets, ShapeRef sizes) {
-                if (auto constOp = value.getDefiningOp<Const::DeclareOp>()) {
-                    auto newContentAttr = constOp.transformContentAttr().subview(offsets, sizes).get();
-                    auto newConstOp = rewriter.create<Const::DeclareOp>(constOp.getLoc(), newContentAttr.getType(),
-                                                                        std::move(newContentAttr));
-                    return newConstOp.getOutput();
-                }
-                auto newSliceOp = rewriter.create<VPU::SliceOp>(value.getLoc(), value, getIntArrayAttr(ctx, offsets),
-                                                                getIntArrayAttr(ctx, sizes));
-                return newSliceOp.getResult();
-            };
-
-            // Data
-            auto newDataOffsets = Shape(sliceOffsets);
-            auto newDataSizes = Shape(sliceSizes);
-            if (seAttr != nullptr) {
-                seAttr = seAttr.extractTile(Shape(sliceOffsets), Shape(sliceSizes),
-                                            mlir::cast<NDTypeInterface>(origDataValue.getType()).getShape(),
-                                            newDataOffsets, newDataSizes);
-            }
-            auto newDataValue = rewriteInput(origDataValue, newDataOffsets, newDataSizes);
-
-            // SM
-            mlir::Value newSparsityMapValue = nullptr;
-            if (sparsityMapValue != nullptr) {
-                newSparsityMapValue = rewriteInput(sparsityMapValue, Shape(sliceOffsets), Shape(sliceSizes));
-            }
-
-            // SETable
-            mlir::Value newSETableValue = nullptr;
-            if (seTableOp != nullptr) {
-                const auto seDepth = getShape(seTableOp.getOutput())[Dims4D::Act::C];
-                const auto [seTableOffsets, seTableSizes] = VPU::getUpdatedSliceOffsetsAndShapesForSETable(
-                        seDepth, seTableOp.getSeSize(), sliceOffsets, sliceSizes);
-
-                newSETableValue = rewriter.createOrFold<VPU::SliceOp>(
-                        sliceUserOp.getLoc(), origOp.getStorageElementTable(), seTableOffsets, seTableSizes);
-            }
-            rewriter.replaceOpWithNewOp<VPU::GroupSparseTensorOp>(sliceUserOp, newDataValue, newSparsityMapValue,
-                                                                  newSETableValue, origOp.getIsWeightsAttr(),
-                                                                  sparsityCompressionAttr, seAttr);
         }
+
+        bool changed = false;
+        for (auto userOp : llvm::make_early_inc_range(origOp.getOutput().getUsers())) {
+            changed |= llvm::TypeSwitch<mlir::Operation*, bool>(userOp)
+                               .Case<VPU::SliceOp>([&](VPU::SliceOp sliceUserOp) {
+                                   return tryMoveSliceUser(sliceUserOp, origOp, seTableOp, rewriter);
+                               })
+                               .Case<VPU::ExpandOp>([&](VPU::ExpandOp expandUserOp) {
+                                   return tryMoveExpandUser(expandUserOp, origOp, rewriter);
+                               })
+                               .Case<VPU::ReshapeOp>([&](VPU::ReshapeOp reshapeUserOp) {
+                                   return tryMoveReshapeUser(reshapeUserOp, origOp, rewriter);
+                               })
+                               .Case<VPU::LayoutCastOp>([&](VPU::LayoutCastOp layoutCastUserOp) {
+                                   return tryMoveLayoutCastUser(layoutCastUserOp, origOp, rewriter);
+                               })
+                               .Default([](mlir::Operation*) {
+                                   return false;
+                               });
+        }
+        return changed ? mlir::success() : mlir::failure();
     }
 
-    return mlir::success();
-}
+    bool tryMoveSliceUser(VPU::SliceOp sliceUserOp, VPU::GroupSparseTensorOp origOp,
+                          VPU::StorageElementTableOp seTableOp, mlir::PatternRewriter& rewriter) const {
+        const auto sliceOffsets = parseIntArrayAttr<int64_t>(sliceUserOp.getStaticOffsets());
+        const auto sliceSizes = parseIntArrayAttr<int64_t>(sliceUserOp.getStaticSizes());
+
+        // In case the sparse type represents weights, the sparsity map has the weight set (ICxKHxKW) flattened
+        // and aligned to 128 bits. As such, if the slice happens on any of these dimensions, it is difficult to
+        // adapt the slice parameters to the flattened shape when the slice is offsetted, so these cases are skipped
+        if (origOp.getIsWeights()) {
+            const auto offsetNotOnOC = std::any_of(sliceOffsets.begin() + 1, sliceOffsets.end(), [](int64_t offset) {
+                return offset != 0;
+            });
+            if (offsetNotOnOC) {
+                return false;
+            }
+        }
+
+        auto seAttr = origOp.getSeAttr().value_or(nullptr);
+        auto sparsityCompressionAttr = origOp.getSparsityCompression().value_or(nullptr);
+        if (sparsityCompressionAttr != nullptr) {
+            sparsityCompressionAttr =
+                    VPU::tileSparsityCompression(sparsityCompressionAttr, Shape(sliceOffsets), Shape(sliceSizes));
+        }
+
+        // In case the parent operation is a constant, fold the view-like operation directly into the constant
+        // manually. This is necessary because the last transformation in the constant will be either Sparsify
+        // or GetSparsityMap, which can change the type of the constant (e.g. GetSparsityMap will convert
+        // 16x16x1x1xf16 into 16x1x1x128xui8, to align the data). As these sparsity-related transformations must
+        // remain at the end of the list of transformations, the new transformation that is introduced for this
+        // view-like operation will end up being inserted before the sparsity-related transformation, so it
+        // must have its parameters associated to the type of the constant before the sparsity-related
+        // transformation
+        const auto tryFoldIntoConstant = [&](mlir::Value value, ShapeRef offsets, ShapeRef sizes) -> mlir::Value {
+            auto constOp = value.getDefiningOp<Const::DeclareOp>();
+            if (constOp == nullptr) {
+                return nullptr;
+            }
+            auto newContentAttr = constOp.transformContentAttr().subview(offsets, sizes).get();
+            auto newConstOp =
+                    rewriter.create<Const::DeclareOp>(constOp.getLoc(), newContentAttr.getType(), newContentAttr);
+            return newConstOp.getOutput();
+        };
+
+        const auto rewriteData = [&](mlir::Value origData, ShapeRef offsets, ShapeRef sizes) -> mlir::Value {
+            if (auto constResult = tryFoldIntoConstant(origData, offsets, sizes)) {
+                return constResult;
+            }
+            auto sliceOp = rewriter.create<VPU::SliceOp>(origOp->getLoc(), origData,
+                                                         getIntArrayAttr(origOp.getContext(), offsets),
+                                                         getIntArrayAttr(origOp.getContext(), sizes));
+            return sliceOp.getResult();
+        };
+
+        const auto rewriteSparsityMap = [&](mlir::Value origSparsityMap, mlir::Value newData, ShapeRef offsets,
+                                            ShapeRef sizes) -> mlir::Value {
+            if (origSparsityMap == nullptr) {
+                return nullptr;
+            }
+            if (auto constResult = tryFoldIntoConstant(origSparsityMap, offsets, sizes)) {
+                return constResult;
+            }
+            // Note: in case the sparse type is a weight, the slice is expected to be over a non-flattened dimension
+            // (see the check above), so it is safe to reuse the original offsets
+            SmallVector<int64_t> smOffsets(offsets.raw());
+            SmallVector<int64_t> smSizes(sizes.raw());
+            if (origOp.getIsWeights()) {
+                auto newDataShape = mlir::cast<NDTypeInterface>(newData.getType()).getShape();
+                auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(newDataShape);
+                smSizes = newSMShape.raw();
+            }
+            auto sliceOp = rewriter.create<VPU::SliceOp>(origOp->getLoc(), origOp.getSparsityMap(),
+                                                         getIntArrayAttr(origOp.getContext(), smOffsets),
+                                                         getIntArrayAttr(origOp.getContext(), smSizes));
+            return sliceOp.getResult();
+        };
+
+        // Data
+        auto newDataOffsets = Shape(sliceOffsets);
+        auto newDataSizes = Shape(sliceSizes);
+        if (seAttr != nullptr) {
+            seAttr = seAttr.extractTile(Shape(sliceOffsets), Shape(sliceSizes),
+                                        mlir::cast<NDTypeInterface>(origOp.getData().getType()).getShape(),
+                                        newDataOffsets, newDataSizes);
+        }
+        auto newDataValue = rewriteData(origOp.getData(), newDataOffsets, newDataSizes);
+
+        // SM
+        auto newSparsityMapValue =
+                rewriteSparsityMap(origOp.getSparsityMap(), newDataValue, Shape(sliceOffsets), Shape(sliceSizes));
+
+        // SETable
+        mlir::Value newSETableValue = nullptr;
+        if (seTableOp != nullptr) {
+            const auto seDepth = getShape(seTableOp.getOutput())[Dims4D::Act::C];
+            const auto [seTableOffsets, seTableSizes] = VPU::getUpdatedSliceOffsetsAndShapesForSETable(
+                    seDepth, seTableOp.getSeSize(), sliceOffsets, sliceSizes);
+
+            newSETableValue = rewriter.createOrFold<VPU::SliceOp>(sliceUserOp.getLoc(), origOp.getStorageElementTable(),
+                                                                  seTableOffsets, seTableSizes);
+        }
+        rewriter.replaceOpWithNewOp<VPU::GroupSparseTensorOp>(sliceUserOp, newDataValue, newSparsityMapValue,
+                                                              newSETableValue, origOp.getIsWeightsAttr(),
+                                                              sparsityCompressionAttr, seAttr);
+        return true;
+    }
+
+    bool tryMoveExpandUser(VPU::ExpandOp expandUserOp, VPU::GroupSparseTensorOp origOp,
+                           mlir::PatternRewriter& rewriter) const {
+        if (!origOp.getIsWeights()) {
+            return false;
+        }
+
+        // In case the parent operation is a constant, fold the view-like operation directly into the constant
+        // manually. This is necessary because the last transformation in the constant will be either Sparsify
+        // or GetSparsityMap, which can change the type of the constant (e.g. GetSparsityMap will convert
+        // 16x16x1x1xf16 into 16x1x1x128xui8, to align the data). As these sparsity-related transformations must
+        // remain at the end of the list of transformations, the new transformation that is introduced for this
+        // view-like operation will end up being inserted before the sparsity-related transformation, so it
+        // must have its parameters associated to the type of the constant before the sparsity-related
+        // transformation
+        auto tryFoldIntoConstant = [&](mlir::Value value, ArrayRef<int64_t> padsBegin,
+                                       ArrayRef<int64_t> padsEnd) -> mlir::Value {
+            auto constOp = value.getDefiningOp<Const::DeclareOp>();
+            if (constOp == nullptr) {
+                return nullptr;
+            }
+            auto newContentAttr = constOp.transformContentAttr().padWithZero(Shape(padsBegin), Shape(padsEnd)).get();
+            auto newConstOp =
+                    rewriter.create<Const::DeclareOp>(constOp.getLoc(), newContentAttr.getType(), newContentAttr);
+            return newConstOp.getOutput();
+        };
+
+        const auto rewriteData = [&](mlir::Value origData, ArrayRef<int64_t> padsBegin,
+                                     ArrayRef<int64_t> padsEnd) -> mlir::Value {
+            if (auto constResult = tryFoldIntoConstant(origData, padsBegin, padsEnd)) {
+                return constResult;
+            }
+            auto expandOp = rewriter.create<VPU::ExpandOp>(origOp->getLoc(), origData,
+                                                           getIntArrayAttr(origOp->getContext(), padsBegin),
+                                                           getIntArrayAttr(origOp->getContext(), padsEnd));
+            return expandOp.getOutput();
+        };
+
+        const auto rewriteSparsityMap = [&](mlir::Value origSparsityMap, mlir::Value newData,
+                                            ArrayRef<int64_t> padsBegin, ArrayRef<int64_t> padsEnd) -> mlir::Value {
+            if (origSparsityMap == nullptr) {
+                return nullptr;
+            }
+            if (auto constResult = tryFoldIntoConstant(origSparsityMap, padsBegin, padsEnd)) {
+                return constResult;
+            }
+            auto newDataShape = mlir::cast<NDTypeInterface>(newData.getType()).getShape();
+            auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(newDataShape);
+            auto origSMShape = mlir::cast<NDTypeInterface>(origSparsityMap.getType()).getShape();
+            SmallVector<int64_t> smPadsBeing(origSMShape.size());
+            SmallVector<int64_t> smPadsEnd(origSMShape.size());
+            for (size_t i = 0; i < origSMShape.size(); ++i) {
+                auto diff = newSMShape[Dim(i)] - origSMShape[Dim(i)];
+                if (diff > 0) {
+                    smPadsEnd[i] = static_cast<int64_t>(diff);
+                }
+            }
+            auto expandOp = rewriter.create<VPU::ExpandOp>(origOp->getLoc(), origOp.getSparsityMap(),
+                                                           getIntArrayAttr(origOp->getContext(), smPadsBeing),
+                                                           getIntArrayAttr(origOp->getContext(), smPadsEnd));
+            return expandOp.getOutput();
+        };
+
+        const auto padsBegin = parseIntArrayAttr<int64_t>(expandUserOp.getPadsBegin());
+        const auto padsEnd = parseIntArrayAttr<int64_t>(expandUserOp.getPadsEnd());
+
+        auto newData = rewriteData(origOp.getData(), padsBegin, padsEnd);
+        auto newSparsityMap = rewriteSparsityMap(origOp.getSparsityMap(), newData, padsBegin, padsEnd);
+
+        rewriter.replaceOpWithNewOp<VPU::GroupSparseTensorOp>(
+                expandUserOp, newData, newSparsityMap, origOp.getStorageElementTable(), origOp.getIsWeightsAttr(),
+                origOp.getSparsityCompressionAttr(), origOp.getSeAttrAttr());
+        return true;
+    }
+
+    bool tryMoveReshapeUser(VPU::ReshapeOp reshapeUserOp, VPU::GroupSparseTensorOp origOp,
+                            mlir::PatternRewriter& rewriter) const {
+        if (!origOp.getIsWeights()) {
+            return false;
+        }
+
+        // In case the parent operation is a constant, fold the view-like operation directly into the constant
+        // manually. This is necessary because the last transformation in the constant will be either Sparsify
+        // or GetSparsityMap, which can change the type of the constant (e.g. GetSparsityMap will convert
+        // 16x16x1x1xf16 into 16x1x1x128xui8, to align the data). As these sparsity-related transformations must
+        // remain at the end of the list of transformations, the new transformation that is introduced for this
+        // view-like operation will end up being inserted before the sparsity-related transformation, so it
+        // must have its parameters associated to the type of the constant before the sparsity-related
+        // transformation
+        const auto tryFoldIntoConstant = [&](mlir::Value value, ShapeRef shape) -> mlir::Value {
+            auto constOp = value.getDefiningOp<Const::DeclareOp>();
+            if (constOp == nullptr) {
+                return nullptr;
+            }
+            auto newContentAttr = constOp.transformContentAttr().reshape(shape).get();
+            auto newConstOp =
+                    rewriter.create<Const::DeclareOp>(constOp.getLoc(), newContentAttr.getType(), newContentAttr);
+            return newConstOp.getOutput();
+        };
+
+        const auto rewriteData = [&](mlir::Value origData, ShapeRef shape) -> mlir::Value {
+            if (auto constResult = tryFoldIntoConstant(origData, shape)) {
+                return constResult;
+            }
+            auto reshapeOp = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origData, /*shape=*/nullptr,
+                                                             /*specialZero=*/false,
+                                                             getIntArrayAttr(origOp->getContext(), shape));
+            return reshapeOp.getOutput();
+        };
+
+        const auto rewriteSparsityMap = [&](mlir::Value origSparsityMap, mlir::Value newData,
+                                            ShapeRef shape) -> mlir::Value {
+            if (origSparsityMap == nullptr) {
+                return nullptr;
+            }
+            if (auto constResult = tryFoldIntoConstant(origSparsityMap, shape)) {
+                return constResult;
+            }
+            auto newDataShape = mlir::cast<NDTypeInterface>(newData.getType()).getShape();
+            auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(newDataShape);
+            auto reshapeOp = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origSparsityMap, /*shape=*/nullptr,
+                                                             /*specialZero=*/false,
+                                                             getIntArrayAttr(origOp->getContext(), newSMShape));
+            return reshapeOp.getOutput();
+        };
+
+        auto shape = mlir::cast<NDTypeInterface>(reshapeUserOp.getOutput().getType()).getShape();
+
+        auto newData = rewriteData(origOp.getData(), shape);
+        auto newSparsityMap = rewriteSparsityMap(origOp.getSparsityMap(), newData, shape);
+
+        rewriter.replaceOpWithNewOp<VPU::GroupSparseTensorOp>(
+                reshapeUserOp, newData, newSparsityMap, origOp.getStorageElementTable(), origOp.getIsWeightsAttr(),
+                origOp.getSparsityCompressionAttr(), origOp.getSeAttrAttr());
+        return true;
+    }
+
+    bool tryMoveLayoutCastUser(VPU::LayoutCastOp layoutCastUserOp, VPU::GroupSparseTensorOp origOp,
+                               mlir::PatternRewriter& rewriter) const {
+        if (!origOp.getIsWeights()) {
+            return false;
+        }
+        auto dataLayoutCastOp = rewriter.create<VPU::LayoutCastOp>(origOp->getLoc(), origOp.getData(),
+                                                                   layoutCastUserOp.getDstOrderAttr());
+        // Note: the sparsity map does not have its layout changed, as the GetSparsityMap transformation resets its
+        // layout to the default
+        rewriter.replaceOpWithNewOp<VPU::GroupSparseTensorOp>(
+                layoutCastUserOp, dataLayoutCastOp.getOutput(), origOp.getSparsityMap(),
+                origOp.getStorageElementTable(), origOp.getIsWeightsAttr(), origOp.getSparsityCompressionAttr(),
+                origOp.getSeAttrAttr());
+        return true;
+    }
+};
 
 }  // namespace
 
@@ -218,9 +436,9 @@ InputTiling vpux::VPU::GroupSparseTensorOp::backInferTileInfo(const vpux::TileIn
     }
 
     SmallVector<TileInfo> inputTiles = {inputTile};
-    auto sparsityMapValue = getSparsityMap();
+    auto sparsityMap = getSparsityMap();
 
-    if (sparsityMapValue != nullptr) {
+    if (sparsityMap != nullptr) {
         inputTiles.push_back(outputTile);
     }
 

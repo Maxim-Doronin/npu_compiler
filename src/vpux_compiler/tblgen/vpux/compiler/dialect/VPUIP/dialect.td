@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUIP
@@ -37,10 +37,10 @@ It handles such VPU-specifics as:
         "vpux::net::NetDialect",
         "vpux::IE::IEDialect",
         "vpux::VPU::VPUDialect",
-        "vpux::IERT::IERTDialect",
         "mlir::func::FuncDialect",
         "mlir::quant::QuantizationDialect",
-        "mlir::async::AsyncDialect"
+        "mlir::async::AsyncDialect",
+        "mlir::memref::MemRefDialect"
     ];
 
     let hasConstantMaterializer = 1;

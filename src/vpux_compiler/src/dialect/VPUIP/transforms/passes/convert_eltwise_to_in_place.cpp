@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/aliases_info.hpp"
@@ -63,8 +63,7 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
     for (auto input : eltwiseAllInputs) {
         log.trace("Checking input at `{0}`", input.getLoc());
 
-        auto inputBuff = VPUIP::getTopBufferOfNCEClusterTiling(clusterTaskOp, input);
-        auto inputRootBuff = *aliasesInfo.getRoots(inputBuff).begin();
+        auto inputRootBuff = *aliasesInfo.getRoots(input).begin();
 
         auto nestLog = log.nest(2);
         if (inputRootBuff == outputRootBuff) {
@@ -72,7 +71,7 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
             return;
         }
 
-        const auto inInterface = mlir::dyn_cast<vpux::NDTypeInterface>(inputBuff.getType());
+        const auto inInterface = mlir::dyn_cast<vpux::NDTypeInterface>(input.getType());
         const auto outInterface = mlir::dyn_cast<vpux::NDTypeInterface>(outputRootBuff.getType());
         if (!isCompatibleForInplaceOp(inInterface, outInterface, nestLog)) {
             continue;
@@ -83,8 +82,7 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
             inInterface.getTotalAllocSize() > outInterface.getTotalAllocSize()) {
             mlir::OpBuilder builder(clusterTaskOp);
             builder.setInsertionPointAfterValue(inputRootBuff);
-            auto supportView =
-                    builder.create<VPUIP::ViewOp>(inputBuff.getLoc(), outputRootBuff.getType(), inputRootBuff);
+            auto supportView = builder.create<VPUIP::ViewOp>(input.getLoc(), outputRootBuff.getType(), inputRootBuff);
             aliasesInfo.addAlias(inputRootBuff, supportView.getResult());
             inputRootBuff = supportView.getResult();
         }
@@ -107,7 +105,7 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
         const auto inRootBuffDistributedType =
                 mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(inputRootBuff));
         const auto inDistributedType =
-                mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(inputBuff));
+                mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(input));
         const auto outDistributedType =
                 mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(outputRootBuff));
         if (inDistributedType != nullptr && outDistributedType != nullptr && inRootBuffDistributedType != nullptr) {
@@ -121,7 +119,7 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
         // Try to pick the input that does not have any other consumer apart from the in place Eltwise.
         // If the other input does not meet the criteria for overwrite, save this input to use as back-up,
         // as it could be legalized by inserting a spill right before eltwise, at a later stage.
-        if (!VPUIP::isEltwiseTheOnlyConsumer(clusterTaskOp, inputBuff, /*checkThroughCopyOps=*/true, log)) {
+        if (!VPUIP::isEltwiseTheOnlyConsumer(clusterTaskOp, input, /*checkThroughCopyOps=*/true, log)) {
             potentialOverwriteableInput = inputRootBuff;
             nestLog.trace("This input is used by another operation, try next input.");
             continue;

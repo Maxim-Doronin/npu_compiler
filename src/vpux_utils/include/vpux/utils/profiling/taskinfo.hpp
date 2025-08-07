@@ -1,11 +1,13 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // Profiling parser public interface
 
 #pragma once
+
+#include "vpux/utils/profiling/reports/ted.hpp"
 
 #include <cstdint>
 #include <string>
@@ -43,11 +45,8 @@ struct TaskInfo {
     uint64_t duration_ns;
     uint32_t total_cycles;
     uint32_t stall_cycles;
-    struct stall_counters {
-        uint32_t lsu0_stalls;
-        uint32_t lsu1_stalls;
-        uint32_t instruction_stalls;
-    } stall_counters;
+
+    CustomArgsVector customArgs;
 };
 
 enum class FreqStatus { UNKNOWN, VALID, INVALID, SIM };

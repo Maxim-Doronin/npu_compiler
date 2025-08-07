@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -270,8 +270,9 @@ mlir::LogicalResult addEnqusForTasksWithFetch(VPUMI40XX::MappedInferenceOp mpi, 
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
             auto startVal = mpi.getListHead(primary, tileIdx, listIdx);
-            if (!startVal)
+            if (!startVal) {
                 continue;
+            }
 
             log.trace("Search for enqueue barriers for {0}:{1}", stringifyTaskType(primary), tileIdx);
             log = log.nest();
@@ -422,8 +423,9 @@ mlir::LogicalResult addEnqusForDmas(VPUMI40XX::MappedInferenceOp mpi, const int6
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         for (int64_t listIdx = 0; listIdx < 2; listIdx++) {
             auto dmaTask = mpi.getListHead(VPURegMapped::TaskType::DMA, tileIdx, listIdx);
-            if (!dmaTask)
+            if (!dmaTask) {
                 continue;
+            }
 
             log.trace("Search for enqueue barrier for {0}:{1}:{2}", stringifyTaskType(VPURegMapped::TaskType::DMA),
                       tileIdx, listIdx);
@@ -563,8 +565,9 @@ void addPredefinedEnqusForTasksWithFetch(VPUMI40XX::MappedInferenceOp mpi, const
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
             auto startVal = mpi.getListHead(primary, tileIdx, listIdx);
-            if (!startVal)
+            if (!startVal) {
                 continue;
+            }
 
             log.trace("Get enqueue barriers for {0}:{0}:{1}:{2}", stringifyTaskType(primary), tileIdx, listIdx);
             log = log.nest();
@@ -632,8 +635,9 @@ void addPredefinedEnqusForDmas(VPUMI40XX::MappedInferenceOp mpi, const int64_t t
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         for (int64_t listIdx = 0; listIdx < 2; listIdx++) {
             auto dmaTask = mpi.getListHead(VPURegMapped::TaskType::DMA, tileIdx, listIdx);
-            if (!dmaTask)
+            if (!dmaTask) {
                 continue;
+            }
 
             log.trace("Get enqueue barriers for {0}:{1}:{2}", stringifyTaskType(VPURegMapped::TaskType::DMA), tileIdx,
                       listIdx);

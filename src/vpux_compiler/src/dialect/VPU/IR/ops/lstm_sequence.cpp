@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
@@ -41,8 +41,8 @@ mlir::LogicalResult vpux::VPU::LSTMSequenceOp::inferReturnTypes(
     const auto numDirections = initialHiddenStateShape[Dims4D::Act::C];
     const auto hiddenSize = initialHiddenStateShape.back();
 
-    const auto lengthIndex = inDataShape.size() - 2;
-    int64_t sequenceLength = inDataShape[Dim(lengthIndex)];
+    const auto lengthIndex = Dim(inDataShape.size() - 2);
+    const auto sequenceLength = inDataShape[lengthIndex];
 
     const SmallVector<int64_t> outputHiddenValuesShape{batchSize, numDirections, sequenceLength, hiddenSize};
 
@@ -53,13 +53,14 @@ mlir::LogicalResult vpux::VPU::LSTMSequenceOp::inferReturnTypes(
     if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(inDataType)) {
         const auto inBounds = boundedType.getBounds();
         const auto outputHVRank = outputHiddenValuesShape.size();
-        auto outHVBounds = SmallVector<int64_t>(outputHVRank);
 
+        Bounds outHVBounds;
+        outHVBounds.reserve(outputHVRank);
         for (size_t i = 0; i < outputHVRank; i++) {
             if (outputHiddenValuesShape[i] == mlir::ShapedType::kDynamic) {
-                outHVBounds[i] = inBounds[lengthIndex];
+                outHVBounds.push_back(inBounds[lengthIndex]);
             } else {
-                outHVBounds[i] = outputHiddenValuesShape[i];
+                outHVBounds.push_back(outputHiddenValuesShape[i]);
             }
         }
 

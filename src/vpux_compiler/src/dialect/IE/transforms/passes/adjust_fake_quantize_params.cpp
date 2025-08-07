@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -115,10 +115,11 @@ float FQParamsRewriter::getScale(IE::FakeQuantizeOp fakeQuantOp, float inScale, 
     auto inputScale = getScaleForFqRange(inLow * inScale, inHigh * inScale);
     auto outputScale = getScaleForFqRange(outLow * outScale, outHigh * outScale);
 
-    if (inputScale <= 1.0f && outputScale <= 1.0f)
+    if (inputScale <= 1.0f && outputScale <= 1.0f) {
         scale = std::min(inputScale, outputScale);
-    else
+    } else {
         scale = std::max(inputScale, outputScale);
+    }
 
     return scale;
 }
@@ -169,14 +170,16 @@ mlir::LogicalResult FQParamsRewriter::traverseAndScaleSubgraph(
 
         if (visitedOps.contains(currentOp)) {
             operationsToProcess.pop_back();
-            if (!opsMetadata[currentOp].isStartNode)
+            if (!opsMetadata[currentOp].isStartNode) {
                 subgraph.push_back(currentOp);
+            }
             continue;
         }
         visitedOps.insert(currentOp);
 
-        if (!opsMetadata[currentOp].isStartNode)
+        if (!opsMetadata[currentOp].isStartNode) {
             opsMetadata[currentOp].outputScale = getScale(currentOp, opsMetadata[currentOp].inputScale);
+        }
 
         // User of currentOp can be a FQ or a non FQ operation
         // If FQ is user of current op, Check if FQ rang eis in FP16 bounds which marks the end of subgraph
@@ -222,11 +225,13 @@ mlir::LogicalResult FQParamsRewriter::scaleInputOperand(mlir::Operation* op, mli
                                                         llvm::DenseMap<mlir::Operation*, Metadata>& opsMetadata) const {
     auto hasSingleUser = [&](mlir::Operation* op) {
         llvm::SetVector<mlir::Operation*> userSet;
-        for (auto user : op->getUsers())
+        for (auto user : op->getUsers()) {
             userSet.insert(user);
+        }
 
-        if (userSet.size() == 1)
+        if (userSet.size() == 1) {
             return true;
+        }
 
         return false;
     };
@@ -304,8 +309,9 @@ mlir::LogicalResult FQParamsRewriter::scaleInputOperand(mlir::Operation* op, mli
                 return handleEltwiseAddSub(op.getOperation());
             })
             .Default([&](mlir::Operation* op) -> mlir::LogicalResult {
-                if (inputs.size() != 1)
+                if (inputs.size() != 1) {
                     return mlir::failure();
+                }
 
                 if (auto fq = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(inputs[0])) {
                     if (hasSingleUser(inputs[0])) {

@@ -24,7 +24,7 @@ using Input1AndInput2Shape = std::tuple<std::vector<int32_t>, std::vector<int32_
 using DynamicGatherwithAddTestParams = std::tuple<Input1AndInput2Shape, InputType>;
 
 //
-// DynamicGatherwithAddLayerTest
+// DynamicGatherwithAddNPUTest
 //
 
 //     *----------------*     *----------------*
@@ -37,7 +37,7 @@ using DynamicGatherwithAddTestParams = std::tuple<Input1AndInput2Shape, InputTyp
 //                |      Add       |
 //                *----------------*
 
-class DynamicGatherwithAddLayerTest :
+class DynamicGatherwithAddNPUTest :
         public testing::WithParamInterface<DynamicGatherwithAddTestParams>,
         public VpuOv2LayerTest {
 public:
@@ -98,13 +98,13 @@ protected:
     }
 };
 
-TEST_P(DynamicGatherwithAddLayerTest, NPU3720_HW) {
+TEST_P(DynamicGatherwithAddNPUTest, NPU3720_HW_TestKindSubgraph) {
     abs_threshold = 0.0f;
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(DynamicGatherwithAddLayerTest, NPU4000_HW) {
+TEST_P(DynamicGatherwithAddNPUTest, NPU4000_HW_TestKindSubgraph) {
     abs_threshold = 0.0f;
     setDefaultHardwareMode();
     run(Platform::NPU4000);
@@ -116,7 +116,7 @@ const std::vector<Input1AndInput2Shape> inShapes = {
         {{8, 128}, {2, 128}},
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_DynamicGatherwithAdd, DynamicGatherwithAddLayerTest,
+INSTANTIATE_TEST_SUITE_P(smoke_DynamicGatherwithAdd, DynamicGatherwithAddNPUTest,
                          ::testing::Combine(::testing::ValuesIn(inShapes), ::testing::ValuesIn(inputPrecision)),
                          PrintTestCaseName());
 }  // namespace ov::test

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -15,6 +15,9 @@
 
 namespace vpux {
 namespace VPU {
+
+// pure_vertical_fusion_region is true when the outlining region contains only vertical fusion subgraph
+static constexpr StringLiteral PureVerticalFusionRegionAttrName{"pure_vertical_fusion_region"};
 
 //
 // FunctionOutlinerVerticalFusion

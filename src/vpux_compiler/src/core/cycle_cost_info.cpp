@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/cycle_cost_info.hpp"
@@ -12,10 +12,15 @@
 
 using namespace vpux;
 
-CycleCostInfo::CycleCostInfo(mlir::func::FuncOp func): _log(Logger::global().nest("cycle-cost-info", 0)) {
+CycleCostInfo::CycleCostInfo(mlir::func::FuncOp func)
+        : CycleCostInfo(VPU::CostModelConfig::createCostModel(VPU::getArch(func)), func) {
+}
+
+CycleCostInfo::CycleCostInfo(std::shared_ptr<VPUNN::VPUCostModel> costModel, mlir::func::FuncOp func)
+        : _log(Logger::global().nest("cycle-cost-info", 0)) {
     auto module = func->getParentOfType<mlir::ModuleOp>();
     _archKind = VPU::getArch(module);
-    _costModel = VPU::CostModelConfig::createCostModel(_archKind);
+    _costModel = std::move(costModel);
 
     _log.trace("Analyze cycle cost for Function '@{0}'", func.getName());
     _log = _log.nest();

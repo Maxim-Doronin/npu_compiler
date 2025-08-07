@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -26,6 +26,9 @@ mlir::Value paddingChannel(mlir::Operation* origOp, mlir::PatternRewriter& rewri
 mlir::Value paddingFilter(mlir::Operation* origOp, mlir::PatternRewriter& rewriter, mlir::Value expandValue,
                           Shape filterPadsEnd);
 SmallVector<int64_t> extractMeaningfulOutput(mlir::Operation* origOp, ShapeRef outPadsEnd);
+
+mlir::Value generateZeroConst(mlir::Location loc, vpux::NDTypeInterface inType, ShapeRef padShape,
+                              mlir::PatternRewriter& rewriter);
 
 mlir::Value concatWithZeroConst(mlir::Location loc, mlir::Value filter, ShapeRef subInput, int64_t sliceChannelOffset,
                                 mlir::PatternRewriter& rewriter);

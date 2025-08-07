@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -32,7 +32,8 @@ void testDType(mlir::MLIRContext* ctx, VPU::ClusteredOpInterface clusteredOp,
                                              : mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
 
     auto distributedIf =
-            isAct ? VPU::getDistributedActivationTypeFromOp(clusteredOp, inputType, numClusters.getInt(), outputType)
+            isAct ? VPU::getDistributedActivationTypeFromOp(clusteredOp, clusteredOp->getOperand(0), inputType,
+                                                            numClusters.getInt(), outputType)
                   : VPU::getDistributedOutputTypeFromOp(clusteredOp, outputType, numClusters.getInt(), {inputType});
     auto distributedType = mlir::cast<vpux::VPU::DistributedTensorType>(distributedIf.getDistributedTypes().front());
 
@@ -327,14 +328,16 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
 struct DistributedTypeFromSOKOpParams {
     llvm::StringLiteral inputIR;
     bool isSwOpOutputDistributionAligned;
+    vpux::VPU::DistributionMode expectedDistribution;
 };
 
 class GetDistributedTypeFromSOKOpTests : public testing::TestWithParam<DistributedTypeFromSOKOpParams> {};
 
-TEST_P(GetDistributedTypeFromSOKOpTests, SegmentedOverChannelsDistribution) {
+TEST_P(GetDistributedTypeFromSOKOpTests, SplitOverChannelsDistribution) {
     const auto params = GetParam();
     const llvm::StringLiteral inputIR = params.inputIR;
     const bool isSwOpOutputDistributionAligned = params.isSwOpOutputDistributionAligned;
+    const vpux::VPU::DistributionMode expectedDistribution = params.expectedDistribution;
 
     auto registry = vpux::createDialectRegistry();
     auto interfacesRegistry = vpux::createInterfacesRegistry(vpux::VPU::ArchKind::NPU37XX);
@@ -352,15 +355,13 @@ TEST_P(GetDistributedTypeFromSOKOpTests, SegmentedOverChannelsDistribution) {
     const auto numClusters = getIntAttr(&ctx, 3);
 
     auto expectedAlignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
-    auto expectedAlignedDistribution =
-            VPU::DistributionInfoAttr::get(&ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED),
-                                           numTiles, nullptr, nullptr, nullptr, numClusters, expectedAlignment,
-                                           mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+    auto expectedAlignedDistribution = VPU::DistributionInfoAttr::get(
+            &ctx, VPU::DistributionModeAttr::get(&ctx, expectedDistribution), numTiles, nullptr, nullptr, nullptr,
+            numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
 
-    auto expectedUnalignedDistribution =
-            VPU::DistributionInfoAttr::get(&ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED),
-                                           numTiles, nullptr, nullptr, nullptr, numClusters, /*alignment*/ nullptr,
-                                           mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+    auto expectedUnalignedDistribution = VPU::DistributionInfoAttr::get(
+            &ctx, VPU::DistributionModeAttr::get(&ctx, expectedDistribution), numTiles, nullptr, nullptr, nullptr,
+            numClusters, /*alignment*/ nullptr, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
 
     auto expectedSwOpDistribution =
             isSwOpOutputDistributionAligned ? expectedAlignedDistribution : expectedUnalignedDistribution;
@@ -417,7 +418,7 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
             }
             return %1 : tensor<1x144x16x16xf16, {order = #NHWC}>
         }
-    })", false},
+    })", false, VPU::DistributionMode::SEGMENTED},
     {
         R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -450,7 +451,42 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
                     -> tensor<1x144x16x16xf16, {order = #NHWC}>
             return %1 : tensor<1x144x16x16xf16, {order = #NHWC}>
         }
-    })", false}};
+    })", false, VPU::DistributionMode::SEGMENTED},
+    {
+    // verify distribution for large tensors that exceeds HW limit on kernel before tiling, but not after tiling.
+        R"(
+    !qElemType = !quant.uniform<i4:f16, 0.0152740478515625>
+    #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+    module @test {
+        IE.TileResource 3 of @NCE at 6.000000e+02 MHz
+        func.func @main(%arg0: tensor<1x2048x1x1xf16, {order = #NHWC}>) 
+            -> (tensor<1x12288x1x1xf16, {order = #NHWC}>, tensor<1x12288x1x1xf16, {order = #NHWC}>) {
+            %cst = const.Declare tensor<12288x2048x1x1x!qElemType, {order = #NHWC}> = dense<1.000000e+00> : 
+                    tensor<12288x2048x1x1xf16, {order = #NHWC}>, [#const.CastElemType<i4>, #const.CastElemType<!qElemType>]
+            %cst_0 = const.Declare tensor<12288x1x1x4xsi32> = dense<10> : tensor<12288x1x1x4xsi32>
+            %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x2048x1x1xf16, {order = #NHWC}>, 
+                    %cst as %arg2: tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>, 
+                    %cst_0 as %arg3: tensor<12288x1x1x4xsi32>) 
+                    attributes {tilingStrategy = [1, 8, 1, 1]} -> tensor<1x12288x1x1xf16, {order = #NHWC}> {
+                %1 = VPU.NCE.Convolution(%arg1, %arg2, %arg3) {
+                    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, 
+                    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, 
+                    ppe = #VPU.PPEStub<>, 
+                    rawFilterShape = [12288, 2048, 1, 1], strides = [1, 1]} : 
+                    tensor<1x2048x1x1xf16, {order = #NHWC}>, tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>, 
+                    tensor<12288x1x1x4xsi32> -> tensor<1x12288x1x1xf16, {order = #NHWC}> 
+                VPU.Yield %1 
+            }
+            %2 = VPU.NCE.Convolution(%arg0, %cst, %cst_0) {
+                multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, 
+                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, 
+                ppe = #VPU.PPEStub<>, 
+                rawFilterShape = [12288, 2048, 1, 1], strides = [1, 1], tilingStrategy = [1, 8, 1, 1]} : 
+                tensor<1x2048x1x1xf16, {order = #NHWC}>, tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>, 
+                tensor<12288x1x1x4xsi32> -> tensor<1x12288x1x1xf16, {order = #NHWC}> 
+            return %0, %2 : tensor<1x12288x1x1xf16, {order = #NHWC}>, tensor<1x12288x1x1xf16, {order = #NHWC}>
+        }
+    })", false, VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED}};
 
 std::vector<DistributedTypeFromSOKOpParams> segmentedAvgPoolParams = {
     {
@@ -476,7 +512,7 @@ std::vector<DistributedTypeFromSOKOpParams> segmentedAvgPoolParams = {
                     -> tensor<1x144x8x16xf16, {order = #NHWC}>
             return %2 : tensor<1x144x8x16xf16, {order = #NHWC}>
         }
-    })", true},
+    })", true, VPU::DistributionMode::SEGMENTED},
     {
         R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -519,7 +555,7 @@ std::vector<DistributedTypeFromSOKOpParams> segmentedAvgPoolParams = {
                     -> tensor<1x96x8x16xf16, {order = #NHWC}>
             return %4, %6 : tensor<1x96x8x16xf16, {order = #NHWC}>, tensor<1x96x8x16xf16, {order = #NHWC}>
         }
-    })", true}
+    })", true, VPU::DistributionMode::SEGMENTED}
 };
 
 // clang-format on
@@ -609,12 +645,7 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, OverlappedSingleInputSWOpDuringTilin
     });
 }
 
-// Bug in getSWInputTensorDistributionMode: Interpolate inputs are identified by comparing interpolate's
-// getInput(0).getType() with the inputType passed to the func. When tiling is done on the act input, the two
-// will not be the same even if they reprsent the same tensor. As a consequence, the below test will fail
-// for the tiled scenario because it assigns DUPLICATED mode for input 0, though it should assign OVERLAPPED.
-// Tracked by: E#125874
-TEST_F(MLIR_GetDistributedTypeFromSwOpTest, DISABLED_OverlappedMultiInputSWOpDuringTiling) {
+TEST_F(MLIR_GetDistributedTypeFromSwOpTest, OverlappedMultiInputSWOpDuringTiling) {
     constexpr llvm::StringLiteral inputIR = R"(
         module @test {
             IE.TileResource 4 of @NCE at 6.000000e+02 MHz
@@ -631,7 +662,7 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, DISABLED_OverlappedMultiInputSWOpDur
                             cube_coeff = -7.500000e-01 : f64>,
                             axes_attr = [0, 1, 2, 3],
                             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
-                            operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+                            operandSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>,
                             scales_attr = [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00],
                             sizes_attr = [1, 21, 513, 513]}
                     : tensor<1x21x65x65xf16> -> tensor<1x21x513x513xf16>

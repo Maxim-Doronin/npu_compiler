@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpux/compiler/utils/dynamic_shape_propagation.hpp>
@@ -12,11 +12,8 @@ void assignDynamicTypeComponents(TypeComponents& typeComponents, VPU::BoundsRepr
     if (boundsRepresentation == VPU::BoundsRepresentation::BOUNDS) {
         typeComponents.setShape(Shape(shape)).setBounds(Bounds(bounds));
     } else {
-        auto dimsMask = to_small_vector(shape | transformed([&](auto dim) -> int64_t {
-                                            return (dim == mlir::ShapedType::kDynamic) ? 1 : 0;
-                                        }));
-
-        typeComponents.setShape(Shape(bounds)).setDynamicDimsMask(DynamicDimsMask(dimsMask));
+        const auto boundedShape = makeShape<BoundedShape>(Shape(shape), Bounds(bounds));
+        typeComponents.setShapeWithRepresentation(shapeCast<DimsMaskedShape>(boundedShape));
     }
 }
 

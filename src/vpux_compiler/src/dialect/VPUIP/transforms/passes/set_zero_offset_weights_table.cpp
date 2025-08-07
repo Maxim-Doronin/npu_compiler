@@ -1,8 +1,9 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/utils/weights_table_reuse_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -43,6 +44,11 @@ void SetZeroOffsetWeightsTablePass::safeRunOnFunc() {
     auto func = getOperation();
 
     func.walk([&](VPUIP::NCEClusterTaskOp nceOp) {
+        if (!VPU::isWeightsTableReuseEnabled(nceOp)) {
+            _log.trace("Skipping relocation of weights table for reuse because the function is not supported {0}",
+                       func->getLoc());
+            return;
+        }
         auto weightsTable = nceOp.getWeightTable();
         if (weightsTable == nullptr) {
             return;

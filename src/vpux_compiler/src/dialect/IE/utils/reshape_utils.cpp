@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
@@ -14,7 +14,7 @@ struct MinDimension {
     int64_t largeDimQuotient;
 
     MinDimension(std::size_t& shapeIdx, llvm::ArrayRef<int64_t> shape, const int64_t largeDimQuotient)
-            : shapeIdx(shapeIdx), shape(shape), largeDimQuotient(largeDimQuotient){};
+            : shapeIdx(shapeIdx), shape(shape), largeDimQuotient(largeDimQuotient) {};
 };
 }  // namespace
 
@@ -98,8 +98,9 @@ mlir::FailureOr<SmallVector<SmallVector<int64_t>>> createReassociationMap(ArrayR
                                          : MinDimension(outIdx, outShape, inShape[inIdx]);
 
         do {
-            if (minimum.largeDimQuotient % minimum.shape[minimum.shapeIdx] != 0)
+            if (minimum.largeDimQuotient % minimum.shape[minimum.shapeIdx] != 0) {
                 return mlir::failure();
+            }
 
             reassociationVec[inIdx].push_back(static_cast<int64_t>(outIdx));
 

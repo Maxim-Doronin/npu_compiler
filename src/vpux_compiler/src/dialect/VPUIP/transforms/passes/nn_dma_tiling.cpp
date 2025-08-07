@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -173,7 +173,6 @@ void SplitNNDMARewriter::createTiles(VPUIP::NNDMAOp nndmaOp, mlir::PatternRewrit
 
         // Such distribution of tasks between ports may conflict with initial assumptions at memory scheduler level and
         // may potentially negatively impact previously prepared DMA tasks distribution and prefetching.
-        // See E#84706, as a follow up task, implement it before scheduler with ClusterTiling refactoring.
         auto newDMAPort = tileIdx % _dmaPortCount;
         const auto newNNDMA = VPURT::wrapIntoTaskOp<VPUIP::NNDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), tileLoc, inputNewBuffer,

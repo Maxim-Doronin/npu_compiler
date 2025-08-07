@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -25,9 +25,9 @@ struct SeSizes {
     std::vector<int64_t> multiSeSize = {};
 
     SeSizes(int64_t singleVal, std::vector<int64_t> multiVals)
-            : singleSeSize(singleVal), multiSeSize(std::move(multiVals)){};
+            : singleSeSize(singleVal), multiSeSize(std::move(multiVals)) {};
 
-    SeSizes(int64_t singleVal): singleSeSize(singleVal){};
+    SeSizes(int64_t singleVal): singleSeSize(singleVal) {};
 };
 
 struct ExpectedOffsetsOut {
@@ -35,9 +35,9 @@ struct ExpectedOffsetsOut {
     std::vector<int32_t> multiSeSize = {};
 
     ExpectedOffsetsOut(std::vector<int32_t> singleOut, std::vector<int32_t> multiOut)
-            : singleSeSize(std::move(singleOut)), multiSeSize(std::move(multiOut)){};
+            : singleSeSize(std::move(singleOut)), multiSeSize(std::move(multiOut)) {};
 
-    ExpectedOffsetsOut(std::vector<int32_t> singleOut): singleSeSize(std::move(singleOut)){};
+    ExpectedOffsetsOut(std::vector<int32_t> singleOut): singleSeSize(std::move(singleOut)) {};
 };
 
 struct SEInterpolateAttrParams {

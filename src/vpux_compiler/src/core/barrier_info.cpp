@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/barrier_info.hpp"
@@ -2960,6 +2960,85 @@ bool vpux::BarrierInfo::controlPathExistsBetweenTasksInSameBlock(const SmallVect
     return taskControlMap[taskAInd][taskBInd];
 }
 
+// Check if there is a dependency from taskA to taskB taking into account barrier dependency
+// and HW FIFOs.
+// taskControlMapAndOffset and blockIdxOfTaskControlMap arguments are input and output parameters. If it turns
+// out that provided control map for control graph block does not match block index of taskA and taskB function will
+// build new control map and update those arguments.
+bool vpux::BarrierInfo::isDepFromTaskAToTaskB(size_t taskA, size_t taskB,
+                                              std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+                                              std::optional<size_t>& blockIdxOfTaskControlMap) {
+    auto taskABlock = getControlGraphBlockIndex(taskA);
+    auto taskBBlock = getControlGraphBlockIndex(taskB);
+    // If taskB is on later block than taskA then by definition it is dependent on taskA
+    if (taskABlock < taskBBlock) {
+        return true;
+    }
+
+    // If taskB is on earlier block than taskA then it cannot dependent on taskA
+    if (taskABlock > taskBBlock) {
+        return false;
+    }
+
+    // If taskA and taskB are on the same HW FIFO and taskA has smaller index than taskB
+    // then dependency exists
+    auto taskAQueueType = getTaskQueueType(taskA);
+    auto taskBQueueType = getTaskQueueType(taskB);
+    if (taskAQueueType == taskBQueueType && taskA < taskB) {
+        return true;
+    }
+
+    if (!blockIdxOfTaskControlMap.has_value() || blockIdxOfTaskControlMap.value() != taskABlock) {
+        blockIdxOfTaskControlMap = taskABlock;
+        taskControlMapAndOffset = buildTaskControlMap(taskABlock);
+    }
+    auto& [taskControlMap, taskControlMapOffset] = taskControlMapAndOffset;
+
+    // Check if there is required dep
+    return controlPathExistsBetweenTasksInSameBlock(taskControlMap, taskA - taskControlMapOffset,
+                                                    taskB - taskControlMapOffset, false);
+}
+
+// Check if there is a dependency from task to barrier by checking if there is any dependency
+// from this task to any producer of this barrier. If yes then there is a guarantee that task
+// needs to execute before barrier is produced - there is topological dependency.
+// taskControlMapAndOffset and blockIdxOfTaskControlMap arguments are input and output parameters. If it turns
+// out that provided control map for control graph block does not match block index of taskInd and barInd function will
+// build new control map and update those arguments.
+bool vpux::BarrierInfo::isDepFromTaskToBarrier(size_t taskInd, size_t barInd,
+                                               std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+                                               std::optional<size_t>& blockIdxOfTaskControlMap) {
+    auto barProdTasks = getBarrierProducers(barInd);
+    return llvm::any_of(barProdTasks, [&](const auto barProdTask) {
+        return isDepFromTaskAToTaskB(taskInd, barProdTask, taskControlMapAndOffset, blockIdxOfTaskControlMap);
+    });
+}
+
+// Check if there is a dependency from barA to barB by checking if there is any dependency
+// from barA consumer to barB producer.
+// taskControlMapAndOffset and blockIdxOfTaskControlMap arguments are input and output parameters. If it turns
+// out that provided control map for control graph block does not match block index of barA and barB function will
+// build new control map and update those arguments.
+bool vpux::BarrierInfo::isDepFromBarAToBarB(size_t barA, size_t barB,
+                                            std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+                                            std::optional<size_t>& blockIdxOfTaskControlMap) {
+    if (barA > barB) {
+        return false;
+    }
+
+    auto barAConsumers = getBarrierConsumers(barA);
+    auto barBProducers = getBarrierProducers(barB);
+
+    for (auto barAConsumer : barAConsumers) {
+        for (auto barBProducer : barBProducers) {
+            if (isDepFromTaskAToTaskB(barAConsumer, barBProducer, taskControlMapAndOffset, blockIdxOfTaskControlMap)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 //
 // updateIR
 //
@@ -3133,6 +3212,94 @@ bool vpux::BarrierInfo::canBarriersBeMerged(const TaskSet& barrierProducersA, co
     }
 
     return true;
+}
+
+// Remove redundant consumers and/or producers which are controlled
+// by FIFO dependency. OP[<FIFO>][<opIndex>]
+// After this optimization barriers should not have producers or consumers
+// from same HW FIFO
+/*
+    OP[A][0] OP[A][1] OP[B][0]   OP[A][1]  OP[B][0]
+        \      |     /                \    /
+              Bar           =>          Bar
+        /      |     \                /    \
+    OP[A][2] OP[B][1] OP[B][2]   OP[A][2]  OP[B][1]
+*/
+void vpux::BarrierInfo::removeRedundantBarrierProducersAndConsumers(bool considerTaskFifoDependency) {
+    const auto findRedundantDependencies = [&](const SmallVector<llvm::BitVector>& taskControlMap,
+                                               size_t taskControlMapOffset, const BarrierInfo::TaskSet& dependencies,
+                                               bool producer = true) {
+        SmallVector<size_t> sortedDependencies = to_small_vector(dependencies);
+        llvm::sort(sortedDependencies);
+
+        // find dependencies to remove
+        BarrierInfo::TaskSet dependenciesToRemove;
+        for (auto taskIndexIter = sortedDependencies.begin(); taskIndexIter != sortedDependencies.end();
+             ++taskIndexIter) {
+            if (isSyncPoint(*taskIndexIter)) {
+                continue;
+            }
+            for (auto nextIndex = std::next(taskIndexIter); nextIndex != sortedDependencies.end(); ++nextIndex) {
+                if (isSyncPoint(*nextIndex) ||
+                    !controlPathExistsBetweenTasksInSameBlock(taskControlMap, *taskIndexIter - taskControlMapOffset,
+                                                              *nextIndex - taskControlMapOffset,
+                                                              /* biDirection */ false)) {
+                    continue;
+                }
+
+                if (producer) {
+                    dependenciesToRemove.insert(*taskIndexIter);
+                } else {
+                    dependenciesToRemove.insert(*nextIndex);
+                }
+            }
+        }
+        return dependenciesToRemove;
+    };
+
+    // Perform optimization in tasks blocks matching the distribution of synchronization points.
+    for (size_t taskBlockIndex = 0; taskBlockIndex < getControlGraphBlockCount(); ++taskBlockIndex) {
+        // Build or update the control relationship between any two tasks. Note that the relationship includes the
+        // dependency by the barriers as well as the implicit dependence by FIFO
+        auto [taskControlMap, controlMapOffset] = buildTaskControlMap(taskBlockIndex, considerTaskFifoDependency);
+
+        // get update barriers range for current block
+        auto blockUpdateBarriers = getBarriersForTaskBlock(taskBlockIndex, /* blockStartSyncPoint */ true,
+                                                           /* blockEndSyncPoint */ false, /* updateBarriers */ true);
+
+        if (blockUpdateBarriers.empty()) {
+            _log.trace("No update barriers found in tasks block {0}", taskBlockIndex);
+        } else {
+            _log.trace("Optimize producers for barrier range [{0}, {1}] in tasks block {2}",
+                       blockUpdateBarriers.front(), blockUpdateBarriers.back(), taskBlockIndex);
+        }
+
+        for (auto barrierIdx : blockUpdateBarriers) {
+            // find producers to remove
+            const auto barrierProducers = getBarrierProducers(barrierIdx);
+            const auto producersToRemove =
+                    findRedundantDependencies(taskControlMap, controlMapOffset, barrierProducers);
+            removeProducers(barrierIdx, producersToRemove);
+        }
+
+        // get wait barriers range for current block
+        auto blockWaitBarriers = getBarriersForTaskBlock(taskBlockIndex, /* blockStartSyncPoint */ false,
+                                                         /* blockEndSyncPoint */ true, /* updateBarriers */ false);
+        if (blockWaitBarriers.empty()) {
+            _log.trace("No wait barriers found in tasks block {0}", taskBlockIndex);
+        } else {
+            _log.trace("Optimize consumers for barrier range [{0}, {1}] in tasks block {2}", blockWaitBarriers.front(),
+                       blockWaitBarriers.back(), taskBlockIndex);
+        }
+
+        for (auto barrierIdx : blockWaitBarriers) {
+            // find consumers to remove
+            const auto barrierConsumers = getBarrierConsumers(barrierIdx);
+            const auto consumersToRemove =
+                    findRedundantDependencies(taskControlMap, controlMapOffset, barrierConsumers, false);
+            removeConsumers(barrierIdx, consumersToRemove);
+        }
+    }
 }
 
 //

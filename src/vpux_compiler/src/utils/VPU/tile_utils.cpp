@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
@@ -44,9 +44,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
                 clusteredOp, outputTileType.getShape(),
                 mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                         .getValue());
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(filterTileType,
                                VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
                 std::make_pair(outputTileType,
@@ -87,9 +87,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
                 clusteredOp, outputTileType.getShape(),
                 mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                         .getValue());
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(filterTileType,
                                VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
                 std::make_pair(outputTileType,
@@ -123,9 +123,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
         auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
                                                       clusteredOp.getMultiClusterStrategy().value());
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(outputTileType,
                                VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
                                                                     siblingsAnalysis, {}, outTile))};
@@ -157,9 +157,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
         auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
                                                       clusteredOp.getMultiClusterStrategy().value());
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(outputTileType,
                                VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
                                                                     siblingsAnalysis, {}, outTile))};
@@ -194,9 +194,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
                         origOp->getLoc());
         auto strategy = clusteredOp.getMultiClusterStrategy().value();
         auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(filterTileType,
                                VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
                 std::make_pair(outputTileType,
@@ -234,9 +234,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
                 clusteredOp, outputTileType.getShape(),
                 mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                         .getValue());
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(filterTileType,
                                VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
                 std::make_pair(outputTileType,
@@ -271,9 +271,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
                 clusteredOp, outputTileType.getShape(),
                 mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                         .getValue());
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(outputTileType,
                                VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
                                                                     siblingsAnalysis, {}, outTile))};
@@ -312,9 +312,9 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
                 clusteredOp, outputTileType.getShape(),
                 mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                         .getValue());
-        return {std::make_pair(inputTileType,
-                               VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                        siblingsAnalysis, nullptr, tiles[0])),
+        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                      siblingsAnalysis, nullptr, tiles[0])),
                 std::make_pair(filterTileType,
                                VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
                 std::make_pair(outputTileType,
@@ -370,9 +370,10 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
     std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> distributedTensorTypes;
     SmallVector<NDTypeInterface> inputTypes;
-    for (const auto& inputTileType : inputTileTypes) {
-        auto inDistribution = VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType.first, numClusters,
-                                                                       siblingsAnalysis, outputTileType);
+    for (const auto& [idx, inputTileType] : inputTileTypes | indexed) {
+        auto inDistribution =
+                VPU::getActivationDistributionAttrFromOp(clusteredOp, clusteredOp->getOperand(idx), inputTileType.first,
+                                                         numClusters, siblingsAnalysis, outputTileType, outTile);
         distributedTensorTypes.push_back(std::make_pair(inputTileType.first, inDistribution));
         inputTypes.push_back(inputTileType.first);
     }
@@ -524,7 +525,8 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::DepthToSpaceOp origOp, cons
                 clusteredOp, outputTileType.getShape(),
                 mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                         .getValue());
-        return {VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, nullptr, tiles[0]),
+        return {VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp.getInput(), inputTileType, numClusters,
+                                                        nullptr, tiles[0]),
                 VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outTile)};
     }
 
@@ -572,9 +574,9 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
                                                   clusteredOp.getMultiClusterStrategy().value());
 
     SmallVector<vpux::NDTypeInterface> distributedTensorTypes;
-    for (const auto& inputTileType : inputTileTypes) {
-        auto inDistributedType =
-                VPU::getDistributedActivationTypeFromOp(clusteredOp, inputTileType, numClusters, outputTileType);
+    for (const auto& [idx, inputTileType] : inputTileTypes | indexed) {
+        auto inDistributedType = VPU::getDistributedActivationTypeFromOp(
+                clusteredOp, clusteredOp->getOperand(idx), inputTileType, numClusters, outputTileType, outTile);
         distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
     }
 
@@ -1516,5 +1518,14 @@ bool isDivisibleTile(mlir::Operation* op, ShapeRef tileAxis, Dim tileDim) {
     }
 }
 
+bool hasRestrictedTilingDim(VPU::DistributedCastOpInterface distributedCastOp) {
+    if (auto tilingViewLikeOp = mlir::dyn_cast<VPU::TilingViewLikeOpInterface>(distributedCastOp.getOperation())) {
+        auto dimArr = DimsOrder::fromValue(distributedCastOp->getResult(0)).toPermutation();
+        return llvm::any_of(dimArr, [&](Dim dim) {
+            return !tilingViewLikeOp.isSupportedTilingDim({dim});
+        });
+    }
+    return false;
+}
 }  // namespace VPU
 }  // namespace vpux

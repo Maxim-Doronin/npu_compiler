@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPU_ARCH_40XX_PASSES
@@ -107,7 +107,7 @@ def MoveConvertAroundViewLikeOps : PassBase<"move-convert-around-viewlike-ops", 
         This is the base pass which contains all rewriters for moving convertOp around in the IR
         MoveConvertAfterPermuteCast -> Moves ConvertOp after PermuteCast so we can fuse the CopyOp and ConvertDMAOp and avoid DDR DMAs
         MoveConvertAfterShapeCast -> Moves ConvertOp after ShapeCastOp so we can fuse the CopyOp and ConvertDMAOp and avoid DDR DMAs
-        MoveConvertAffineReshape -> Moves ConvertOp before AffineReshape so we can wrap ConvertOp in NCEClusterTiling with all 4 Dims
+        MoveConvertAffineReshape -> Moves ConvertOp before AffineReshape with all 4 Dims
     }];
 
     let constructor = "vpux::VPU::arch40xx::createMoveConvertAroundViewLikeOpsPass()";

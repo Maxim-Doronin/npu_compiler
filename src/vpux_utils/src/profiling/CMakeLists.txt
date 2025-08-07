@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2023-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 if(ENABLE_LTO)
@@ -31,10 +31,12 @@ list(APPEND SOURCES
                 common.cpp
                 metadata.cpp
                 tasknames.cpp
+                utils.cpp
                 parser/debug.cpp
                 parser/freq.cpp
                 parser/parser.cpp
                 parser/sync.cpp
+                parser/records.cpp
                 reports/hooks.cpp
                 reports/json.cpp
                 reports/layers.cpp

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --propagate-mem-permute-before-op %s | FileCheck %s
@@ -1287,4 +1287,23 @@ func.func @NotMovePermuteThroughMultiplyIfNotBeneficial(%arg0: tensor<1x512x1x1x
     // CHECK:       [[PERMUTE:%.+]] = IE.MemPermute([[MULTIPLY]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x512x512x9xf16, {order = #NCWH}> -> tensor<1x512x512x9xf16>
 
     // CHECK:       return  [[PERMUTE]] : tensor<1x512x512x9xf16>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotPropagatePermuteQuantizeIfNotSupportedByNCEPermute
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1280x2x8xf16>
+func.func @NotPropagatePermuteQuantizeIfNotSupportedByNCEPermute(%arg0: tensor<1x1280x2x8xf16>) -> tensor<1x1280x1x16xf16, {order = #NHWC}> {
+    %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1, 2], [3], [3]], shape_value = [1, 1280, 1, 16]} : tensor<1x1280x2x8xf16> -> tensor<1x1280x1x16xf16>
+    %1 = IE.PermuteQuantize(%0) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x1280x1x16xf16> -> tensor<1x1280x1x16xf16, {order = #NHWC}>
+
+    return %1 : tensor<1x1280x1x16xf16, {order = #NHWC}>
+
+    // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1, 2], [3], [3]], shape_value = [1, 1280, 1, 16]} : tensor<1x1280x2x8xf16> -> tensor<1x1280x1x16xf16>
+    // CHECK:       [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[RESHAPE]]) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x1280x1x16xf16> -> tensor<1x1280x1x16xf16, {order = #NHWC}>
+
+    // CHECK:       return [[PERMUTE_QUANTIZE]] : tensor<1x1280x1x16xf16, {order = #NHWC}>
 }

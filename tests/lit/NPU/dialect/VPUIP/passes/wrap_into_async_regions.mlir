@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --wrap-into-async-regions %s | FileCheck %s
@@ -92,24 +92,21 @@ func.func @ConcatView(%arg0: memref<50x1x1xf16>, %arg1: memref<100x1x1xf16>) -> 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @NCEClusterTiling
-func.func @NCEClusterTiling(%arg0: memref<1x32x16x16xf16, #NHWC, @DDR>) -> memref<1x32x16x16xf16, #NHWC, @CMX_NN> {
-    %0 = memref.alloc() : memref<1x32x16x16xf16, #NHWC, @CMX_NN>
-    %1 = VPUIP.NCEClusterTiling inputs(%arg0 as %arg2: memref<1x32x16x16xf16, #NHWC, @DDR>) outputs(%0 as %arg3: memref<1x32x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x32x16x16xf16, #NHWC, @CMX_NN> {
-      %2 = VPUIP.Copy inputs(%arg2 : memref<1x32x16x16xf16, #NHWC, @DDR>) outputs(%arg3 : memref<1x32x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x32x16x16xf16, #NHWC, @CMX_NN>
-    }
-    return %1 : memref<1x32x16x16xf16, #NHWC, @CMX_NN>
+// CHECK-LABEL: @DistributedOp
+func.func @DistributedOp(%arg0: memref<1x32x16x16xf16, #NHWC, @DDR>) -> !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, alignment = [1, 16, 1, 1]}> {
+    %0 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, alignment = [1, 16, 1, 1]}>
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<1x32x16x16xf16, #NHWC, @DDR>)
+        outputs(%0 : !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, alignment = [1, 16, 1, 1]}>)  ->  !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, alignment = [1, 16, 1, 1]}>
+    return %1 : !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, alignment = [1, 16, 1, 1]}>
 
-    // CHECK:       [[BUF0:%.+]] = memref.alloc()
+    // CHECK:       [[BUF0:%.+]] = VPURT.AllocDistributed
 
     // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute -> !async.value
     // CHECK-SAME:          VPUIP.executor = @DMA_NN
-    // CHECK:           [[R2:%.+]] = VPUIP.NCEClusterTiling
-    // CHECK-SAME:          inputs(%arg0 as [[ARG0:%.+]]: memref<1x32x16x16xf16, #NHWC, @DDR>)
-    // CHECK-SAME:          outputs([[BUF0]] as [[ARG1:%.+]]: memref<1x32x16x16xf16, #NHWC, @CMX_NN>)
-    // CHECK:               VPUIP.Copy
-    // CHECK-SAME:              inputs([[ARG0]] : memref<1x32x16x16xf16, #NHWC, @DDR>)
-    // CHECK-SAME:              outputs([[ARG1]] : memref<1x32x16x16xf16, #NHWC, @CMX_NN>)
+    // CHECK:           [[R2:%.+]] = VPUIP.Copy
+    // CHECK-SAME:          inputs(%arg0
+    // CHECK-SAME:          outputs([[BUF0]]
     // CHECK:           async.yield [[R2]]
 
     // CHECK:       [[R2:%.+]] = async.await [[R1]]

@@ -1,14 +1,6 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
-//
-// LEGAL NOTICE: Your use of this software and any required dependent software
-// (the "Software Package") is subject to the terms and conditions of
-// the Intel(R) OpenVINO(TM) Distribution License for the Software Package,
-// which may also include notices, disclaimers, or license terms for
-// third party or open source software included in or with the Software Package,
-// and your use indicates your acceptance of all such terms. Please refer
-// to the "third-party-programs.txt" or other similarly-named text file
-// included with the Software Package for additional details.
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/subgraph_optimizer.hpp"
@@ -16,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -24,11 +17,13 @@
 using namespace vpux;
 using namespace VPU;
 
-SubgraphOptimizer::SubgraphOptimizer(mlir::func::FuncOp func, bool enablePrefetchTiling, Logger log,
-                                     SiblingOpsAnalysis& siblingsOpsAnalysis)
+SubgraphOptimizer::SubgraphOptimizer(mlir::func::FuncOp func, bool enablePrefetchTiling,
+                                     SiblingOpsAnalysis& siblingsOpsAnalysis,
+                                     std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModelPtr, Logger log)
         : _func(func),
           _log(log),
-          _layerCostModel(LayerCostModel(func, enablePrefetchTiling, log, siblingsOpsAnalysis)),
+          _layerCostModel(
+                  LayerCostModel(func, enablePrefetchTiling, siblingsOpsAnalysis, std::move(layerCostModelPtr), log)),
           _siblingsOpsAnalysis(siblingsOpsAnalysis) {
 }
 
@@ -326,8 +321,9 @@ double SubgraphOptimizer::getInputSpillingCostToMultiClusterLayer(VPU::Clustered
 
     return llvm::TypeSwitch<mlir::Operation*, double>(parent)
             .Case<VPU::ClusteredOpInterface>([&](VPU::ClusteredOpInterface parentOp) {
-                if (!_layerCostModel.hasMultiClusterStrategy(parentOp))
+                if (!_layerCostModel.hasMultiClusterStrategy(parentOp)) {
                     return 0.0;
+                }
 
                 VPU::MultiClusterStrategy parentStrategy =
                         config.useRollbackStrategy ? getRollbackStrategy(parentOp)
@@ -352,8 +348,14 @@ double SubgraphOptimizer::getOutputSpillingCostToMultiClusterLayer(VPU::Clustere
     double totalSpillingCost = 0.0;
     for (auto directUserOp : clusteredOp->getResult(0).getUsers()) {
         auto computeUserOp = directUserOp;
+        auto isDistributedCastOpWithoutTilingDimRestriction = [&](mlir::Operation* op) {
+            if (auto castOp = mlir::dyn_cast_or_null<VPU::DistributedCastOpInterface>(op)) {
+                return !VPU::hasRestrictedTilingDim(castOp);
+            }
+            return false;
+        };
         while (mlir::isa_and_nonnull<VPU::GroupSparseTensorOp>(computeUserOp) ||
-               (mlir::isa_and_nonnull<VPU::DistributedCastOpInterface>(computeUserOp) &&
+               (isDistributedCastOpWithoutTilingDimRestriction(computeUserOp) &&
                 !VPU::hasMultiBranches(computeUserOp))) {
             // propagate cast ops
             computeUserOp = *computeUserOp->getResult(0).getUsers().begin();
@@ -868,6 +870,11 @@ bool SubgraphOptimizer::hasOutputSpillingToMultiClusterLayer(VPU::ClusteredOpInt
         // Infer and pass CastOp
         while (auto castOp = mlir::dyn_cast_or_null<VPU::DistributedCastOpInterface>(userOp)) {
             if (VPU::hasMultiBranches(userOp)) {
+                break;
+            }
+
+            if (VPU::hasRestrictedTilingDim(castOp)) {
+                // It may throw exception when try to infer the casted type and distribution, skip it for now.
                 break;
             }
             auto origType = origOpCastedOutputType;

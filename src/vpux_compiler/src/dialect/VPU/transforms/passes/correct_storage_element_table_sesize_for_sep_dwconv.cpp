@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpux/utils/core/error.hpp>
@@ -88,7 +88,8 @@ bool SeSizeRewriter::updateSETableForUser(VPU::StorageElementTableOp origOp, mli
         const auto strategy = strategyAttr.getValue();
         const auto numClusters = VPU::getOptimalNumClusters(dwConv, getShape(dwConv.getOutput()), strategy);
         auto distributedInputType = mlir::cast<VPU::DistributedTensorType>(
-                VPU::getDistributedActivationTypeFromOp(dwConv, dwConv.getInput().getType(), numClusters, strategy)
+                VPU::getDistributedActivationTypeFromOp(dwConv, dwConv.getInput(), dwConv.getInput().getType(),
+                                                        numClusters, strategy)
                         .getDistributedTypes()
                         .front());
 

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -33,8 +33,8 @@ mlir::LogicalResult vpux::IE::LSTMSequenceOp::inferReturnTypeComponents(
     const auto numDirections = initialHiddenStateShape[Dim(1)];
     const auto hiddenSize = initialHiddenStateShape.back();
 
-    const auto lengthIndex = inDataShape.size() - 2;
-    int64_t sequenceLength = inDataShape[Dim(lengthIndex)];
+    const auto lengthIndex = Dim(inDataShape.size() - 2);
+    const auto sequenceLength = inDataShape[lengthIndex];
 
     const SmallVector<int64_t> outputHiddenValuesShape{batchSize, numDirections, sequenceLength, hiddenSize};
 

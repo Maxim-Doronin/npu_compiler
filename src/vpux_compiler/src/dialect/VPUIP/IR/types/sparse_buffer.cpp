@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
@@ -36,8 +36,9 @@ void VPUIP::SparseBufferType::print(mlir::AsmPrinter& printer) const {
 }
 
 mlir::Type VPUIP::SparseBufferType::parse(mlir::AsmParser& parser) {
-    if (parser.parseLess())
+    if (parser.parseLess()) {
         return Type();
+    }
     mlir::Type data;
     mlir::Type sparsityMap;
     mlir::Type storageElementTable;

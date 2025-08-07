@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/aliases_info.hpp"
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -70,7 +71,7 @@ void PatchPopulateWeightTableWithShavePass::safeRunOnFunc() {
         if (nceOp.getIsZeroOffsetWeightsTable()) {
             return;
         }
-        auto wTable = VPUIP::getTopBufferOfNCEClusterTiling(nceOp, nceOp.getWeightTable());
+        auto wTable = nceOp.getWeightTable();
         if (wTable == nullptr) {
             return;
         }
@@ -127,11 +128,9 @@ mlir::Operation* PatchPopulateWeightTableWithShavePass::getShaveKernelOpForDstBu
             }
             return nullptr;
         }
-
-        auto nceClustOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(user);
-        if (nceClustOp != nullptr && mlir::isa<VPUIP::SwKernelOp>(nceClustOp.getInnerTaskOp())) {
-            if (getRootBuffer(nceClustOp.getOutputs()[0]) == dstBuffer) {
-                return nceClustOp.getOperation();
+        if (mlir::isa<VPUIP::SwKernelOp>(user)) {
+            if (getRootBuffer(VPUIP::getLayerOutputs(user)[0]) == dstBuffer) {
+                return user;
             }
         }
 
@@ -152,9 +151,8 @@ void PatchPopulateWeightTableWithShavePass::patchShaveForPopulateWeightTable(VPU
     SmallVector<int64_t> swKernelRunOffsets;
     // find offsets for inner sw kernel runs
     for (auto outBuff : swKernelOp.getOutputBuffs()) {
-        const auto outTopBuff = VPUIP::getTopBufferOfNCEClusterTiling(swKernelOp, outBuff);
-        _log.trace("SW outTopBuff {0}", outTopBuff);
-        if (auto subView = mlir::dyn_cast<VPUIP::SubViewOp>(outTopBuff.getDefiningOp())) {
+        _log.trace("SW outTopBuff {0}", outBuff);
+        if (auto subView = mlir::dyn_cast<VPUIP::SubViewOp>(outBuff.getDefiningOp())) {
             _log.trace("SV {0}", subView);
             const auto offsetsAttr = subView.getStaticOffsets();
             auto offsets = parseIntArrayAttr<int32_t>(offsetsAttr);
@@ -221,7 +219,7 @@ uint64_t PatchPopulateWeightTableWithShavePass::getPointer(mlir::Value value, ui
 
 SmallVector<int32_t> PatchPopulateWeightTableWithShavePass::getWeightsPerClusterPointers(VPUIP::NCEClusterTaskOp nceOp,
                                                                                          int64_t numCluster) {
-    auto weights = VPUIP::getTopBufferOfNCEClusterTiling(nceOp, nceOp.getWeights());
+    auto weights = nceOp.getWeights();
     uint64_t weightsBasePointer = getPointer(weights, 0);
 
     if (weights == nullptr || !mlir::isa<vpux::VPUIP::DistributedBufferType>(weights.getType())) {
@@ -254,7 +252,7 @@ SmallVector<int32_t> PatchPopulateWeightTableWithShavePass::getWeightsPerCluster
 }
 
 int32_t PatchPopulateWeightTableWithShavePass::getWeightsAddressOffsetForSubView(VPUIP::NCEClusterTaskOp nceOp) {
-    auto weights = VPUIP::getTopBufferOfNCEClusterTiling(nceOp, nceOp.getWeights());
+    auto weights = nceOp.getWeights();
     VPUX_THROW_UNLESS(weights != nullptr, "Failed to find weights");
 
     auto weightsType = mlir::dyn_cast<vpux::NDTypeInterface>(weights.getType());

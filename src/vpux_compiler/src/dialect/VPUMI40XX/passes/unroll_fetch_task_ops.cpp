@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -201,8 +201,9 @@ void UnrollFetchTaskOpsPass::safeRunOnFunc() {
 
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         auto listHead = mpi.getListHead(VPURegMapped::TaskType::DMA, tileIdx, DMA_DDR2CMX_LISTIDX);
-        if (!listHead)
+        if (!listHead) {
             continue;
+        }
 
         auto newCount = VPUMI40XX::reindexList(mlir::cast<VPURegMapped::TaskOpInterface>(listHead.getDefiningOp()));
 

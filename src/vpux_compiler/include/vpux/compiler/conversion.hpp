@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -10,8 +10,8 @@
 #include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
+#include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IERT/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/utils/dry_run_utils.hpp"
 #include "vpux/compiler/dialect/VPUASM/dialect.hpp"
@@ -40,19 +40,6 @@
 #include <memory>
 
 namespace vpux {
-
-//
-// LowerIE2IERT
-//
-
-//
-// Performs full lowering from the IE Dialect to IERT Dialect.
-//
-// This pipeline performs full IR lowering from IE Dialect to IERT Dialect,
-// including Function types, call graph and return operations.
-//
-
-void buildLowerIE2IERTPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createBufferizeIEPass(Logger log = Logger::global());
 

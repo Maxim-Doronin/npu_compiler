@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -63,13 +63,6 @@ mlir::FailureOr<mlir::Value> ConvolutionLUTRewriter<ConcreteOp>::getPalletizedFi
     const auto newType =
             mlir::cast<vpux::NDTypeInterface>(inputType).changeElemType(_changeWeightTypeToLUT(origQuantType, actType));
     const auto newQuantType = mlir::cast<mlir::quant::QuantizedType>(newType.getElementType());
-
-    if (auto constOp = mlir::dyn_cast_or_null<Const::DeclareOp>(filterDequantOp.getInput().getDefiningOp())) {
-        _log.nest().trace("Convert content from '{0}' to '{1}' for const", origQuantType, newQuantType);
-        auto newContentAttr = constOp.getContentAttr().transform().convertElemType(newQuantType).get();
-        auto newConstantOp = rewriter.create<Const::DeclareOp>(constOp->getLoc(), newType, std::move(newContentAttr));
-        return newConstantOp.getOutput();
-    }
 
     _log.nest().trace("QuantizeCast from '{0}' to '{1}' for non const", origQuantType, newQuantType);
 

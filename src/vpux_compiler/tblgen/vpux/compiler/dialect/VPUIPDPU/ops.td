@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPUIPDPU_OPS
@@ -70,7 +70,7 @@ def VPUIPDPU_DPUInvariantOp :
         OptionalAttr<SymbolRefArrayAttr>:$min_max_per_tensor,
 
         OptionalAttr<SymbolRefAttr>:$dynamic_sequence_length,
-        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamicScaleConfig,
+        OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config,
 
         VPUIP_NCETaskTypeAttr:$nce_task_type,
         UnitAttr:$is_continued

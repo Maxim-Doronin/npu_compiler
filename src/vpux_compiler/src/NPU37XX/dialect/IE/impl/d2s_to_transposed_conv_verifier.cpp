@@ -1,6 +1,6 @@
 //
-// Copyright (C) 2024 - 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// Copyright (C) 2024-2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/impl/d2s_to_transposed_conv_verifier.hpp"

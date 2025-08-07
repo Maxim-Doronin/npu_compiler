@@ -17,6 +17,12 @@ outputs:
   npu-compiler-tag:
     description: 'NPU Compiler custom tag to be used in the packages build'
     value: ${{ steps.create-npu-tag.outputs.npu-compiler-tag }}
+  npu-linux-driver-repository:
+    description: 'NPU Linux Driver Repository full name: fork/linux-npu-driver'
+    value: ${{ steps.read-linux-npu-driver-sha.outputs.drv-repository }}
+  npu-linux-driver-sha:
+    description: 'NPU Linux Driver commit SHA'
+    value: ${{ steps.read-linux-npu-driver-sha.outputs.drv-sha }}
   omz-repository:
     description: 'Open Model Zoo Repository full name: for/open_model_zoo'
     value: ${{ steps.read-omz-sha.outputs.omz-repository }}
@@ -63,6 +69,23 @@ runs:
         echo "OpenVINO commit sha = $OV_SHA"
         echo "openvino-repository=$OV_ORG/openvino" >> $GITHUB_OUTPUT
         echo "openvino-sha=$OV_SHA" >> $GITHUB_OUTPUT
+
+    - name: Fetch and parse Linux NPU Driver config from NPU Compiler
+      id: read-linux-npu-driver-sha
+      shell: bash
+      run: |
+        NPU_REPO=${{ steps.get-npu-sha.outputs.npu-compiler-repository }}
+        NPU_SHA=${{ steps.get-npu-sha.outputs.npu-compiler-sha }}
+        JSON=$(curl -s \
+          -H "Accept: application/vnd.github.v3.raw" \
+          https://api.github.com/repos/${NPU_REPO}/contents/validation/linux_npu_driver_config.json?ref=${NPU_SHA} \
+        )
+        DRV_ORG=$(echo "$JSON" | jq -r 'to_entries[0].key')
+        DRV_SHA=$(echo "$JSON" | jq -r 'to_entries[0].value')
+        echo "Linux NPU Driver orgranization = $DRV_ORG"
+        echo "Linux NPU Driver commit sha = $DRV_SHA"
+        echo "drv-repository=$DRV_ORG/linux-npu-driver" >> $GITHUB_OUTPUT
+        echo "drv-sha=$DRV_SHA" >> $GITHUB_OUTPUT
 
     - name: Fetch and parse OMZ config from OpenVINO
       id: read-omz-sha

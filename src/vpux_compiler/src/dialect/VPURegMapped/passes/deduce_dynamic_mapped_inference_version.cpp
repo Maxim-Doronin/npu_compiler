@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
@@ -43,14 +43,14 @@ void DeduceDynamicMappedInferenceVersion::safeRunOnModule() {
     auto getVersionFromOps = [](ELF::MainOp main) -> elf::Version {
         elf::Version maxVersion;
         for (auto dataSection : main.getOps<ELF::DataSectionOp>()) {
-            auto regFieldOps = dataSection.getBlock()->getOps<VPURegMapped::RegFieldVersion>();
+            auto regFieldOps = dataSection.getBlock()->getOps<VPURegMapped::NPURegDescriptorOpInterface>();
 
             for (auto regFieldOp : regFieldOps) {
                 const auto version = regFieldOp.getVersion();
                 maxVersion = std::max(maxVersion, version);
             }
         }
-        VPUX_THROW_UNLESS(maxVersion.checkValidity(), "There are no RegFieldVersion ops found.");
+        VPUX_THROW_UNLESS(maxVersion.checkValidity(), "There are no NPURegDescriptorOpInterface ops found.");
         return maxVersion;
     };
 

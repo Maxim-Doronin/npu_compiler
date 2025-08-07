@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPU_OPS
@@ -2184,7 +2184,7 @@ def VPU_ClampOp :
     let summary = "Clamp VPU layer";
 
     let arguments = (ins
-       AnyTypeOf<[RankedTensorOf<[F16, F32, quant_QuantizedType]>, VPU_DistributedTensor]>:$input,
+       AnyTypeOf<[RankedTensorOf<[I16, I32, SI16, SI32, F16, F32, quant_QuantizedType]>, VPU_DistributedTensor]>:$input,
 
         F64Attr:$min,
         F64Attr:$max,
@@ -2193,7 +2193,7 @@ def VPU_ClampOp :
     );
 
     let results = (outs
-        AnyTypeOf<[RankedTensorOf<[F16, F32, quant_QuantizedType]>, VPU_DistributedTensor]>:$output
+        AnyTypeOf<[RankedTensorOf<[I16, I32, SI16, SI32, F16, F32, quant_QuantizedType]>, VPU_DistributedTensor]>:$output
     );
 
     let extraClassDeclaration = [{
@@ -2501,21 +2501,44 @@ def VPU_NormalizeIEOp :
 
 def VPU_CumSumOp :
         VPU_LayerOp<
-            "CumSum"
+            "CumSum",
+            [
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>
+            ]
         > {
     let summary = "CumSum VPU layer";
 
     let arguments = (ins
-        AnyRankedTensor:$input,
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$input,
 
         OptionalAttr<IntAttr>:$axis_value,
         UnitAttr:$exclusive,
-        UnitAttr:$reverse
+        UnitAttr:$reverse,
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        AnyRankedTensor:$output
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$output
     );
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+        DimArr getTileableDims();
+    }] # baseExtraClassDeclaration;
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input,
+            "::mlir::IntegerAttr":$axis_value,
+            "::mlir::UnitAttr":$exclusive,
+            "::mlir::UnitAttr":$reverse
+        )>
+    ];
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 //
@@ -2794,18 +2817,35 @@ def VPU_LogicalNotOp :
             "LogicalNot",
             [
                 VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 VPU_EltwiseOp
             ]
         > {
     let summary = "Logical Not VPU layer";
 
     let arguments = (ins
-        RankedTensorOf<[I8, F16, F32, SI32]>:$input1
+        AnyTypeOf<[RankedTensorOf<[I8, F16, F32, SI32]>, VPU_DistributedTensor]>:$input,
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        RankedTensorOf<[I8, F16, F32, SI32]>:$output
+        AnyTypeOf<[RankedTensorOf<[I8, F16, F32, SI32]>, VPU_DistributedTensor]>:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 //
@@ -4335,18 +4375,35 @@ def VPU_NegativeOp :
             "Negative",
             [
                 VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 VPU_EltwiseOp
             ]
         > {
     let summary = "Negative VPU layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32, SI32]>:$input
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input,
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        RankedTensorOf<[F16, F32, SI32]>:$output
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 //
@@ -4358,18 +4415,34 @@ def VPU_SignOp :
             "Sign",
             [
                 VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 VPU_EltwiseOp
             ]
         > {
     let summary = "Sign VPU layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32]>:$input
+        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        RankedTensorOf<[F16, F32]>:$output
+        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
 }
 
 //
@@ -5431,6 +5504,7 @@ def VPU_AddOp :
     }] # baseExtraClassDeclaration;
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+    let hasVerifier = 1;
 }
 
 //
@@ -5877,21 +5951,41 @@ def VPU_BitwiseAndOp :
             [
                 VPU_TilingBuilderOpInterface,
                 Commutative,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 VPU_EltwiseOp
             ]
         > {
     let summary = "BitwiseAnd VPU layer";
 
     let arguments = (ins
-        RankedTensorOf<[AnyInteger]>:$input1,
-        RankedTensorOf<[AnyInteger]>:$input2,
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input2,
 
-        IE_AutoBroadcastTypeAttr:$auto_broadcast
+        IE_AutoBroadcastTypeAttr:$auto_broadcast,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        RankedTensorOf<[AnyInteger]>:$output
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input1,
+            "::mlir::Value":$input2,
+            "vpux::IE::AutoBroadcastTypeAttr":$auto_broadcast
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 //
@@ -5904,21 +5998,41 @@ def VPU_BitwiseOrOp :
             [
                 VPU_TilingBuilderOpInterface,
                 Commutative,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 VPU_EltwiseOp
             ]
         > {
     let summary = "BitwiseOr VPU layer";
 
     let arguments = (ins
-        RankedTensorOf<[AnyInteger]>:$input1,
-        RankedTensorOf<[AnyInteger]>:$input2,
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input2,
 
-        IE_AutoBroadcastTypeAttr:$auto_broadcast
+        IE_AutoBroadcastTypeAttr:$auto_broadcast,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        RankedTensorOf<[AnyInteger]>:$output
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input1,
+            "::mlir::Value":$input2,
+            "vpux::IE::AutoBroadcastTypeAttr":$auto_broadcast
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 //
@@ -5931,21 +6045,41 @@ def VPU_BitwiseXorOp :
             [
                 VPU_TilingBuilderOpInterface,
                 Commutative,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 VPU_EltwiseOp
             ]
         > {
     let summary = "BitwiseXor VPU layer";
 
     let arguments = (ins
-        RankedTensorOf<[AnyInteger]>:$input1,
-        RankedTensorOf<[AnyInteger]>:$input2,
+        AnyTypeOf<[RankedTensorOf<[I32, SI32]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[I32, SI32]>, VPU_DistributedTensor]>:$input2,
 
-        IE_AutoBroadcastTypeAttr:$auto_broadcast
+        IE_AutoBroadcastTypeAttr:$auto_broadcast,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        RankedTensorOf<[AnyInteger]>:$output
+        AnyTypeOf<[RankedTensorOf<[I32, SI32]>, VPU_DistributedTensor]>:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input1,
+            "::mlir::Value":$input2,
+            "vpux::IE::AutoBroadcastTypeAttr":$auto_broadcast
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 //
@@ -5957,18 +6091,36 @@ def VPU_BitwiseNotOp :
             "BitwiseNot",
             [
                 VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 VPU_EltwiseOp
             ]
         > {
     let summary = "BitwiseNot VPU layer";
 
     let arguments = (ins
-        RankedTensorOf<[AnyInteger]>:$input1
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input1,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        RankedTensorOf<[AnyInteger]>:$output
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$output
     );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input1
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 //
@@ -6157,6 +6309,7 @@ def VPU_ReshapeOp :
     let checkInferredDimsOrder = 1;
     let checkInferredMemSpace = 1;
 
+    let hasFolder = 1;
     let hasCanonicalizer = 1;
 }
 
@@ -6996,14 +7149,14 @@ def VPU_ExpandOp :
     let summary = "Expand tensor with uninitialized values";
 
     let arguments = (ins
-        AnyRankedTensor:$input,
+        AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor]>:$input,
 
         I64ArrayAttr:$pads_begin,
         I64ArrayAttr:$pads_end
     );
 
     let results = (outs
-        AnyRankedTensor:$output
+        AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor]>:$output
     );
 
     let builders = [
@@ -7011,6 +7164,8 @@ def VPU_ExpandOp :
             (ins "mlir::Value":$input, "std::optional<vpux::ShapeRef>":$pads_begin, "std::optional<vpux::ShapeRef>":$pads_end)
         >
     ];
+
+    let hasFolder = 1;
 
     let checkInferredDimsOrder = 1;
     let checkInferredMemSpace = 1;
@@ -7072,21 +7227,40 @@ def VPU_MemPermuteOp :
         VPU_LayerOp<
             "MemPermute",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>
             ]
         > {
     let summary = "MemPermute VPU layer";
 
     let arguments = (ins
-        AnyRankedTensor:$input,
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$input,
 
         AffineMapAttr:$dst_order,
-        AffineMapAttr:$mem_perm
+        AffineMapAttr:$mem_perm,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        AnyRankedTensor:$output
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$output
     );
+
+    let extraClassDeclaration = [{
+            bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+            bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+        }] # baseExtraClassDeclaration;
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input,
+            "::mlir::AffineMapAttr":$dst_order,
+            "::mlir::AffineMapAttr":$mem_perm
+        )>
+    ];
 
     let checkInferredDimsOrder = 1;
     let checkInferredMemSpace = 0;
@@ -7395,6 +7569,7 @@ def VPU_NonMaxSuppressionOp :
     let arguments = (ins
         3DTensorOf<[F16, F32]>:$in_box_coords,
         3DTensorOf<[F16, F32]>:$in_box_scores,
+        Optional<AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>>:$dataBuffer,
 
         IE_BoxEncodingTypeAttr:$box_encoding,
         UnitAttr:$sort_result_descending,
@@ -7825,19 +8000,26 @@ def VPU_ShapeCastOp :
         VPU_LayerOp<
             "ShapeCast",
             [
-                VPU_ViewLikeOpInterface
+                VPU_ViewLikeOpInterface,
+                DeclareOpInterfaceMethods<VPU_TilingViewLikeOpInterface>,
+                DeclareOpInterfaceMethods<VPU_DistributedCastOpInterface>
             ]
         > {
     let summary = "ShapeCast VPU layer";
 
     let arguments = (ins
-        AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor]>:$source,
+        AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor, VPU_DistributedTensor]>:$source,
         I64ArrayAttr:$shape
     );
 
     let results = (outs
-        AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor]>:$result
+        AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor, VPU_DistributedTensor]>:$result
     );
+
+    let extraClassDeclaration = [{
+        bool isSupportedTilingDim(DimArrRef tilingDims);
+        bool isSupportedOutTile(const TileInfo& outTile);
+    }] # baseExtraClassDeclaration;
 
     let assemblyFormat = [{
         attr-dict
@@ -7873,6 +8055,7 @@ def VPU_LayoutCastOp :
         AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor, VPU_DistributedTensor]>:$output
     );
 
+    let hasFolder = 1;
     let hasVerifier = 1;
 }
 
@@ -8373,6 +8556,38 @@ def VPU_GenericSwLayerOp :
 }
 
 //
+// ExternalKernelOp
+//
+
+def VPU_ExternalKernelOp :
+        VPU_Op<
+            "ExternalKernel",
+            [
+                DeclareOpInterfaceMethods<VPU_LayerOpInterface>
+            ]
+        > {
+    let summary = "Represents a kernel whose details/implementation are defined externally";
+
+    let arguments = (ins
+        Variadic<AnyRankedTensor>:$inputs,
+        DictionaryAttr:$attrDict,
+        StrAttr:$unique_id
+    );
+
+    let results = (outs
+        Variadic<AnyRankedTensor>:$outputs
+    );
+
+    let assemblyFormat = [{
+        $unique_id
+        (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
+        `attrs` `(` $attrDict `)`
+        attr-dict
+        `->` type(results)
+    }];
+}
+
+//
 // RoPE
 //
 
@@ -8444,6 +8659,7 @@ def VPU_SDPAOp :
         VPU_LayerOp<
             "SDPA",
             [
+                AttrSizedOperandSegments,
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
@@ -8455,7 +8671,9 @@ def VPU_SDPAOp :
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputQ,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputK,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputV,
-        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputMask,
+        Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$inputMask,
+        Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$inputScale,
+        Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$inputBias,
         Optional<AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>>:$dataStorage,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
@@ -8476,6 +8694,8 @@ def VPU_SDPAOp :
             "::mlir::Value":$inputK,
             "::mlir::Value":$inputV,
             "::mlir::Value":$inputMask,
+            "::mlir::Value":$inputScale,
+            "::mlir::Value":$inputBias,
             "::mlir::Value":$dataStorage
         )>
     ];

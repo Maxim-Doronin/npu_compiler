@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion.hpp"
@@ -22,6 +22,7 @@
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/symbolization.hpp"
 
@@ -54,8 +55,9 @@ private:
 };
 
 bool ConvertVPUMI37XX2VPUASMPass::isDeclareBufferDistributed(VPURT::DeclareBufferOp op) {
-    if (!mlir::isa<vpux::VPUIP::DistributedBufferType>(op.getType()))
+    if (!mlir::isa<vpux::VPUIP::DistributedBufferType>(op.getType())) {
         return false;
+    }
 
     auto res = op.getResult();
 

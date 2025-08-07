@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --add-barrier-configuration-ops="workload-management-barrier-programming-mode=ALL_BARRIER_DMAS_SCHEDULED" %s | FileCheck %s

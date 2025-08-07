@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --resolve-shaped-type-result-dims %s | FileCheck %s
@@ -1033,4 +1033,32 @@ func.func @LSTMSequence(
         : tensor<1x2x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 2, 35, 128]> : tensor<4xsi64>, order = #NCHW}>,
           tensor<1x2x128xf16>, tensor<1x2x128xf16>, index
     // CHECK: return [[OUT_HIDDEN_VALUES]], [[OUT_HIDDEN_STATE]], [[OUT_CELL_STATE]], [[DIM]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!StaticType = tensor<1x32x1x1xf32, {order = #NCHW}>
+!DynamicType = tensor<1x32x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: @ReifyMultiplyShapeOnlySecondInputDynamic
+// CHECK-SAME: [[IN1:%.+]]: tensor<1x32x1x1xf32, {order = #NCHW}>,
+// CHECK-SAME: [[IN2:%.+]]: tensor<1x32x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>
+func.func @ReifyMultiplyShapeOnlySecondInputDynamic(%IN1: !StaticType, %IN2: !DynamicType) -> (!DynamicType, index, index) {
+    %IDX_2 = arith.constant 2 : index
+    %IDX_3 = arith.constant 3 : index
+    // CHECK-DAG: [[IDX_2:%.+]] = arith.constant 2 : index
+    // CHECK-DAG: [[IDX_3:%.+]] = arith.constant 3 : index
+
+    %MUL = IE.Multiply(%IN1, %IN2) { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } : !StaticType, !DynamicType -> !DynamicType
+    // CHECK: [[MUL:%.+]] = IE.Multiply([[IN1]], [[IN2]])
+
+    %DIM_2 = tensor.dim %MUL, %IDX_2 : !DynamicType
+    %DIM_3 = tensor.dim %MUL, %IDX_3 : !DynamicType
+    // CHECK: [[DIM_2:%.+]] = tensor.dim [[IN2]], [[IDX_2]]
+    // CHECK: [[DIM_3:%.+]] = tensor.dim [[IN2]], [[IDX_3]]
+
+    return %MUL, %DIM_2, %DIM_3 : !DynamicType, index, index
+    // CHECK: return [[MUL]], [[DIM_2]], [[DIM_3]]
 }

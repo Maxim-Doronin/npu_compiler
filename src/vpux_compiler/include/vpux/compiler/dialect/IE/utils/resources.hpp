@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -110,6 +110,24 @@ memory_resource_if<Enum> getSWKernelPrefetchingReservedMemory(mlir::ModuleOp mai
 }
 
 SmallVector<MemoryResourceOp> getSWKernelPrefetchingReservedMemory(mlir::ModuleOp mainModule);
+
+//
+// SW Kernel cache prefetching reserved memory
+//
+static constexpr StringLiteral swKernelCachePrefetchingResMemModuleName = "SWKernelCachePrefetchingReservedMemory";
+
+IE::MemoryResourceOp setSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace,
+                                                               int64_t size);
+
+IE::MemoryResourceOp getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace);
+
+template <typename Enum>
+memory_resource_if<Enum> getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule, Enum kind) {
+    return getSWKernelCachePrefetchingReservedMemory(
+            mainModule, mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(kind)));
+}
+
+SmallVector<MemoryResourceOp> getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule);
 
 //
 // ExecutorResourceOp

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
@@ -1408,7 +1408,7 @@ func.func @StridedConcat(%input0: tensor<1x16x16x16xf16>, %input1: tensor<1x16x1
 !type_CMX_tensor = tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
 // Copy operation with memref output
-// Original operation before IE2IERT lowering:
+// Original operation before lowering:
 // func.func @CopyOpTensorResult(%input0: !type_DDR_tensor) -> !type_CMX_tensor{
 //     %tensor_cmx = IE.Copy(%input0) { out_mem_space = @CMX_NN } : !type_DDR_tensor -> !type_CMX_tensor
 
@@ -1480,7 +1480,7 @@ func.func @CopyOpDistributedResult(%input0: !type_DDR_tensor) -> !typeCmxDistrib
 !type_CMX_memref = memref<1x32x16x16xf16, #NHWC, @CMX_NN>
 
 // 2 Operations with distributed type passed in between
-// Original operation before IE2IERT lowering
+// Original operation before lowering
 // func.func @DistributedCopy2CopyOp(%input0: !type_DDR_tensor) -> !type_DDR_tensor {
 //     %tensor_distributed_cmx = IE.Copy(%input0) { out_mem_space = @CMX_NN } : !type_DDR_tensor -> !typeCMXDistributed
 

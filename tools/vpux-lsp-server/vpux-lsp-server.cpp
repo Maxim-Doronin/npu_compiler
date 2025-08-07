@@ -1,6 +1,6 @@
 //
-// Copyright (C) 2022-2023 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// Copyright (C) 2022-2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
@@ -8,6 +8,7 @@
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/passes.hpp"
+#include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
@@ -63,6 +64,8 @@ int main(int argc, char* argv[]) {
         vpux::VPUIP::registerVPUIPPipelines();
         vpux::VPURT::registerVPURTPipelines();
         vpux::VPURT::registerPasses();
+        vpux::HostExec::registerPasses();
+        vpux::HostExec::registerHostExecPipelines();
         vpux::ELFNPU37XX::registerPasses();
         vpux::ELF::registerPasses();
         vpux::VPUMI37XX::registerPasses();

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --patch-weight-table %s | FileCheck %s
@@ -504,7 +504,7 @@ func.func @PatchWeightTableWithDistributedBufferWithSOHAndWeightsOnly() -> !Outp
 !WeightsTableStub_CMX = memref<32x1x1x4xsi32, #NCHW, @CMX_NN>
 
 // CHECK-LABEL: @PatchWeightTableWithDistributedBufferWithSOKAndWeightsOnly
-// For SOK, we get an incorrect weights table that will be rewritten after UnrollClusterTilingPass pass
+// For SOK, we get an incorrect weights table that will be rewritten after UnrollDistributedOpsPass pass
 func.func @PatchWeightTableWithDistributedBufferWithSOKAndWeightsOnly() -> !ParentOutputDistributed {
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
@@ -697,7 +697,7 @@ func.func @PatchWeightTableWithDistributedBufferWithSOH() -> !OutputDistributed 
 !WeightsTableStub_CMX = memref<32x1x1x4xsi32, #NCHW, @CMX_NN>
 
 // CHECK-LABEL: @PatchWeightTableWithDistributedBufferWithSOK
-// For SOK, we get an incorrect weights table that will be rewritten after UnrollClusterTilingPass pass
+// For SOK, we get an incorrect weights table that will be rewritten after UnrollDistributedOpsPass pass
 func.func @PatchWeightTableWithDistributedBufferWithSOK() -> !ParentOutputDistributed {
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
@@ -794,7 +794,7 @@ func.func @PatchWeightTableWithDistributedBufferWithSOK() -> !ParentOutputDistri
 !WeightsTableStub_CMX = memref<32x1x1x4xsi32, #NCHW, @CMX_NN>
 
 // CHECK-LABEL: @PatchWeightTableWithDistributedBufferWithDuplicatedSegmentedWeights
-// For SOK, we get an incorrect weights table that will be rewritten after UnrollClusterTilingPass pass
+// For SOK, we get an incorrect weights table that will be rewritten after UnrollDistributedOpsPass pass
 func.func @PatchWeightTableWithDistributedBufferWithDuplicatedSegmentedWeights() -> !ParentOutputDistributed {
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 

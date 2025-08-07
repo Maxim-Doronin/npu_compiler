@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/pipelines_options.hpp"
@@ -230,7 +230,7 @@ DebatcherOptions::DebatcherOptions()
                           "If max-batch size of any input in a model outruns this limit, then the default compilation "
                           "method \"unroll\" will be employed"
                           "Please be notified: although no technical limitations exist from a pipeline perspective, "
-                          "there will be non-zero threshold (typically limited by TILES_NUMBER or by DPU_GROUPS)"),
+                          "there will be non-zero threshold (typically limited by TILES_NUMBER)"),
                   llvm::cl::init(std::numeric_limits<size_t>::max())) {
 }
 

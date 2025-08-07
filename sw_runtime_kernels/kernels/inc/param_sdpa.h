@@ -5,15 +5,10 @@
 
 #pragma once
 
-#include <moviVectorTypes.h>
 #include "kernel_params.hpp"
 
-#ifdef __cplusplus
 namespace sw_params {
-#endif
 
-struct __attribute__((packed)) SDPAParams : KernelTensors<5, 1> {};
+struct __attribute__((packed)) SDPAAttrs {};
 
-#ifdef __cplusplus
 }  // namespace sw_params
-#endif

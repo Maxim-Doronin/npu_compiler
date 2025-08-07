@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_VPURT_ARCH_40XX_PASSES
@@ -191,6 +191,47 @@ def WlmInsertDummyDmasInPages : PassBase<"wlm-insert-dummy-dmas-in-pages", "vpux
     }];
 
     let constructor = "vpux::VPURT::arch40xx::createWlmInsertDummyDmasInPagesPass()";
+
+    let options = [
+        Option<
+            "numBarriersOpt", "num-barriers",
+            "int", "",
+            "Number of physical barriers, available for use"
+        >
+    ];
+}
+
+//
+// OptimizeBarriersSlotsUsage
+//
+
+def OptimizeBarriersSlotsUsage : PassBase<"optimize-barriers-slots-usage", "vpux::FunctionPass"> {
+    let summary = "Perform final optimization of barriers slots usage";
+
+    let description = [{
+        This pass should be called at very end of scheduling before backend and perform final optimization
+        of barriers slots usage so that barriers do not have redundant producers or consumers which
+        are controlled by HW FIFO dependencies - no barrier should have more than 1 producer or 1 consumer
+        from tasks of same queue type. This pass should not be used for nonWLM config as task barrier production
+        or consumption events are used by runtime for task enqueue or descriptor loading and if task-barrier relation
+        gets optimized this mechanism may be spoiled
+    }];
+
+    let constructor = "vpux::VPURT::arch40xx::createOptimizeBarriersSlotsUsagePass()";
+}
+
+//
+// FindWlmEnqueueDmasBarrier
+//
+
+def FindWlmEnqueueDmasBarrier : PassBase<"find-wlm-enqueue-dmas-barrier", "vpux::FunctionPass"> {
+    let summary = "For Full WLM with WLM pages split find barriers for enqueuing DMAs";
+
+    let description = [{
+        This pass for each tasks finds a barrier at which it can have an enqueue DMA
+    }];
+
+    let constructor = "vpux::VPURT::arch40xx::createFindWlmEnqueueDmasBarrierPass()";
 
     let options = [
         Option<

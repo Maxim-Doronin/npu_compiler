@@ -12,8 +12,9 @@ set(EXCLUDED_FUNC_TESTS_DIR "")
 set(OPTIONAL_FUNC_TESTS_INCLUDES "")
 set(OPTIONAL_FUNC_TESTS_LIBS "")
 
-set(SKIP_CONFIG "skip_tests.xml")
+set(SKIP_CONFIG "npu_skip_func_tests.xml")
 set(SKIP_CONFIG_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/${SKIP_CONFIG})
+set(LEGACY_SKIP_CONFIG_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/skip_tests.xml)
 
 ov_add_test_target(
     NAME ${TARGET_NAME}
@@ -83,6 +84,14 @@ install(FILES ${SKIP_CONFIG_PATH}
         DESTINATION tests
         COMPONENT ${VPUX_TESTS_COMPONENT}
         EXCLUDE_FROM_ALL
+)
+
+#TODO remove legacy skip file after CI pipelines update
+install(
+  FILES ${LEGACY_SKIP_CONFIG_PATH}
+  DESTINATION tests
+  COMPONENT tests
+  EXCLUDE_FROM_ALL
 )
 
 # For developer builds we need to find the output folder of compiled binaries

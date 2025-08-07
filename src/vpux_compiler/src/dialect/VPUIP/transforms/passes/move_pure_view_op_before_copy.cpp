@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
@@ -180,9 +180,15 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
             if (mlir::isa<VPUIP::QuantizeCastOp>(viewOp)) {
                 const auto viewOpOutputType = mlir::cast<vpux::NDTypeInterface>(viewOp->getResult(0).getType());
                 const auto viewOpOutputElemType = viewOpOutputType.getElementType();
-                // Only support per-tensor uniform quantized type
-                if (mlir::isa<mlir::quant::UniformQuantizedType>(distType.getElementType()) &&
-                    mlir::isa<mlir::quant::UniformQuantizedType>(viewOpOutputElemType)) {
+                // Only support per-tensor uniform quantized type or integer 8 bit types
+                auto isI8OrPerTensorQuantized = [](const mlir::Type elemType) {
+                    constexpr int8_t ELEMENT_TYPE_BIT_WIDTH = 8;
+                    return mlir::isa<mlir::quant::UniformQuantizedType>(elemType) ||
+                           elemType.isInteger(ELEMENT_TYPE_BIT_WIDTH);
+                };
+
+                if (isI8OrPerTensorQuantized(distType.getElementType()) &&
+                    isI8OrPerTensorQuantized(viewOpOutputElemType)) {
                     return true;
                 }
             }
@@ -347,30 +353,6 @@ public:
 private:
     Logger _log;
 };
-
-// SubView is not compatible with distributed buffer when:
-// 1. Distributed buffer is segmented
-// 2. SubView shrinks segmented axis
-bool isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp,
-                                              VPUIP::DistributedBufferType distributedType) {
-    const auto tileIndex = VPUIP::getTilingDimIndex(distributedType);
-    if (!tileIndex.has_value()) {
-        // DUPLICATED | MULTICASTED
-        return true;
-    }
-
-    auto tileIndexVal = tileIndex.value();
-    auto origShape = getShape(subViewOp.getSource());
-    auto subShape = getShape(subViewOp.getResult());
-
-    if (!VPUIP::isChannelOffsetsAndTileDimCompatibleWithDistributedCopy(
-                parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsetsAttr()), tileIndexVal, distributedType)) {
-        return false;
-    }
-
-    // Be compatible if SubView does not shrink segmented axis
-    return origShape[Dim(tileIndexVal)] == subShape[Dim(tileIndexVal)];
-}
 
 mlir::LogicalResult MoveSubviewToTheFrontOfCopy::matchAndRewrite(VPUIP::CopyOp copyOp,
                                                                  mlir::PatternRewriter& rewriter) const {

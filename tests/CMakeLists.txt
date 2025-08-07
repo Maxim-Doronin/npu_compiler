@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2022-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 if(NOT ENABLE_NPU_MONO)
@@ -9,7 +9,7 @@ endif()
 
 add_subdirectory(unit)
 
-if(ENABLE_FUNCTIONAL_TESTS AND NOT BUILD_COMPILER_FOR_DRIVER)
+if(ENABLE_FUNCTIONAL_TESTS)
     add_subdirectory(functional)
 endif()
 
@@ -24,5 +24,5 @@ if (ENABLE_NPU_FUZZ_TESTS)
 endif()
 
 if (ENABLE_NPU_MICRO_BENCHMARKS AND ENABLE_MLIR_COMPILER)
-    add_subdirectory(micro_bechmarks)
+    add_subdirectory(micro_benchmarks)
 endif()

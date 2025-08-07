@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --resolve-strided-slice %s | FileCheck %s
@@ -37,6 +37,7 @@ func.func @ResolveStridedSliceWithStride(%arg0: tensor<1x10x20x30xf16>) -> tenso
 // -----
 
 // CHECK-LABEL: @ResolveStridedSliceWoutStride
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x10x20x30xf16>
 func.func @ResolveStridedSliceWoutStride(%arg0: tensor<1x10x20x30xf16>) -> tensor<1x5x10x5xf16> {
     %0 = IE.StridedSlice(%arg0) {
         begins_attr = [0, 0, 0, 15],
@@ -52,8 +53,9 @@ func.func @ResolveStridedSliceWoutStride(%arg0: tensor<1x10x20x30xf16>) -> tenso
 
     return %0 : tensor<1x5x10x5xf16>
 
-    // CHECK:       %[[VAL0:.*]] = IE.Slice %arg0 [0, 0, 0, 15] [1, 5, 10, 5]
+    // CHECK:       [[VAL0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 15] [1, 5, 10, 5]
     // CHECK-NOT:   IE.StridedSlice
+    // CHECK:       return [[VAL0]]  : tensor<1x5x10x5xf16>
 }
 
 // -----
@@ -134,6 +136,7 @@ func.func @ResolveStridedSliceWoutStrideMergeAdjacentLastTwo1(%arg0: tensor<1x9x
 // -----
 
 // CHECK-LABEL: @ResolveStridedSliceWoutStrideNotMergeAdjacentDim
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x8x16x16xf16>
 func.func @ResolveStridedSliceWoutStrideNotMergeAdjacentDim(%arg0: tensor<1x8x16x16xf16>) -> tensor<1x1x16x16xf16> {
     %0 = IE.StridedSlice(%arg0) {
         begins_attr = [0, 0, 0, 0],
@@ -148,8 +151,9 @@ func.func @ResolveStridedSliceWoutStrideNotMergeAdjacentDim(%arg0: tensor<1x8x16
     } : tensor<1x8x16x16xf16> -> tensor<1x1x16x16xf16>
 
     return %0 : tensor<1x1x16x16xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 16, 16] : tensor<1x8x16x16xf16> to tensor<1x1x16x16xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 16, 16] : tensor<1x8x16x16xf16> to tensor<1x1x16x16xf16>
     // CHECK-NOT:   IE.StridedSlice
+    // CHECK:       return [[VAL0]]  : tensor<1x1x16x16xf16>
 }
 
 // -----
@@ -415,5 +419,39 @@ func.func @SkipStridedSliceNonUnitaryPosStrides(%arg0: tensor<1x7x1536xf32>) -> 
 
     // CHECK:   [[IN:%.+]]: tensor<1x7x1536xf32>
     // CHECK:   [[OUT:%.+]] = IE.StridedSlice([[IN]])
+    // CHECK:   return [[OUT]]
+}
+
+// -----
+
+// CHECK-LABEL: @ResolveStridedSliceWithTwoAxisReversed
+func.func @ResolveStridedSliceWithTwoAxisReversed(%arg0: tensor<3x3x256x256xf32>) -> tensor<3x3x256x256xf32> {
+    %0 = IE.StridedSlice(%arg0) {
+        begin_mask = [0, 0],
+        begins_attr = [-1, -1],
+        ellipsis_mask = [],
+        end_mask = [0, 0],
+        ends_attr = [-9223372036854775807, -9223372036854775807],
+        new_axis_mask = [],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        shrink_axis_mask = [],
+        strides_attr = [-1, -1]
+        } : tensor<3x3x256x256xf32> -> tensor<3x3x256x256xf32>
+
+    return %0 : tensor<3x3x256x256xf32>
+
+    // CHECK:   [[IN:%.+]]: tensor<3x3x256x256xf32>
+    // CHECK-DAG:  [[VAL0:%.+]] = IE.Slice [[IN]] [0, 0, 0, 0] [1, 3, 256, 256]
+    // CHECK-DAG:  [[VAL1:%.+]] = IE.Slice [[IN]] [1, 0, 0, 0] [1, 3, 256, 256]
+    // CHECK-DAG:  [[VAL2:%.+]] = IE.Slice [[IN]] [2, 0, 0, 0] [1, 3, 256, 256]
+    // CHECK:  [[VALCAT:%.+]] = IE.Concat([[VAL2]], [[VAL1]], [[VAL0]])
+    // CHECK-SAME:  axis = 0 :
+    // CHECK-DAG:  [[VAL3:%.+]] = IE.Slice [[VALCAT]] [0, 0, 0, 0] [3, 1, 256, 256]
+    // CHECK-DAG:  [[VAL4:%.+]] = IE.Slice [[VALCAT]] [0, 1, 0, 0] [3, 1, 256, 256]
+    // CHECK-DAG:  [[VAL5:%.+]] = IE.Slice [[VALCAT]] [0, 2, 0, 0] [3, 1, 256, 256]
+    // CHECK:  [[VALCAT2:%.+]] = IE.Concat([[VAL5]], [[VAL4]], [[VAL3]])
+    // CHECK-SAME:  axis = 1 :
+
+    // CHECK-DAG:  [[OUT:%.+]] = IE.Slice [[VALCAT2]] [0, 0, 0, 0] [3, 3, 256, 256] : tensor<3x3x256x256xf32> to tensor<3x3x256x256xf32>
     // CHECK:   return [[OUT]]
 }

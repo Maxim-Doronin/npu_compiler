@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -37,7 +37,7 @@ mlir::LogicalResult vpux::VPU::DynamicTileOp::inferReturnTypes(mlir::MLIRContext
 
     // DynamicTile might have static outShape
     if (llvm::none_of(outShape, isDynamicDim)) {
-        typeComponents.setShape(Shape(outShape)).setBounds({});
+        typeComponents.setShape(Shape(outShape));
     } else {
         assignDynamicTypeComponents(typeComponents, tile.getBoundsRepresentation(), outShape, outBounds);
     }

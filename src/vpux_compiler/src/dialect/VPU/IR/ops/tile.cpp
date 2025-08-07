@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -89,8 +89,9 @@ vpux::InputTiling vpux::VPU::TileOp::backInferTileInfo(const vpux::TileInfo& out
         if (repeatsDimension != 0) {
             // need to tile input and repeats too
             int64_t newRepeatsD = isZero(repeatsValues[i] - 1);
-            while (tiledOutputShape[i] % newRepeatsD != 0)
+            while (tiledOutputShape[i] % newRepeatsD != 0) {
                 newRepeatsD--;
+            }
             suggestedNewInputShape.insert(suggestedNewInputShape.end(), tiledOutputShape[i] / newRepeatsD);
         } else {
             // no need to tile from inputs

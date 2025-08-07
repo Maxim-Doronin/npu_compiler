@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPU/transforms/passes.hpp"
@@ -34,9 +34,6 @@ int64_t getInputWorkloadStartCh(NCEOpInterface nceOp, const int64_t outputStartC
                         return 0;
                     })
             .Case<NCEEltwiseOp>([&](mlir::Operation* /*op*/) {
-                VPUX_THROW_WHEN(outputStartCh != 0,
-                                "HW Eltwise does not support workload segmentation over K. Output workload start = {0}",
-                                outputStartCh);
                 return outputStartCh;
             })
             .Case<NCEDepthConvolutionOp, NCEMaxPoolOp, NCEAveragePoolOp>([&](mlir::Operation* /*op*/) {
@@ -48,7 +45,7 @@ int64_t getInputWorkloadStartCh(NCEOpInterface nceOp, const int64_t outputStartC
             .Case<NCEMatMulOp>([&](mlir::Operation* /*op*/) {
                 return 0;
             })
-            .Default([&](mlir::Operation * /*op*/) -> int64_t {
+            .Default([&](mlir::Operation* /*op*/) -> int64_t {
                 VPUX_THROW("Unsupported operation type: {0}", nceOp);
             });
 }
@@ -60,11 +57,8 @@ int64_t getInputWorkloadSizeCh(NCEOpInterface nceOp, const int64_t outputSizeCh,
                 return fullInputChannels;
             })
             .Case<NCEEltwiseOp>([&](mlir::Operation* op) {
-                VPUX_THROW_WHEN(!VPU::canAutopadOutput(op) && fullInputChannels != outputSizeCh,
-                                "HW Eltwise does not support workload segmentation over K. input channels ({0}) != "
-                                "output channels ({1})",
-                                fullInputChannels, outputSizeCh);
-                return fullInputChannels;
+                return !VPU::canAutopadOutput(op) && fullInputChannels != outputSizeCh ? outputSizeCh
+                                                                                       : fullInputChannels;
             })
             .Case<NCEDepthConvolutionOp, NCEMaxPoolOp, NCEAveragePoolOp>([&](mlir::Operation* op) {
                 if (auto alignedOp = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op)) {
@@ -94,7 +88,7 @@ int64_t getInputWorkloadSizeCh(NCEOpInterface nceOp, const int64_t outputSizeCh,
             .Case<NCEMatMulOp>([&](mlir::Operation* /*op*/) {
                 return fullInputChannels;
             })
-            .Default([&](mlir::Operation * /*op*/) -> int64_t {
+            .Default([&](mlir::Operation* /*op*/) -> int64_t {
                 VPUX_THROW("Unsupported operation type: {0}", nceOp);
             });
 }
@@ -138,6 +132,7 @@ SmallVector<Shape> getInputOffsetsPerCluster(NCEOpInterface nceOp, Logger log) {
 
     const auto isDWOp =
             mlir::isa<VPU::NCEDepthConvolutionOp, VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp>(nceOp.getOperation());
+    const auto isELTOp = mlir::isa<VPU::NCEEltwiseOp>(nceOp.getOperation());
 
     auto clusterHasFullTensor = [](VPU::DistributionMode mode) {
         return VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED) ||
@@ -151,8 +146,7 @@ SmallVector<Shape> getInputOffsetsPerCluster(NCEOpInterface nceOp, Logger log) {
     const auto adjustmentNeededOnW = modeInput == VPU::DistributionMode::OVERLAPPED;
     const auto adjustmentNeededOnC = ((isDWOp && hasFullInput && VPU::isSegmentedOverC(outputDistrAttr)) ||
                                       (isDWOp && producesFullOutput && VPU::isSegmentedOverC(inputDistrAttr)) ||
-                                      (!isDWOp && VPU::isSegmentedOverC(outputDistrAttr)));
-
+                                      (!isDWOp && !isELTOp && VPU::isSegmentedOverC(outputDistrAttr)));
     if (!adjustmentNeededOnH && !adjustmentNeededOnW && !adjustmentNeededOnC) {
         // no adjustment needed
         return perClusterOffsetsAdjustment;
@@ -352,7 +346,6 @@ void ComputeNCEInputWorkloadsPass::safeRunOnFunc() {
                 mlir::OpBuilder builder(workload);
                 SmallVector<int64_t> inStart = {};
                 SmallVector<int64_t> inSize = {};
-
                 std::tie(inStart, inSize) = computeInputWorkload(nceOp, workload, _log);
 
                 if (!perClusterStartOffsets.empty()) {

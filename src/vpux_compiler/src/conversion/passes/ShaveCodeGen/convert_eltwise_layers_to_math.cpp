@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion.hpp"
@@ -17,6 +17,7 @@
 
 #include <mlir/Dialect/Linalg/Utils/Utils.h>
 #include <mlir/Dialect/Math/IR/Math.h>
+#include <mlir/IR/PatternMatch.h>
 #include <mlir/Pass/Pass.h>
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -506,126 +507,215 @@ mlir::Value emitLinalgRegion<IE::CosOp>(IE::CosOp op, mlir::ValueRange args, llv
     return emitF16ViaF32ThenTrunc<mlir::math::CosOp>(op, args, resultTypes, rewriter);
 }
 
+// Cosh layer   cosh(x)=0.5×(exp(X)+exp(-X))
+
+template <>
+mlir::Value emitLinalgRegion<IE::CoshOp>(IE::CoshOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                         mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto loc = op->getLoc();
+    auto input = args.front();
+    auto zeroConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getFloatAttr(input.getType(), 0.0));  // Const 0
+    auto halfConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getFloatAttr(input.getType(), 0.5));  // Const 0.5
+    auto xExp = rewriter.create<mlir::math::ExpOp>(loc, input, mlir::arith::FastMathFlags::afn);         // exp(X)
+    auto negX = rewriter.create<mlir::arith::SubFOp>(loc, zeroConst, input);                             // -x = 0-x
+    auto expNegX = rewriter.create<mlir::math::ExpOp>(loc, negX, mlir::arith::FastMathFlags::afn);       // exp(-x)
+    auto expSum = rewriter.create<mlir::arith::AddFOp>(loc, xExp, expNegX);  // exp(x) + exp(-x)
+
+    return rewriter.create<mlir::arith::MulFOp>(loc, expSum, halfConst);
+}
+
+// tan(x) = sin(x) / cos(x)
+
+template <>
+mlir::Value emitLinalgRegion<IE::TanOp>(IE::TanOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                        mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto loc = op->getLoc();
+    auto sinX = emitF16ViaF32ThenTrunc<mlir::math::SinOp>(op, args, resultTypes, rewriter);
+    auto cosX = emitF16ViaF32ThenTrunc<mlir::math::CosOp>(op, args, resultTypes, rewriter);
+
+    return rewriter.create<mlir::arith::DivFOp>(loc, sinX, cosX);
+}
+
+// atanh(x) = 0.5 * log((1 + x) / (1 - x))
+
+template <>
+mlir::Value emitLinalgRegion<IE::AtanhOp>(IE::AtanhOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                          mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto loc = op->getLoc();
+    auto input = args.front();
+
+    auto oneConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getFloatAttr(input.getType(), 1.0));  // Const 1
+    auto halfConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getFloatAttr(input.getType(), 0.5));  // Const 0.5
+
+    auto onePlusX = rewriter.create<mlir::arith::AddFOp>(loc, oneConst, input);   // 1 + x
+    auto oneMinusX = rewriter.create<mlir::arith::SubFOp>(loc, oneConst, input);  // 1 - x
+
+    auto divResult = rewriter.create<mlir::arith::DivFOp>(loc, onePlusX, oneMinusX);  // (1 + x) / (1 - x)
+    auto logResult = rewriter.create<mlir::math::LogOp>(loc, divResult,
+                                                        mlir::arith::FastMathFlags::afn);  // log((1 + x) / (1 - x))
+
+    return rewriter.create<mlir::arith::MulFOp>(loc, logResult, halfConst);
+}
+
+// Sinh layer   sinh(x) = (exp(x) - exp(-x)) / 2
+
+template <>
+mlir::Value emitLinalgRegion<IE::SinhOp>(IE::SinhOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                         mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto loc = op->getLoc();
+    auto input = args.front();
+    auto zeroConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getFloatAttr(input.getType(), 0.0));  // Const 0
+    auto halfConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getFloatAttr(input.getType(), 0.5));  // Const 0.5
+    auto expX = rewriter.create<mlir::math::ExpOp>(loc, input, mlir::arith::FastMathFlags::afn);         // exp(x)
+    auto negX = rewriter.create<mlir::arith::SubFOp>(loc, zeroConst, input);                             // -x = 0-x
+    auto expNegX = rewriter.create<mlir::math::ExpOp>(loc, negX, mlir::arith::FastMathFlags::afn);       // exp (-x)
+    auto diffExp = rewriter.create<mlir::arith::SubFOp>(loc, expX, expNegX);  // exp(x) - exp(-x)
+
+    return rewriter.create<mlir::arith::MulFOp>(loc, diffExp, halfConst);
+}
+
+// Callback type for emitting the linalg body for an operation.
+using EmitBodyCallback = std::function<mlir::Value(mlir::Operation*, mlir::ValueRange, llvm::ArrayRef<mlir::Type>,
+                                                   mlir::PatternRewriter&)>;
+
+static mlir::LogicalResult emitLinalgHelper(mlir::Operation* op, EmitBodyCallback callback,
+                                            mlir::PatternRewriter& rewriter) {
+    auto resultType = mlir::cast<mlir::RankedTensorType>(op->getResultTypes().front());
+    auto outputShape = mlir::cast<vpux::NDTypeInterface>(op->getResultTypes().front()).getShape();
+    auto linalgResultElTy = ShaveCodeGen::getLinalgElementType(resultType, rewriter.getContext());
+
+    bool allowBroadcast = false;
+    if (op->getOperands().size() > 1) {
+        // TODO: E#159770 - there should be a broadcastable op interface.
+        if (auto broadcastAddr = op->getAttrOfType<IE::AutoBroadcastTypeAttr>("auto_broadcast")) {
+            switch (broadcastAddr.getValue()) {
+            case IE::AutoBroadcastType::NONE_OR_EXPLICIT:
+                break;
+            case IE::AutoBroadcastType::NUMPY:
+                allowBroadcast = true;
+                break;
+            default:
+                // We don't support paddle paddle broadcasting.
+                return mlir::failure();
+            }
+        }
+    }
+    if (allowBroadcast) {
+        // Reject the dynamic output type, at least for now.
+        // We could support more cases though, at least where there's no ambiguity as to where the
+        // broadcast is coming from (e.g <1 x ?>, <4 x 1> -> <4, ?>).
+        if (outputShape.isDynamic()) {
+            return mlir::failure();
+        }
+    }
+
+    // Create the linalg affine maps. This will handle broadcasting (operand dimension size
+    // is equal to 1 and is different than the result dimension) by using a 0 affine constant
+    // in the affine map.
+    auto rank = resultType.getRank();
+    bool hasBroadcast = false;
+    auto inverseOutputMap = mlir::inversePermutation(mlir::cast<vpux::NDTypeInterface>(op->getResultTypes().front())
+                                                             .getDimsOrder()
+                                                             .toAffineMap(rewriter.getContext()));
+
+    auto affineMaps = llvm::map_to_vector(op->getOperands(), [&](mlir::Value operand) {
+        auto shape = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getShape();
+        SmallVector<mlir::AffineExpr> affineExprs;
+        auto operandRank = mlir::cast<mlir::RankedTensorType>(operand.getType()).getRank();
+
+        // The output rank should always be larger or equal than the operand rank
+        // due to shape inference rules.
+        assert(rank >= operandRank && "Unexpected input rank");
+        for (auto it : llvm::enumerate(shape)) {
+            // Match the input dimension to the output dimension index according
+            // to numpy broadcasting rules. Note if the input and output shapes
+            // have different ranks then the lower ranked shape (the input one)
+            // is right aligned and filled with ones to the left to equalize
+            // the ranks.
+            auto outIdx = rank - operandRank + it.index();
+            auto outDim = outputShape.raw()[outIdx];
+            // If the input dimension is equal to one and the output dimension is
+            // not one then we are broadcasting.
+            auto broadcastDim = allowBroadcast && it.value() == 1 && outDim != it.value();
+            // Now that we've figured out if we are broadcasting or not we can
+            // update the overall broadcast flag.
+            hasBroadcast = hasBroadcast || broadcastDim;
+            // Broadcasting across this dimension is equivalent to having a constant
+            // zero expression in the affine map.
+            auto affineExpr = broadcastDim ? rewriter.getAffineConstantExpr(0) : rewriter.getAffineDimExpr(outIdx);
+            affineExprs.push_back(affineExpr);
+        }
+
+        // Compose affine maps to get the correct indexing for this operand
+        // considering that the output tensor will have identity indexing.
+        auto opMap =
+                mlir::cast<vpux::NDTypeInterface>(operand.getType()).getDimsOrder().toAffineMap(rewriter.getContext());
+        auto logicalMap = mlir::AffineMap::get(rank, 0, affineExprs, rewriter.getContext());
+        return opMap.compose(logicalMap).compose(inverseOutputMap);
+    });
+
+    // Add the affine map for the output tensor as well.
+    affineMaps.push_back(rewriter.getMultiDimIdentityMap(rank));
+
+    auto linalgOperands = llvm::map_to_vector(op->getOperands(), [&](mlir::Value operand) {
+        return ShaveCodeGen::convertToLinalgValue(operand, rewriter);
+    });
+
+    // We need a tensor::EmptyOp to cover the case where the output tensor type is different than the
+    // input ones. This can be caused either by broadcasting (the shape changes) or if we get
+    // a different element type for the output (bitcasting is possibly illegal).
+    // This should be removed after outlining.
+    auto inputElTy = mlir::cast<vpux::NDTypeInterface>(linalgOperands.front().getType()).getElementType();
+    bool changesType = (inputElTy != linalgResultElTy);
+    mlir::Value outputTensor = nullptr;
+
+    if (hasBroadcast || changesType || op->getOperand(0).getType() != op->getResult(0).getType()) {
+        // Compute the tensor shape with an identity layout which has a memory layout that matches our
+        // original output tensor.
+        auto ndResultTy = mlir::cast<NDTypeInterface>(resultType);
+        auto dOrder = DimsOrder::fromPermutation(ndResultTy.getDimsOrder().toPermutation());
+        auto dstShape = dOrder.toMemoryOrder(ndResultTy.getShape()).raw();
+        outputTensor = rewriter.create<mlir::tensor::EmptyOp>(op->getLoc(), dstShape, linalgResultElTy);
+    } else {
+        outputTensor = linalgOperands.front();
+    }
+
+    llvm::SmallVector<mlir::utils::IteratorType> loopAttrs(rank, mlir::utils::IteratorType::parallel);
+    auto linalgOp = rewriter.create<mlir::linalg::GenericOp>(
+            op->getLoc(), outputTensor.getType(), linalgOperands, outputTensor, affineMaps, loopAttrs,
+            [&](mlir::OpBuilder& opBuilder, mlir::Location loc, mlir::ValueRange blockArgs) {
+                mlir::Value opResult =
+                        callback(op, blockArgs.take_front(op->getNumOperands()), {linalgResultElTy}, rewriter);
+                opBuilder.create<mlir::linalg::YieldOp>(loc, opResult);
+            });
+
+    rewriter.replaceOp(
+            op, ShaveCodeGen::convertFromLinalgValue(linalgOp->getResult(0), op->getResult(0).getType(), rewriter)
+                        .getDefiningOp());
+    return mlir::success();
+}
+
 template <typename SrcOp>
 class IEEltwiseToLinalg : public mlir::OpRewritePattern<SrcOp> {
 public:
     using mlir::OpRewritePattern<SrcOp>::OpRewritePattern;
 
     mlir::LogicalResult matchAndRewrite(SrcOp op, mlir::PatternRewriter& rewriter) const final {
-        auto resultType = mlir::cast<mlir::RankedTensorType>(op->getResultTypes().front());
-        auto outputShape = mlir::cast<vpux::NDTypeInterface>(op->getResultTypes().front()).getShape();
-        auto linalgResultElTy = ShaveCodeGen::getLinalgElementType(resultType, rewriter.getContext());
-
-        bool allowBroadcast = false;
-        if (op->getOperands().size() > 1) {
-            // TODO: E#159770 - there should be a broadcastable op interface.
-            if (auto broadcastAddr = op->template getAttrOfType<IE::AutoBroadcastTypeAttr>("auto_broadcast")) {
-                switch (broadcastAddr.getValue()) {
-                case IE::AutoBroadcastType::NONE_OR_EXPLICIT:
-                    break;
-                case IE::AutoBroadcastType::NUMPY:
-                    allowBroadcast = true;
-                    break;
-                default:
-                    // We don't support paddle paddle broadcasting.
-                    return mlir::failure();
-                }
-            }
-        }
-        if (allowBroadcast) {
-            // Reject the dynamic output type, at least for now.
-            // We could support more cases though, at least where there's no ambiguity as to where the
-            // broadcast is coming from (e.g <1 x ?>, <4 x 1> -> <4, ?>).
-            if (outputShape.isDynamic()) {
-                return mlir::failure();
-            }
-        }
-
-        // Create the linalg affine maps. This will handle broadcasting (operand dimension size
-        // is equal to 1 and is different than the result dimension) by using a 0 affine constant
-        // in the affine map.
-        auto rank = resultType.getRank();
-        bool hasBroadcast = false;
-        auto inverseOutputMap = mlir::inversePermutation(mlir::cast<vpux::NDTypeInterface>(op->getResultTypes().front())
-                                                                 .getDimsOrder()
-                                                                 .toAffineMap(rewriter.getContext()));
-
-        auto affineMaps = llvm::map_to_vector(op->getOperands(), [&](mlir::Value operand) {
-            auto shape = mlir::cast<vpux::NDTypeInterface>(operand.getType()).getShape();
-            SmallVector<mlir::AffineExpr> affineExprs;
-            auto operandRank = mlir::cast<mlir::RankedTensorType>(operand.getType()).getRank();
-
-            // The output rank should always be larger or equal than the operand rank
-            // due to shape inference rules.
-            assert(rank >= operandRank && "Unexpected input rank");
-            for (auto it : llvm::enumerate(shape)) {
-                // Match the input dimension to the output dimension index according
-                // to numpy broadcasting rules. Note if the input and output shapes
-                // have different ranks then the lower ranked shape (the input one)
-                // is right aligned and filled with ones to the left to equalize
-                // the ranks.
-                auto outIdx = rank - operandRank + it.index();
-                auto outDim = outputShape.raw()[outIdx];
-                // If the input dimension is equal to one and the output dimension is
-                // not one then we are broadcasting.
-                auto broadcastDim = allowBroadcast && it.value() == 1 && outDim != it.value();
-                // Now that we've figured out if we are broadcasting or not we can
-                // update the overall broadcast flag.
-                hasBroadcast = hasBroadcast || broadcastDim;
-                // Broadcasting across this dimension is equivalent to having a constant
-                // zero expression in the affine map.
-                auto affineExpr = broadcastDim ? rewriter.getAffineConstantExpr(0) : rewriter.getAffineDimExpr(outIdx);
-                affineExprs.push_back(affineExpr);
-            }
-
-            // Compose affine maps to get the correct indexing for this operand
-            // considering that the output tensor will have identity indexing.
-            auto opMap = mlir::cast<vpux::NDTypeInterface>(operand.getType())
-                                 .getDimsOrder()
-                                 .toAffineMap(rewriter.getContext());
-            auto logicalMap = mlir::AffineMap::get(rank, 0, affineExprs, rewriter.getContext());
-            return opMap.compose(logicalMap).compose(inverseOutputMap);
-        });
-
-        // Add the affine map for the output tensor as well.
-        affineMaps.push_back(rewriter.getMultiDimIdentityMap(rank));
-
-        auto linalgOperands = llvm::map_to_vector(op->getOperands(), [&](mlir::Value operand) {
-            return ShaveCodeGen::convertToLinalgValue(operand, rewriter);
-        });
-
-        // We need a tensor::EmptyOp to cover the case where the output tensor type is different than the
-        // input ones. This can be caused either by broadcasting (the shape changes) or if we get
-        // a different element type for the output (bitcasting is possibly illegal).
-        // This should be removed after outlining.
-        auto inputElTy = mlir::cast<vpux::NDTypeInterface>(linalgOperands.front().getType()).getElementType();
-        bool changesType = (inputElTy != linalgResultElTy);
-        mlir::Value outputTensor = nullptr;
-
-        if (hasBroadcast || changesType || op->getOperand(0).getType() != op->getResult(0).getType()) {
-            // Compute the tensor shape with an identity layout which has a memory layout that matches our
-            // original output tensor.
-            auto ndResultTy = mlir::cast<NDTypeInterface>(resultType);
-            auto dOrder = DimsOrder::fromPermutation(ndResultTy.getDimsOrder().toPermutation());
-            auto dstShape = dOrder.toMemoryOrder(ndResultTy.getShape()).raw();
-            outputTensor = rewriter.create<mlir::tensor::EmptyOp>(op.getLoc(), dstShape, linalgResultElTy);
-        } else {
-            outputTensor = linalgOperands.front();
-        }
-
-        llvm::SmallVector<mlir::utils::IteratorType> loopAttrs(rank, mlir::utils::IteratorType::parallel);
-        auto linalgOp = rewriter.create<mlir::linalg::GenericOp>(
-                op.getLoc(), outputTensor.getType(), linalgOperands, outputTensor, affineMaps, loopAttrs,
-                [&](mlir::OpBuilder& opBuilder, mlir::Location loc, mlir::ValueRange blockArgs) {
-                    mlir::Value opResult = emitLinalgRegion<SrcOp>(op, blockArgs.take_front(op->getNumOperands()),
-                                                                   {linalgResultElTy}, rewriter);
-                    opBuilder.create<mlir::linalg::YieldOp>(loc, opResult);
-                });
-
-        rewriter.replaceOp(
-                op, ShaveCodeGen::convertFromLinalgValue(linalgOp->getResult(0), op->getResult(0).getType(), rewriter)
-                            .getDefiningOp());
-        return mlir::success();
+        auto emitBody = [](mlir::Operation* op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> types,
+                           mlir::PatternRewriter& rewriter) {
+            return emitLinalgRegion<SrcOp>(mlir::cast<SrcOp>(op), args, types, rewriter);
+        };
+        return emitLinalgHelper(op, emitBody, rewriter);
     }
 };
 
@@ -659,8 +749,9 @@ mlir::Value emitLinalgRegion<IE::ConvertOp>(IE::ConvertOp op, mlir::ValueRange a
 
     // Float to Float
     if (mlir::isa<mlir::FloatType>(inputTy) && mlir::isa<mlir::FloatType>(outputTy)) {
-        if (inputTy == outputTy)
+        if (inputTy == outputTy) {
             return args[0];
+        }
 
         if (outputTy.getIntOrFloatBitWidth() > inputTy.getIntOrFloatBitWidth()) {
             return rewriter.create<mlir::arith::ExtFOp>(loc, resultTypes, args);
@@ -671,8 +762,9 @@ mlir::Value emitLinalgRegion<IE::ConvertOp>(IE::ConvertOp op, mlir::ValueRange a
 
     // Int to Int
     if (mlir::isa<mlir::IntegerType>(inputTy) && mlir::isa<mlir::IntegerType>(outputTy)) {
-        if (outputTy.getIntOrFloatBitWidth() == inputTy.getIntOrFloatBitWidth())
+        if (outputTy.getIntOrFloatBitWidth() == inputTy.getIntOrFloatBitWidth()) {
             return args[0];
+        }
 
         if (outputTy.getIntOrFloatBitWidth() > inputTy.getIntOrFloatBitWidth()) {
             if (inputTy.isSignedInteger()) {
@@ -700,6 +792,7 @@ void ConvertEltwiseLayers2MathPass::safeRunOnFunc() {
                            mlir::math::MathDialect, mlir::func::FuncDialect>();
 
     target.addLegalDialect<IE::IEDialect>();
+    target.addIllegalOp<IE::TanhOp>();
     target.addIllegalOp<IE::CosOp>();
     target.addIllegalOp<IE::MaximumOp>();
     target.addIllegalOp<IE::MinimumOp>();
@@ -715,53 +808,43 @@ void ConvertEltwiseLayers2MathPass::safeRunOnFunc() {
     target.addIllegalOp<IE::ErfOp>();
     target.addIllegalOp<IE::RoundOp>();
     target.addIllegalOp<IE::ReLUOp, IE::LeakyReluOp, IE::ClampOp>();
-    target.addDynamicallyLegalOp<IE::AddOp>([&](mlir::Operation* op) {
-        const auto logCb = [&](const formatv_object_base& msg) {
-            VPUX_UNUSED(msg);
-            return;
-        };
-        return VPU::NCEEltwiseOp::isSupported(mlir::cast<IE::AddOp>(op), true, true, logCb, /*checkLayout=*/true, true);
-    });
-    target.addIllegalOp<IE::MultiplyOp, IE::SubtractOp>();
-    target.addDynamicallyLegalOp<IE::ConvertOp>([&](IE::ConvertOp op) {
-        auto convertOp = mlir::cast<IE::ConvertOp>(op);
-        auto inType = convertOp.getInput().getType().getElementType();
-        auto outType = convertOp.getOutput().getType().getElementType();
+    target.addIllegalOp<IE::AddOp, IE::MultiplyOp, IE::SubtractOp>();
+    target.addIllegalOp<IE::ConvertOp>();
+    target.addIllegalOp<IE::TanOp, IE::SinhOp, IE::CoshOp, IE::AtanOp, IE::AtanhOp>();
 
-        if ((inType.getIntOrFloatBitWidth() == outType.getIntOrFloatBitWidth()) && inType.isIntOrIndex() &&
-            outType.isIntOrIndex()) {
-            return true;
+    auto populatePatterns = [&](mlir::RewritePatternSet& patternSet) {
+        ConvertEltwiseLayersToMathPatterns::populateWithGenerated(patternSet);
+        patternSet.add<IEEltwiseToLinalg<IE::MaximumOp>, IEEltwiseToLinalg<IE::MinimumOp>,
+                       IEEltwiseToLinalg<IE::DivideOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::BitwiseAndOp>, IEEltwiseToLinalg<IE::BitwiseOrOp>,
+                       IEEltwiseToLinalg<IE::BitwiseXorOp>, IEEltwiseToLinalg<IE::BitwiseNotOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::LogicalOrOp>, IEEltwiseToLinalg<IE::LogicalXorOp>,
+                       IEEltwiseToLinalg<IE::AndOp>, IEEltwiseToLinalg<IE::LogicalNotOp>,
+                       IEEltwiseToLinalg<IE::SelectOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::EqualOp>, IEEltwiseToLinalg<IE::NotEqualOp>, IEEltwiseToLinalg<IE::LessOp>,
+                       IEEltwiseToLinalg<IE::LessEqualOp>, IEEltwiseToLinalg<IE::GreaterOp>,
+                       IEEltwiseToLinalg<IE::GreaterEqualOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::SquaredDifferenceOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::ErfOp>, IEEltwiseToLinalg<IE::RoundOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::SinOp>, IEEltwiseToLinalg<IE::CosOp>>(&ctx);
+        patternSet
+                .add<IEEltwiseToLinalg<IE::ReLUOp>, IEEltwiseToLinalg<IE::LeakyReluOp>, IEEltwiseToLinalg<IE::ClampOp>>(
+                        &ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::AddOp>, IEEltwiseToLinalg<IE::MultiplyOp>,
+                       IEEltwiseToLinalg<IE::SubtractOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::ConvertOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::TanOp>, IEEltwiseToLinalg<IE::AtanhOp>, IEEltwiseToLinalg<IE::SinhOp>,
+                       IEEltwiseToLinalg<IE::CoshOp>>(&ctx);
+    };
+
+    // E#172607 [ShaveCodeGen] Make Linalg lowering pass run on CodeGenCapsuleOps
+    func->walk([&](IE::CodeGenCapsuleOp capsuleOp) {
+        mlir::RewritePatternSet patterns(&ctx);
+        populatePatterns(patterns);
+        if (mlir::failed(mlir::applyPartialConversion(capsuleOp, target, std::move(patterns)))) {
+            signalPassFailure();
         }
-        if (inType.isBF16() || outType.isBF16()) {
-            return true;
-        }
-
-        return false;
     });
-
-    mlir::RewritePatternSet patterns(&ctx);
-    ConvertEltwiseLayersToMathPatterns::populateWithGenerated(patterns);
-    patterns.add<IEEltwiseToLinalg<IE::MaximumOp>, IEEltwiseToLinalg<IE::MinimumOp>, IEEltwiseToLinalg<IE::DivideOp>>(
-            &ctx);
-    patterns.add<IEEltwiseToLinalg<IE::BitwiseAndOp>, IEEltwiseToLinalg<IE::BitwiseOrOp>,
-                 IEEltwiseToLinalg<IE::BitwiseXorOp>, IEEltwiseToLinalg<IE::BitwiseNotOp>>(&ctx);
-    patterns.add<IEEltwiseToLinalg<IE::LogicalOrOp>, IEEltwiseToLinalg<IE::LogicalXorOp>, IEEltwiseToLinalg<IE::AndOp>,
-                 IEEltwiseToLinalg<IE::LogicalNotOp>, IEEltwiseToLinalg<IE::SelectOp>>(&ctx);
-    patterns.add<IEEltwiseToLinalg<IE::EqualOp>, IEEltwiseToLinalg<IE::NotEqualOp>, IEEltwiseToLinalg<IE::LessOp>,
-                 IEEltwiseToLinalg<IE::LessEqualOp>, IEEltwiseToLinalg<IE::GreaterOp>,
-                 IEEltwiseToLinalg<IE::GreaterEqualOp>>(&ctx);
-    patterns.add<IEEltwiseToLinalg<IE::SquaredDifferenceOp>>(&ctx);
-    patterns.add<IEEltwiseToLinalg<IE::ErfOp>, IEEltwiseToLinalg<IE::RoundOp>>(patterns.getContext());
-    patterns.add<IEEltwiseToLinalg<IE::SinOp>, IEEltwiseToLinalg<IE::CosOp>>(patterns.getContext());
-    patterns.add<IEEltwiseToLinalg<IE::ReLUOp>, IEEltwiseToLinalg<IE::LeakyReluOp>, IEEltwiseToLinalg<IE::ClampOp>>(
-            &ctx);
-    patterns.add<IEEltwiseToLinalg<IE::AddOp>, IEEltwiseToLinalg<IE::MultiplyOp>, IEEltwiseToLinalg<IE::SubtractOp>>(
-            patterns.getContext());
-    patterns.add<IEEltwiseToLinalg<IE::ConvertOp>>(&ctx);
-
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
 }
 
 }  // namespace

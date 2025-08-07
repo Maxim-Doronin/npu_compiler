@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --move-pure-view-op-before-copy %s | FileCheck %s
@@ -130,7 +130,7 @@ func.func @MoveSeveralPureViewOpsBeforeCopy(
 !qElemType1 = !quant.uniform<u8:f16, 0.0042424242424242424>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-func.func @QuantizeCastBeforeClusterTilingCopy(%arg0: memref<1x128x8x8x!qElemType, #NHWC, @CMX_NN>) -> memref<1x128x8x8x!qElemType1, #NHWC, @CMX_NN> {
+func.func @QuantizeCastBeforeDistributedCopy(%arg0: memref<1x128x8x8x!qElemType, #NHWC, @CMX_NN>) -> memref<1x128x8x8x!qElemType1, #NHWC, @CMX_NN> {
     %buf0 = memref.alloc() : memref<1x128x8x8x!qElemType, #NHWC, @DDR>
     %0 = VPUIP.Copy
         inputs(%arg0 : memref<1x128x8x8x!qElemType, #NHWC, @CMX_NN>)
@@ -742,6 +742,48 @@ func.func @MoveQuantizeCastBeforeTilingCopyOverlapped(%arg0: !InputDistributed) 
     // CHECK-SAME:     inputs([[QUANTIZE]] : !VPUIP.DistributedBuffer<1x16x32x32x!qElemType1, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [1, 1], pads = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, strides = [1, 1], num_clusters = 2 : i64}>)
     // CHECK-SAME:     outputs([[OUTBUFF]] : memref<1x16x32x32x!qElemType1, #NHWC, @DDR>)  ->  memref<1x16x32x32x!qElemType1, #NHWC, @DDR>
     // CHECK:    return [[COPY]] : memref<1x16x32x32x!qElemType1, #NHWC, @DDR>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<u8:f16, 0.0036305147058823531>
+
+!InputDistributed = !VPUIP.DistributedBuffer<
+    1x16x32x32x!qElemType, #NHWC, @CMX_NN, {
+    mode = "OVERLAPPED",
+    num_tiles = [1, 1, 2, 1],
+    kernel = [1, 1],
+    pads = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    strides = [1, 1],
+    num_clusters = 2
+}>
+
+// CHECK-LABEL: @MoveQuantizeCastBeforeTilingCopyOverlappedMixedTypes
+func.func @MoveQuantizeCastBeforeTilingCopyOverlappedMixedTypes(%arg0: !InputDistributed) -> memref<1x16x32x32xui8, #NHWC, @DDR> {
+    %out = memref.alloc() : memref<1x16x32x32x!qElemType, #NHWC, @DDR>
+    %0 = VPUIP.Copy
+        inputs(%arg0 : !InputDistributed)
+        outputs(%out : memref<1x16x32x32x!qElemType, #NHWC, @DDR>)  ->  memref<1x16x32x32x!qElemType, #NHWC, @DDR>
+
+    %1 = VPUIP.QuantizeCast
+        inputs(%0 : memref<1x16x32x32x!qElemType, #NHWC, @DDR>)
+        -> memref<1x16x32x32xui8, #NHWC, @DDR>
+
+    return %1 : memref<1x16x32x32xui8, #NHWC, @DDR>
+
+    // CHECK:    [[QUANTIZE:%.*]] = VPUIP.QuantizeCast
+    // CHECK-SAME:  inputs(%arg0 : !VPUIP.DistributedBuffer<1x16x32x32x!qElemType, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1],
+    // CHECK-SAME:      kernel = [1, 1], pads = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, strides = [1, 1], num_clusters = 2 : i64}>)
+    // CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x16x32x32xui8, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1],
+    // CHECK-SAME:      kernel = [1, 1], pads = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, strides = [1, 1], num_clusters = 2 : i64}>
+
+    // CHECK:    [[OUTBUFF:%.*]] = memref.alloc() : memref<1x16x32x32xui8, #NHWC, @DDR>
+    // CHECK:    [[COPY:%.*]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[QUANTIZE]] : !VPUIP.DistributedBuffer<1x16x32x32xui8, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [1, 1], pads = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, strides = [1, 1], num_clusters = 2 : i64}>)
+    // CHECK-SAME:     outputs([[OUTBUFF]] : memref<1x16x32x32xui8, #NHWC, @DDR>)  ->  memref<1x16x32x32xui8, #NHWC, @DDR>
+    // CHECK:    return [[COPY]] : memref<1x16x32x32xui8, #NHWC, @DDR>
 }
 
 // -----

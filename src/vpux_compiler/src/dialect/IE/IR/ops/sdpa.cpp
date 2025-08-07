@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -19,7 +19,21 @@ mlir::LogicalResult vpux::IE::SDPAOp::inferReturnTypeComponents(
     if (mlir::failed(sdpa.verify(loc))) {
         return mlir::failure();
     }
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(sdpa.getInputQ().getType());
-    inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
+    const auto inQType = mlir::cast<vpux::NDTypeInterface>(sdpa.getInputQ().getType());
+    const auto inQShape = inQType.getShape().raw();
+    const auto rank = inQType.getShape().size();
+
+    const auto inKType = mlir::cast<vpux::NDTypeInterface>(sdpa.getInputK().getType());
+    const auto inKShape = inKType.getShape().raw();
+
+    const auto inVType = mlir::cast<vpux::NDTypeInterface>(sdpa.getInputV().getType());
+    const auto inVShape = inVType.getShape().raw();
+
+    const auto isTransposedV = inKShape[rank - 2] != inVShape[rank - 2];
+    const auto Ev = isTransposedV ? inVShape[rank - 2] : inVShape[rank - 1];
+    SmallVector<int64_t> outShape(inQShape.begin(), inQShape.end());
+    outShape[rank - 1] = Ev;
+    inferredReturnShapes.emplace_back(outShape, inQType.getElementType());
+
     return mlir::success();
 }

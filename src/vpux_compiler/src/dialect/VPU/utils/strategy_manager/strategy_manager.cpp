@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -15,13 +17,13 @@ using namespace vpux;
 using namespace VPU;
 
 StrategyManager::StrategyManager(mlir::func::FuncOp func, int64_t numTiles, bool enablePrefetchTiling,
-                                 VPU::MCOptimizationScope mcOptimizationScope, Logger log,
-                                 SiblingOpsAnalysis& siblingsOpsAnalysis)
+                                 VPU::MCOptimizationScope mcOptimizationScope, SiblingOpsAnalysis& siblingsOpsAnalysis,
+                                 std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModelPtr, Logger log)
         : _func(func),
           _numTiles(numTiles),
           _log(log),
-          _costModel(func, enablePrefetchTiling, log, siblingsOpsAnalysis),
-          _optimizer(func, enablePrefetchTiling, log, siblingsOpsAnalysis),
+          _costModel(func, enablePrefetchTiling, siblingsOpsAnalysis, layerCostModelPtr, log),
+          _optimizer(func, enablePrefetchTiling, siblingsOpsAnalysis, std::move(layerCostModelPtr), log),
           _siblingsOpsAnalysis(siblingsOpsAnalysis),
           _mcOptimizationScope(mcOptimizationScope) {
 }
@@ -194,6 +196,20 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                             setLayerStrategy(VPU::MultiClusterStrategy::SplitOverGroup, origOp.getOperation());
                         }
                         return;
+                    }
+
+                    if (mlir::isa<VPU::MemPermuteOp>(origOp)) {
+                        auto memPermuteOp = mlir::dyn_cast<VPU::MemPermuteOp>(origOp.getOperation());
+                        auto memPerm = memPermuteOp.getMemPerm();
+                        const auto inputType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getInput().getType());
+                        const auto outputType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getOutput().getType());
+                        auto module = getModuleOp(memPermuteOp.getOperation());
+                        const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+                        if (VPUIP::isBeneficialForUsingPermuteDMA(getArch(memPermuteOp.getOperation()), inputType,
+                                                                  outputType, memPerm, dmaPortNum, _log)) {
+                            _log.trace("Operation {0} is mapped to permute DMA, do not assign strategy", origOp);
+                            return;
+                        }
                     }
                     // Non 4D Tensor or Tensor with larger batch size cannot be tiled properly.
                     // [E90039]MC support for Non 4D Tensor.

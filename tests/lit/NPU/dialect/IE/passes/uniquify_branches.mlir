@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --uniquify-branches %s | FileCheck %s
@@ -828,4 +828,117 @@ func.func @NoMoveReorderBeforeSplitAsSplitDimPos(%arg0: tensor<1x2x96x49xf16, {o
     // CHECK:       [[REORDER0:%.+]] = IE.Reorder([[SPLIT]]#0) {dstOrder = #NHWC} : tensor<1x1x96x49xf16, {order = #NCHW}> -> tensor<1x1x96x49xf16, {order = #NHWC}>
     // CHECK:       [[REORDER1:%.+]] = IE.Reorder([[SPLIT]]#1) {dstOrder = #NHWC} : tensor<1x1x96x49xf16, {order = #NCHW}> -> tensor<1x1x96x49xf16, {order = #NHWC}>
     // CHECK:       return [[REORDER0]], [[REORDER1]] : tensor<1x1x96x49xf16, {order = #NHWC}>, tensor<1x1x96x49xf16, {order = #NHWC}>
+}
+
+
+// -----
+
+!qElemType = !quant.uniform<u4:f16:1, {1.0:128,2.0:128}>
+!qElemType1 = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{4.000000e+00,6.000000e+00}>
+
+// CHECK-LABEL: @MoveQuantizeCastBeforeMultipleSlices
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<4x2x!qElemType>
+func.func @MoveQuantizeCastBeforeMultipleSlices(%arg0: tensor<4x2x!qElemType>) -> (tensor<2x2x!qElemType1>, tensor<2x2x!qElemType1>) {
+    %0 = IE.Slice %arg0 [0, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %1 = IE.Slice %arg0 [2, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %2 = IE.QuantizeCast(%0) {dstElemType = !qElemType1} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType1>
+    %3 = IE.QuantizeCast(%1) {dstElemType = !qElemType1} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType1>
+
+    return %2, %3 : tensor<2x2x!qElemType1>, tensor<2x2x!qElemType1>
+
+    // CHECK:       [[QUANTIZECAST:%.+]] = IE.QuantizeCast([[INPUT]]) {dstElemType = !qElemType1} : tensor<4x2x!qElemType> -> tensor<4x2x!qElemType1>
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[QUANTIZECAST]] [2, 0] [2, 2] : tensor<4x2x!qElemType1> to tensor<2x2x!qElemType1>
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[QUANTIZECAST]] [0, 0] [2, 2] : tensor<4x2x!qElemType1> to tensor<2x2x!qElemType1>
+    // CHECK:       return [[SLICE1]], [[SLICE0]]
+}
+
+
+// -----
+
+!qElemType = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{2.000000e+00,3.000000e+00}>
+!qElemType1 = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{4.000000e+00,6.000000e+00}>
+
+// CHECK-LABEL: @MoveQuantizeCastBeforeMultipleSlicesQuantile
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<4x2x!qElemType>
+func.func @MoveQuantizeCastBeforeMultipleSlicesQuantile(%arg0: tensor<4x2x!qElemType>) -> (tensor<2x2x!qElemType1>, tensor<2x2x!qElemType1>) {
+    %0 = IE.Slice %arg0 [0, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %1 = IE.Slice %arg0 [2, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %2 = IE.QuantizeCast(%0) {dstElemType = !qElemType1} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType1>
+    %3 = IE.QuantizeCast(%1) {dstElemType = !qElemType1} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType1>
+
+    return %2, %3 : tensor<2x2x!qElemType1>, tensor<2x2x!qElemType1>
+
+    // CHECK:       [[QUANTIZECAST:%.+]] = IE.QuantizeCast([[INPUT]]) {dstElemType = !qElemType1} : tensor<4x2x!qElemType> -> tensor<4x2x!qElemType1>
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[QUANTIZECAST]] [2, 0] [2, 2] : tensor<4x2x!qElemType1> to tensor<2x2x!qElemType1>
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[QUANTIZECAST]] [0, 0] [2, 2] : tensor<4x2x!qElemType1> to tensor<2x2x!qElemType1>
+    // CHECK:       return [[SLICE1]], [[SLICE0]]
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16:0, {1.0:128,2.0:128,3.0:128,4.0:128}>
+!qElemType1 = !quant.uniform<u8:f16:0, {1.0:128,2.0:128}>
+!qElemType2 = !quant.uniform<u8:f16:0, {3.0:128,4.0:128}>
+!qElemType3 = !quant.uniform<u8:f16:0, {1.0:128,1.0:128}>
+
+// CHECK-LABEL: @NotMoveQuantizeCastBeforeMultipleSlicesSameAxis
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<4x2x!qElemType>
+func.func @NotMoveQuantizeCastBeforeMultipleSlicesSameAxis(%arg0: tensor<4x2x!qElemType>) -> (tensor<2x2x!qElemType3>, tensor<2x2x!qElemType3>) {
+    %0 = IE.Slice %arg0 [0, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType1>
+    %1 = IE.Slice %arg0 [2, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType2>
+    %2 = IE.QuantizeCast(%0) {dstElemType = !qElemType3} : tensor<2x2x!qElemType1> -> tensor<2x2x!qElemType3>
+    %3 = IE.QuantizeCast(%1) {dstElemType = !qElemType3} : tensor<2x2x!qElemType2> -> tensor<2x2x!qElemType3>
+
+    return %2, %3 : tensor<2x2x!qElemType3>, tensor<2x2x!qElemType3>
+
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice
+    // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast
+    // CHECK:       [[QUANTIZECAST1:%.+]] = IE.QuantizeCast
+    // CHECK:       return [[QUANTIZECAST0]], [[QUANTIZECAST1]]
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16:1, {1.0:128,2.0:128}>
+!qElemType1 = !quant.uniform<u8:f16:1, {2.0:128,4.0:128}>
+!qElemType2 = !quant.uniform<u8:f16:1, {2.0:128,4.0:127}>
+
+// CHECK-LABEL: @NotMoveQuantizeCastBeforeMultipleSlicesDifferentQType
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<4x2x!qElemType>
+func.func @NotMoveQuantizeCastBeforeMultipleSlicesDifferentQType(%arg0: tensor<4x2x!qElemType>) -> (tensor<2x2x!qElemType1>, tensor<2x2x!qElemType2>) {
+    %0 = IE.Slice %arg0 [0, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %1 = IE.Slice %arg0 [2, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %2 = IE.QuantizeCast(%0) {dstElemType = !qElemType1} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType1>
+    %3 = IE.QuantizeCast(%1) {dstElemType = !qElemType2} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType2>
+
+    return %2, %3 : tensor<2x2x!qElemType1>, tensor<2x2x!qElemType2>
+
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice
+    // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast
+    // CHECK:       [[QUANTIZECAST1:%.+]] = IE.QuantizeCast
+    // CHECK:       return [[QUANTIZECAST0]], [[QUANTIZECAST1]]
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16:1, {1.0:128,2.0:128}>
+!qElemType1 = !quant.uniform<u8:f16:1, {2.0:128,4.0:128}>
+
+// CHECK-LABEL: @NotMoveQuantizeCastBeforeMultipleSlicesForNotQuantileType
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<4x2x!qElemType>
+func.func @NotMoveQuantizeCastBeforeMultipleSlicesForNotQuantileType(%arg0: tensor<4x2x!qElemType>) -> (tensor<2x2x!qElemType1>, tensor<2x2x!qElemType1>) {
+    %0 = IE.Slice %arg0 [0, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %1 = IE.Slice %arg0 [2, 0] [2, 2] : tensor<4x2x!qElemType> to tensor<2x2x!qElemType>
+    %2 = IE.QuantizeCast(%0) {dstElemType = !qElemType1} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType1>
+    %3 = IE.QuantizeCast(%1) {dstElemType = !qElemType1} : tensor<2x2x!qElemType> -> tensor<2x2x!qElemType1>
+
+    return %2, %3 : tensor<2x2x!qElemType1>, tensor<2x2x!qElemType1>
+
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice
+    // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast
+    // CHECK:       [[QUANTIZECAST1:%.+]] = IE.QuantizeCast
+    // CHECK:       return [[QUANTIZECAST0]], [[QUANTIZECAST1]]
 }

@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 if(${CMAKE_VERSION} VERSION_LESS "3.19.0")

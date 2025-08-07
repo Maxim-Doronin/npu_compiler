@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --merge-fully-connected %s | FileCheck %s
@@ -16,13 +16,13 @@ func.func @MergeMatMulWithWeightsAsConstant(%arg0: tensor<1x1x256xf16>) -> tenso
     %weights_0 = const.Declare tensor<1x128x4096xf16> = dense<1> : tensor<4096x2x128xui4>, [#const.SubView<[0, 0, 0], [4096, 1, 128]>, #const.ConvertElemType<ui8>, #const.CastElemType<ui4>, #const.CastElemType<f16>, #const.Transpose<#HWC>]
     %in_low_0 = const.Declare tensor<1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
     %in_high_0 = const.Declare tensor<1x1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
-    %out_low_0 = const.Declare tensor<1x1x4096xf16> = dense<1.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
+    %out_low_0 = const.Declare tensor<1x1x4096xf16> = dense<-1.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
     %out_high_0 = const.Declare tensor<1x1x4096xf16> = dense<2.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
 
     %weights_1 = const.Declare tensor<1x128x4096xf16> = dense<1> : tensor<4096x2x128xui4>, [#const.SubView<[0, 1, 0], [4096, 1, 128]>, #const.ConvertElemType<ui8>, #const.CastElemType<ui4>, #const.CastElemType<f16>, #const.Transpose<#HWC>]
     %in_low_1 = const.Declare tensor<1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
     %in_high_1 = const.Declare tensor<1x1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
-    %out_low_1 = const.Declare tensor<1x1x4096xf16> = dense<1.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
+    %out_low_1 = const.Declare tensor<1x1x4096xf16> = dense<-1.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
     %out_high_1 = const.Declare tensor<1x1x4096xf16> = dense<2.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
 
     %source = IE.AffineReshape(%arg0) {dim_mapping = [[0], [0], [1]], shape_value = [1, 256]} : tensor<1x1x256xf16> -> tensor<1x256xf16>
@@ -49,7 +49,7 @@ func.func @MergeMatMulWithWeightsAsConstant(%arg0: tensor<1x1x256xf16>) -> tenso
     // CHECK-DAG:      [[FQ_OUTPUT_HIGH:%.+]] = const.Declare tensor<1x1x4096xf16> = dense<2.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
     // CHECK:      [[FQ_INPUT_LOW:%.+]] = const.Declare tensor<1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>, #const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [1, 1]>]
     // CHECK:      [[FQ_INPUT_HIGHT:%.+]] = const.Declare tensor<1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>, #const.Transpose<#map>, #const.AffineReshape<{{\[\[}}0], [0], [1]], [1, 1]>]
-    // CHECK:      [[FQ_OUTPUT_LOW:%.+]] = const.Declare tensor<1x1x4096xf16> = dense<1.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
+    // CHECK:      [[FQ_OUTPUT_LOW:%.+]] = const.Declare tensor<1x1x4096xf16> = dense<-1.000000e+00> : tensor<4096x2x1xf16>, [#const.SubView<[0, 0, 0], [4096, 1, 1]>, #const.Transpose<#HWC>]
 
     // CHECK:      [[FQ_OUTPUT_LOW_CONCAT:%.+]] = IE.Concat([[FQ_OUTPUT_LOW]], [[FQ_OUTPUT_LOW]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x1x4096xf16>, tensor<1x1x4096xf16> -> tensor<2x1x4096xf16>
     // CHECK:      [[FQ_OUTPUT_LOW_TRANSPOSE:%.+]] = IE.Transpose([[FQ_OUTPUT_LOW_CONCAT]]) {order_value = #map} : tensor<2x1x4096xf16> -> tensor<2x4096x1xf16>
@@ -77,6 +77,68 @@ func.func @MergeMatMulWithWeightsAsConstant(%arg0: tensor<1x1x256xf16>) -> tenso
     // CHECK:      [[OUT_RESHAPE_1:%.+]] = IE.Reshape([[SLICE_1]]) {shape_value = [1, 1, 1, 4096]} : tensor<1x4096xf16> -> tensor<1x1x1x4096xf16>
     // CHECK:      [[OUT_CONCAT:%.+]] = IE.Concat([[OUT_RESHAPE_0]], [[OUT_RESHAPE_1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x4096xf16>, tensor<1x1x1x4096xf16> -> tensor<1x2x1x4096xf16>
     // CHECK:      return [[OUT_CONCAT]] : tensor<1x2x1x4096xf16>
+}
+
+// -----
+
+#HWC = affine_map<(d0, d1, d2) -> (d1, d2, d0)>
+#map = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
+
+// CHECK-LABEL: @DoNotMergeMatMulWithWeightsAsConstantIfZpIsNotEqual
+// CHECK-SAME:   [[INPUT:%.+]]: tensor<1x1x4xf16>
+func.func @DoNotMergeMatMulWithWeightsAsConstantIfZpIsNotEqual(%arg0: tensor<1x1x4xf16>) -> tensor<1x2x1x4xf16> {
+    %weights_0 = const.Declare tensor<1x2x4xf16> = dense<1> : tensor<4x1x2xui4>, [#const.ConvertElemType<ui8>, #const.CastElemType<ui4>, #const.CastElemType<f16>, #const.Transpose<#HWC>]
+    %in_low_0 = const.Declare tensor<1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
+    %in_high_0 = const.Declare tensor<1x1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
+    %out_low_0 = const.Declare tensor<1x1x4xf16> = dense<-1.000000e+00> : tensor<4x1x1xf16>, [#const.Transpose<#HWC>]
+    %out_high_0 = const.Declare tensor<1x1x4xf16> = dense<2.000000e+00> : tensor<4x1x1xf16>, [#const.Transpose<#HWC>]
+
+    %weights_1 = const.Declare tensor<1x2x4xf16> = dense<1> : tensor<4x1x2xui4>, [#const.ConvertElemType<ui8>, #const.CastElemType<ui4>, #const.CastElemType<f16>, #const.Transpose<#HWC>]
+    %in_low_1 = const.Declare tensor<1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
+    %in_high_1 = const.Declare tensor<1x1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
+    %out_low_1 = const.Declare tensor<1x1x4xf16> = dense<-2.000000e+00> : tensor<4x1x1xf16>, [#const.Transpose<#HWC>]
+    %out_high_1 = const.Declare tensor<1x1x4xf16> = dense<2.000000e+00> : tensor<4x1x1xf16>, [#const.Transpose<#HWC>]
+
+    %source = IE.AffineReshape(%arg0) {dim_mapping = [[0], [0], [1]], shape_value = [1, 4]} : tensor<1x1x4xf16> -> tensor<1x4xf16>
+
+    %in_0 = IE.Slice %source [0, 0] [1, 2] : tensor<1x4xf16> to tensor<1x2xf16>
+    %fq_0 = IE.FakeQuantize(%weights_0, %in_low_0, %in_high_0, %out_low_0, %out_high_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 16 : i64} : tensor<1x2x4xf16>, tensor<1x1x1xf16>, tensor<1x1x1xf16>, tensor<1x1x4xf16>, tensor<1x1x4xf16> -> tensor<1x2x4xf16>
+    %reshape_0 = IE.Reshape(%fq_0) {shape_value = [2, 4]} : tensor<1x2x4xf16> -> tensor<2x4xf16>
+    %transpose_0 = IE.Transpose(%reshape_0) {order_value = affine_map<(d0, d1) -> (d1, d0)>} : tensor<2x4xf16> -> tensor<4x2xf16>
+    %fc_0 = IE.FullyConnected(%in_0, %transpose_0) : tensor<1x2xf16>, tensor<4x2xf16> -> tensor<1x4xf16>
+    %out_reshape_0 = IE.Reshape(%fc_0) {shape_value = [1, 1, 1, 4]} : tensor<1x4xf16> -> tensor<1x1x1x4xf16>
+
+    %in_1 = IE.Slice %source [0, 2] [1, 2] : tensor<1x4xf16> to tensor<1x2xf16>
+    %fq_1 = IE.FakeQuantize(%weights_1, %in_low_1, %in_high_1, %out_low_1, %out_high_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 16 : i64} : tensor<1x2x4xf16>, tensor<1x1x1xf16>, tensor<1x1x1xf16>, tensor<1x1x4xf16>, tensor<1x1x4xf16> -> tensor<1x2x4xf16>
+    %reshape_1 = IE.Reshape(%fq_1) {shape_value = [2, 4]} : tensor<1x2x4xf16> -> tensor<2x4xf16>
+    %transpose_1 = IE.Transpose(%reshape_1) {order_value = affine_map<(d0, d1) -> (d1, d0)>} : tensor<2x4xf16> -> tensor<4x2xf16>
+    %fc_1 = IE.FullyConnected(%in_1, %transpose_1) : tensor<1x2xf16>, tensor<4x2xf16> -> tensor<1x4xf16>
+    %out_reshape_1 = IE.Reshape(%fc_1) {shape_value = [1, 1, 1, 4]} : tensor<1x4xf16> -> tensor<1x1x1x4xf16>
+
+    %concat = IE.Concat(%out_reshape_0, %out_reshape_1) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x4xf16>, tensor<1x1x1x4xf16> -> tensor<1x2x1x4xf16>
+    return %concat : tensor<1x2x1x4xf16>
+
+    // CHECK: [[CST:%.+]] = const.Declare tensor<1x2x4xf16> = dense<1> : tensor<4x1x2xui4>, [#const.ConvertElemType<ui8>, #const.CastElemType<ui4>, #const.CastElemType<f16>, #const.Transpose<#HWC>]
+    // CHECK: [[CST_0:%.+]] = const.Declare tensor<1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
+    // CHECK: [[CST_1:%.+]] = const.Declare tensor<1x1x1xf16> = dense<1.500000e+00> : tensor<1x1x1xf16>, [#const.Transpose<#HWC>]
+    // CHECK: [[CST_2:%.+]] = const.Declare tensor<1x1x4xf16> = dense<-1.000000e+00> : tensor<4x1x1xf16>, [#const.Transpose<#HWC>]
+    // CHECK: [[CST_3:%.+]] = const.Declare tensor<1x1x4xf16> = dense<2.000000e+00> : tensor<4x1x1xf16>, [#const.Transpose<#HWC>]
+    // CHECK: [[CST_4:%.+]] = const.Declare tensor<1x1x4xf16> = dense<-2.000000e+00> : tensor<4x1x1xf16>, [#const.Transpose<#HWC>]
+    // CHECK: [[RESHAPE_0:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK: [[SLICE_0:%.+]] = IE.Slice [[RESHAPE_0]] [0, 0] [1, 2] : tensor<1x4xf16> to tensor<1x2xf16>
+    // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[CST]], [[CST_0]], [[CST_1]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 16 : i64} : tensor<1x2x4xf16>, tensor<1x1x1xf16>, tensor<1x1x1xf16>, tensor<1x1x4xf16>, tensor<1x1x4xf16> -> tensor<1x2x4xf16>
+    // CHECK: [[RESHAPE_1:%.+]] = IE.Reshape([[FQ_0]]) {shape_value = [2, 4]} : tensor<1x2x4xf16> -> tensor<2x4xf16>
+    // CHECK: [[TRANSPOSE_0:%.+]] = IE.Transpose([[RESHAPE_1]]) {order_value = #CN} : tensor<2x4xf16> -> tensor<4x2xf16>
+    // CHECK: [[FC_0:%.+]] = IE.FullyConnected([[SLICE_0]], [[TRANSPOSE_0]]) : tensor<1x2xf16>, tensor<4x2xf16> -> tensor<1x4xf16>
+    // CHECK: [[RESHAPE_2:%.+]] = IE.Reshape([[FC_0]]) {shape_value = [1, 1, 1, 4]} : tensor<1x4xf16> -> tensor<1x1x1x4xf16>
+    // CHECK: [[SLICE_1:%.+]] = IE.Slice [[RESHAPE_0]] [0, 2] [1, 2] : tensor<1x4xf16> to tensor<1x2xf16>
+    // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[CST]], [[CST_0]], [[CST_1]], [[CST_4]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 16 : i64} : tensor<1x2x4xf16>, tensor<1x1x1xf16>, tensor<1x1x1xf16>, tensor<1x1x4xf16>, tensor<1x1x4xf16> -> tensor<1x2x4xf16>
+    // CHECK: [[RESHAPE_3:%.+]] = IE.Reshape([[FQ_1]]) {shape_value = [2, 4]} : tensor<1x2x4xf16> -> tensor<2x4xf16>
+    // CHECK: [[TRANSPOSE_1:%.+]] = IE.Transpose([[RESHAPE_3]]) {order_value = #CN} : tensor<2x4xf16> -> tensor<4x2xf16>
+    // CHECK: [[FC_1:%.+]] = IE.FullyConnected([[SLICE_1]], [[TRANSPOSE_1]]) : tensor<1x2xf16>, tensor<4x2xf16> -> tensor<1x4xf16>
+    // CHECK: [[RESHAPE_4:%.+]] = IE.Reshape([[FC_1]]) {shape_value = [1, 1, 1, 4]} : tensor<1x4xf16> -> tensor<1x1x1x4xf16>
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[RESHAPE_2]], [[RESHAPE_4]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x4xf16>, tensor<1x1x1x4xf16> -> tensor<1x2x1x4xf16>
+    // CHECK: return [[CONCAT]]
 }
 
 // -----

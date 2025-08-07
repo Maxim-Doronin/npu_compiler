@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
@@ -110,6 +110,34 @@ mlir::Value paddingFilter(mlir::Operation* origOp, mlir::PatternRewriter& rewrit
     return rewriter.createOrFold<IE::ExpandOp>(origOp->getLoc(), firstExpand, std::nullopt, ShapeRef(padsEnd));
 }
 
+mlir::Value generateZeroConst(mlir::Location loc, vpux::NDTypeInterface inType, ShapeRef padShape,
+                              mlir::PatternRewriter& rewriter) {
+    const auto padType = inType.changeShape(ShapeRef(padShape));
+    const auto eleType = padType.getElementType();
+
+    const auto getEleStorageType = [&]() {
+        if (const auto quantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(eleType)) {
+            return normalizeQuantStorageType(quantizedType);
+        } else {
+            return eleType;
+        }
+    };
+    const auto storageElementType = getEleStorageType();
+
+    // FIXME: this is a very weird way to create 0 of a particular type
+    auto outputBuffer = Const::Content::allocTempBuffer(padType, storageElementType, false);
+    outputBuffer.fillWithZero();
+
+    const auto dataType = mlir::cast<mlir::RankedTensorType>(padType.changeElemType(storageElementType));
+    mlir::DenseElementsAttr eleAttr;
+    const auto getDataAttr = [&](auto buffer) {
+        eleAttr = Const::createConstContent(dataType, buffer);
+    };
+    outputBuffer.mutate(getDataAttr);
+
+    return rewriter.create<Const::DeclareOp>(loc, padType, Const::ContentAttr::get(eleAttr)).getOutput();
+}
+
 mlir::Value concatWithZeroConst(mlir::Location loc, mlir::Value filter, ShapeRef subInput, int64_t sliceChannelOffset,
                                 mlir::PatternRewriter& rewriter) {
     const auto filterType = mlir::cast<vpux::NDTypeInterface>(filter.getType());
@@ -125,40 +153,13 @@ mlir::Value concatWithZeroConst(mlir::Location loc, mlir::Value filter, ShapeRef
         secondPadShape[Dims4D::Filter::IC.ind()] = 0;
     }
 
-    auto const generateZeroConst = [&](ShapeRef padShape) {
-        const auto padType = filterType.changeShape(ShapeRef(padShape));
-        const auto eleType = padType.getElementType();
-
-        const auto getEleStorageType = [&]() {
-            if (const auto quantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(eleType)) {
-                return normalizeQuantStorageType(quantizedType);
-            } else {
-                return eleType;
-            }
-        };
-        const auto storageElementType = getEleStorageType();
-
-        // FIXME: this is a very weird way to create 0 of a particular type
-        auto outputBuffer = Const::Content::allocTempBuffer(padType, storageElementType, false);
-        outputBuffer.fillWithZero();
-
-        const auto dataType = mlir::cast<mlir::RankedTensorType>(padType.changeElemType(storageElementType));
-        mlir::DenseElementsAttr eleAttr;
-        const auto getDataAttr = [&](auto buffer) {
-            eleAttr = Const::createConstContent(dataType, buffer);
-        };
-        outputBuffer.mutate(getDataAttr);
-
-        return rewriter.create<Const::DeclareOp>(loc, padType, Const::ContentAttr::get(eleAttr)).getOutput();
-    };
-
     SmallVector<mlir::Value> concatInput;
     if (sliceChannelOffset > 0) {
-        concatInput.push_back(generateZeroConst(ShapeRef(firstPadShape)));
+        concatInput.push_back(generateZeroConst(loc, filterType, ShapeRef(firstPadShape), rewriter));
     }
     concatInput.push_back(filter);
     if (secondPadShape[Dims4D::Filter::IC.ind()] != 0) {
-        concatInput.push_back(generateZeroConst(ShapeRef(secondPadShape)));
+        concatInput.push_back(generateZeroConst(loc, filterType, ShapeRef(secondPadShape), rewriter));
     }
     auto concatOp = rewriter.create<IE::ConcatOp>(loc, concatInput, Dims4D::Filter::IC);
 
@@ -422,11 +423,7 @@ bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugN
                   expandInShape.size());
         return false;
     }
-    if (expandInShape[Dims4D::Act::N] != 1) {
-        log.trace("[{0}]: Expand at {1} has batch {2}. Expected to have 1", debugName, expandOp.getLoc(),
-                  expandInShape[Dims4D::Act::N]);
-        return false;
-    }
+
     if (!expandInType.getElementType().isF16() &&
         !mlir::isa<mlir::quant::QuantizedType>(expandInType.getElementType())) {
         log.trace("[{0}]: Expand at {1} has {2} element type. Only float16 and quantized types are supported",
@@ -453,11 +450,17 @@ bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugN
     }
 
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
-    if (!beneficialToReshapeHeightToChannel(expandOp) && !beneficialToPadHeight(expandOp) &&
-        !beneficialToPadWidth(expandOp)) {
+    const auto isToReshape = beneficialToReshapeHeightToChannel(expandOp);
+    if (!isToReshape && !beneficialToPadHeight(expandOp) && !beneficialToPadWidth(expandOp)) {
         log.trace("[{0}]: Expand at {1} has shape {2} not compatible with alignment {3}. Expand to conv only for case "
                   "beneficialToReshapeHeightToChannel or beneficialToPadHeight or beneficialToPadWidth",
                   debugName, expandOp.getLoc(), expandInShape, convolutionAlignment);
+        return false;
+    }
+
+    if (!isToReshape && expandInShape[Dims4D::Act::N] != 1) {
+        log.trace("[{0}]: Expand at {1} has batch {2}. Expected to have 1", debugName, expandOp.getLoc(),
+                  expandInShape[Dims4D::Act::N]);
         return false;
     }
 

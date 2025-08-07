@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -25,8 +25,8 @@ namespace VPU {
 class StrategyManager final {
 public:
     explicit StrategyManager(mlir::func::FuncOp func, int64_t numTiles, bool enablePrefetchTiling,
-                             VPU::MCOptimizationScope mcOptimizationScope, Logger log,
-                             SiblingOpsAnalysis& siblingsOpsAnalysis);
+                             VPU::MCOptimizationScope mcOptimizationScope, SiblingOpsAnalysis& siblingsOpsAnalysis,
+                             std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModelPtr, Logger log);
 
 public:
     void assignMultiClusterStrategy(bool enableMultiClusterForSWLayer);

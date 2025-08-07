@@ -1,11 +1,12 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -113,6 +114,14 @@ mlir::LogicalResult PerAxisFQConcatPass::ConcatOpConverter::matchAndRewrite(IE::
     _log.nest().trace("Got {0} FQs as input.", concatInputList.size());
 
     auto firstFq = concatInputList.front().getDefiningOp<IE::FakeQuantizeOp>();
+    auto firstFqAxis = getFQAxisIndex(firstFq, _log);
+    auto concatAxis = getConcatAxis(origOp);
+
+    if (!concatAxis.has_value() || !firstFqAxis.has_value() || concatAxis.value().ind() != firstFqAxis.value()) {
+        _log.nest().trace("Concat axis does not match FakeQuantize axis.");
+        return mlir::failure();
+    }
+
     const auto levels = firstFq.getLevels();
     const auto lowFpType = firstFq.getLowFpType();
     const auto autoBroadcast = firstFq.getAutoBroadcast();
@@ -123,10 +132,12 @@ mlir::LogicalResult PerAxisFQConcatPass::ConcatOpConverter::matchAndRewrite(IE::
 
     for (const auto& concatInput : concatInputList) {
         auto fqOp = concatInput.getDefiningOp<IE::FakeQuantizeOp>();
+        auto curFqAxis = getFQAxisIndex(fqOp, _log);
 
         if (levels != fqOp.getLevels() || lowFpType != fqOp.getLowFpType() ||
-            autoBroadcast != fqOp.getAutoBroadcast()) {
-            _log.nest().trace("Got FQs with different levels, lowFpTypes or autobroadcasts.");
+            autoBroadcast != fqOp.getAutoBroadcast() || !curFqAxis.has_value() ||
+            curFqAxis.value() != firstFqAxis.value()) {
+            _log.nest().trace("Got FQs with different levels, lowFpTypes, fqAxis or autobroadcasts.");
             return mlir::failure();
         }
 

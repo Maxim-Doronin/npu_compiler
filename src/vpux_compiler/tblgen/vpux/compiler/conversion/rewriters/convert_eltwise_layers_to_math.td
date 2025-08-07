@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_CONVERSION_REWRITERS_CONVERT_ELTWISE_LAYERS_TO_MATH
@@ -49,5 +49,7 @@ multiclass SCGUnary<Op in_op, Op out_op, Attr fmf> {
 defm LogPat : SCGUnary<IE_LogOp, Math_LogOp, FASTMATH_APPROX_FUNC>;
 defm ExpPat : SCGUnary<IE_ExpOp, Math_ExpOp, FASTMATH_APPROX_FUNC>;
 defm SqrtPat : SCGUnary<IE_SqrtOp, Math_SqrtOp, FASTMATH_APPROX_FUNC>;
+defm TanhPat : SCGUnary<IE_TanhOp, Math_TanhOp, FASTMATH_APPROX_FUNC>;
+defm AtanPat : SCGUnary<IE_AtanOp, Math_AtanOp, FASTMATH_APPROX_FUNC>;
 
 #endif

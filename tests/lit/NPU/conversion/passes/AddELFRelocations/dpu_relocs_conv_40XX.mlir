@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --convert-VPUIPDPU-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
@@ -74,9 +74,9 @@ module @DPURelocWeightTableReuseTest {
               }
           }
           ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
-            ELF.Symbol @elfsym.program.metadata.cmx of(@program.metadata.cmx) type(<STT_SECTION>) size(0) value(0)
-            ELF.Symbol @elfsym.buffer.CMX_NN.0 of(@buffer.CMX_NN.0) type(<STT_SECTION>) size(0) value(0)
-            ELF.Symbol @elfsym.task.dpu.invariant.0.0 of(@task.dpu.invariant.0.0) type(<STT_SECTION>) size(0) value(0)
+            ELF.Symbol @elfsym.program.metadata.cmx of(@program.metadata.cmx) type(<STT_SECTION>)  size(82944) value(1075854336)
+            ELF.Symbol @elfsym.buffer.CMX_NN.0 of(@buffer.CMX_NN.0) type(<STT_SECTION>) size(1474560) value(1075937280)
+            ELF.Symbol @elfsym.task.dpu.invariant.0.0 of(@task.dpu.invariant.0.0) type(<STT_SECTION>)
           }
         }
       return
@@ -85,12 +85,17 @@ module @DPURelocWeightTableReuseTest {
 
 // CHECK:       VPUASM.DeclareBuffer @DeclareBuffer117 !VPUASM.Buffer< "CMX_NN"[0] <32768> : memref<160x1280x1x1xf16
 
-// CHECK:       ELF.CreateRelocationSection @rela.task.dpu.invariant.0.0.symtab
-// CHECK-SAME:     target(@task.dpu.invariant.0.0)
-// CHECK-SAME:     symtab(@symtab)
-// CHECK-SAME:     secFlags("SHF_NONE") {
+// CHECK:     ELF.CreateSection @task.dpu.invariant.0.0
+// CHECK:       act_offset0 = UINT 0xEC000,
+// CHECK:       act_offset1 = UINT 0xEC000,
+// CHECK:       act_offset2 = UINT 0xEC000,
+// CHECK:       act_offset3 = UINT 0xEC000,
+// CHECK:       wt_offset = UINT 0x20000,
+// CHECK:       odu_ac_base {
+// CHECK:         UINT ac_base = 0xEE80,
+
+// CHECK-NOT:       ELF.CreateRelocationSection @rela.task.dpu.invariant.0.0.symtab
 
 // Weights Relocs (relocation generated because nce_task_type has is_zero_offset_weights_table set and WT_OFFSET points to the weights buffer)
 //      wt_offset:
-// CHECK:           ELF.Reloc offset(92) sourceSym(@symtab::@elfsym.buffer.CMX_NN.0) relocType(<R_VPU_LO_21>) addend(32768)
-// CHECK-SAME:        (description : "Weights (wt_offset) in DPU invariant reloc")
+// CHECK-NOT:           ELF.Reloc offset({{[0-9]+}}) sourceSym(@symtab::@elfsym.buffer.CMX_NN.0)

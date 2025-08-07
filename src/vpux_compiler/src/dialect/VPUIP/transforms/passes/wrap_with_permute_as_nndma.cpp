@@ -1,6 +1,6 @@
 
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
@@ -586,7 +586,8 @@ bool checkSpaceToDepthPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
     }
 
     auto copyBackToDDROp = getTheOnlyUser<VPUIP::CopyOp>(swKernelOp);
-    if (!copyBackToDDROp->hasOneUse() || vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
+    if (copyBackToDDROp == nullptr || !copyBackToDDROp->hasOneUse() ||
+        vpux::VPUIP::hasDistributedOperand(copyBackToDDROp)) {
         return false;
     }
 
@@ -598,7 +599,7 @@ bool checkSpaceToDepthPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
     }
 
     auto user = getTheOnlyUser(copyBackToDDROp);
-    if (!vpux::VPUIP::hasDistributedOperand(user)) {
+    if (user == nullptr || !vpux::VPUIP::hasDistributedOperand(user)) {
         return false;
     }
     // It is difficult to use the general method to fuse Permute the with next Distributed Copy Op

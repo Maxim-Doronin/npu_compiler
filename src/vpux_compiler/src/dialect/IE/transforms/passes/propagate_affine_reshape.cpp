@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -482,7 +482,7 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
     SmallVector<mlir::Value> newInputs;
     newInputs.reserve(inputs.size());
     mlir::ArrayAttr dimsMapping;
-    const auto modifiedAxises = IE::getConcatModifiedAxis(origConcatOp);
+    const auto modifiedAxises = IE::getConcatAxes(origConcatOp);
 
     if (modifiedAxises.empty()) {
         return mlir::failure();
@@ -943,12 +943,21 @@ private:
 mlir::LogicalResult MoveThroughAdd::matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
-    if (origOp.getInput1().getType() != origOp.getInput2().getType()) {
+    const auto input1Type = origOp.getInput1().getType();
+    const auto input2Type = origOp.getInput2().getType();
+    if (input1Type != input2Type) {
         _log.nest().trace("Add inputs have different input types");
         return mlir::failure();
     }
 
     if (IE::isPerAxisQuant(origOp.getOutput()) || IE::isPerAxisQuant(origOp.getInput1())) {
+        return mlir::failure();
+    }
+
+    const auto inputOrder = mlir::cast<NDTypeInterface>(input1Type).getDimsOrder();
+    const auto outputOrder = mlir::cast<NDTypeInterface>(origOp.getOutput().getType()).getDimsOrder();
+    if (inputOrder != outputOrder) {
+        _log.nest().trace("Add has ODU permute");
         return mlir::failure();
     }
 
@@ -1071,7 +1080,7 @@ mlir::LogicalResult ConcatReshapeConcat::matchAndRewrite(IE::ConcatOp origOp, ml
     const auto affineInShape = getShape(reshapeOp.getInput());
     const auto affineOutShape = getShape(reshapeOp.getOutput());
 
-    const auto modifiedAxes = IE::getConcatModifiedAxis(origOp);
+    const auto modifiedAxes = IE::getConcatAxes(origOp);
     const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(reshapeOp.getDimMapping());
 
     if (IE::areModifiedAxesSplitOrMerged(dimMapping, affineInShape, affineOutShape, modifiedAxes, true, _log)) {
@@ -1082,18 +1091,28 @@ mlir::LogicalResult ConcatReshapeConcat::matchAndRewrite(IE::ConcatOp origOp, ml
     SmallVector<mlir::Value> newInputs;
     SmallVector<vpux::ShapeRef> newInputShapes;
     newInputs.reserve(inputs.size());
+    std::unordered_set<Dim> newConcatAxes;
     for (const auto& input : inputs) {
-        SmallVector<int64_t> newShapeVec =
-                IE::calculateInputShapeAfterSwitchConcatAndAffineReshape(input, origOp, reshapeOp);
-        const auto outputShapeAttr = getIntArrayAttr(rewriter.getContext(), Shape(newShapeVec));
+        auto newShapeInfo = IE::inferOutputShapeAfterAffineReshapeBeforeConcat(input, origOp, reshapeOp);
+        if (!newShapeInfo.has_value()) {
+            return mlir::failure();
+        }
+        const auto newConcatDim = newShapeInfo.value().first;
+        const auto newShape = newShapeInfo.value().second;
+        newConcatAxes.insert(newConcatDim);
+
+        const auto outputShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
         auto newAffineReshapeOp = rewriter.create<IE::AffineReshapeOp>(reshapeOp.getLoc(), input,
                                                                        reshapeOp.getDimMapping(), outputShapeAttr);
         newInputs.push_back(newAffineReshapeOp.getOutput());
         newInputShapes.push_back(getShape(newAffineReshapeOp.getOutput()));
     }
 
-    auto newOffsetsAttr = IE::getNewConcatOffsetsParameters(origOp.getStaticOffsetsAttr(), reshapeOp.getDimMapping(),
-                                                            inputs, newInputShapes, affineOutShape, modifiedAxes);
+    if (newConcatAxes.size() != 1) {
+        return mlir::failure();
+    }
+
+    auto newOffsetsAttr = IE::inferConcatOffsets(newInputShapes, *newConcatAxes.begin(), origOp.getContext());
 
     _log.trace("Swapped Concat-AffineReshape pattern");
     rewriter.replaceOpWithNewOp<IE::ConcatOp>(reshapeOp, newInputs, nullptr, newOffsetsAttr);

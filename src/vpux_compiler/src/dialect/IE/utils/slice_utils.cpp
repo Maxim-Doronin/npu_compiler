@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
@@ -27,6 +27,20 @@ DimArr getDiffInOutSizeDims(ShapeRef inShape, ShapeRef outShape) {
 std::optional<vpux::Dim> getSingleDiffAxis(ShapeRef inShape, ShapeRef outShape) {
     const auto layerAxes = getDiffInOutSizeDims(inShape, outShape);
     return layerAxes.size() == 1 ? layerAxes.front() : std::optional<vpux::Dim>{};
+}
+
+SmallVector<uint64_t> getSliceAxes(IE::SliceOp sliceOp) {
+    auto sliceInShape = getShape(sliceOp.getSource());
+    auto sizes = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
+
+    SmallVector<uint64_t> sliceAxes;
+    for (size_t dimIdx = 0; dimIdx < sizes.size(); dimIdx++) {
+        if (sliceInShape[Dim(dimIdx)] != sizes[dimIdx]) {
+            sliceAxes.push_back(static_cast<uint64_t>(dimIdx));
+        }
+    }
+
+    return sliceAxes;
 }
 
 }  // namespace IE

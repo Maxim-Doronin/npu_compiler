@@ -1,15 +1,15 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --llvm-translate %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --hostexec-to-llvm %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 module {
   // @main_part1_kernel is filled with random values as this LIT test is not supposed to use this for inference
   llvm.mlir.global internal constant @main_part1_kernel("\7FELF\02\01\00\00\00\00\00\00\00\00\00\00\01\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00") {addr_space = 0 : i32}
-  func.func @main(%arg0: memref<1x3x?x60xf32>, %arg1: memref<1x3x?x60xf32>, %arg2: !llvm.ptr, %arg3: !llvm.ptr, %arg4: !llvm.ptr, %arg5: !llvm.ptr) attributes {llvm.emit_c_interface} {
+  func.func @main(%arg0: memref<1x3x?x60xf32>, %arg1: memref<1x3x?x60xf32>, %arg2: !llvm.ptr, %arg3: !llvm.ptr, %arg4: !llvm.ptr, %arg5: !llvm.ptr, %arg6: !llvm.ptr, %arg7: !llvm.ptr, %arg8: !llvm.ptr) attributes {llvm.emit_c_interface} {
     %0 = llvm.mlir.constant(128520 : i64) : i64
     %1 = llvm.mlir.constant(3 : index) : i64
     %2 = llvm.mlir.constant(1 : index) : i64
@@ -41,9 +41,9 @@ module {
     %28 = llvm.insertvalue %4, %27[4, 2] : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> 
     %29 = llvm.insertvalue %2, %28[4, 3] : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> 
     %30 = builtin.unrealized_conversion_cast %29 : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> to memref<1x3x?x60xf16>
-    %31 = scf.for %arg6 = %8 to %10 step %7 iter_args(%arg7 = %30) -> (memref<1x3x?x60xf16>) {
-      %68 = builtin.unrealized_conversion_cast %arg7 : memref<1x3x?x60xf16> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
-      %subview = memref.subview %arg0[0, 0, %arg6, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf32> to memref<1x3x60x60xf32, strided<[?, ?, 60, 1], offset: ?>>
+    %31 = scf.for %arg11 = %8 to %10 step %7 iter_args(%arg12 = %30) -> (memref<1x3x?x60xf16>) {
+      %68 = builtin.unrealized_conversion_cast %arg12 : memref<1x3x?x60xf16> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
+      %subview = memref.subview %arg0[0, 0, %arg11, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf32> to memref<1x3x60x60xf32, strided<[?, ?, 60, 1], offset: ?>>
       %69 = builtin.unrealized_conversion_cast %subview : memref<1x3x60x60xf32, strided<[?, ?, 60, 1], offset: ?>> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
       %70 = llvm.mlir.zero : !llvm.ptr
       %71 = llvm.getelementptr %70[10800] : (!llvm.ptr) -> !llvm.ptr, f32
@@ -105,7 +105,7 @@ module {
       %125 = llvm.ptrtoint %124 : !llvm.ptr to i64
       %126 = llvm.mul %122, %125  : i64
       llvm.call @npu_level_zero_append_memory_copy(%114, %100, %126, %arg5) : (!llvm.ptr, !llvm.ptr, i64, !llvm.ptr) -> ()
-      %subview_0 = memref.subview %113[0, 0, %arg6, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf16> to memref<1x3x60x60xf16, strided<[?, ?, 60, 1], offset: ?>>
+      %subview_0 = memref.subview %113[0, 0, %arg11, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf16> to memref<1x3x60x60xf16, strided<[?, ?, 60, 1], offset: ?>>
       %127 = builtin.unrealized_conversion_cast %subview_0 : memref<1x3x60x60xf16, strided<[?, ?, 60, 1], offset: ?>> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
       %128 = llvm.extractvalue %127[1] : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> 
       %129 = llvm.mul %2, %2  : i64
@@ -140,9 +140,9 @@ module {
     %49 = llvm.insertvalue %4, %48[4, 2] : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> 
     %50 = llvm.insertvalue %2, %49[4, 3] : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> 
     %51 = builtin.unrealized_conversion_cast %50 : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> to memref<1x3x?x60xf32>
-    %52 = scf.for %arg6 = %8 to %10 step %7 iter_args(%arg7 = %51) -> (memref<1x3x?x60xf32>) {
-      %68 = builtin.unrealized_conversion_cast %arg7 : memref<1x3x?x60xf32> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
-      %subview = memref.subview %31[0, 0, %arg6, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf16> to memref<1x3x60x60xf16, strided<[?, ?, 60, 1], offset: ?>>
+    %52 = scf.for %arg11 = %8 to %10 step %7 iter_args(%arg12 = %51) -> (memref<1x3x?x60xf32>) {
+      %68 = builtin.unrealized_conversion_cast %arg12 : memref<1x3x?x60xf32> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
+      %subview = memref.subview %31[0, 0, %arg11, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf16> to memref<1x3x60x60xf16, strided<[?, ?, 60, 1], offset: ?>>
       %69 = builtin.unrealized_conversion_cast %subview : memref<1x3x60x60xf16, strided<[?, ?, 60, 1], offset: ?>> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
       %70 = llvm.mlir.zero : !llvm.ptr
       %71 = llvm.getelementptr %70[10800] : (!llvm.ptr) -> !llvm.ptr, f16
@@ -204,7 +204,7 @@ module {
       %125 = llvm.ptrtoint %124 : !llvm.ptr to i64
       %126 = llvm.mul %122, %125  : i64
       llvm.call @npu_level_zero_append_memory_copy(%114, %100, %126, %arg5) : (!llvm.ptr, !llvm.ptr, i64, !llvm.ptr) -> ()
-      %subview_0 = memref.subview %113[0, 0, %arg6, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf32> to memref<1x3x60x60xf32, strided<[?, ?, 60, 1], offset: ?>>
+      %subview_0 = memref.subview %113[0, 0, %arg11, 0] [1, 3, 60, 60] [1, 1, 1, 1] : memref<1x3x?x60xf32> to memref<1x3x60x60xf32, strided<[?, ?, 60, 1], offset: ?>>
       %127 = builtin.unrealized_conversion_cast %subview_0 : memref<1x3x60x60xf32, strided<[?, ?, 60, 1], offset: ?>> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
       %128 = llvm.extractvalue %127[1] : !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)> 
       %129 = llvm.mul %2, %2  : i64

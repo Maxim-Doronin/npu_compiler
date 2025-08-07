@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -27,6 +27,7 @@
 #include <mlir/Support/LogicalResult.h>
 
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
+#include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 
 #include "vpux/utils/core/string_ref.hpp"
@@ -479,6 +480,10 @@ public:
     }
 
     llvm::ArrayRef<uint8_t> getStorage() const {
+        return _storage;
+    }
+
+    MutableArrayRef<uint8_t> getStorage() {
         return _storage;
     }
 

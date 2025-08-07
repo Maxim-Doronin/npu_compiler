@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -407,6 +407,39 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::DynamicQuantizeOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// AddRewrite
+//
+
+class AddRewrite final : public mlir::OpRewritePattern<IE::AddOp> {
+public:
+    AddRewrite(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::AddOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// ExternalKernelRewrite
+//
+
+class ExternalKernelRewrite final : public mlir::OpRewritePattern<IE::ExternalKernelOp> {
+public:
+    ExternalKernelRewrite(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ExternalKernelOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ExternalKernelOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;

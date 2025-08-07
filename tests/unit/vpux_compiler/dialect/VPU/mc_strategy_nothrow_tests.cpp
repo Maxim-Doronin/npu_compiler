@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 #include "common/utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
@@ -101,8 +101,10 @@ TEST_F(MLIR_VPU_ClusteringStrategyNoThrow, SWLayer_ClusteringStrategy) {
     VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
 
     auto siblingsOpsAnalysis = vpux::VPU::SiblingOpsAnalysis(func);
+    const auto arch = VPU::getArch(module.get());
+    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
     vpux::VPU::StrategyManager strategyManager(func, tileOp.getCount(), enablePrefetchTiling,
-                                               VPU::MCOptimizationScope::SUBGRAPH, vpux::Logger::global(),
-                                               siblingsOpsAnalysis);
+                                               VPU::MCOptimizationScope::SUBGRAPH, siblingsOpsAnalysis, layerCostModel,
+                                               vpux::Logger::global());
     EXPECT_NO_THROW(strategyManager.assignMultiClusterStrategy(true));
 }

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -55,8 +55,9 @@ private:
 };
 
 bool isUpstreamPossible(IE::LayerOpInterface sliceOp, mlir::Value tensor, Logger log) {
-    if (mlir::isa<mlir::BlockArgument>(tensor))
+    if (mlir::isa<mlir::BlockArgument>(tensor)) {
         return false;
+    }
     mlir::Operation* parentOp = tensor.getDefiningOp();
     // Unary and eltwise ops are primary candidates for upstreaming slice ops.
     // Later on, implementation could handle also Conv, Pool upstreaming

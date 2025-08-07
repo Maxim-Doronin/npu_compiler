@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -39,7 +39,7 @@ private:
         CycleInfo() = default;
         CycleInfo(size_t opIdx, size_t cycleBegin, size_t cycleCost,
                   VPU::ExecutorKind executorKind = VPU::ExecutorKind::DMA_NN)
-                : opIdx_(opIdx), cycleBegin_(cycleBegin), cycleCost_(cycleCost), executorKind_(executorKind){};
+                : opIdx_(opIdx), cycleBegin_(cycleBegin), cycleCost_(cycleCost), executorKind_(executorKind) {};
 
         size_t getOpIdx() const {
             return opIdx_;

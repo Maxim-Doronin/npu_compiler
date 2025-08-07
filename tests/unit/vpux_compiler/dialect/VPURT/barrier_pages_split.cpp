@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPURT/interfaces/barrier_pages_split.hpp"
@@ -2461,7 +2461,7 @@ TEST_F(BarrierPagesSplitTests, GetAndLegalizeDummyDmaInsertionDataWithSyncPoint)
  *            |
  *            b0
  *            |
- *  Page1     t1
+ *  Page0     t1
  *            |
  *            b1
  *            |  \
@@ -2571,6 +2571,572 @@ TEST_F(BarrierPagesSplitTests, GetAndLegalizeDummyDmaInsertionDataWithSyncPointA
     ASSERT_EQ(dummyDmaInsertionData[0].updateBars.size(), 1);
     EXPECT_EQ(dummyDmaInsertionData[0].updateBars[0], 3);
     EXPECT_EQ(dummyDmaInsertionData[0].insertAfter, 3);
+
+    auto testResult = barrierPagesSplitHandlerTest.getBarrierMaps();
+
+    EXPECT_EQ(expectedBarrierMapsConfig.taskUpdateBarriers, testResult.taskUpdateBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.taskWaitBarriers, testResult.taskWaitBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierProducerMap, testResult.barrierProducerMap);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierConsumerMap, testResult.barrierConsumerMap);
+}
+
+/**
+ * HW FIFO (DMA0): t0 t6
+ * HW FIFO (DMA1): t1 t3
+ * HW FIFO (DPU): t2 t4 t5
+ *
+ * ------     t0
+ *            |
+ *            b0
+ *            |
+ *  Page0     t1
+ *            |
+ *            b1
+ *            |  \
+ * ------     t2  t3
+ *            |  /
+ *            b2
+ *            |
+ *  Page1     t4
+ *            |
+ *            b3
+ *            |
+ * ------     t5
+ *            |
+ *            b4
+ *            |
+ *  Page2     t6
+ *            |
+ *            b5
+ * ------
+ */
+// Create a tuple with BarrierInfoMaps, pageSize, barrierToPidVec and expectedBarrierMapsConfig
+std::tuple<BarrierInfoMaps, size_t, SmallVector<size_t>, BarrierInfoMaps>
+graphToCheckEnqueueAtBootstrapAndStartBarrier() {
+    BarrierInfoMaps barrierMapsConfig;
+
+    barrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {4},  // task 5
+            {5}   // task 6
+    };
+
+    barrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {1},  // task 3
+            {2},  // task 4
+            {3},  // task 5
+            {4}   // task 6
+    };
+
+    fillProducersAndConsumers(barrierMapsConfig);
+
+    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+
+    barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 6};
+    barrierMapsConfig.taskQueueTypeMap[dmaType1] = {1, 3};
+    barrierMapsConfig.taskQueueTypeMap[dpuType] = {2, 4, 5};
+
+    size_t pageSize = 2;
+
+    SmallVector<size_t> barrierToPidVec = {0, 1, 2, 3, 0, 1};
+
+    BarrierInfoMaps expectedBarrierMapsConfig;
+
+    expectedBarrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {4},  // task 5
+            {5}   // task 6
+    };
+
+    expectedBarrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {1},  // task 3
+            {2},  // task 4
+            {3},  // task 5
+            {4}   // task 6
+    };
+    fillProducersAndConsumers(expectedBarrierMapsConfig);
+
+    return std::make_tuple(barrierMapsConfig, pageSize, barrierToPidVec, expectedBarrierMapsConfig);
+}
+
+TEST_F(BarrierPagesSplitTests, CheckEnqueueAtBootstrapAndStartBarrier) {
+    auto [barrierMapsConfig, pageSize, barrierToPidVec, expectedBarrierMapsConfig] =
+            graphToCheckEnqueueAtBootstrapAndStartBarrier();
+
+    BarrierInfoTest barrierInfoTest(barrierMapsConfig);
+    VPURT::BarrierPagesSplitHandler barrierPagesSplitHandlerTest(barrierInfoTest, barrierMapsConfig.taskQueueTypeMap,
+                                                                 pageSize, /*_barrierFifoDepth = */ 1);
+
+    barrierPagesSplitHandlerTest.initPrevPhysBarrierData(barrierToPidVec);
+
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyTaskBarrierPagesAreValid());
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyNoCyclicDeps());
+
+    EXPECT_TRUE(barrierPagesSplitHandlerTest.areBoundaryTasksFromNeighborPagesDependent());
+
+    mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap{vpux::VPU::ExecutorKind::DMA_NN};
+    auto enqueueBarVec = barrierPagesSplitHandlerTest.prepareEnqueueDmaBarForFullWlm(executorEnqAtBootstrap);
+
+    ASSERT_EQ(enqueueBarVec.size(), 7);
+
+    // DMA tasks should be enqueued at bootstrap
+    EXPECT_FALSE(enqueueBarVec[0].has_value());
+    EXPECT_FALSE(enqueueBarVec[1].has_value());
+    EXPECT_FALSE(enqueueBarVec[3].has_value());
+    EXPECT_FALSE(enqueueBarVec[6].has_value());
+
+    // DPU tasks enqueued at start barrier
+    EXPECT_TRUE(enqueueBarVec[2].has_value());
+    EXPECT_EQ(enqueueBarVec[2].value(), 0);
+    EXPECT_TRUE(enqueueBarVec[4].has_value());
+    EXPECT_EQ(enqueueBarVec[4].value(), 0);
+    EXPECT_TRUE(enqueueBarVec[5].has_value());
+    EXPECT_EQ(enqueueBarVec[5].value(), 0);
+
+    auto testResult = barrierPagesSplitHandlerTest.getBarrierMaps();
+
+    EXPECT_EQ(expectedBarrierMapsConfig.taskUpdateBarriers, testResult.taskUpdateBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.taskWaitBarriers, testResult.taskWaitBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierProducerMap, testResult.barrierProducerMap);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierConsumerMap, testResult.barrierConsumerMap);
+}
+
+/**
+ * HW FIFO (DMA0): t0 t2 t4
+ * HW FIFO (DMA1): t1 t3 t5
+ * HW FIFO (DPU): t6
+ *
+ * ------     t0
+ *            |
+ *            b0
+ *            |
+ *  Page0     t1
+ *            |
+ *            b1
+ *            |
+ * ------     t2
+ *            |
+ *            b2
+ *            |
+ *  Page1     t3
+ *            |
+ *            b3
+ *            |
+ * ------     t4
+ *            |
+ *            b4
+ *            |
+ *  Page2     t5
+ *            |
+ *            b5
+ *            |
+ * ------     t6
+ *  Page3     |
+ *            b6
+ * ------
+ */
+// Create a tuple with BarrierInfoMaps, pageSize, barrierToPidVec and expectedBarrierMapsConfig
+std::tuple<BarrierInfoMaps, size_t, SmallVector<size_t>, BarrierInfoMaps> graphToCheckEnqueueOfDpuNotAtStartBarrier() {
+    BarrierInfoMaps barrierMapsConfig;
+
+    barrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {3},  // task 3
+            {4},  // task 4
+            {5},  // task 5
+            {6}   // task 6
+    };
+
+    barrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {4},  // task 5
+            {5}   // task 6
+    };
+
+    fillProducersAndConsumers(barrierMapsConfig);
+
+    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+
+    barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 2, 4};
+    barrierMapsConfig.taskQueueTypeMap[dmaType1] = {1, 3, 5};
+    barrierMapsConfig.taskQueueTypeMap[dpuType] = {6};
+
+    size_t pageSize = 2;
+
+    SmallVector<size_t> barrierToPidVec = {0, 1, 2, 3, 0, 1, 2};
+
+    BarrierInfoMaps expectedBarrierMapsConfig;
+
+    expectedBarrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {3},  // task 3
+            {4},  // task 4
+            {5},  // task 5
+            {6}   // task 6
+    };
+
+    expectedBarrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {4},  // task 5
+            {5}   // task 6
+    };
+    fillProducersAndConsumers(expectedBarrierMapsConfig);
+
+    return std::make_tuple(barrierMapsConfig, pageSize, barrierToPidVec, expectedBarrierMapsConfig);
+}
+
+TEST_F(BarrierPagesSplitTests, CheckEnqueueOfDpuNotAtStartBarrier) {
+    auto [barrierMapsConfig, pageSize, barrierToPidVec, expectedBarrierMapsConfig] =
+            graphToCheckEnqueueOfDpuNotAtStartBarrier();
+
+    BarrierInfoTest barrierInfoTest(barrierMapsConfig);
+    VPURT::BarrierPagesSplitHandler barrierPagesSplitHandlerTest(barrierInfoTest, barrierMapsConfig.taskQueueTypeMap,
+                                                                 pageSize, /*_barrierFifoDepth = */ 1);
+
+    barrierPagesSplitHandlerTest.initPrevPhysBarrierData(barrierToPidVec);
+
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyTaskBarrierPagesAreValid());
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyNoCyclicDeps());
+
+    EXPECT_TRUE(barrierPagesSplitHandlerTest.areBoundaryTasksFromNeighborPagesDependent());
+
+    mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap{vpux::VPU::ExecutorKind::DMA_NN};
+    auto enqueueBarVec = barrierPagesSplitHandlerTest.prepareEnqueueDmaBarForFullWlm(executorEnqAtBootstrap);
+
+    ASSERT_EQ(enqueueBarVec.size(), 7);
+
+    // DMA tasks should be enqueued at bootstrap
+    for (size_t taskInd = 0; taskInd < 6; ++taskInd) {
+        EXPECT_FALSE(enqueueBarVec[taskInd].has_value());
+    }
+
+    // DPU task from Page 2 enqueued at end barrier of Page 1
+    ASSERT_TRUE(enqueueBarVec[6].has_value());
+    EXPECT_EQ(enqueueBarVec[6].value(), 3);
+
+    auto testResult = barrierPagesSplitHandlerTest.getBarrierMaps();
+
+    EXPECT_EQ(expectedBarrierMapsConfig.taskUpdateBarriers, testResult.taskUpdateBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.taskWaitBarriers, testResult.taskWaitBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierProducerMap, testResult.barrierProducerMap);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierConsumerMap, testResult.barrierConsumerMap);
+}
+
+/**
+ * HW FIFO (DMA0): t0 t2 t4 t6
+ * HW FIFO (DMA1): t1 t3 t5
+ * HW FIFO (DPU): t7 t8
+ *
+ * ------     t0
+ *            |
+ *            b0
+ *            |
+ *  Page0     t1
+ *            |
+ *            b1
+ *            |
+ * ------     t2
+ *            |
+ *            b2
+ *            |
+ *  Page1     t3
+ *            |
+ *            b3
+ *            |
+ * ------     t4
+ *            |
+ *            b4
+ *            |
+ *  Page2     t5
+ *            |
+ *            b5
+ *            |  \
+ * ------     t6 t7
+ *            |  /
+ *            b6
+ *  Page3     |
+ *            t8
+ *            |
+ *            b7
+ * ------
+ */
+// Create a tuple with BarrierInfoMaps, pageSize, barrierToPidVec and expectedBarrierMapsConfig
+std::tuple<BarrierInfoMaps, size_t, SmallVector<size_t>, BarrierInfoMaps> graphToCheckEnqueueMergeOfDpu() {
+    BarrierInfoMaps barrierMapsConfig;
+
+    barrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {3},  // task 3
+            {4},  // task 4
+            {5},  // task 5
+            {6},  // task 6
+            {6},  // task 7
+            {7}   // task 8
+    };
+
+    barrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {4},  // task 5
+            {5},  // task 6
+            {5},  // task 7
+            {6}   // task 8
+    };
+
+    fillProducersAndConsumers(barrierMapsConfig);
+
+    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+
+    barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 2, 4, 6};
+    barrierMapsConfig.taskQueueTypeMap[dmaType1] = {1, 3, 5};
+    barrierMapsConfig.taskQueueTypeMap[dpuType] = {7, 8};
+
+    size_t pageSize = 2;
+
+    SmallVector<size_t> barrierToPidVec = {0, 1, 2, 3, 0, 1, 2, 3};
+
+    BarrierInfoMaps expectedBarrierMapsConfig;
+
+    expectedBarrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {3},  // task 3
+            {4},  // task 4
+            {5},  // task 5
+            {6},  // task 6
+            {6},  // task 7
+            {7}   // task 8
+    };
+
+    expectedBarrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {4},  // task 5
+            {5},  // task 6
+            {5},  // task 7
+            {6}   // task 8
+    };
+    fillProducersAndConsumers(expectedBarrierMapsConfig);
+
+    return std::make_tuple(barrierMapsConfig, pageSize, barrierToPidVec, expectedBarrierMapsConfig);
+}
+
+TEST_F(BarrierPagesSplitTests, CheckEnqueueMergeOfDpu) {
+    auto [barrierMapsConfig, pageSize, barrierToPidVec, expectedBarrierMapsConfig] = graphToCheckEnqueueMergeOfDpu();
+
+    BarrierInfoTest barrierInfoTest(barrierMapsConfig);
+    VPURT::BarrierPagesSplitHandler barrierPagesSplitHandlerTest(barrierInfoTest, barrierMapsConfig.taskQueueTypeMap,
+                                                                 pageSize, /*_barrierFifoDepth = */ 1);
+
+    barrierPagesSplitHandlerTest.initPrevPhysBarrierData(barrierToPidVec);
+
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyTaskBarrierPagesAreValid());
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyNoCyclicDeps());
+
+    EXPECT_TRUE(barrierPagesSplitHandlerTest.areBoundaryTasksFromNeighborPagesDependent());
+
+    mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap{vpux::VPU::ExecutorKind::DMA_NN};
+    auto enqueueBarVec = barrierPagesSplitHandlerTest.prepareEnqueueDmaBarForFullWlm(executorEnqAtBootstrap);
+
+    ASSERT_EQ(enqueueBarVec.size(), 9);
+
+    // DMA tasks should be enqueued at bootstrap
+    for (size_t taskInd = 0; taskInd < 7; ++taskInd) {
+        EXPECT_FALSE(enqueueBarVec[taskInd].has_value());
+    }
+
+    // DPU task from Page 2 enqueued at end barrier of Page 1
+    ASSERT_TRUE(enqueueBarVec[7].has_value());
+    EXPECT_EQ(enqueueBarVec[7].value(), 3);
+
+    // DPU task from Page 3 enqueued together with previous DPU
+    ASSERT_TRUE(enqueueBarVec[8].has_value());
+    EXPECT_EQ(enqueueBarVec[8].value(), enqueueBarVec[7].value());
+
+    auto testResult = barrierPagesSplitHandlerTest.getBarrierMaps();
+
+    EXPECT_EQ(expectedBarrierMapsConfig.taskUpdateBarriers, testResult.taskUpdateBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.taskWaitBarriers, testResult.taskWaitBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierProducerMap, testResult.barrierProducerMap);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierConsumerMap, testResult.barrierConsumerMap);
+}
+
+/**
+ * HW FIFO (DMA0): t0 t2
+ * HW FIFO (DMA1): t1 t3 t6
+ * HW FIFO (SHV(withDPU)): t5
+ * HW FIFO (DPU): t7
+ *
+ * ------     t0
+ *            |
+ *            b0
+ *            |
+ *  Page0     t1
+ *            |
+ *            b1
+ *            |
+ * ------     t2
+ *            |
+ *            b2
+ *            |
+ *  Page1     t3
+ *            |
+ *            b3
+ *            |  \
+ * ------     t4  t5
+ *            |  /
+ *            b4
+ *            |
+ *  Page2     t6
+ *            |
+ *            b5
+ *            |
+ * ------     t7
+ *  Page3     |
+ *            b6
+ * ------
+ */
+// Create a tuple with BarrierInfoMaps, pageSize, barrierToPidVec, shvTasksWithDpu and expectedBarrierMapsConfig
+std::tuple<BarrierInfoMaps, size_t, SmallVector<size_t>, SmallVector<size_t>, BarrierInfoMaps>
+graphToCheckEnqueueOfDpuDelayedDueToShvWithDpu() {
+    BarrierInfoMaps barrierMapsConfig;
+
+    barrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {3},  // task 3
+            {4},  // task 4
+            {4},  // task 5
+            {5},  // task 6
+            {6}   // task 7
+    };
+
+    barrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {3},  // task 5
+            {4},  // task 6
+            {5}   // task 7
+    };
+
+    fillProducersAndConsumers(barrierMapsConfig);
+
+    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType shvType{VPU::ExecutorKind::SHAVE_NN, 0};
+
+    barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 2, 4};
+    barrierMapsConfig.taskQueueTypeMap[dmaType1] = {1, 3, 6};
+    barrierMapsConfig.taskQueueTypeMap[dpuType] = {7};
+    barrierMapsConfig.taskQueueTypeMap[shvType] = {5};
+
+    size_t pageSize = 2;
+
+    SmallVector<size_t> barrierToPidVec = {0, 1, 2, 3, 0, 1, 2};
+
+    SmallVector<size_t> shvTasksWithDpu = {5};
+
+    BarrierInfoMaps expectedBarrierMapsConfig;
+
+    expectedBarrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {3},  // task 3
+            {4},  // task 4
+            {4},  // task 5
+            {5},  // task 6
+            {6}   // task 7
+    };
+
+    expectedBarrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {1},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {3},  // task 5
+            {4},  // task 6
+            {5}   // task 7
+    };
+    fillProducersAndConsumers(expectedBarrierMapsConfig);
+
+    return std::make_tuple(barrierMapsConfig, pageSize, barrierToPidVec, shvTasksWithDpu, expectedBarrierMapsConfig);
+}
+
+TEST_F(BarrierPagesSplitTests, CheckEnqueueOfDpuDelayedDueToShvWithDpu) {
+    auto [barrierMapsConfig, pageSize, barrierToPidVec, shvTasksWithDpu, expectedBarrierMapsConfig] =
+            graphToCheckEnqueueOfDpuDelayedDueToShvWithDpu();
+
+    BarrierInfoTest barrierInfoTest(barrierMapsConfig);
+    VPURT::BarrierPagesSplitHandler barrierPagesSplitHandlerTest(barrierInfoTest, barrierMapsConfig.taskQueueTypeMap,
+                                                                 pageSize, /*_barrierFifoDepth = */ 1, shvTasksWithDpu);
+
+    barrierPagesSplitHandlerTest.initPrevPhysBarrierData(barrierToPidVec);
+
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyTaskBarrierPagesAreValid());
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyNoCyclicDeps());
+
+    EXPECT_TRUE(barrierPagesSplitHandlerTest.areBoundaryTasksFromNeighborPagesDependent());
+
+    mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap{vpux::VPU::ExecutorKind::DMA_NN};
+    auto enqueueBarVec = barrierPagesSplitHandlerTest.prepareEnqueueDmaBarForFullWlm(executorEnqAtBootstrap);
+
+    ASSERT_EQ(enqueueBarVec.size(), 8);
+
+    // SHV task enqueued at startbarrier
+    ASSERT_TRUE(enqueueBarVec[5].has_value());
+    EXPECT_EQ(enqueueBarVec[5].value(), 0);
+
+    // DPU task from Page 2 has enqueue delayed to be after SHV task which submits DPU
+    ASSERT_TRUE(enqueueBarVec[7].has_value());
+    EXPECT_EQ(enqueueBarVec[7].value(), 4);
 
     auto testResult = barrierPagesSplitHandlerTest.getBarrierMaps();
 

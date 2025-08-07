@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -12,12 +12,14 @@ namespace {
 
 template <typename OpType>
 size_t getEntryBlockSize(mlir::Operation* operation) {
-    if (!operation->getNumRegions())
+    if (!operation->getNumRegions()) {
         return 0;
+    }
 
     auto& blocks = operation->getRegion(0).getBlocks();
-    if (blocks.empty())
+    if (blocks.empty()) {
         return 0;
+    }
 
     auto ops = blocks.front().getOps<OpType>();
     return vpux::checked_cast<size_t>(std::distance(ops.begin(), ops.end()));

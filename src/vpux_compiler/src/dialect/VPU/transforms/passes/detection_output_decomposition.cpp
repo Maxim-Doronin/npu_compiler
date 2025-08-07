@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
@@ -131,8 +131,9 @@ mlir::Value transposeClassPredictions(mlir::PatternRewriter& rewriter, mlir::Val
 
     // keep default 4D order because this is the order that will be used throughout.
     // pretend that the data was never reordered in the first place.
-    const auto defaultOrder = DimsOrder::NCHW.toAffineMap(ctx);    //              \/--swap--\/
-    const auto permutationMap = DimsOrder::NCWH.toAffineMap(ctx);  // [Batch, 1, Priors, Classes]
+    const auto defaultOrder = mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx));  //              \/--swap--\/
+    const auto permutationMap =
+            mlir::AffineMapAttr::get(DimsOrder::NCWH.toAffineMap(ctx));  // [Batch, 1, Priors, Classes]
 
     return rewriter.create<VPU::MemPermuteOp>(tensor.getLoc(), tensor, defaultOrder, permutationMap);
 }
@@ -142,8 +143,9 @@ mlir::Value transposeBoxes(mlir::PatternRewriter& rewriter, mlir::Value boxes4D)
 
     // keep default 4D order because this is the order that will be used throughout
     // pretend that the data was never reordered in the first place
-    const auto defaultOrder = DimsOrder::NCHW.toAffineMap(ctx);    //           \/--swap--\/
-    const auto permutationMap = DimsOrder::NHCW.toAffineMap(ctx);  // [Batch, Priors, Classes, 4 or 5]
+    const auto defaultOrder = mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx));  //           \/--swap--\/
+    const auto permutationMap =
+            mlir::AffineMapAttr::get(DimsOrder::NHCW.toAffineMap(ctx));  // [Batch, Priors, Classes, 4 or 5]
 
     return rewriter.create<VPU::MemPermuteOp>(boxes4D.getLoc(), boxes4D, defaultOrder, permutationMap);
 }

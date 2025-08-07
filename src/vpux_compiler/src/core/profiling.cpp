@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/Visitors.h>
@@ -98,12 +98,7 @@ mlir::BlockArgument vpux::addNewProfilingOutput(mlir::MLIRContext* ctx, mlir::fu
             getTensorType(ndOutputType.getShape(), ndOutputType.getElementType(), ndOutputType.getDimsOrder(), nullptr);
     auto userInfoBuilder = mlir::OpBuilder::atBlockEnd(&netInfo.getProfilingOutputsInfo().front().front());
     userInfoBuilder.create<net::DataInfoOp>(mlir::NameLoc::get(mlir::StringAttr::get(ctx, "profilingDataOutputInfo")),
-                                            mlir::StringAttr::get(ctx, name), mlir::TypeAttr::get(outputUserResult),
-                                            /*OptionalAttr originalShape*/ nullptr,
-                                            /*OptionalAttr friendlyName*/ nullptr,
-                                            /*OptionalAttr inputName*/ nullptr,
-                                            /*OptionalAttr tensorNames*/ nullptr,
-                                            /*profilingSectionsCount=*/0);
+                                            name, outputUserResult);
 
     const mlir::Location suffixLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, "profiling_" + name));
     const auto argLoc = mlir::FusedLoc::get(ctx, {netFunc.getLoc(), suffixLoc});
@@ -113,9 +108,6 @@ mlir::BlockArgument vpux::addNewProfilingOutput(mlir::MLIRContext* ctx, mlir::fu
 
 bool vpux::isProfiledDmaTask(VPURT::TaskOp taskOp) {
     auto* wrappedTaskOp = taskOp.getInnerTaskOp();
-
-    VPUX_THROW_WHEN(mlir::isa<VPUIP::NCEClusterTilingOp>(wrappedTaskOp),
-                    "NCEClusterTiling is not expected at this stage of compilation");
 
     return mlir::isa_and_nonnull<VPUIP::DMATypeOpInterface>(wrappedTaskOp) &&
            !mlir::isa<VPUIP::SyncDMAOp>(wrappedTaskOp);

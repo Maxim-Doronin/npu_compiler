@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
@@ -81,8 +81,8 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
             const auto inputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
             const auto inputTileType = inputType.extractDenseTile(inputTile.offsets, inputTile.shape);
 
-            auto distributions = VPU::getActivationDistributionAttrFromOp(clusteredOp, inputTileType, numClusters,
-                                                                          siblingsOpsAnalysis);
+            auto distributions = VPU::getActivationDistributionAttrFromOp(
+                    clusteredOp, clusteredOp->getOperand(0), inputTileType, numClusters, siblingsOpsAnalysis);
             auto distribution =
                     mlir::isa<VPU::SparseTensorType>(inputTileType)
                             ? distributions.at(mlir::cast<vpux::VPU::SparseTensorType>(inputTileType).getData())
@@ -303,7 +303,7 @@ bool VPU::doesLayerFitIntoCMX(mlir::Operation* op, VPU::MultiClusterStrategy str
     SmallVector<Byte> buffersSize{};
     for (auto input : op->getOperands()) {
         buffersSize.push_back(VPU::getTotalAllocSizeWithDistribution(
-                input.getType(), getActivationDistributionAttrFromOp(clusteredOp, input.getType(), numClusters,
+                input.getType(), getActivationDistributionAttrFromOp(clusteredOp, input, input.getType(), numClusters,
                                                                      strategy, siblingsAnalysis)));
     }
     for (auto result : op->getResults()) {

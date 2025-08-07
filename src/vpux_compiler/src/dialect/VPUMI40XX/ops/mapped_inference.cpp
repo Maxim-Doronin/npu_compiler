@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
@@ -107,8 +107,9 @@ mlir::MutableOperandRange vpux::VPUMI40XX::MappedInferenceOp::getListHeadMutable
 
     switch (taskType) {
     case VPURegMapped::TaskType::DMA:
-        if (taskSubListSizeIsNotValid(getDmaCount(), tileIdx, listIdx))
+        if (taskSubListSizeIsNotValid(getDmaCount(), tileIdx, listIdx)) {
             return emptyOperandRange;
+        }
 
         emptyTiles = countEmptyArray(getDmaCount(), tileIdx);
         majorOperand = tileIdx - emptyTiles;
@@ -119,22 +120,25 @@ mlir::MutableOperandRange vpux::VPUMI40XX::MappedInferenceOp::getListHeadMutable
         return getDmaTasksMutable()[majorOperand].slice(checked_cast<unsigned int>(minorOperand), 1);
         break;
     case VPURegMapped::TaskType::DPUInvariant:
-        if (taskListSizeIsNotValid(getInvariantCount(), tileIdx))
+        if (taskListSizeIsNotValid(getInvariantCount(), tileIdx)) {
             return emptyOperandRange;
+        }
 
         emptyTiles = countZeroes(getInvariantCount(), tileIdx);
         return getInvariantTasksMutable().slice(checked_cast<unsigned int>(tileIdx - emptyTiles), 1);
         break;
     case VPURegMapped::TaskType::DPUVariant:
-        if (taskListSizeIsNotValid(getVariantCount(), tileIdx))
+        if (taskListSizeIsNotValid(getVariantCount(), tileIdx)) {
             return emptyOperandRange;
+        }
 
         emptyTiles = countZeroes(getVariantCount(), tileIdx);
         return getVariantTasksMutable().slice(checked_cast<unsigned int>(tileIdx - emptyTiles), 1);
         break;
     case VPURegMapped::TaskType::ActKernelInvocation:
-        if (taskSubListSizeIsNotValid(getActKernelInvocationsCount(), tileIdx, listIdx))
+        if (taskSubListSizeIsNotValid(getActKernelInvocationsCount(), tileIdx, listIdx)) {
             return emptyOperandRange;
+        }
 
         emptyTiles = countEmptyArray(getActKernelInvocationsCount(), tileIdx);
         majorOperand = tileIdx - emptyTiles;
@@ -145,8 +149,9 @@ mlir::MutableOperandRange vpux::VPUMI40XX::MappedInferenceOp::getListHeadMutable
         return getActKernelInvocationsMutable()[majorOperand].slice(checked_cast<unsigned int>(minorOperand), 1);
         break;
     case VPURegMapped::TaskType::ActKernelRange:
-        if (taskSubListSizeIsNotValid(getActKernelRangesCount(), tileIdx, listIdx))
+        if (taskSubListSizeIsNotValid(getActKernelRangesCount(), tileIdx, listIdx)) {
             return emptyOperandRange;
+        }
 
         emptyTiles = countEmptyArray(getActKernelRangesCount(), tileIdx);
         majorOperand = tileIdx - emptyTiles;

@@ -83,6 +83,19 @@ void printErrorInfo(const std::string& errorStr, vcl_result_t ret) {
     std::cerr.flags(originalFormat);
 }
 
+bool configureDeviceDesc(vcl_device_desc_t& deviceDesc, uint32_t platform) {
+    char* envDeviceDescEmpty = getenv("VCL_SETTING_DEVICEDESC_EMPTY");
+    if (!envDeviceDescEmpty) {
+        std::cout << "Use the complete device description" << std::endl;
+        deviceDesc = {sizeof(vcl_device_desc_t), platform, 3, 5};
+        return true;
+    } else {
+        std::cout << "Use the empty device description" << std::endl;
+        deviceDesc = {};
+        return false;
+    }
+}
+
 using supported_platform = std::unordered_map<std::string, uint32_t>;
 using supported_vcl_log_level = std::unordered_map<std::string, vcl_log_level_t>;
 vcl_result_t getVclCompiler(const std::map<std::string, std::string>& buildConfig, vcl_compiler_handle_t* compiler,
@@ -126,14 +139,14 @@ vcl_result_t getVclCompiler(const std::map<std::string, std::string>& buildConfi
     compilerDesc.version.major = VCL_COMPILER_VERSION_MAJOR;
     compilerDesc.version.minor = VCL_COMPILER_VERSION_MINOR;
     compilerDesc.debugLevel = debugLevel;
-    // Note: `3` is the NPU Revision Identifier and `5` is number of tiles for NPU.4000. The magic number of device
-    // desc can be updated by the passed config.
-    vcl_device_desc_t deviceDesc = {sizeof(vcl_device_desc_t), platform, 3, 5};
 
+    vcl_device_desc_t deviceDesc;
+    bool hasDeviceDesc = configureDeviceDesc(deviceDesc, platform);
+    vcl_device_desc_t* deviceDescPtr = hasDeviceDesc ? &deviceDesc : nullptr;
     if (saveErrorLog == nullptr) {
-        ret = vclCompilerCreate(&compilerDesc, &deviceDesc, compiler, nullptr);
+        ret = vclCompilerCreate(&compilerDesc, deviceDescPtr, compiler, nullptr);
     } else {
-        ret = vclCompilerCreate(&compilerDesc, &deviceDesc, compiler, logHandle);
+        ret = vclCompilerCreate(&compilerDesc, deviceDescPtr, compiler, logHandle);
     }
     if (ret != VCL_RESULT_SUCCESS) {
         getLastError(*logHandle);
@@ -420,14 +433,18 @@ vcl_result_t simulateVclCompilerAllocatorOldVersion(int argc, char** argv, const
     compilerDesc.version.major = VCL_COMPILER_VERSION_MAJOR;
     compilerDesc.version.minor = VCL_COMPILER_VERSION_MINOR;
     compilerDesc.debugLevel = VCL_LOG_INFO;
-    vcl_device_desc_t deviceDesc = {sizeof(vcl_device_desc_t), 0x643e, 3, 5};
+
     vcl_compiler_handle_t compiler = nullptr;
     vcl_log_handle_t logHandle = nullptr;
+    vcl_device_desc_t deviceDesc;
+    bool hasDeviceDesc = configureDeviceDesc(deviceDesc, 0x643e);
+    vcl_device_desc_t* deviceDescPtr = hasDeviceDesc ? &deviceDesc : nullptr;
     if (saveErrorLog == nullptr) {
-        ret = vclCompilerCreate(&compilerDesc, &deviceDesc, &compiler, NULL);
+        ret = vclCompilerCreate(&compilerDesc, deviceDescPtr, &compiler, NULL);
     } else {
-        ret = vclCompilerCreate(&compilerDesc, &deviceDesc, &compiler, &logHandle);
+        ret = vclCompilerCreate(&compilerDesc, deviceDescPtr, &compiler, &logHandle);
     }
+
     if (ret != VCL_RESULT_SUCCESS) {
         std::printf("Failed to create compiler! Result:%x\n", ret);
         return ret;
@@ -552,10 +569,7 @@ vcl_result_t simulateVclCompilerAllocatorOldVersion(int argc, char** argv, const
     }
 
     /// The options are for googlenet-v1
-    char defaultOptions[] =
-            "--inputs_precisions=\"input:U8\" --inputs_layouts=\"input:NCHW\" "
-            "--outputs_precisions=\"InceptionV1/Logits/Predictions/Softmax:FP32\" "
-            "--outputs_layouts=\"InceptionV1/Logits/Predictions/Softmax:NC\" --config LOG_LEVEL=\"LOG_INFO\"";
+    char defaultOptions[] = "";
     char* newOptions = NULL;
     uint64_t configSize = 0;
     if (argc == 5) {
@@ -578,38 +592,30 @@ vcl_result_t simulateVclCompilerAllocatorOldVersion(int argc, char** argv, const
         }
         configSize = (uint64_t)fileConfigSize;
         fseek(fpC, 0, SEEK_SET);
-        if (configSize == 0) {
-            std::printf("The config file %s is empty\n", configFile);
+        newOptions = (char*)malloc(configSize);
+        if (!newOptions) {
+            std::printf("Failed to alloc memory for options\n");
             fclose(fpC);
             free(modelIR);
             vclCompilerDestroy(compiler);
-            return VCL_RESULT_ERROR_INVALID_ARGUMENT;
-        } else {
-            newOptions = (char*)malloc(configSize);
-            if (!newOptions) {
-                std::printf("Failed to alloc memory for options\n");
-                fclose(fpC);
-                free(modelIR);
-                vclCompilerDestroy(compiler);
-                return VCL_RESULT_ERROR_OUT_OF_MEMORY;
-            }
-            bytesRead = fread(newOptions, 1, configSize, fpC);
-            if ((uint32_t)bytesRead != configSize) {
-                std::printf("Short read on config file buffer!!!\n");
-                free(newOptions);
-                fclose(fpC);
-                free(modelIR);
-                vclCompilerDestroy(compiler);
-                return VCL_RESULT_ERROR_IO;
-            }
-            cret = fclose(fpC);
-            if (cret) {
-                std::printf("Failed to close %s. Result:%d\n", configFile, cret);
-                free(newOptions);
-                free(modelIR);
-                vclCompilerDestroy(compiler);
-                return (vcl_result_t)cret;
-            }
+            return VCL_RESULT_ERROR_OUT_OF_MEMORY;
+        }
+        bytesRead = fread(newOptions, 1, configSize, fpC);
+        if ((uint32_t)bytesRead != configSize) {
+            std::printf("Short read on config file buffer!!!\n");
+            free(newOptions);
+            fclose(fpC);
+            free(modelIR);
+            vclCompilerDestroy(compiler);
+            return VCL_RESULT_ERROR_IO;
+        }
+        cret = fclose(fpC);
+        if (cret) {
+            std::printf("Failed to close %s. Result:%d\n", configFile, cret);
+            free(newOptions);
+            free(modelIR);
+            vclCompilerDestroy(compiler);
+            return (vcl_result_t)cret;
         }
     }
 

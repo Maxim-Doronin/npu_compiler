@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion/passes/IE2VPU/convert_layers_to_VPU.hpp"
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
@@ -163,7 +164,7 @@ mlir::LogicalResult NonMaxSuppressionRewrite::matchAndRewrite(IE::NonMaxSuppress
     _log.trace("Found NonMaxSuppression Operation '{0}'", origOp->getLoc());
 
     rewriter.replaceOpWithNewOp<VPU::NonMaxSuppressionOp>(
-            origOp, origOp.getInBoxCoords(), origOp.getInBoxScores(), origOp.getBoxEncoding(),
+            origOp, origOp.getInBoxCoords(), origOp.getInBoxScores(), nullptr, origOp.getBoxEncoding(),
             origOp.getSortResultDescending(), origOp.getMaxOutputBoxesPerClassValueAttr(),
             origOp.getIouThresholdValueAttr(), origOp.getScoreThresholdValueAttr(), origOp.getSoftNmsSigmaValueAttr());
 
@@ -489,6 +490,63 @@ mlir::LogicalResult DynamicQuantizeRewrite::matchAndRewrite(IE::DynamicQuantizeO
     return mlir::success();
 }
 
+//
+// AddRewrite
+//
+
+mlir::LogicalResult AddRewrite::matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found Add Operation '{0}'", origOp->getLoc());
+    constexpr int64_t RANK_4D = 4;
+
+    mlir::Value input1 = origOp.getInput1();
+    mlir::Value input2 = origOp.getInput2();
+    const auto input1Type = mlir::cast<NDTypeInterface>(input1.getType());
+    const auto input2Type = mlir::cast<NDTypeInterface>(input2.getType());
+
+    if (input1Type.getRank() != input2Type.getRank()) {
+        return matchFailed(rewriter, origOp, "The input ranks are not the same: {0} and {1}", input1Type.getRank(),
+                           input2Type.getRank());
+    }
+
+    auto inputRank = input1Type.getRank();
+    if (inputRank < RANK_4D) {
+        auto reshapeTo4D = [&origOp, &rewriter](auto input) {
+            const auto inputShape = getShape(input).raw();
+            auto fillOneCnt = RANK_4D - mlir::cast<vpux::NDTypeInterface>(input.getType()).getRank();
+            auto newInputShape = SmallVector<int64_t>(fillOneCnt, 1);
+            newInputShape.append(inputShape.begin(), inputShape.end());
+            return rewriter.createOrFold<VPU::ReshapeOp>(origOp.getLoc(), input, nullptr, false,
+                                                         getIntArrayAttr(origOp.getContext(), newInputShape));
+        };
+        input1 = reshapeTo4D(input1);
+        input2 = reshapeTo4D(input2);
+    }
+    // Rewrite
+    auto newAddOp = rewriter.create<VPU::AddOp>(origOp.getLoc(), input1, input2, origOp.getAutoBroadcastAttr(),
+                                                origOp.getPostOpAttr());
+    if (inputRank < RANK_4D) {
+        rewriter.replaceOpWithNewOp<VPU::ReshapeOp>(
+                origOp, newAddOp, nullptr, false,
+                getIntArrayAttr(origOp.getContext(), getShape(origOp.getOutput()).raw()));
+    } else {
+        rewriter.replaceOp(origOp, newAddOp);
+    }
+    return mlir::success();
+}
+
+//
+// ExternalKernelRewrite
+//
+
+mlir::LogicalResult ExternalKernelRewrite::matchAndRewrite(IE::ExternalKernelOp origOp,
+                                                           mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found ExternalKernel Operation '{0}'", origOp->getLoc());
+
+    rewriter.replaceOpWithNewOp<VPU::ExternalKernelOp>(origOp, origOp.getOutputs().getTypes(), origOp.getInputs(),
+                                                       origOp.getAttrDict(), origOp.getUniqueId());
+    return mlir::success();
+}
+
 namespace {
 
 //
@@ -544,6 +602,8 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     patterns.add<DynamicReshapeRewrite>(&ctx, _log);
     patterns.add<DynamicTileRewrite>(&ctx, _log);
     patterns.add<DynamicQuantizeRewrite>(&ctx, _log);
+    patterns.add<AddRewrite>(&ctx, _log);
+    patterns.add<ExternalKernelRewrite>(&ctx, _log);
     populateWithGenerated(patterns);
 
     if (mlir::failed(mlir::applyFullConversion(func, target, std::move(patterns)))) {

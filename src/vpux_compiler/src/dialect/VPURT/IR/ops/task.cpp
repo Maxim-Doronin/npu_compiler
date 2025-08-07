@@ -1,11 +1,13 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/types.hpp"
 
@@ -37,9 +39,6 @@ void vpux::VPURT::TaskOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::Operation
 
 VPU::ExecutorKind vpux::VPURT::TaskOp::getExecutorKind() {
     auto innerTaskOp = getInnerTaskOp();
-    if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(innerTaskOp)) {
-        innerTaskOp = clusterTilingOp.getInnerTaskOp();
-    }
     auto task = mlir::dyn_cast<VPUIP::TaskOpInterface>(innerTaskOp);
     VPUX_THROW_UNLESS(task != nullptr, "Inner task at {0} does not implement TaskOpInterface", innerTaskOp->getLoc());
 
@@ -83,15 +82,15 @@ SmallVector<int64_t> vpux::VPURT::getDMATaskPorts(TaskOp task) {
                       task->getLoc());
     SmallVector<int64_t> ports;
     auto* wrappedTaskOp = task.getInnerTaskOp();
-    if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(wrappedTaskOp)) {
-        auto module = clusterTilingOp->getParentOfType<mlir::ModuleOp>();
+    if (vpux::VPUIP::hasDistributedOperand(wrappedTaskOp)) {
+        auto module = wrappedTaskOp->getParentOfType<mlir::ModuleOp>();
         auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
         auto dmaPortCount = dmaOp.getCount();
 
-        const auto input = *clusterTilingOp.getInputs().begin();
-        const auto output = *clusterTilingOp.getOutputs().begin();
-        auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
-        auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
+        const auto input = VPUIP::getLayerInputs(wrappedTaskOp).begin();
+        const auto output = VPUIP::getLayerOutputs(wrappedTaskOp).begin();
+        auto inputType = mlir::cast<vpux::NDTypeInterface>((*input).getType());
+        auto outputType = mlir::cast<vpux::NDTypeInterface>((*output).getType());
 
         const auto distributedType = mlir::isa<vpux::VPUIP::DistributedBufferType>(inputType)
                                              ? mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType)
@@ -120,7 +119,6 @@ SmallVector<int64_t> vpux::VPURT::getDMATaskPorts(TaskOp task) {
             std::iota(ports.begin(), ports.end(), 0);
             return ports;
         }
-        wrappedTaskOp = clusterTilingOp.getInnerTaskOp();
     }
 
     ports.push_back(vpux::getDMAPortValue(wrappedTaskOp));
@@ -134,10 +132,6 @@ std::optional<SmallVector<VPURT::TaskQueueType>> vpux::VPURT::getDMATaskQueueTyp
     SmallVector<VPURT::TaskQueueType> queueTypes;
 
     mlir::Operation* innerOp = taskOp.getInnerTaskOp();
-
-    if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(taskOp.getInnerTaskOp())) {
-        innerOp = clusterTilingOp.getInnerTaskOp();
-    }
 
     auto ports = VPURT::getDMATaskPorts(taskOp);
     auto dmaTask = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(innerOp);
@@ -159,9 +153,6 @@ VPURT::TaskQueueType vpux::VPURT::getTaskQueueType(TaskOp taskOp, bool ignoreInd
     queueType.type = taskOp.getExecutorKind();
     if (queueType.type == VPU::ExecutorKind::DPU && !ignoreIndexForNce) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
-        if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(wrappedTaskOp)) {
-            wrappedTaskOp = clusterTilingOp.getInnerTaskOp();
-        }
         auto nceTask = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(wrappedTaskOp);
         VPUX_THROW_WHEN(nceTask == nullptr || nceTask.getVariants().getOps<VPUIP::DPUTaskOp>().empty(),
                         "Could not get DPU task");
@@ -169,9 +160,6 @@ VPURT::TaskQueueType vpux::VPURT::getTaskQueueType(TaskOp taskOp, bool ignoreInd
         queueType.id = dpuTask.getClusterId().value_or(0);
     } else if (queueType.type == VPU::ExecutorKind::SHAVE_ACT && !ignoreIndexForNce) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
-        if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(wrappedTaskOp)) {
-            wrappedTaskOp = clusterTilingOp.getInnerTaskOp();
-        }
         auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(wrappedTaskOp);
         VPUX_THROW_WHEN(swKernelOp == nullptr, "Could not get SW kernel task");
         auto numTiles = VPU::getNumTiles(swKernelOp);
@@ -180,9 +168,6 @@ VPURT::TaskQueueType vpux::VPURT::getTaskQueueType(TaskOp taskOp, bool ignoreInd
         queueType.id = getShaveQueueIdEncoding(numTiles, tileIndex, listIndex);
     } else if (queueType.type == VPU::ExecutorKind::DMA_NN) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
-        if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(wrappedTaskOp)) {
-            wrappedTaskOp = clusterTilingOp.getInnerTaskOp();
-        }
 
         auto dmaTask = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(wrappedTaskOp);
         VPUX_THROW_WHEN(dmaTask == nullptr, "Not a DMA task");
@@ -213,9 +198,6 @@ std::map<VPURT::TaskQueueType, std::pair<VPURT::TaskOp, VPURT::TaskOp>> vpux::VP
 
 size_t vpux::VPURT::TaskOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto innerOp = getInnerTaskOp();
-    if (auto clusterTilingOp = mlir::dyn_cast<VPUIP::NCEClusterTilingOp>(innerOp)) {
-        innerOp = clusterTilingOp.getInnerTaskOp();
-    }
 
     auto cycleCostInterface = mlir::dyn_cast<VPUIP::CycleCostInterface>(innerOp);
     if (cycleCostInterface == nullptr) {

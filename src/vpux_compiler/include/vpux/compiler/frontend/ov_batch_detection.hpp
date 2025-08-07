@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -141,4 +141,6 @@ std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::
  * where you can find information about suitable combination of configuration options
  */
 bool checkCfgOnBatchOptionConsistency(const intel_npu::Config& config, std::ostream& outDescr);
+
+std::shared_ptr<ov::Model> debatchDynamicModel(const std::shared_ptr<ov::Model>& origModel, Logger& logger);
 }  // namespace vpux

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/tiling.hpp"
@@ -38,11 +38,21 @@ private:
 // safeRunOnFunc
 //
 
-// Supported SDPA Configurations:
-// InputQ    {N, C, 1, W}
-// InputK    {N, C, H, W}
-// InputV    {N, C, W, H}
-// InputMask {1, 1, 1, W}
+///                | ScaledDotProductAttention Operator |
+///     ┌───────┐    ┌───────┐    ┌───────┐  ┌─────────────┐  ┌───────┐
+///     │   Q   │    │   K   │    │   V   │  │AttentionMask│  │ Scale |
+///     └───┬───┘    └───┬───┘    └───┬───┘  └──────┬──────┘  └───┬───┘
+///         │            │            │             │             |
+///         │            │            │             │             |
+///         |            │            │             │             |
+///     ┌───┴────────────┴────────────┴─────────────┴─┐           |
+///     │           ScaledDotProductAttention         │───────────┘
+///     └────────────────────┬────────────────────────┘
+///                          │
+///                          │
+///                     ┌────┴────┐
+///                     │  Output │
+///                     └─────────┘
 
 // General Pattern with Multiply (To be enabled in E#160851)
 // InputQ --------------> MatMul ---> Add ---> Softmax ---> MatMul ---> Output
@@ -141,7 +151,7 @@ bool isAdaptiveStripping(mlir::Value output, mlir::Value& input1, mlir::Value& i
 }
 
 void createSDPA(mlir::Operation* op, mlir::Value inputQ, mlir::Value inputK, mlir::Value inputV, mlir::Value mask,
-                IE::TransposeOp transposeK = nullptr) {
+                mlir::Value scale, mlir::Value bias, IE::TransposeOp transposeK = nullptr) {
     auto builder = mlir::OpBuilder(op);
     mlir::Value sdpaKInput = inputK;
     if (transposeK) {
@@ -149,7 +159,8 @@ void createSDPA(mlir::Operation* op, mlir::Value inputQ, mlir::Value inputK, mli
                                                              transposeK.getOrderValueAttr());
         sdpaKInput = transposedKOp.getOutput();
     }
-    auto sdpaOp = builder.create<IE::SDPAOp>(appendLoc(op->getLoc(), "_sdpa"), inputQ, sdpaKInput, inputV, mask);
+    auto sdpaOp =
+            builder.create<IE::SDPAOp>(appendLoc(op->getLoc(), "_sdpa"), inputQ, sdpaKInput, inputV, mask, scale, bias);
     op->replaceAllUsesWith(sdpaOp);
 }
 
@@ -189,6 +200,34 @@ void FuseSDPAPass::safeRunOnFunc() {
     if (arch != VPU::ArchKind::NPU40XX) {
         return;
     }
+    func->walk([&](IE::SDPAOp sdpaOp) {
+        auto inputKType = mlir::cast<NDTypeInterface>(sdpaOp.getInputK().getType());
+        auto inputVType = mlir::cast<NDTypeInterface>(sdpaOp.getInputV().getType());
+        const auto rank = inputKType.getRank();
+
+        const auto inputKShape = inputKType.getShape().raw();
+        const auto inputVShape = inputVType.getShape().raw();
+        auto inputV = sdpaOp.getInputV();
+        if (inputKShape[rank - 2] != inputVShape[rank - 2]) {
+            return;
+        }
+        auto builder = mlir::OpBuilder(sdpaOp);
+        SmallVector<uint32_t> permuteNdOrder = {};
+        for (int i = 0; i < rank - 2; i++) {
+            permuteNdOrder.push_back(i);
+        }
+        permuteNdOrder.push_back(rank - 1);
+        permuteNdOrder.push_back(rank - 2);
+        const auto orderAttr =
+                mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permuteNdOrder, builder.getContext()));
+        auto transposedVOp = builder.create<IE::TransposeOp>(appendLoc(sdpaOp->getLoc(), "_transpose_v"), inputV,
+                                                             nullptr, orderAttr);
+        auto newSdpaOp = builder.create<IE::SDPAOp>(
+                appendLoc(sdpaOp->getLoc(), "_sdpa"), sdpaOp.getInputQ(), sdpaOp.getInputK(), transposedVOp.getOutput(),
+                sdpaOp.getInputMask(), sdpaOp.getInputScale(), sdpaOp.getInputBias());
+        newSdpaOp->setAttrs(sdpaOp->getAttrs());
+        sdpaOp->replaceAllUsesWith(newSdpaOp);
+    });
     func->walk([&](IE::ReshapeOp reshape0Op) {
         auto fc0Op = reshape0Op.getOperand(0).getDefiningOp<IE::FullyConnectedOp>();
         if (!fc0Op) {
@@ -214,7 +253,7 @@ void FuseSDPAPass::safeRunOnFunc() {
                 if (!isLegalSDPA(inputQ)) {
                     return;
                 }
-                createSDPA(reshape0Op, inputQ, inputK, inputV, mask);
+                createSDPA(reshape0Op, inputQ, inputK, inputV, mask, nullptr, nullptr);
             }
             return;
         }
@@ -249,7 +288,7 @@ void FuseSDPAPass::safeRunOnFunc() {
         if (!isLegalSDPA(inputQ)) {
             return;
         }
-        createSDPA(reshape0Op, inputQ, inputK, inputV, mask, transposeK);
+        createSDPA(reshape0Op, inputQ, inputK, inputV, mask, nullptr, nullptr, transposeK);
     });
 }
 

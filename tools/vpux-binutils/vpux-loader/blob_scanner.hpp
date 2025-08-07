@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -32,7 +32,7 @@ struct MemoryRequirementsGroup {
 // Class which encapsulated memory requirements for an arbitrary collection of groups
 class MemoryRequirementsCategory {
 public:
-    MemoryRequirementsCategory(std::string_view name): mName(name){};
+    MemoryRequirementsCategory(std::string_view name): mName(name) {};
 
     void addRequirementToGroup(const std::string& groupName,
                                MemoryRequirementsGroup::IndividualRequirement& individualRequirement) {

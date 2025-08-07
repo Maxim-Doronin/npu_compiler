@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
@@ -33,13 +33,12 @@ mlir::LogicalResult vpux::IE::NonZeroOp::inferReturnTypeComponents(
     const auto outShape = Shape{inRank, mlir::ShapedType::kDynamic};
 
     const auto numElements = inType.getNumElements();
-    const auto bounds = Bounds{inRank, numElements};
 
     const auto typeComponents = TypeComponents()
                                         .setShape(outShape)
                                         .setDimsOrder(DimsOrder::fromNumDims(outShape.size()))
                                         .setElementType(nonZero.getDstElemType())
-                                        .setBounds(bounds);
+                                        .setBounds(Bounds{inRank, numElements});
 
     auto outType = inType.changeTypeComponents(typeComponents);
 

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
@@ -393,4 +393,172 @@ func.func @MoveChannelSliceBeforeGroupSparseOp(%arg0: tensor<1x128x4x4xf16, {ord
     // CHECK-SAME:                              scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], offsets = [0, 0, 0, 0], sizes = [1, 64, 9, 9]>>
 
     // CHECK:       return [[GROUP_OP]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL:  @MoveViewLikeOpsBefore
+func.func @MoveViewLikeOpsBefore() -> !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+                                       sparsity_map=tensor<3x1x1x128xi1>,
+                                       is_weights,
+                                       #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>> {
+    %weights = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<16x16x1x1xf16, {order = #NHWC}>, [#const.Sparsify<false>]
+    %sparsity_map = const.Declare tensor<16x1x1x128xi1> = dense<1.0> : tensor<16x16x1x1xf16, {order = #NHWC}>, [#const.GetSparsityMap]
+    %group = VPU.GroupSparseTensor(%weights, %sparsity_map) {
+            is_weights,
+            sparsity_compression = #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>
+        } -> !VPU.SparseTensor<data=tensor<16x16x1x1xf16, {order = #NHWC}>,
+                               sparsity_map=tensor<16x1x1x128xi1>,
+                               is_weights,
+                               #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %slice = VPU.Slice %group [0, 0, 0, 0] [16, 3, 1, 1]
+        : !VPU.SparseTensor<data=tensor<16x16x1x1xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       to !VPU.SparseTensor<data=tensor<16x3x1x1xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %reshape = VPU.Reshape(%slice) {shape_value = [16, 1, 1, 3]}
+        : !VPU.SparseTensor<data=tensor<16x3x1x1xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       -> !VPU.SparseTensor<data=tensor<16x1x1x3xf16>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %layout_cast = VPU.LayoutCast(%reshape) {dst_order = #NHWC}
+        : !VPU.SparseTensor<data=tensor<16x1x1x3xf16>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       -> !VPU.SparseTensor<data=tensor<16x1x1x3xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %expand = VPU.Expand(%layout_cast) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 13]}
+        : !VPU.SparseTensor<data=tensor<16x1x1x3xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       -> !VPU.SparseTensor<data=tensor<16x1x1x16xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %slice2 = VPU.Slice %expand [0, 0, 0, 0] [3, 1, 1, 16]
+        : !VPU.SparseTensor<data=tensor<16x1x1x16xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       to !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<3x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>>
+
+    return %slice2 : !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+                                       sparsity_map=tensor<3x1x1x128xi1>,
+                                       is_weights,
+                                       #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>>
+
+    // CHECK:       [[WEIGHTS:%.+]] = const.Declare tensor<3x1x1x16xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x1x1xf16, {order = #NHWC}>,
+    // CHECK-SAME:      [#const.SubView<[0, 0, 0, 0], [3, 3, 1, 1]>, #const.Reshape<[3, 1, 1, 3]>, #const.PadWithZero<[0, 0, 0, 0], [0, 0, 0, 13]>, #const.Sparsify<false>]
+    // CHECK:       [[SPARSITY_MAP:%.+]] = const.Declare tensor<3x1x1x128xi1> = dense<1.000000e+00> : tensor<16x16x1x1xf16, {order = #NHWC}>,
+    // CHECK-SAME:      [#const.SubView<[0, 0, 0, 0], [3, 3, 1, 1]>, #const.Reshape<[3, 1, 1, 3]>, #const.PadWithZero<[0, 0, 0, 0], [0, 0, 0, 13]>, #const.GetSparsityMap]
+    // CHECK:       [[GROUP:%.+]] = VPU.GroupSparseTensor([[WEIGHTS]], [[SPARSITY_MAP]]) {
+    // CHECK-SAME:      is_weights,
+    // CHECK-SAME:      sparsity_compression = #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>}
+    // CHECK-SAME:    -> !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+    // CHECK-SAME:                         sparsity_map=tensor<3x1x1x128xi1>,
+    // CHECK-SAME:                         is_weights, #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>>
+    // CHECK:       return [[GROUP]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL:  @MoveViewLikeOpsBeforeActivationInputs
+// CHECK-SAME:   ([[WEIGHTS:%.+]]: tensor<16x16x1x1xf16, {order = #NHWC}>, [[SPARSITY_MAP:%.+]]: tensor<16x1x1x128xi1>)
+func.func @MoveViewLikeOpsBeforeActivationInputs(%weights: tensor<16x16x1x1xf16, {order = #NHWC}>, %sparsity_map: tensor<16x1x1x128xi1>)
+        -> !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+                             sparsity_map=tensor<3x1x1x128xi1>,
+                             is_weights,
+                             #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>> {
+    %group = VPU.GroupSparseTensor(%weights, %sparsity_map) {
+            is_weights,
+            sparsity_compression = #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>
+        } -> !VPU.SparseTensor<data=tensor<16x16x1x1xf16, {order = #NHWC}>,
+                               sparsity_map=tensor<16x1x1x128xi1>,
+                               is_weights,
+                               #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %slice = VPU.Slice %group [0, 0, 0, 0] [16, 3, 1, 1]
+        : !VPU.SparseTensor<data=tensor<16x16x1x1xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       to !VPU.SparseTensor<data=tensor<16x3x1x1xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %reshape = VPU.Reshape(%slice) {shape_value = [16, 1, 1, 3]}
+        : !VPU.SparseTensor<data=tensor<16x3x1x1xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       -> !VPU.SparseTensor<data=tensor<16x1x1x3xf16>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %layout_cast = VPU.LayoutCast(%reshape) {dst_order = #NHWC}
+        : !VPU.SparseTensor<data=tensor<16x1x1x3xf16>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       -> !VPU.SparseTensor<data=tensor<16x1x1x3xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %expand = VPU.Expand(%layout_cast) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 13]}
+        : !VPU.SparseTensor<data=tensor<16x1x1x3xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       -> !VPU.SparseTensor<data=tensor<16x1x1x16xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+    %slice2 = VPU.Slice %expand [0, 0, 0, 0] [3, 1, 1, 16]
+        : !VPU.SparseTensor<data=tensor<16x1x1x16xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<16x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<[3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]> : tensor<16xi64>, alignment = 16 : i64>>
+       to !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+                            sparsity_map=tensor<3x1x1x128xi1>,
+                            is_weights,
+                            #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>>
+
+    return %slice2 : !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+                                       sparsity_map=tensor<3x1x1x128xi1>,
+                                       is_weights,
+                                       #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>>
+
+    // CHECK:       [[WEIGHTS_SLICE_IC:%.+]] = VPU.Slice [[WEIGHTS]] [0, 0, 0, 0] [16, 3, 1, 1] : tensor<16x16x1x1xf16, {order = #NHWC}> to tensor<16x3x1x1xf16, {order = #NHWC}>
+    // CHECK:       [[WEIGHTS_RESHAPE:%.+]] = VPU.Reshape([[WEIGHTS_SLICE_IC]]) {shape_value = [16, 1, 1, 3]} : tensor<16x3x1x1xf16, {order = #NHWC}> -> tensor<16x1x1x3xf16>
+    // CHECK:       [[WEIGHTS_LAYOUT:%.+]] = VPU.LayoutCast([[WEIGHTS_RESHAPE]]) {dst_order = #NHWC} : tensor<16x1x1x3xf16> -> tensor<16x1x1x3xf16, {order = #NHWC}>
+    // CHECK:       [[WEIGHTS_EXPAND:%.+]] = VPU.Expand([[WEIGHTS_LAYOUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 13]} : tensor<16x1x1x3xf16, {order = #NHWC}> -> tensor<16x1x1x16xf16, {order = #NHWC}>
+    // CHECK:       [[WEIGHTS_SLICE_OC:%.+]] = VPU.Slice [[WEIGHTS_EXPAND]] [0, 0, 0, 0] [3, 1, 1, 16] : tensor<16x1x1x16xf16, {order = #NHWC}> to tensor<3x1x1x16xf16, {order = #NHWC}>
+
+    // CHECK:       [[SPARSITY_MAP_SLICE:%.+]] = VPU.Slice [[SPARSITY_MAP]] [0, 0, 0, 0] [3, 1, 1, 128] : tensor<16x1x1x128xi1> to tensor<3x1x1x128xi1>
+
+    // CHECK:       [[GROUP:%.+]] = VPU.GroupSparseTensor([[WEIGHTS_SLICE_OC]], [[SPARSITY_MAP_SLICE]]) {
+    // CHECK-SAME:      is_weights,
+    // CHECK-SAME:      sparsity_compression = #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>}
+    // CHECK-SAME:    -> !VPU.SparseTensor<data=tensor<3x1x1x16xf16, {order = #NHWC}>,
+    // CHECK-SAME:                         sparsity_map=tensor<3x1x1x128xi1>,
+    // CHECK-SAME:                         is_weights, #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<3> : tensor<3xi64>, alignment = 16 : i64>>
+    // CHECK:       return [[GROUP]]
 }

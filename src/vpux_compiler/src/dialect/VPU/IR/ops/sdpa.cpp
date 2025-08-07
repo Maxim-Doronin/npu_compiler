@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -25,8 +25,21 @@ mlir::LogicalResult vpux::VPU::SDPAOp::inferReturnTypes(mlir::MLIRContext* ctx, 
     }
 
     const auto inQType = mlir::cast<vpux::NDTypeInterface>(sdpa.getInputQ().getType());
-    auto outputType = mlir::RankedTensorType::get(inQType.getShape(), inQType.getElementType(),
-                                                  createTensorAttrFromType(inQType));
+    const auto inQShape = inQType.getShape().raw();
+    const auto rank = inQType.getShape().size();
+
+    const auto inKType = mlir::cast<vpux::NDTypeInterface>(sdpa.getInputK().getType());
+    const auto inKShape = inKType.getShape().raw();
+
+    const auto inVType = mlir::cast<vpux::NDTypeInterface>(sdpa.getInputV().getType());
+    const auto inVShape = inVType.getShape().raw();
+
+    const auto isTransposedV = inKShape[rank - 2] != inVShape[rank - 2];
+    const auto Ev = isTransposedV ? inVShape[rank - 2] : inVShape[rank - 1];
+    SmallVector<int64_t> outShape(inQShape.begin(), inQShape.end());
+    outShape[rank - 1] = Ev;
+    auto outputType =
+            mlir::RankedTensorType::get(outShape, inQType.getElementType(), createTensorAttrFromType(inQType));
     inferredReturnTypes.push_back(outputType);
     return mlir::success();
 }
@@ -36,13 +49,14 @@ mlir::LogicalResult vpux::VPU::SDPAOp::inferReturnTypes(mlir::MLIRContext* ctx, 
 //
 
 bool vpux::VPU::SDPAOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    return strategy == VPU::MultiClusterStrategy::SplitOverKernel;
+    return strategy == VPU::MultiClusterStrategy::SplitOverKernel ||
+           strategy == VPU::MultiClusterStrategy::SplitOverHeight;
 }
 
 void vpux::VPU::SDPAOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState, ::mlir::Value inputQ,
                               ::mlir::Value inputK, ::mlir::Value inputV, ::mlir::Value inputMask,
-                              ::mlir::Value dataStorage) {
-    build(odsBuilder, odsState, inputQ, inputK, inputV, inputMask, dataStorage, {});
+                              ::mlir::Value inputScale, ::mlir::Value inputBias, ::mlir::Value dataStorage) {
+    build(odsBuilder, odsState, inputQ, inputK, inputV, inputMask, inputScale, inputBias, dataStorage, {});
 }
 
 vpux::VPU::DistributionInfo vpux::VPU::SDPAOp::getExplicitDistributionInfoAttr(
@@ -59,8 +73,8 @@ vpux::VPU::DistributionInfo vpux::VPU::SDPAOp::getExplicitDistributionInfoAttr(
 //
 
 bool vpux::VPU::SDPAOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem) {
-    VPUX_THROW_UNLESS(buffers.size() == 6, "SDPAOp requires 5 inputs and 1 output, but the number of buffer is {0}",
-                      buffers.size());
+    VPUX_THROW_UNLESS(buffers.size() >= 5 && buffers.size() <= 8,
+                      "SDPAOp requires 4-7 inputs and 1 output, but the number of buffers is {0}", buffers.size());
 
     SmallVector<Byte> buffersSize;
     std::transform(buffers.begin(), buffers.end(), std::back_inserter(buffersSize), [](const auto buffer) {
@@ -69,7 +83,6 @@ bool vpux::VPU::SDPAOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers
 
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
-
     return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
@@ -87,30 +100,59 @@ bool vpux::VPU::SDPAOp::supportCycleCostCalculation() {
 // TilingBuilderOpInterface
 //
 
+void transferTilingInfo(vpux::TileInfo& dst, const vpux::TileInfo& src, SmallVector<vpux::Dim> dimsToTransfer) {
+    for (auto dim : dimsToTransfer) {
+        dst.shape[dim] = src.shape[dim];
+        dst.offsets[dim] = src.offsets[dim];
+    }
+}
+
 InputTiling vpux::VPU::SDPAOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger /*log*/) {
+    TileInfo inQTile(getShape(getInputQ()));
     TileInfo inKTile(getShape(getInputK()));
     TileInfo inVTile(getShape(getInputV()));
-    TileInfo inMaskTile(getShape(getInputMask()));
     TileInfo dataStorageTile(getShape(getDataStorage()));
-    auto inQTile = outputTile;
 
-    inKTile.shape[Dim(Dims4D::Act::C)] = outputTile.shape[Dim(Dims4D::Act::C)];
-    inKTile.shape[Dim(Dims4D::Act::N)] = outputTile.shape[Dim(Dims4D::Act::N)];
-    inKTile.offsets[Dim(Dims4D::Act::C)] = outputTile.offsets[Dim(Dims4D::Act::C)];
-    inKTile.offsets[Dim(Dims4D::Act::N)] = outputTile.offsets[Dim(Dims4D::Act::N)];
+    transferTilingInfo(inQTile, outputTile, {Dim(Dims4D::Act::H), Dim(Dims4D::Act::C), Dim(Dims4D::Act::N)});
+    transferTilingInfo(inVTile, outputTile, {Dim(Dims4D::Act::C), Dim(Dims4D::Act::N)});
+    transferTilingInfo(inKTile, outputTile, {Dim(Dims4D::Act::C), Dim(Dims4D::Act::N)});
+    transferTilingInfo(dataStorageTile, outputTile, {Dim(Dims4D::Act::H), Dim(Dims4D::Act::C), Dim(Dims4D::Act::N)});
 
-    inVTile.shape[Dim(Dims4D::Act::C)] = outputTile.shape[Dim(Dims4D::Act::C)];
-    inVTile.shape[Dim(Dims4D::Act::N)] = outputTile.shape[Dim(Dims4D::Act::N)];
-    inVTile.offsets[Dim(Dims4D::Act::C)] = outputTile.offsets[Dim(Dims4D::Act::C)];
-    inVTile.offsets[Dim(Dims4D::Act::N)] = outputTile.offsets[Dim(Dims4D::Act::N)];
+    // InputQ, inputK and InputV are mandatory
+    InputTiling inTiles = TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile)}};
 
-    dataStorageTile.shape[Dim(Dims4D::Act::C)] = outputTile.shape[Dim(Dims4D::Act::C)];
-    dataStorageTile.shape[Dim(Dims4D::Act::N)] = outputTile.shape[Dim(Dims4D::Act::N)];
-    dataStorageTile.offsets[Dim(Dims4D::Act::C)] = outputTile.offsets[Dim(Dims4D::Act::C)];
-    dataStorageTile.offsets[Dim(Dims4D::Act::N)] = outputTile.offsets[Dim(Dims4D::Act::N)];
+    // Mask is optional, but if it is present, it should be tiled if possible
+    if (getInputMask() != nullptr) {
+        TileInfo inMaskTile(getShape(getInputMask()));
+        if (inMaskTile.shape[Dims4D::Act::H] != 1) {
+            transferTilingInfo(inMaskTile, outputTile, {Dim(Dims4D::Act::H)});
+        }
+        if (inMaskTile.shape[Dims4D::Act::C] != 1) {
+            transferTilingInfo(inMaskTile, outputTile, {Dim(Dims4D::Act::C)});
+        }
+        inTiles.tiles.push_back(inMaskTile);
+    }
 
-    return TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile), std::move(inMaskTile),
-                       std::move(dataStorageTile)}};
+    // ScaleTensor is optional and can't be tiled
+    if (getInputScale() != nullptr) {
+        TileInfo inScaleTile(getShape(getInputScale()));
+        inTiles.tiles.push_back(inScaleTile);
+    }
+
+    // Bias is optional, but if it is present, it should be tiled
+    if (getInputBias() != nullptr) {
+        TileInfo inBiasTile(getShape(getInputBias()));
+        if (inBiasTile.shape[Dim(Dims4D::Act::H)] != 1) {
+            transferTilingInfo(inBiasTile, outputTile, {Dim(Dims4D::Act::H)});
+        }
+        if (inBiasTile.shape[Dim(Dims4D::Act::C)] != 1) {
+            transferTilingInfo(inBiasTile, outputTile, {Dim(Dims4D::Act::C)});
+        }
+        inTiles.tiles.push_back(inBiasTile);
+    }
+
+    inTiles.tiles.push_back(std::move(dataStorageTile));
+    return inTiles;
 }
 
 void vpux::VPU::SDPAOp::adjustAttrs(const TilingInfo& /*inputTiling*/, const TileInfo& /*outputTile*/) {

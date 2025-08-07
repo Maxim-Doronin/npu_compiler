@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/merge_vf_region_rewriter.hpp"
@@ -554,9 +554,9 @@ std::deque<MergeVFRegionRewriter::IVFSchedulingPtr> MergeVFRegionRewriter::getVF
 
 MergeVFRegionRewriter::IVFSchedulingPtr MergeVFRegionRewriter::detectScenario(VFConfig& vfConfig) const {
     VFSchedulingFactory costFactory(_enablePrefetchTiling);
-    auto scenarioKind = vfConfig.getSubgraph().getScenario().has_value()
-                                ? vfConfig.getSubgraph().getScenario().value()
-                                : _enablePrefetchTiling ? VFScenario::WEIGHTS_PREFETCHING : VFScenario::MINIMAL;
+    auto scenarioKind = vfConfig.getSubgraph().getScenario().has_value() ? vfConfig.getSubgraph().getScenario().value()
+                        : _enablePrefetchTiling                          ? VFScenario::WEIGHTS_PREFETCHING
+                                                                         : VFScenario::MINIMAL;
     return costFactory.createVFScenario(scenarioKind, _log);
 }
 
@@ -672,17 +672,20 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
     const auto linkNumber = getLinkNumber(currentOp, prevOp);
     std::optional<Dim> checkedDim;
     if (curHasTiling && prevHasTiling) {
-        auto curInputAxes = backInferVFTilingDim(currentConfig, curAxis.value(), opDimMap);
-        if (curInputAxes[linkNumber] == prevAxis.value() && !isRegionRestrictedDim(opDimMap)) {
-            auto areAllAligned = llvm::all_of(vfConfig.getOperationsForTiling(), [](auto* operation) {
-                return mlir::isa<IE::AlignedChannelsOpInterface>(operation);
-            });
-            if (prevAxis.value() != Dims4D::Act::C || !areAllAligned) {
-                // try to use current axis, otherwise try to find other axis
-                auto mergedCase = getVFCaseWithTiling(curAxis.value(), prevAxis.value());
-                checkedDim = curAxis.value();
-                if (mergedCase.isInitialized()) {
-                    return mergedCase;
+        auto curInputAxesResult = backInferVFTilingDim(currentConfig, curAxis.value(), opDimMap);
+        if (mlir::succeeded(curInputAxesResult)) {
+            auto curInputAxes = curInputAxesResult.value();
+            if (curInputAxes[linkNumber] == prevAxis.value() && !isRegionRestrictedDim(opDimMap)) {
+                auto areAllAligned = llvm::all_of(vfConfig.getOperationsForTiling(), [](auto* operation) {
+                    return mlir::isa<IE::AlignedChannelsOpInterface>(operation);
+                });
+                if (prevAxis.value() != Dims4D::Act::C || !areAllAligned) {
+                    // try to use current axis, otherwise try to find other axis
+                    auto mergedCase = getVFCaseWithTiling(curAxis.value(), prevAxis.value());
+                    checkedDim = curAxis.value();
+                    if (mergedCase.isInitialized()) {
+                        return mergedCase;
+                    }
                 }
             }
         }
@@ -703,12 +706,16 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
         // E.g., prevTiling [1, 3, 1, 1] -> permuteCast -> currentTiling [1, 1, 2, 1]
         // Thus we need dim backinfer to get correct axis to compare
         // As Vf inputs may be more than one, we need backinfer dim for each of them and use correct one
-        auto curInputDims = backInferVFTilingDim(currentConfig, dim, opDimMap);
+        auto curInputDimsResult = backInferVFTilingDim(currentConfig, dim, opDimMap);
+        if (mlir::failed(curInputDimsResult)) {
+            continue;
+        }
 
         if (isRegionRestrictedDim(opDimMap)) {
             continue;
         }
 
+        auto curInputDims = curInputDimsResult.value();
         auto currentVFCase = getVFCaseWithTiling(dim, curInputDims[linkNumber]);
 
         // calculate optimal number of tiles for that dim
@@ -725,5 +732,67 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
         }
     }
     return mergedCase;
+}
+
+mlir::LogicalResult MergeVFRegionRewriter::matchAndRewrite(VPU::VerticalFusionOp vfOp,
+                                                           mlir::PatternRewriter& rewriter) const {
+    _log.trace("Starting vertical fusion for region with VerticalFusionOp {0} at location {1}", vfOp, vfOp->getLoc());
+
+    VPU::VerticalFusionOp vfBlock = nullptr;
+    VPU::VerticalFusionOp parentVFOp = nullptr;
+    for (auto operand : vfOp->getOperands()) {
+        parentVFOp = operand.getDefiningOp<VPU::VerticalFusionOp>();
+        vfBlock = nullptr;
+
+        if (parentVFOp == nullptr) {
+            continue;
+        }
+
+        _log.trace("Analyzing vertical fusion region with parent VerticalFusionOp {0} at location {1}", parentVFOp,
+                   parentVFOp->getLoc());
+
+        const bool allInOldBlock = llvm::all_of(parentVFOp->getUsers(), [&](auto user) {
+            return user == vfOp;
+        });
+        // if not all user of current parent VF go to the same block
+        // try further with next operand
+        // For situations
+        // Operation1
+        //   |      |          |
+        //   |     Operation2
+        //     Eltwise         Operation3
+        // in case Operation1's user goes to Operation3, which cannot be fused with Eltwise
+        // switch to Operation2, try to merge it with Eltwise
+        if (!allInOldBlock) {
+            continue;
+        }
+
+        vfBlock = fuseOpsInBlock(rewriter, vfOp, parentVFOp.getOperation());
+        auto vfCase = findVFCase(parentVFOp, vfOp, vfBlock);
+        if (!vfCase.has_value() || !checkVFCostFunction(parentVFOp, vfOp, vfCase.value())) {
+            // Drop all references to vfBlock to avoid it being added back to the rewriter
+            // worklist.
+            vfBlock->dropAllReferences();
+            rewriter.eraseOp(vfBlock);
+            vfBlock = nullptr;
+            // Add support for NCE task, if merging activation failed, continue to merge weights.
+            // E-141686: A general solution to merge more subgraph for more VF ops.
+            if (checkOtherVFInput(vfOp, parentVFOp)) {
+                continue;
+            }
+            return mlir::failure();
+        }
+
+        break;
+    }
+
+    if (vfBlock == nullptr) {
+        return mlir::failure();
+    }
+
+    _log.trace("Merged subgraph {0}", vfBlock);
+    fuseBlocks(rewriter, vfOp, vfBlock);
+
+    return mlir::success();
 }
 }  // namespace vpux::VPU::VF::v2

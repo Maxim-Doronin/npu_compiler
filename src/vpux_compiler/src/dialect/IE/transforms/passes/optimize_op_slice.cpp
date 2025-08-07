@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -180,23 +180,29 @@ mlir::LogicalResult ConcatSliceRewriter::matchAndRewrite(IE::SliceOp origOp, mli
     const auto inputs = concatOp.getInputs();
     SmallVector<ShapeRef> newInputShapes;
     SmallVector<SmallVector<int64_t>> newInputShapesVec;
+    std::unordered_set<Dim> newConcatAxes;
 
     if (hasReshape) {
-        const auto affineOutShape = getShape(reshapeOp.getOutput());
-        const auto modifiedAxes = IE::getConcatModifiedAxis(concatOp);
         for (const auto& input : inputs) {
-            const SmallVector<int64_t> newShapeVec =
-                    IE::calculateInputShapeAfterSwitchConcatAndAffineReshape(input, concatOp, reshapeOp);
-            newInputShapesVec.emplace_back(newShapeVec);
+            auto newShapeInfo = IE::inferOutputShapeAfterAffineReshapeBeforeConcat(input, concatOp, reshapeOp);
+            if (!newShapeInfo.has_value()) {
+                return mlir::failure();
+            }
+            const auto newConcatDim = newShapeInfo.value().first;
+            const auto newShape = newShapeInfo.value().second;
+            newInputShapesVec.emplace_back(to_small_vector(newShape));
+            newConcatAxes.insert(newConcatDim);
+        }
+
+        if (newConcatAxes.size() != 1) {
+            return mlir::failure();
         }
 
         for (const auto& vector : newInputShapesVec) {
             newInputShapes.emplace_back(ShapeRef(vector));
         }
 
-        auto newOffsetsAttr =
-                IE::getNewConcatOffsetsParameters(concatOp.getStaticOffsetsAttr(), reshapeOp.getDimMapping(), inputs,
-                                                  newInputShapes, affineOutShape, modifiedAxes);
+        auto newOffsetsAttr = IE::inferConcatOffsets(newInputShapes, *newConcatAxes.begin(), origOp.getContext());
         concatOffsets = parseIntArrayOfArrayAttr<int64_t>(newOffsetsAttr);
     } else {
         for (const auto& input : inputs) {

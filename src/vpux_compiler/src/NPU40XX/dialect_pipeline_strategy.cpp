@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect_pipeline_strategy.hpp"
@@ -48,17 +48,11 @@ public:
             overwriteIfUnset(options.optimizationLevel, 3);
         }
         setupOptionsCommon(options);
-        overwriteIfUnset(options.enableProfiling, config.get<intel_npu::PERF_COUNT>());
-        options.updateBatchCompileOptionsFromString(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
     }
 
     static void setupOptionsCommon(DefaultHWOptions40XX& options) {
         setupParamsAccordingToOptimizationLevel(options.optimizationLevel, options, options.workloadManagementEnable);
         setupPWLMParams(options);
-        // TODO: E#-108844 Support Compressed activation with Partial workload management
-        if (options.workloadManagementEnable) {
-            overwriteIfUnset(options.enableCompressActivationSpill, false);
-        }
     }
 };
 
@@ -128,10 +122,6 @@ private:
     static void setupOptionsCommon(DefaultHWOptions40XX& options) {
         setupParamsAccordingToOptimizationLevel(options.optimizationLevel, options, options.workloadManagementEnable);
         setupPWLMParams(options);
-        // TODO: E#-108844 Support Compressed activation with Partial workload management
-        if (options.workloadManagementEnable) {
-            overwriteIfUnset(options.enableCompressActivationSpill, false);
-        }
     }
 };
 

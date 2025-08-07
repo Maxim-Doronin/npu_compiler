@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" %s | FileCheck %s
@@ -806,4 +806,84 @@ module @MemPermuteConversionNoTranspose3D {
     // CHECK:   [[SHCAST2:%.+]] = IE.ShapeCast {shape = [1, 2, 3]} inputs([[TRANSPOSE:%.+]] : tensor<1x3x2xsi8>) -> tensor<1x2x3xsi8>
     // CHECK:   [[LAYOUTCAST2:%.+]] = IE.LayoutCast([[SHCAST2:%.+]]) {dst_order = #map} : tensor<1x2x3xsi8> -> tensor<1x2x3xsi8, {order = #map}>
     // CHECK:   return [[LAYOUTCAST2]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x0000000400112233"
+        }
+    }
+#-}
+
+!qElemType = !quant.uniform<i8:f32:0, {0.05, 0.1}>
+!qElemType1 = !quant.uniform<i8:f32:1, {0.05, 0.1}>
+// CHECK: [[QTYPE:!.+]] = !quant.uniform<i8:f32:1, {5.000000e-02,1.000000e-01}>
+
+// CHECK: module @DequantizePerAxis4D
+module @DequantizePerAxis4D {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<2x2x1x1xf32>
+        DataInfo "output2" : tensor<2x2x1x1xi8>
+    }
+
+    func.func @main() -> (tensor<2x2x1x1xf32>, tensor<2x2x1x1xi8>) {
+        %NOT_supported = const.Declare tensor<2x2x1x1xf32> = dense_resource<ov_1> : tensor<2x2x1x1xi8>,
+            [#const.CastElemType<!qElemType>, #const.Dequantize]
+
+        // Added the last cast to differentiate between the constants
+        %processed_cst = const.Declare tensor<2x2x1x1xi8> = dense_resource<ov_1> : tensor<2x2x1x1xi8>,
+            [#const.CastElemType<!qElemType1>, #const.Dequantize, #const.CastElemType<i8>]
+
+        return %NOT_supported, %processed_cst : tensor<2x2x1x1xf32>, tensor<2x2x1x1xi8>
+    }
+
+    // CHECK:   func.func @init([[NGRAPH_CST:%.+]]: tensor<2x2x1x1xi8>) -> tensor<2x2x1x1xi8>
+    // CHECK:       [[CAST:%.+]] = IE.QuantizeCast([[NGRAPH_CST]]) {dstElemType = [[QTYPE]]}
+    // CHECK:       [[DEQUANT:%.+]] = IE.Dequantize([[CAST]])
+    // CHECK:       [[CONVERT:%.+]] = IE.Convert([[DEQUANT]])
+    // CHECK:       return [[CONVERT]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            ov_1: "0x0000000400112233"
+        }
+    }
+#-}
+
+!qElemType = !quant.uniform<i8:f32:0, {0.05, 0.1}>
+!qElemType1 = !quant.uniform<i8:f32:1, {0.05, 0.1}>
+// CHECK: [[QTYPE:!.+]] = !quant.uniform<i8:f32:1, {5.000000e-02,1.000000e-01}>
+
+// CHECK: module @DequantizePerAxis5D
+module @DequantizePerAxis5D {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<2x2x1x1x1xf32>
+        DataInfo "output2" : tensor<2x2x1x1x1xi8>
+    }
+
+    func.func @main() -> (tensor<2x2x1x1x1xf32>, tensor<2x2x1x1x1xi8>) {
+        %NOT_supported = const.Declare tensor<2x2x1x1x1xf32> = dense_resource<ov_1> : tensor<2x2x1x1x1xi8>,
+            [#const.CastElemType<!qElemType>, #const.Dequantize]
+
+        // Added the last cast to differentiate between the constants
+        %processed_cst = const.Declare tensor<2x2x1x1x1xi8> = dense_resource<ov_1> : tensor<2x2x1x1x1xi8>,
+            [#const.CastElemType<!qElemType1>, #const.Dequantize, #const.CastElemType<i8>]
+
+        return %NOT_supported, %processed_cst : tensor<2x2x1x1x1xf32>, tensor<2x2x1x1x1xi8>
+    }
+
+    // CHECK:   func.func @init([[NGRAPH_CST:%.+]]: tensor<2x2x1x1x1xi8>) -> tensor<2x2x1x1x1xi8>
+    // CHECK:       [[CAST:%.+]] = IE.QuantizeCast([[NGRAPH_CST]]) {dstElemType = [[QTYPE]]}
+    // CHECK:       [[DEQUANT:%.+]] = IE.Dequantize([[CAST]])
+    // CHECK:       [[CONVERT:%.+]] = IE.Convert([[DEQUANT]])
+    // CHECK:       return [[CONVERT]]
 }

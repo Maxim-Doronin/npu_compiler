@@ -37,7 +37,7 @@ const std::vector<size_t> numGroups = {64};
 const std::vector<ov::Shape> emptyOutputShape = {{}};
 const std::vector<std::vector<ptrdiff_t>> emptyOutputPadding = {{}};
 
-/* ============= 2D GroupConvolution ============= */
+/* ============= 2D GroupConvBackpropDataOp ============= */
 const std::vector<std::vector<ov::Shape>> inputShapes2D = {{{1, 64, 64, 64}}};
 const std::vector<std::vector<size_t>> kernels2D = {{4, 4}};
 const std::vector<std::vector<size_t>> strides2D = {{2, 2}};
@@ -69,6 +69,43 @@ INSTANTIATE_TEST_SUITE_P(smoke_GroupConvBackpropData2D_OutputPadding, GroupConvB
                          ::testing::Combine(groupConvBackpropData2DParams_OutputPadding,
                                             ::testing::ValuesIn(modelTypes),
                                             ::testing::ValuesIn(static_shapes_to_test_representation(inputShapes2D)),
+                                            ::testing::ValuesIn(emptyOutputShape), ::testing::Values(DEVICE_NPU)),
+                         GroupConvBackpropLayerTestCommon::getTestCaseName);
+
+/* ============= 1D GroupConvBackpropDataOp ============= */
+const std::vector<std::vector<ov::Shape>> inputShapes1D = {{{1, 16, 64}}};
+const std::vector<std::vector<size_t>> kernels1D = {{5}};
+const std::vector<std::vector<size_t>> strides1D = {{2}};
+const std::vector<std::vector<ptrdiff_t>> padBegins1D = {{1}};
+const std::vector<std::vector<ptrdiff_t>> padEnds1D = {{1}};
+const std::vector<std::vector<size_t>> dilations1D = {{1}};
+const std::vector<std::vector<ptrdiff_t>> outputPadding1D = {{1}};
+const std::vector<size_t> numOutChannels1D = {16};
+const std::vector<size_t> numGroups1D = {16};
+
+const auto groupConvBackpropData1DParams_ExplicitPadding = ::testing::Combine(
+        ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D), ::testing::ValuesIn(padBegins1D),
+        ::testing::ValuesIn(padEnds1D), ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
+        ::testing::ValuesIn(numGroups1D), ::testing::Values(ov::op::PadType::EXPLICIT),
+        ::testing::ValuesIn(emptyOutputPadding));
+
+const auto groupConvBackpropData1DParams_OutputPadding = ::testing::Combine(
+        ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D), ::testing::ValuesIn(padBegins1D),
+        ::testing::ValuesIn(padEnds1D), ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
+        ::testing::ValuesIn(numGroups1D), ::testing::Values(ov::op::PadType::EXPLICIT),
+        ::testing::ValuesIn(outputPadding1D));
+
+INSTANTIATE_TEST_SUITE_P(smoke_GroupConvBackpropData1D_ExplicitPadding, GroupConvBackpropLayerTestCommon,
+                         ::testing::Combine(groupConvBackpropData1DParams_ExplicitPadding,
+                                            ::testing::ValuesIn(modelTypes),
+                                            ::testing::ValuesIn(static_shapes_to_test_representation(inputShapes1D)),
+                                            ::testing::ValuesIn(emptyOutputShape), ::testing::Values(DEVICE_NPU)),
+                         GroupConvBackpropLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_GroupConvBackpropData1D_OutputPadding, GroupConvBackpropLayerTestCommon,
+                         ::testing::Combine(groupConvBackpropData1DParams_OutputPadding,
+                                            ::testing::ValuesIn(modelTypes),
+                                            ::testing::ValuesIn(static_shapes_to_test_representation(inputShapes1D)),
                                             ::testing::ValuesIn(emptyOutputShape), ::testing::Values(DEVICE_NPU)),
                          GroupConvBackpropLayerTestCommon::getTestCaseName);
 

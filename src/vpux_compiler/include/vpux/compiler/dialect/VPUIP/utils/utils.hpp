@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -116,7 +116,6 @@ bool supportsPerVariantBarrierConfiguration(mlir::ModuleOp module);
 //
 
 mlir::Value alignDepthWiseWeightsTensor(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value origFilter);
-mlir::Value getTopBufferOfNCEClusterTiling(mlir::Operation* innerOp, mlir::Value buffer);
 
 // Sparsity utils for optimize-copies pass family
 void moveRootAllocBefore(mlir::Operation* root, mlir::Operation* targerOp);
@@ -169,13 +168,17 @@ SmallVector<mlir::Value> getPerClusterComputeBuffers(mlir::MLIRContext* ctx, mli
 std::pair<outputBuffers, outputItiBuffers> getPerClusterOutputHaloBuffers(mlir::MLIRContext* ctx, mlir::Location loc,
                                                                           StringRef bufferName, mlir::Value operand,
                                                                           int64_t numClusters);
+enum OperandType { input = 0, output = 1, other = 2 };
+
 SmallVector<mlir::Value> getPerClusterSWMemoryBuffers(mlir::MLIRContext* ctx, mlir::Location loc, StringRef bufferName,
                                                       VPUIP::SwKernelOp swTaskOp, mlir::Value operand,
-                                                      int64_t numClusters, mlir::OpBuilder& builder, Logger log,
+                                                      OperandType operandType, int64_t numClusters,
+                                                      mlir::OpBuilder& builder, Logger log,
                                                       bool allowDiscontinuousBuffers = false);
 SmallVector<mlir::Value> getPerClusterSWComputeBuffers(mlir::MLIRContext* ctx, mlir::Location loc, StringRef bufferName,
                                                        VPUIP::SwKernelOp swTaskOp, mlir::Value operand,
-                                                       int64_t numClusters, mlir::OpBuilder& builder, Logger log,
+                                                       OperandType operandType, int64_t numClusters,
+                                                       mlir::OpBuilder& builder, Logger log,
                                                        bool allowDiscontinuousBuffers = false);
 
 SmallVector<mlir::Value> getSplitBuffers(mlir::MLIRContext* ctx, mlir::Location loc, StringRef bufferName,
@@ -722,6 +725,8 @@ VPU::DistributionInfoAttr getDistributedAttrAfterShapeCast(VPU::DistributedTypeI
 
     return origDistribution;
 }
+
+bool isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp, VPUIP::DistributedBufferType distributedType);
 
 //
 // SW Kernel prefetching reserved memory utils

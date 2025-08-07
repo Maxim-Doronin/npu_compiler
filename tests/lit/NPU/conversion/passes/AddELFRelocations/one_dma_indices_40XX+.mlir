@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
@@ -52,19 +52,19 @@ module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} 
         VPUASM.MappedInference {elfMemOffsetAttrKey = 0 : ui64} @MappedInference : dmas([[@task.dma.0.0::@NNDMA_0_0_0]]) dmaCount([[1, 0], [0, 0]]) invariantCount([0, 0, 0, 0, 0, 0]) variantCount([0, 0, 0, 0, 0, 0]) actKernelRangesCount([0, 0, 0, 0, 0, 0]) actKernelInvocationsCount([0, 0, 0, 0, 0, 0]) mediaCount(0) barrierCount(0) mappedInferenceVersion(@note.MappedInferenceVersion::@MappedInferenceVersion_0_0)
       }
       ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
-        ELF.Symbol @elfsym.program.DMA.cmx.0.0 of(@program.DMA.cmx.0.0) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.task.dma.0.0 of(@task.dma.0.0) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @elfsym.program.mapped_inference of(@program.mapped_inference) type(<STT_SECTION>) size(0) value(0)
-        ELF.Symbol @entry of(@program.mapped_inference::@MappedInference) type(<VPU_STT_ENTRY>) size(0) value(0)
+        ELF.Symbol @elfsym.program.DMA.cmx.0.0 of(@program.DMA.cmx.0.0) type(<STT_SECTION>)
+        ELF.Symbol @elfsym.task.dma.0.0 of(@task.dma.0.0) type(<STT_SECTION>)
+        ELF.Symbol @elfsym.program.mapped_inference of(@program.mapped_inference) type(<STT_SECTION>)
+        ELF.Symbol @entry of(@program.mapped_inference::@MappedInference) type(<VPU_STT_ENTRY>)
       }
       ELF.CreateSymbolTableSection @symtab.io.NetworkInput secFlags("VPU_SHF_USERINPUT|VPU_SHF_JIT") {
-        ELF.Symbol @elfsym.io.NetworkInput0 of(@io.NetworkInput0) type(<STT_SECTION>) size(48) value(0)
+        ELF.Symbol @elfsym.io.NetworkInput0 of(@io.NetworkInput0) type(<STT_SECTION>) size(48)
       }
       ELF.CreateSymbolTableSection @symtab.io.NetworkIndices secFlags("VPU_SHF_USERINPUT|VPU_SHF_JIT") {
-        ELF.Symbol @elfsym.io.NetworkIndices of(@io.NetworkIndices) type(<STT_SECTION>) size(20) value(0)
+        ELF.Symbol @elfsym.io.NetworkIndices of(@io.NetworkIndices) type(<STT_SECTION>) size(20)
       }
       ELF.CreateSymbolTableSection @symtab.io.NetworkOutput secFlags("VPU_SHF_USEROUTPUT|VPU_SHF_JIT") {
-        ELF.Symbol @elfsym.io.NetworkOutput0 of(@io.NetworkOutput0) type(<STT_SECTION>) size(48) value(0)
+        ELF.Symbol @elfsym.io.NetworkOutput0 of(@io.NetworkOutput0) type(<STT_SECTION>) size(48)
       }
       ELF.CreateMetadataSection @MetadataSection aligned(8) secFlags("SHF_NONE")  {
         VPUASM.NetworkMetadata @NetworkMetadata

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-parallel-copies %s | FileCheck %s
@@ -526,17 +526,22 @@ func.func @OptimizeParallelMultiShaveCopies(%arg0: memref<387072x3xf16, @DDR>,
     num_clusters = 4 : i64
 }>
 
-func.func @OptimizeParallelSubViewWithClusterTilingCopies(
+module @VPU.SW {
+  func.func private @builtin_convert(memref<*xf16, @CMX_NN>, memref<*xf32, @CMX_NN>) attributes {VPU.kernel_code = "convert.cpp", VPU.kernel_entry = "convert"}
+}
+
+func.func @OptimizeParallelSubViewWithDistributedCopies(
         %input: memref<1x144x128x128xf16, #NHWC, @DDR>,
         %weights: memref<32x144x1x1xf16, #NHWC, @CMX_NN>,
         %weights_table : memref<144x1x1x4xsi32, @CMX_NN>)
          -> (!OutputDistributed, !OutputDistributed) {
 
     %0 = memref.alloc() : memref<1x144x128x128xf16, #NHWC, @DDR>
-    %1 = IERT.Convert
-        inputs(%input : memref<1x144x128x128xf16, #NHWC, @DDR>)
-        outputs(%0 : memref<1x144x128x128xf16, #NHWC, @DDR>)
-        -> memref<1x144x128x128xf16, #NHWC, @DDR>
+    %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_convert
+        inputs(%input as %input_0: memref<1x144x128x128xf16, #NHWC, @DDR>)
+        outputs(%0 as %output_0: memref<1x144x128x128xf16, #NHWC, @DDR>) on tile 0 -> memref<1x144x128x128xf16, #NHWC, @DDR> {
+        VPUIP.SW.Kernel.run (%input_0, %output_0) : memref<1x144x128x128xf16, #NHWC, @DDR>, memref<1x144x128x128xf16, #NHWC, @DDR>
+    }
 
     %2 = VPUIP.SubView %1 [0, 0, 64, 0] [1, 144, 64, 128]
             : memref<1x144x128x128xf16, #NHWC, @DDR>
@@ -591,7 +596,10 @@ func.func @OptimizeParallelSubViewWithClusterTilingCopies(
     return %6, %11 : !OutputDistributed, !OutputDistributed
 
     // CHECK:       [[IN_BUFFER:%.+]] = memref.alloc() : memref<1x144x128x128xf16, #NHWC, @DDR>
-    // CHECK:       [[CONVERT:%.+]] = IERT.Convert inputs(%arg0 : memref<1x144x128x128xf16, #NHWC, @DDR>) outputs([[IN_BUFFER]] : memref<1x144x128x128xf16, #NHWC, @DDR>) -> memref<1x144x128x128xf16, #NHWC, @DDR>
+    // CHECK:       [[CONVERT:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:          @builtin_convert
+    // CHECK-SAME:          inputs(%arg0
+    // CHECK-SAME:          outputs([[IN_BUFFER]]
 
     // CHECK:       [[SUBVIEW_1:%.+]] = VPUIP.SubView [[CONVERT]] [0, 0, 64, 0] [1, 144, 64, 128]
     // CHECK-SAME:      memref<1x144x128x128xf16, #NHWC, @DDR> to
@@ -646,7 +654,7 @@ func.func @OptimizeParallelSubViewWithClusterTilingCopies(
     num_clusters = 2 : i64
 }>
 
-func.func @NotOptimizeParallelClusterTilingCopiesWithSubviewHasDiffOffset(
+func.func @NotOptimizeParallelDistributedCopiesWithSubviewHasDiffOffset(
         %arg0: memref<1x1x512x1xf16, @DDR>) -> !OutputDistributed {
     %1 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%arg0 : memref<1x1x512x1xf16, @DDR>) -> memref<1x1x512x1xf16, #NHWC, @DDR>
     %2 = VPURT.AllocDistributed -> !OutputDistributed
@@ -856,8 +864,8 @@ func.func @OptimizeParallelMulticlusterCopiesSparse()
     num_clusters = 4 : i64
 }>
 
-// CHECK-LABEL: @OptimizeParallelSubViewWithClusterTilingCopiesSparse
-func.func @OptimizeParallelSubViewWithClusterTilingCopiesSparse(
+// CHECK-LABEL: @OptimizeParallelSubViewWithDistributedCopiesSparse
+func.func @OptimizeParallelSubViewWithDistributedCopiesSparse(
         %input: !IDataDDRType,
         %input_sm: !ISMDDRType,
         %weights: memref<32x144x1x1xf16, #NHWC, @CMX_NN>,
@@ -1014,8 +1022,8 @@ func.func @OptimizeParallelSubViewWithClusterTilingCopiesSparse(
     num_clusters = 4 : i64
 }>
 
-// CHECK-LABEL: @NotOptimizeParallelClusterTilingCopiesWithSubviewHasDiffOffsetSparse
-func.func @NotOptimizeParallelClusterTilingCopiesWithSubviewHasDiffOffsetSparse(
+// CHECK-LABEL: @NotOptimizeParallelDistributedCopiesWithSubviewHasDiffOffsetSparse
+func.func @NotOptimizeParallelDistributedCopiesWithSubviewHasDiffOffsetSparse(
         %input: !IDataDDRType,
         %input_sm: !ISMDDRType,
         %weights: memref<32x144x1x1xf16, #NHWC, @CMX_NN>,
@@ -1179,17 +1187,22 @@ func.func @NotOptimizeParallelClusterTilingCopiesWithSubviewHasDiffOffsetSparse(
     num_clusters = 4 : i64
 }>
 
-func.func @OptimizeParallelSubViewWithParallelClusterTilingCopies(
+module @VPU.SW {
+  func.func private @builtin_convert(memref<*xf16, @CMX_NN>, memref<*xf32, @CMX_NN>) attributes {VPU.kernel_code = "convert.cpp", VPU.kernel_entry = "convert"}
+}
+
+func.func @OptimizeParallelSubViewWithParallelDistributedCopies(
         %input: memref<1x144x128x128xf16, #NHWC, @DDR>,
         %weights: memref<32x144x1x1xf16, #NHWC, @CMX_NN>,
         %weights_table : memref<144x1x1x4xsi32, @CMX_NN>)
          -> (!OutputDistributed, !OutputDistributed, !OutputDistributed) {
 
     %0 = memref.alloc() : memref<1x144x128x128xf16, #NHWC, @DDR>
-    %1 = IERT.Convert
-        inputs(%input : memref<1x144x128x128xf16, #NHWC, @DDR>)
-        outputs(%0 : memref<1x144x128x128xf16, #NHWC, @DDR>)
-        -> memref<1x144x128x128xf16, #NHWC, @DDR>
+    %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_convert
+        inputs(%input as %input_0: memref<1x144x128x128xf16, #NHWC, @DDR>)
+        outputs(%0 as %output_0: memref<1x144x128x128xf16, #NHWC, @DDR>) on tile 0 -> memref<1x144x128x128xf16, #NHWC, @DDR> {
+        VPUIP.SW.Kernel.run (%input_0, %output_0) : memref<1x144x128x128xf16, #NHWC, @DDR>, memref<1x144x128x128xf16, #NHWC, @DDR>
+    }
 
     %2 = VPUIP.SubView %1 [0, 0, 64, 0] [1, 144, 64, 128]
             : memref<1x144x128x128xf16, #NHWC, @DDR>
@@ -1269,7 +1282,10 @@ func.func @OptimizeParallelSubViewWithParallelClusterTilingCopies(
     return %6, %11, %103 : !OutputDistributed, !OutputDistributed, !OutputDistributed
 
     // CHECK:       [[IN_BUFFER:%.+]] = memref.alloc() : memref<1x144x128x128xf16, #NHWC, @DDR>
-    // CHECK:       [[CONVERT:%.+]] = IERT.Convert inputs(%arg0 : memref<1x144x128x128xf16, #NHWC, @DDR>) outputs([[IN_BUFFER]] : memref<1x144x128x128xf16, #NHWC, @DDR>) -> memref<1x144x128x128xf16, #NHWC, @DDR>
+    // CHECK:       [[CONVERT:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:          @builtin_convert
+    // CHECK-SAME:          inputs(%arg0
+    // CHECK-SAME:          outputs([[IN_BUFFER]]
 
     // CHECK:       [[SUBVIEW_1:%.+]] = VPUIP.SubView [[CONVERT]] [0, 0, 64, 0] [1, 144, 64, 128]
     // CHECK-SAME:      memref<1x144x128x128xf16, #NHWC, @DDR> to
@@ -1328,14 +1344,19 @@ func.func @OptimizeParallelSubViewWithParallelClusterTilingCopies(
     num_clusters = 2 : i64
 }>
 
-// CHECK-LABEL: @OptimizeParallelClusterTilingCopiesWithInPlaceNCEEltwise
-func.func @OptimizeParallelClusterTilingCopiesWithInPlaceNCEEltwise(%arg0:
+module @VPU.SW {
+  func.func private @builtin_convert(memref<*xf16, @CMX_NN>, memref<*xf32, @CMX_NN>) attributes {VPU.kernel_code = "convert.cpp", VPU.kernel_entry = "convert"}
+}
+
+// CHECK-LABEL: @OptimizeParallelDistributedCopiesWithInPlaceNCEEltwise
+func.func @OptimizeParallelDistributedCopiesWithInPlaceNCEEltwise(%arg0:
 memref<1x128x104x104xf32, #NHWC, @DDR>) -> (!CopyOutputDistributed, !OutputDistributed) {
     %0 = memref.alloc() : memref<1x128x104x104xf16, #NHWC, @DDR>
-    %1 = IERT.Convert
-        inputs(%arg0 : memref<1x128x104x104xf32, #NHWC, @DDR>)
-        outputs(%0 : memref<1x128x104x104xf16, #NHWC, @DDR>)
-        -> memref<1x128x104x104xf16, #NHWC, @DDR>
+    %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_convert
+        inputs(%arg0 as %input_0: memref<1x128x104x104xf32, #NHWC, @DDR>)
+        outputs(%0 as %output_0: memref<1x128x104x104xf16, #NHWC, @DDR>) on tile 0 -> memref<1x128x104x104xf16, #NHWC, @DDR> {
+        VPUIP.SW.Kernel.run (%input_0, %output_0) : memref<1x128x104x104xf32, #NHWC, @DDR>, memref<1x128x104x104xf16, #NHWC, @DDR>
+    }
     %2 = VPUIP.SubView %1 [0, 0, 0, 0] [1, 128, 52, 104] :
                 memref<1x128x104x104xf16, #NHWC, @DDR> to memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}, @DDR>
     %3 = VPURT.AllocDistributed -> !OutputDistributed
@@ -1374,7 +1395,10 @@ memref<1x128x104x104xf32, #NHWC, @DDR>) -> (!CopyOutputDistributed, !OutputDistr
     }
     return %6, %13: !CopyOutputDistributed, !OutputDistributed
     // CHECK:       [[MEM_REF:%.+]] = memref.alloc() : memref<1x128x104x104xf16, #NHWC, @DDR>
-    // CHECK:       [[CONVERT:%.+]] = IERT.Convert inputs(%arg0 : memref<1x128x104x104xf32, #NHWC, @DDR>) outputs([[MEM_REF]] : memref<1x128x104x104xf16, #NHWC, @DDR>) -> memref<1x128x104x104xf16, #NHWC, @DDR>
+    // CHECK:       [[CONVERT:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:          @builtin_convert
+    // CHECK-SAME:          inputs(%arg0
+    // CHECK-SAME:          outputs([[MEM_REF]]
     // CHECK:       [[SUBVIEW:%.+]] = VPUIP.SubView [[CONVERT]] [0, 0, 0, 0] [1, 128, 52, 104] :
     // CHECK-SAME:        memref<1x128x104x104xf16, #NHWC, @DDR> to memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}, @DDR>
     // CHECK:       [[DISTBUFF:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x128x52x104xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
@@ -2438,5 +2462,5 @@ func.func @DoNotOptimizeParallelCopiesForTwoAxisTilingAndBlockArgumentInput(%arg
     // CHECK: [[NCEClusterTask_1:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>} input([[COPY_1]] : memref<1x256x128x4xf16, #NHWC, [@CMX_NN, 0]>) weights([[COPY_2]] : memref<128x256x1x1xf16, {order = #NHWC}, [@CMX_NN, 0]>) weight_table([[ALLOC]] : memref<128x1x1x4xsi32, @CMX_NN>) parent_input([[COPY_1]] : memref<1x256x128x4xf16, #NHWC, [@CMX_NN, 0]>) parent_output([[ALLOC_4]] : memref<1x128x128x4xf16, #NHWC, [@CMX_NN, 0]>) outputs([[ALLOC_4]] : memref<1x128x128x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x128x128x4xf16, #NHWC, [@CMX_NN, 0]> variants : {
     // CHECK: DPUTask {inEnd = [3, 127, 255], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [3, 127, 127], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
     // CHECK: } PPE : {
-    // CHECK: }  
+    // CHECK: }
 }

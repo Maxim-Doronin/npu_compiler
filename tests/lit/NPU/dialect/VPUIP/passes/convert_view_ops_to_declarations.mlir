@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-view-ops-to-declarations %s | FileCheck %s
@@ -193,9 +193,9 @@ func.func @VPUIPSubViewDistributed(%arg0: !OutputBuffer) -> !OutputBuffer {
     %0 = VPURT.DeclareBuffer <CMX_NN> <0> -> !InputDistributedBuffer
     %1 = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributedBuffer
     %2 = VPUIP.SubView %0 [0, 0, 0, 0] [1, 64, 8, 16] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %3 = VPUIP.NCEClusterTiling inputs(%2 as %arg3: !InputSliceBuffer) outputs(%1 as %arg4: !OutputBuffer) -> !OutputDistributedBuffer {
-      %4 = VPUIP.NNDMA inputs(%arg3 : !InputSliceBuffer) outputs(%arg4 : !OutputBuffer) -> !OutputBuffer
-    }
+    %3 = VPUIP.NNDMA
+        inputs(%2 : !InputSliceDistributedBuffer)
+        outputs(%1 : !OutputDistributedBuffer) ->  !OutputDistributedBuffer
 
     return %arg0 : !OutputBuffer
 
@@ -205,12 +205,9 @@ func.func @VPUIPSubViewDistributed(%arg0: !OutputBuffer) -> !OutputBuffer {
 
     // CHECK-NOT:   VPUIP.SubView
 
-    // CHECK:       VPUIP.NCEClusterTiling
-    // CHECK-SAME:       inputs([[BUF_SLICE]] as [[ARG1:%.+]]: memref<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN>)
-    // CHECK-SAME:       outputs([[BUF_OUT]] as [[ARG2:%.+]]: memref<1x64x8x16xf16, #NHWC, @CMX_NN>)
     // CHECK:       VPUIP.NNDMA
-    // CHECK-SAME:       inputs([[ARG1]] : memref<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN>)
-    // CHECK-SAME:       outputs([[ARG2]] : memref<1x64x8x16xf16, #NHWC, @CMX_NN>)
+    // CHECK-SAME:       inputs([[BUF_SLICE]]
+    // CHECK-SAME:       outputs([[BUF_OUT]]
 }
 
 // -----
@@ -247,9 +244,9 @@ func.func @VPUIPSubViewDistributedSegmentedOnSubviewAxis(%arg0: !OutputBuffer) -
     %0 = VPURT.DeclareBuffer <CMX_NN> <0> -> !InputDistributedBuffer
     %1 = VPURT.DeclareBuffer <CMX_NN> <16384> -> !OutputDistributedBuffer
     %2 = VPUIP.SubView %0 [0, 0, 8, 0] [1, 64, 8, 16] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %3 = VPUIP.NCEClusterTiling inputs(%2 as %arg3: !InputSliceBuffer) outputs(%1 as %arg4: !OutputBuffer) -> !OutputDistributedBuffer {
-      %4 = VPUIP.NNDMA inputs(%arg3 : !InputSliceBuffer) outputs(%arg4 : !OutputBuffer) -> !OutputBuffer
-    }
+    %3 = VPUIP.NNDMA
+        inputs(%2 : !InputSliceDistributedBuffer)
+        outputs(%1 : !OutputDistributedBuffer) ->  !OutputDistributedBuffer
 
     return %arg0 : !OutputBuffer
 
@@ -300,9 +297,9 @@ func.func @VPUIPSubViewOnHAndWDistributedSegmentedOnH(%arg0: !OutputBuffer) -> !
     %0 = VPURT.DeclareBuffer <CMX_NN> <0> -> !InputDistributedBuffer
     %1 = VPURT.DeclareBuffer <CMX_NN> <16384> -> !OutputDistributedBuffer
     %2 = VPUIP.SubView %0 [0, 0, 8, 8] [1, 64, 8, 8] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %3 = VPUIP.NCEClusterTiling inputs(%2 as %arg3: !InputSliceBuffer) outputs(%1 as %arg4: !OutputBuffer) -> !OutputDistributedBuffer {
-      %4 = VPUIP.NNDMA inputs(%arg3 : !InputSliceBuffer) outputs(%arg4 : !OutputBuffer) -> !OutputBuffer
-    }
+    %3 = VPUIP.NNDMA
+        inputs(%2 : !InputSliceDistributedBuffer)
+        outputs(%1 : !OutputDistributedBuffer) ->  !OutputDistributedBuffer
 
     return %arg0 : !OutputBuffer
 
@@ -353,9 +350,9 @@ func.func @VPUIPSubViewOnCDistributedSegmentedOnH(%arg0: !OutputBuffer) -> !Outp
     %0 = VPURT.DeclareBuffer <CMX_NN> <0> -> !InputDistributedBuffer
     %1 = VPURT.DeclareBuffer <CMX_NN> <16384> -> !OutputDistributedBuffer
     %2 = VPUIP.SubView %0 [0, 32, 0, 0] [1, 32, 15, 16] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %3 = VPUIP.NCEClusterTiling inputs(%2 as %arg3: !InputSliceBuffer) outputs(%1 as %arg4: !OutputBuffer) -> !OutputDistributedBuffer {
-      %4 = VPUIP.NNDMA inputs(%arg3 : !InputSliceBuffer) outputs(%arg4 : !OutputBuffer) -> !OutputBuffer
-    }
+    %3 = VPUIP.NNDMA
+        inputs(%2 : !InputSliceDistributedBuffer)
+        outputs(%1 : !OutputDistributedBuffer) ->  !OutputDistributedBuffer
 
     return %arg0 : !OutputBuffer
 
@@ -408,18 +405,17 @@ func.func @ImplicitConcatViewOnCAndDistrubedSegmentedOnH(%arg0: !InputBufferDDR,
     %0 = VPURT.DeclareBuffer <CMX_NN> <0> -> !InputDistributedBuffer
 
     %2 = VPUIP.SubView %0 [0, 0, 0, 0] [1, 1, 128, 128] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %3 = VPUIP.NCEClusterTiling inputs(%arg0 as %arg3: !InputBufferDDR) outputs(%2 as %arg4: !InputSliceBuffer) -> !InputSliceDistributedBuffer {
-      %7 = VPUIP.NNDMA inputs(%arg3 : !InputBufferDDR) outputs(%arg4 : !InputSliceBuffer) -> !InputSliceBuffer
-    }
+    %3 = VPUIP.NNDMA
+        inputs(%arg0 : !InputBufferDDR)
+        outputs(%2 : !InputSliceDistributedBuffer) ->  !InputSliceDistributedBuffer
 
     %4 = VPUIP.SubView %0 [0, 1, 0, 0] [1, 1, 128, 128] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %5 = VPUIP.NCEClusterTiling inputs(%arg1 as %arg3: !InputBufferDDR) outputs(%4 as %arg4: !InputSliceBuffer) -> !InputSliceDistributedBuffer {
-      %7 = VPUIP.NNDMA inputs(%arg3 : !InputBufferDDR) outputs(%arg4 : !InputSliceBuffer) -> !InputSliceBuffer
-    }
-
-    %6 = VPUIP.NCEClusterTiling inputs(%0 as %arg3: !OutputBuffer) outputs(%arg2 as %arg4: !OutputBufferDDR) -> !OutputBufferDDR {
-      %7 = VPUIP.NNDMA inputs(%arg3 : !OutputBuffer) outputs(%arg4 : !OutputBufferDDR) -> !OutputBufferDDR
-    }
+    %5 = VPUIP.NNDMA
+        inputs(%arg1 : !InputBufferDDR)
+        outputs(%4 : !InputSliceDistributedBuffer) ->  !InputSliceDistributedBuffer
+    %6 = VPUIP.NNDMA
+        inputs(%0 : !InputDistributedBuffer)
+        outputs(%arg2 : !OutputBufferDDR) ->  !OutputBufferDDR
 
     return %arg2 : !OutputBufferDDR
 
@@ -430,29 +426,20 @@ func.func @ImplicitConcatViewOnCAndDistrubedSegmentedOnH(%arg0: !InputBufferDDR,
 
     // CHECK:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x1x128x128xf16, {order = #NCHW, strides = [32768, 16384, 128, 1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       VPUIP.NCEClusterTiling
-    // CHECK-SAME:      inputs([[IN0]] as [[ARG1:%.*]]: memref<1x1x128x128xf16, @DDR>)
-    // CHECK-SAME:      outputs([[BUF0]] as [[ARG2:%.*]]: memref<1x1x128x128xf16, {order = #NCHW, strides = [32768, 16384, 128, 1]}, @CMX_NN>)
     // CHECK:       VPUIP.NNDMA
-    // CHECK-SAME:      inputs([[ARG1]] : memref<1x1x128x128xf16, @DDR>)
-    // CHECK-SAME:      outputs([[ARG2]] : memref<1x1x128x128xf16, {order = #NCHW, strides = [32768, 16384, 128, 1]}, @CMX_NN>)
+    // CHECK-SAME:      inputs([[IN0]]
+    // CHECK-SAME:      outputs([[BUF0]]
 
     // CHECK-NOT:   VPUIP.SubView
 
     // CHECK:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> <16384>
-    // CHECK:       VPUIP.NCEClusterTiling
-    // CHECK-SAME:      inputs([[IN1]] as [[ARG3:%.*]]: memref<1x1x128x128xf16, @DDR>)
-    // CHECK-SAME:      outputs([[BUF1]] as [[ARG4:%.*]]: memref<1x1x128x128xf16, {order = #NCHW, strides = [32768, 16384, 128, 1]}, @CMX_NN>)
     // CHECK:       VPUIP.NNDMA
-    // CHECK-SAME:      inputs([[ARG3]] : memref<1x1x128x128xf16, @DDR>)
-    // CHECK-SAME:      outputs([[ARG4]] : memref<1x1x128x128xf16, {order = #NCHW, strides = [32768, 16384, 128, 1]}, @CMX_NN>)
+    // CHECK-SAME:      inputs([[IN1]]
+    // CHECK-SAME:      outputs([[BUF1]]
 
-    // CHECK:       VPUIP.NCEClusterTiling
-    // CHECK-SAME:      inputs([[BUF]] as [[ARG5:%.*]]: memref<1x2x128x128xf16, @CMX_NN>)
-    // CHECK-SAME:      outputs([[OUT]] as [[ARG6:%.*]]: memref<1x2x128x128xf16, @DDR>)
     // CHECK:       VPUIP.NNDMA
-    // CHECK-SAME:      inputs([[ARG5]] : memref<1x2x128x128xf16, @CMX_NN>)
-    // CHECK-SAME:      outputs([[ARG6]] : memref<1x2x128x128xf16, @DDR>)
+    // CHECK-SAME:      inputs([[BUF]]
+    // CHECK-SAME:      outputs([[OUT]]
 }
 
 // -----
@@ -492,18 +479,17 @@ func.func @ImplicitConcatView(%arg0: !InputBufferDdr, %arg1: !OutputBufferDdr) -
     %0 = VPURT.DeclareBuffer <CMX_NN> <0> -> !InputDistributedBuffer
 
     %2 = VPUIP.SubView %0 [0, 0, 0, 0] [1, 64, 8, 16] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %3 = VPUIP.NCEClusterTiling inputs(%arg0 as %arg2: !InputBufferDdr) outputs(%2 as %arg3: !InputSliceBuffer) -> !InputSliceDistributedBuffer {
-      %8 = VPUIP.NNDMA inputs(%arg2 : !InputBufferDdr) outputs(%arg3 : !InputSliceBuffer) -> !InputSliceBuffer
-    }
+    %3 = VPUIP.NNDMA
+        inputs(%arg0 : !InputBufferDdr)
+        outputs(%2 : !InputSliceDistributedBuffer) ->  !InputSliceDistributedBuffer
 
     %4 = VPUIP.SubView %0 [0, 0, 8, 0] [1, 64, 8, 16] : !InputDistributedBuffer to !InputSliceDistributedBuffer
-    %5 = VPUIP.NCEClusterTiling inputs(%arg0 as %arg2: !InputBufferDdr) outputs(%4 as %arg3: !InputSliceBuffer) -> !InputSliceDistributedBuffer {
-      %7 = VPUIP.NNDMA inputs(%arg2 : !InputBufferDdr) outputs(%arg3 : !InputSliceBuffer) -> !InputSliceBuffer
-    }
-
-    %6 = VPUIP.NCEClusterTiling inputs(%0 as %arg2: !OutputBuffer) outputs(%arg1 as %arg3: !OutputBufferDdr) -> !OutputBufferDdr {
-      %7 = VPUIP.NNDMA inputs(%arg2 : !OutputBuffer) outputs(%arg3 : !OutputBufferDdr) -> !OutputBufferDdr
-    }
+    %5 = VPUIP.NNDMA
+        inputs(%arg0 : !InputBufferDdr)
+        outputs(%4 : !InputSliceDistributedBuffer) ->  !InputSliceDistributedBuffer
+    %6 = VPUIP.NNDMA
+        inputs(%0 : !InputDistributedBuffer)
+        outputs(%arg1 : !OutputBufferDdr) ->  !OutputBufferDdr
 
     return %arg1 : !OutputBufferDdr
 
@@ -512,29 +498,20 @@ func.func @ImplicitConcatView(%arg0: !InputBufferDdr, %arg1: !OutputBufferDdr) -
     // CHECK-NOT:   VPUIP.SubView
     // CHECK:       [[BUF_INPUT_SLICE1:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       VPUIP.NCEClusterTiling
-    // CHECK-SAME:       inputs([[ARG0]] as [[ARG2:%.+]]: memref<1x64x8x16xf16, #NHWC, @DDR>)
-    // CHECK-SAME:       outputs([[BUF_INPUT_SLICE1]] as [[ARG3:%.+]]: memref<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN>)
     // CHECK:       VPUIP.NNDMA
-    // CHECK-SAME:       inputs([[ARG2]] : memref<1x64x8x16xf16, #NHWC, @DDR>)
-    // CHECK-SAME:       outputs([[ARG3]] : memref<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN>)
+    // CHECK-SAME:       inputs([[ARG0]]
+    // CHECK-SAME:       outputs([[BUF_INPUT_SLICE1]]
 
     // CHECK-NOT:   VPUIP.SubView
     // CHECK:       [[BUF_INPUT_SLICE2:%.*]] = VPURT.DeclareBuffer <CMX_NN> <16384> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       VPUIP.NCEClusterTiling
-    // CHECK-SAME:       inputs([[ARG0]] as [[ARG4:%.+]]: memref<1x64x8x16xf16, #NHWC, @DDR>)
-    // CHECK-SAME:       outputs([[BUF_INPUT_SLICE2]] as [[ARG5:%.+]]: memref<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN>)
     // CHECK:       VPUIP.NNDMA
-    // CHECK-SAME:       inputs([[ARG4]] : memref<1x64x8x16xf16, #NHWC, @DDR>)
-    // CHECK-SAME:       outputs([[ARG5]] : memref<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN>)
+    // CHECK-SAME:       inputs([[ARG0]]
+    // CHECK-SAME:       outputs([[BUF_INPUT_SLICE2]]
 
-    // CHECK:       VPUIP.NCEClusterTiling
-    // CHECK-SAME:       inputs([[BUF_INPUT]] as [[ARG6:%.+]]: memref<1x64x16x16xf16, #NHWC, @CMX_NN>)
-    // CHECK-SAME:       outputs([[ARG1]] as [[ARG7:%.+]]: memref<1x64x16x16xf16, #NHWC, @DDR>)
     // CHECK:       VPUIP.NNDMA
-    // CHECK-SAME:       inputs([[ARG6]] : memref<1x64x16x16xf16, #NHWC, @CMX_NN>)
-    // CHECK-SAME:       outputs([[ARG7]] : memref<1x64x16x16xf16, #NHWC, @DDR>)
+    // CHECK-SAME:       inputs([[BUF_INPUT]]
+    // CHECK-SAME:       outputs([[ARG1]]
 
     // CHECK:       return [[ARG1]] : memref<1x64x16x16xf16, #NHWC, @DDR>
 }

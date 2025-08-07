@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <sstream>
@@ -185,16 +185,23 @@ llvm::raw_ostream& emitForwardDeclarations(llvm::raw_ostream& stream, const Reco
     return stream;
 }
 
-llvm::raw_ostream& emitDescriptorsDefinitions(llvm::raw_ostream& stream, const Records& descriptors,
-                                              const std::string& platformTypeName) {
+llvm::Expected<llvm::raw_ostream&> emitDescriptorsDefinitions(llvm::raw_ostream& stream, const Records& descriptors,
+                                                              const std::string& platformTypeName) {
     stream << "namespace vpux::" << platformTypeName << "::Descriptors {\n";
     constexpr llvm::StringLiteral descriptorTemplate =
             "struct {0} : ::vpux::VPURegMapped::detail::DescriptorTemplate<{0}, "
             "::vpux::{1}::detail::Descriptors::{0}Name, {2}> {{};\n";
 
     for (const auto& [name, descriptor] : descriptors) {
-        VPUX_THROW_WHEN(!descriptor.parents.empty(), "Descriptor {0} shouldn't have any parents", name);
-        VPUX_THROW_WHEN(descriptor.children.empty(), "Descriptor {0} is empty", name);
+        if (!descriptor.parents.empty()) {
+            return llvm::make_error<llvm::StringError>(
+                    "Descriptor " + std::string(name) + " shouldn't have any parents", llvm::inconvertibleErrorCode());
+        }
+
+        if (descriptor.children.empty()) {
+            return llvm::make_error<llvm::StringError>("Descriptor " + std::string(name) + " is empty",
+                                                       llvm::inconvertibleErrorCode());
+        }
 
         std::stringstream registersList;
         for (const auto [index, registerName] : llvm::enumerate(descriptor.children)) {
@@ -209,8 +216,8 @@ llvm::raw_ostream& emitDescriptorsDefinitions(llvm::raw_ostream& stream, const R
     return stream;
 }
 
-llvm::raw_ostream& emitRegistersDefinitions(llvm::raw_ostream& stream, const Records& registers,
-                                            const std::string& platformTypeName) {
+llvm::Expected<llvm::raw_ostream&> emitRegistersDefinitions(llvm::raw_ostream& stream, const Records& registers,
+                                                            const std::string& platformTypeName) {
     stream << "namespace vpux::" << platformTypeName << "::Registers {\n";
     constexpr llvm::StringLiteral registerTemplate =
             "struct {0} : "
@@ -218,8 +225,15 @@ llvm::raw_ostream& emitRegistersDefinitions(llvm::raw_ostream& stream, const Rec
             "{2}, {3}, {4}> {{};\n";
 
     for (const auto& [name, reg] : registers) {
-        VPUX_THROW_WHEN(reg.parents.empty(), "Register {0} does not belong to any descriptor", name);
-        VPUX_THROW_WHEN(reg.children.empty(), "Register {0} is empty", name);
+        if (reg.parents.empty()) {
+            return llvm::make_error<llvm::StringError>(
+                    "Register " + std::string(name) + " does not belong to any descriptor",
+                    llvm::inconvertibleErrorCode());
+        }
+        if (reg.children.empty()) {
+            return llvm::make_error<llvm::StringError>("Register " + std::string(name) + " is empty",
+                                                       llvm::inconvertibleErrorCode());
+        }
 
         std::stringstream fieldsList;
         for (const auto [index, fieldName] : llvm::enumerate(reg.children)) {
@@ -237,8 +251,8 @@ llvm::raw_ostream& emitRegistersDefinitions(llvm::raw_ostream& stream, const Rec
     return stream;
 }
 
-llvm::raw_ostream& emitFieldsDefinitions(llvm::raw_ostream& stream, const Records& fields,
-                                         const std::string& platformTypeName) {
+llvm::Expected<llvm::raw_ostream&> emitFieldsDefinitions(llvm::raw_ostream& stream, const Records& fields,
+                                                         const std::string& platformTypeName) {
     stream << "namespace vpux::" << platformTypeName << "::Fields {\n";
     constexpr llvm::StringLiteral fieldTemplate =
             "struct {0} : ::vpux::VPURegMapped::detail::FieldTemplate<{0}, ::vpux::{1}::detail::Fields::{0}Name, "
@@ -246,8 +260,14 @@ llvm::raw_ostream& emitFieldsDefinitions(llvm::raw_ostream& stream, const Record
             "{{};\n";
 
     for (const auto& [name, field] : fields) {
-        VPUX_THROW_WHEN(field.parents.empty(), "Field {0} does not belong to any register", name);
-        VPUX_THROW_WHEN(!field.children.empty(), "Field {0} shouldn't have any children", name);
+        if (field.parents.empty()) {
+            return llvm::make_error<llvm::StringError>(
+                    "Field " + std::string(name) + " does not belong to any register", llvm::inconvertibleErrorCode());
+        }
+        if (!field.children.empty()) {
+            return llvm::make_error<llvm::StringError>("Field " + std::string(name) + " shouldn't have any children",
+                                                       llvm::inconvertibleErrorCode());
+        }
 
         const auto offsetVal = getAs<llvm::IntInit>(field.record, "_offset")->getValue();
         const auto sizeVal = getAs<llvm::IntInit>(field.record, "_size")->getValue();
@@ -284,26 +304,43 @@ llvm::Error generate(llvm::raw_ostream& stream, llvm::RecordKeeper& records, con
     Records fields;
     for (auto field : records.getAllDerivedDefinitionsIfDefined(platformTypeName + "_RegFieldWrapper")) {
         const auto fieldName = getAs<llvm::StringInit>(field, "_name")->getValue();
-        VPUX_THROW_WHEN(!fields.try_emplace(fieldName, field).second, "Field with name {0} is defined more than once",
-                        fieldName);
+        if (!fields.try_emplace(fieldName, field).second) {
+            return llvm::make_error<llvm::StringError>(
+                    "Field with name " + std::string(fieldName) + " is defined more than once",
+                    llvm::inconvertibleErrorCode());
+        }
     }
 
     Records registers;
     for (auto reg : records.getAllDerivedDefinitionsIfDefined(platformTypeName + "_RegisterWrapper")) {
         auto registerName = getAs<llvm::StringInit>(reg, "_name")->getValue();
-        VPUX_THROW_WHEN(registers.contains(registerName), "Register with name {0} is defined more than once",
-                        registerName);
+        if (registers.contains(registerName)) {
+            return llvm::make_error<llvm::StringError>(
+                    "Register with name " + std::string(registerName) + " is defined more than once",
+                    llvm::inconvertibleErrorCode());
+        }
         auto registerNode = Node{reg};
 
         const auto fieldsListInit = llvm::dyn_cast<llvm::ListInit>(reg->getValue("_fields")->getValue());
         for (auto field : fieldsListInit->getValues()) {
             const auto fieldName = llvm::dyn_cast<llvm::StringInit>(field)->getValue();
-            VPUX_THROW_WHEN(!fields.contains(fieldName), "Register {0} contains unknown field {1}", registerName,
-                            fieldName);
-            VPUX_THROW_WHEN(registerNode.children.contains(fieldName), "Register {0} contains field {1} more than once",
-                            registerName, fieldName);
-            VPUX_THROW_WHEN(fields.at(fieldName).parents.contains(registerName),
-                            "Register {0} contains field {1} more than once", registerName, fieldName);
+            if (!fields.contains(fieldName)) {
+                return llvm::make_error<llvm::StringError>(
+                        "Register " + std::string(registerName) + " contains unknown field " + std::string(fieldName),
+                        llvm::inconvertibleErrorCode());
+            }
+            if (registerNode.children.contains(fieldName)) {
+                return llvm::make_error<llvm::StringError>("Register " + std::string(registerName) +
+                                                                   " contains field " + std::string(fieldName) +
+                                                                   " more than once",
+                                                           llvm::inconvertibleErrorCode());
+            }
+            if (fields.at(fieldName).parents.contains(registerName)) {
+                return llvm::make_error<llvm::StringError>("Register " + std::string(registerName) +
+                                                                   " contains field " + std::string(fieldName) +
+                                                                   " more than once",
+                                                           llvm::inconvertibleErrorCode());
+            }
 
             registerNode.children.insert(fieldName);
             fields[fieldName].parents.insert(registerName);
@@ -315,19 +352,34 @@ llvm::Error generate(llvm::raw_ostream& stream, llvm::RecordKeeper& records, con
     Records descriptors;
     for (auto descriptor : records.getAllDerivedDefinitionsIfDefined(platformTypeName + "_RegMappedWrapper")) {
         auto descriptorName = getAs<llvm::StringInit>(descriptor, "_name")->getValue();
-        VPUX_THROW_WHEN(registers.contains(descriptorName), "Descriptor with name {0} is defined more than once",
-                        descriptorName);
+        if (registers.contains(descriptorName)) {
+            return llvm::make_error<llvm::StringError>(
+                    "Descriptor with name " + std::string(descriptorName) + " is defined more than once",
+                    llvm::inconvertibleErrorCode());
+        }
         auto descriptorNode = Node{descriptor};
 
         const auto registersListInit = llvm::dyn_cast<llvm::ListInit>(descriptor->getValue("_registers")->getValue());
         for (auto reg : registersListInit->getValues()) {
             const auto registerName = llvm::dyn_cast<llvm::StringInit>(reg)->getValue();
-            VPUX_THROW_WHEN(!registers.contains(registerName), "Descriptor {0} contains unknown register {1}",
-                            descriptorName, registerName);
-            VPUX_THROW_WHEN(descriptorNode.children.contains(registerName),
-                            "Descriptor {0} contains register {1} more than once", descriptorName, registerName);
-            VPUX_THROW_WHEN(registers.at(registerName).parents.contains(descriptorName),
-                            "Descriptor {0} contains register {1} more than once", registerName, registerName);
+            if (!registers.contains(registerName)) {
+                return llvm::make_error<llvm::StringError>("Descriptor " + std::string(descriptorName) +
+                                                                   " contains unknown register " +
+                                                                   std::string(registerName),
+                                                           llvm::inconvertibleErrorCode());
+            }
+            if (descriptorNode.children.contains(registerName)) {
+                return llvm::make_error<llvm::StringError>("Descriptor " + std::string(descriptorName) +
+                                                                   " contains register " + std::string(registerName) +
+                                                                   " more than once",
+                                                           llvm::inconvertibleErrorCode());
+            }
+            if (registers.at(registerName).parents.contains(descriptorName)) {
+                return llvm::make_error<llvm::StringError>("Descriptor " + std::string(descriptorName) +
+                                                                   " contains register " + std::string(registerName) +
+                                                                   " more than once",
+                                                           llvm::inconvertibleErrorCode());
+            }
 
             descriptorNode.children.insert(registerName);
             registers[registerName].parents.insert(descriptorName);
@@ -339,28 +391,31 @@ llvm::Error generate(llvm::raw_ostream& stream, llvm::RecordKeeper& records, con
     emitNameAsTemplateArgumentWorkAround(stream, fields, registers, descriptors, platformTypeName);
     emitForwardDeclarations(stream, fields, registers, platformTypeName);
 
-    emitDescriptorsDefinitions(stream, descriptors, platformTypeName);
-    emitRegistersDefinitions(stream, registers, platformTypeName);
-    emitFieldsDefinitions(stream, fields, platformTypeName);
+    if (auto result = emitDescriptorsDefinitions(stream, descriptors, platformTypeName); !result) {
+        return result.takeError();
+    }
+
+    if (auto result = emitRegistersDefinitions(stream, registers, platformTypeName); !result) {
+        return result.takeError();
+    }
+
+    if (auto result = emitFieldsDefinitions(stream, fields, platformTypeName); !result) {
+        return result.takeError();
+    }
 
     return llvm::Error::success();
 }
 
 bool RegGenMain(llvm::raw_ostream& stream, llvm::RecordKeeper& records) {
     auto doGenerate = [](auto& stream, auto& records, auto& platformTypeName) {
-        try {
-            if (auto error = generate(stream, records, platformTypeName)) {
-                handleAllErrors(std::move(error), [](const llvm::ErrorInfoBase& error) {
-                    error.log(llvm::WithColor::error());
-                    llvm::errs() << '\n';
-                });
-                return true;
-            }
-            return false;
-        } catch (const vpux::Exception& e) {
-            llvm::errs() << "vpux::Exception caught: " << e.what() << "\n";
-            return false;
+        if (auto error = generate(stream, records, platformTypeName)) {
+            handleAllErrors(std::move(error), [](const llvm::ErrorInfoBase& error) {
+                error.log(llvm::WithColor::error());
+                llvm::errs() << '\n';
+            });
+            return true;
         }
+        return false;
     };
 
     const auto platformTypeName = platformTypeMap[vpux::VPU::stringifyArchKind(Platform).str()];

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-translate --vpu-arch=%arch% --import-IE --dynamic-shape-to-static --set-upper-bounds="1 18 3" ./test_dynamic_shapes.xml -o %t

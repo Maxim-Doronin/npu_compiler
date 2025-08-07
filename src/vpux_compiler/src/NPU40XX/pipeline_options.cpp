@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/pipeline_options.hpp"
@@ -111,6 +111,10 @@ void setupPWLMParams(DefaultHWOptions40XX& compilationOptions) {
         case WorkloadManagementMode::PWLM_V2_PAGES:
             compilationOptions.workloadManagementBarrierProgrammingMode =
                     WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED;
+            break;
+        case WorkloadManagementMode::FWLM_V1_PAGES:
+            compilationOptions.workloadManagementBarrierProgrammingMode =
+                    WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED;
             break;
         default:
             compilationOptions.workloadManagementBarrierProgrammingMode =

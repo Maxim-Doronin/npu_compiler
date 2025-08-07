@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/IR/ops_interfaces.hpp"
@@ -220,8 +220,8 @@ private:
             return false;
         }
 
-        auto reshapeBefore = mvnOp->getOperand(0).getDefiningOp<IE::ReshapeOp>();
-        if (!reshapeBefore) {
+        mlir::Operation* reshapeBefore = mvnOp->getOperand(0).getDefiningOp();
+        if (!mlir::isa_and_nonnull<IE::ReshapeOp, IE::AffineReshapeOp>(reshapeBefore)) {
             return false;
         }
         mlir::Operation* reshapeAfter = *mvnOp->getResult(0).getUsers().begin();
@@ -229,8 +229,14 @@ private:
             return false;
         }
 
-        // To be removed after E#123528 gets implemented
-        if (mlir::isa_and_nonnull<IE::AffineReshapeOp>(reshapeAfter)) {
+        // Check Reshapes are symmetrical
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(reshapeBefore->getOperand(0).getType());
+        const auto inC = inType.getShape()[Dims4D::Act::C];
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(reshapeAfter->getResult(0).getType());
+        const auto outC = outType.getShape()[Dims4D::Act::C];
+        if (inC != outC) {
+            // Check pattern Reshape1 -> MVN -> Reshape2 -> GroupConv -> Reshape3
+            // To be removed after E#123528 gets implemented
             mlir::Operation* groupConv = *reshapeAfter->getResult(0).getUsers().begin();
             if (!mlir::isa_and_nonnull<IE::GroupConvolutionOp>(groupConv)) {
                 return false;
@@ -239,16 +245,11 @@ private:
             if (!mlir::isa_and_nonnull<IE::ReshapeOp>(finReshape)) {
                 return false;
             }
-            reshapeAfter = finReshape;
-        }
-
-        // Check Reshapes are symmetrical
-        const auto inType = mlir::cast<vpux::NDTypeInterface>(reshapeBefore->getOperand(0).getType());
-        const auto outType = mlir::cast<vpux::NDTypeInterface>(reshapeAfter->getResult(0).getType());
-        const auto inC = inType.getShape()[Dims4D::Act::C];
-        const auto outC = outType.getShape()[Dims4D::Act::C];
-        if (inC != outC) {
-            return false;
+            const auto newOutType = mlir::cast<vpux::NDTypeInterface>(finReshape->getResult(0).getType());
+            const auto newOutC = newOutType.getShape()[Dims4D::Act::C];
+            if (inC != newOutC) {
+                return false;
+            }
         }
 
         // Check channel constraints
@@ -409,6 +410,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::MinimumOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::LogicalOrOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::LogicalXorOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        VPU::LogicalNotOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::BitwiseAndOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::BitwiseOrOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::BitwiseXorOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
@@ -438,7 +440,6 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::DynamicQuantizeOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::SquaredDifferenceOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::BitwiseNotOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
-        VPU::LogicalNotOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::ScaleShiftOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::GatherTreeOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::FullyConnectedOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
@@ -546,6 +547,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::RMSOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::RoPEOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::SDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
+        VPU::ExternalKernelOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NHWC>(*ctx);
     });
 }
 
@@ -608,6 +610,7 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::MaximumOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::LogicalOrOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::LogicalXorOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        IE::LogicalNotOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::BitwiseAndOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::BitwiseOrOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::BitwiseXorOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
@@ -634,7 +637,6 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::DynamicQuantizeOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::SquaredDifferenceOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::BitwiseNotOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
-        IE::LogicalNotOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::GatherTreeOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::FullyConnectedOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::MatMulOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
@@ -721,6 +723,7 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::SDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
 
         IE::GeluOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NCHW_NHWC>(*ctx);
+        IE::ExternalKernelOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NHWC>(*ctx);
 
         // clang-format off
         IE::ConvolutionOp::attachInterface<

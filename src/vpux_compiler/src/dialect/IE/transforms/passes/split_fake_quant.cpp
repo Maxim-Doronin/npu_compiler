@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -48,8 +48,9 @@ bool checkRange(const Const::ContentAttr& lowConst, const Const::ContentAttr& hi
     for (auto p : zip(lows, highs)) {
         const auto lowVal = std::get<0>(p);
         const auto highVal = std::get<1>(p);
-        if (!predicate(lowVal, highVal))
+        if (!predicate(lowVal, highVal)) {
             return false;
+        }
     }
 
     return true;

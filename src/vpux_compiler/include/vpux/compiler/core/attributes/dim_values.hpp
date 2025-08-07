@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -122,6 +122,9 @@ public:
         _cont.erase(b, e);
     }
 
+    void reserve(size_t newSize) {
+        _cont.reserve(newSize);
+    }
     void resize(size_t newSize) {
         _cont.resize(newSize);
     }
@@ -403,6 +406,21 @@ template <typename D, typename T, template <class> class Tag>
 bool operator!=(DimValuesRef<D, T, Tag> v1, const DimValues<D, T, Tag>& v2) {
     return v1 != DimValuesRef<D, T, Tag>(v2);
 }
+
+//
+// Traits
+//
+
+template <typename T>
+struct RefOf {};
+
+template <typename T>
+using RefType = typename RefOf<T>::Type;
+
+template <typename D, typename T, template <class> class Tag>
+struct RefOf<DimValues<D, T, Tag>> {
+    using Type = DimValuesRef<D, T, Tag>;
+};
 
 }  // namespace details
 

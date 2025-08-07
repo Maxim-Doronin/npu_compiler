@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferize_sw_ops_interface.hpp"
@@ -21,6 +21,8 @@
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h>
+#include <mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h>
+#include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
 using namespace vpux;
 
 namespace {
@@ -171,6 +173,9 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
                                              ArrayRef<mlir::Value> newOperands, vpux::Logger log) {
     auto* ctx = op->getContext();
     auto layerOp = mlir::cast<VPU::LayerOpInterface>(op);
+    // NOTE: If you are implementing a new SW layer and getting a cast error here,
+    // you need to attach SoftwareLayerOpModel to your operation
+    // src/vpux_compiler/src/dialect/VPUIP/IR/ops.cpp
     auto swLayerOp = mlir::cast<VPUIP::SoftwareLayerOpInterface>(op);
 
     const auto memSpaceCMX = vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
@@ -318,7 +323,7 @@ mlir::LogicalResult vpux::bufferizeDistributedSWLayerOp(mlir::RewriterBase& rewr
 
     auto outputBuffers = allocateBuffers(log, op->getLoc(), rewriter, op->getResults(),
                                          /*individualBuffers=*/true);
-    // The actual tile index will be corrected as part of unroll NCEClusterTiling pass; this index will be dropped
+    // The actual tile index will be corrected as part of UnrollDistributedOpsPass; this index will be dropped
     const int64_t tileIndex = 0;
     auto genericSwLayerOp = mlir::dyn_cast<VPU::GenericSwLayerOp>(op);
     auto builtInFunction = genericSwLayerOp ? genericSwLayerOp.getCallee()
@@ -638,9 +643,12 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::DynamicExpandOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicExpandOp>>(*ctx);
         VPU::PopulateWeightTableOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::PopulateWeightTableOp>>(*ctx);
         VPU::GenericSwLayerOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GenericSwLayerOp>>(*ctx);
+        VPU::ExternalKernelOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ExternalKernelOp>>(*ctx);
         VPU::RoPEOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::RoPEOp>>(*ctx);
         VPU::SDPAOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::SDPAOp>>(*ctx);
         VPU::DynamicDataMaskOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicDataMaskOp>>(*ctx);
     });
     mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
 }

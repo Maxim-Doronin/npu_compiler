@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
@@ -164,8 +164,9 @@ mlir::Type VPUIP::tileTypeSparsityCompression(mlir::Type type, ShapeRef tileOffs
     ::mlir::FailureOr<mlir::IntegerAttr> resultClusterId;
     ::mlir::FailureOr<mlir::ArrayAttr> resultInwardHaloRegions;
     // Parse literal '<'
-    if (odsParser.parseLess())
+    if (odsParser.parseLess()) {
         return {};
+    }
     // Parse parameter struct
     bool seenShape = false;
     bool seenOffset = false;
@@ -174,8 +175,9 @@ mlir::Type VPUIP::tileTypeSparsityCompression(mlir::Type type, ShapeRef tileOffs
     {
         const auto loopBody = [&](::llvm::StringRef paramKey) -> bool {
             // Parse literal '='
-            if (odsParser.parseEqual())
+            if (odsParser.parseEqual()) {
                 return {};
+            }
             if (!seenShape && paramKey == "shape") {
                 seenShape = true;
 
@@ -233,15 +235,18 @@ mlir::Type VPUIP::tileTypeSparsityCompression(mlir::Type type, ShapeRef tileOffs
                 odsParser.emitError(odsParser.getCurrentLocation(), "expected a parameter name in struct");
                 return {};
             }
-            if (!loopBody(paramKey))
+            if (!loopBody(paramKey)) {
                 return {};
-            if ((odsStructIndex != 4 - 1) && odsParser.parseComma())
+            }
+            if ((odsStructIndex != 4 - 1) && odsParser.parseComma()) {
                 return {};
+            }
         }
     }
     // Parse literal '>'
-    if (odsParser.parseGreater())
+    if (odsParser.parseGreater()) {
         return {};
+    }
     assert(::mlir::succeeded(resultShape));
     assert(::mlir::succeeded(resultOffset));
     assert(::mlir::succeeded(resultClusterId));

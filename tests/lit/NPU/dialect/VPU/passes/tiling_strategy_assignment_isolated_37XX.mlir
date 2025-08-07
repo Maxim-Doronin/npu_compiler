@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --tiling-strategy-assignment="tiling-mode=ISOLATED enable-shave-ddr-access-optimization=true" %s | FileCheck %s
@@ -1606,7 +1606,7 @@ func.func @AccumulateSplitOverH(%arg0: tensor<1x4096x1024x1xf16, {order = #NHWC}
     // CHECK: [[RHS_SCALE:%.*]] = const.Declare tensor<1x4096x1x1xf16, {order = #NHWC}> = dense<2.000000e+00> : tensor<1x4096x1x1xf16>, [#const.Reorder<#NHWC>]
     // CHECK: [[ACCUMULATE:%.+]] = VPU.Accumulate([[INPUT1]], [[INPUT2]], [[LHS_SCALE]], [[RHS_SCALE]]) {
     // CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
-    // CHECK-SAME:    tilingStrategy = [1, 12, 1, 1]
+    // CHECK-SAME:    tilingStrategy = [1, 7, 1, 1]
     // CHECK-SAME:    } : tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}> -> tensor<1x4096x1024x1xf16, {order = #NHWC}>
     // CHECK: return [[ACCUMULATE]] : tensor<1x4096x1024x1xf16, {order = #NHWC}>
 

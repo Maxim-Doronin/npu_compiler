@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
@@ -352,4 +352,44 @@ mlir::FailureOr<Shape> vpux::IE::getShapeCastExpandedShapeCanNotAlign(mlir::Oper
     }
 
     return newExpandedShape;
+}
+
+// If it's enough to adjust aligned channel just borrowing from width,
+// we don't need to change the shape size of height
+mlir::FailureOr<Shape> vpux::IE::getShapeCastExpandedShapeWithMinimalDimChange(mlir::Operation* operation,
+                                                                               ShapeRef originShape, Logger log) {
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType());
+    const auto sizeToAlign = VPU::NCEInvariant::getAlignment(inputType.getElementType());
+    auto channelSize = originShape[Dims4D::Act::C];
+    auto wcSize = originShape[Dims4D::Act::W] * channelSize;
+    if (wcSize % sizeToAlign != 0) {
+        log.trace("Input shape is not divisible to align on dimW and dim C for op {0} at {1}", operation->getName(),
+                  operation->getLoc());
+        return mlir::failure();
+    }
+
+    return Shape({originShape[Dims4D::Act::N], sizeToAlign, originShape[Dims4D::Act::H], wcSize / sizeToAlign});
+}
+
+SmallVector<int64_t> vpux::IE::dispatchBounds(const mlir::Value operand) {
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(operand.getType())) {
+        return boundedType.getBounds().raw();
+    }
+
+    return to_small_vector(getShape(operand));
+}
+
+SmallVector<int64_t> vpux::IE::inferOutputBounds(const mlir::Value lhs, const mlir::Value rhs,
+                                                 const ShapeRef outputShape,
+                                                 const IE::AutoBroadcastType autoBroadcast) {
+    if (outputShape.isStatic()) {
+        return {};
+    }
+    const auto lhsBounds = dispatchBounds(lhs);
+    const auto rhsBounds = dispatchBounds(rhs);
+    auto outBoundsRes = IE::broadcastEltwiseShape(lhsBounds, rhsBounds, autoBroadcast, lhs.getLoc());
+    if (mlir::failed(outBoundsRes)) {
+        return {};
+    }
+    return outBoundsRes.value();
 }

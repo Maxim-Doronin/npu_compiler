@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --verify-diagnostics --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-layers-to-VPU %s | FileCheck %s
@@ -1207,9 +1207,23 @@ func.func @DynamicQuantize(%arg0: tensor<1x1x6000x400xf32>, %arg1: tensor<1x1x1x
 // CHECK-LABEL: @SDPA
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x32x1x96xf16>, [[ARG1:%.+]]: tensor<1x32x1024x96xf16>, [[ARG2:%.+]]: tensor<1x32x96x1024xf16>, [[ARG3:%.+]]: tensor<1x1x1x1024xf16>)
 func.func @SDPA(%arg0: tensor<1x32x1x96xf16>, %arg1: tensor<1x32x1024x96xf16>, %arg2: tensor<1x32x96x1024xf16>, %arg3: tensor<1x1x1x1024xf16>) -> (tensor<1x32x1x96xf16>){
-    %0 = IE.SDPA(%arg0, %arg1, %arg2, %arg3) : tensor<1x32x1x96xf16>, tensor<1x32x1024x96xf16>, tensor<1x32x96x1024xf16>, tensor<1x1x1x1024xf16> -> tensor<1x32x1x96xf16>
+    %0 = IE.SDPA(%arg0, %arg1, %arg2, %arg3) {operandSegmentSizes = array<i32: 1, 1, 1, 1, 0, 0>} : tensor<1x32x1x96xf16>, tensor<1x32x1024x96xf16>, tensor<1x32x96x1024xf16>, tensor<1x1x1x1024xf16> -> tensor<1x32x1x96xf16>
     return %0 : tensor<1x32x1x96xf16>
 
-    // CHECK:   [[SDPA:%.+]] = VPU.SDPA([[ARG0]], [[ARG1]], [[ARG2]], [[ARG3]]) : tensor<1x32x1x96xf16>, tensor<1x32x1024x96xf16>, tensor<1x32x96x1024xf16>, tensor<1x1x1x1024xf16> -> tensor<1x32x1x96xf16>
+    // CHECK:   [[SDPA:%.+]] = VPU.SDPA([[ARG0]], [[ARG1]], [[ARG2]], [[ARG3]]) {operandSegmentSizes = array<i32: 1, 1, 1, 1, 0, 0, 0>} : tensor<1x32x1x96xf16>, tensor<1x32x1024x96xf16>, tensor<1x32x96x1024xf16>, tensor<1x1x1x1024xf16> -> tensor<1x32x1x96xf16>
     // CHECK:   return [[SDPA]] : tensor<1x32x1x96xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @Add2D
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x1xsi32>, [[ARG1:%.+]]: tensor<1x1xsi32>)
+func.func @Add2D(%arg0: tensor<1x1xsi32>, %arg1: tensor<1x1xsi32>) -> tensor<1x1xsi32> {
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1xsi32>, tensor<1x1xsi32> -> tensor<1x1xsi32>
+    return %0 : tensor<1x1xsi32>
+    // CHECK:   [[RESHAPED_ARG0:%.+]] = VPU.Reshape([[ARG0]]) {shape_value = [1, 1, 1, 1]} : tensor<1x1xsi32> -> tensor<1x1x1x1xsi32>
+    // CHECK:   [[RESHAPED_ARG1:%.+]] = VPU.Reshape([[ARG1]]) {shape_value = [1, 1, 1, 1]} : tensor<1x1xsi32> -> tensor<1x1x1x1xsi32>
+    // CHECK:   [[ADD:%.+]] = VPU.Add([[RESHAPED_ARG0]], [[RESHAPED_ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:   [[RET:%.+]] = VPU.Reshape([[ADD]]) {shape_value = [1, 1]} : tensor<1x1x1x1xsi32> -> tensor<1x1xsi32>
+    // CHECK:   return [[RET]] : tensor<1x1xsi32>
 }

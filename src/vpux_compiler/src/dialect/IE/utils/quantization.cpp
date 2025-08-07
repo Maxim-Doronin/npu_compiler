@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
@@ -13,7 +13,7 @@
 
 using namespace vpux;
 
-std::optional<int64_t> getFQAxisIndex(IE::FakeQuantizeOp fq, Logger log) {
+std::optional<int64_t> IE::getFQAxisIndex(IE::FakeQuantizeOp fq, Logger log) {
     const auto extractAxis = [log](mlir::Value input) -> std::optional<int64_t> {
         const auto greaterThanOne = [](auto dim) {
             return dim > 1;
@@ -77,6 +77,27 @@ bool IE::hasLeakyReLUPostOp(mlir::Operation* op) {
     }
 
     return mlir::isa_and_nonnull<IE::LeakyReluAttr>(layerWithPostOp.getPostOp());
+}
+
+bool IE::hasReLUPostOp(mlir::Operation* op) {
+    auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(op);
+    if (layerWithPostOp == nullptr) {
+        return false;
+    }
+
+    return mlir::isa_and_nonnull<IE::ReluAttr>(layerWithPostOp.getPostOp());
+}
+
+bool IE::hasNegativeScales(mlir::quant::QuantizedType quantType) {
+    if (auto perAxisQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(quantType)) {
+        auto scales = perAxisQuantType.getScales();
+        return std::any_of(scales.begin(), scales.end(), [](double scale) {
+            return scale < 0.0;
+        });
+    } else if (auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(quantType)) {
+        return uniformQuantType.getScale() < 0.0;
+    }
+    return false;
 }
 
 bool IE::areAnyUserQuantizeOps(mlir::Operation* op) {

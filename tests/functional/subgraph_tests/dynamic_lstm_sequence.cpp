@@ -175,4 +175,5 @@ INSTANTIATE_TEST_SUITE_P(smoke_DynamicTensorIterator_LSTMSequence, DynamicTensor
                                           testing::Values<std::string>(ov::test::utils::DEVICE_NPU),
                                           testing::ValuesIn(model_types)),
                          DynamicTensorIteratorNPUTest::getTestCaseName);
+
 }  // namespace

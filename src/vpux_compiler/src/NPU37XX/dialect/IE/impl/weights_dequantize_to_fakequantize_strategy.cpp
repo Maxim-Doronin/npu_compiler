@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/impl/weights_dequantize_to_fakequantize_strategy.hpp"
@@ -117,6 +117,45 @@ private:
     Logger _log;
 };
 
+class MultiAxisQuantizedBlockArgumentRewriter final : public mlir::OpRewritePattern<IE::ConvertOp> {
+public:
+    MultiAxisQuantizedBlockArgumentRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ConvertOp>(ctx), _log(log) {
+        setDebugName("MultiAxisQuantizedBlockArgumentRewriter");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ConvertOp origOp, mlir::PatternRewriter& rewriter) const final {
+        _log.trace("Got {0} at `{1}`.", origOp->getName(), origOp->getLoc());
+
+        auto maybeWdInfo = IE::WeightsDequantizeStructureInfo::create(origOp, _log.nest());
+        if (mlir::failed(maybeWdInfo)) {
+            _log.trace("Failed to match WeightsDequantize structure");
+            return mlir::failure();
+        }
+        auto wdInfo = std::move(*maybeWdInfo);
+        if (wdInfo.getDynamicScale() != nullptr) {
+            _log.trace("Can't create FakeQuantize with dynamic scale");
+            return mlir::failure();
+        }
+        if (wdInfo.getStaticScale() == nullptr && wdInfo.getStaticShift() == nullptr) {
+            _log.trace("Can't create FakeQuantize without static scale and shift");
+            return mlir::failure();
+        }
+        if (wdInfo.getQuantizedAxisCount() < 2) {
+            // ConsolidateWeightsDequantization cannot handle higher-dimensionality cases.
+            // TODO: E#171775 Change <2 to <3.
+            _log.trace("Got per-tensor or per-channel quantization.");
+            return mlir::failure();
+        }
+
+        return commonMatchAndRewrite(origOp, wdInfo, rewriter);
+    }
+
+private:
+    Logger _log;
+};
+
 }  // namespace
 
 //
@@ -129,4 +168,5 @@ void IE::arch37xx::WeightsDequantizeToFakeQuantizeStrategy::addPatterns(mlir::Re
 
     IE::ConvertOp::getCanonicalizationPatterns(patterns, ctx);
     patterns.add<WeightsDequantizeToFakeQuantizeConstRewriter>(ctx, log);
+    patterns.add<MultiAxisQuantizedBlockArgumentRewriter>(ctx, log);
 }

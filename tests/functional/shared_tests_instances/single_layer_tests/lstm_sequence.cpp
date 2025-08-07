@@ -137,8 +137,9 @@ class LSTMSequenceLayerTestCommon : public LSTMSequenceTest, virtual public VpuO
 
         if (!is_pure_sequence) {
             ov::pass::Manager manager;
-            if (direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL)
+            if (direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL) {
                 manager.register_pass<ov::pass::BidirectionalLSTMSequenceDecomposition>();
+            }
             manager.register_pass<ov::pass::ConvertLSTMSequenceToTensorIterator>();
             manager.run_passes(function);
             bool ti_found = ov::test::utils::is_tensor_iterator_exist(function);
@@ -390,8 +391,9 @@ private:
         }
         normA = sqrt(normA);
         normB = sqrt(normB);
-        if (normA == 0 || normB == 0)
+        if (normA == 0 || normB == 0) {
             return 0.0;
+        }
         return product / (normA * normB);
     }
 

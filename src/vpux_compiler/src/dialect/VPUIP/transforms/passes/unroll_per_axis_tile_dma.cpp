@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -146,15 +146,12 @@ mlir::LogicalResult PerAxisTileDMARewriter::unrollPerAxisTile(VPUIP::PerAxisTile
                         ? VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, srcDeclBuff, vpurtTask.getLoc(),
                                                                   newSrcMemRef, srcDeclBuff.getSection(),
                                                                   srcType.getMemSpace().getIndex().value(), srcOffset)
-                        : srcDeclBuff.getSectionIndex().has_value()
-                                  ? VPURT::createOp<VPURT::DeclareBufferOp>(
-                                            rewriter, srcDeclBuff, vpurtTask.getLoc(), newSrcMemRef,
-                                            srcDeclBuff.getSection(),
-                                            parseIntArrayAttr<int64_t>(srcDeclBuff.getSectionIndex().value()),
-                                            srcOffset)
-                                  : VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, srcDeclBuff, vpurtTask.getLoc(),
-                                                                            newSrcMemRef, srcDeclBuff.getSection(),
-                                                                            srcOffset);
+                : srcDeclBuff.getSectionIndex().has_value()
+                        ? VPURT::createOp<VPURT::DeclareBufferOp>(
+                                  rewriter, srcDeclBuff, vpurtTask.getLoc(), newSrcMemRef, srcDeclBuff.getSection(),
+                                  parseIntArrayAttr<int64_t>(srcDeclBuff.getSectionIndex().value()), srcOffset)
+                        : VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, srcDeclBuff, vpurtTask.getLoc(),
+                                                                  newSrcMemRef, srcDeclBuff.getSection(), srcOffset);
 
         mlir::Type newDstType;
         if (auto dstDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(dstType)) {
@@ -181,15 +178,12 @@ mlir::LogicalResult PerAxisTileDMARewriter::unrollPerAxisTile(VPUIP::PerAxisTile
                         ? VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, dstDeclBuff, vpurtTask.getLoc(), newDstType,
                                                                   dstDeclBuff.getSection(),
                                                                   dstType.getMemSpace().getIndex().value(), dstOffset)
-                        : dstDeclBuff.getSectionIndex().has_value()
-                                  ? VPURT::createOp<VPURT::DeclareBufferOp>(
-                                            rewriter, dstDeclBuff, vpurtTask.getLoc(), newDstType,
-                                            dstDeclBuff.getSection(),
-                                            parseIntArrayAttr<int64_t>(dstDeclBuff.getSectionIndex().value()),
-                                            dstOffset)
-                                  : VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, dstDeclBuff, vpurtTask.getLoc(),
-                                                                            newDstType, dstDeclBuff.getSection(),
-                                                                            dstOffset);
+                : dstDeclBuff.getSectionIndex().has_value()
+                        ? VPURT::createOp<VPURT::DeclareBufferOp>(
+                                  rewriter, dstDeclBuff, vpurtTask.getLoc(), newDstType, dstDeclBuff.getSection(),
+                                  parseIntArrayAttr<int64_t>(dstDeclBuff.getSectionIndex().value()), dstOffset)
+                        : VPURT::createOp<VPURT::DeclareBufferOp>(rewriter, dstDeclBuff, vpurtTask.getLoc(), newDstType,
+                                                                  dstDeclBuff.getSection(), dstOffset);
 
         _log.trace("Creating Sub-PerAxisTileDMAOp with inShape: {0} outShape: {1}, SrcMemory at {2}, DstMemory at {3}",
                    subInShape, subOutShape, newSrcBuff.getSection(), newDstBuff.getSection());

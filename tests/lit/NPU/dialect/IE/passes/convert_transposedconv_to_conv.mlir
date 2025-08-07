@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-transposed-conv-to-conv %s | FileCheck %s
@@ -194,8 +194,8 @@ func.func @ConvertTransposedConv2DToConv2DWhitOutputPadding(%input: tensor<1x32x
 
 // -----
 
-// CHECK-LABEL: @ConvertTransposedConv2DToConv2DWhitOutputPaddingNotFuse
-func.func  @ConvertTransposedConv2DToConv2DWhitOutputPaddingNotFuse(%input: tensor<1x32x7x7xf16>) -> tensor<1x16x6x6xf16> {
+// CHECK-LABEL: @ConvertTransposedConv2DToConv2DWhitOutputPaddingGreaterThanPad
+func.func  @ConvertTransposedConv2DToConv2DWhitOutputPaddingGreaterThanPad(%input: tensor<1x32x7x7xf16>) -> tensor<1x16x6x6xf16> {
     %weights = const.Declare tensor<16x32x3x3xf16> = dense<1.000000e+00> : tensor<16x32x3x3xf16>
     %output = IE.TransposedConvolution(%input, %weights) {strides = [1, 1], pads_begin = [2, 2], pads_end = [2, 2], dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [1, 1]} : tensor<1x32x7x7xf16>, tensor<16x32x3x3xf16> -> tensor<1x16x6x6xf16>
     return %output : tensor<1x16x6x6xf16>
@@ -203,14 +203,10 @@ func.func  @ConvertTransposedConv2DToConv2DWhitOutputPaddingNotFuse(%input: tens
     // CHECK:       [[WEIGHTS:%.*]] = const.Declare tensor<16x32x3x3xf16> = dense<1.000000e+00> : tensor<16x32x3x3xf16>
     // CHECK-NOT:   IE.TransposedConvolution
     // CHECK:       [[UPSAMPLING:%.*]] = IE.Upsampling
-    // CHECK-SAME:      #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 0], pads_width = [0, 0]>
+    // CHECK-SAME:      #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 1], pads_width = [0, 1]>
     // CHECK-SAME:      upsampling_factor = [1, 1, 1]
-    // CHECK-SAME:      tensor<1x32x7x7xf16> -> tensor<1x32x7x7xf16>
-    // CHECK:       [[SLICE0:%.*]]  = IE.Slice [[UPSAMPLING]] [0, 0, 6, 0] [1, 32, 1, 7] : tensor<1x32x7x7xf16> to tensor<1x32x1x7xf16>
-    // CHECK:       [[CONCAT0:%.*]] = IE.Concat([[UPSAMPLING]], [[SLICE0]]) {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x32x7x7xf16>, tensor<1x32x1x7xf16> -> tensor<1x32x8x7xf16>
-    // CHECK:       [[SLICE1:%.*]] = IE.Slice [[CONCAT0]] [0, 0, 0, 6] [1, 32, 8, 1] : tensor<1x32x8x7xf16> to tensor<1x32x8x1xf16>
-    // CHECK:       [[CONCAT1:%.*]] = IE.Concat([[CONCAT0]], [[SLICE1]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x32x8x7xf16>, tensor<1x32x8x1xf16> -> tensor<1x32x8x8xf16>
-    // CHECK:       [[CONV:%.*]] = IE.Convolution([[CONCAT1]], [[WEIGHTS]])
+    // CHECK-SAME:      tensor<1x32x7x7xf16> -> tensor<1x32x8x8xf16>
+    // CHECK:       [[CONV:%.*]] = IE.Convolution([[UPSAMPLING]], [[WEIGHTS]])
     // CHECK-SAME:      dilations = [1, 1]
     // CHECK-SAME:      pads_begin = [0, 0]
     // CHECK-SAME:      pads_end = [0, 0]

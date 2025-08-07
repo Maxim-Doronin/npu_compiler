@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
@@ -121,6 +121,15 @@ mlir::LogicalResult vpux::VPU::ReshapeOp::inferReturnTypes(mlir::MLIRContext* ct
     inferredReturnTypes.push_back(outType);
 
     return mlir::success();
+}
+
+mlir::OpFoldResult vpux::VPU::ReshapeOp::fold(FoldAdaptor adaptor) {
+    auto operands = adaptor.getOperands();
+    if (const auto attr = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
+        return static_cast<Const::ContentAttr>(attr).transform().reshape(vpux::getShape(getOutput())).get();
+    }
+
+    return nullptr;
 }
 
 //

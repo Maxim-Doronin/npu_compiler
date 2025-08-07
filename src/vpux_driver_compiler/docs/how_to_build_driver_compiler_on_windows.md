@@ -112,6 +112,7 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
     -D ENABLE_INTEL_NPU_PROTOPIPE=OFF ^
     -D BUILD_COMPILER_FOR_DRIVER=ON ^
     -D ENABLE_PRIVATE_TESTS=OFF ^
+    -D ENABLE_DIRECTML=OFF ^
     -D ENABLE_NPU_LSP_SERVER=OFF ^
     -D CMAKE_TOOLCHAIN_FILE=%OPENVINO_HOME%\cmake\toolchains\onecoreuap.toolchain.cmake ^
     ..
@@ -216,6 +217,9 @@ All instructions are perfromed on **x64 Native Tools Command Prompt for VS XXXX*
 
         # Compiler private tests
         ENABLE_PRIVATE_TESTS
+
+        # for Windows system
+        ENABLE_DIRECTML
 
         # Debug tools
         ENABLE_NPU_LSP_SERVER        

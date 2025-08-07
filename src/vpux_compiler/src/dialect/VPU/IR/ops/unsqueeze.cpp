@@ -1,14 +1,12 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/utils/unsqueeze.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
-
-#include "vpux/compiler/dialect/IE/utils/unsqueeze.hpp"
 
 using namespace vpux;
 
@@ -31,31 +29,19 @@ mlir::LogicalResult vpux::VPU::UnsqueezeOp::inferReturnTypes(mlir::MLIRContext* 
 
     const auto input = unsqueeze.getInput();
     const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
-    const auto inShape = inType.getShape();
     const auto inOrder = DimsOrder::fromValue(input);
+    const auto outOrder =
+            vpux::VPU::inferUnsqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inType.getShape());
 
-    const auto propagatedOutShape = IE::propagateShape(loc, inShape, axes.value());
-    if (mlir::failed(propagatedOutShape)) {
-        return mlir::failure();
-    }
-    const auto outShape = Shape(propagatedOutShape.value());
+    return callOnShapeOf(inType, [&](const auto& inShape) {
+        auto outShape = IE::unsqueezeShape(loc, inShape, *axes);
+        if (mlir::failed(outShape)) {
+            return mlir::failure();
+        }
 
-    const auto outDynamicAttr = IE::propagateDynamicAttr(loc, input, axes.value());
-    if (mlir::failed(outDynamicAttr)) {
-        return mlir::failure();
-    }
-
-    auto outOrder = vpux::VPU::inferUnsqueezeOutputLayout(inOrder.toPermutation(), axes.value(), inShape);
-    auto typeComponents = TypeComponents().setShape(outShape).setDimsOrder(outOrder);
-
-    if (mlir::isa<Core::BoundedTensorType>(inType)) {
-        typeComponents.setBounds(Bounds(outDynamicAttr.value()));
-    } else {
-        typeComponents.setDynamicDimsMask(DynamicDimsMask(outDynamicAttr.value()));
-    }
-
-    auto outType = inType.changeTypeComponents(typeComponents);
-    inferredReturnTypes.push_back(outType);
-
-    return mlir::success();
+        const auto outType = inType.changeTypeComponents(
+                TypeComponents().setShapeWithRepresentation(std::move(*outShape)).setDimsOrder(outOrder));
+        inferredReturnTypes.push_back(outType);
+        return mlir::success();
+    });
 }

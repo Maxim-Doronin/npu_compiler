@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -12,6 +12,8 @@
 
 namespace vpux::profiling {
 
+using CustomArgsVector = std::vector<std::pair<std::string, std::string>>;
+
 // This structure describes a single entry in Tracing Event format.
 struct TraceEventDesc {
     std::string name;
@@ -22,7 +24,7 @@ struct TraceEventDesc {
     // JSON numbers are doubles anyways so use double for more flexibility
     double timestamp;
     double duration;
-    std::vector<std::pair<std::string, std::string>> customArgs;
+    CustomArgsVector customArgs;
 };
 
 // This stream operator prints TraceEventDesc in JSON format.

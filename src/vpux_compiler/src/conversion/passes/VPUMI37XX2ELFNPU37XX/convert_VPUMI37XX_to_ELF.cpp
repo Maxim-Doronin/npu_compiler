@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
@@ -361,8 +361,9 @@ mlir::Value ConvertVPUMI37XX2ELFPass::createCMXMappingSymtab(mlir::func::FuncOp 
 
     for (unsigned i = 0; i <= vpux::ELFNPU37XX::getMaxEnumValForCMXMappingSymbol(); ++i) {
         auto optionalCMXMappingSymValue = vpux::ELFNPU37XX::symbolizeCMXMappingSymbol(i);
-        if (!optionalCMXMappingSymValue.has_value())
+        if (!optionalCMXMappingSymValue.has_value()) {
             continue;
+        }
 
         auto CMXMappingSymValue = optionalCMXMappingSymValue.value();
         auto CMXMappingSymStringRef = vpux::ELFNPU37XX::stringifyCMXMappingSymbol(CMXMappingSymValue);

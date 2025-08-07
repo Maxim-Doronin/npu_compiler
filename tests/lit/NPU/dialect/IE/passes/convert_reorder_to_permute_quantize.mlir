@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-reorder-to-permute-quantize %s | FileCheck %s
@@ -185,4 +185,37 @@ func.func @DontConvertReorderForQuantizedAvgPool(%arg0: tensor<1x12x512x512xf16>
     // CHECK:       [[AVGPOOL2:%.+]] = IE.AvgPool([[AVGPOOL1]])
     // CHECK:       [[ADD:%.+]] = IE.Add([[AVGPOOL2]], [[INPUT2]])
     // CHECK:       return [[ADD]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @ConvertReorderWithCNHWInput
+// CHECK-SAME:        [[INPUT:%.+]]: tensor<1x13x16x80xf16, {order = #map}>
+func.func @ConvertReorderWithCNHWInput(%arg0: tensor<1x13x16x80xf16, {order = #map}>) -> tensor<1x13x16x80xf16, {order = #NHWC}> {
+    %0 = IE.Reorder(%arg0) {
+        dstOrder = #NHWC
+    } : tensor<1x13x16x80xf16, {order = #map}> -> tensor<1x13x16x80xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x13x16x80xf16, {order = #NHWC}>
+
+    // CHECK-NOT:   IE.Reorder
+
+    // CHECK:       [[IN_PERMUTE_CAST:%.+]] = IE.PermuteCast([[INPUT]]) {
+    // CHECK-SAME:      dst_order = #NCHW,
+    // CHECK-SAME:      mem_perm = #map
+    // CHECK-SAME:  } : tensor<1x13x16x80xf16, {order = #map}> -> tensor<1x13x16x80xf16>
+
+    // CHECK:       [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[IN_PERMUTE_CAST]]) {
+    // CHECK-SAME:      dstElemType = f16,
+    // CHECK-SAME:      dst_order = #NHWC,
+    // CHECK-SAME:      mem_perm = #NHWC,
+    // CHECK-SAME:      pads_begin = [0, 0, 0, 0],
+    // CHECK-SAME:      pads_end = [0, 0, 0, 0]
+    // CHECK-SAME:  } : tensor<1x13x16x80xf16> -> tensor<1x13x16x80xf16, {order = #NHWC}>
+
+    // CHECK:       return [[PERMUTE_QUANTIZE]] : tensor<1x13x16x80xf16, {order = #NHWC}>
 }

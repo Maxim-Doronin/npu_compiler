@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -47,6 +47,7 @@ void warnOrFail(bool failOnError, vpux::Logger& log, bool condition, llvm::Strin
         }
     }
 }
+
 class DebugFormattableRecordMixin {
 public:
     using ColDesc = std::vector<std::pair<std::string, int>>;
@@ -220,6 +221,7 @@ public:
         taskInfo.exec_type = convertToTaskExec(getExecutorType());
         taskInfo.start_time_ns = static_cast<uint64_t>(getStartTime(frequenciesSetup));
         taskInfo.duration_ns = static_cast<uint64_t>(getDuration(frequenciesSetup));
+        taskInfo.customArgs = getCustomArgs(frequenciesSetup);
         return taskInfo;
     }
 
@@ -239,6 +241,10 @@ public:
 
     virtual TimeType getDuration(FrequenciesSetup frequenciesSetup) const {
         return getFinishTime(frequenciesSetup) - getStartTime(frequenciesSetup);
+    }
+
+    virtual CustomArgsVector getCustomArgs(FrequenciesSetup) const {
+        return {};
     }
 
 private:
@@ -347,6 +353,8 @@ public:
         warnOrFail(failOnError, log, _record.rsvd != 0, "Reserved value must contain 0.");
         warnOrFail(failOnError, log, _record.desc_addr == 0, "Invalid DMA descriptor address.");
     }
+
+    CustomArgsVector getCustomArgs(FrequenciesSetup frequenciesSetup) const override;
 
     ExecutorType getExecutorType() const override {
         return ExecutorType::DMA_HW;
@@ -612,6 +620,8 @@ public:
               _clusterId(metadata->clusterId()) {
     }
 
+    CustomArgsVector getCustomArgs(FrequenciesSetup) const override;
+
     TaskInfo getTaskInfo(FrequenciesSetup frequenciesSetup) const override {
         auto profInfoItem = RawProfilingRecord::getTaskInfo(frequenciesSetup);
         profInfoItem.clusterId = _clusterId;
@@ -679,12 +689,13 @@ public:
               _clusterId(metadata->clusterId()) {
     }
 
+    CustomArgsVector getCustomArgs(FrequenciesSetup) const override;
+
     TaskInfo getTaskInfo(FrequenciesSetup frequenciesSetup) const override {
         auto profInfoItem = RawProfilingRecord::getTaskInfo(frequenciesSetup);
         profInfoItem.clusterId = _clusterId;
         profInfoItem.total_cycles = _data.clockCycles;
         profInfoItem.stall_cycles = _data.lsu0Stalls + _data.lsu1Stalls + _data.instStalls;
-        profInfoItem.stall_counters = {_data.lsu0Stalls, _data.lsu1Stalls, _data.instStalls};
         return profInfoItem;
     }
 

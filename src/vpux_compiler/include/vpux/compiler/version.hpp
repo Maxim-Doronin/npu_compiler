@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -10,12 +10,18 @@
 // This version is exposed via L0 API and reported as (read-only) plugin property NPU_COMPILER_VERSION
 //
 #define NPU_COMPILER_VERSION_MAJOR 7
-#define NPU_COMPILER_VERSION_MINOR 20
+#define NPU_COMPILER_VERSION_MINOR 21
 
 /*
 
 Change Log:
 -----------
+NPU Compiler 7.21.0
+  - UD28
+
+NPU Compiler 7.20.1
+  - Remove obsolete DPU_GROUPS config entry (NPU_DPU_GROUPS property)
+
 NPU Compiler 7.20.0
   - Take NPU_QDQ_OPTIMIZATION property value to enable/disable adaptive stripping
   - Restricted public compiler options from NPU_COMPILATION_MODE_PARAMS to the following: optimization-level,

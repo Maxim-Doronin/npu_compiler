@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -19,7 +19,7 @@ namespace arch37xx {
 //
 
 std::unique_ptr<mlir::Pass> createAddSwKernelCacheHandlingOpsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createUnrollClusterTilingPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnrollDistributedOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollDepthToSpaceDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollSpaceToDepthDMAPass(Logger log = Logger::global());
 

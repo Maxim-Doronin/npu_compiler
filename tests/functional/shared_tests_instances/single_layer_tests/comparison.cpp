@@ -129,6 +129,7 @@ std::vector<ComparisonTypes> comparisonOpTypes_MLIR = {
 
 std::vector<ComparisonTypes> comparisonOpTypesDynamic_MLIR = {
         ComparisonTypes::LESS,
+        ComparisonTypes::LESS_EQUAL,
 };
 
 std::vector<InputLayerType> secondInputTypes = {
@@ -153,9 +154,8 @@ std::map<ov::Shape, std::vector<ov::Shape>> inputShapes = {
         {{2, 17, 3, 4}, {{4}, {1, 3, 4}}},
 };
 
-std::map<ov::Shape, std::vector<ov::Shape>> precommit_inShapes = {
-        {{1, 16, 32}, {{1, 1, 32}}},
-};
+std::map<ov::Shape, std::vector<ov::Shape>> precommit_inShapes = {{{1, 16, 32}, {{1, 1, 32}}},
+                                                                  {{1, 1, 5, 5}, {{1, 1, 1, 1}}}};
 
 std::map<ov::Shape, std::vector<ov::Shape>> tiling_inShapes = {
         {{1, 10, 256, 256}, {{1, 10, 256, 256}}},

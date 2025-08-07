@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect_pipeline_strategy.hpp"
@@ -47,7 +47,6 @@ private:
 
         // E#154882 Ensure standard VPUX passes compatibility with ShaveCodeGen path
         overwriteIfUnset(options.locationsVerificationMode, "off");
-        overwriteIfUnset(options.enableProfiling, config.get<intel_npu::PERF_COUNT>());
         overwriteIfUnset(options.enableShaveKernelTiling, false);
         // E#154882 Ensure standard VPUX passes compatibility with ShaveCodeGen path
         overwriteIfUnset(options.enableOptimizeCopies, false);

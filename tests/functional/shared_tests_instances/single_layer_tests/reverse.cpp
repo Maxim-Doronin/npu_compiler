@@ -28,8 +28,9 @@ class ReverseLayerTestCommon : public ReverseLayerTest, public VpuOv2LayerTest {
             axes_constant = std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{axes.size()}, axes);
         } else {
             std::vector<bool> axes_mask(input_shape.size(), false);
-            for (auto axis : axes)
+            for (auto axis : axes) {
                 axes_mask[axis] = true;
+            }
             axes_constant = std::make_shared<ov::op::v0::Constant>(ov::element::boolean, ov::Shape{axes_mask.size()},
                                                                    axes_mask);
         }

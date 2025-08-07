@@ -1,12 +1,14 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
@@ -26,6 +28,101 @@ using namespace VPU;
 
 namespace {
 
+bool isDistributedType(mlir::Value val) {
+    auto distributedIf = mlir::dyn_cast_or_null<VPU::DistributedTypeInterface>(val.getType());
+    return distributedIf != nullptr && distributedIf.containsDistributedTypes();
+}
+
+//
+// OptimizeShapeCastDistributedCopies
+//
+// Identify any "ShapeCast" operation surrounded by "UnrolledType" operations. Insert the necessary copies to ensure
+// they cancel each other out, thereby eliminating redundant copies after canonicalization.
+// Additionally, overlapped data can be managed using halo regions or ITI buffers, leveraging subsequent VPU passes.
+/*
+    Before:                       After:                        After (canonicalized):
+                                         ClusterOp
+                                             |
+           ClusterOp              DistributedCopy(CMX2DDR)
+               |                             |
+    DistributedCopy(CMX2DDR)           Copy(DDR2CMX)            ClusterOp
+               |                             |                      |
+           ShapeCast          ->         ShapeCast          ->  ShapeCast
+               |                             |                      |
+         Copy(DDR2CMX)            DistributedCopy(CMX2DDR)      ClusterOp
+               |                             |
+           ClusterOp                   Copy(DDR2CMX)
+                                             |
+                                         ClusterOp
+*/
+
+class OptimizeShapeCastDistributedCopies final : public mlir::OpRewritePattern<VPU::ShapeCastOp> {
+public:
+    OptimizeShapeCastDistributedCopies(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<VPU::ShapeCastOp>(ctx), _log(log) {
+    }
+
+    mlir::LogicalResult matchAndRewrite(VPU::ShapeCastOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult OptimizeShapeCastDistributedCopies::matchAndRewrite(VPU::ShapeCastOp origOp,
+                                                                        mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+
+    auto prevUTOp = origOp.getSource().getDefiningOp<VPU::UnrolledTypeOp>();
+    auto nextUTOp = mlir::dyn_cast_or_null<VPU::UnrolledTypeOp>(*origOp.getResult().getUsers().begin());
+
+    auto prevUTOpInputDistType = prevUTOp.getInput().getType();
+    auto nextUTOpOutputDistType = nextUTOp.getOutput().getType();
+
+    auto prevUTOpInputDistTypeInterface = mlir::dyn_cast_or_null<VPU::DistributedTypeInterface>(prevUTOpInputDistType);
+    auto nextUTOpOutputDistTypeInterface =
+            mlir::dyn_cast_or_null<VPU::DistributedTypeInterface>(nextUTOpOutputDistType);
+
+    if (prevUTOpInputDistTypeInterface == nullptr || nextUTOpOutputDistTypeInterface == nullptr) {
+        return matchFailed(_log, rewriter, origOp, "Failed to retrieve distributed type interfaces");
+    }
+
+    auto prevUTOpInputDistTensorType =
+            mlir::cast<VPU::DistributedTensorType>(*prevUTOpInputDistTypeInterface.getDistributedTypes().begin());
+
+    // Get updated distribution based on the distribution after the shape cast, using the shape before the shape cast
+    auto updatedDistAttr = VPUIP::getDistributedAttrAfterShapeCast<VPU::DistributedTensorType>(
+            nextUTOpOutputDistTypeInterface, prevUTOpInputDistTensorType.getShape(), VPU::getArch(origOp));
+
+    _log.trace("[{0}] Updating output type of: {1}\n\tOld Distribution: {2}\n\tNew Distribution: {3}", getDebugName(),
+               prevUTOp.getInput(), prevUTOpInputDistTensorType.getDistribution(), updatedDistAttr);
+
+    auto newDistType = nextUTOpOutputDistTypeInterface.changeShapeForExplicitDistribution(
+            prevUTOpInputDistTensorType.getShape(), updatedDistAttr);
+
+    // Update "prevUTOp" input with the new distribution type
+    prevUTOp.getInput().setType(newDistType);
+
+    rewriter.setInsertionPoint(origOp);
+    auto distInputCopyOp = rewriter.create<VPU::UnrolledTypeOp>(takeOpLoc(origOp, "shapecast_copy_in"), newDistType,
+                                                                origOp.getSource());
+
+    // Clone the original "ShapeCastOp" and update its input and output types
+    auto* newOp = rewriter.clone(*origOp);
+    newOp->setOperand(0, distInputCopyOp.getResult());
+    newOp->getResult(0).setType(nextUTOpOutputDistType);
+
+    auto distOutputCopyOp = rewriter.create<VPU::UnrolledTypeOp>(takeOpLoc(newOp, "shapecast_copy_out"),
+                                                                 nextUTOp.getInput().getType(), newOp->getResult(0));
+
+    rewriter.replaceOp(origOp, distOutputCopyOp);
+
+    return mlir::success();
+}
+
+//
+// UnrolledTypeToCopyConversion
+//
+
 class UnrolledTypeToCopyConversion final : public mlir::OpRewritePattern<VPU::UnrolledTypeOp> {
 public:
     UnrolledTypeToCopyConversion(mlir::MLIRContext* ctx, Logger log)
@@ -40,11 +137,6 @@ private:
 
 mlir::LogicalResult UnrolledTypeToCopyConversion::matchAndRewrite(VPU::UnrolledTypeOp origOp,
                                                                   mlir::PatternRewriter& rewriter) const {
-    auto isDistributedType = [](mlir::Value val) {
-        auto distributedIf = mlir::dyn_cast_or_null<VPU::DistributedTypeInterface>(val.getType());
-        return distributedIf != nullptr && distributedIf.containsDistributedTypes();
-    };
-
     const bool isDistributedInput = isDistributedType(origOp.getInput());
     const bool isDistributedOutput = isDistributedType(origOp.getOutput());
 
@@ -101,8 +193,56 @@ void MakeDistributedCopiesPass::safeRunOnFunc() {
     target.addLegalOp<mlir::tensor::ExtractSliceOp>();
     target.addLegalOp<mlir::tensor::InsertSliceOp>();
     target.addLegalOp<mlir::tensor::EmptyOp>();
+    target.addDynamicallyLegalOp<VPU::ShapeCastOp>([&](VPU::ShapeCastOp shapeCast) -> bool {
+        if (isDistributedType(shapeCast.getSource())) {
+            return true;
+        }
+
+        if (!shapeCast.getResult().hasOneUse()) {
+            return true;
+        }
+
+        auto prevUTOp = shapeCast.getSource().getDefiningOp<VPU::UnrolledTypeOp>();
+        auto nextUTOp = mlir::dyn_cast_or_null<VPU::UnrolledTypeOp>(*shapeCast.getResult().getUsers().begin());
+
+        if (prevUTOp == nullptr || nextUTOp == nullptr) {
+            return true;
+        }
+
+        auto prevUTOpInputDistTensorType =
+                mlir::dyn_cast_or_null<VPU::DistributedTensorType>(prevUTOp.getInput().getType());
+        auto nextUTOpOutputDistTensorType =
+                mlir::dyn_cast_or_null<VPU::DistributedTensorType>(nextUTOp.getOutput().getType());
+
+        // Current optimization only targets I/O with "OVERLAPPED" distribution mode
+        if (prevUTOpInputDistTensorType.getDistribution().getMode().getValue() != VPU::DistributionMode::OVERLAPPED ||
+            nextUTOpOutputDistTensorType.getDistribution().getMode().getValue() != VPU::DistributionMode::OVERLAPPED) {
+            return true;
+        }
+
+        const auto inputTilingAxis =
+                VPUIP::getSpecificAxisFromAttr(nextUTOpOutputDistTensorType.getDistribution().getNumTiles());
+        VPUX_THROW_WHEN(inputTilingAxis == -1, "cannot get input tiling axis");
+
+        // Skip if 'clusteringDimChanges'
+        if (prevUTOpInputDistTensorType.getShape().raw()[inputTilingAxis] !=
+            nextUTOpOutputDistTensorType.getShape().raw()[inputTilingAxis]) {
+            return true;
+        }
+
+        // If the previous operation is an inplace eltwise operation
+        // then we should skip the optimization because inplace eltwise requires output has the same distribution as
+        // input
+        auto prevEltwiseOp = prevUTOp.getInput().getDefiningOp<VPU::NCEEltwiseOp>();
+        if ((prevEltwiseOp != nullptr) && (prevEltwiseOp.getIsInplace().value_or(false))) {
+            return true;
+        }
+
+        return false;
+    });
 
     mlir::RewritePatternSet patterns(&ctx);
+    patterns.add<OptimizeShapeCastDistributedCopies>(&ctx, _log);
     patterns.add<UnrolledTypeToCopyConversion>(&ctx, _log);
 
     if (mlir::failed(mlir::applyFullConversion(func, target, std::move(patterns)))) {

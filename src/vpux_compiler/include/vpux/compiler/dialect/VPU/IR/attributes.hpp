@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -149,6 +149,7 @@ RevisionID getRevisionID(mlir::Operation* op);
 PaddingAttr getPaddingAttr(mlir::MLIRContext* ctx, int64_t left, int64_t right, int64_t top, int64_t bottom);
 PaddingAttr getPaddingAttr(mlir::MLIRContext* ctx, ArrayRef<int64_t> padsBegin, ArrayRef<int64_t> padsEnd);
 PaddingAttr getPaddingAttr(mlir::MLIRContext* ctx, const PadInfo& pad);
+bool hasZeroPadding(const VPU::PaddingAttr padAttr);
 
 PadInfo toPadInfo(PaddingAttr attr);
 
@@ -172,7 +173,7 @@ struct OverlapDistributionParams {
 
     OverlapDistributionParams(ArrayRef<int64_t> kernel, VPU::Padding pads, ArrayRef<int64_t> stride,
                               bool equalComputeAndMemoryView = false)
-            : _kernel(kernel), _pads(pads), _stride(stride), _equalComputeAndMemoryView(equalComputeAndMemoryView){};
+            : _kernel(kernel), _pads(pads), _stride(stride), _equalComputeAndMemoryView(equalComputeAndMemoryView) {};
 
     OverlapDistributionParams(ArrayRef<SmallVector<int64_t>> memoryShapes, ArrayRef<SmallVector<int64_t>> memoryOffsets,
                               ArrayRef<SmallVector<int64_t>> computeShapes,

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-convbackpropdata-to-transposedconv --canonicalize %s | FileCheck %s
@@ -347,6 +347,52 @@ func.func @ConvertConvBackpropDataWithNonConstFilterToTransposedConv(%input0: te
     // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT0]], [[REVERSE]]) {
     // CHECK-SAME:      dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x512x4x4xf16>, tensor<256x512x3x3xf16> -> tensor<1x256x9x9xf16>
+
+    // CHECK:       return [[OUTPUT]]
+}
+
+// -----
+
+// CHECK:  #HCW = affine_map<(d0, d1, d2) -> (d1, d0, d2)>
+
+// CHECK-LABEL: @Convert1DConvBackpropDataWithNonConstFilterToTransposedConv
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x768x5120xf32>, [[INPUT1:%.+]]: tensor<768x384x7xf32>)
+func.func @Convert1DConvBackpropDataWithNonConstFilterToTransposedConv(%input0: tensor<1x768x5120xf32>, %input1: tensor<768x384x7xf32>) -> tensor<1x384x15360xf32> {
+    %output = IE.ConvolutionBackpropData(%input0, %input1) {
+            dilations = [1], pads_begin = [2], pads_end = [2], spatial_output_padding = [0], strides = [3]
+        } : tensor<1x768x5120xf32>, tensor<768x384x7xf32> -> tensor<1x384x15360xf32>
+
+    return %output : tensor<1x384x15360xf32>
+
+    // CHECK-NOT:   IE.ConvolutionBackpropData
+    // CHECK:       [[TRANSPOSE:%.+]] = IE.Transpose([[INPUT1]]) {order_value = #HCW} : tensor<768x384x7xf32> -> tensor<384x768x7xf32>
+    // CHECK:       [[REVERSE:%.+]] = IE.Reverse([[TRANSPOSE]]) {axis_value = [2], mode = #IE.reverse_mode<INDEX>} : tensor<384x768x7xf32> -> tensor<384x768x7xf32>
+    // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT0]], [[REVERSE]]) {
+    // CHECK-SAME:          dilations = [1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [2], pads_end = [2], spatial_output_padding = [0], strides = [3]
+    // CHECK-SAME:      } : tensor<1x768x5120xf32>, tensor<384x768x7xf32> -> tensor<1x384x15360xf32>
+
+    // CHECK:       return [[OUTPUT]]
+}
+
+// -----
+
+// CHECK:  #map = affine_map<(d0, d1, d2, d3, d4) -> (d1, d0, d2, d3, d4)>
+
+// CHECK-LABEL: @Convert3DConvBackpropDataWithNonConstFilterToTransposedConv
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x768x512x512x512xf32>, [[INPUT1:%.+]]: tensor<768x384x7x7x7xf32>)
+func.func @Convert3DConvBackpropDataWithNonConstFilterToTransposedConv(%input0: tensor<1x768x512x512x512xf32>, %input1: tensor<768x384x7x7x7xf32>) -> tensor<1x384x1536x1536x1536xf32> {
+    %output = IE.ConvolutionBackpropData(%input0, %input1) {
+            dilations = [1, 1, 1], pads_begin = [2, 2, 2], pads_end = [2, 2, 2], spatial_output_padding = [0, 0, 0], strides = [3, 3, 3]
+        } : tensor<1x768x512x512x512xf32>, tensor<768x384x7x7x7xf32> -> tensor<1x384x1536x1536x1536xf32>
+
+    return %output : tensor<1x384x1536x1536x1536xf32>
+
+    // CHECK-NOT:   IE.ConvolutionBackpropData
+    // CHECK:       [[TRANSPOSE:%.+]] = IE.Transpose([[INPUT1]]) {order_value = #map} : tensor<768x384x7x7x7xf32> -> tensor<384x768x7x7x7xf32>
+    // CHECK:       [[REVERSE:%.+]] = IE.Reverse([[TRANSPOSE]]) {axis_value = [2, 3, 4], mode = #IE.reverse_mode<INDEX>} : tensor<384x768x7x7x7xf32> -> tensor<384x768x7x7x7xf32>
+    // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT0]], [[REVERSE]]) {
+    // CHECK-SAME:          dilations = [1, 1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [2, 2, 2], pads_end = [2, 2, 2], spatial_output_padding = [0, 0, 0], strides = [3, 3, 3]
+    // CHECK-SAME:      } : tensor<1x768x512x512x512xf32>, tensor<384x768x7x7x7xf32> -> tensor<1x384x1536x1536x1536xf32>
 
     // CHECK:       return [[OUTPUT]]
 }

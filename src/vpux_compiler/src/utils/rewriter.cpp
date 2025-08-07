@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -10,6 +10,8 @@
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
@@ -20,11 +22,16 @@
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/profiling/location.hpp"
 
+#include <mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h>
 #include <mlir/Dialect/Linalg/IR/Linalg.h>
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 
 using namespace vpux;
 
@@ -207,7 +214,7 @@ VPU::SparseTensorType bufferToTensor(VPUIP::SparseBufferType type) {
 mlir::RankedTensorType bufferToTensor(VPUIP::BoundedBufferType type) {
     auto dataType = tensorizeBuffer(type.getData());
     auto ndType = mlir::cast<NDTypeInterface>(dataType);
-    auto dimsMask = SmallVector<int64_t>(ndType.getShape().size(), 1);
+    auto dimsMask = DynamicDimsMask(ndType.getShape().size(), 1);
     dataType = Core::DynamicDimsMaskTensorType::get(ndType, dimsMask);
     return mlir::cast<mlir::RankedTensorType>(dataType);
 }
@@ -429,9 +436,10 @@ mlir::bufferization::OneShotBufferizationOptions vpux::getOneShotBufferizationOp
                                         const mlir::bufferization::BufferizationOptions& /*options*/) {
         return getMemRefTypeForUnknownTensorType(value.getType(), memorySpace);
     };
-    options.opFilter.allowDialect<mlir::bufferization::BufferizationDialect, mlir::memref::MemRefDialect,
-                                  mlir::func::FuncDialect, VPU::VPUDialect, Const::ConstDialect,
-                                  mlir::linalg::LinalgDialect, Core::CoreDialect>();
+    options.opFilter
+            .allowDialect<mlir::bufferization::BufferizationDialect, mlir::memref::MemRefDialect,
+                          mlir::func::FuncDialect, VPU::VPUDialect, Const::ConstDialect, mlir::linalg::LinalgDialect,
+                          Core::CoreDialect, mlir::scf::SCFDialect, mlir::tensor::TensorDialect>();
 
     return options;
 }
@@ -448,7 +456,11 @@ vpux::NDTypeInterface vpux::getBufferType(mlir::Type tensorType) {
 
     return llvm::TypeSwitch<mlir::Type, mlir::Type>(tensorType)
             .Case<mlir::RankedTensorType>([&](mlir::RankedTensorType rankedTensorType) {
-                return tensorToBuffer(rankedTensorType);
+                const auto encoding = vpux::getTensorAttr(rankedTensorType);
+                if (encoding != nullptr) {
+                    return tensorToBuffer(rankedTensorType);
+                }
+                return getMemRefTypeForUnknownTensorType(rankedTensorType, nullptr);
             })
             .Case<VPU::DistributedTensorType>([&](VPU::DistributedTensorType distributedTensorType) {
                 return distributedTensorToBuffer(distributedTensorType);

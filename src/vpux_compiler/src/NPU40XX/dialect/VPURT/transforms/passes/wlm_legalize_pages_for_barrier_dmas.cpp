@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPURT/interfaces/barrier_pages_split.hpp"
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/utils/dma.hpp"
 
 namespace vpux::VPURT::arch40xx {
 #define GEN_PASS_DECL_WLMLEGALIZEPAGESFORBARRIERDMAS
@@ -83,6 +84,9 @@ void WlmLegalizePagesForBarrierDmasPass::safeRunOnFunc() {
     auto inBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
     auto outBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
 
+    const VPURT::TaskQueueType barProgDmaQueueType = {VPU::ExecutorKind::DMA_NN,
+                                                      getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR)};
+
     for (const auto& [pageInd, barProgDma] : barProgDmas | indexed) {
         if (!barProgDma.valid) {
             continue;
@@ -135,6 +139,9 @@ void WlmLegalizePagesForBarrierDmasPass::safeRunOnFunc() {
             _log.nest(2).trace("update bar {0}", updateBar);
             barrierInfo.addProducer(updateBar, barProgDMATaskInd);
         });
+
+        barrierPagesSplitHandler.updateTaskPageAssignmentForQueue(barProgDma.insertAfter + 1, pageInd,
+                                                                  barProgDmaQueueType);
     }
 
     VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);

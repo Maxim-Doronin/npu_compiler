@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -89,11 +89,15 @@ public:
 
         // Make sure the Gather is used to distribute values through index (u4)
         auto isLegalGather = [](IE::GatherOp gatherOp) {
+            auto inputShape = getShape(gatherOp.getInput());
+            if (inputShape.isDynamic()) {
+                return false;
+            }
+
             if (!gatherOp.getOutput().hasOneUse()) {
                 return false;
             }
 
-            auto inputShape = getShape(gatherOp.getInput());
             if (inputShape.size() != 1 || inputShape.totalSize() != 16) {
                 return false;
             }

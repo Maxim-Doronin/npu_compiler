@@ -49,8 +49,9 @@ mlir::Type QuantileFloatDialect::parseType(mlir::DialectAsmParser& parser) const
     llvm::StringRef mnemonic;
     mlir::Type genType;
     auto parseResult = generatedTypeParser(parser, &mnemonic, genType);
-    if (parseResult.has_value())
+    if (parseResult.has_value()) {
         return genType;
+    }
 
     parser.emitError(typeLoc) << "unknown  type `" << mnemonic << "` in dialect `" << getNamespace() << "`";
     return {};
@@ -58,8 +59,9 @@ mlir::Type QuantileFloatDialect::parseType(mlir::DialectAsmParser& parser) const
 
 /// Print a type registered to this dialect.
 void QuantileFloatDialect::printType(mlir::Type type, mlir::DialectAsmPrinter& printer) const {
-    if (mlir::succeeded(generatedTypePrinter(type, printer)))
+    if (mlir::succeeded(generatedTypePrinter(type, printer))) {
         return;
+    }
 };
 
 }  // namespace type

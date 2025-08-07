@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
@@ -26,7 +26,7 @@ module @OneM2IWithoutAttributes {
       ELF.CreateLogicalSection @io.NetworkOutput0 aligned(1) secType(SHT_PROGBITS) secFlags(VPU_SHF_USERINPUT) secLocation(<NetworkOutput>) {
         VPUASM.DeclareBuffer @DeclareBuffer1 !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x256x256x4xf16, @DDR> :  swizzling(0)>
       }
-      ELF.CreateLogicalSection @builtin.tasks.M2I0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
+      ELF.CreateLogicalSection @builtin.tasks.M2I0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_M2I_0 idx(!VPURegMapped.Index<0:0:0>) <M2I>
       }
       ELF.CreateSection @task.m2i0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
@@ -37,10 +37,10 @@ module @OneM2IWithoutAttributes {
         ELF.Symbol @elfsym.task.m2i0 of(@task.m2i0) type(<STT_SECTION>) size(0) value(0)
       }
       ELF.CreateSymbolTableSection @symtab.io.NetworkInput secFlags("VPU_SHF_USERINPUT|VPU_SHF_JIT") {
-        ELF.Symbol @elfsym.io.NetworkInput0 of(@io.NetworkInput0) type(<STT_SECTION>) size(48) value(0)
+        ELF.Symbol @elfsym.io.NetworkInput0 of(@io.NetworkInput0) type(<STT_SECTION>) size(48)
       }
       ELF.CreateSymbolTableSection @symtab.io.NetworkOutput secFlags("VPU_SHF_USEROUTPUT|VPU_SHF_JIT") {
-        ELF.Symbol @elfsym.io.NetworkOutput0 of(@io.NetworkOutput0) type(<STT_SECTION>) size(48) value(0)
+        ELF.Symbol @elfsym.io.NetworkOutput0 of(@io.NetworkOutput0) type(<STT_SECTION>) size(48)
       }
 
       // CHECK:       ELF.CreateRelocationSection @rela.task.m2i0.symtab.io.NetworkInput

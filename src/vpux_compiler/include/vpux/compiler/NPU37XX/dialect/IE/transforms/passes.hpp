@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -38,6 +38,8 @@ std::unique_ptr<mlir::Pass> createConvertWeightsToI8Pass(Logger log = Logger::gl
 std::unique_ptr<mlir::Pass> createProcessAsymmetricZeroPointsForConvolutionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseOutstandingDequant(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWeightsQuantFusedIntoTaskPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createProcessAsymmetricZeroPointsForMatmulPass(double decompositionEnablementRatio = 0.0,
+                                                                           Logger log = Logger::global());
 
 //
 // Pipelines
@@ -94,11 +96,22 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
                                    llvm::cl::init(false)};
 
+    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
+                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
+                                    llvm::cl::init(false)};
     Int64Option runtimeDequantizationLimit{
             *this, "runtime-dequantization-limit",
             llvm::cl::desc("Lower limit on weight size for runtime dequantization"
                            "Weights smaller than the limit will be statically dequantized"),
             llvm::cl::init(524'288)};  // 512kb
+    BoolOption enableMatmulMixedPrecisionDecomposition{
+            *this, "enable-matmul-mixed-precision-decomposition",
+            llvm::cl::desc("Enable mixed precision decomposition for matmul"), llvm::cl::init(true)};
+    DoubleOption matmulMixedPrecisionDecompositionRatio{
+            *this, "matmul-mixed-precision-decomposition-ratio",
+            llvm::cl::desc("Determines when to enable Matmul Mixed Precision Decomposition"
+                           "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"),
+            llvm::cl::init(250.0)};
 
     BoolOption skipUnrollBatch{*this, "skip-unroll-batch", llvm::cl::desc("Skip unroll on batch dimension"),
                                llvm::cl::init(false)};

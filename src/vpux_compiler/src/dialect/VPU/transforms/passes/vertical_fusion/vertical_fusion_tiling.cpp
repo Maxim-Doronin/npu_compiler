@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
@@ -229,6 +229,14 @@ void VerticalFusionTilingRewriter<VFConfigType, VFSchedulingFactoryType>::adjust
             }
         } else {
             processOffset(operand, opStorage, originalTiling, tilingIndex, axis, expectedShape);
+            if (auto sliceOp = mlir::dyn_cast_or_null<VPU::SliceOp>(expectedOp.getDefiningOp())) {
+                // correct offsets
+                auto sliceOffset = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
+                VPUX_THROW_UNLESS(originalTiling.offsets[axis] >= sliceOffset[axis.ind()],
+                                  "Slice offset {0} is bigger than original one {1}", sliceOffset[axis.ind()],
+                                  originalTiling.offsets[axis]);
+                originalTiling.offsets[axis] = originalTiling.offsets[axis] - sliceOffset[axis.ind()];
+            }
             opSlice = makeTile(rewriter, operation->getLoc(), expectedOp, originalTiling, valName);
         }
 
@@ -421,7 +429,13 @@ void VfTilingPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    const auto costFunction = std::make_unique<VPU::LayerVPUNNCost>(func);
+    auto module = func->getParentOfType<mlir::ModuleOp>();
+    const auto arch = VPU::getArch(module);
+    auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
+    auto layerCostModel =
+            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+
+    const auto costFunction = std::make_unique<VPU::LayerVPUNNCost>(func, layerCostModel, _log);
 
     mlir::ConversionTarget target(ctx);
     target.addIllegalOp<VPU::VerticalFusionOp>();

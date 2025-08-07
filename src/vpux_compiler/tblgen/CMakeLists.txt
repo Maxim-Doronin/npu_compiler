@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2023-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 add_subdirectory(vpux/compiler/dialect/core)
@@ -21,7 +21,6 @@ add_subdirectory(vpux/compiler/NPU40XX/dialect/IE)
 add_subdirectory(vpux/compiler/NPU40XX/dialect/VPU)
 add_subdirectory(vpux/compiler/NPU40XX/dialect/VPUIP)
 add_subdirectory(vpux/compiler/NPU40XX/dialect/VPURT)
-add_subdirectory(vpux/compiler/dialect/IERT)
 add_subdirectory(vpux/compiler/dialect/VPUIP)
 add_subdirectory(vpux/compiler/dialect/VPUIPDPU)
 add_subdirectory(vpux/compiler/NPU40XX/dialect/VPUIPDPU)
@@ -34,3 +33,4 @@ add_subdirectory(vpux/compiler/dialect/VPUASM)
 add_subdirectory(vpux/compiler/NPU40XX/dialect/ELF)
 add_subdirectory(vpux/compiler/NPU37XX/dialect/NPUReg37XX)
 add_subdirectory(vpux/compiler/NPU40XX/dialect/NPUReg40XX)
+add_subdirectory(vpux/compiler/dialect/HostExec)

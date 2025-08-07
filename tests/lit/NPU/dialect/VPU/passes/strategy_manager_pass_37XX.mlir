@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --strategy-manager %s | FileCheck %s
@@ -504,7 +504,7 @@ func.func @AssignSOHForLayerWithTopK(%arg0: tensor<1x151x513x513xf16>) -> tensor
     // CHECK:        [[OUTPUT_VALUES:%.+]], [[TARGET_SHAPE:%.+]] = VPU.TopK(%arg0, [[CST]])
     // CHECK-SAME:        axis = 1 : i64, element_type = si32, k_value = 1 : i64, mode = #IE.topk_mode<MAX>,
     // CHECK-SAME:        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, operandSegmentSizes = array<i32: 1, 0, 1>, sort = #IE.topk_sort_type<SORT_INDICES>
-    // CHECK-SAME:        tilingStrategy = [1, 1, 43, 1]
+    // CHECK-SAME:        tilingStrategy = [1, 1, 22, 1]
     // CHECK-SAME:        : tensor<1x151x513x513xf16>, tensor<1x1x1x16xui8> -> tensor<1x1x513x513xf16>, tensor<1x1x513x513xsi32>
     // CHECK:        return [[TARGET_SHAPE]] : tensor<1x1x513x513xsi32>
 }

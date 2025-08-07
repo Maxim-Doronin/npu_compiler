@@ -87,8 +87,9 @@ unsigned long int FNV_hash(const std::string& str) {
     const unsigned char* p = reinterpret_cast<const unsigned char*>(str.c_str());
     unsigned long int h = 2166136261UL;
 
-    for (size_t i = 0; i < str.size(); i++)
+    for (size_t i = 0; i < str.size(); i++) {
         h = (h * 16777619) ^ p[i];
+    }
 
     return h;
 }

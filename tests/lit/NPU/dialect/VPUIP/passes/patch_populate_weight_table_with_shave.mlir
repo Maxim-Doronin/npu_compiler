@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --patch-populate-weight-table-with-shave --canonicalize %s | FileCheck %s
@@ -336,7 +336,7 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
       %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>, weightsPtrsPerClusterAttr = [0, 0, 0, 0]}
         @VPU.SW::@builtin_PopulateWeightTable inputs(%scale as %arg3: !ScaleDistributed)
         outputs(%sub_view0 as %arg5: memref<512x1x1x4xsi32, @CMX_NN>, %sub_view1 as %arg6: memref<512x1x1x4xsi32, @CMX_NN>)
-            strides([[4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1]]) on tile 0 -> (
+            outputStrides([[4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1]]) on tile 0 -> (
             !PopulateWeightTableDistributed, !PopulateWeightTableDistributed)
             {
                     VPUIP.SW.Kernel.run {attrs = [8192, 2048]}(%arg5) : memref<512x1x1x4xsi32, @CMX_NN>
@@ -434,12 +434,13 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
     // CHECK-SAME{LITERAL}:   {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
     // CHECK-SAME:            !VPUIP.DistributedBuffer<1024x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64, alignment = [16, 1, 1, 1]}>
     // CHECK-SAME:            to !VPUIP.DistributedBuffer<512x1x1x4xsi32, {order = #NCHW, strides = [4, 4, 4, 1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64}>
-    // CHECK:              [[RESULTS:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>, weightsPtrsPerClusterAttr = [0, 0, 0, 0]}
+    // CHECK:              [[RESULTS:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>,
+    // CHECK-SAME:            weightsPtrsPerClusterAttr = [0, 0, 0, 0]}
     // CHECK-SAME:            @VPU.SW::@builtin_PopulateWeightTable inputs(
     // CHECK-SAME:            {{[^:]+}} as {{[^:]+}}: !VPUIP.DistributedBuffer<512x1x1x4xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64}>)
     // CHECK-SAME:            outputs([[SUBVIEW0]] as [[INNER_ARG0:[^:]+]]: memref<512x1x1x4xsi32, @CMX_NN>,
     // CHECK-SAME:            [[SUBVIEW1]] as [[INNER_ARG1:[^:]+]]: memref<512x1x1x4xsi32, @CMX_NN>)
-    // CHECK-SAME{LITERAL}:            strides([[4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1]]) on tile 0 ->
+    // CHECK-SAME{LITERAL}:            outputStrides([[4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1], [4, 4, 4, 1]]) on tile 0 ->
     // CHECK-SAME:            (!VPUIP.DistributedBuffer<512x1x1x4xsi32, {order = #NCHW, strides = [4, 4, 4, 1]}, @CMX_NN,
     // CHECK-SAME:              {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64}>,
     // CHECK-SAME:            !VPUIP.DistributedBuffer<512x1x1x4xsi32, {order = #NCHW, strides = [4, 4, 4, 1]}, @CMX_NN,

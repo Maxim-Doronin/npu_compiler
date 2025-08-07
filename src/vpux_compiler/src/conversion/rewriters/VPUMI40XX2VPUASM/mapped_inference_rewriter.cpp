@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/mapped_inference_rewriter.hpp"
@@ -149,8 +149,9 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
             auto& newList = managedDmas.emplace_back();
             for (auto dma : llvm::enumerate(tileDmas.value())) {
                 auto dmaTask = mlir::cast<VPUMI40XX::NNDMAOp>(dma.value().getDefiningOp());
-                if (!dmaTask.getTaskLink().has_value())
+                if (!dmaTask.getTaskLink().has_value()) {
                     continue;
+                }
 
                 auto dmaName = findSym(dma.value());
                 newList.push_back(dmaName);

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-to-dma --canonicalize %s | FileCheck %s
@@ -468,8 +468,8 @@ func.func @ConvertMemPermuteWithMemPermHNWC(%arg0: memref<1x15x2x128xf16, @DDR>)
 
 !qElemType = !quant.uniform<u8:f16, 0.0173492431640625:114>
 
-// CHECK-LABEL: @WrapExpandandPermuteWithoutClusterTiling
-func.func @WrapExpandandPermuteWithoutClusterTiling(%arg0: memref<1x3x24x24x!qElemType>) -> memref<1x16x24x24x!qElemType> {
+// CHECK-LABEL: @WrapExpandandPermuteWithoutDistributedOp
+func.func @WrapExpandandPermuteWithoutDistributedOp(%arg0: memref<1x3x24x24x!qElemType>) -> memref<1x16x24x24x!qElemType> {
    %0 = memref.alloc() : memref<1x16x24x24x!qElemType>
    %1 = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} inputs(%arg0 : memref<1x3x24x24x!qElemType>) outputs(%0 : memref<1x16x24x24x!qElemType>) -> memref<1x16x24x24x!qElemType>
 

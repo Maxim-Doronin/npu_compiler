@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -91,6 +91,8 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
             ::llvm::cl::values(
+                    clEnumValN(WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES",
+                               "Full WLM with split into pages"),
                     clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
                                "Partial WLM with split into subgraphs"),
                     clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
@@ -141,18 +143,6 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
     BoolOption shaveDryRun{*this, "shave-dry-run", llvm::cl::desc("Enable shave dry run stripping"),
                            llvm::cl::init(false)};
 
-    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
-                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
-                                    llvm::cl::init(false)};
-    static bool getDefaultEnableRuntimeDequant(VPU::ArchKind arch) {
-        switch (arch) {
-        case VPU::ArchKind::NPU40XX:
-            return true;
-        default:
-            return false;
-        }
-    }
-
     //
     // Constructors
     //
@@ -164,7 +154,6 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
             workloadManagementMode = getDefaultWorkloadManagementMode(arch);
         }
         enableDMAProfiling = getDefaultEnableDMAProfiling(arch);
-        enableRuntimeDequant = getDefaultEnableRuntimeDequant(arch);
     }
 
     static std::unique_ptr<PublicOptions> createFromString(StringRef options, VPU::ArchKind arch) {

@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2024-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 set_property(GLOBAL PROPERTY NPU_SRC_LIB_LIST)
@@ -43,7 +43,7 @@ function(add_npu_library name)
 
     # The npu_mlir_compiler_schema and cpp_schema targets are added as dependencies to ensure
     # that the following generated headers are built before the compiler code:
-    # - elf/schema.hpp
+    # - thirdparty/elf/schema.hpp
     # - vpunn_generated.h
     add_mlir_library(${name}
         STATIC ${SRC_FILES}

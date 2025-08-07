@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/ELFNPU37XX/elf_importer.hpp"
@@ -10,7 +10,6 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IERT/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
@@ -34,7 +33,6 @@ vpux::ELFNPU37XX::ElfImporter::ElfImporter(mlir::MLIRContext* ctx, const std::st
 
     _log.trace("Load VPUX::VPUELF dependent Dialects");
     _ctx->loadDialect<IE::IEDialect>();
-    _ctx->loadDialect<IERT::IERTDialect>();
     _ctx->loadDialect<VPUMI37XX::VPUMI37XXDialect>();
     _ctx->loadDialect<VPURegMapped::VPURegMappedDialect>();
     _ctx->loadDialect<VPURT::VPURTDialect>();
@@ -74,16 +72,8 @@ void vpux::ELFNPU37XX::ElfImporter::parseUserInputsOutputs(OpBuilderLogger& buil
             const auto rankedTensor = mlir::RankedTensorType::get(shapeType, getUInt8Type(_ctx));
             const auto memRefRankedTensor = mlir::MemRefType::get(shapeType, getUInt8Type(_ctx));
 
-            const auto nameAttr = mlir::StringAttr::get(_ctx, inputName);
-            const auto userTypeAttr = mlir::TypeAttr::get(rankedTensor);
-
             paramTypes.push_back(memRefRankedTensor);
-            builder.create<net::DataInfoOp>(mlir::UnknownLoc::get(_ctx), nameAttr, userTypeAttr,
-                                            /*OptionalAttr originalShape*/ nullptr,
-                                            /*OptionalAttr friendlyName*/ nullptr,
-                                            /*OptionalAttr inputName*/ nullptr,
-                                            /*OptionalAttr tensorNames*/ nullptr,
-                                            /*profilingSectionsCount=*/0);
+            builder.create<net::DataInfoOp>(mlir::UnknownLoc::get(_ctx), inputName, rankedTensor);
         }
     };
 

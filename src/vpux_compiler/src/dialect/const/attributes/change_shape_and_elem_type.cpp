@@ -1,12 +1,13 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/IR/DialectImplementation.h>
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/types.hpp"
+#include "vpux/compiler/utils/stable_hash.hpp"
+
+#include <llvm/ADT/Hashing.h>
 
 using namespace vpux;
 
@@ -15,7 +16,8 @@ using namespace vpux;
 //
 
 mlir::LogicalResult vpux::Const::ChangeShapeAndElemTypeAttr::verify(FuncRef<mlir::InFlightDiagnostic()> emitError,
-                                                                    mlir::ArrayAttr shape, mlir::Type) {
+                                                                    mlir::ArrayAttr shape, mlir::Type,
+                                                                    llvm::hash_code) {
     if (shape == nullptr) {
         return printTo(emitError(), "Got NULL 'shape' in 'ChangeShapeAndElemTypeAttr'");
     }
@@ -104,9 +106,8 @@ Const::Content vpux::Const::ChangeShapeAndElemTypeAttr::transform(vpux::Const::C
 // ChangeShapeAndElemTypeAttr::getStableHashValue
 //
 
-llvm::hash_code vpux::Const::ChangeShapeAndElemTypeAttr::getStableHashValue() const {
-    const auto shape = parseIntArrayAttr<int64_t>(getShape());
-    const auto type = getElemType();
-    return llvm::hash_combine(getMnemonic(), llvm::hash_combine_range(shape.begin(), shape.end()),
-                              formatv("{0}", type).str());
+llvm::hash_code vpux::Const::stableHashForChangeShapeAndElemType(mlir::ArrayAttr shapeAttr, mlir::Type type) {
+    const auto shape = parseIntArrayAttr<int64_t>(shapeAttr);
+    return llvm::hash_combine(vpux::Const::ChangeShapeAndElemTypeAttr::getMnemonic(),
+                              llvm::hash_combine_range(shape.begin(), shape.end()), getStableHash(type));
 }

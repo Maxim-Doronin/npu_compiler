@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -18,8 +18,8 @@ namespace vpux {
 
 class IBackendPipelineStrategy {
 public:
-    virtual void buildELFPipeline(mlir::PassManager& pm, const intel_npu::Config& config, mlir::TimingScope& rootTiming,
-                                  Logger log, bool useWlm) = 0;
+    virtual void buildELFPipeline(mlir::OpPassManager& pm, const intel_npu::Config& config,
+                                  mlir::TimingScope& rootTiming, Logger log, bool useWlm) = 0;
 
     virtual ~IBackendPipelineStrategy() = default;
 };

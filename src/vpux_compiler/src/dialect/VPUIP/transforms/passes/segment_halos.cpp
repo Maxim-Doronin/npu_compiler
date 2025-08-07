@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/layers.hpp"
@@ -28,7 +28,7 @@ struct SubstituteHalos {
 
     SubstituteHalos() = default;
     SubstituteHalos(ArrayRef<OutwardHaloRegionAttr> outwardHalos, const InwardHaloSubstitutesType& inwardHalos)
-            : _outwardHalos(outwardHalos.begin(), outwardHalos.end()), _inwardHalos(inwardHalos){};
+            : _outwardHalos(outwardHalos.begin(), outwardHalos.end()), _inwardHalos(inwardHalos) {};
 };
 
 struct NceOpOutputs {
@@ -36,7 +36,7 @@ struct NceOpOutputs {
     mlir::Value _outSparsityMap;
 
     NceOpOutputs() = default;
-    NceOpOutputs(mlir::Value output, mlir::Value outSparsityMap): _output(output), _outSparsityMap(outSparsityMap){};
+    NceOpOutputs(mlir::Value output, mlir::Value outSparsityMap): _output(output), _outSparsityMap(outSparsityMap) {};
 };
 
 bool isHaloInCurrentWorkload(ArrayRef<int64_t> haloStart, ArrayRef<int64_t> haloShape, ArrayRef<int64_t> workloadStart,
@@ -222,14 +222,15 @@ void updateNceOps(NCEClusterTaskOp nceOp, DenseMap<NCEClusterTaskOp, NceOpOutput
             nceOp.getWeightTableScale(), nceOp.getWeightTableBias(), nceOp.getWeightZeroPoints(),
             nceOp.getSprLookupTable(), nceOp.getPalletLookupTable(), nceOp.getParentInput(),
             nceOp.getParentInputSparsityMap(), nceOp.getParentInputStorageElementTable(), output, outSparsityMap,
-            mlir::ValueRange(newOutputItis), output, outSparsityMap, nceOp.getProfilingData(), nceOp.getMaxPerXy(),
-            nceOp.getMinPerXy(), nceOp.getMinMaxPerTensor(), nceOp.getTaskType(), nceOp.getKernelSizeAttr(),
-            nceOp.getKernelStridesAttr(), nceOp.getKernelPaddingAttr(), nceOp.getIsContinuedAttr(),
-            nceOp.getCmSpPatternAttr(),
+            mlir::ValueRange(newOutputItis), output, outSparsityMap, nceOp.getProfilingData(),
+            nceOp.getDynamicSequenceLength(), nceOp.getMaxPerXy(), nceOp.getMinPerXy(), nceOp.getMinMaxPerTensor(),
+            nceOp.getTaskType(), nceOp.getKernelSizeAttr(), nceOp.getKernelStridesAttr(), nceOp.getKernelPaddingAttr(),
+            nceOp.getIsContinuedAttr(), nceOp.getCmSpPatternAttr(),
             /*is_segmented*/ nullptr, nceOp.getOutChannelOffsetAttr(), nceOp.getInputChannelsCompressionAttr(),
             nceOp.getIsZeroOffsetWeightsTableAttr(), nceOp.getIsSuperdenseAttr(), nceOp.getIsInplaceAttr(),
             nceOp.getInputSeSizeAttr(), nceOp.getOutputSeSizeAttr(), nceOp.getIsPermuteQuantizeAttr(),
-            nceOp.getIsSmallKernelOptimizedAttr(), nceOp.getMpeEngineAttr(), nceOp.getEltwiseTypeAttr());
+            nceOp.getIsSmallKernelOptimizedAttr(), nceOp.getMpeEngineAttr(), nceOp.getEltwiseTypeAttr(),
+            nceOp.getDynamicScaleConfigAttr());
     if (auto profMetadata = nceOp.getProfilingMetadataAttr()) {
         updatedNceOp.setProfilingMetadataAttr(profMetadata);
     }

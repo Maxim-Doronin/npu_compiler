@@ -150,7 +150,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_TopK_K1, TopKLayerTestCommon,
                                                     ov::op::v3::TopK::SortType::NONE}),
                                             ::testing::ValuesIn(modelTypes_Tilling),
                                             ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
-                                                    std::vector<std::vector<ov::Shape>>({{{1, 42840, 13}}}))),
+                                                    std::vector<std::vector<ov::Shape>>{{{1, 42840, 13}}})),
                                             ::testing::Values(ov::test::utils::DEVICE_NPU)),
                          TopKLayerTestCommon::getTestCaseName);
 

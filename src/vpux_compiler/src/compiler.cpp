@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/compiler.hpp"
@@ -13,6 +13,7 @@
 #include "vpux/compiler/NPU40XX/backend_pipeline_strategy.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/export.hpp"
 #include "vpux/compiler/NPU40XX/dialect_pipeline_strategy.hpp"
+#include "vpux/compiler/compilation_options.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
@@ -209,7 +210,7 @@ void middleendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& module, const Devel
 void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const DeveloperConfig& devConf,
                         const intel_npu::Config& config, mlir::TimingScope& compileNetworkTiming, Logger log) {
     auto elfTiming = compileNetworkTiming.nest("ELF pipeline");
-
+    const auto hostCompilationMode = getCompilationMode(config) == vpux::config::CompilationMode::HostCompile;
     mlir::PassManager elfPm(vpuipModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
     devConf.setup(elfPm, config);
 
@@ -217,7 +218,8 @@ void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const De
     auto wlmStatus = vpux::VPUIP::getWlmStatus(vpuipModule.get());
     auto wlmStillEnabled = wlmStatus == vpux::VPUIP::WlmStatus::ENABLED;
     auto backendPipelineStrategy = createBackendPipelineStrategy(getArchKind(config));
-    backendPipelineStrategy->buildELFPipeline(elfPm, config, elfTiming, log, wlmStillEnabled);
+    backendPipelineStrategy->buildELFPipeline(!hostCompilationMode ? elfPm : elfPm.nest<mlir::ModuleOp>(), config,
+                                              elfTiming, log, wlmStillEnabled);
     if (getWlmRollback(config).value_or(false)) {
         auto backupModule = mlir::OwningOpRef<mlir::ModuleOp>(vpuipModule.get().clone());
         // We moved away from the exception-based fallback mechanism because the MLIRContext remained in an invalid
@@ -231,7 +233,9 @@ void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const De
             vpuipModule = std::move(backupModule);
             mlir::PassManager simpleElfPm(vpuipModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
             devConf.setup(simpleElfPm, config, /*isSubPipeline=*/true);
-            backendPipelineStrategy->buildELFPipeline(simpleElfPm, config, elfTiming, log, /*useWlm=*/false);
+            backendPipelineStrategy->buildELFPipeline(
+                    !hostCompilationMode ? simpleElfPm : simpleElfPm.nest<mlir::ModuleOp>(), config, elfTiming, log,
+                    /*useWlm=*/false);
             vpux::VPUIP::setWlmStatus(vpuipModule.get(), vpux::VPUIP::WlmStatus::DISABLED);
             VPUX_THROW_UNLESS(mlir::succeeded(compileNetwork(vpuipModule.get(), simpleElfPm, elfTiming)),
                               "Compilation failed");
@@ -310,49 +314,145 @@ std::optional<size_t> getModelBatchPartitionIfPossible(const std::shared_ptr<ov:
     for (size_t input_id = 0; input_id < params.size(); input_id++) {
         const auto& input = params[input_id];
         const auto& shape = input->get_partial_shape();
-        if (shape.is_dynamic()) {
-            logger.info("Dynamic networks are not supported when batching is handled by the plugin");
-            return std::nullopt;
-        }
+        ov::Layout layout = ov::layout::get_layout(input);
         // Batching on plugin is working only when batching is found on 0th dimension
-        if (shape.size() && shape[0].has_symbol()) {
-            const auto& static_shape = input->get_shape();
+        if ((shape.size() && shape[0].has_symbol()) ||
+            (ov::layout::has_batch(layout) && ov::layout::batch_idx(layout) == 0)) {
+            const auto& staticShape = shape.is_dynamic() ? shape.get_max_shape() : input->get_shape();
             batchedInputs.insert(params[input_id]->output(0));
-            sBatchSize.insert(static_shape[0]);
+            if (shape.rank().is_dynamic()) {
+                VPUX_THROW("Shapes with dynamic rank are not supported.");
+            } else {
+                sBatchSize.insert(staticShape[0]);
+            }
         } else {
-            logger.info("Only networks with inputs batched by 0th dimension are supported");
+            // gather some diagnostic info
+            std::optional<int> batch_dim_index_detected;
+            for (size_t i = 1; i < shape.size(); i++) {
+                if (shape[i].has_symbol()) {
+                    batch_dim_index_detected = i;
+                    break;
+                }
+            }
+            std::stringstream sstream;
+            sstream << "Only networks with inputs batched by 0th dimension are supported. ";
+            if (batch_dim_index_detected.has_value()) {
+                sstream << "The batch has been detected on: " << batch_dim_index_detected.value()
+                        << " dimension instead. ";
+            } else {
+                sstream << "The batch hasn't been detected at all. ";
+            }
+            sstream << "Please check input id: " << input_id << " by the name: " << input->get_friendly_name()
+                    << ", layout: " << layout.to_string() << ", is_dynamic: " << shape.is_dynamic();
+            logger.info("{0}", sstream.str());
             return std::nullopt;
         }
     }
     for (const auto& output : testBatchModel->get_results()) {
         const auto& shape = output->get_output_partial_shape(0);
-        if (shape.is_dynamic()) {
-            logger.info("Dynamic networks are not supported when batching is handled by the plugin");
-            return std::nullopt;
-        }
+        ov::Layout layout = ov::layout::get_layout(output);
         // Batching on plugin is working only when batching is found on 0th dimension
-        if (shape.size() && shape[0].has_symbol()) {
+        if ((shape.size() && shape[0].has_symbol()) ||
+            (ov::layout::has_batch(layout) && ov::layout::batch_idx(layout) == 0)) {
             const auto& node = output->input_value(0);
-            const auto& static_shape = output->get_shape();
+            const auto& staticShape = shape.is_dynamic() ? shape.get_max_shape() : output->get_shape();
             batchedOutputs.insert(ov::Output<const ov::Node>(node.get_node(), node.get_index()));
-            sBatchSize.insert(static_shape[0]);
+            if (shape.rank().is_dynamic()) {
+                VPUX_THROW("Shapes with dynamic rank are not supported.");
+            } else {
+                sBatchSize.insert(staticShape[0]);
+            }
         } else {
-            logger.info("Only networks with outputs batched by 0th dimension are supported");
+            logger.info("Only networks with outputs batched by 0th dimension are supported. Please check an output by "
+                        "the name: {0}, layout: {1}",
+                        output->get_friendly_name(), layout.to_string());
             return std::nullopt;
         }
     }
     if (!batchedInputs.size() || !batchedOutputs.size()) {
-        logger.info("Only networks with inputs/outputs featuring batched dim are supported!");
+        logger.info(
+                "Only networks with inputs/outputs featuring batched dim are supported! Got inputs: {0}, outputs: {1}",
+                batchedInputs.size(), batchedOutputs.size());
         return std::nullopt;
     }
 
     if (sBatchSize.size() != 1) {
-        logger.info("Batching size shall have same value for all tensors!");
+        logger.info("Batching size shall have same value for all tensors! Got unique batch sizes number: {0}",
+                    sBatchSize.size());
         return std::nullopt;
     }
 
+    auto node_info_printer = [&logger](const auto& ov_node, std::string_view nodeType) {
+        logger.debug("{0}: {1} has shape value: {2}", nodeType, ov_node.get_any_name(),
+                     ov_node.get_partial_shape().to_string());
+    };
+    for (const auto& ov_node : batchedInputs) {
+        node_info_printer(ov_node, "Input");
+    }
+    for (const auto& ov_node : batchedOutputs) {
+        node_info_printer(ov_node, "Output");
+    }
     auto it = sBatchSize.begin();
     return *it;
+}
+
+bool isTypeSupportedNPU37xx(ov::element::Type_t elemType) {
+    switch (elemType) {
+    case ov::element::Type_t::dynamic:
+    case ov::element::Type_t::boolean:
+    case ov::element::Type_t::bf16:
+    case ov::element::Type_t::f16:
+    case ov::element::Type_t::f32:
+    case ov::element::Type_t::f64:
+    case ov::element::Type_t::i4:
+    case ov::element::Type_t::i8:
+    case ov::element::Type_t::i16:
+    case ov::element::Type_t::i32:
+    case ov::element::Type_t::i64:
+    case ov::element::Type_t::u4:
+    case ov::element::Type_t::u8:
+    case ov::element::Type_t::u16:
+    case ov::element::Type_t::u32:
+    case ov::element::Type_t::u64:
+    case ov::element::Type_t::nf4:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Supported NPU40xx types: dynamic, boolean, bf16, f16, f32, f64, i4, i8, i16, i32, i64, u2, u4, u8, u16, u32, u64, nf4
+bool isTypeSupportedNPU40xx(ov::element::Type_t elemType) {
+    switch (elemType) {
+    case ov::element::Type_t::u2:
+        return true;
+    default:
+        return isTypeSupportedNPU37xx(elemType);
+    }
+}
+
+bool isTypeSupported(VPU::ArchKind arch, ov::element::Type_t elemType) {
+    switch (arch) {
+    case VPU::ArchKind::NPU37XX:
+        return isTypeSupportedNPU37xx(elemType);
+    case VPU::ArchKind::NPU40XX:
+        return isTypeSupportedNPU40xx(elemType);
+    default:
+        VPUX_THROW("Unsupported arch kind: {0}", arch);
+    }
+};
+
+void checkDataTypes(const std::shared_ptr<ov::Model>& model, const intel_npu::Config& config) {
+    for (auto& input : model->inputs()) {
+        auto elemType = input.get_element_type();
+        VPUX_THROW_UNLESS(isTypeSupported(getArchKind(config), elemType), "Unsupported data type '{0}'",
+                          elemType.get_type_name());
+    }
+    for (auto& op : model->get_ops()) {
+        auto elemType = op->get_output_element_type(0);
+        VPUX_THROW_UNLESS(isTypeSupported(getArchKind(config), elemType), "Unsupported data type '{0}'",
+                          elemType.get_type_name());
+    }
 }
 
 mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std::shared_ptr<ov::Model>& model,
@@ -363,6 +463,8 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "compileModel");
 
     OV_ITT_TASK_NEXT(COMPILER_IMPLEMENTATION, "importNetwork");
+
+    checkDataTypes(model, config);
 
     mlir::OwningOpRef<mlir::ModuleOp> module =
             importNetwork(&ctx, model, originalParameters, originalResults, config, devConf, rootTiming, log);
@@ -415,8 +517,7 @@ auto createContext(mlir::DialectRegistry& registry, const intel_npu::Config& con
     return std::make_unique<mlir::MLIRContext>(registry, mlir::MLIRContext::Threading::DISABLED);
 }
 
-auto enableMultithreading(mlir::MLIRContext& context, const intel_npu::Config& config)
-        -> std::unique_ptr<llvm::StdThreadPool> {
+std::unique_ptr<llvm::DefaultThreadPool> createThreadpool(const intel_npu::Config& config) {
     // Set the number of threads in the pool to be the total number of threads of the compilation minus one: one for the
     // main thread and the rest for the MLIR thread pool. If user didn't specify the number of threads, default to 8
     // threads for the pool. By default MLIR will attempt to use all of the threads available on the system which might
@@ -432,16 +533,13 @@ auto enableMultithreading(mlir::MLIRContext& context, const intel_npu::Config& c
     strategy.ThreadsRequested = totalThreadCount - 1;
     strategy.Limit = true;  // limits number of threads to the number of physical threads
 
-    auto threadPool = std::make_unique<llvm::StdThreadPool>(strategy);
-    context.setThreadPool(*threadPool);
-
-    return threadPool;
+    return std::make_unique<llvm::DefaultThreadPool>(strategy);
 }
 
 struct CompilerSetup {
+    std::unique_ptr<llvm::DefaultThreadPool> threadPool;  // The thread pool must outlive the context
     mlir::DialectRegistry registry;
     std::unique_ptr<mlir::MLIRContext> ctx;
-    std::unique_ptr<llvm::StdThreadPool> threadPool;
 
     static std::unique_ptr<CompilerSetup> create(const intel_npu::Config& config);
     ~CompilerSetup() = default;
@@ -463,7 +561,9 @@ std::unique_ptr<CompilerSetup> CompilerSetup::create(const intel_npu::Config& co
 CompilerSetup::CompilerSetup(const intel_npu::Config& config) {
     registry = createDialectRegistry(getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED));
     ctx = createContext(registry, config);
-    threadPool = enableMultithreading(*ctx, config);
+    if ((threadPool = createThreadpool(config))) {
+        ctx->setThreadPool(*threadPool);
+    }
 }
 
 // leave reference to const std::shared_ptr<ov::Model> instead of taking std::shared_ptr<ov::Model> by value
@@ -482,6 +582,7 @@ CompilationResult compileImpl(std::unique_ptr<CompilerSetup>& setup, const std::
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "compileImpl");
 
     addLogging(*setup->ctx, log);
+
     auto rootTiming = tm.getRootScope();
 
     // Save the original model parameters and results before batching
@@ -492,6 +593,8 @@ CompilationResult compileImpl(std::unique_ptr<CompilerSetup>& setup, const std::
         auto partitionCount = getModelBatchPartitionIfPossible(model, config);
         if (partitionCount.has_value()) {
             if (*partitionCount > 1) {
+                log.info("A batched model with batch: {0} is about to be processed by the plugin",
+                         *partitionCount == ov::Interval::s_max ? "<Inf>" : std::to_string(*partitionCount));
                 // When batching is handled by the plugin we need to modify performance_mode property to Throughput mode
                 auto configPerformanceMode = config;
                 if (configPerformanceMode.get<intel_npu::PERFORMANCE_HINT>() == ov::hint::PerformanceMode::LATENCY) {
@@ -503,7 +606,18 @@ CompilationResult compileImpl(std::unique_ptr<CompilerSetup>& setup, const std::
 
                 // If fallback and handle batching on the compiler is needed we will use the original model
                 auto batchModel = model->clone();
-                ov::set_batch(batchModel, 1);
+                try {
+                    ov::set_batch(batchModel, 1);
+                } catch (const std::exception& ex) {
+                    log.warning("The plugin couldn't resize a batched model due to exception: {0}.\nProbably, the "
+                                "model is a dynamic model and layout hasn't been specified. Trying to debatch it...",
+                                ex.what());
+                    batchModel = debatchDynamicModel(batchModel, log);
+                    if (!batchModel) {
+                        VPUX_THROW("Cannot debatch a model");
+                    }
+                    log.info("The model has been debatched successfully");
+                }
 
                 auto moduleOp = compileModel(*setup->ctx, batchModel, originalParameters, originalResults, devConf,
                                              rootTiming, configPerformanceMode, log);
@@ -575,6 +689,7 @@ NetworkDescription CompilerImpl::compile(const std::shared_ptr<ov::Model>& model
                                          const intel_npu::Config& config) const {
     OV_ITT_SCOPED_TASK(itt::domains::VPUXPlugin, "CompilerImpl::compile");
     checkPlatformSupportedForCompilation(config.get<intel_npu::PLATFORM>());
+    checkCompilerOptions(config);
 
     Logger log("vpux-compiler", getLogLevel(config));
 
@@ -599,6 +714,7 @@ NetworkDescriptionView CompilerImpl::compile(const std::shared_ptr<ov::Model>& m
                                              BlobAllocator& allocator) const {
     OV_ITT_SCOPED_TASK(itt::domains::VPUXPlugin, "CompilerImpl::compile");
     checkPlatformSupportedForCompilation(config.get<intel_npu::PLATFORM>());
+    checkCompilerOptions(config);
 
     Logger log("vpux-compiler", getLogLevel(config));
 

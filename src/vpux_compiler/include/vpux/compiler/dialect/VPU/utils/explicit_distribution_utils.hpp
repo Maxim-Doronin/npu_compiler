@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -15,8 +15,9 @@
 namespace vpux {
 namespace VPU {
 
-OverlapDistributionParams getExplicitOverlapParamsForSWOpInput(SWOpInterface swOp, ShapeRef outShape,
-                                                               ArrayRef<int64_t> numTiles, ArrayRef<int64_t> alignment);
+OverlapDistributionParams getExplicitOverlapParamsForSWOpInput(
+        SWOpInterface swOp, ShapeRef outShape, ArrayRef<int64_t> numTiles, ArrayRef<int64_t> alignment,
+        const vpux::TileInfo& origOutTile = vpux::TileInfo(ShapeRef()));
 
 DistributionInfoAttr getSWExplicitDistributionInfoAttr(SWOpInterface swOp, ShapeRef shape,
                                                        DistributionMode distributionMode, mlir::ArrayAttr numTiles,

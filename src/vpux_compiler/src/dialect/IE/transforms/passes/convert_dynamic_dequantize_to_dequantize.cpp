@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -76,8 +76,7 @@ bool isOptimizableDynamicDequantizeOp(IE::DynamicDequantizeOp origOp) {
         return false;
     }
     const auto scale = uniformType.getScale();
-    const auto zeroPoint = uniformType.getZeroPoint();
-    if (!isDoubleEqual(scale, 1.0f) || zeroPoint != 0) {
+    if (!isDoubleEqual(scale, 1.0f)) {
         return false;
     }
 

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -283,7 +283,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
                                                                                 VPU::MultiClusterStrategy::Clustering);
         auto spillWriteCosts = std::accumulate(spillWriteCostPerTile.begin(), spillWriteCostPerTile.end(), 0);
         auto spillRefCost = getDMACost(mlir::cast<vpux::NDTypeInterface>(convOp.getResult().getType()), vpuDevice,
-                                       vpunnCostFunction, dmaPorts);
+                                       vpunnCostFunction->get_TheoreticalDMA_cost_model_shared(), dmaPorts);
 
         EXPECT_EQ(spillWriteCosts, spillRefCost);
         EXPECT_EQ(layerCost.getSpillingWriteCost(convOp.getOperation(), VPU::MultiClusterStrategy::Clustering),
@@ -291,8 +291,9 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
     });
 
     func->walk([&](VPU::NCEMaxPoolOp poolOp) {
-        const auto spillRefCost = getDMACost(mlir::cast<vpux::NDTypeInterface>(poolOp.getOperand(0).getType()),
-                                             vpuDevice, vpunnCostFunction, dmaPorts);
+        const auto spillRefCost =
+                getDMACost(mlir::cast<vpux::NDTypeInterface>(poolOp.getOperand(0).getType()), vpuDevice,
+                           vpunnCostFunction->get_TheoreticalDMA_cost_model_shared(), dmaPorts);
         const auto findOperand = [](mlir::Value operand) {
             return operand.getDefiningOp() != nullptr;
         };

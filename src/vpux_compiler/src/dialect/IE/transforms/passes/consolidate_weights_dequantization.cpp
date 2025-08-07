@@ -89,6 +89,7 @@ public:
     }
 
 private:
+    bool isSupportedDataType(mlir::Type elemType) const;
     mlir::LogicalResult staticMatchAndRewrite(const IE::WeightsDequantizeStructureInfo& wdInfo, IE::ConvertOp origOp,
                                               mlir::PatternRewriter& rewriter) const;
     mlir::LogicalResult dynamicMatchAndRewrite(const IE::WeightsDequantizeStructureInfo& wdInfo, IE::ConvertOp origOp,
@@ -102,10 +103,16 @@ private:
     Logger _log;
 };
 
+bool WeightsDequantizeRewriter::isSupportedDataType(mlir::Type elemType) const {
+    // The only supported weights data types are I8, U8, I4, U4, I2, U2, FP8 and NF4
+    return elemType.isInteger(2) || elemType.isInteger(4) || elemType.isInteger(8) || isFloat8(elemType) ||
+           mlir::isa_and_nonnull<vpux::type::QuantileFloatType>(elemType);
+}
+
 mlir::LogicalResult WeightsDequantizeRewriter::staticMatchAndRewrite(const IE::WeightsDequantizeStructureInfo& wdInfo,
                                                                      IE::ConvertOp origOp,
                                                                      mlir::PatternRewriter& rewriter) const {
-    if (wdInfo.getScale() == nullptr && wdInfo.getShift() == nullptr) {
+    if (wdInfo.getStaticScale() == nullptr && wdInfo.getStaticShift() == nullptr) {
         // For now we don't want to rewrite single Convert's with no scale or shift. A later pass,
         // FuseConvertWithQuantize, may handle some of them more efficiently while the remaining ones get converted to
         // QuantizeCast->Dequantize afterwards.
@@ -114,16 +121,13 @@ mlir::LogicalResult WeightsDequantizeRewriter::staticMatchAndRewrite(const IE::W
     }
 
     const auto inputElemType = IE::getTrueElemTypeOfWeights(origOp);
-
-    // The only supported weights data type are I8, U8, I4, U4, FP8 and NF4
-    if (!inputElemType.isInteger(4) && !inputElemType.isInteger(8) && !isFloat8(inputElemType) &&
-        !mlir::isa<vpux::type::QuantileFloatType>(inputElemType)) {
+    if (!isSupportedDataType(inputElemType)) {
         _log.trace("Match failed: Input data type {0} is not supported.", inputElemType);
         return mlir::failure();
     }
 
     int64_t shiftValue = 0;
-    if (const auto shiftAttr = wdInfo.getShift()) {
+    if (const auto shiftAttr = wdInfo.getStaticShift()) {
         if (!shiftAttr.isSplat()) {
             _log.trace("Match failed: Shift is not scalar.");
             return mlir::failure();
@@ -134,7 +138,7 @@ mlir::LogicalResult WeightsDequantizeRewriter::staticMatchAndRewrite(const IE::W
     const auto dstType = origOp.getDstElemType();  // Usually F16/F32
 
     mlir::quant::QuantizedType quantElemType = nullptr;
-    if (const auto scaleAttr = wdInfo.getScale()) {
+    if (const auto scaleAttr = wdInfo.getStaticScale()) {
         if (scaleAttr.isSplat()) {
             const auto scaleValue = scaleAttr.fold().getSplatValue<double>();
             quantElemType = createWeightsQuantizedType(inputElemType, dstType, scaleValue, shiftValue);
@@ -144,7 +148,7 @@ mlir::LogicalResult WeightsDequantizeRewriter::staticMatchAndRewrite(const IE::W
             const auto scaleShape = scaleContent.getType().getShape();
             const auto singleDimOrFail = getSingleDim(scaleShape.raw());
             if (mlir::failed(singleDimOrFail)) {
-                // Support will be added in the future.
+                // TODO: E#171775 Support will be added in the future.
                 _log.trace("Match failed: Got group quantization scale.");
                 return mlir::failure();
             }
@@ -186,16 +190,14 @@ mlir::LogicalResult WeightsDequantizeRewriter::staticMatchAndRewrite(const IE::W
 mlir::LogicalResult WeightsDequantizeRewriter::dynamicMatchAndRewrite(const IE::WeightsDequantizeStructureInfo& wdInfo,
                                                                       IE::ConvertOp origOp,
                                                                       mlir::PatternRewriter& rewriter) const {
-    // The only supported weights data type for dynamic quantize is I4, U4 and I8
     const auto inputElemType = IE::getTrueElemTypeOfWeights(origOp);
-    if (!inputElemType.isInteger(4) && !inputElemType.isSignedInteger(8) &&
-        !mlir::isa_and_nonnull<vpux::type::QuantileFloatType>(inputElemType)) {
+    if (!isSupportedDataType(inputElemType)) {
         _log.trace("Match failed: Input data type {0} is not supported.", inputElemType);
         return mlir::failure();
     }
 
     int64_t shiftValue = 0;
-    const auto shift = wdInfo.getShift();
+    const auto shift = wdInfo.getStaticShift();
     if (shift != nullptr) {
         if (!shift.isSplat()) {
             _log.trace("Match failed: Shift is not scalar.");

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/bounded_buffer.hpp"
@@ -43,23 +43,15 @@ struct BoundedBuffer {
 
 void addDataInfo(mlir::func::FuncOp mainFuncOp, mlir::MemRefType boundedMemRef, mlir::MemRefType dynamicShapeMemRef,
                  mlir::Block& infoBlock, mlir::StringRef dataInfoName, size_t dataBufferCount, Logger log) {
-    auto ctx = mainFuncOp.getContext();
     log.trace("Memory to store dynamic tensor: {0}, {1}", boundedMemRef, dynamicShapeMemRef);
 
-    const auto typeAttr = mlir::TypeAttr::get(
-            mlir::RankedTensorType::get(dynamicShapeMemRef.getShape(), dynamicShapeMemRef.getElementType()));
-    const auto nameAttr = mlir::StringAttr::get(ctx, std::string(intel_npu::SHAPE_TENSOR_PREFIX) + dataInfoName);
+    const auto type = mlir::RankedTensorType::get(dynamicShapeMemRef.getShape(), dynamicShapeMemRef.getElementType());
+    const auto name = std::string(intel_npu::SHAPE_TENSOR_PREFIX) + dataInfoName.str();
 
     auto insertionPointAfter = std::next(infoBlock.begin(), static_cast<int64_t>(dataBufferCount));
     auto infoBuilder = mlir::OpBuilder(&infoBlock, insertionPointAfter);
-    infoBuilder.create<net::DataInfoOp>(takeOpLoc(mainFuncOp, StringLiteral("{0}"), mainFuncOp.getName()), nameAttr,
-                                        typeAttr,
-                                        /*OptionalAttr originalShape*/ nullptr,
-                                        /*OptionalAttr friendlyName*/ nullptr,
-                                        /*OptionalAttr inputName*/ nullptr,
-                                        /*OptionalAttr tensorNames*/ nullptr,
-                                        /*profilingSectionsCount=*/0);
-    log.trace("Added new DataInfo '{0}' with type {1}", nameAttr, typeAttr);
+    infoBuilder.create<net::DataInfoOp>(takeOpLoc(mainFuncOp, StringLiteral("{0}"), mainFuncOp.getName()), name, type);
+    log.trace("Added new DataInfo '{0}' with type {1}", name, type);
 }
 
 BoundedBuffer unpackBoundedBuffer(VPUIP::BoundedBufferType type) {

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --lower-VPUIP-to-ELF="workload-management-enable=false" %s | FileCheck %s
@@ -41,12 +41,17 @@ module @OneDMAWithoutAttributes {
 
   // CHECK:       ELF.CreateSection @task.dma.0.0
   // CHECK:       NPUReg40XX.NNDMA
+  // CHECK:            dma_dst_addr {
+  // CHECK:                UINT dma_dst = 0x40218000,
 
   // CHECK:       ELF.CreateSection @task.dma.0.1
   // CHECK:       NPUReg40XX.NNDMA
+  // CHECK:          dma_src_addr {
+  // CHECK:            UINT dma_src = 0x40218000,
 
   // CHECK:       ELF.CreateSection @program.mapped_inference
   // CHECK:       NPUReg40XX.MappedInference
+  // CHECK:          miLogAddrDmaHwp = UINT 0x40218000,
 
   // CHECK:       ELF.CreateSymbolTableSection @symtab
   // CHECK:       ELF.Symbol @elfsym.program.metadata.cmx of(@program.metadata.cmx)
@@ -72,13 +77,9 @@ module @OneDMAWithoutAttributes {
   // CHECK:       ELF.Reloc
   // CHECK-SAME:  NetworkInput
 
-  // CHECK:       ELF.CreateRelocationSection
-  // CHECK-SAME:  dma.0.0
-  // CHECK:       ELF.Reloc
+  // CHECK-NOT:      ELF.CreateRelocationSection @rela.task.dma.0.0.symtab target(@task.dma.0.0)
 
-  // CHECK:       ELF.CreateRelocationSection
-  // CHECK-SAME:  dma.0.1
-  // CHECK:       ELF.Reloc
+  // CHECK-NOT:      ELF.CreateRelocationSection @rela.task.dma.0.1.symtab target(@task.dma.0.1)
 
   // CHECK:       ELF.CreateRelocationSection
   // CHECK-SAME:  NetworkOutput
@@ -90,4 +91,5 @@ module @OneDMAWithoutAttributes {
   // CHECK:       ELF.Reloc
   // CHECK:       ELF.Reloc
   // CHECK:       ELF.Reloc
+  // CHECK-NOT:   ELF.Reloc offset(16) sourceSym(@symtab::@elfsym.buffer.CMX_NN.0)
 }

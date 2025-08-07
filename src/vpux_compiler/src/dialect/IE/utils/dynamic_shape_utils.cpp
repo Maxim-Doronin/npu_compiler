@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
@@ -8,7 +8,8 @@
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 
-namespace vpux::IE {
+namespace vpux {
+namespace IE {
 
 bool hasDynamicShapeAttr(mlir::Value value) {
     auto type = value.getType();
@@ -66,4 +67,26 @@ bool isDynamicDataContiguous(vpux::ShapeRef shape, vpux::DimsOrder order) {
     return foundDynamicDim;
 }
 
-}  // namespace vpux::IE
+}  // namespace IE
+
+Shape extractShape(const Shape& shape) {
+    return shape;
+}
+Shape extractShape(const BoundedShape& shape) {
+    return shape.toShape();
+}
+Shape extractShape(const DimsMaskedShape& shape) {
+    return shape.toReifiedShape();
+}
+
+std::tuple<Shape, Bounds, DynamicDimsMask> splitShapeAndRepresentation(const Shape& shape) {
+    return std::make_tuple(shape, Bounds(), DynamicDimsMask());
+}
+std::tuple<Shape, Bounds, DynamicDimsMask> splitShapeAndRepresentation(const BoundedShape& shape) {
+    return std::make_tuple(shape.toShape(), shape.toRepresentation(), DynamicDimsMask());
+}
+std::tuple<Shape, Bounds, DynamicDimsMask> splitShapeAndRepresentation(const DimsMaskedShape& shape) {
+    return std::make_tuple(shape.toReifiedShape(), Bounds(), shape.toRepresentation());
+}
+
+}  // namespace vpux

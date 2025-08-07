@@ -1,12 +1,13 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
@@ -117,14 +118,21 @@ std::vector<vpux::VPU::StrategyWithCost> TilingStrategyAssignmentPass::getStrate
 
 void TilingStrategyAssignmentPass::safeRunOnFunc() {
     auto func = getOperation();
+    auto module = func->getParentOfType<mlir::ModuleOp>();
+
+    const auto arch = VPU::getArch(module);
+    auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
+    auto layerCostModel =
+            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+
     auto siblingOpsAnalysis = getAnalysis<VPU::EagerSiblingOpsAnalysis>();
     llvm::DenseSet<VPU::TilingBuilderOpInterface> opsToCheckForPrefetch{};
     llvm::DenseMap<VPU::TilingBuilderOpInterface, std::vector<vpux::VPU::StrategyWithCost>> strategiesForOp{};
     std::mutex prefetchSetMutex;
     std::mutex strategiesMapMutex;
     const auto opsToTile = func.getOps<VPU::TilingBuilderOpInterface>();
-    _costModel = std::make_shared<vpux::VPU::LayerCostModel>(
-            vpux::VPU::LayerCostModel(func, _enablePrefetchTiling, _log, siblingOpsAnalysis));
+    _costModel = std::make_shared<vpux::VPU::LayerCostModel>(vpux::VPU::LayerCostModel(
+            func, _enablePrefetchTiling, siblingOpsAnalysis, std::move(layerCostModel), _log));
 
     // Get cost of possible ISOLATED/PIPELINING strategies in parallel. Note that it is not possible to
     // say which strategy will be the best since whether strategy can be prefetched depends on parent op tiling.
@@ -209,6 +217,9 @@ void TilingStrategyAssignmentPass::safeRunOnFunc() {
     auto& cache = VPU::OpTilingCache::instance();
     cache.printStats(_log);
     cache.cleanUp();
+
+    _log.info("[TilingStrategyAssignment phase]");
+    _costModel->printNNCacheStatistics();
 }
 }  // namespace
 

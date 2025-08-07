@@ -41,8 +41,20 @@ private:
 mlir::LogicalResult FusePermuteRewrite::matchAndRewrite(IE::ReorderOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
-    const auto inOrder = DimsOrder::fromValue(origOp.getInput());
+    auto inOrder = DimsOrder::fromValue(origOp.getInput());
     const auto outOrder = DimsOrder::fromValue(origOp.getOutput());
+    auto curInput = origOp.getInput();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, outType)) {
+        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp
+        const auto inMemPerm = vpux::getPermutationFromOrders(inOrder, DimsOrder::NCHW, origOp->getContext());
+        auto inPermuteCastOp =
+                rewriter.create<IE::PermuteCastOp>(appendLoc(origOp->getLoc(), "PermuteCast"), origOp.getInput(),
+                                                   DimsOrder::NCHW.toAffineMap(origOp->getContext()), inMemPerm);
+        curInput = inPermuteCastOp.getResult();
+        inOrder = DimsOrder::NCHW;
+    }
 
     auto memPermAttr = mlir::AffineMapAttr::get(getPermutationFromOrders(inOrder, outOrder, origOp->getContext()));
     SmallVector<int64_t> noPadBeginEnd(inOrder.numDims(), 0);
@@ -52,7 +64,7 @@ mlir::LogicalResult FusePermuteRewrite::matchAndRewrite(IE::ReorderOp origOp, ml
     const auto dstElemTypeAttr = mlir::TypeAttr::get(permQuantElemType);
     const auto permQuantLoc = appendLoc(origOp->getLoc(), "PermuteQuantize");
     auto permuteQuantizeOp = rewriter.create<IE::PermuteQuantizeOp>(
-            permQuantLoc, permQuantOutType, origOp.getInput(), origOp.getDstOrderAttr(), memPermAttr, dstElemTypeAttr,
+            permQuantLoc, permQuantOutType, curInput, origOp.getDstOrderAttr(), memPermAttr, dstElemTypeAttr,
             getIntArrayAttr(ctx, noPadBeginEnd), getIntArrayAttr(ctx, noPadBeginEnd));
 
     rewriter.replaceOp(origOp, permuteQuantizeOp.getOutput());
@@ -108,8 +120,12 @@ bool hasQuantizedAvgPoolUserToPropagate(IE::ReorderOp reorder) {
 }
 
 bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, Logger log) const {
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
+    auto inType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
     const auto outType = mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
+    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, outType)) {
+        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp
+        inType = inType.changeDimsOrder(DimsOrder::NCHW);
+    }
 
     if (!IE::isLegalReorderLikeToPermuteQuantize(inType, outType, log)) {
         log.trace("Can not convert to PermuteQuantize");
@@ -134,6 +150,7 @@ void ConvertReorderToPermuteQuantizePass::safeRunOnFunc() {
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<IE::ReorderOp>(isLegalReorder);
     target.addLegalOp<IE::PermuteQuantizeOp>();
+    target.addLegalOp<IE::PermuteCastOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FusePermuteRewrite>(&ctx, _log);

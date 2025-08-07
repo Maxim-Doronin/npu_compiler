@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
@@ -45,8 +45,9 @@ void AddBootstrapBarriersPass::safeRunOnFunc() {
     for (auto op : netFunc.getOps<VPUMI40XX::ConfigureBarrierOp>()) {
         auto trivialIndexType = VPURegMapped::IndexType::get(ctx, checked_cast<uint32_t>(bootstrapID));
         auto pid = op.getId();
-        if (initialized[pid])
+        if (initialized[pid]) {
             continue;
+        }
 
         auto bootsTrapTask = builder.create<VPUMI40XX::BootstrapOp>(op.getLoc(), trivialIndexType, op->getResult(0));
         if (bootstrapID == 0) {

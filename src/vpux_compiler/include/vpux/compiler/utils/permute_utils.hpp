@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -17,7 +17,24 @@ namespace vpux {
 
 constexpr int64_t PERMUTE_TO_POOLING_THRESHOLD = 32 * 16 * 224;
 
-MemShape applyPerm(MemShapeRef memShape, mlir::AffineMap memPerm);
+template <typename T, template <class> class Tag>
+details::DimValues<MemDim, T, Tag> applyPerm(const details::DimValues<MemDim, T, Tag>& memShape,
+                                             mlir::AffineMap memPerm) {
+    const auto perm = DimsOrder::fromAffineMap(memPerm);
+    VPUX_THROW_UNLESS(memShape.size() == perm.numDims(), "Permutation '{0}' is not compatible with shape '{1}'",
+                      memPerm, memShape);
+
+    details::DimValues<MemDim, T, Tag> outShape;
+    outShape.resize(memShape.size(), 1);
+
+    for (auto ind : irange(outShape.size())) {
+        const auto outDim = MemDim(ind);
+        const auto inDim = MemDim(perm.dimAt(ind).ind());
+        outShape[outDim] = memShape[inDim];
+    }
+
+    return outShape;
+}
 
 SmallVector<int64_t> getPermutateDims(MemShapeRef inShape, mlir::AffineMap memPerm);
 bool isTrivialPermute(MemShapeRef inShape, mlir::AffineMap memPerm);

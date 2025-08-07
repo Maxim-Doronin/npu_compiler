@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
@@ -50,8 +50,9 @@ void SetEntryPointPass::safeRunOnFunc() {
 
     auto getSymTab = [](ELF::MainOp main) -> ELF::CreateSymbolTableSectionOp {
         for (auto symTab : main.getOps<ELF::CreateSymbolTableSectionOp>()) {
-            if (symTab.getName() == "symtab")
+            if (symTab.getName() == "symtab") {
                 return symTab;
+            }
         }
         VPUX_THROW("Coult not find default symtab");
         return nullptr;

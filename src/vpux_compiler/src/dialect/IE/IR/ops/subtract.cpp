@@ -1,12 +1,14 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 using namespace vpux;
@@ -22,28 +24,31 @@ mlir::LogicalResult vpux::IE::SubtractOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto in1Type = mlir::cast<mlir::ShapedType>(subtract.getInput1().getType());
-    const auto in2Type = mlir::cast<mlir::ShapedType>(subtract.getInput2().getType());
+    const auto in1Type = mlir::cast<vpux::NDTypeInterface>(subtract.getInput1().getType());
+    const auto in2Type = mlir::cast<vpux::NDTypeInterface>(subtract.getInput2().getType());
 
-    auto in1Shape = SmallVector<int64_t>(in1Type.getShape());
-    auto in2Shape = SmallVector<int64_t>(in2Type.getShape());
-    if (mlir::failed(IE::unpadInputShape(in1Shape, subtract.getInputPaddingAttr(), loc))) {
-        return mlir::failure();
-    }
-    if (mlir::failed(IE::unpadInputShape(in2Shape, subtract.getInputPaddingAttr(), loc))) {
-        return mlir::failure();
+    auto outShapeInfo = inferEltwiseOutputShapeInfo(ShapeInfo::fromNDType(in1Type), ShapeInfo::fromNDType(in2Type),
+                                                    subtract.getAutoBroadcast(), loc);
+
+    const auto outDesc =
+            vpux::getTensorAttr(ctx, inferOrder(in1Type, in2Type), /*memSpace=*/nullptr, Bounds(outShapeInfo.bounds));
+    inferredReturnShapes.emplace_back(outShapeInfo.shape, in1Type.getElementType(), outDesc);
+
+    return mlir::success();
+}
+
+mlir::LogicalResult vpux::IE::SubtractOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                            mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    auto outShape = reifyEltwiseTensors(builder, getInput1(), getInput2(), getAutoBroadcast(), loc);
+
+    if (mlir::failed(outShape)) {
+        return outShape;
     }
 
-    const auto outShapeRes = IE::broadcastEltwiseShape(in1Shape, in2Shape, subtract.getAutoBroadcast(), loc);
-    if (mlir::succeeded(outShapeRes)) {
-        auto outShape = outShapeRes.value();
-        if (mlir::failed(IE::padOutputShape(outShape, subtract.getOutputPaddingAttr(), loc))) {
-            return mlir::failure();
-        }
-        inferredReturnShapes.emplace_back(outShape, in1Type.getElementType());
-    }
-
-    return outShapeRes;
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }
 
 mlir::OpFoldResult vpux::IE::SubtractOp::fold(FoldAdaptor adaptor) {

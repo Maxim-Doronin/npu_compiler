@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
@@ -2367,6 +2367,8 @@ TEST_F(MLIR_ConstContentAttrTest, Sparsify) {
     content.copyTo(buf);
 
     EXPECT_TRUE(std::equal(actVals.begin(), actVals.end(), expectedResult.begin()));
+
+    EXPECT_NO_THROW(contentAttr.getTransformationHash());
 }
 
 TEST_F(MLIR_ConstContentAttrTest, Sparsify_True) {
@@ -2400,6 +2402,8 @@ TEST_F(MLIR_ConstContentAttrTest, Sparsify_True) {
     content.copyTo(buf);
 
     EXPECT_TRUE(std::equal(actVals.begin(), actVals.end(), expectedResult.begin()));
+
+    EXPECT_NO_THROW(contentAttr.getTransformationHash());
 }
 
 TEST_F(MLIR_ConstContentAttrTest, SparsifyQuantized) {
@@ -3401,6 +3405,88 @@ TEST_F(MLIR_ConstContentAttrTest_StableHash, DifferentValues) {
     auto stableHashAdd5 = baseAttrSecond.getTransformationHash();
 
     EXPECT_NE(stableHashAdd4, stableHashAdd5);
+}
+
+TEST_F(MLIR_ConstContentAttrTest_StableHash, SameValues_CastElemTypeUniformPerAxis) {
+    // Note: extend the lifetime of both contexts to ensure unique addresses
+    // (otherwise, addresses for the second context may end up being the same as
+    // in the first context, because the first is deallocated already).
+    mlir::MLIRContext ctx1;
+    ctx1.appendDialectRegistry(registry);
+    ctx1.loadDialect<Const::ConstDialect>();
+    ctx1.loadDialect<mlir::quant::QuantizationDialect>();
+    mlir::MLIRContext ctx2;
+    ctx2.appendDialectRegistry(registry);
+    ctx2.loadDialect<Const::ConstDialect>();
+    ctx2.loadDialect<mlir::quant::QuantizationDialect>();
+
+    const auto getHash = [&](bool secondCall) {
+        auto& currentCtx = secondCall ? ctx2 : ctx1;
+
+        const auto baseType = mlir::RankedTensorType::get({1, 2, 3, 4}, mlir::Float32Type::get(&currentCtx));
+
+        const auto baseAttr = getContentAttr<float>(baseType, [&](Const::ContentSetup& setup) {
+            std::vector<double> scales({2, 0.5});  // Note: different scales!
+            std::vector<int64_t> zeroPoints{127, 127};
+            const auto quantType = mlir::quant::UniformQuantizedPerAxisType::get(
+                    0, getUInt8Type(&currentCtx), mlir::Float32Type::get(&currentCtx), scales, zeroPoints,
+                    /*quantization dim=*/1, 0, 255);
+            return setup.castElemType(quantType);
+        });
+
+        return baseAttr.getTransformationHash();
+    };
+
+    auto stableHashFirst = getHash(/*secondCall=*/false);
+    auto stableHashSecond = getHash(/*secondCall=*/true);
+
+    EXPECT_EQ(stableHashFirst, stableHashSecond);
+
+    // just to double check the value is the same across different runs
+    const size_t expectedValue = 17434572010445879455ULL;
+    EXPECT_EQ(expectedValue, static_cast<size_t>(stableHashFirst));
+}
+
+TEST_F(MLIR_ConstContentAttrTest_StableHash, SameValues_CastElemTypeQuantilePerAxis) {
+    // Note: extend the lifetime of both contexts to ensure unique addresses
+    // (otherwise, addresses for the second context may end up being the same as
+    // in the first context, because the first is deallocated already).
+    mlir::MLIRContext ctx1;
+    ctx1.appendDialectRegistry(registry);
+    ctx1.loadDialect<Const::ConstDialect>();
+    ctx1.loadDialect<mlir::quant::QuantizationDialect>();
+    mlir::MLIRContext ctx2;
+    ctx2.appendDialectRegistry(registry);
+    ctx2.loadDialect<Const::ConstDialect>();
+    ctx2.loadDialect<mlir::quant::QuantizationDialect>();
+
+    const auto getHash = [&](bool secondCall) {
+        auto& currentCtx = secondCall ? ctx2 : ctx1;
+
+        const auto baseType = mlir::RankedTensorType::get({1, 2, 3, 4}, mlir::Float32Type::get(&currentCtx));
+
+        const auto baseAttr = getContentAttr<float>(baseType, [&](Const::ContentSetup& setup) {
+            std::vector<double> quantiles(256, -0.5);  // Note: these are invalid but it doesn't matter for the test
+            std::vector<double> scales({2, 0.5});      // Note: different scales!
+            std::vector<int64_t> zeroPoints{127, 127};
+            const auto quantType = mlir::quant::QuantileQuantizedPerAxisType::get(
+                    0, getUInt8Type(&currentCtx), mlir::Float32Type::get(&currentCtx),
+                    mlir::Float32Type::get(&currentCtx), quantiles, scales, zeroPoints,
+                    /*quantization dim=*/1, 0, 255);
+            return setup.castElemType(quantType);
+        });
+
+        return baseAttr.getTransformationHash();
+    };
+
+    auto stableHashFirst = getHash(/*secondCall=*/false);
+    auto stableHashSecond = getHash(/*secondCall=*/true);
+
+    EXPECT_EQ(stableHashFirst, stableHashSecond);
+
+    // just to double check the value is the same across different runs
+    const size_t expectedValue = 11229134676890109987ULL;
+    EXPECT_EQ(expectedValue, static_cast<size_t>(stableHashFirst));
 }
 
 TEST_F(MLIR_ConstContentAttrTest_StableHash, SameValuesButDifferentMnemonic) {

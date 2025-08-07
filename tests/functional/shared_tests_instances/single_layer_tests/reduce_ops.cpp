@@ -20,26 +20,24 @@ class ReduceLayerTestCommon : public ReduceOpsLayerTest, virtual public VpuOv2La
                 create_and_fill_tensor(funcInputs[0].get_element_type(), targetInputStaticShapes[0], 10, 1, 100);
         VpuOv2LayerTest::inputs.insert({funcInputs[0].get_node_shared_ptr(), tensorData});
     }
+
     void SetUp() override {
-        ov::element::Type modelType;
-        OpType opType;
-        ReductionType reductionType;
-        ov::NodeVector convertedInputs;
-        ov::OutputVector paramOuts;
-        std::shared_ptr<ov::Node> reduceNode;
         std::vector<size_t> inputShape, shapeAxes;
-        std::vector<int> axes;
+        ov::element::Type modelType;
         bool keepDims;
+        ReductionType reductionType;
+        std::vector<int> axes;
+        OpType opType;
 
         std::tie(axes, opType, keepDims, reductionType, modelType, inputShape, std::ignore) = GetParam();
         VpuOv2LayerTest::init_input_shapes(static_shapes_to_test_representation({inputShape}));
 
-        ov::ParameterVector inputs{
-                std::make_shared<ov::op::v0::Parameter>(modelType, VpuOv2LayerTest::inputDynamicShapes.front())};
+        auto inputs = std::make_shared<ov::op::v0::Parameter>(modelType, ov::Shape(inputShape));
         switch (opType) {
         case OpType::SCALAR: {
-            if (axes.size() > 1)
+            if (axes.size() > 1) {
                 FAIL() << "In reduce op if op type is scalar, 'axis' input's must contain 1 element";
+            }
             break;
         }
         case OpType::VECTOR: {
@@ -49,15 +47,36 @@ class ReduceLayerTestCommon : public ReduceOpsLayerTest, virtual public VpuOv2La
         default:
             FAIL() << "Reduce op doesn't support operation type: " << opType;
         }
-        auto reductionAxesNode = std::dynamic_pointer_cast<ov::Node>(
-                std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape(shapeAxes), axes));
+        auto reductionAxesNode = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape(shapeAxes), axes);
 
-        const auto reduce = make_reduce(inputs[0], reductionAxesNode, keepDims, reductionType);
-        VpuOv2LayerTest::function = std::make_shared<ov::Model>(reduce->outputs(), inputs, "Reduce");
+        const auto reduce = make_reduce(inputs, reductionAxesNode, keepDims, reductionType);
+        VpuOv2LayerTest::function =
+                std::make_shared<ov::Model>(reduce->outputs(), ov::ParameterVector{inputs}, "Reduce");
     }
 
     void TearDown() override {
         VpuOv2LayerTest::TearDown();
+    }
+
+public:
+    static std::string getTestCaseName(const testing::TestParamInfo<reduceOpsParams>& obj) {
+        std::vector<size_t> input_shape;
+        ov::element::Type model_type;
+        bool keep_dims;
+        ov::test::utils::ReductionType reduction_type;
+        std::vector<int> axes;
+        ov::test::utils::OpType op_type;
+        std::string target_device;
+        std::tie(axes, op_type, keep_dims, reduction_type, model_type, input_shape, target_device) = obj.param;
+        std::ostringstream result;
+        result << "IS=" << ov::test::utils::vec2str(input_shape) << "_";
+        result << "axes=" << ov::test::utils::vec2str(axes) << "_";
+        result << "opType=" << op_type << "_";
+        result << "type=" << reduction_type << "_";
+        result << "KeepDims=" << keep_dims << "_";
+        result << "modelType=" << model_type.to_string() << "_";
+        result << "trgDev=" << target_device;
+        return result.str();
     }
 };  // namespace test
 
@@ -113,14 +132,6 @@ TEST_P(ReduceLayerTest_FP32, NPU4000_SW) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
-class ReduceOpsLayerWithSpecificInputTestCommon :
-        public ReduceOpsLayerWithSpecificInputTest,
-        virtual public VpuOv2LayerTest {
-    void TearDown() override {
-        VpuOv2LayerTest::TearDown();
-    }
-};
-
 }  // namespace test
 }  // namespace ov
 

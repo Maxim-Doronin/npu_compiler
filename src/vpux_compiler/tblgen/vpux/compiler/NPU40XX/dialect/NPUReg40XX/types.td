@@ -1,15 +1,8 @@
 //
-// Copyright Intel Corporation.
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
 //
-// LEGAL NOTICE: Your use of this software and any required dependent software
-// (the "Software Package") is subject to the terms and conditions of
-// the Intel(R) OpenVINO(TM) Distribution License for the Software Package,
-// which may also include notices, disclaimers, or license terms for
-// third party or open source software included in or with the Software Package,
-// and your use indicates your acceptance of all such terms. Please refer
-// to the "third-party-programs.txt" or other similarly-named text file
-// included with the Software Package for additional details.
-//
+
 #ifndef VPUX_COMPILER_DIALECT_NPUReg40XX_TYPES
 #define VPUX_COMPILER_DIALECT_NPUReg40XX_TYPES
 
@@ -1207,7 +1200,7 @@ def reg_BarrierGroupMaskAct : NPUReg40XX_RegisterWrapper<"barriers_group_mask_ac
 
 def reg_SchedulingBarrierConfig : NPUReg40XX_RegisterWrapper<"act_invo_barriers_sched", 8, 0x48, ["start_after_", "clean_after_"]>;
 
-def bf_DeprecatedAki : NPUReg40XX_RegFieldWrapper<"invo_index", 32, 0, "UINT", NPUReg40XX_Version<11, 9, 2>>;
+def bf_DeprecatedAki : NPUReg40XX_RegFieldWrapper<"invo_index", 32, 0, "UINT">;
 def reg_DeprecatedAki : NPUReg40XX_RegisterWrapper<"invo_index", 4, 0x50, ["invo_index"]>;
 
 def bf_InvoTile : NPUReg40XX_RegFieldWrapper<"invo_tile", 32, 0>;

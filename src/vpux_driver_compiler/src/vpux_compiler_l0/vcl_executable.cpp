@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vcl_executable.hpp"
@@ -50,8 +50,9 @@ vcl_result_t VPUXExecutableL0::exportNetwork(uint8_t* blobOut, uint64_t blobSize
     }
 
     StopWatch stopWatch;
-    if (enableProfiling)
+    if (enableProfiling) {
         stopWatch.start();
+    }
 
     memcpy(blobOut, blob.data(), blobSize);
 

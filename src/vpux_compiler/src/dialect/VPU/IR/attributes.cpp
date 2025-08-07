@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -468,13 +468,24 @@ VPU::PaddingAttr vpux::VPU::getPaddingAttr(mlir::MLIRContext* ctx, int64_t left,
 
 VPU::PaddingAttr vpux::VPU::getPaddingAttr(mlir::MLIRContext* ctx, ArrayRef<int64_t> padsBegin,
                                            ArrayRef<int64_t> padsEnd) {
-    VPUX_THROW_UNLESS(padsBegin.size() == 2, "Paddings array has unsuppoted size '{0}'", padsBegin.size());
-    VPUX_THROW_UNLESS(padsEnd.size() == 2, "Paddings array has unsuppoted size '{0}'", padsEnd.size());
+    VPUX_THROW_UNLESS(padsBegin.size() == 2, "Paddings array has unsupported size '{0}'", padsBegin.size());
+    VPUX_THROW_UNLESS(padsEnd.size() == 2, "Paddings array has unsupported size '{0}'", padsEnd.size());
     return getPaddingAttr(ctx, padsBegin[1], padsEnd[1], padsBegin[0], padsEnd[0]);
 }
 
 VPU::PaddingAttr vpux::VPU::getPaddingAttr(mlir::MLIRContext* ctx, const PadInfo& pad) {
     return getPaddingAttr(ctx, pad.left, pad.right, pad.top, pad.bottom);
+}
+
+bool vpux::VPU::hasZeroPadding(const VPU::PaddingAttr padAttr) {
+    if (padAttr == nullptr) {
+        return true;
+    }
+    const auto top = padAttr.getTop().getInt();
+    const auto bottom = padAttr.getBottom().getInt();
+    const auto left = padAttr.getLeft().getInt();
+    const auto right = padAttr.getRight().getInt();
+    return top == 0 && bottom == 0 && left == 0 && right == 0;
 }
 
 PadInfo vpux::VPU::toPadInfo(PaddingAttr attr) {
@@ -744,7 +755,7 @@ mlir::LogicalResult vpux::VPU::canTheDistributionModesBeCompatible(DistributionM
     }
 
     // DUPLICATED -> SEG | DUPLICATED: None const weights for Matmul
-    // DUPLICATED -> SEG | MULTICASTED: Subview to NCEClusterTiling output
+    // DUPLICATED -> SEG | MULTICASTED: Subview to distributed output
     if (sourceMode == DistributionMode::DUPLICATED &&
         (targetMode == (DistributionMode::DUPLICATED | DistributionMode::SEGMENTED) ||
          targetMode == (DistributionMode::MULTICASTED | DistributionMode::SEGMENTED))) {

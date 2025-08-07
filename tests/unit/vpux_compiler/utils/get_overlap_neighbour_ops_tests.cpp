@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -42,7 +42,7 @@ struct ProducersConsumers {
     std::set<VPU::ClusteredOpInterface> consumers = {};
 
     ProducersConsumers(const std::set<VPU::ClusteredOpInterface>& prod, const std::set<VPU::ClusteredOpInterface>& cons)
-            : producers(prod), consumers(cons){};
+            : producers(prod), consumers(cons) {};
 };
 
 bool isConcatOverH(VPU::ConcatOp concat) {
@@ -985,7 +985,9 @@ INSTANTIATE_TEST_SUITE_P(InPlaceEltwiseConsumersTiled, GetOutputOverlapTests,
 llvm::StringLiteral concatSubgraph = R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
-        IE.TileResource 4 of @NCE at 6.000000e+02 MHz
+        IE.TileResource 4 of @NCE at 6.000000e+02 MHz {
+            IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        }
         func.func @main(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>)
           -> (tensor<1x16x4x4xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>) {
             %w0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}>
@@ -1047,7 +1049,9 @@ llvm::StringLiteral concatSubgraph = R"(
 llvm::StringLiteral notSOHCompatibleConcatSubgraph = R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
-        IE.TileResource 4 of @NCE at 6.000000e+02 MHz
+        IE.TileResource 4 of @NCE at 6.000000e+02 MHz {
+            IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        }
         func.func @main(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>)
           -> (tensor<1x16x4x4xf16, {order = #NHWC}>, tensor<1x16x16x8xf16, {order = #NHWC}>) {
             %w0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}>
@@ -1117,7 +1121,9 @@ llvm::StringLiteral notSOHCompatibleConcatSubgraph = R"(
 llvm::StringLiteral concatWithParentsInDiffSubgraphs = R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
-        IE.TileResource 4 of @NCE at 6.000000e+02 MHz
+        IE.TileResource 4 of @NCE at 6.000000e+02 MHz {
+            IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        }
         func.func @main(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>)
           -> (tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>) {
             %w0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}>
@@ -1238,7 +1244,9 @@ INSTANTIATE_TEST_SUITE_P(ConcatConsumersTiled, GetOutputOverlapTests,
 llvm::StringLiteral mixedSubgraph0 = R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
-        IE.TileResource 4 of @NCE at 6.000000e+02 MHz
+        IE.TileResource 4 of @NCE at 6.000000e+02 MHz {
+            IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        }
         func.func @main(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>, %arg1: tensor<1x32x8x8xf16, {order = #NHWC}>)
           -> (tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x16x8x8xf16, {order = #NHWC}>, tensor<1x32x8x8xf16, {order = #NHWC}>) {
             %w0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}>
@@ -1323,7 +1331,9 @@ llvm::StringLiteral mixedSubgraph1 = R"(
     !qElemType2 = !quant.uniform<u8:f16, 0.013744638480392158:128>
     !qElemType3 = !quant.uniform<u8:f16, 0.047862344452225551:128>
     module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
-        IE.TileResource 4 of @NCE at 6.000000e+02 MHz
+        IE.TileResource 4 of @NCE at 6.000000e+02 MHz {
+            IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        }
         func.func @main(%arg0: tensor<1x16x8x8x!qElemType, {order = #NHWC}>, %arg1: tensor<1x16x8x8x!qElemType, {order = #NHWC}>)
           -> (tensor<1x16x8x8x!qElemType3, {order = #NHWC}>, tensor<1x16x8x8x!qElemType2, {order = #NHWC}>, tensor<1x16x8x8x!qElemType3, {order = #NHWC}>) {
             %w0 = const.Declare tensor<16x16x3x3x!qElemType1, {order = #NHWC}>

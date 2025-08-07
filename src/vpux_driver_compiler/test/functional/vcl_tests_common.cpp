@@ -29,6 +29,14 @@ void deallocateBlob(uint8_t* ptr) {
     free(ptr);
 }
 
+uint8_t* allocateBlob2(vcl_allocator2_t*, uint64_t size) {
+    return allocateBlob(size);
+}
+
+void deallocateBlob2(vcl_allocator2_t*, uint8_t* ptr) {
+    deallocateBlob(ptr);
+}
+
 vcl_result_t VCLTestsCommon::initModelData(const char* netName, const char* weightName) {
     vcl_result_t ret = VCL_RESULT_SUCCESS;
 

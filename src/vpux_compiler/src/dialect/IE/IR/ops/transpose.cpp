@@ -1,27 +1,14 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/static_shape_op_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
-
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/type_traits.hpp"
-
-#include <mlir/Dialect/Arith/Utils/Utils.h>
-#include <mlir/Dialect/Tensor/IR/Tensor.h>
-#include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
 
@@ -85,27 +72,29 @@ mlir::LogicalResult vpux::IE::TransposeOp::inferReturnTypeComponents(
     }
 
     const auto inDataType = mlir::cast<mlir::RankedTensorType>(transpose.getInput().getType());
-    const auto inDataShape = inDataType.getShape();
-
     SmallVector<uint64_t> order{};
     if (::getOrder(transpose, order, loc).failed()) {
         return mlir::failure();
     }
 
-    if (inDataShape.size() != order.size()) {
+    if (inDataType.getShape().size() != order.size()) {
         return errorAt(loc, "Order vector size doesn't match input rank");
     }
 
-    const auto outRank = static_cast<uint64_t>(inDataShape.size());
-    SmallVector<int64_t> outShapeVec(outRank);
+    const auto [outShape, outDesc] = callOnShapeOf(inDataType, [&](const auto& inShape) {
+        const auto outRank = static_cast<uint64_t>(inShape.size());
+        auto outAnyShape = makeShape(inShape, outRank, 1);
 
-    for (size_t i = 0; i < order.size(); ++i) {
-        if (order[i] >= outRank) {
-            return mlir::failure();
+        for (size_t i = 0; i < order.size(); ++i) {
+            VPUX_THROW_WHEN(order[i] >= outRank, "Order index: {0} for dim: {1} is higher than the shape rank: {2}.",
+                            order[i], i, outRank);
+            outAnyShape[Dim(i)] = inShape[Dim(order[i])];
         }
 
-        outShapeVec[i] = inDataShape[order[i]];
-    }
+        auto outShape = extractShape(outAnyShape);
+        const auto outDesc = getTensorAttr(inDataType, vpux::getOrder(inDataType), /*memSpace=*/nullptr, outAnyShape);
+        return std::make_pair(std::move(outShape), outDesc);
+    });
 
     SmallVector<uint32_t> uorder;
     std::transform(order.begin(), order.end(), std::back_inserter(uorder), [](uint64_t dim) -> uint32_t {
@@ -115,14 +104,7 @@ mlir::LogicalResult vpux::IE::TransposeOp::inferReturnTypeComponents(
     const auto permutationMap = mlir::AffineMap::getPermutationMap(ArrayRef(uorder), ctx);
     const auto outputElemType = inferElemTypeTranspose(permutationMap, inDataType.getElementType());
 
-    const auto inOrder = DimsOrder::fromValue(transpose.getInput());
-    // Transpose must not change the order of its output. It only changes shapes.
-    const auto outOrder = inOrder;
-    const auto outDynAttr = permuteDynamicAttribute(inDataType, inOrder, outOrder, permutationMap);
-
-    auto outDesc = getTensorAttr(inDataType, vpux::getOrder(inDataType), /*memSpace=*/nullptr, outDynAttr);
-    inferredReturnShapes.emplace_back(ArrayRef(outShapeVec), outputElemType, outDesc);
-
+    inferredReturnShapes.emplace_back(outShape.raw(), outputElemType, outDesc);
     return mlir::success();
 }
 

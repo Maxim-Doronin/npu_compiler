@@ -106,8 +106,9 @@ std::map<std::string, std::vector<std::string>> parseInputParameters(
     auto input_name = searchString.substr(0, start_pos);
     while (start_pos != std::string::npos) {
         auto end_pos = searchString.find_first_of(']');
-        if (end_pos == std::string::npos)
+        if (end_pos == std::string::npos) {
             break;
+        }
         input_name = searchString.substr(0, start_pos);
         auto input_value = searchString.substr(start_pos + 1, end_pos - start_pos - 1);
         if (!input_name.empty()) {
@@ -118,19 +119,22 @@ std::map<std::string, std::vector<std::string>> parseInputParameters(
             }
         }
         searchString = searchString.substr(end_pos + 1);
-        if (searchString.empty() || (searchString.front() != ',' && searchString.front() != '['))
+        if (searchString.empty() || (searchString.front() != ',' && searchString.front() != '[')) {
             break;
+        }
         if (searchString.front() == ',') {
-            if (searchString.length() > 1)
+            if (searchString.length() > 1) {
                 searchString = searchString.substr(1);
-            else
+            } else {
                 throw std::logic_error("Can't parse input parameter string, there is nothing after the comma " +
                                        parameterString);
+            }
         }
         start_pos = searchString.find_first_of('[');
     }
-    if (!searchString.empty())
+    if (!searchString.empty()) {
         throw std::logic_error("Can't parse input parameter string: " + parameterString);
+    }
     return returnValue;
 }
 

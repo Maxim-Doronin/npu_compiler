@@ -69,8 +69,9 @@ protected:
         auto makeFunction = [](ov::ParameterVector& params, const std::shared_ptr<ov::Node>& lastNode) {
             ov::ResultVector results;
 
-            for (int i = 0; i < lastNode->get_output_size(); i++)
+            for (int i = 0; i < lastNode->get_output_size(); i++) {
                 results.push_back(std::make_shared<ov::op::v0::Result>(lastNode->output(i)));
+            }
 
             return std::make_shared<ov::Model>(results, params, "SoftMaxLayerTest");
         };

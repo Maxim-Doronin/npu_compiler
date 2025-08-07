@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -75,7 +75,14 @@ mlir::LogicalResult MergeVfSubgraphsPass::initialize(mlir::MLIRContext* ctx) {
 void MergeVfSubgraphsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
-    const auto costFunction = std::make_unique<VPU::LayerVPUNNCost>(func);
+
+    auto module = func->getParentOfType<mlir::ModuleOp>();
+    const auto arch = VPU::getArch(module);
+    auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
+    auto layerCostModel =
+            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+
+    const auto costFunction = std::make_unique<VPU::LayerVPUNNCost>(func, layerCostModel, _log);
 
     // TODO rewrite with largest spill detection on each step
     SmallVector<int64_t> maxTiling;

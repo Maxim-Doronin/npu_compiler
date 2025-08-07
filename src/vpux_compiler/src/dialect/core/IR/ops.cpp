@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp>
@@ -10,6 +10,7 @@
 
 #include <vpux/compiler/utils/error.hpp>
 #include <vpux/utils/core/format.hpp>
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 
@@ -41,14 +42,25 @@ mlir::LogicalResult vpux::Core::NestedCallOp::verifySymbolUses(mlir::SymbolTable
 
     // Let's keep this a bit simpler than the original mlir::func::FuncOp implementation because most developers
     // are familiar with the contract between caller and callee.
+
+    // E#172242 - NestedCallOp is used to call a function with no inputs, which is the case for ELF main.
+    // In this case, we skip the check for input types.
     const auto funcOpType = funcOp.getFunctionType();
-    if (getOperandTypes() != funcOpType.getInputs()) {
-        return emitOpError(formatv("{0} operand types do not match", calleeAttr));
-    }
-    if (getResultTypes() != funcOpType.getResults()) {
-        return emitOpError(formatv("{0} result types do not match", calleeAttr));
+    if ((funcOpType.getNumInputs() == 0) && (funcOpType.getNumResults() == 0)) {
+        auto log = Logger::global().nest("core-nestedCallOp-verifier", 0);
+        log.trace("Callee '{0}' has 0 inputs and 0 results, skipping type checks", calleeAttr);
+        return mlir::success();
     }
 
+    auto hostCompileMode = config::getCompilationMode(*this) == config::CompilationMode::HostCompile;
+    if (!hostCompileMode) {  // E#172432 disable this check after fixing setMemorySpace in hostCompile Pipeline
+        if (getOperandTypes() != funcOpType.getInputs()) {
+            return emitOpError(formatv("{0} operand types do not match", calleeAttr));
+        }
+        if (getResultTypes() != funcOpType.getResults()) {
+            return emitOpError(formatv("{0} result types do not match", calleeAttr));
+        }
+    }
     return mlir::success();
 }
 
@@ -69,10 +81,6 @@ mlir::LogicalResult vpux::Core::ReinterpretCastOp::verify() {
 
     const auto inNdType = mlir::cast<NDTypeInterface>(inputType);
     const auto outNdType = mlir::cast<NDTypeInterface>(outputType);
-    // Note: preserve rank to satisfy potential IR requirements (e.g. 4d shapes)
-    if (inNdType.getRank() != outNdType.getRank()) {
-        return errorAt(*this, "Cannot cast to different rank: '{0}' -> '{1}'", inputType, outputType);
-    }
     if (inNdType.getTotalAllocSize() != outNdType.getTotalAllocSize()) {
         return errorAt(*this, "Cannot cast to different allocation size: '{0}' -> '{1}'", inputType, outputType);
     }

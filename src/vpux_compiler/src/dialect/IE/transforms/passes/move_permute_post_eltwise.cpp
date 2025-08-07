@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -555,6 +556,161 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
     return mlir::success();
 }
 
+//
+// PermuteEltwiseDiffLayoutRewriter
+//
+/* When in permutes of Eltwise have different input layouts, rewrite the pattern from:
+    NCEOp       (Op)
+      |          |
+(ViewLikeOps) (ViewLikeOps)
+      |          |
+   Permute1    Permute2
+       \        /
+         Eltwise
+            |
+           ...
+
+    to:
+
+                Op
+                |
+    NCEOp   PermuteCastOp
+       \        /
+         Eltwise
+            |
+      (ViewLikeOps)
+            |
+        Permute1
+           ...
+ */
+class PermuteEltwiseDiffLayoutRewriter final : public mlir::OpRewritePattern<IE::AddOp> {
+public:
+    PermuteEltwiseDiffLayoutRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::AddOp>(ctx), _log(log) {
+        this->setDebugName("PermuteEltwiseDiffLayoutRewriter");
+    }
+
+private:
+    mlir::LogicalResult matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult PermuteEltwiseDiffLayoutRewriter::matchAndRewrite(IE::AddOp origOp,
+                                                                      mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+
+    for (auto input : origOp->getOperands()) {
+        auto inputPermute = input.getDefiningOp<IE::MemPermuteOp>();
+        if (inputPermute == nullptr || !inputPermute->hasOneUse()) {
+            _log.trace("Input '{0}' is not a MemPermuteOp", input);
+            return mlir::failure();
+        }
+    }
+
+    if (DimsOrder::fromValue(origOp.getInput1()) != DimsOrder::fromValue(origOp.getResult())) {
+        _log.trace("Input and result have different layouts");
+        return mlir::failure();
+    }
+
+    auto isPureViewOrPermuteOp = [](mlir::Operation* op) -> bool {
+        // Ops in one side would be replaced with a permute cast, so we can skip QuantizeCast
+        return (IE::isPureViewOp(op) && !mlir::isa<IE::QuantizeCastOp>(op)) || mlir::isa<IE::MemPermuteOp>(op);
+    };
+
+    auto getNonViewLikeAndPermuteInput = [&](mlir::Value input) -> SmallVector<mlir::Operation*> {
+        SmallVector<mlir::Operation*> inputs;
+        auto inputOp = input.getDefiningOp();
+        if (inputOp == nullptr) {
+            return inputs;
+        }
+        inputs.push_back(inputOp);
+
+        while (isPureViewOrPermuteOp(inputOp) && inputOp->hasOneUse()) {
+            inputOp = inputOp->getOperand(0).getDefiningOp();
+            if (inputOp == nullptr || !isPureViewOrPermuteOp(inputOp)) {
+                break;
+            }
+            inputs.push_back(inputOp);
+        }
+
+        return inputs;
+    };
+
+    auto leftInputOps = getNonViewLikeAndPermuteInput(origOp.getInput1());
+    auto rightInputOps = getNonViewLikeAndPermuteInput(origOp.getInput2());
+    auto firstLeftOp = leftInputOps.back();
+    auto firstRightOp = rightInputOps.back();
+    auto firstLeftNCEOp = firstLeftOp->getOperand(0).getDefiningOp();
+    auto firstRightNCEOp = firstRightOp->getOperand(0).getDefiningOp();
+
+    // Check if either operation is an NCE op
+    bool isLeftNCEOp = firstLeftNCEOp != nullptr && VPU::NCEInvariant::isSupported(firstLeftNCEOp).succeeded();
+    bool isRightNCEOp = firstRightNCEOp != nullptr && VPU::NCEInvariant::isSupported(firstRightNCEOp).succeeded();
+
+    if (!isLeftNCEOp && !isRightNCEOp) {
+        _log.trace("Neither left nor right input is NCE op");
+        return mlir::failure();
+    }
+
+    const auto firstLeftValue = firstLeftOp->getOperand(0);
+    const auto firstRightValue = firstRightOp->getOperand(0);
+    const auto firstLeftType = mlir::cast<vpux::NDTypeInterface>(firstLeftValue.getType());
+    const auto firstRightType = mlir::cast<vpux::NDTypeInterface>(firstRightValue.getType());
+
+    auto alignment = vpux::VPU::NCEInvariant::getAlignment(firstLeftType.getElementType());
+    auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+    bool isNotAligned = !vpux::VPU::NCEInvariant::isAligned(firstLeftType, alignment, logCb);
+    // If both inputs are NCE ops, prioritize the aligned one
+    if (isLeftNCEOp && isRightNCEOp && isNotAligned) {
+        isLeftNCEOp = false;
+    }
+
+    auto hasValidPermuteCast =
+            isLeftNCEOp ? vpux::tryToFindPermuteCastOp(origOp.getLoc(), firstRightValue, firstLeftType.getDimsOrder(),
+                                                       firstLeftType.getShape(), rewriter)
+                        : vpux::tryToFindPermuteCastOp(origOp.getLoc(), firstLeftValue, firstRightType.getDimsOrder(),
+                                                       firstRightType.getShape(), rewriter);
+    if (!hasValidPermuteCast.has_value()) {
+        _log.trace("No valid permute cast found for inputs");
+        return mlir::failure();
+    }
+    // If we have a valid permute cast from the other side, we can use it to create a new AddOp
+    auto permuteCastOp = hasValidPermuteCast.value();
+
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getType());
+    const auto newShape = isLeftNCEOp ? getShape(firstLeftValue) : getShape(firstRightValue);
+    const auto newType = outType.changeShape(newShape);
+
+    auto newAddInputs = isLeftNCEOp ? SmallVector<mlir::Value>{firstLeftValue, permuteCastOp.getResult()}
+                                    : SmallVector<mlir::Value>{permuteCastOp.getResult(), firstRightValue};
+
+    auto newAddOp = rewriter.create<IE::AddOp>(origOp->getLoc(), newType, newAddInputs[0], newAddInputs[1],
+                                               origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
+                                               origOp.getClampAttr(), nullptr, nullptr);
+    mlir::Value newOutput = newAddOp.getOutput();
+
+    auto inputOps = isLeftNCEOp ? leftInputOps : rightInputOps;
+    // Create the operations to transform the output back to the original format
+    for (auto iter = inputOps.rbegin(); iter != inputOps.rend(); ++iter) {
+        auto inputOp = *iter;
+        mlir::IRMapping mapper;
+        mapper.map(inputOp->getOperand(0), newOutput);
+        rewriter.setInsertionPointAfterValue(newOutput);
+        auto newOp = rewriter.clone(*inputOp, mapper);
+        vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ALL);
+
+        newOutput = newOp->getResult(0);
+    }
+    rewriter.replaceOp(origOp, newOutput);
+
+    _log.trace("Replaced '{0}' with '{1}'", origOp->getName(), newAddOp->getName());
+    return mlir::success();
+}
+
 void MovePermutePostEltwisePass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
@@ -585,6 +741,7 @@ void MovePermutePostEltwisePass::safeRunOnFunc() {
     patterns.add<PermuteEltwiseRewriter<IE::SubtractOp>>(&ctx, nullptr, 2, _log);
     patterns.add<PermuteEltwiseRewriter<IE::GroupConvolutionOp>>(&ctx, verifyGroupConv, 1, _log);
     patterns.add<PermuteEltwiseRewriter<IE::AvgPoolOp>>(&ctx, verifyAvgPool, 1, _log);
+    patterns.add<PermuteEltwiseDiffLayoutRewriter>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

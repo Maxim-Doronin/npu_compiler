@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
@@ -8,14 +8,17 @@
 #include "vpux/compiler/ShaveCodeGen/passes.hpp"
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/force_link_macros.hpp"
+#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 
+#include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/utils/core/error.hpp"
 
+#include <mlir/Dialect/Bufferization/Transforms/Passes.h>
 #include <mlir/Dialect/Linalg/Passes.h>
 #include <mlir/Transforms/Passes.h>
 
@@ -58,8 +61,14 @@ void ShaveCodeGenStrategy::buildPipeline(mlir::OpPassManager& pm) {
     strategy->initializePipeline(pm, _log);
     strategy->buildIEPipeline(pm, _log);
 
+    pm.addPass(ShaveCodeGen::createEncapsulateCodeGenOpsPass());
+    pm.addPass(ShaveCodeGen::createEarlyCodeGenCapsuleFusionPass());
+
     ShaveCodeGen::buildLowerSwLayers2LinalgPipeline(pm, _log);
-    pm.addPass(ShaveCodeGen::createOutlineLinalgSwLayersPass());
+    pm.addPass(mlir::createLinalgElementwiseOpFusionPass());
+    pm.addPass(mlir::createCanonicalizerPass());
+
+    pm.addPass(ShaveCodeGen::createOutlineCodeGenCapsulesPass());
 
     strategy->buildLowerIE2VPUPipeline(pm, _log);
     strategy->buildVPUPipeline(pm, _log);
@@ -68,6 +77,7 @@ void ShaveCodeGenStrategy::buildPipeline(mlir::OpPassManager& pm) {
     pm.addPass(
             mlir::createConvertLinalgToAffineLoopsPass());  // E#154403 Analyze the pros/cons & replace Affine with SCF
     pm.addPass(ShaveCodeGen::createExpandLayersPass());
+    pm.addPass(ShaveCodeGen::createLowerMathToShaveIntrinsicsPass());
     pm.addPass(ShaveCodeGen::createConvertAffine2LLVMPass());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(ShaveCodeGen::createAdaptLLVMFuncsForShavePass());
@@ -101,7 +111,9 @@ void WSMonolithicStrategy::buildPipeline(mlir::OpPassManager& pm) {
     defaultHWStrategy->buildVPUPipeline(pm, _log);
 
     // Create the @init() function from constant transformations in @main() and nest it into a sub module.
+    pm.addPass(VPU::createConstructWsAnalysisPass(_log));
     pm.addPass(VPU::createIntroduceInitFunctionPass("gen-all", _log));
+    pm.addPass(VPU::createDestructWsAnalysisPass(_log));
     pm.addPass(Core::createPackNestedModulesPass(_log));
 
     // This pass manager only executes on functions that are inside a nested module. In this case only the @init()
@@ -135,13 +147,23 @@ void HostPipelineStrategy::buildPipeline(mlir::OpPassManager& pm) {
     auto strategy = _createPipelineStrategy(config::CompilationMode::HostCompile);
 
     strategy->initializePipeline(pm, _log);
+
     strategy->buildIEPipeline(pm, _log);
     strategy->buildLowerIE2VPUPipeline(pm, _log);
     strategy->buildVPUPipeline(pm, _log);
+    pm.addPass(vpux::VPU::createFinalizeComputeFunctionBoundariesPass(_log));
     strategy->buildLowerVPU2VPUIPPipeline(pm, _log);
 
+    pm.addPass(vpux::HostExec::createOptimizeMemRefCopiesPass(_log));
     pm.addPass(vpux::Core::createPackNestedModulesPass(_log));
-    // TODO E#164650: add vpuip pipeline to the host compilation pipeline
+    pm.addPass(vpux::HostExec::createWrapFuncCallsIntoAsyncRegionsPass(_log));
+
+    auto& nestedPm = pm.nest<mlir::ModuleOp>();
+    {
+        nestedPm.addPass(vpux::Core::createAddNetInfoToModulePass(_log));
+        strategy->initializePipeline(nestedPm, _log);
+        strategy->buildVPUIPPipeline(nestedPm, _log);
+    }
 }
 
 //

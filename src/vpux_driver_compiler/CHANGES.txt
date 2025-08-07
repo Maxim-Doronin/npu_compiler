@@ -1,5 +1,28 @@
 Change Log:
 -----------
+VPUXCompilerL0 7.4.3:
+  - Add support for U2 type
+
+VPUXCompilerL0 7.4.2:
+  - Return true for compatibility option in vclGetCompilerIsOptionSupported
+      NPU_DPU_GROUPS
+
+VPUXCompilerL0 7.4.1:
+  - Replace NPU_DPU_GROUPS with NPU_TILES in buildFlags
+
+VPUXCompilerL0 7.4.0:
+  - Add new blob allocator API:
+      vcl_allocator2_t
+      vclAllocatedExecutableCreate2
+  - Deprecate:
+      vcl_allocator_t
+      vclAllocatedExecutableCreate
+      vclExecutableCreate
+
+VPUXCompilerL0 7.3.4:
+  - Remove hard limitations for the content of buildFlags
+  - Update compilerTest to allow running without IOinfo
+
 VPUXCompilerL0 7.3.3:
   - Add support for FP8 types
 

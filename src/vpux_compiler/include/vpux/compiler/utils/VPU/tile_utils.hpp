@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 //
@@ -187,6 +187,8 @@ struct TileShapeCompare {
 };
 
 bool isDivisibleTile(mlir::Operation* op, ShapeRef tileAxis, Dim tileDim);
+
+bool hasRestrictedTilingDim(VPU::DistributedCastOpInterface distributedCastOp);
 
 }  // namespace VPU
 }  // namespace vpux

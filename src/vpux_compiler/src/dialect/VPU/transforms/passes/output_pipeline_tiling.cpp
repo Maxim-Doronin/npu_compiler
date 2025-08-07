@@ -1,11 +1,12 @@
 //
 // Copyright (C) 2024-2025 Intel Corporation
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
@@ -156,8 +157,15 @@ void OutputPipelineTilingPass::safeRunOnFunc() {
     }
 
     auto func = getOperation();
+    auto module = func->getParentOfType<mlir::ModuleOp>();
+    const auto arch = VPU::getArch(module);
+    auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
+    auto layerCostModel =
+            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+
     auto siblingsOpsAnalysis = getAnalysis<VPU::SiblingOpsAnalysis>();
-    auto costModel = std::make_shared<VPU::LayerCostModel>(func, _enablePrefetchTiling, _log, siblingsOpsAnalysis);
+    auto costModel = std::make_shared<VPU::LayerCostModel>(func, _enablePrefetchTiling, siblingsOpsAnalysis,
+                                                           layerCostModel, _log);
 
     func->walk([&](VPU::TilingBuilderOpInterface tilingBuilderOp) {
         auto origOp = tilingBuilderOp.getOperation();
@@ -209,10 +217,12 @@ void OutputPipelineTilingPass::safeRunOnFunc() {
         origOp->setAttr(outputPipelining, mlir::BoolAttr::get(origOp->getContext(), true));
         auto prefetchableTilesOnDim = origTilingStrategy;
         auto targetDim = *nonOneDims.begin();
+        _log.trace(" Target dimension for output pipelining: {0} from {1}", targetDim, origTilingStrategy);
         mlir::FailureOr<OutputTiling> findSupportedTileSize;
         do {
             findSupportedTileSize = isSupportedTileSize(origOp, prefetchableTilesOnDim, tilingMode, _log);
             if (!mlir::failed(findSupportedTileSize)) {
+                _log.trace(" Skip as current strategy is already pipelining");
                 break;
             }
 
@@ -230,9 +240,12 @@ void OutputPipelineTilingPass::safeRunOnFunc() {
                 mlir::failed(findSupportedTileSize) &&
                 (prefetchableTilesOnDim[targetDim] <= MAX_OUTPUT_PIPELINE_TILING_TIME * origTilingStrategy[targetDim]));
 
+        _log.trace("New candidate tiling strategy for output pipelining: {0} at {1}", prefetchableTilesOnDim,
+                   origOp->getLoc());
         if (!mlir::failed(findSupportedTileSize) && prefetchableTilesOnDim != origTilingStrategy) {
             // find an available tiling strategy for output pipelining
             auto curTiles = findSupportedTileSize.value();
+            _log.debug("Found output pipelining tiling strategy: {0} at {1}", curTiles, origOp->getLoc());
             if (isTilingAdjustmentBeneficial(nceOp, origTiles.value(), curTiles, costModel)) {
                 origOp->setAttr(tilingStrategy, getIntArrayAttr(origOp->getContext(), curTiles[0].axis));
                 _log.debug("Overwrite original tiling strategy: {0} with output pipelining tiling strategy: {1} at "

@@ -64,8 +64,9 @@ auto combined_axes = ov::test::utils::combineParams(axesVectors);
 
 auto prepare_cases = [](const std::vector<std::pair<std::vector<ov::Shape>, std::vector<int>>>& raw_axes) {
     std::vector<std::pair<std::vector<ov::test::InputShape>, std::vector<int>>> cases;
-    for (const auto& raw_case : raw_axes)
+    for (const auto& raw_case : raw_axes) {
         cases.emplace_back(ov::test::static_shapes_to_test_representation(raw_case.first), raw_case.second);
+    }
     return cases;
 };
 

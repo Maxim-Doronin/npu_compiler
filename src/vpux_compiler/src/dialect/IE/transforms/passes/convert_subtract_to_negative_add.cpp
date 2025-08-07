@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -280,6 +280,13 @@ void ConvertSubtractToAddPass::safeRunOnFunc() {
         const auto input1Type = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType());
         const auto input2Type = mlir::cast<vpux::NDTypeInterface>(op.getInput2().getType());
         const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getResult().getType());
+
+        // tracking number: E#171091
+        // When input1 is constant and input2 is dynamic, we need a GroupConv operation that supports dynamic shapes for
+        // input2 (Scenario 1 and Scenario 2). Currently, dynamic shape support is not available.
+        if (outputType.getShape().isDynamic()) {
+            return true;
+        }
 
         // SubTract with INTEGER input/ouput can not be executed as NCE op, and should be kept like Subtract and be
         // executed on shave.

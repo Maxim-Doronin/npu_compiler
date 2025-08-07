@@ -111,7 +111,10 @@ namespace {
 
 // Out of line to provide ease of access for potential validity requirement updates
 bool isValidChainNode(mlir::Operation* op) {
-    return (mlir::isa<IE::ShaveCodeGenSupportedOpInterface>(op) && op->hasTrait<IE::EltwiseOp>());
+    if (auto scgOp = mlir::dyn_cast<IE::ShaveCodeGenSupportedOpInterface>(op)) {
+        return scgOp.shouldJITCompile();
+    }
+    return false;
 }
 
 void extendChain(mlir::Operation* head, std::vector<mlir::Operation*>& currChain,
@@ -187,11 +190,11 @@ ShaveCodeGen::FusionChainAnalysis::FusionChainAnalysis(mlir::Operation* op) {
         // For a node to be considered a chain head, it needs to not have any SCG produced operands
         auto isProducedByCodeGenOp = [](mlir::Value val) {
             auto definingOp = val.getDefiningOp();
-            return definingOp && mlir::isa<IE::ShaveCodeGenSupportedOpInterface>(definingOp);
+            return definingOp && isValidChainNode(definingOp);
         };
         auto isNotChainHead = llvm::any_of(codeGenOp->getOperands(), isProducedByCodeGenOp);
 
-        if (isNotChainHead || !isValidChainNode(codeGenOp)) {
+        if (!isValidChainNode(codeGenOp) || isNotChainHead) {
             continue;
         }
 

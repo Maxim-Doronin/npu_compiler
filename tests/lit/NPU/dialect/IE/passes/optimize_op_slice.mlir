@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-op-slice %s | FileCheck %s
@@ -20,6 +20,8 @@ func.func @NoChangesAcrossInputsAtHeight(%arg0: tensor<1x16x4x4xf16>, %arg1 : te
     // CHECK: return [[VAR1]] : tensor<1x16x3x4xf16>
 }
 
+// -----
+
 // CHECK-LABEL: @ChangesInInput0AtHeight
 func.func @ChangesInInput0AtHeight(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16x3x4xf16>) -> tensor<1x16x3x4xf16> {
     %0 = IE.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 0, 4, 0]]} : tensor<1x16x4x4xf16>, tensor<1x16x3x4xf16> -> tensor<1x16x7x4xf16>
@@ -30,6 +32,8 @@ func.func @ChangesInInput0AtHeight(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1
    // CHECK: return [[VAR0]] : tensor<1x16x3x4xf16>
 }
 
+// -----
+
 // CHECK-LABEL: @ChangesInInput1SameShapeAtHeight
 func.func @ChangesInInput1SameShapeAtHeight(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16x3x4xf16>) -> tensor<1x16x3x4xf16> {
     %0 = IE.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 0, 4, 0]]} : tensor<1x16x4x4xf16>, tensor<1x16x3x4xf16> -> tensor<1x16x7x4xf16>
@@ -38,6 +42,8 @@ func.func @ChangesInInput1SameShapeAtHeight(%arg0: tensor<1x16x4x4xf16>, %arg1 :
 
    // CHECK: return %arg1 : tensor<1x16x3x4xf16>
 }
+
+// -----
 
 // CHECK-LABEL: @ChangesAtHeightTwoUsers
 func.func @ChangesAtHeightTwoUsers(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16x3x4xf16>) -> (tensor<1x16x3x4xf16>, tensor<1x16x3x4xf16>) {
@@ -56,6 +62,8 @@ func.func @ChangesAtHeightTwoUsers(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1
 
 }
 
+// -----
+
 // CHECK-LABEL: @NoChangesNoOffsetAttribute
 func.func @NoChangesNoOffsetAttribute(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16x3x4xf16>) -> tensor<1x16x3x4xf16> {
     %0 = IE.Concat(%arg0, %arg1) { per_axis = #IE.Concat<axis = 2 : i64> } : tensor<1x16x4x4xf16>, tensor<1x16x3x4xf16> -> tensor<1x16x7x4xf16>
@@ -67,6 +75,8 @@ func.func @NoChangesNoOffsetAttribute(%arg0: tensor<1x16x4x4xf16>, %arg1 : tenso
     // CHECK: return [[VAR1:%.+]] : tensor<1x16x3x4xf16>
 
 }
+
+// -----
 
 // CHECK-LABEL: @NoChangesAtHeightWidth
 func.func @NoChangesAtHeightWidth(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16x3x4xf16>, %arg2 : tensor<1x16x7x3xf16>) -> tensor<1x16x3x4xf16> {
@@ -83,6 +93,8 @@ func.func @NoChangesAtHeightWidth(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x
 
 }
 
+// -----
+
 // CHECK-LABEL: @ChangesAtHeightWidth
 func.func @ChangesAtHeightWidth(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16x3x4xf16>, %arg2 : tensor<1x16x7x3xf16>) -> tensor<1x16x2x2xf16> {
     %0 = IE.Concat(%arg0, %arg1, %arg2) {static_offsets = [[0, 0, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]} : tensor<1x16x4x4xf16>, tensor<1x16x3x4xf16>, tensor<1x16x7x3xf16> -> tensor<1x16x7x7xf16>
@@ -93,6 +105,8 @@ func.func @ChangesAtHeightWidth(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16
     // CHECK: return [[VAR0]] : tensor<1x16x2x2xf16>
 
 }
+
+// -----
 
 // CHECK-LABEL: @ChangesAtChannelHeight
 func.func @ChangesAtChannelHeight(%arg0: tensor<1x3x4x4xf16>, %arg1 : tensor<1x3x3x4xf16>, %arg2 : tensor<1x2x7x4xf16>) -> tensor<1x2x2x2xf16> {
@@ -105,21 +119,25 @@ func.func @ChangesAtChannelHeight(%arg0: tensor<1x3x4x4xf16>, %arg1 : tensor<1x3
 
 }
 
+// -----
+
 // CHECK-LABEL: @NoChangesAcrossInputsAtHeightWithAffinReshape
 func.func @NoChangesAcrossInputsAtHeightWithAffinReshape(%arg0: tensor<1x16x4x4xf16>, %arg1 : tensor<1x16x3x4xf16>) -> tensor<1x16x1x12xf16> {
     %0 = IE.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 0, 4, 0]]} : tensor<1x16x4x4xf16>, tensor<1x16x3x4xf16> -> tensor<1x16x7x4xf16>
-    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 16, 1, 28]} : tensor<1x16x7x4xf16> -> tensor<1x16x1x28xf16>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1, 2], [3], [3]], shape_value = [1, 16, 1, 28]} : tensor<1x16x7x4xf16> -> tensor<1x16x1x28xf16>
     %2 = IE.Slice %1 [0, 0, 0, 8] [1, 16, 1, 12] : tensor<1x16x1x28xf16> to tensor<1x16x1x12xf16>
     return %2 : tensor<1x16x1x12xf16>
 
     // CHECK: [[CONCAT:%.*]] = IE.Concat({{[^:]+}}, {{[^:]+}})
     // CHECK-SAME{LITERAL}:   {static_offsets = [[0, 0, 0, 0], [0, 0, 4, 0]]} : tensor<1x16x4x4xf16>, tensor<1x16x3x4xf16> -> tensor<1x16x7x4xf16>
     // CHECK:        [[AFFINERESHAPE:%.*]] = IE.AffineReshape([[CONCAT]])
-    // CHECK-SAME{LITERAL}:   {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 16, 1, 28]} : tensor<1x16x7x4xf16> -> tensor<1x16x1x28xf16>
+    // CHECK-SAME{LITERAL}:   {dim_mapping = [[0], [1, 2], [3], [3]], shape_value = [1, 16, 1, 28]} : tensor<1x16x7x4xf16> -> tensor<1x16x1x28xf16>
     // CHECK:        [[SLICE:%.*]] = IE.Slice [[AFFINERESHAPE]] [0, 0, 0, 8] [1, 16, 1, 12] : tensor<1x16x1x28xf16> to tensor<1x16x1x12xf16>
     // CHECK:        return [[SLICE]] : tensor<1x16x1x12xf16>
 
 }
+
+// -----
 
 // CHECK-LABEL: @ChangesInInput0AtHeightWithAffinReshape
 func.func @ChangesInInput0AtHeightWithAffinReshape(%arg0: tensor<1x1x1x1xf16>, %arg1: tensor<1x1x1x1xf16>, %arg2: tensor<1x1x1x1xf16>) -> tensor<1x1x1x1xf16> {
@@ -131,6 +149,8 @@ func.func @ChangesInInput0AtHeightWithAffinReshape(%arg0: tensor<1x1x1x1xf16>, %
     // CHECK: return {{[^:]+}} : tensor<1x1x1x1xf16>
 
 }
+
+// -----
 
 // CHECK-LABEL: @TileAffineReshapeSliceOpt
 func.func @TileAffineReshapeSliceOpt(%arg0: tensor<1x128x3x1xf16>) -> tensor<1x128x249xf16> {
@@ -146,6 +166,8 @@ func.func @TileAffineReshapeSliceOpt(%arg0: tensor<1x128x3x1xf16>) -> tensor<1x1
     // CHECK:        return [[AFFINERESHAPE]] : tensor<1x128x249xf16>
 
 }
+
+// -----
 
 // The SliceOp output shape is 1x128x248, the data on dim 2 with shape "248" is sliced from TileOp output 3x100. 248 is not divisible by 3.
 // So the pattern should not be optimized.
@@ -165,6 +187,8 @@ func.func @TileAffineReshapeSliceNotOpt(%arg0: tensor<1x128x3x1xf16>) -> tensor<
 
 }
 
+// -----
+
 // CHECK-LABEL: @TileSliceOpt
 func.func @TileSliceOpt(%arg0: tensor<1x128x3x1xf16>) -> tensor<1x128x3x83xf16> {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 1, 1, 100]} : tensor<1x128x3x1xf16> -> tensor<1x128x3x100xf16>
@@ -176,6 +200,8 @@ func.func @TileSliceOpt(%arg0: tensor<1x128x3x1xf16>) -> tensor<1x128x3x83xf16> 
     // CHECK:        return [[TILE]] : tensor<1x128x3x83xf16>
 
 }
+
+// -----
 
 // The slice performs on 2 Axes, so the pattern should not be optimized.
 // CHECK-LABEL: @TileSliceNotOpt
@@ -190,6 +216,8 @@ func.func @TileSliceNotOpt(%arg0: tensor<1x128x3x1xf16>) -> tensor<1x128x2x83xf1
     // CHECK:        return [[SLICE]] : tensor<1x128x2x83xf16>
 
 }
+
+// -----
 
 // CHECK-LABEL: @TileSliceNotOptForMultiUser
 func.func @TileSliceNotOptForMultiUser(%arg0: tensor<1x128x3x1xf16>) -> tensor<1x64x6x100xf16> {
@@ -207,6 +235,8 @@ func.func @TileSliceNotOptForMultiUser(%arg0: tensor<1x128x3x1xf16>) -> tensor<1
     // CHECK:        return [[CONCAT]] : tensor<1x64x6x100xf16>
 
 }
+
+// -----
 
 // we should not optimize the case when there is no reshape, slice and tile axis are different
 // CHECK-LABEL: @TileSliceNotOptForDifferentAxis
@@ -337,4 +367,101 @@ func.func @NotFuseMultiDimSlice(%arg0: tensor<4x128x3x6xf16, {order = #NHWC}>) -
     // CHECK:       [[SLICE_1:%.+]] = IE.Slice [[INPUT0]]
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[SLICE_0]], [[SLICE_1]])
     // CHECK:       return  [[CONCAT]]
+}
+
+// -----
+
+// CHECK-LABEL: @OptConcatAndSliceWithAffineReshapeAndSplitConcatAxis
+// CHECK-SAME:      [[INPUT0:%.+]]: tensor<1x1x1x1xf16>
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<1x1x1x2xf16>
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x1x1x3xf16>
+func.func @OptConcatAndSliceWithAffineReshapeAndSplitConcatAxis(
+                %arg0: tensor<1x1x1x1xf16>, %arg1: tensor<1x1x1x2xf16>, %arg2: tensor<1x1x1x3xf16>) -> tensor<1x2x1x1xf16> {
+    %0 = IE.Concat(%arg0, %arg1, %arg2) {
+            static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 0, 3]]
+        } : tensor<1x1x1x1xf16>, tensor<1x1x1x2xf16>, tensor<1x1x1x3xf16> -> tensor<1x1x1x6xf16>
+    %1 = IE.AffineReshape(%0) {
+            dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [1, 6, 1, 1]
+        } : tensor<1x1x1x6xf16> -> tensor<1x6x1x1xf16>
+    %2 = IE.Slice %1 [0, 4, 0, 0] [1, 2, 1, 1] : tensor<1x6x1x1xf16> to tensor<1x2x1x1xf16>
+
+    return %2 : tensor<1x2x1x1xf16>
+
+    // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape([[INPUT2]]) {
+    // CHECK-SAME{LITERAL}:       dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [1, 3, 1, 1]} : tensor<1x1x1x3xf16> -> tensor<1x3x1x1xf16>
+    // CHECK:       [[SLICE:%.+]] = IE.Slice [[RESHAPE]] [0, 1, 0, 0] [1, 2, 1, 1] : tensor<1x3x1x1xf16> to tensor<1x2x1x1xf16>
+
+    // CHECK:       return [[SLICE]] : tensor<1x2x1x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @Opt1DConcatAndSliceWithAffineReshapeAndSplitConcatAxis
+// CHECK-SAME:      ([[INPUT0:%.+]]: tensor<6xf16>, [[INPUT1:%.+]]: tensor<6xf16>, [[INPUT2:%.+]]: tensor<6xf16>)
+func.func @Opt1DConcatAndSliceWithAffineReshapeAndSplitConcatAxis(
+            %arg0: tensor<6xf16>, %arg1: tensor<6xf16>, %arg2: tensor<6xf16>) -> tensor<1x1x2x3xf16> {
+    %0 = IE.Concat(%arg0, %arg1, %arg2) {
+            static_offsets = [[0], [6], [12]]
+        } : tensor<6xf16>, tensor<6xf16>, tensor<6xf16> -> tensor<18xf16>
+    %1 = IE.AffineReshape(%0) {
+            dim_mapping = [[0, 1, 2, 3]], shape_value = [1, 3, 2, 3]
+        } : tensor<18xf16> -> tensor<1x3x2x3xf16>
+    %2 = IE.Slice %1 [0, 1, 0, 0] [1, 1, 2, 3] : tensor<1x3x2x3xf16> to tensor<1x1x2x3xf16>
+
+    return %2 : tensor<1x1x2x3xf16>
+
+    // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape([[INPUT1]]) {
+    // CHECK-SAME{LITERAL}:       dim_mapping = [[0, 1, 2, 3]], shape_value = [1, 1, 2, 3]} : tensor<6xf16> -> tensor<1x1x2x3xf16>
+
+    // CHECK:       return [[RESHAPE]] : tensor<1x1x2x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotOptConcatAndSliceWithAffineReshapeAndSplitConcatAxis
+// CHECK-SAME:      ([[INPUT0:%.+]]: tensor<2x1x3x4xf16>, [[INPUT1:%.+]]: tensor<2x1x3x4xf16>, [[INPUT2:%.+]]: tensor<2x1x3x4xf16>)
+func.func @NotOptConcatAndSliceWithAffineReshapeAndSplitConcatAxis(
+                %arg0: tensor<2x1x3x4xf16>, %arg1: tensor<2x1x3x4xf16>, %arg2: tensor<2x1x3x4xf16>) -> tensor<1x3x3x4xf16> {
+    %0 = IE.Concat(%arg0, %arg1, %arg2) {
+            static_offsets = [[0, 0, 0, 0], [2, 0, 0, 0], [4, 0, 0, 0]]
+        } : tensor<2x1x3x4xf16>, tensor<2x1x3x4xf16>, tensor<2x1x3x4xf16> -> tensor<6x1x3x4xf16>
+    %1 = IE.AffineReshape(%0) {
+            dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [2, 3, 3, 4]
+        } : tensor<6x1x3x4xf16> -> tensor<2x3x3x4xf16>
+    %2 = IE.Slice %1 [0, 0, 0, 0] [1, 3, 3, 4] : tensor<2x3x3x4xf16> to tensor<1x3x3x4xf16>
+
+    return %2 : tensor<1x3x3x4xf16>
+
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[INPUT0]], [[INPUT1]], [[INPUT2]]) {
+    // CHECK-SAME{LITERAL}:       static_offsets = [[0, 0, 0, 0], [2, 0, 0, 0], [4, 0, 0, 0]]} : tensor<2x1x3x4xf16>, tensor<2x1x3x4xf16>, tensor<2x1x3x4xf16> -> tensor<6x1x3x4xf16>
+    // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape([[CONCAT]]) {
+    // CHECK-SAME{LITERAL}:       dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [2, 3, 3, 4]} : tensor<6x1x3x4xf16> -> tensor<2x3x3x4xf16>
+    // CHECK:       [[SLICE:%.+]] = IE.Slice [[RESHAPE]] [0, 0, 0, 0] [1, 3, 3, 4] : tensor<2x3x3x4xf16> to tensor<1x3x3x4xf16>
+
+    // CHECK:       return [[SLICE]] : tensor<1x3x3x4xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @OptConcatAndSliceWithAffineReshapeAndMergeConcatAxis
+// CHECK-SAME:      [[INPUT0:%.+]]: tensor<1x2x3x4xf16>
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<1x2x4x4xf16>
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x2x5x4xf16>
+func.func @OptConcatAndSliceWithAffineReshapeAndMergeConcatAxis(
+                %arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x4x4xf16>, %arg2: tensor<1x2x5x4xf16>) -> tensor<1x6x1x4xf16> {
+    %0 = IE.Concat(%arg0, %arg1, %arg2) {
+            static_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 7, 0]]
+        } : tensor<1x2x3x4xf16>, tensor<1x2x4x4xf16>, tensor<1x2x5x4xf16> -> tensor<1x2x12x4xf16>
+    %1 = IE.AffineReshape(%0) {
+            dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 24, 1, 4]
+        } : tensor<1x2x12x4xf16> -> tensor<1x24x1x4xf16>
+    %2 = IE.Slice %1 [0, 7, 0, 0] [1, 6, 1, 4] : tensor<1x24x1x4xf16> to tensor<1x6x1x4xf16>
+
+    return %2 : tensor<1x6x1x4xf16>
+
+    // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape([[INPUT1]]) {
+    // CHECK-SAME{LITERAL}:       dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 8, 1, 4]} : tensor<1x2x4x4xf16> -> tensor<1x8x1x4xf16>
+    // CHECK:       [[SLICE:%.+]] = IE.Slice [[RESHAPE]] [0, 1, 0, 0] [1, 6, 1, 4] : tensor<1x8x1x4xf16> to tensor<1x6x1x4xf16>
+
+    // CHECK:       return [[SLICE]] : tensor<1x6x1x4xf16>
 }

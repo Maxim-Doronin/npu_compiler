@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
@@ -29,14 +29,6 @@ constexpr int8_t numberOfConstantsToFuse = 3;
 ///
 
 Const::DeclareOp getConstAndDma(mlir::Value constant, mlir::Operation** constOp);
-
-///
-/// \brief Get static offset for the constant
-/// \param [in] constant - mlir::Value constant
-/// \return int32_t offset for the constant
-///
-
-int32_t getOffsetForConstant(VPUIP::NCEClusterTaskOp& nceOp, mlir::Value constant);
 
 /// @brief Function creates a new distributed buffer type, used for creating a alloc op for distributed buffer
 /// @param origDistType [in] Used to get the original Distribute Mode

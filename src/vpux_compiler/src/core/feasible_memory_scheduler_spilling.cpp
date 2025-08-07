@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/feasible_memory_scheduler_spilling.hpp"
@@ -388,6 +388,121 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
     _log.trace("Operations that have been removed - '{0}'", operationIndexesToRemove.size());
 }
 
+/*
+    Verify the below optimization since <CMX> resource is not guaranteed
+    to be reserved through {other ops} and may be overridden.
+
+          <DDR>                                <DDR>
+            |     <CMX>                        /          <CMX>
+            |     /                           /             .
+        GatherDMA (isDataOp = true)          /              .
+            |                               /               .
+          <CMX>                            /                .
+            |                             /                 .
+        SpillWriteDMA                    /                  .
+            |                       =>  |                   .
+          <DDR>                          \                  .
+           ...                            \     ...        .
+        {other ops}                        \  {other ops} .
+           ...                              \    ...     .
+          <DDR>                              \          .
+            |                                 \        .
+        SpillReadDMA                          GatherDMA
+            |                                    |
+            <CMX>                                 <CMX>
+*/
+llvm::DenseSet<size_t> FeasibleMemorySchedulerSpilling::identifyDataOpsWithInputOverwrite(
+        FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps) {
+    llvm::DenseMap<size_t, FeasibleMemoryScheduler::ScheduledOpInfo> dataOpsWithInputResources;
+    for (unsigned opIndex = 0; opIndex < scheduledOps.size(); opIndex++) {
+        auto& op = scheduledOps[opIndex];
+        if (op.isOriginalOp() && op.isDataOp() && op.hasActiveInputResource()) {
+            dataOpsWithInputResources[op.op_] = op;
+        }
+    }
+
+    if (dataOpsWithInputResources.empty()) {
+        return {};
+    }
+
+    // store legal and illegal data op indices to avoid re-checking for
+    // a repeating data op spill
+    llvm::DenseSet<size_t> legalDataOpsWithInputResources;
+    llvm::DenseSet<size_t> illegalDataOpsWithInputResources;
+    for (unsigned opIndex = scheduledOps.size(); opIndex-- > 0;) {
+        auto& op = scheduledOps[opIndex];
+        if ((op.isSpillWrite() || op.isSpillRead()) && op.isDataOp()) {
+            if (legalDataOpsWithInputResources.contains(op.op_) || illegalDataOpsWithInputResources.contains(op.op_)) {
+                continue;
+            }
+            if (!dataOpsWithInputResources.contains(op.op_)) {
+                continue;
+            }
+
+            auto parentOp = dataOpsWithInputResources[op.op_];
+
+            // check if legal or illegal
+            auto legalOptimization = true;
+            // Note: spill read can also overwrite the input
+            for (unsigned nestedOpIndex = opIndex + 1; nestedOpIndex-- > 0;) {
+                auto nestedOp = scheduledOps[nestedOpIndex];
+                if (nestedOp.isOriginalOp() && nestedOp.op_ == op.op_) {
+                    break;
+                }
+
+                for (size_t inResource = 0; inResource < parentOp.numOfInputResources(); inResource++) {
+                    auto resBegin = parentOp.beginInputResource(inResource);
+                    auto resEnd = parentOp.endInputResource(inResource);
+                    auto rangeUsed = false;
+
+                    if (nestedOp.hasActiveInputResource()) {
+                        for (size_t r = 0; r < nestedOp.numOfInputResources(); r++) {
+                            auto beg = nestedOp.beginInputResource(r);
+                            auto end = nestedOp.endInputResource(r) - 1;
+
+                            if ((beg <= resBegin && resEnd <= end) || (resBegin <= beg && beg <= resEnd) ||
+                                (resBegin <= end && end <= resEnd)) {
+                                rangeUsed = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!rangeUsed && nestedOp.hasActiveOutputResource()) {
+                        for (size_t r = 0; r < nestedOp.numOfOutputResources(); r++) {
+                            auto beg = nestedOp.beginOutputResource(r);
+                            auto end = nestedOp.endOutputResource(r) - 1;
+
+                            if ((beg <= resBegin && resEnd <= end) || (resBegin <= beg && beg <= resEnd) ||
+                                (resBegin <= end && end <= resEnd)) {
+                                rangeUsed = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (rangeUsed) {
+                        legalOptimization = false;
+                        break;
+                    }
+                }
+
+                if (!legalOptimization) {
+                    break;
+                }
+            }
+
+            if (legalOptimization) {
+                legalDataOpsWithInputResources.insert(op.op_);
+            } else {
+                illegalDataOpsWithInputResources.insert(op.op_);
+            }
+        }
+    }
+
+    return illegalDataOpsWithInputResources;
+}
+
 // Optimize spilling of dataOps. This function will check scheduledOps list and analyze spilling sequence of dataOps.
 // Example sequence:
 //  1. ORIGINAL (dataOp)
@@ -398,11 +513,15 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
 //
 // If between ORIGINAL and SPILL_WRITE buffer is not used (e.g. such scenario can happen during prefetching) then
 // both 1. and 2. can be removed and SPILL_READ (3.) will be changed to ORIGINAL type.
+// If ORIGINAL has active input resources skip optimization verify no memory overlap.
 // TODO:
 // If between ORIGINAL and SPILL_WRITE buffer is used only as an input then SPILL_WRITE (2.) can be removed
 // and SPILL_READ (3.) turned into equivalent ORIGINAL dataOp
 void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps) {
     _log.trace("Optimize data ops spills");
+    // Find data ops which can not be optimized due to possible memory override:
+    // - data ops with input resources which may not be reserved throughout the spill
+    auto illegalDataOpsWithInputResources = identifyDataOpsWithInputOverwrite(scheduledOps);
     // Collect information about all data ops that have been spilled
     // For each such dataOp store a sequence of indexes for scheduleOps array
     // where each entry corresponds to related spillWrite/Read operation. First entry
@@ -417,7 +536,10 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
             if (_depsInfo.getExecuteOpAtIndex(op.op_).getBodyResults().size() > 1) {
                 continue;
             }
-
+            // Skip ops with input resources overlap
+            if (illegalDataOpsWithInputResources.contains(op.op_)) {
+                continue;
+            }
             // Find if this is spilling of already encountered dataOp
             auto dataOpIt = dataOpSpillTree.find(op.op_);
             if (dataOpIt != dataOpSpillTree.end()) {
@@ -545,6 +667,14 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
                         if (scheduledOps[nextSpillReadIndex].isSpillRead()) {
                             _log.nest(2).trace("Change next spillRead to origOp - '{0}'", nextSpillReadIndex);
                             scheduledOps[nextSpillReadIndex].opType_ = scheduledOps[origOrSpillReadOpIndex].opType_;
+                            // move any active resources from original op to optimized spill op
+                            if (scheduledOps[origOrSpillReadOpIndex].hasActiveInputResource()) {
+                                VPUX_THROW_WHEN(scheduledOps[nextSpillReadIndex].hasActiveInputResource(),
+                                                "Spill read '{0}' expected to have no active resources",
+                                                nextSpillReadIndex);
+                                scheduledOps[nextSpillReadIndex].inputResourceInfo_ =
+                                        scheduledOps[origOrSpillReadOpIndex].inputResourceInfo_;
+                            }
                             break;
                         }
                     }
@@ -849,7 +979,12 @@ mlir::Operation* FeasibleMemorySchedulerSpilling::SpillUsersUpdate::getViewOpFor
         }
         if (VPUIP::isPureViewOp(sourceOp)) {
             if (auto viewOp = mlir::dyn_cast<mlir::ViewLikeOpInterface>(sourceOp)) {
-                if (viewOp.getViewSource() == _bufferToSpill) {
+                auto source = viewOp.getViewSource();
+                if (mlir::isa<mlir::BlockArgument>(source)) {
+                    source = _spillingParentClass._aliasInfo.getRoot(source);
+                }
+
+                if (source == _bufferToSpill) {
                     VPUX_THROW_UNLESS(
                             viewOpForMasterBuffer == nullptr,
                             "Chain of pure-view ops is not supported for the same buffer in single async.ExecuteOp. "
@@ -949,10 +1084,8 @@ void FeasibleMemorySchedulerSpilling::SpillUsersUpdate::updateSpillBufferUsers(m
             }
 
             if (nceClusterTask != nullptr && nceClusterTask.getIsInplace().value_or(false)) {
-                auto userOutputRootBuf = *_spillingParentClass._aliasInfo
-                                                  .getRoots(VPUIP::getTopBufferOfNCEClusterTiling(
-                                                          nceClusterTask, nceClusterTask.getOutputBuff()))
-                                                  .begin();
+                auto userOutputRootBuf =
+                        *_spillingParentClass._aliasInfo.getRoots(nceClusterTask.getOutputBuff()).begin();
                 /* For long term refer to #E70663.
                    Check if inplace operation writes to this buffer.
                    If it does then inplace operation output should be added as alias.

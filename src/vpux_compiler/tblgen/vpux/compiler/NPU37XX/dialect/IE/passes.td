@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #ifndef VPUX_COMPILER_DIALECT_IE_ARCH_37XX_PASSES
@@ -519,6 +519,61 @@ def WeightsQuantFusedIntoTask: PassBase<"weights-quant-fused-into-task", "vpux::
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// ProcessAsymmetricZeroPointsForMatmul
+//
+
+def ProcessAsymmetricZeroPointsForMatmul : PassBase<"process-asymmetric-zero-points-for-matmul", "vpux::FunctionPass"> {
+    let summary = "Decompose matmuls to change u8 zero point to 128";
+
+    let description = [{
+        Decompose matmuls ( which are mapped to convolution at this stage) and convolutions with 1x1 kernel size.
+        This decomposition changes zero point of u8 weights to 128 to enable mixed precision execution. Mixed precision
+        required i8 weights with ZP=0 ,so we can fix zero point of u8 to 128 here to enable i8 conversion.
+
+        Original Formula for Matmul with u8 quantized weights
+            A: Float matrix of shape (I, J) , input matrix
+            B_q: Integer quantized matrix (uint8) derived from B, shape (J, K), weights matrix
+            S: Float scale vector for B, shape (1, K) (one scale per column k of B)
+            ZP: Integer zero-point vector for B, shape (1, K) (one ZP per column k of B)
+            C: Resulting float output matrix, shape (I, K)
+
+            B[j, k] = (B_q[j, k] - ZP[k]) * S[k]  ( Dequantization of B_q)
+            C[i, k] = sum_{j=0}^{J-1} (A[i, j] * B[j, k])
+            When B is subtituted
+            C[i, k] = sum_{j=0}^{J-1} (A[i, j] * [(B_q[j, k] - ZP[k]) * S[k]])
+
+            C[i, k] = S[k] * (sum_{j=0}^{J-1} A[i, j] * B_q[j, k]) - S[k] * ZP[k] * (sum_{j=0}^{J-1} A[i, j])
+            So from above we can see that zp related calculation can be separated and does not depend on inside iteration
+
+            Originally a matmul with zp 128 has this formula
+            C[i, k] = S[k] * (sum_{j=0}^{J-1} A[i, j] * (B_q[j, k] - 128)
+            if zp not = 128
+            C[i, k] = S[k] * (sum_{j=0}^{J-1} A[i, j] * (B_q[j, k] - zp[k])
+            to convert to zp 128 we add fix (+ zp[k]  -128 ) to inside , we also subtract it so results stays same
+            Added value does not depend on B so or internal matmul multiplication so can be pulled out :
+            C[i, k] = S[k] * (sum_{j=0}^{J-1} A[i, j] * (B_q[j, k] - zp[k] + zp[k]  -128]) - S[k] * (zp[k] -128) sum_{j=0}^{J-1} A[i, j]
+            Negate subtract to use add Op we end up with final formula
+            C[i, k] = Subtract( [Matmul(A[i, k],B_128[j, k])] , [S[k] * (- zp[k]+128)  * ReduceSum(A,dim=1)]);
+
+    }];
+
+    let constructor = "vpux::IE::arch37xx::createProcessAsymmetricZeroPointsForMatmulPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+
+    let options = [
+        Option<
+            "matmulMixedPrecisionDecompositionRatio", "matmul-mixed-precision-decomposition-ratio",
+            "double", "250",
+            "Determines when to enable Matmul Mixed Precision Decomposition"
+             "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"
+        >
     ];
 }
 

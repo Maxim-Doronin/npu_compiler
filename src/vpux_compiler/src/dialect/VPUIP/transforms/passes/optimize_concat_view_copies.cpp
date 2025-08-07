@@ -1,8 +1,9 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/attributes/dim.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
@@ -19,8 +20,10 @@
 #include "vpux/compiler/utils/reshape_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <mlir/IR/Operation.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/Value.h>
+#include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 
@@ -31,6 +34,27 @@ namespace vpux::VPUIP {
 }  // namespace vpux::VPUIP
 
 using namespace vpux;
+
+// Checks whether the given PermuteCast operation has a trivial permutation and if the input and output memory shapes
+// are compatible with the permutation attribute.
+// The function returns true for the following case:
+// 1. PermuteCast from memref<1x32x1024x96xf16> to memref<1x96x32x1024xf16, #NHWC> with perm #NCHW, where memory shapes
+// and permutation attribute are compatible.
+// The function returns false for the following cases:
+// 1.PermuteCast from memref<1x32x1024x96xf16> to memref<1x32x1024x96xf16, #NHWC> with perm #NHWC, which is not a
+// trivial permutation.
+// 2.PermuteCast from memref<1x512x216x26xf16, #NHWC> to memref<1x512x216x26xf16> with perm #NCHW, which is a
+// trivial permutation but the memory shapes are not compatible with the permutation attribute.
+bool checkMemShapesCompatibilityWithPerm(VPUIP::PermuteCastOp permuteCastOp) {
+    auto inMemShape = getMemShape(permuteCastOp.getSource());
+    auto outMemShape = getMemShape(permuteCastOp.getResult());
+    auto perm = permuteCastOp.getMemPerm();
+    if (!isTrivialPermute(inMemShape, perm)) {
+        return false;
+    }
+
+    return applyPerm(inMemShape, perm) == outMemShape;
+}
 
 namespace {
 
@@ -55,8 +79,11 @@ public:
     mlir::LogicalResult matchAndRewrite(VPUIP::ConcatViewOp concatOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    mlir::LogicalResult checkConcatUsers(mlir::Value concatOutput, std::optional<int64_t>& patternOutChannelSize,
-                                         std::optional<int64_t>& patternOutChannelOffset) const;
+    Dim inferDimAfterPermuteCast(Dim origDim, VPUIP::PermuteCastOp permuteCast) const;
+
+    mlir::LogicalResult checkConcatUsers(VPUIP::ConcatViewOp concatOp, std::optional<int64_t>& patternOutChannelSize,
+                                         std::optional<int64_t>& patternOutChannelOffset,
+                                         VPUIP::PermuteCastOp maybePermuteCast) const;
     mlir::LogicalResult checkConcatInputs(mlir::ValueRange concatInputs, mlir::Value concatOutput,
                                           const int64_t patternOutChannelSize, const int64_t patternOutChannelOffset,
                                           SmallVector<InputUpdateInfo>& inTilingCopiesInfo) const;
@@ -66,6 +93,14 @@ private:
     Logger _log;
 };
 
+Dim AvoidConcatExtraChannel::inferDimAfterPermuteCast(Dim origDim, VPUIP::PermuteCastOp permuteCast) const {
+    const auto inOrder = mlir::cast<NDTypeInterface>(permuteCast.getSource().getType()).getDimsOrder();
+    const auto outOrder = mlir::cast<NDTypeInterface>(permuteCast.getResult().getType()).getDimsOrder();
+    const auto perm = permuteCast.getMemPerm();
+
+    return inferDimAfterPermutation(origDim, inOrder, outOrder, perm);
+}
+
 // Check if all Concat users are Subview with same channels slice
 // less than Concat channels (m > n)
 //
@@ -73,15 +108,24 @@ private:
 //                          |       ...       |
 //  Subview (n output channels)     ...      Subview (n output channels)
 //
-mlir::LogicalResult AvoidConcatExtraChannel::checkConcatUsers(mlir::Value concatOutput,
+mlir::LogicalResult AvoidConcatExtraChannel::checkConcatUsers(VPUIP::ConcatViewOp concatOp,
                                                               std::optional<int64_t>& patternOutChannelSize,
-                                                              std::optional<int64_t>& patternOutChannelOffset) const {
-    auto subviews = concatOutput.getUsers();
+                                                              std::optional<int64_t>& patternOutChannelOffset,
+                                                              VPUIP::PermuteCastOp maybePermuteCast) const {
+    Dim targetSubViewDim = Dims4D::Act::C;
+    auto subviews = concatOp.getOutput().getUsers();
+    if (maybePermuteCast != nullptr) {
+        if (!checkMemShapesCompatibilityWithPerm(maybePermuteCast)) {
+            return mlir::failure();
+        }
+        targetSubViewDim = inferDimAfterPermuteCast(targetSubViewDim, maybePermuteCast);
+        subviews = maybePermuteCast.getResult().getUsers();
+    }
     if (subviews.empty()) {
         return mlir::failure();
     }
 
-    const auto concatOutChannelSize = getShape(concatOutput)[Dims4D::Act::C];
+    const auto concatOutChannelSize = getShape(concatOp.getOutput())[Dims4D::Act::C];
     for (const auto user : subviews) {
         auto subview = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(user);
 
@@ -96,20 +140,20 @@ mlir::LogicalResult AvoidConcatExtraChannel::checkConcatUsers(mlir::Value concat
             return mlir::failure();
         }
 
-        if (patternOutChannelOffset.has_value() && patternOutChannelOffset.value() != offsets[Dims4D::Act::C.ind()]) {
+        if (patternOutChannelOffset.has_value() && patternOutChannelOffset.value() != offsets[targetSubViewDim.ind()]) {
             return mlir::failure();
         }
 
-        if (patternOutChannelSize.has_value() && patternOutChannelSize.value() != sizes[Dims4D::Act::C.ind()]) {
+        if (patternOutChannelSize.has_value() && patternOutChannelSize.value() != sizes[targetSubViewDim.ind()]) {
             return mlir::failure();
         }
 
-        if (concatOutChannelSize <= sizes[Dims4D::Act::C.ind()]) {
+        if (concatOutChannelSize <= sizes[targetSubViewDim.ind()]) {
             return mlir::failure();
         }
 
-        patternOutChannelSize = sizes[Dims4D::Act::C.ind()];
-        patternOutChannelOffset = offsets[Dims4D::Act::C.ind()];
+        patternOutChannelSize = sizes[targetSubViewDim.ind()];
+        patternOutChannelOffset = offsets[targetSubViewDim.ind()];
     }
 
     return mlir::success();
@@ -346,9 +390,14 @@ mlir::LogicalResult AvoidConcatExtraChannel::matchAndRewrite(VPUIP::ConcatViewOp
         return mlir::failure();
     }
 
+    VPUIP::PermuteCastOp maybePermuteCast = nullptr;
+    if (concatOutput.hasOneUse()) {
+        maybePermuteCast = mlir::dyn_cast<VPUIP::PermuteCastOp>(*concatOutput.getUsers().begin());
+    }
+
     std::optional<int64_t> patternOutChannelSize = std::nullopt;
     std::optional<int64_t> patternOutChannelOffset = std::nullopt;
-    if (checkConcatUsers(concatOutput, patternOutChannelSize, patternOutChannelOffset).failed()) {
+    if (checkConcatUsers(concatOp, patternOutChannelSize, patternOutChannelOffset, maybePermuteCast).failed()) {
         nestedLogger.trace("Cannot optimize because of users requirements");
         return mlir::failure();
     }
@@ -397,13 +446,28 @@ mlir::LogicalResult AvoidConcatExtraChannel::matchAndRewrite(VPUIP::ConcatViewOp
         newConcatInputs.push_back(newTilingCopy.getResult());
     }
 
-    auto newOp =
-            rewriter.replaceOpWithNewOp<VPUIP::ConcatViewOp>(concatOp, newConcatInputs, outputBuffer->getResult(0));
+    auto targetSubViewDim = Dims4D::Act::C;
+    mlir::Operation* newOp =
+            rewriter.create<VPUIP::ConcatViewOp>(concatOp.getLoc(), newConcatInputs, outputBuffer->getResult(0));
+    if (maybePermuteCast == nullptr) {
+        rewriter.replaceAllUsesWith(concatOp, newOp->getResult(0));
+    } else {
+        targetSubViewDim = inferDimAfterPermuteCast(targetSubViewDim, maybePermuteCast);
+        auto origShape = getShape(maybePermuteCast.getResult());
+        auto newShape = origShape.toValues();
+        newShape[targetSubViewDim] = patternOutChannelSize.value();
+        auto newType = mlir::cast<NDTypeInterface>(maybePermuteCast.getResult().getType()).changeShape(newShape);
 
-    for (auto user : newOp.getOutput().getUsers()) {
+        newOp = rewriter.create<VPUIP::PermuteCastOp>(maybePermuteCast.getLoc(), newType, newOp->getResult(0),
+                                                      maybePermuteCast.getDstOrderAttr(),
+                                                      maybePermuteCast.getMemPermAttr());
+        rewriter.replaceAllUsesWith(maybePermuteCast, newOp->getResult(0));
+    }
+
+    for (auto user : newOp->getResult(0).getUsers()) {
         if (auto subviewOp = mlir::dyn_cast<VPUIP::SubViewOp>(user)) {
             auto newOffsets = parseIntArrayAttr<int64_t>(subviewOp.getStaticOffsetsAttr());
-            newOffsets[Dims4D::Act::C.ind()] = 0;
+            newOffsets[targetSubViewDim.ind()] = 0;
             auto newOffsetsAttr = getIntArrayAttr(subviewOp.getContext(), ArrayRef(newOffsets));
             subviewOp->setAttr(subviewOp.getStaticOffsetsAttrName(), newOffsetsAttr);
             vpux::inferReturnTypes(user, vpux::InferShapedTypeMode::ALL);
@@ -412,11 +476,17 @@ mlir::LogicalResult AvoidConcatExtraChannel::matchAndRewrite(VPUIP::ConcatViewOp
         }
     }
 
+    nestedLogger.trace("Successfully Avoid Concat Extra Channel {0}", concatOp->getLoc());
+
+    if (maybePermuteCast != nullptr) {
+        rewriter.eraseOp(maybePermuteCast);
+    }
+    rewriter.eraseOp(concatOp);
+
     for (auto inTilingCopyInfo : inTilingCopiesInfo) {
         rewriter.eraseOp(inTilingCopyInfo.distributedCopyOp);
     }
 
-    nestedLogger.trace("Successfully Avoid Concat Extra Channel");
     return mlir::success();
 }
 
@@ -2211,6 +2281,29 @@ private:
     Logger _log;
 };
 
+bool isSharedBufferOfInplaceEltwise(VPUIP::CopyOp copyOp) {
+    for (auto user : copyOp->getResult(0).getUsers()) {
+        auto clusterTaskOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(user);
+        if (clusterTaskOp == nullptr) {
+            continue;
+        }
+        if (clusterTaskOp.getTaskType() != VPUIP::NCETaskType::ELTWISE ||
+            !clusterTaskOp.getIsInplace().value_or(false)) {
+            continue;
+        }
+
+        // For in-place Eltwise op, check if the current copy op's buffer is shared by input and output
+        auto outputRootBuf = VPUIP::getLayerOutputs(clusterTaskOp)[0];
+        auto val = copyOp->getResult(0);
+        vpux::ValueSourceInfo aliasInfo(val);
+        auto inputRootBuf = *aliasInfo.getRoots(val).begin();
+        if (outputRootBuf == inputRootBuf) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /*
 Optimize subgraph like below, note that for copy0 and copy2, copy1 and copy3, they should have same size and offsets
   Input0      Input1
@@ -2226,6 +2319,7 @@ Optimize subgraph like below, note that for copy0 and copy2, copy1 and copy3, th
 */
 mlir::LogicalResult OptimizeConcatSubviewPattern::matchAndRewrite(VPUIP::ConcatViewOp concatOp,
                                                                   mlir::PatternRewriter& rewriter) const {
+    _log.trace("OptimizeConcatSubviewPattern: Got Concat at '{0}'", concatOp.getLoc());
     auto nestedLogger = _log.nest();
 
     auto concatOutput = concatOp.getOutput();
@@ -2269,6 +2363,11 @@ mlir::LogicalResult OptimizeConcatSubviewPattern::matchAndRewrite(VPUIP::ConcatV
 
         auto tilingCopy = mlir::dyn_cast_or_null<VPUIP::CopyOp>(*(subview->getUsers().begin()));
         if (tilingCopy == nullptr || !vpux::VPUIP::hasDistributedOperand(tilingCopy)) {
+            return mlir::failure();
+        }
+        // Can't optimize in-place Eltwise's shared input copy
+        // otherwise the Eltwise won't be in-place anymore, and the op will exceed CMX memory
+        if (isSharedBufferOfInplaceEltwise(tilingCopy)) {
             return mlir::failure();
         }
 
@@ -2629,18 +2728,6 @@ private:
         return true;
     }
 
-    bool checkConcatPermuteCastCompatibility(VPUIP::PermuteCastOp permuteCastOp) const {
-        // Need to make sure permuterCastOp's input and output memShape are the same.
-        // Like for PermuteCast from memref<1x32x1024x96xf16> to memref<1x96x32x1024xf16, #NHWC>, input and
-        // output memShape are both <1x32x1024x96xf16>. But if it is PermuteCast from memref<1x32x1024x96xf16>
-        // to memref<1x32x1024x96xf16, #NHWC>, then output memShape is <1x1024x96x32>, all the data are mixed
-        // and chaotic, we could not do the optimizaton.
-        auto inType = mlir::cast<NDTypeInterface>(permuteCastOp.getSource().getType());
-        auto outType = mlir::cast<NDTypeInterface>(permuteCastOp.getResult().getType());
-
-        return inType.getMemShape() == outType.getMemShape();
-    }
-
     // Input of the left side, must be block argument
     std::pair<mlir::Value, VPUIP::SubViewOp> getLeftBranchInput(VPUIP::ConcatViewOp concatOp) const {
         const size_t LEFT_INPUT_ID = 0;  // Left must be always first to preserve concat order
@@ -2706,7 +2793,7 @@ public:
         auto genReshapeOp = getSingleUserOfType<VPUIP::GenericReshapeOp>(concatOp);
         if (genReshapeOp == nullptr) {
             permuteCastOp = getSingleUserOfType<VPUIP::PermuteCastOp>(concatOp);
-            if (permuteCastOp == nullptr || !checkConcatPermuteCastCompatibility(permuteCastOp)) {
+            if (permuteCastOp == nullptr || !checkMemShapesCompatibilityWithPerm(permuteCastOp)) {
                 nestedLog.trace("No permuteCast or permuteCast compatibility check fail");
                 return mlir::failure();
             }

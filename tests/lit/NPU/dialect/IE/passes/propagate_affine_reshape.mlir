@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2022-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --propagate-affine-reshape %s | FileCheck %s
@@ -2083,4 +2083,28 @@ func.func @PropagateAffineReshapeThroughConvert(%arg0:  tensor<1x1920x12x270xf16
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [2], [3]], shape_value = [1, 1920, 3, 1080]} : tensor<1x1920x12x270xf32, {order = #NHWC}> -> tensor<1x1920x3x1080xf32, {order = #NHWC}>
     // CHECK:  return [[RESHAPE]] : tensor<1x1920x3x1080xf32, {order = #NHWC}>
 
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+// CHECK-LABEL: NotPropagateAffineReshapeThroughAddWithODUPermute
+// CHECK-SAME:    ([[INPUT0:%arg[0-9]]]: tensor<1x64x784x4xf16, {order = #NHWC}>,
+// CHECK-SAME:     [[INPUT1:%arg[0-9]]]: tensor<1x32x3136x1xf16, {order = #NHWC}>
+func.func @NotPropagateAffineReshapeThroughAddWithODUPermute(%arg0:  tensor<1x64x784x4xf16, {order = #NHWC}>, %arg1: tensor<1x32x3136x1xf16, {order = #NHWC}>) -> tensor<1x32x3136x1xf16, {order = #NWCH}> {
+    %cst = const.Declare tensor<32x64x1x1xf16, {order = #NHWC}> = dense<2.0> : tensor<32x64xf16>, [#const.Reshape<[32, 64, 1, 1]>, #const.CastElemType<f16>, #const.Reorder<#NHWC>]
+    %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x64x784x4xf16, {order = #NHWC}>, tensor<32x64x1x1xf16, {order = #NHWC}> -> tensor<1x32x784x4xf16, {order = #NHWC}>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 32, 3136, 1]} : tensor<1x32x784x4xf16, {order = #NHWC}> -> tensor<1x32x3136x1xf16, {order = #NHWC}>
+    %2 = IE.Add(%1, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x3136x1xf16, {order = #NHWC}>, tensor<1x32x3136x1xf16, {order = #NHWC}> -> tensor<1x32x3136x1xf16, {order = #NWCH}>
+    return %2 : tensor<1x32x3136x1xf16, {order = #NWCH}>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<32x64x1x1xf16, {order = #NHWC}> = dense<2.000000e+00> : tensor<32x64xf16>, [#const.Reshape<[32, 64, 1, 1]>, #const.CastElemType<f16>, #const.Reorder<#NHWC>]
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x64x784x4xf16, {order = #NHWC}>, tensor<32x64x1x1xf16, {order = #NHWC}> -> tensor<1x32x784x4xf16, {order = #NHWC}>
+    // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape([[CONV]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 32, 3136, 1]} : tensor<1x32x784x4xf16, {order = #NHWC}> -> tensor<1x32x3136x1xf16, {order = #NHWC}>
+    // CHECK: [[ADD:%.+]] = IE.Add([[RESHAPE]], [[INPUT1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x3136x1xf16, {order = #NHWC}>, tensor<1x32x3136x1xf16, {order = #NHWC}> -> tensor<1x32x3136x1xf16, {order = #NWCH}>
+
+    // CHECK:  return [[ADD]] : tensor<1x32x3136x1xf16, {order = #NWCH}>
 }

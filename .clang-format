@@ -23,6 +23,8 @@ FixNamespaceComments: true
 IncludeBlocks: Preserve
 IndentCaseLabels: false
 IndentWidth: 4
+InsertBraces: true
+InsertNewlineAtEOF: true
 PointerAlignment: Left
 SpaceBeforeCpp11BracedList: false
 SpaceBeforeCtorInitializerColon: false

@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2023-2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 
+#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -26,7 +27,7 @@ void vpux::VPUIP::arch37xx::buildOptimizeCopiesPipeline(mlir::OpPassManager& pm,
                                                         const VPUIP::arch37xx::OptimizeCopiesOptions& options,
                                                         Logger log) {
     if (options.enableOptimizeCopies) {
-        pm.addPass(VPUIP::createOptimizeCopiesPass(log));
+        pm.addPass(VPUIP::createOptimizeCopiesPass(options.workloadManagementMode, log));
         pm.addPass(VPUIP::createUniquifyWeightsTableCopiesPass(log));
         pm.addPass(VPUIP::createOptimizeConcatViewCopiesPass(log));
         pm.addPass(VPUIP::createFuseDDRCopiesIntoConcats(log));
@@ -166,7 +167,7 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     // Level 1 : VPU RunTime
     pm.addPass(VPUIP::createUnrollSwKernelPass(log));
 
-    pm.addPass(VPUIP::arch37xx::createUnrollClusterTilingPass(log));
+    pm.addPass(VPUIP::arch37xx::createUnrollDistributedOpsPass(log));
     pm.addPass(VPUIP::createNNDMATilingPass(log));
     if (options.enableWeightsSparsity) {
         pm.addPass(VPUIP::createFlattenSparseWeightsTypesPass(log));
@@ -245,6 +246,7 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPURT::createInferenceExecutionAnalysisPass(options.scheduleTraceFile, options.enableScheduleTrace,
                                                                options.enableActivityFactor, log));
     }
+    pm.addPass(VPU::createCostModelAnalysisDestroyPass(log));
     if (options.enableDumpTaskStats) {
         // Force logging if dump-task-stats was enabled explicitly on the command line
         pm.addPass(VPUIP::createDumpStatisticsOfTaskOpsPass(

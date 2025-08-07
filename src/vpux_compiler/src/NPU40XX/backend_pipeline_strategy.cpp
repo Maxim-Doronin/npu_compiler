@@ -1,6 +1,6 @@
 //
 // Copyright (C) 2025 Intel Corporation.
-// SPDX-License-Identifier: Apache 2.0
+// SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/backend_pipeline_strategy.hpp"
@@ -22,7 +22,7 @@ using namespace vpux;
 // BackendPipelineStrategy40XX::buildELFPipeline
 //
 
-void BackendPipelineStrategy40XX::buildELFPipeline(mlir::PassManager& pm, const intel_npu::Config& config,
+void BackendPipelineStrategy40XX::buildELFPipeline(mlir::OpPassManager& pm, const intel_npu::Config& config,
                                                    mlir::TimingScope& rootTiming, Logger log, bool useWlm) {
     auto buildTiming = rootTiming.nest("Build compilation pipeline");
 
@@ -35,7 +35,8 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::PassManager& pm, const 
                       "build ELF pipeline failed to parse BACKEND_COMPILATION_PARAMS: {0}",
                       config.get<intel_npu::BACKEND_COMPILATION_PARAMS>());
 
-    if (compilationMode == config::CompilationMode::DefaultHW) {
+    if (compilationMode == config::CompilationMode::DefaultHW ||
+        compilationMode == config::CompilationMode::WSMonolithic) {
         auto options = parseCompilationModeParams<DefaultHWOptions40XX>(
                 config.get<intel_npu::COMPILATION_MODE_PARAMS>(), getArchKind(config));
         VPUX_THROW_UNLESS(options != nullptr, "build ELF pipeline failed to parse COMPILATION_MODE_PARAMS: {0}",
