@@ -20,7 +20,7 @@ outputs:
   npu-linux-driver-repository:
     description: 'NPU Linux Driver Repository full name: fork/linux-npu-driver'
     value: ${{ steps.read-linux-npu-driver-sha.outputs.drv-repository }}
-  npu-linux-driver--sha:
+  npu-linux-driver-sha:
     description: 'NPU Linux Driver commit SHA'
     value: ${{ steps.read-linux-npu-driver-sha.outputs.drv-sha }}
   omz-repository:
