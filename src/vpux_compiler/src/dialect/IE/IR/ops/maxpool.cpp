@@ -3,12 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
-#include "vpux/compiler/dialect/core/IR/attributes.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
@@ -61,8 +59,8 @@ mlir::LogicalResult vpux::IE::MaxPoolOp::reifyResultShapes(mlir::OpBuilder& buil
     const auto padBegin = parseIntArrayAttr<int64_t>(getPadsBeginAttr());
     const auto padEnd = parseIntArrayAttr<int64_t>(getPadsEndAttr());
 
-    auto outShape =
-            reifyConvPoolTensors(builder, getInput(), getOutput(), kernelSize, strides, padBegin, padEnd, getLoc());
+    auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), nullptr, kernelSize, strides, padBegin,
+                                         padEnd, getLoc());
 
     if (mlir::failed(outShape)) {
         return outShape;
