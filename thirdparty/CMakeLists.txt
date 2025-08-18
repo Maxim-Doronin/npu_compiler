@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2022-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 #
@@ -47,15 +47,15 @@ endif()
 # flatbuffers
 #
 
-if(CMAKE_SOURCE_DIR STREQUAL OpenVINO_SOURCE_DIR AND
-    ENABLE_OV_TF_LITE_FRONTEND AND (NOT ENABLE_SYSTEM_FLATBUFFERS OR NOT Flatbuffers_FOUND))
+if(TARGET flatbuffers OR TARGET flatc)
     # we are building NPU plugin via -DOPENVINO_EXTRA_MODULES
     # and flatbuffers is already built as part of OpenVINO in case of
     # building in a single tree
+    message(WARNING "Flatbuffers target present. Possible version mismatch.")
 else()
-    set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(FLATBUFFERS_INSTALL OFF CACHE BOOL "" FORCE)
-    set(FLATBUFFERS_BUILD_FLATC ON CACHE BOOL "" FORCE)
+    set(FLATBUFFERS_BUILD_TESTS OFF)
+    set(FLATBUFFERS_INSTALL OFF)
+    set(FLATBUFFERS_BUILD_FLATC ON)
 
     add_subdirectory(flatbuffers EXCLUDE_FROM_ALL)
 
@@ -69,14 +69,11 @@ else()
             target_compile_options(flatc PRIVATE -Wno-unused-but-set-variable)
         endif()
     endif()
-
-    vpux_add_native_tool(flatc "${CMAKE_CURRENT_SOURCE_DIR}/flatbuffers"
-        CMAKE_ARGS
-            "FLATBUFFERS_BUILD_TESTS:BOOL=OFF"
-            "FLATBUFFERS_INSTALL:BOOL=OFF"
-            "FLATBUFFERS_BUILD_FLATC:BOOL=ON"
-    )
 endif()
+set(flatc_TARGET flatc)
+set(flatc_COMMAND $<TARGET_FILE:flatc>)
+set(flatc_TARGET "${flatc_TARGET}" PARENT_SCOPE)
+set(flatc_COMMAND "${flatc_COMMAND}" PARENT_SCOPE)
 
 #
 # npu_elf
@@ -94,12 +91,12 @@ else()
     # Legacy no-monorepo scenario
     add_subdirectory(elf/vpux_elf EXCLUDE_FROM_ALL)
     target_include_directories(npu_elf PRIVATE
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU37XX/dialect/NPUReg37XX/firmware_headers/details"
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers/details")
+        "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU37XX/dialect/NPUReg37XX/firmware_headers/details"
+        "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers/details")
 
     target_include_directories(vpux_elf PRIVATE
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU37XX/dialect/NPUReg37XX/firmware_headers/details"
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers/details")
+        "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU37XX/dialect/NPUReg37XX/firmware_headers/details"
+        "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers/details")
 endif()
 
 #
@@ -110,4 +107,6 @@ set(VPUNN_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
 set(VPUNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(VPUNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(VPUNN_OPT_LEGACY_ZTILING ON CACHE BOOL "" FORCE)
+set(VPUNN_OPT_LEGACY_DMA_TH_4 ON CACHE BOOL "" FORCE)
+set(VPUNN_OPT_LEGACY_DMA_TH_5 OFF CACHE BOOL "" FORCE)
 add_subdirectory(vpucostmodel EXCLUDE_FROM_ALL)

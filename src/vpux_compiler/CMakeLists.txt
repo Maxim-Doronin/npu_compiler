@@ -24,12 +24,12 @@ set(gen_base_dst_include_dir "src/vpux_compiler/include/vpux/compiler")
 # SCHEMA target
 #
 if(ENABLE_NPU_MONO)
-    if(NOT DEFINED GRAPHFILE_SCHEMA_SUBMODULE_PATH)
-        message(FATAL_ERROR "Graphfile schema submodule path is not set while `npu_mono` was activated")
+    if(NOT DEFINED ELF_SUBMODULE_PATH)
+        message(FATAL_ERROR "ELF submodule path is not set while `npu_mono` was activated")
     endif()
-    set(SCHEMA_SOURCE_DIR ${GRAPHFILE_SCHEMA_SUBMODULE_PATH}/src/schema)
+    set(SCHEMA_SOURCE_DIR ${ELF_SUBMODULE_PATH}/src/schema)
 else()
-    set(SCHEMA_SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/graphFile-schema/src/schema) # Legacy path
+    set(SCHEMA_SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/elf/src/schema) # Legacy path
 endif(ENABLE_NPU_MONO)
 
 
@@ -77,7 +77,7 @@ add_subdirectory(tblgen)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(SYSTEM ${CMAKE_CURRENT_BINARY_DIR}/include)
-# GraphFile schema is used in tblgen and therefore in entire compiler
+# Elf schema is used in tblgen and therefore in entire compiler
 include_directories(
     ${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPUIP/generated
     $<TARGET_PROPERTY:flatbuffers,INTERFACE_INCLUDE_DIRECTORIES>

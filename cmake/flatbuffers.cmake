@@ -77,7 +77,7 @@ function(vpux_gf_version_generate SRC_DIR DST_DIR)
     )
 
     if ("${GIT_DESCRIBE_DIRTY}" STREQUAL "")
-        message(WARNING "GraphFile version cannot be read from ${SRC_DIR}")
+        message(WARNING "ELF version cannot be read from ${SRC_DIR}")
         set(GIT_DESCRIBE_DIRTY "v3.35.2")
     endif()
 
