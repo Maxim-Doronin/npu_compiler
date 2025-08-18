@@ -3,6 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/scf_tiling/scf_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
@@ -472,3 +477,7 @@ mlir::FailureOr<SmallVector<mlir::Operation*>> vpux::VPU::applySCFVerticalFusion
 
     return to_small_vector(tiledResults->fusedProducers);
 }
+
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
