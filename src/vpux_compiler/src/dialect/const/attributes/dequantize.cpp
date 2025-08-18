@@ -46,25 +46,30 @@ Const::Content vpux::Const::DequantizeAttr::transform(vpux::Const::Content& inpu
     auto output =
             Const::Content::allocTempBuffer(inferOutputType(input.getType()), mlir::Float32Type::get(getContext()),
                                             inferOutputSplat(input.isSplat(), input.getType()));
-    const auto qVals = input.getValues<int64_t>();
     auto realVals = output.getTempBuf<float>();
 
     if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(qElemType)) {
         const auto scale = uniformType.getScale();
         const auto zeroPoint = uniformType.getZeroPoint();
 
-        if (const auto quantileUniformType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(qElemType)) {
-            const auto quantilesLUT = quantileUniformType.getQuantiles();
-            for (size_t i = 0; i < realVals.size(); ++i) {
-                realVals[i] = dequantizeDouble(quantilesLUT[qVals[i]], scale, zeroPoint);
+        input.read([&](auto qVals) {
+            if (const auto quantileUniformType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(qElemType)) {
+                const auto quantilesLUT = quantileUniformType.getQuantiles();
+                for (size_t i = 0; i < realVals.size(); ++i) {
+                    const auto qVal = checked_cast<int64_t>(qVals[i]);
+                    realVals[i] = dequantizeDouble(quantilesLUT[qVal], scale, zeroPoint);
+                }
+            } else {
+                for (size_t i = 0; i < realVals.size(); ++i) {
+                    const auto qVal = checked_cast<int64_t>(qVals[i]);
+                    realVals[i] = dequantize(qVal, scale, zeroPoint);
+                }
             }
-        } else {
-            for (size_t i = 0; i < realVals.size(); ++i) {
-                realVals[i] = dequantize(qVals[i], scale, zeroPoint);
-            }
-        }
+        });
 
     } else if (const auto uniformPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(qElemType)) {
+        const auto qVals = input.getValues<int64_t>();
+
         const auto scales = uniformPerAxisType.getScales();
         const auto zeroPoints = uniformPerAxisType.getZeroPoints();
         const auto axis = Dim(uniformPerAxisType.getQuantizedDimension());

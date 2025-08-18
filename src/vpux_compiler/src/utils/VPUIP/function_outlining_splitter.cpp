@@ -4,23 +4,19 @@
 //
 
 #include "vpux/compiler/utils/VPUIP/function_outlining_splitter.hpp"
-#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/async_deps_info.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-#include "vpux/compiler/dialect/core/transforms/passes.hpp"
-
-#include "vpux/compiler/utils/allocate_buffers.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/async_dialect_utils.hpp"
-#include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
+#include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Pass/AnalysisManager.h>
 #include <mlir/Pass/PassManager.h>
-#include <stack>
 
 using namespace vpux;
 

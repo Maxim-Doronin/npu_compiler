@@ -14,11 +14,11 @@ using namespace vpux;
 // createPassesRegistry
 //
 
-std::unique_ptr<IPassesRegistry> vpux::createPassesRegistry(VPU::ArchKind arch) {
+std::unique_ptr<IPassesRegistry> vpux::createPassesRegistry(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return std::make_unique<PassesRegistry37XX>();
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return std::make_unique<PassesRegistry40XX>();
     default:
         VPUX_THROW("Unsupported arch kind: {0}", arch);

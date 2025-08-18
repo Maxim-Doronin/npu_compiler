@@ -22,27 +22,18 @@ void checkCompilerOptions(const intel_npu::Config& config) {
     VPUX_THROW_WHEN(options == nullptr, "Failed to parse COMPILATION_MODE_PARAMS");
 }
 
-template <typename ReferenceSWOptions, typename DefaultHWOptions>
 void checkCompilerOptions(const intel_npu::Config& config) {
-    const auto compilationMode = getCompilationMode(config);
-    if (compilationMode == config::CompilationMode::ReferenceSW) {
-        checkCompilerOptions<ReferenceSWOptions>(config);
-    } else if (compilationMode == config::CompilationMode::DefaultHW ||
-               compilationMode == config::CompilationMode::HostCompile) {
-        checkCompilerOptions<DefaultHWOptions>(config);
-    } else if (compilationMode == config::CompilationMode::ShaveCodeGen) {
-        checkCompilerOptions<DefaultHWOptions>(config);
+    const auto arch = getArchKind(config);
+    if (arch == config::ArchKind::NPU37XX) {
+        checkCompilerOptions<DefaultHWOptions37XX>(config);
+    } else if (arch == config::ArchKind::NPU40XX) {
+        checkCompilerOptions<DefaultHWOptions40XX>(config);
     }
 }
 
-void checkCompilerOptions(const intel_npu::Config& config) {
-    const auto arch = getArchKind(config);
-    if (arch == VPU::ArchKind::NPU37XX) {
-        checkCompilerOptions<ReferenceSWOptions37XX, DefaultHWOptions37XX>(config);
-    } else if (arch == VPU::ArchKind::NPU40XX) {
-        checkCompilerOptions<ReferenceSWOptions40XX, DefaultHWOptions40XX>(config);
-    }
-}
+/// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+/// See https://llvm.org/LICENSE.txt for license information.
+/// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 /// Parse in the next argument from the given options string. Returns a tuple
 /// containing [the key of the option, the value of the option, updated

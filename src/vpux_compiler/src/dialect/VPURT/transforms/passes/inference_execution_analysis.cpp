@@ -5,6 +5,7 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
@@ -149,7 +150,7 @@ private:
 void InferenceExecutionAnalysisPass::safeRunOnFunc() {
     auto funcOp = getOperation();
     auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(moduleOp);
+    const auto arch = config::getArch(moduleOp);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(moduleOp);
     auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
     CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);

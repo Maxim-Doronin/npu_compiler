@@ -6,6 +6,7 @@
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/convert_utils.hpp"
 #include "vpux/compiler/utils/stable_hash.hpp"
 #include "vpux/utils/core/format.hpp"

@@ -7,11 +7,13 @@
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -377,23 +379,28 @@ vpux::NDTypeInterface TensorNDTypeInterface::pad(mlir::Type type, vpux::ShapeRef
     VPUX_THROW_UNLESS(padBefore.size() == padAfter.size(), "Got non consistent 'padBefore' and 'padAfter' values");
     VPUX_THROW_UNLESS(origShape.size() == padBefore.size(), "Paddings and input shape are not consistent");
 
-    Shape newShape(origShape.size());
-    for (auto ind : irange(newShape.size())) {
-        const auto d = Dim(ind);
-        newShape[d] = origShape[d] + padBefore[d] + padAfter[d];
-    }
+    return callOnShapeOf(type, [&](const auto& inShape) {
+        auto outShape = copyShape(inShape);
+        for (auto ind : irange(inShape.size())) {
+            const auto d = Dim(ind);
+            outShape[d] = inShape[d] + padBefore[d] + padAfter[d];
+        }
+        auto [outStaticShape, outBounds, outDimMask] = splitShapeAndRepresentation(outShape);
 
-    auto elemType = getElementType(type);
-    if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
-        elemType = expandScalesAndZP(perAxisQType, padBefore, padAfter);
-    }
+        auto elemType = getElementType(type);
+        if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
+            elemType = expandScalesAndZP(perAxisQType, padBefore, padAfter);
+        }
 
-    const auto newType = vpux::getTensorType(newShape, elemType, getDimsOrder(type), getMemSpace(type), getBounds(type),
-                                             getDynamicDimsMask(type));
-    const auto loc = mlir::UnknownLoc::get(type.getContext());
-    VPUX_THROW_UNLESS(vpux::validateQuantElemType(loc, newType).succeeded(), "Got invalid ShapedType '{0}'", newType);
+        const auto newType = vpux::getTensorType(outStaticShape, elemType, getDimsOrder(type), getMemSpace(type),
+                                                 outBounds, outDimMask);
 
-    return newType;
+        const auto loc = mlir::UnknownLoc::get(type.getContext());
+        VPUX_THROW_UNLESS(vpux::validateQuantElemType(loc, newType).succeeded(), "Got invalid ShapedType '{0}'",
+                          newType);
+
+        return newType;
+    });
 }
 
 //

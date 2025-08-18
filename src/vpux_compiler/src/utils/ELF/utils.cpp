@@ -10,6 +10,7 @@
 #include <vpux_elf/reader.hpp>
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 ArrayRef<uint8_t> vpux::ELF::getDataAndSizeOfElfSection(ArrayRef<uint8_t> elfBlob,
@@ -77,7 +78,7 @@ vpux::ELF::MainOp vpux::ELF::getElfMainOp(mlir::func::FuncOp funcOp) {
 ArrayRef<uint8_t> vpux::ELF::getKernelELF(mlir::Operation* operation, StringRef kernelPath,
                                           ArrayRef<StringRef> sectionNames) {
     const auto& kernelInfo = ShaveBinaryResources::getInstance();
-    const auto archKind = VPU::getArch(operation);
+    const auto archKind = config::getArch(operation);
     const auto arch = ShaveBinaryResources::getSwKernelArchString(archKind);
     llvm::ArrayRef<uint8_t> elfBlob = kernelInfo.getElf(kernelPath, arch);
 
@@ -148,14 +149,14 @@ void ELF::SymbolReferenceMap::walkAllSymbols() {
 //
 
 namespace {
-const std::unordered_map<VPU::ArchKind, elf::platform::ArchKind> vpuToElfArchEnumMap = {
-        {VPU::ArchKind::UNKNOWN, elf::platform::ArchKind::UNKNOWN},
-        {VPU::ArchKind::NPU37XX, elf::platform::ArchKind::VPUX37XX},
-        {VPU::ArchKind::NPU40XX, elf::platform::ArchKind::VPUX40XX},
+const std::unordered_map<config::ArchKind, elf::platform::ArchKind> vpuToElfArchEnumMap = {
+        {config::ArchKind::UNKNOWN, elf::platform::ArchKind::UNKNOWN},
+        {config::ArchKind::NPU37XX, elf::platform::ArchKind::VPUX37XX},
+        {config::ArchKind::NPU40XX, elf::platform::ArchKind::VPUX40XX},
 };
 }  // namespace
 
-elf::platform::ArchKind vpux::ELF::mapVpuArchKindToElfArchKind(const VPU::ArchKind& archKind) {
+elf::platform::ArchKind vpux::ELF::mapVpuArchKindToElfArchKind(const config::ArchKind& archKind) {
     return vpuToElfArchEnumMap.at(archKind);
 }
 

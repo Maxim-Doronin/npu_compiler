@@ -13,6 +13,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/range.hpp"
 
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/IR/BuiltinOps.h>
 
 using namespace vpux;
@@ -108,13 +109,24 @@ void net::NetworkInfoOp::build(mlir::OpBuilder& builder, mlir::OperationState& s
 }
 
 mlir::LogicalResult net::NetworkInfoOp::verifySymbolUses(mlir::SymbolTableCollection& symbolTable) {
+    auto& cnnOp = *this;
+    const bool hostCompileMode = config::getCompilationMode(cnnOp) == config::CompilationMode::HostCompile;
     auto netFunc = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(*this, getEntryPointAttr());
 
     if (netFunc == nullptr) {
+        if (hostCompileMode) {
+            // For host compilation, mlir::func::FuncOp is transformed to LLVMFuncOp in ConvertFuncToLLVMPass
+            // So, if netFunc is null and llvmFuncOp is not null, skip netinfo verification
+            // Later, revisit here if an additional pass is added to remove netinfo or transform it to something
+            // global binary
+            auto llvmFuncOp = symbolTable.lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(*this, getEntryPointAttr());
+            if (llvmFuncOp != nullptr) {
+                return mlir::success();
+            }
+        }
         return errorAt(*this, "entryPoint '@{0}' doesn't refer to existing Function", getEntryPoint());
     }
 
-    auto& cnnOp = *this;
     auto inputsInfo = to_small_vector(this->getInputsInfo().getOps<net::DataInfoOp>());
     auto outputsInfo = to_small_vector(this->getOutputsInfo().getOps<net::DataInfoOp>());
     SmallVector<net::DataInfoOp> profilingOutputsInfo;
@@ -128,7 +140,6 @@ mlir::LogicalResult net::NetworkInfoOp::verifySymbolUses(mlir::SymbolTableCollec
     const bool hoistedIOs = (netFuncType.getNumInputs() == 0) && (netFuncType.getNumResults() == 0);
     // Note: host compilation pipeline generate LLVM main function w/ no return value in ConvertToLLVMUMDCallsPass
     //       This is to alleviate output buffer verification for host compilation
-    const bool hostCompileMode = config::getCompilationMode(cnnOp) == config::CompilationMode::HostCompile;
     const bool resultVerificationDisabled = hoistedIOs || (hostCompileMode && (netFuncType.getResults().size() == 0));
 
     if (checkFunctionPrototype(cnnOp, netFunc, inputsInfo, outputsInfo, profilingOutputsInfo,
@@ -180,7 +191,7 @@ mlir::LogicalResult net::NetworkInfoOp::verifySymbolUses(mlir::SymbolTableCollec
         });
 
         size_t argOffset = 0;
-        ArrayRef<Type> outputTypes;
+        ArrayRef<mlir::Type> outputTypes;
         if (isArgsBufferized && args.size() > inputsInfo.size()) {
             argOffset = inputsInfo.size();
             outputTypes = netFuncType.getInputs();

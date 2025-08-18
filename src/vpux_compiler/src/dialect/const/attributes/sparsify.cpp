@@ -1,16 +1,14 @@
 // Copyright (C) 2022-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
-
 #include "vpux/utils/core/numeric.hpp"
 
 #include <mlir/IR/DialectImplementation.h>
-
-#include <numeric>
 
 using namespace vpux;
 

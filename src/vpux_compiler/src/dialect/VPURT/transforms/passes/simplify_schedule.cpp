@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 
@@ -334,7 +335,7 @@ void SimplifySchedulePass::safeRunOnFunc() {
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
     auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
     CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);

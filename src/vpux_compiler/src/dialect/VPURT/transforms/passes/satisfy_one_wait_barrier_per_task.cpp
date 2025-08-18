@@ -4,10 +4,12 @@
 //
 
 #include "vpux/compiler/core/barrier_info.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/utils/options.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 
@@ -47,7 +49,7 @@ void SatisfyOneWaitBarrierPerTaskPass::safeRunOnFunc() {
         barrierInfo.enableUnevenVariantSplit();
     }
 
-    auto wlmFlag = vpux::VPUIP::getWlmStatus(module) == vpux::VPUIP::WlmStatus::ENABLED;
+    auto wlmFlag = VPU::getWorkloadManagementStatus(module) == VPU::WorkloadManagementStatus::ENABLED;
 
     // In case of WLM all tasks need to be driven by single barrier as this is one of the constraints
     // to make each schedule feasible for WLM enabling
@@ -58,7 +60,7 @@ void SatisfyOneWaitBarrierPerTaskPass::safeRunOnFunc() {
         _log.trace("WLM flag turned off because number of barrier is above threshold {0} > {1}",
                    barrierInfo.getNumOfBarrierOps(), _virtualBarrierThresholdForWlm.value());
         wlmFlag = false;
-        vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(module, VPU::WorkloadManagementStatus::FAILED);
     }
 
     const auto maxAvailableSlots = maxVariantCount.hasValue() ? checked_cast<size_t>(maxVariantCount.getValue())

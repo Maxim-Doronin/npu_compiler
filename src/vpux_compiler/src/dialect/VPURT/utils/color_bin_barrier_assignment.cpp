@@ -18,11 +18,11 @@ constexpr double THRESHOLD_FOR_MIN_BARRIER_BIN = 20;
 
 // Targets which need to delay the reuse of physical barriers, since on those hardware platform, the runtime has to
 // reprogram the barrier count before the next reuse
-const std::set<VPU::ArchKind> compatibleTargets = {VPU::ArchKind::NPU37XX};
+const std::set<config::ArchKind> compatibleTargets = {config::ArchKind::NPU37XX};
 
 namespace {
 
-size_t getBarrierGracePeriod(VPU::ArchKind arch) {
+size_t getBarrierGracePeriod(config::ArchKind arch) {
     if (compatibleTargets.find(arch) != compatibleTargets.end()) {
         return BARRIER_GRACE_PERIOD;
     }
@@ -30,7 +30,7 @@ size_t getBarrierGracePeriod(VPU::ArchKind arch) {
 }
 }  // namespace
 
-VPURT::BarrierColorBin::BarrierColorBin(size_t numBarriers, VPU::ArchKind arch, Logger log)
+VPURT::BarrierColorBin::BarrierColorBin(size_t numBarriers, config::ArchKind arch, Logger log)
         : _numBarriers(numBarriers), _log(log) {
     _gracePeriod = getBarrierGracePeriod(arch);
 }

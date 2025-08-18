@@ -3,15 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/IR/Builders.h>
-#include <mlir/IR/BuiltinAttributes.h>
-#include <mlir/IR/Visitors.h>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
-#include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/passes.hpp"
+#include "vpux/utils/core/array_ref.hpp"
+
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/Visitors.h>
 
 namespace vpux::Core {
 #define GEN_PASS_DECL_UNPACKNESTEDMODULES
@@ -60,6 +59,15 @@ SmallVector<mlir::ModuleOp> UnpackNestedModulesPass::collectTopLevelNestedModule
     // Note: assumed to be "fast" since we only walk modules.
     mainModule.walk([&](mlir::ModuleOp nestedModule) {
         if (nestedModule == mainModule) {  // Note: walk visits "self" as well
+            return mlir::WalkResult::advance();
+        }
+
+        auto funcOps = nestedModule.getOps<mlir::func::FuncOp>();
+        auto it = funcOps.begin();
+
+        // Module without funcOp indicates reserved memory module. Skip this pass
+        // for such modules.
+        if (std::distance(it, funcOps.end()) == 0) {
             return mlir::WalkResult::advance();
         }
 

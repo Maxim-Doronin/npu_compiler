@@ -9,7 +9,7 @@
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
-#include <numeric>
+#include <algorithm>
 
 using namespace vpux;
 
@@ -56,14 +56,10 @@ bool vpux::Const::ReverseAttr::inferOutputSplat(bool inputIsSplat, vpux::NDTypeI
     return inputIsSplat;
 }
 
-template <typename StorageType>
-Const::Content reverseImpl(Const::Content& input, NDTypeInterface outputType, int64_t axis) {
-    const bool nothingToDo = input.isSplat();
-    if (nothingToDo) {
-        return Const::Content::moveBuffer(outputType, std::move(input));
-    }
+template <typename StorageType, typename InputType>
+Const::Content reverseImpl(ArrayRef<InputType> inputValues, NDTypeInterface inputType, int64_t axis) {
+    assert(inputValues.size() > 1 && "Splat case is handled outside of this function");
 
-    const auto inputType = input.getType();
     auto inputShape = ShapeRef(inputType.getShape());
     const auto inputRank = inputType.getRank();
     VPUX_THROW_UNLESS(axis >= 0 && axis < inputRank - 1,
@@ -74,14 +70,16 @@ Const::Content reverseImpl(Const::Content& input, NDTypeInterface outputType, in
         spatialDims *= inputShape[Dim(axisIt)];
     }
 
-    auto output =
-            Const::Content::allocTempBuffer(outputType, outputType.getElementType(),
-                                            Const::ReverseAttr::inferOutputSplat(input.isSplat(), input.getType()));
+    const auto outputType = inputType;  // Note: in reverse, input type == output type
+    auto output = Const::Content::allocTempBuffer(outputType, outputType.getElementType(),
+                                                  Const::ReverseAttr::inferOutputSplat(false, inputType));
     auto outBuf = output.getTempBuf<StorageType>();
 
-    const auto inputValues = input.getValues<StorageType>();
-    std::copy(inputValues.begin(), inputValues.end(), outBuf.begin());
-
+    std::transform(inputValues.begin(), inputValues.end(), outBuf.begin(), [](InputType x) {
+        // E#160869: use CvtHelper here because checked_cast<> cannot properly
+        // resolve non-standard floating types and "noop" conversion case.
+        return Const::details::CvtHelper<StorageType>::cvt(x);
+    });
     for (auto it = outBuf.begin(); it < outBuf.end(); it += spatialDims) {
         std::reverse(it, it + spatialDims);
     }
@@ -96,25 +94,25 @@ Const::Content reverseImpl(Const::Content& input, NDTypeInterface outputType, in
 Const::Content vpux::Const::ReverseAttr::transform(vpux::Const::Content& input) const {
     auto inputType = input.getType();
     auto inputElementType = inputType.getElementType();
-    auto outputType = inferOutputType(input.getType());
+    assert(inferOutputType(inputType) == inputType && "reverse transformation cannot change the type");
 
     const auto axis = getAxis().getInt();
 
     if (auto qtype = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(inputElementType)) {
         inputElementType = normalizeQuantStorageType(qtype);
     }
-    if (inputElementType.isSignedInteger(8)) {
-        return reverseImpl<int8_t>(input, outputType, axis);
-    } else if (inputElementType.isUnsignedInteger(8)) {
-        return reverseImpl<uint8_t>(input, outputType, axis);
-    } else if (inputElementType.isF16()) {
-        return reverseImpl<vpux::type::float16>(input, outputType, axis);
-    } else if (inputElementType.isBF16()) {
-        return reverseImpl<vpux::type::bfloat16>(input, outputType, axis);
-    } else if (inputElementType.isF32()) {
-        return reverseImpl<float>(input, outputType, axis);
+    VPUX_THROW_UNLESS(inputElementType.isSignedInteger(8) || inputElementType.isUnsignedInteger(8) ||
+                              inputElementType.isF16() || inputElementType.isBF16() || inputElementType.isF32(),
+                      "Unexpected data type: {0}", inputElementType);
+
+    if (bool nothingToDo = input.isSplat(); nothingToDo) {
+        return Const::Content::moveBuffer(inputType, std::move(input));
     }
-    VPUX_THROW("Unexpected data type: {0}", inputElementType);
+    // Note: reverse could happen after CastElemType and in this case we must
+    // perform explicit type conversion - dispatch by input element type.
+    return input.read(inputElementType, [&](auto inputValues, auto dummy) {
+        return reverseImpl<decltype(dummy)>(inputValues, inputType, axis);
+    });
 }
 
 //

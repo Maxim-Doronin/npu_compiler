@@ -10,13 +10,13 @@ using namespace vpux;
 namespace {
 
 inline void assertBound(int64_t dimValue, int64_t bound) {
-    VPUX_THROW_WHEN(bound < 1, "Got non-positive shape dim bound: '{0}'", bound);
+    VPUX_THROW_WHEN(bound < 0, "Got negative shape dim bound: '{0}'", bound);
     VPUX_THROW_WHEN(dimValue != bound && dimValue > 0, "Got mismatching shape dim size: '{0}' and bound: '{1}'",
                     dimValue, bound);
 }
 
 inline void assertMask(int64_t dimValue) {
-    VPUX_THROW_WHEN(dimValue < 1, "Got non-positive shape dim size or bound: '{0}'", dimValue);
+    VPUX_THROW_WHEN(dimValue < 0, "Got negative shape dim size or bound: '{0}'", dimValue);
 }
 
 }  // namespace
@@ -51,16 +51,16 @@ int64_t BoundedDim::reifiedSize() const {
     return _bound;
 }
 
-BoundedDim vpux::operator+(const BoundedDim& x, const BoundedDim& y) {
-    return BoundedDim::apply(x, y, std::plus<>());
+BoundedDim BoundedDim::operator+(const BoundedDim& other) const {
+    return apply(*this, other, std::plus<>());
 }
 
-BoundedDim vpux::operator-(const BoundedDim& x, const BoundedDim& y) {
-    return BoundedDim::apply(x, y, std::minus<>());
+BoundedDim BoundedDim::operator-(const BoundedDim& other) const {
+    return apply(*this, other, std::minus<>());
 }
 
-BoundedDim vpux::operator*(const BoundedDim& x, const BoundedDim& y) {
-    return BoundedDim::apply(x, y, std::multiplies<>());
+BoundedDim BoundedDim::operator*(const BoundedDim& other) const {
+    return apply(*this, other, std::multiplies<>());
 }
 
 BoundedDim& BoundedDim::operator+=(const BoundedDim& other) {
@@ -75,28 +75,64 @@ BoundedDim& BoundedDim::operator*=(const BoundedDim& other) {
     return *this = *this * other;
 }
 
-bool vpux::operator==(const BoundedDim& x, const BoundedDim& y) {
-    return x.reifiedSize() == y.reifiedSize();
+bool BoundedDim::operator==(const BoundedDim& other) const {
+    return this->reifiedSize() == other.reifiedSize();
 }
 
-bool vpux::operator!=(const BoundedDim& x, const BoundedDim& y) {
+bool BoundedDim::operator!=(const BoundedDim& other) const {
+    return !(*this == other);
+}
+
+bool BoundedDim::operator<(const BoundedDim& other) const {
+    return this->reifiedSize() < other.reifiedSize();
+}
+
+bool BoundedDim::operator>(const BoundedDim& other) const {
+    return this->reifiedSize() > other.reifiedSize();
+}
+
+bool BoundedDim::operator<=(const BoundedDim& other) const {
+    return this->reifiedSize() <= other.reifiedSize();
+}
+
+bool BoundedDim::operator>=(const BoundedDim& other) const {
+    return this->reifiedSize() >= other.reifiedSize();
+}
+
+BoundedDim vpux::operator+(int64_t x, const BoundedDim& y) {
+    return BoundedDim::apply(BoundedDim(x), y, std::plus<>());
+}
+
+BoundedDim vpux::operator-(int64_t x, const BoundedDim& y) {
+    return BoundedDim::apply(BoundedDim(x), y, std::minus<>());
+}
+
+BoundedDim vpux::operator*(int64_t x, const BoundedDim& y) {
+    return BoundedDim::apply(BoundedDim(x), y, std::multiplies<>());
+}
+
+bool vpux::operator==(int64_t x, const BoundedDim& y) {
+    return x == y.reifiedSize();
+}
+
+bool vpux::operator!=(int64_t x, const BoundedDim& y) {
     return !(x == y);
 }
 
-bool vpux::operator<(const BoundedDim& x, const BoundedDim& y) {
-    return x.reifiedSize() < y.reifiedSize();
+bool vpux::operator<(int64_t x, const BoundedDim& y) {
+    return x < y.reifiedSize();
 }
 
-bool vpux::operator>(const BoundedDim& x, const BoundedDim& y) {
-    return x.reifiedSize() > y.reifiedSize();
+bool vpux::operator>(int64_t x, const BoundedDim& y) {
+    return x > y.reifiedSize();
 }
 
-bool vpux::operator<=(const BoundedDim& x, const BoundedDim& y) {
-    return x.reifiedSize() <= y.reifiedSize();
+bool vpux::operator<=(int64_t x, const BoundedDim& y) {
+    return x <= y.reifiedSize();
 }
 
-bool vpux::operator>=(const BoundedDim& x, const BoundedDim& y) {
-    return x.reifiedSize() >= y.reifiedSize();
+bool vpux::operator>=(int64_t x, const BoundedDim& y) {
+    return x >= y.reifiedSize();
 }
 
 //
@@ -129,16 +165,16 @@ int64_t MaskedDim::reifiedSize() const {
     return _dimValue;
 }
 
-MaskedDim vpux::operator+(const MaskedDim& x, const MaskedDim& y) {
-    return MaskedDim::apply(x, y, std::plus<>());
+MaskedDim MaskedDim::operator+(const MaskedDim& other) const {
+    return apply(*this, other, std::plus<>());
 }
 
-MaskedDim vpux::operator-(const MaskedDim& x, const MaskedDim& y) {
-    return MaskedDim::apply(x, y, std::minus<>());
+MaskedDim MaskedDim::operator-(const MaskedDim& other) const {
+    return apply(*this, other, std::minus<>());
 }
 
-MaskedDim vpux::operator*(const MaskedDim& x, const MaskedDim& y) {
-    return MaskedDim::apply(x, y, std::multiplies<>());
+MaskedDim MaskedDim::operator*(const MaskedDim& other) const {
+    return apply(*this, other, std::multiplies<>());
 }
 
 MaskedDim& MaskedDim::operator+=(const MaskedDim& other) {
@@ -153,26 +189,62 @@ MaskedDim& MaskedDim::operator*=(const MaskedDim& other) {
     return *this = *this * other;
 }
 
-bool vpux::operator==(const MaskedDim& x, const MaskedDim& y) {
-    return x.reifiedSize() == y.reifiedSize();
+bool MaskedDim::operator==(const MaskedDim& other) const {
+    return this->reifiedSize() == other.reifiedSize();
 }
 
-bool vpux::operator!=(const MaskedDim& x, const MaskedDim& y) {
+bool MaskedDim::operator!=(const MaskedDim& other) const {
+    return !(*this == other);
+}
+
+bool MaskedDim::operator<(const MaskedDim& other) const {
+    return this->reifiedSize() < other.reifiedSize();
+}
+
+bool MaskedDim::operator>(const MaskedDim& other) const {
+    return this->reifiedSize() > other.reifiedSize();
+}
+
+bool MaskedDim::operator<=(const MaskedDim& other) const {
+    return this->reifiedSize() <= other.reifiedSize();
+}
+
+bool MaskedDim::operator>=(const MaskedDim& other) const {
+    return this->reifiedSize() >= other.reifiedSize();
+}
+
+MaskedDim vpux::operator+(int64_t x, const MaskedDim& y) {
+    return MaskedDim::apply(MaskedDim(x), y, std::plus<>());
+}
+
+MaskedDim vpux::operator-(int64_t x, const MaskedDim& y) {
+    return MaskedDim::apply(MaskedDim(x), y, std::minus<>());
+}
+
+MaskedDim vpux::operator*(int64_t x, const MaskedDim& y) {
+    return MaskedDim::apply(MaskedDim(x), y, std::multiplies<>());
+}
+
+bool vpux::operator==(int64_t x, const MaskedDim& y) {
+    return x == y.reifiedSize();
+}
+
+bool vpux::operator!=(int64_t x, const MaskedDim& y) {
     return !(x == y);
 }
 
-bool vpux::operator<(const MaskedDim& x, const MaskedDim& y) {
-    return x.reifiedSize() < y.reifiedSize();
+bool vpux::operator<(int64_t x, const MaskedDim& y) {
+    return x < y.reifiedSize();
 }
 
-bool vpux::operator>(const MaskedDim& x, const MaskedDim& y) {
-    return x.reifiedSize() > y.reifiedSize();
+bool vpux::operator>(int64_t x, const MaskedDim& y) {
+    return x > y.reifiedSize();
 }
 
-bool vpux::operator<=(const MaskedDim& x, const MaskedDim& y) {
-    return x.reifiedSize() <= y.reifiedSize();
+bool vpux::operator<=(int64_t x, const MaskedDim& y) {
+    return x <= y.reifiedSize();
 }
 
-bool vpux::operator>=(const MaskedDim& x, const MaskedDim& y) {
-    return x.reifiedSize() >= y.reifiedSize();
+bool vpux::operator>=(int64_t x, const MaskedDim& y) {
+    return x >= y.reifiedSize();
 }

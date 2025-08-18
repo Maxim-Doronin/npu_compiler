@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 
 #include "vpux/compiler/core/barrier_info.hpp"
@@ -10,6 +11,8 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/color_bin_barrier_assignment.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/options.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -121,7 +124,7 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
     const auto numBarriers =
             numBarriersOpt.hasValue() ? numBarriersOpt.getValue() : VPUIP::getNumAvailableBarriers(func);
 
-    auto wlmFlag = vpux::VPUIP::getWlmStatus(module) == vpux::VPUIP::WlmStatus::ENABLED;
+    auto wlmFlag = VPU::getWorkloadManagementStatus(module) == VPU::WorkloadManagementStatus::ENABLED;
 
     const auto barrierColorBinFlag =
             colorBinEnableOpt.hasValue() ? static_cast<bool>(colorBinEnableOpt.getValue()) : _barrierColorBinFlag;
@@ -142,19 +145,24 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
         _log.trace("WLM flag turned off because number of barrier is above threshold {0} > {1}", numVirtualBarriers,
                    virtualBarrierThresholdForWlm.value());
         wlmFlag = false;
-        vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(module, VPU::WorkloadManagementStatus::FAILED);
     }
 
     if (!barrierSim.isDynamicBarriers()) {
         return;
     }
-    if (mlir::failed(barrierSim.checkProducerCount(_log.nest()))) {
-        signalPassFailure();
-        return;
-    }
-    if (mlir::failed(barrierSim.checkProducerAndConsumerCount(_log.nest()))) {
-        signalPassFailure();
-        return;
+
+    if (wlmFlag == false || _workloadManagementMode < WorkloadManagementMode::PWLM_V2_PAGES) {
+        // No need to verify below for newer WLM modes as later pass - OptimizeBarriersSlotsUsage
+        // pass will take care of it
+        if (mlir::failed(barrierSim.checkProducerCount(_log.nest()))) {
+            signalPassFailure();
+            return;
+        }
+        if (mlir::failed(barrierSim.checkProducerAndConsumerCount(_log.nest()))) {
+            signalPassFailure();
+            return;
+        }
     }
 
     if (barrierColorBinFlag && numVirtualBarriers <= numBarriers) {
@@ -170,7 +178,7 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
 
     if (barrierColorBinFlag && numVirtualBarriers > numBarriers) {
         auto& barrierGraphInfo = getAnalysis<BarrierGraphInfo>();
-        auto arch = VPU::getArch(func);
+        auto arch = config::getArch(func);
         VPURT::BarrierColorBin BarrierColorBinAssignment(numBarriers, arch, _log);
 
         // Apply color binning algorithm for physical barrier assignment

@@ -4,9 +4,11 @@
 //
 
 #include "vpux/compiler/core/barrier_info.hpp"
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/options.hpp"
 #include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 namespace vpux::VPURT {
@@ -50,8 +52,10 @@ class InsertBarrierToMarkTheEndOfDescriptorGroupPass final :
                 InsertBarrierToMarkTheEndOfDescriptorGroupPass> {
 public:
     explicit InsertBarrierToMarkTheEndOfDescriptorGroupPass(
-            std::optional<size_t> workloadManagementBarrierCountThreshold, Logger log)
-            : _workloadManagementBarrierCountThreshold(workloadManagementBarrierCountThreshold) {
+            std::optional<size_t> workloadManagementBarrierCountThreshold,
+            std::optional<WorkloadManagementMode> workloadManagementMode, Logger log)
+            : _workloadManagementBarrierCountThreshold(workloadManagementBarrierCountThreshold),
+              _workloadManagementMode(workloadManagementMode) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -67,6 +71,7 @@ public:
 
 private:
     std::optional<size_t> _workloadManagementBarrierCountThreshold;
+    std::optional<WorkloadManagementMode> _workloadManagementMode;
     void safeRunOnFunc() final;
 };
 
@@ -268,11 +273,17 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersForQueue(
 void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
     auto netFunc = getOperation();
     auto module = netFunc->getParentOfType<mlir::ModuleOp>();
-    auto isWlmEnabled = (vpux::VPUIP::getWlmStatus(module) == vpux::VPUIP::WlmStatus::ENABLED) &&
-                        !isArchVPUX3XXX(VPU::getArch(module));
+    auto isWlmEnabled = (VPU::getWorkloadManagementStatus(module) == VPU::WorkloadManagementStatus::ENABLED) &&
+                        !config::isArchVPUX3XXX(config::getArch(module));
 
     if (!isWlmEnabled) {
         legalizeScheduleForNonWlm(netFunc);
+        return;
+    }
+
+    // createAddPlaceholderFetchDMAsPass inserts placeholder FetchDMAs
+    if (_workloadManagementMode.has_value() &&
+        _workloadManagementMode.value() == WorkloadManagementMode::FWLM_V1_PAGES) {
         return;
     }
 
@@ -290,7 +301,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
         numVirtualBarriers > _workloadManagementBarrierCountThreshold.value()) {
         _log.info("Skip WLM schedule legalization due to high number of barriers: {0}, threshold: {1}",
                   numVirtualBarriers, _workloadManagementBarrierCountThreshold.value());
-        vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(module, VPU::WorkloadManagementStatus::FAILED);
         legalizeScheduleForNonWlm(netFunc);
         return;
     }
@@ -347,7 +358,8 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
-        std::optional<size_t> workloadManagementBarrierCountThreshold, Logger log) {
+        std::optional<size_t> workloadManagementBarrierCountThreshold,
+        std::optional<WorkloadManagementMode> workloadManagementMode, Logger log) {
     return std::make_unique<InsertBarrierToMarkTheEndOfDescriptorGroupPass>(workloadManagementBarrierCountThreshold,
-                                                                            log);
+                                                                            workloadManagementMode, log);
 }

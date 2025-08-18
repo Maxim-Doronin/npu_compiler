@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/utils/analysis.hpp"
-
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
@@ -27,6 +27,22 @@ mlir::Operation* vpux::getFirstUser(mlir::Value output) {
     });
 
     return firstUser == users.end() ? nullptr : *firstUser;
+}
+
+//
+// hasOneUniqueUser
+//
+
+bool vpux::hasOneUniqueUser(mlir::Operation* op) {
+    auto users = op->getUsers();
+    if (users.empty()) {
+        return false;
+    }
+
+    auto firstUser = *users.begin();
+    return std::all_of(std::next(users.begin()), users.end(), [&](mlir::Operation* userOp) {
+        return firstUser == userOp;
+    });
 }
 
 //

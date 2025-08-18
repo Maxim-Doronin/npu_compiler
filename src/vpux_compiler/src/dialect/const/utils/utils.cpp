@@ -63,7 +63,7 @@ mlir::StringRef getOvKey(Const::DeclareOp declareOp) {
     static_assert(std::is_same_v<mlir::StringRef, decltype(key)>,
                   "Cannot return StringRef if the underlying getResourceName() doesn't return it - potential dangling "
                   "reference otherwise");
-    if (key.starts_with(Const::OPENVINO_CONST_PREFIX)) {
+    if (key.starts_with(Const::IMPORTED_WEIGHT_PREFIX)) {
         return key;
     }
     return {};
@@ -246,6 +246,24 @@ void appendContentToVector(Const::Content& content, MutableArrayRef<char> buffer
     MutableArrayRef<char> newBufferSlice(reinterpret_cast<char*>(oldEnd), bufSizeBytes);
     content.copyTo(newBufferSlice);
     start += bufSizeBytes;
+}
+
+bool hasSparsifyTransformation(const Const::DeclareOp& constOp) {
+    const auto& contentAttr = constOp.getContentAttr();
+    const auto transformations = contentAttr.getTransformations();
+    if (transformations.empty()) {
+        return false;
+    }
+
+    auto sparsifyTransformationIt =
+            std::find_if(transformations.rbegin(), transformations.rend(), [](Const::TransformAttrInterface tr) {
+                return mlir::isa<vpux::Const::SparsifyAttr>(tr);
+            });
+    if (sparsifyTransformationIt == transformations.rend()) {
+        return false;
+    }
+
+    return true;
 }
 
 }  // namespace vpux::Const

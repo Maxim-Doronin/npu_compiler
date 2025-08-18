@@ -6,8 +6,10 @@
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -554,16 +556,17 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
     VPUX_THROW_UNLESS(inTiles.size() == origOp->getOperands().size(),
                       "Unexpected inputTile size '{0}' and Op operands size '{1}'", inTiles.size(),
                       origOp->getOperands().size());
+    inputTileTypes.reserve(origOp->getNumOperands());
 
     for (const auto& input : origOp->getOperands() | indexed) {
         const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.value().getType());
-        inputTileTypes.push_back(
+        inputTileTypes.emplace_back(
                 inputType.extractDenseTile(inTiles[input.index()].offsets, inTiles[input.index()].shape));
     }
     const auto outputTileType = outputType.extractDenseTile(outTile.offsets, outTile.shape);
 
     if (!origOp->hasAttr(VPU::multiClusterStrategy)) {
-        inputTileTypes.push_back(outputTileType);
+        inputTileTypes.emplace_back(outputTileType);
         return inputTileTypes;
     }
 
@@ -574,15 +577,19 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
                                                   clusteredOp.getMultiClusterStrategy().value());
 
     SmallVector<vpux::NDTypeInterface> distributedTensorTypes;
+    distributedTensorTypes.reserve(inputTileTypes.size());
     for (const auto& [idx, inputTileType] : inputTileTypes | indexed) {
-        auto inDistributedType = VPU::getDistributedActivationTypeFromOp(
-                clusteredOp, clusteredOp->getOperand(idx), inputTileType, numClusters, outputTileType, outTile);
-        distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
+        auto inDistributedType =
+                idx != 0 && inputTileType == inputTileTypes.front()
+                        ? distributedTensorTypes.front()
+                        : VPU::getDistributedActivationTypeFromOp(clusteredOp, clusteredOp->getOperand(idx),
+                                                                  inputTileType, numClusters, outputTileType, outTile);
+        distributedTensorTypes.emplace_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
     }
 
     auto outDistributedType =
             VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, inputTileTypes);
-    distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(outDistributedType));
+    distributedTensorTypes.emplace_back(mlir::cast<vpux::NDTypeInterface>(outDistributedType));
 
     return distributedTensorTypes;
 }

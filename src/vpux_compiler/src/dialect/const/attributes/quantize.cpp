@@ -108,7 +108,6 @@ template <class StorageType>
 Const::Content transformImpl(mlir::quant::QuantizedType qElemType, mlir::Type outType, mlir::MLIRContext* ctx,
                              vpux::Const::Content& input) {
     auto output = allocateTempBuffer(qElemType, outType, input.isSplat());
-    const auto realVals = input.getValues<float>();
     auto qVals = output.getTempBuf<StorageType>();
 
     if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(qElemType)) {
@@ -119,10 +118,15 @@ Const::Content transformImpl(mlir::quant::QuantizedType qElemType, mlir::Type ou
         // qVals.size is 1 when the input is splat, while realVals.size can be greater than 1
         // realVals must contain same element at every index when the input is splat.
         // Use qVals.size to terminate the loop early in this scenario.
-        for (size_t i = 0; i < qVals.size(); ++i) {
-            qVals[i] = static_cast<StorageType>(quantizer(realVals[i]));
-        }
+        input.read([&](auto realVals) {
+            for (size_t i = 0; i < qVals.size(); ++i) {
+                const auto realVal = checked_cast<float>(realVals[i]);
+                qVals[i] = static_cast<StorageType>(quantizer(realVal));
+            }
+        });
     } else if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(qElemType)) {
+        const auto realVals = input.getValues<float>();
+
         const auto scales = uniformType.getScales();
         const auto zeroPoints = uniformType.getZeroPoints();
         const auto axis = Dim(uniformType.getQuantizedDimension());

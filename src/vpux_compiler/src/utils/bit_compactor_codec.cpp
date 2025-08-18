@@ -7,12 +7,12 @@
 
 using namespace vpux;
 
-vpux::BitCompactorCodec::BitCompactorCodec(VPU::ArchKind arch_kind) {
+vpux::BitCompactorCodec::BitCompactorCodec(config::ArchKind arch_kind) {
     switch (arch_kind) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         arch_type_ = vpux::bitc::ArchType::NPU27;
         break;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         arch_type_ = vpux::bitc::ArchType::NPU4;
         break;
     default:
