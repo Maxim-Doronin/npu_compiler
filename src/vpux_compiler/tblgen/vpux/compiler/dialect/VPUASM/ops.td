@@ -992,7 +992,7 @@ def VPUASM_DPUInvariantOp :
         VPUASM_IndexTypeAttr:$task_index,
 
         OptionalAttr<SymbolRefAttr>:$task_location,
-        SymbolRefAttr:$input,
+        OptionalAttr<SymbolRefAttr>:$input,
         OptionalAttr<SymbolRefAttr>:$input_sparsity_map,
         OptionalAttr<SymbolRefAttr>:$input_storage_element_table,
 
@@ -1067,7 +1067,7 @@ def VPUASM_DPUInvariantOp :
         $sym_name
         `idx` `(` $task_index `)`
         `taskLocation` `(` $task_location `)`
-        `input` `(` $input `)`
+        (`input` `(` $input^ `)`)?
         (`input_sparsity_map` `(` $input_sparsity_map^ `)`)?
         (`input_storage_element_table` `(` $input_storage_element_table^ `)`)?
         (`weights` `(` $weights^ `)`)?

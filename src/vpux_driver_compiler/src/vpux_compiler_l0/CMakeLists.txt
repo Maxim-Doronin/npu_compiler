@@ -69,6 +69,10 @@ target_link_libraries(${TARGET_NAME}
         npu_profiling_utils
 )
 
+if(UNIX)
+    target_link_options(${TARGET_NAME} PRIVATE -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/vcl.exports)
+endif()
+
 add_dependencies(${TARGET_NAME} VPUXLoader)
 
 ov_add_api_validator_post_build_step(TARGET ${TARGET_NAME})
@@ -89,6 +93,6 @@ endif()
 
 install(
         FILES
-            "${InferenceEngineVPUXPlugin_SOURCE_DIR}/src/vpux_driver_compiler/include/npu_driver_compiler.h"
+            "${PROJECT_SOURCE_DIR}/src/vpux_driver_compiler/include/npu_driver_compiler.h"
         DESTINATION cid
         COMPONENT ${CID_COMPONENT})

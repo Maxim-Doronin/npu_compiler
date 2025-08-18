@@ -369,6 +369,10 @@ def VPUIPDPU_IDUWorkloadType :
                 I32EnumAttrCase<"REDUCEMEAN",              5>,
                 I32EnumAttrCase<"REDUCESUMSQUARE",         6>,
                 I32EnumAttrCase<"REDUCESUM",               7>,
+                I32EnumAttrCase<"ACCU_STORE_I32",          8>,
+                I32EnumAttrCase<"ACCU_STORE_FP32",         9>,
+                I32EnumAttrCase<"ACCU_LOAD_I32",           10>,
+                I32EnumAttrCase<"ACCU_LOAD_FP32",          11>
             ]
         > {
     let cppNamespace = "vpux::VPUIPDPU";

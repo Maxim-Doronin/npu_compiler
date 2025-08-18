@@ -208,7 +208,7 @@ def UnpackNestedModules : PassBase<"unpack-nested-modules", "vpux::ModulePass"> 
 
 //
 // AddNetInfoToModule
-// 
+//
 
 def AddNetInfoToModule : PassBase<"add-netinfo-to-module", "vpux::ModulePass"> {
     let summary = "add net::NetInfoOp to a nested module based on function argument and results inside the module";
@@ -217,7 +217,33 @@ def AddNetInfoToModule : PassBase<"add-netinfo-to-module", "vpux::ModulePass"> {
         This pass adds NetInfo to nested ModuleOp for vpux passes that require the inputInfos and outputInfos information.
     }];
 
+    let options = [
+        Option<
+            "hasTensorSemantics", "has-tensor-semantics",
+            "bool", "false",
+            "Specifies if outputs come as inputs, to accommodate the usage for VPUIP or IE-VPU"
+        >,
+    ];
+
     let constructor = "vpux::Core::createAddNetInfoToModulePass()";
+}
+
+def WsFoldReinterpretCastIntoConst : PassBase<"ws-fold-reinterpret-cast-into-const", "vpux::FunctionPass"> {
+    let summary = "ReinterpretCastOp::fold() substitute";
+
+    let description = [{
+        This pass substitutes folding mechanism for Core.ReinterpretCast. Under
+        normal conditions (production IR), ReinterpretCast is *never* expected
+        to have Const.Declare as direct origin. However, in some limited scope
+        the Const.Declare -> ReinterpretCast chain could appear (e.g. debug-only
+        monolithic weights separation pipeline). In order to have valid
+        legalization of ReinterpretCast in this case, this pass exists.
+
+        Warning: the pass does NOT attempt to be optimal in any way. Instead, it
+        does the bare minimum to legalize IR.
+    }];
+
+    let constructor = "vpux::Core::createWsFoldReinterpretCastIntoConstPass()";
 }
 
 #endif

@@ -16,6 +16,7 @@ include "vpux/compiler/dialect/VPUMI37XX/ops_interfaces.td"
 include "vpux/compiler/dialect/VPUMI37XX/types.td"
 include "vpux/compiler/dialect/VPURT/types.td"
 include "vpux/compiler/dialect/VPU/attributes.td"
+include "vpux/compiler/dialect/config/attributes.td"
 include "vpux/compiler/dialect/VPU/ops_interfaces.td"
 include "vpux/compiler/dialect/VPUIP/types.td"
 include "vpux/compiler/dialect/VPUIP/attributes.td"
@@ -707,7 +708,7 @@ def PlatformInfoOp :
     let summary = "Represents an op describing various platform information, such as arch, revision, etc.";
 
     let arguments = (ins
-          VPU_ArchKindAttr:$archKind
+          Config_ArchKindAttr:$archKind
         );
 
     let assemblyFormat = [{

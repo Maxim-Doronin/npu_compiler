@@ -4,6 +4,7 @@
 #
 
 add_vpux_dialect(VPURT)
+add_vpux_ops(VPURT GENERIC)
 add_vpux_ops_interface(VPURT dialect/VPURT/)
 add_vpux_type(VPURT)
 add_vpux_attribute(VPURT ENABLE_VPUX_ENUMS ENABLE_VPUX_ATTR)

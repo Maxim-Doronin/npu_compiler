@@ -36,7 +36,7 @@ class PropertyBase<string registerName, string attr, string dialect> : Property<
     }];
     let convertFromAttribute = [{
         auto desc = mlir::cast<}] # dialect # [{::}] # attr # [{>($_attr).getRegMapped();
-        $_storage = desc;
+        $_storage = std::move(desc);
         return ::mlir::success();
     }];
 

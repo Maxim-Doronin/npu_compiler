@@ -21,12 +21,12 @@ add_subdirectory(test)
 
 install(
     FILES
-        "${InferenceEngineVPUXPlugin_SOURCE_DIR}/src/vpux_driver_compiler/CHANGES.txt"
+        "${PROJECT_SOURCE_DIR}/src/vpux_driver_compiler/CHANGES.txt"
     DESTINATION cid
     COMPONENT ${CID_COMPONENT})
 
 install(
     FILES
-        "${InferenceEngineVPUXPlugin_SOURCE_DIR}/src/vpux_driver_compiler/README.md"
+        "${PROJECT_SOURCE_DIR}/src/vpux_driver_compiler/README.md"
     DESTINATION cid
     COMPONENT ${CID_COMPONENT})

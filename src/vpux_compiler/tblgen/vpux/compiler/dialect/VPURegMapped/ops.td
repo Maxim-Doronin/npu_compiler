@@ -90,6 +90,8 @@ def VPURegMapped_FetchTaskOp:
     let summary = "Op to represent fetching of specific tasks";
 
     let arguments = (ins
+        Variadic<VPURegMapped_IndexType>:$waitBarriers,
+        Variadic<VPURegMapped_IndexType>:$updateBarriers,
         Optional<VPURegMapped_IndexType>:$previousTask,
         VPURegMapped_IndexType:$primary_start,
         VPURegMapped_IndexType:$primary_end,
@@ -107,6 +109,8 @@ def VPURegMapped_FetchTaskOp:
     );
 
     let assemblyFormat = [{
+        (`waits` `(` $waitBarriers^ `:` type($waitBarriers) `)`)?
+        (`updates` `(` $updateBarriers^ `:` type($updateBarriers) `)`)?
         (`previousTask` `(` $previousTask^ `:` type($previousTask) `)` )?
         `primary` `(` $primary_start `->` $primary_end `)`
         `secondary` `(` $secondary_start `->` $secondary_end `)`

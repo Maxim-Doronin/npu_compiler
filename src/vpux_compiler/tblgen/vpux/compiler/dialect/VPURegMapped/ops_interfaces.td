@@ -218,6 +218,35 @@ def VPURegMapped_DMATypeOpInterface : OpInterface<"DMATypeOpInterface"> {
             "void", "setPreviousTaskForOp", (ins "mlir::Value":$previousTask), [{}], [{
                 $_op.getPreviousTaskMutable().assign(previousTask);
             }]
+        >,
+        InterfaceMethod<
+            "Barriers that will free this task to run",
+            "mlir::ValueRange", "waitBarriers", (ins),
+            [{
+                return $_op.getWaitBarriers();
+            }]
+        >,
+        InterfaceMethod<
+            "Barriers that will free this task to run",
+            "mlir::MutableOperandRange", "waitBarriersMutable", (ins),
+            [{
+                return $_op.getWaitBarriersMutable();
+            }]
+        >,
+
+        InterfaceMethod<
+            "Barriers that will be at least partially unlocked when this task is complete",
+            "mlir::ValueRange", "updateBarriers", (ins),
+            [{
+                return $_op.getUpdateBarriers();
+            }]
+        >,
+        InterfaceMethod<
+            "Barriers that will be at least partially unlocked when this task is complete",
+            "mlir::MutableOperandRange", "updateBarriersMutable", (ins),
+            [{
+                return $_op.getUpdateBarriersMutable();
+            }]
         >
     ];
 }

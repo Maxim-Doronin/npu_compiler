@@ -46,7 +46,7 @@ def VPUIPDPU_DPUInvariantOp :
         VPUASM_IndexTypeAttr:$task_index,
 
         OptionalAttr<SymbolRefAttr>:$task_location,
-        SymbolRefAttr:$input,
+        OptionalAttr<SymbolRefAttr>:$input,
         OptionalAttr<SymbolRefAttr>:$input_sparsity_map,
         OptionalAttr<SymbolRefAttr>:$input_storage_element_table,
 

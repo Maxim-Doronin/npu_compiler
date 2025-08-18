@@ -4,6 +4,7 @@
 #
 
 add_vpux_dialect(VPUIPDPU)
+add_vpux_ops(VPUIPDPU GENERIC)
 add_vpux_ops_interface(VPUIPDPU dialect/VPUIPDPU/)
 add_vpux_attribute(VPUIPDPU ENABLE_VPUX_ENUMS)
 add_vpux_pass(VPUIPDPU VPUIPDPU dialect/VPUIPDPU/)

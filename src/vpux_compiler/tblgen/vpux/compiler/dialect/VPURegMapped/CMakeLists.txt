@@ -4,6 +4,7 @@
 #
 
 add_vpux_dialect(VPURegMapped)
+add_vpux_ops(VPURegMapped GENERIC)
 add_vpux_ops_interface(VPURegMapped dialect/VPURegMapped/)
 add_vpux_attribute(VPURegMapped ENABLE_VPUX_ENUMS ENABLE_VPUX_ATTR)
 add_vpux_type(VPURegMapped)

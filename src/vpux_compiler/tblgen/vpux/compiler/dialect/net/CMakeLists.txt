@@ -4,3 +4,4 @@
 #
 
 add_vpux_dialect(net)
+add_vpux_ops(net GENERIC)

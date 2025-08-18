@@ -258,7 +258,9 @@ def VPUMI40XX_NNDMAOp :
         Optional<AnyMemRef>:$indices,
         Optional<VPURegMapped_IndexType>:$enqueueBarrier,
         OptionalAttr<IntAttr>:$wlmPage,
-        OptionalAttr<VPUIP_PhysicalBarrierRangeAttr>:$physical_barrier_range  
+        OptionalAttr<VPUIP_PhysicalBarrierRangeAttr>:$physical_barrier_range,
+        OptionalAttr<VPUIP_EnqueueDMAAttr>:$enqueue_dma_attr,
+        OptionalAttr<VPUIP_FetchDMAAttr>:$fetch_dma
     );
 
     let results = (outs
@@ -737,7 +739,7 @@ def VPUMI40XX_DPUInvariantOp :
     let arguments = (ins
         Optional<VPURegMapped_IndexType>:$taskLocation,
         Optional<VPURegMapped_IndexType>:$previousTask,
-        MemRefOf<[F16, BF16, quant_QuantizedType]>:$input,
+        Optional<MemRefOf<[F32, SI32, F16, BF16, quant_QuantizedType]>>:$input,
         Optional<MemRefOf<[I1]>>:$input_sparsity_map,
         Optional<MemRefOf<[I32]>>:$input_storage_element_table,
         Optional<MemRefOf<[F16, BF16, quant_QuantizedType]>>:$weights,
@@ -818,7 +820,7 @@ def VPUMI40XX_DPUInvariantOp :
         attr-dict
         (`taskLocation` `(` $taskLocation^ `:` type($taskLocation) `)`)?
         ( `previousTask` `(` $previousTask^ `:` type($previousTask) `)`)?
-        `input` `(` $input `:` type($input) `)`
+        (`input` `(` $input^ `:` type($input) `)`)?
         (`input_sparsity_map` `(` $input_sparsity_map^ `:` type($input_sparsity_map) `)`)?
         (`input_storage_element_table` `(` $input_storage_element_table^ `:` type($input_storage_element_table) `)`)?
         (`weights` `(` $weights^  `:` type($weights) `)`)?

@@ -4,4 +4,5 @@
 #
 
 add_vpux_dialect(config)
+add_vpux_ops(config GENERIC)
 add_vpux_attribute(config ENABLE_VPUX_ENUMS ENABLE_VPUX_ATTR)

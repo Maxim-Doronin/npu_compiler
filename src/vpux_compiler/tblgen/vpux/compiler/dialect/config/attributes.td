@@ -50,4 +50,45 @@ def Config_CompilationMode  :
 
 def Config_CompilationModeAttr : Config_EnumAttr<Config_CompilationMode, "compilation_mode">;
 
+//
+// ArchKind
+//
+
+def Config_ArchKind :
+        Config_I64EnumAttr<
+            "ArchKind",
+            "Represents VPU architecture generation",
+            [
+                I64EnumAttrCase<"UNKNOWN", 0>,
+                I64EnumAttrCase<"NPU37XX", 3>,
+                I64EnumAttrCase<"NPU40XX", 4>,
+            ]
+        > {
+}
+
+def Config_ArchKindAttr : Config_EnumAttr<Config_ArchKind, "arch_kind">;
+
+//
+// RevisionID
+//
+
+def Config_RevisionID  :
+        Config_I64EnumAttr<
+            "RevisionID",
+            "Revision ID",
+            [
+                I64EnumAttrCase<"REVISION_A0",  0>,
+                I64EnumAttrCase<"REVISION_A1",  1>,
+                I64EnumAttrCase<"REVISION_A3",  2>,
+                I64EnumAttrCase<"REVISION_B",   3>,
+                I64EnumAttrCase<"REVISION_C",   4>,
+                I64EnumAttrCase<"REVISION_D",   5>,
+                I64EnumAttrCase<"REVISION_K",   6>,
+                I64EnumAttrCase<"REVISION_NONE",   7>
+            ]
+        > {
+}
+
+def Config_RevisionIDAttr : Config_EnumAttr<Config_RevisionID, "revision_id">;
+
 #endif
