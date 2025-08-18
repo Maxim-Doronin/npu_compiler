@@ -222,6 +222,7 @@ INSTANTIATE_TEST_SUITE_P(
                 Params{ov::Shape{1, 3, 16, 16}, OpType::MAXPOOL, OpType::SOFTMAX, /*quantized=*/false},
                 Params{ov::Shape{1, 3, 16, 16}, OpType::AVGPOOL, OpType::SOFTMAX, /*quantized=*/false},
                 Params{ov::Shape{1, 3, 16, 16}, OpType::REDUCE_SUM, OpType::SOFTMAX, /*quantized=*/false},
+                Params{ov::Shape{1, 3, 16, 16}, OpType::REDUCE_MEAN, OpType::SOFTMAX, /*quantized=*/false},
         }),
         AutoPaddingTest::getTestCaseName);
 

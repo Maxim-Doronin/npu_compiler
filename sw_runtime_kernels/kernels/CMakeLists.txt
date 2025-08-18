@@ -5,33 +5,39 @@ cmake_minimum_required(VERSION 3.20)
 
 project(kernels)
 
+
 option(ENABLE_SHAVE_BINARIES_BUILD "Enable shave binaries build, if disabled, prebuilt binaries will be used" OFF)
 option(ENABLE_MANAGEMENT_KERNEL_BUILD "Enable management kernel build" OFF)
 option(ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD "Enable firmware.vpu.client sources kernels build" OFF)
 
+set(prebuild_binary_dir "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin")
 set(target_binary_dir "${CMAKE_CURRENT_BINARY_DIR}/act_shave_bin")
 file(MAKE_DIRECTORY ${target_binary_dir})
 set(target_asm_dir "${CMAKE_CURRENT_BINARY_DIR}/act_shave_asm")
 file(MAKE_DIRECTORY ${target_asm_dir})
 
 # Establish if we want to build the kernels or just use prebuilts
-if(NOT (ENABLE_SHAVE_BINARIES_BUILD OR ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD))
-  set(build_kernels FALSE)
-else()
+if(ENABLE_SHAVE_BINARIES_BUILD OR ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
   set(build_kernels TRUE)
+else()
+  set(build_kernels FALSE)
 endif()
 
 # Defines section and general use code
 set(asm_suffix ".s")
 set(obj_suffix ".o")
 set(elf_suffix ".elf")
-set(kernel_descrip_dir "${CMAKE_CURRENT_SOURCE_DIR}/descrip/")
-set(kernel_descrip_list "")
-set(act_shave_kernels "")
+set(kernel_descrip_dir "${CMAKE_CURRENT_SOURCE_DIR}/descrip")
+set(kernel_descrip_list)
+set(all_kernels)
+set(kernels_to_build)
 
-add_custom_target(act_shave_kernels_ready)
 add_custom_target(act_shave_kernels_build)
 add_custom_target(act_shave_kernels_asm)
+
+if(NOT DEFINED MV_TOOLS_PATH AND DEFINED ENV{MV_TOOLS_DIR} AND DEFINED ENV{MV_TOOLS_VERSION})
+    set(MV_TOOLS_PATH $ENV{MV_TOOLS_DIR}/$ENV{MV_TOOLS_VERSION})
+endif()
 
 # Enable building kernels from separate build folder if needed
 if(ENABLE_MLIR_COMPILER AND build_kernels)
@@ -44,12 +50,6 @@ if(ENABLE_MLIR_COMPILER AND build_kernels)
 else()
   set(MV_TOOLS_PATH "$ENV{IE_NPU_MV_TOOLS_PATH}")
 endif()
-
-# Delete previously build binaries from the build folder to avoid copy of old binaries
-file(REMOVE_RECURSE "${target_binary_dir}/*${elf_suffix}")
-file(REMOVE_RECURSE "${target_asm_dir}/*${asm_suffix}")
-file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/*${obj_suffix}")
-file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/generated_shave_binary_resources.cpp")
 
 if(build_kernels)
   if(UNIX)
@@ -65,29 +65,14 @@ if(build_kernels)
   set(link_libraries_list_VPU3720
     "${MV_TOOLS_PATH}/common/moviCompile/lib/37xxxx/mlibm.a"
     "${MV_TOOLS_PATH}/common/moviCompile/lib/37xxxx/mlibc_lite.a"
-    "${MV_TOOLS_PATH}/common/moviCompile/lib/37xxxx/mlibc_lite_lgpl.a"
     "${MV_TOOLS_PATH}/common/moviCompile/lib/37xxxx/mlibcrt.a"
   )
 
   set(link_libraries_list_VPU4000
     "${MV_TOOLS_PATH}/common/moviCompile/lib/40xxxx/mlibm.a"
     "${MV_TOOLS_PATH}/common/moviCompile/lib/40xxxx/mlibc_lite.a"
-    "${MV_TOOLS_PATH}/common/moviCompile/lib/40xxxx/mlibc_lite_lgpl.a"
     "${MV_TOOLS_PATH}/common/moviCompile/lib/40xxxx/mlibcrt.a"
   )
-endif()
-
-# Main code block
-# Only in case of binaries build we run through the whole descrip list
-if(ENABLE_SHAVE_BINARIES_BUILD)
-  file(GLOB kernel_list "${kernel_descrip_dir}*.txt")
-  list(APPEND kernel_descrip_list ${kernel_list})
-  # Remove MGMT kernels
-  file(GLOB mgmt_kernel_list "${kernel_descrip_dir}nnActEntry_*.txt")
-  list(REMOVE_ITEM kernel_descrip_list ${mgmt_kernel_list})
-  # Remove kernels with firmware sources
-  file(GLOB firmware_kernel_list "${kernel_descrip_dir}*_fw.txt")
-  list(REMOVE_ITEM kernel_descrip_list ${firmware_kernel_list})
 endif()
 
 if(ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
@@ -106,23 +91,19 @@ if(ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
 
     set(FIRMWARE_VPU_DIR "$ENV{FIRMWARE_VPU_DIR}")
   endif()
-
-  # If we want to build MGMT kernels we should iterate through those descrip files
-  if(ENABLE_MANAGEMENT_KERNEL_BUILD)
-    file(GLOB mgmt_kernel_list "${kernel_descrip_dir}nnActEntry_*.txt")
-    list(APPEND kernel_descrip_list ${mgmt_kernel_list})
-  endif()
-
-  # If we want to build kernels with firmware sources we should iterate through those descrip files
-  if(ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
-    file(GLOB firmware_kernel_list "${kernel_descrip_dir}*_fw.txt")
-    list(APPEND kernel_descrip_list ${firmware_kernel_list})
-  endif()
-
 endif()
 
-# Main iterator
-foreach(kernel_descrip ${kernel_descrip_list})
+# Make list of all kernel descriptors
+if(build_kernels)
+  file(GLOB kernel_descrip_list RELATIVE "${kernel_descrip_dir}" CONFIGURE_DEPENDS "${kernel_descrip_dir}/*.txt")
+  set(KERNELS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
+#
+# Process descriptors and build kernels
+#
+foreach(kernel_descrip IN LISTS kernel_descrip_list)
+  ### PARSE DESCRIPTOR ###
   # Initial list of parameters, will be populated after we read descrip files
   set(kernel_entry "")
   set(kernel_src_dir "src")
@@ -138,246 +119,274 @@ foreach(kernel_descrip ${kernel_descrip_list})
   set(asm_include_list "")
   set(link_script_file "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/shave_kernel.ld")
 
-  # Reading descrip files one by one from the list created above
-  get_filename_component(kernel_descrip_path ${kernel_descrip} DIRECTORY)
+  # Reading descrip file
+  include("${kernel_descrip_dir}/${kernel_descrip}")
 
-  include("${kernel_descrip}")
+  if(NOT kernel_cpunum)
+    message(SEND_ERROR "Missing kernel_cpunum in descriptor ${kernel_descrip}")
+  elseif(NOT kernel_src)
+    message(SEND_ERROR "Missing kernel_src in descriptor ${kernel_descrip}")
+  endif()
+
   get_filename_component(kernel_name ${kernel_src} NAME_WE)
-
   if(kernel_entry STREQUAL "")
     set(kernel_entry "${kernel_name}")
   endif()
 
-  if(build_kernels)
-    if(kernel_cpunum STREQUAL "3720")
-      list(APPEND define_symbols_list "USE_3720_INSTRUCTIONS")
-      set(link_libraries_list ${link_libraries_list_VPU3720})
-      if(rt_kernel STREQUAL "yes")
-        list(APPEND define_symbols_list "CONFIG_TARGET_SOC_3720")
-      endif()
-    elseif(kernel_cpunum STREQUAL "4000")
-      list(APPEND define_symbols_list "USE_4000_INSTRUCTIONS")
-      set(link_libraries_list ${link_libraries_list_VPU4000})
-      if(rt_kernel STREQUAL "yes")
-        list(APPEND define_symbols_list "CONFIG_TARGET_SOC_4000")
-      endif()
-    endif()
-
-    if(always_inline STREQUAL "yes")
-      list(APPEND define_symbols_list "CONFIG_ALWAYS_INLINE")
-    endif()
-
-    list(INSERT include_dirs_list 0 "${CMAKE_CURRENT_SOURCE_DIR}/inc")
-    list(INSERT define_symbols_list 0 "__act_shave__")
-  endif()
-
+  # Collect names of all binaries for prebuild clean-up
   set(kernel_cpu "${kernel_cpunum}xx")
   set(kernel_cpu_suffix ".${kernel_cpunum}xx")
+  set(elf_file "${kernel_name}${kernel_cpu_suffix}${elf_suffix}")
+  list(APPEND all_kernels "${elf_file}")
+  if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel) # MTL DDR split access workaround
+    set(elf_file_lsu0_wo "${kernel_name}${kernel_cpu_suffix}_lsu0_wo${elf_suffix}")
+    list(APPEND all_kernels "${elf_file_lsu0_wo}")
+  endif()
+
+  # Skip kernel build if not enabled
+  if((rt_kernel AND NOT ENABLE_MANAGEMENT_KERNEL_BUILD) OR
+     (firmware_kernel AND NOT ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD) OR
+     (NOT (rt_kernel OR firmware_kernel) AND NOT ENABLE_SHAVE_BINARIES_BUILD))
+    continue()
+  endif()
+
+  if(kernel_cpunum STREQUAL "3720")
+    list(APPEND define_symbols_list "USE_3720_INSTRUCTIONS")
+    set(link_libraries_list ${link_libraries_list_VPU3720})
+    if(rt_kernel)
+      list(APPEND define_symbols_list "CONFIG_TARGET_SOC_3720")
+    endif()
+  elseif(kernel_cpunum STREQUAL "4000")
+    list(APPEND define_symbols_list "USE_4000_INSTRUCTIONS")
+    set(link_libraries_list ${link_libraries_list_VPU4000})
+    if(rt_kernel)
+      list(APPEND define_symbols_list "CONFIG_TARGET_SOC_4000")
+    endif()
+  endif()
+
+  if(always_inline)
+    list(APPEND define_symbols_list "CONFIG_ALWAYS_INLINE")
+  endif()
+
+  list(INSERT include_dirs_list 0 "${CMAKE_CURRENT_SOURCE_DIR}/inc")
+  list(INSERT define_symbols_list 0 "__act_shave__")
+
+  ### RESOLVE FILE NAMES ###
   set(kernel_src_file "${kernel_src_dir}/${kernel_src}")
+  if (IS_ABSOLUTE "${kernel_src_file}")
+    set(kernel_src_path "${kernel_src_file}")
+  else()
+    set(kernel_src_path "${CMAKE_CURRENT_SOURCE_DIR}/${kernel_src_file}")
+  endif()
 
   set(obj_file "${kernel_src}${kernel_cpu_suffix}${obj_suffix}")
-  set(elf_file "${kernel_name}${kernel_cpu_suffix}${elf_suffix}")
+  set(dep_file "${kernel_src}${kernel_cpu_suffix}.d")
   set(elf_path "${target_binary_dir}/${elf_file}")
   set(asm_file "${kernel_name}${kernel_cpu_suffix}${asm_suffix}")
   set(asm_path "${target_asm_dir}/${asm_file}")
-  if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
+  if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel) # MTL DDR split access workaround
     set(obj_file_lsu0_wo "${kernel_src}${kernel_cpu_suffix}_lsu0_wo${obj_suffix}")
-    set(elf_file_lsu0_wo "${kernel_name}${kernel_cpu_suffix}_lsu0_wo${elf_suffix}")
+    set(dep_file_lsu0_wo "${kernel_src}${kernel_cpu_suffix}_lsu0_wo.d")
+    set(elf_path_lsu0_wo "${target_binary_dir}/${elf_file_lsu0_wo}")
     set(asm_file_lsu0_wo "${kernel_name}${kernel_cpu_suffix}_lsu0_wo${asm_suffix}")
+    set(asm_path_lsu0_wo "${target_asm_dir}/${asm_file_lsu0_wo}")
     set(cppflags_list_lsu0_wo
       "-mllvm"
       "-shave-lsu-load-policy=use-only-lsu1"
       "-mllvm"
       "-shave-lsu-store-policy=prefer-lsu0"
     )
-    set(elf_path_lsu0_wo "${target_binary_dir}/${elf_file_lsu0_wo}")
-    set(asm_path_lsu0_wo "${target_asm_dir}/${asm_file_lsu0_wo}")
   endif()
 
-  if(build_kernels)
-    if(rt_kernel STREQUAL "yes")
-      set(kernel_src_path "${kernel_src_file}")
-      # ACT management kernel must be built with Shave preemption checks disabled
-      set(shave_preemption_opt "-mshave-preemption-checks=off")
-      set(link_script_file "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/shave_rt_kernel.ld")
-    else()
-      set(kernel_src_path "${CMAKE_CURRENT_SOURCE_DIR}/${kernel_src_file}")
-        set(shave_preemption_opt "-mshave-preemption-checks=restore")
-        list(APPEND shave_preemption_opt "-mshave-low-impact-preemption" )
-        list(APPEND shave_preemption_opt "-mshave-preemption-max-loop-depth=1")
-    endif()
+  if(rt_kernel)
+    # ACT management kernel must be built with Shave preemption checks disabled
+    set(shave_preemption_opt "-mshave-preemption-checks=off")
+    set(link_script_file "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/shave_rt_kernel.ld")
+  else()
+      set(shave_preemption_opt "-mshave-preemption-checks=restore")
+      list(APPEND shave_preemption_opt "-mshave-low-impact-preemption" )
+      list(APPEND shave_preemption_opt "-mshave-preemption-max-loop-depth=1")
   endif()
 
   # List needed to create the final embedded description file
-  list(APPEND act_shave_kernels ${kernel_src_file})
+  list(TRANSFORM include_dirs_list PREPEND "-I")
+  list(TRANSFORM define_symbols_list PREPEND "-D")
 
-  if(build_kernels)
-    # List needed to create the final embedded description file
-    list(TRANSFORM include_dirs_list PREPEND "-I")
-    list(TRANSFORM define_symbols_list PREPEND "-D")
+  set(compile_options
+    "-mcpu=${kernel_cpu}"
+    ${optimization_opts}
+    ${cppflags_list}
+    ${include_dirs_list}
+    ${define_symbols_list}
+    ${shave_preemption_opt})
 
-    # Compile the kernel and output an assembly file
+  # Compile the kernel and output an assembly file
+  # No output, no dependencies -- always regenerate
+  add_custom_target("${asm_file}"
+    COMMAND "${mv_tools_compile}" ${compile_options} -S "${kernel_src_path}" -o "${asm_path}"
+    COMMENT "Generating ${asm_file}"
+  )
+  add_dependencies(act_shave_kernels_asm "${asm_file}")
+
+  # Compile the kernel and output an object file
+  add_custom_command(
+    OUTPUT "${obj_file}"
+    DEPENDS "${kernel_src_path}"
+    DEPFILE "${dep_file}"
+    COMMAND "${mv_tools_compile}" -MD ${compile_options} -c "${kernel_src_path}" -o "${obj_file}"
+  )
+
+  set(obj_file_list "${obj_file}")
+
+  if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel) # MTL DDR split access workaround
+    add_custom_target("${asm_file_lsu0_wo}"
+      COMMAND "${mv_tools_compile}" ${compile_options} ${cppflags_list_lsu0_wo} -S "${kernel_src_path}" -o "${asm_path_lsu0_wo}"
+      COMMENT "Generating ${asm_file_lsu0_wo}"
+    )
+    add_dependencies(act_shave_kernels_asm "${asm_file_lsu0_wo}")
+
     add_custom_command(
-      OUTPUT "${asm_path}"
-      DEPENDS "${kernel_src_file}"
-      COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${optimization_opts} ${cppflags_list} ${include_dirs_list} ${define_symbols_list} ${shave_preemption_opt} -S "${kernel_src_path}" -o "${asm_path}"
+      OUTPUT "${obj_file_lsu0_wo}"
+      DEPENDS "${kernel_src_path}"
+      DEPFILE "${dep_file_lsu0_wo}"
+      COMMAND "${mv_tools_compile}" -MD ${compile_options} ${cppflags_list_lsu0_wo} -c "${kernel_src_path}" -o "${obj_file_lsu0_wo}"
     )
 
-    add_custom_target("${asm_file}" DEPENDS "${asm_path}")
-    add_dependencies(act_shave_kernels_asm "${asm_file}")
-
-    # Compile the kernel and output an object file
-    add_custom_command(
-      OUTPUT "${obj_file}"
-      DEPENDS "${kernel_src_file}"
-      COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${optimization_opts} ${cppflags_list} ${include_dirs_list} ${define_symbols_list} ${shave_preemption_opt} -c "${kernel_src_path}" -o "${obj_file}"
-    )
-
-    set(obj_file_list "${obj_file}")
-
-    if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
-      add_custom_command(
-        OUTPUT "${asm_path_lsu0_wo}"
-        DEPENDS "${kernel_src_file}"
-        COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${optimization_opts} ${cppflags_list} ${cppflags_list_lsu0_wo} ${include_dirs_list} ${define_symbols_list} ${shave_preemption_opt} -S "${kernel_src_path}" -o "${asm_path_lsu0_wo}"
-      )
-
-      add_custom_target("${asm_file_lsu0_wo}" DEPENDS "${asm_path_lsu0_wo}")
-      add_dependencies(act_shave_kernels_asm "${asm_file_lsu0_wo}")
-
-      add_custom_command(
-        OUTPUT "${obj_file_lsu0_wo}"
-        DEPENDS "${kernel_src_file}"
-        COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${optimization_opts} ${cppflags_list} ${cppflags_list_lsu0_wo} ${include_dirs_list} ${define_symbols_list} ${shave_preemption_opt} -c "${kernel_src_path}" -o "${obj_file_lsu0_wo}"
-      )
-
-      set(obj_file_list_lsu0_wo "${obj_file_lsu0_wo}")
-    endif()
-
-    # Compile extra sources if specified in the descrip file
-    if(NOT extra_src_list STREQUAL "")
-      foreach(extra_src_file ${extra_src_list})
-        get_filename_component(src_name ${extra_src_file} NAME_WE)
-        get_filename_component(dir_name ${extra_src_file} DIRECTORY)
-
-        # Discard full path, just keep name of the dir the file is in
-        get_filename_component(dir_name ${dir_name} NAME_WE)
-
-        # Some extra_src files have the same filename so the .o files must be in separate directories to avoid overwriting.
-        file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/extra_src/${kernel_cpu}/${dir_name})
-        set(obj_file "${CMAKE_CURRENT_BINARY_DIR}/extra_src/${kernel_cpu}/${dir_name}/${src_name}.${kernel_cpu}${obj_suffix}")
-
-        add_custom_command(
-          OUTPUT "${obj_file}"
-          DEPENDS "${kernel_src_file}"
-          COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${optimization_opts} ${cppflags_list} ${include_dirs_list} ${define_symbols_list} ${shave_preemption_opt} -c "${extra_src_file}" -o "${obj_file}"
-        )
-
-        list(APPEND obj_file_list "${obj_file}")
-        if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
-          list(APPEND obj_file_list_lsu0_wo "${obj_file}")
-        endif()
-      endforeach()
-    endif()
-
-    # Compile asm files if specified in the descrip file
-    if(NOT asm_src_list STREQUAL "")
-      foreach(asm_src_file ${asm_src_list})
-        get_filename_component(src_name ${asm_src_file} NAME_WE)
-        get_filename_component(dir_name ${asm_src_file} DIRECTORY)
-
-        # Discard full path, just keep name of the dir the file is in
-        get_filename_component(dir_name ${dir_name} NAME_WE)
-
-        # Some asm_src files have the same filename so the .o files must be in separate directories to avoid overwriting.
-        file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/asm_src/${kernel_cpu}/${dir_name})
-        set(obj_file "${CMAKE_CURRENT_BINARY_DIR}/asm_src/${kernel_cpu}/${dir_name}/${src_name}.${kernel_cpu}${obj_suffix}")
-
-        add_custom_command(
-          OUTPUT "${obj_file}"
-          DEPENDS "${kernel_src_file}"
-          COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${asm_include_list} -c "${asm_src_file}" -o "${obj_file}"
-        )
-
-        list(APPEND obj_file_list "${obj_file}")
-        if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
-          list(APPEND obj_file_list_lsu0_wo "${obj_file}")
-        endif()
-      endforeach()
-    endif()
-
-    # Link the sources, add entry point and windowed sections, then dump the elf file
-    add_custom_command(
-      OUTPUT "${elf_path}"
-      DEPENDS ${obj_file_list}
-      COMMAND "${mv_tools_link}" --script "${link_script_file}" -entry "${kernel_entry}" --gc-sections --strip-debug --discard-all -zmax-page-size=16 ${obj_file_list} -EL ${link_libraries_list} --output "${elf_path}"
-    )
-
-    if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
-      add_custom_command(
-        OUTPUT "${elf_path_lsu0_wo}"
-        DEPENDS ${obj_file_list_lsu0_wo}
-        COMMAND "${mv_tools_link}" --script "${link_script_file}" -entry "${kernel_entry}" --gc-sections --strip-debug --discard-all -zmax-page-size=16 ${obj_file_list_lsu0_wo} -EL ${link_libraries_list} --output "${elf_path_lsu0_wo}"
-      )
-    endif()
-
-    # Delete extra and asm sources after compile such that we can apply different optimizations if needed
-    if(NOT extra_src_list STREQUAL "")
-      foreach(extra_src_file ${extra_src_list})
-        get_filename_component(src_name ${extra_src_file} NAME_WE)
-        file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/extra_src/${kernel_cpu}/${dir_name}/${src_name}.${kernel_cpu}${obj_suffix}")
-      endforeach()
-    endif()
-
-    if(NOT asm_src_list STREQUAL "")
-      foreach(asm_src_file ${asm_src_list})
-        get_filename_component(src_name ${asm_src_file} NAME_WE)
-        file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/asm_src/${kernel_cpu}/${dir_name}/${src_name}.${kernel_cpu}${obj_suffix}")
-      endforeach()
-    endif()
+    set(obj_file_list_lsu0_wo "${obj_file_lsu0_wo}")
   endif()
 
+  # Compile extra sources if specified in the descrip file
+  if(extra_src_list)
+    foreach(extra_src_file ${extra_src_list})
+      get_filename_component(src_name ${extra_src_file} NAME_WE)
+      get_filename_component(dir_name ${extra_src_file} DIRECTORY)
+
+      # Discard full path, just keep name of the dir the file is in
+      get_filename_component(dir_name ${dir_name} NAME_WE)
+
+      # Some extra_src files have the same filename so the .o files must be in separate directories to avoid overwriting.
+      set(obj_path "${CMAKE_CURRENT_BINARY_DIR}/extra_src/${kernel_cpu}/${dir_name}")
+      file(MAKE_DIRECTORY "${obj_path}")
+      set(base_name "${obj_path}/${src_name}.${kernel_cpu}")
+      set(obj_file "${base_name}${obj_suffix}")
+      set(dep_file "${base_name}.d")
+
+      add_custom_command(
+        OUTPUT "${obj_file}"
+        DEPENDS "${kernel_src_path}"
+        DEPFILE "${dep_file}"
+        COMMAND "${mv_tools_compile}" -MD ${compile_options} -c "${extra_src_file}" -o "${obj_file}"
+      )
+
+      list(APPEND obj_file_list "${obj_file}")
+      if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel) # MTL DDR split access workaround
+        list(APPEND obj_file_list_lsu0_wo "${obj_file}")
+      endif()
+    endforeach()
+  endif()
+
+  # Compile asm files if specified in the descrip file
+  if(asm_src_list)
+    # Due to lack of depfile support
+    # find all .inc files in source directories
+    set(inc_list)
+    foreach(inc_dir IN LISTS asm_src_list kernel_src_dir)
+      file(GLOB_RECURSE inc_files CONFIGURE_DEPENDS "${inc_dir}/*.inc")
+      LIST(APPEND inc_list ${inc_files})
+    endforeach()
+
+    foreach(asm_src_file ${asm_src_list})
+      get_filename_component(src_name ${asm_src_file} NAME_WE)
+      get_filename_component(dir_name ${asm_src_file} DIRECTORY)
+
+      # Discard full path, just keep name of the dir the file is in
+      get_filename_component(dir_name ${dir_name} NAME_WE)
+
+      # Some asm_src files have the same filename so the .o files must be in separate directories to avoid overwriting.
+      file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/asm_src/${kernel_cpu}/${dir_name}")
+      set(obj_file "${CMAKE_CURRENT_BINARY_DIR}/asm_src/${kernel_cpu}/${dir_name}/${src_name}.${kernel_cpu}${obj_suffix}")
+
+      add_custom_command(
+        OUTPUT "${obj_file}"
+        DEPENDS "${asm_src_file}" "${inc_list}"
+        COMMAND "${mv_tools_compile}" -mcpu=${kernel_cpu} ${asm_include_list} -c "${asm_src_file}" -o "${obj_file}"
+      )
+      list(APPEND obj_file_list "${obj_file}")
+
+      if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel) # MTL DDR split access workaround
+        list(APPEND obj_file_list_lsu0_wo "${obj_file}")
+      endif()
+    endforeach()
+  endif()
+
+  set(link_options
+    "--script" "${link_script_file}"
+    "-entry" "${kernel_entry}"
+    "--gc-sections"
+    "--strip-debug"
+    "--discard-all"
+    "-zmax-page-size=16")
+
+  # Link the sources, add entry point and windowed sections, then dump the elf file
+  add_custom_command(
+    OUTPUT "${elf_path}"
+    DEPENDS ${obj_file_list} "${link_script_file}" ${link_libraries_list}
+    COMMAND "${mv_tools_link}" ${link_options} ${obj_file_list} -EL ${link_libraries_list} --output "${elf_path}"
+  )
+  list(APPEND kernels_to_build "${elf_path}")
   add_custom_target("${elf_file}" DEPENDS "${elf_path}")
   add_dependencies(act_shave_kernels_build "${elf_file}")
 
-  if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel STREQUAL "yes") # MTL DDR split access workaround
+  if(kernel_cpunum STREQUAL "3720" AND NOT rt_kernel) # MTL DDR split access workaround
+    add_custom_command(
+      OUTPUT "${elf_path_lsu0_wo}"
+      DEPENDS ${obj_file_list_lsu0_wo} "${link_script_file}" ${link_libraries_list}
+      COMMAND "${mv_tools_link}" ${link_options} ${obj_file_list_lsu0_wo} -EL ${link_libraries_list} --output "${elf_path_lsu0_wo}"
+    )
+    list(APPEND kernels_to_build "${elf_path_lsu0_wo}")  
     add_custom_target("${elf_file_lsu0_wo}" DEPENDS "${elf_path_lsu0_wo}")
     add_dependencies(act_shave_kernels_build "${elf_file_lsu0_wo}")
   endif()
+
 endforeach()
 
-# If we don't want to rebuild anything just copy the prebuilts and create the embedded sections file
+### UPDATE PREBUILT KERNELS ###
+file(GLOB prebuild_kernels RELATIVE "${prebuild_binary_dir}" CONFIGURE_DEPENDS "${prebuild_binary_dir}/*")
 if(build_kernels)
-  # Copy binaries after compile
-  add_custom_target(act_shave_kernels_copy
-    DEPENDS ${act_shave_kernels}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${target_binary_dir}/" "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin/"
-  )
-  add_dependencies(act_shave_kernels_copy act_shave_kernels_build)
-  add_dependencies(act_shave_kernels_ready act_shave_kernels_copy)
-
-  # If we don't rebuild everything, copy the prebuilts for the kernels we haven't built
-  if(NOT (ENABLE_SHAVE_BINARIES_BUILD AND ENABLE_MANAGEMENT_KERNEL_BUILD AND ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD))
-    add_custom_target(update_prebuilt_binaries
-      # Update copy_directory function #E-167654
-      COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin" "${target_binary_dir}"
-      # Make sure we do this after updating the prebuilts, otherwise we would overwrite the rebuilt binaries
-      DEPENDS act_shave_kernels_copy
-    )
-    add_dependencies(act_shave_kernels_ready update_prebuilt_binaries)
+  if(NOT kernels_to_build)
+    message(FATAL_ERROR "No kernels to build")
   endif()
-else()
+
+  # Remove prebuild binaries if descriptor is removed
+  set(kernels_to_remove ${prebuild_kernels})
+  list(REMOVE_ITEM kernels_to_remove ${all_kernels})
+  foreach(kernel IN LISTS kernels_to_remove)
+    message(STATUS "No descriptor for prebuild kernel ${kernel}, removing.")
+    file(REMOVE "${prebuild_binary_dir}/${kernel}")
+  endforeach()  
+
+  # If building kernels update prebuilt kernels unconditionally to ensure the
+  # prebuilt kernels are up to date even after git operations
+  # No output or byproducts to avoid removing these during clean
   add_custom_target(update_prebuilt_binaries
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin" "${target_binary_dir}"
+    DEPENDS act_shave_kernels_build
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${kernels_to_build} "${prebuild_binary_dir}"
+    COMMENT "Updating prebuilt kernels"
   )
-  add_dependencies(act_shave_kernels_ready act_shave_kernels_build update_prebuilt_binaries)
+else()
+  # dummy target if not building kernels
+  add_custom_target(update_prebuilt_binaries)
 endif()
 
-# Add file-level and target-level dependencies
+### LIBRARY TARGET ####
+# Add file-level and target-level dependencies, we need this regenerated after
+# kernels build and after any git actions
+list(TRANSFORM prebuild_kernels PREPEND "${prebuild_binary_dir}/" OUTPUT_VARIABLE prebuild_bins)
 add_custom_command(
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated_shave_binary_resources.cpp"
-  COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/embed_shave_binaries.cmake"
-  DEPENDS ${act_shave_kernels} act_shave_kernels_ready
+  COMMAND ${CMAKE_COMMAND} -D KERNELS_BIN_DIR="${prebuild_binary_dir}"
+                           -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_shave_binaries.cmake"
+  DEPENDS act_shave_kernels_build update_prebuilt_binaries ${prebuild_bins} ${kernels_to_build}
 )
 
 add_library(act_shave_kernels_lib OBJECT "${CMAKE_CURRENT_BINARY_DIR}/generated_shave_binary_resources.cpp")

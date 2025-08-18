@@ -177,18 +177,6 @@ Example:
         </filters>
     </skip_config>
 
-    <!-- E#152648 -->
-    <skip_config>
-        <message>Tests are failing due to smoke_BI_PAD=0</message>
-        <enable_rules>
-            <backend>LEVEL0</backend>
-            <device>!3720</device>
-        </enable_rules>
-        <filters>
-            <filter>.*DeformableConvolution2DTest_Strides.*</filter>
-        </filters>
-    </skip_config>
-
     <!-- E#32075 -->
     <skip_config>
         <message>Exception during loading to the device</message>
@@ -963,8 +951,6 @@ Example:
             <filter>.*ClassExecutableNetworkInvalidDeviceIDTestSuite.InvalidNPUdeviceIDTest.*DEVICE_ID=NPU.3990.*</filter>
         </filters>
     </skip_config>
-
-    <!-- E#168882 -->
     <!-- E#170866 -->
     <skip_config>
         <message>LSTM Sequence accuracy fails</message>
@@ -976,11 +962,63 @@ Example:
         </filters>
     </skip_config>
 
+    <!-- E#169979 -->
+    <skip_config>
+        <message>Compile option batch-compile-method=unroll not supported on MTL</message>
+        <enable_rules>
+            <device>3720</device>
+        </enable_rules>
+        <filters>
+            <filter>.*CompilationPipelineCfgConsistencyTests.*</filter>
+        </filters>
+    </skip_config>
+
     <!-- E###### -->
     <skip_config>
         <message>NPU_DPU_GROUPS is a deprecated property</message>
         <filters>
             <filter>.*NPU_DPU_GROUPS.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#173476 -->
+    <skip_config>
+        <message>Test-cases failing with sri_7.0.y25ww26 SIMICS</message>
+        <enable_rules>
+            <backend>IMD</backend>
+        </enable_rules>
+        <filters>
+        </filters>
+    </skip_config>
+
+    <!-- E#174363 -->
+    <skip_config>
+        <message>Test-cases failing after driver update</message>
+        <enable_rules>
+        </enable_rules>
+        <filters>
+            <filter>.*compatibility_smoke_BehaviorTests/OVCompileAndInferRequestTurbo.CompiledModelTurbo.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#172997 -->
+    <skip_config>
+        <message>Skip test-cases until operators fix for GatherND and GatherElements.</message>
+        <filters>
+            <filter>.*smoke_precommit.*GatherElementsLayerTestCommon.*</filter>
+            <filter>.*smoke_precommit.*GatherNDLayerTestCommon.*</filter>
+            <filter>.*smoke_tiling.*GatherNDLayerTestCommon.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#170977 -->
+    <skip_config>
+        <message>Skip tests with u2 precision not supported on NPU3720.</message>
+        <enable_rules>
+            <device>3720</device>
+        </enable_rules>
+        <filters>
+            <filter>.*InferRequestCheckTensorPrecision.*type=u2.*</filter>
         </filters>
     </skip_config>
 

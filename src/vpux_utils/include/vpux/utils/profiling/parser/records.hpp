@@ -16,7 +16,6 @@
 #include "vpux/utils/profiling/parser/hw.hpp"
 #include "vpux/utils/profiling/tasknames.hpp"
 
-#include "schema/graphfile_generated.h"
 #include "schema/profiling_generated.h"
 
 #include <algorithm>
@@ -162,22 +161,6 @@ protected:
     RawProfilingRecord(const std::string& name, const std::string& layerType, const BarriersSet& wBarriers = {},
                        const BarriersSet& uBarriers = {})
             : _name(name), _layerType(layerType), _waitBarriers(wBarriers), _updateBarriers(uBarriers) {
-    }
-
-private:
-    RawProfilingRecord(const std::string& cleanName, const std::string& layerType, const MVCNN::Task* task)
-            : _name(cleanName), _layerType(layerType) {
-        VPUX_THROW_WHEN(task == nullptr, "Invalid task");
-        VPUX_THROW_WHEN(task->name() == nullptr, "Invalid task name");
-        VPUX_THROW_WHEN(task->associated_barriers() == nullptr, "Task should have associated barriers");
-
-        auto barriers = task->associated_barriers();
-        if (auto wBarriers = barriers->wait_barriers()) {
-            _waitBarriers = BarriersSet(wBarriers->cbegin(), wBarriers->cend());
-        }
-        if (auto uBarriers = barriers->update_barriers()) {
-            _updateBarriers = BarriersSet(uBarriers->cbegin(), uBarriers->cend());
-        }
     }
 
 protected:

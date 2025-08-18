@@ -8,6 +8,7 @@
 
 #include <gtest/internal/gtest-internal.h>
 
+#include <common_test_utils/test_constants.hpp>
 #include <openvino/core/dimension.hpp>
 #include <openvino/runtime/core.hpp>
 #include <openvino/runtime/make_tensor.hpp>
@@ -31,7 +32,7 @@ VpuOv2LayerTest::VpuOv2LayerTest(): testTool(envConfig) {
 
     _log.setName("VPUTest");
     _log.setLevel(vpux::LogLevel::Info);
-    this->targetDevice = ov::test::utils::DEVICE_NPU;
+    this->targetDevice = DEVICE_NPU;
 
     if (!envConfig.IE_NPU_TESTS_LOG_LEVEL.empty()) {
         const auto logLevel = ::intel_npu::OptionParser<ov::log::Level>::parse(envConfig.IE_NPU_TESTS_LOG_LEVEL);
@@ -139,9 +140,7 @@ void VpuOv2LayerTest::run() {
     }
 
     summary.updateOPsStats(function, ov::test::utils::PassRate::Statuses::CRASHED);
-
     ASSERT_FALSE(targetStaticShapes.empty()) << "Target Static Shape is empty!";
-
     auto crashHandler = std::make_unique<ov::test::utils::CrashHandler>();
 
 #ifdef _WIN32
@@ -337,7 +336,7 @@ void VpuOv2LayerTest::printNetworkConfig() const {
         item.second.print(ostr);
         ostr << "; ";
     }
-    _log.info("NPU Plugin config: {0}", ostr.str());
+    _log.info("{0} Plugin config: {1}", this->targetDevice, ostr.str());
 }
 
 void VpuOv2LayerTest::setPlatform(const std::string_view platform) {

@@ -692,6 +692,20 @@ const auto pool5DParams = ::testing::Combine(
                 static_shapes_to_test_representation(std::vector<ov::Shape>{{1, 4, 16, 8, 12}})),  // inputShapes
         ::testing::Values(DEVICE_NPU));
 
+// 5d usecase, no 4D conversion
+const auto pool5DParams_no4D = ::testing::Combine(
+        ::testing::Combine(::testing::Values(PoolingTypes::AVG, PoolingTypes::MAX),
+                           ::testing::ValuesIn<std::vector<size_t>>({{1, 7, 7}}),  // kernels
+                           ::testing::ValuesIn<std::vector<size_t>>({{1, 1, 1}}),  // strides
+                           ::testing::ValuesIn<std::vector<size_t>>({{0, 0, 0}}),  // padBegins
+                           ::testing::ValuesIn<std::vector<size_t>>({{0, 0, 0}}),  // padEnds
+                           ::testing::Values(ov::op::RoundingType::FLOOR), ::testing::Values(ov::op::PadType::EXPLICIT),
+                           ::testing::Values(true)),  // excludePad
+        ::testing::Values(ov::element::f32),          // netPrc
+        ::testing::Values(
+                static_shapes_to_test_representation(std::vector<ov::Shape>{{1, 960, 4, 7, 7}})),  // inputShapes
+        ::testing::Values(DEVICE_NPU));
+
 // pad outside of kernel size/2. Pad is valid until at kerneSize-1.
 const auto pooligBigPadEndParams = ::testing::Combine(
         ::testing::Combine(::testing::Values(PoolingTypes::AVG, PoolingTypes::MAX),
@@ -866,6 +880,9 @@ INSTANTIATE_TEST_SUITE_P(smoke_Pooling_3D, PoolingLayerTest_NPU3720, pool3DParam
 // 5d usecase
 INSTANTIATE_TEST_SUITE_P(smoke_Pooling_5D, PoolingLayerTest_NPU3720, pool5DParams,
                          PoolingLayerTest_NPU3720::getTestCaseName);
+// 5d usecase, no 4D conversion
+INSTANTIATE_TEST_SUITE_P(smoke_Pooling_5D_no4D, PoolingLayerTest_NPU3720, pool5DParams_no4D,
+                         PoolingLayerTest_NPU3720::getTestCaseName);
 // pad outside of kernel size/2. Pad is valid until at kerneSize-1.
 INSTANTIATE_TEST_SUITE_P(smoke_Pooling_BigPadEndParams, PoolingLayerTest_NPU3720, pooligBigPadEndParams,
                          PoolingLayerTest_NPU3720::getTestCaseName);
@@ -955,6 +972,9 @@ INSTANTIATE_TEST_SUITE_P(smoke_Pooling_AllPadType, PoolingLayerTest_NPU4000, poo
 INSTANTIATE_TEST_SUITE_P(smoke_Pooling_3D, PoolingLayerTest_NPU4000, pool3DParams, PoolingLayerTest::getTestCaseName);
 // 5d usecase
 INSTANTIATE_TEST_SUITE_P(smoke_Pooling_5D, PoolingLayerTest_NPU4000, pool5DParams, PoolingLayerTest::getTestCaseName);
+// 5d usecase, no 4D conversion
+INSTANTIATE_TEST_SUITE_P(smoke_Pooling_5D_no4D, PoolingLayerTest_NPU4000, pool5DParams_no4D,
+                         PoolingLayerTest::getTestCaseName);
 // pad outside of kernel size/2. Pad is valid until at kerneSize-1.
 INSTANTIATE_TEST_SUITE_P(smoke_Pooling_BigPadEndParams, PoolingLayerTest_NPU4000, pooligBigPadEndParams,
                          PoolingLayerTest_NPU4000::getTestCaseName);

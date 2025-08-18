@@ -7,14 +7,17 @@ if(ENABLE_LTO)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 endif()
 
+if (ENABLE_IMD_BACKEND OR ENABLE_IMD_PLUGIN)
+    add_subdirectory(imd_tests)
+endif()
+
 set(TARGET_NAME npuFuncTests)
-set(EXCLUDED_FUNC_TESTS_DIR "")
+set(EXCLUDED_FUNC_TESTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/imd_tests")
 set(OPTIONAL_FUNC_TESTS_INCLUDES "")
 set(OPTIONAL_FUNC_TESTS_LIBS "")
 
 set(SKIP_CONFIG "npu_skip_func_tests.xml")
 set(SKIP_CONFIG_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/${SKIP_CONFIG})
-set(LEGACY_SKIP_CONFIG_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/skip_tests.xml)
 
 ov_add_test_target(
     NAME ${TARGET_NAME}
@@ -24,12 +27,12 @@ ov_add_test_target(
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${OPTIONAL_FUNC_TESTS_INCLUDES}
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/tests/functional/shared_tests_instances"
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/tests/functional/behavior"
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/tests/functional/subgraph_tests"
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/tests/functional/custom/single_layer_tests/classes"
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/artifacts/vpuip_2"
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/src/vpux_translate_utils/include"
+        "${PROJECT_SOURCE_DIR}/tests/functional/shared_tests_instances"
+        "${PROJECT_SOURCE_DIR}/tests/functional/behavior"
+        "${PROJECT_SOURCE_DIR}/tests/functional/subgraph_tests"
+        "${PROJECT_SOURCE_DIR}/tests/functional/custom/single_layer_tests/classes"
+        "${PROJECT_SOURCE_DIR}/artifacts/vpuip_2"
+        "${PROJECT_SOURCE_DIR}/src/vpux_translate_utils/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/internal"
         "${CMAKE_CURRENT_SOURCE_DIR}/shared_test_classes/include"
         ${LLVM_INCLUDE_DIRS}
@@ -42,7 +45,6 @@ ov_add_test_target(
         npu_llvm_utils
         npu_ov_utils
         openvino::npu_al
-        npu_mlir_compiler_schema # used by subgraph_tests/compress_weights_btc.cpp
     DEFINES
         DATA_PATH=\"${DATA_PATH}\"
         MODELS_PATH=\"${MODELS_PATH}\"
@@ -86,14 +88,6 @@ install(FILES ${SKIP_CONFIG_PATH}
         EXCLUDE_FROM_ALL
 )
 
-#TODO remove legacy skip file after CI pipelines update
-install(
-  FILES ${LEGACY_SKIP_CONFIG_PATH}
-  DESTINATION tests
-  COMPONENT tests
-  EXCLUDE_FROM_ALL
-)
-
 # For developer builds we need to find the output folder of compiled binaries
 get_target_property(EXE_LOCATION ${TARGET_NAME} RUNTIME_OUTPUT_DIRECTORY)
 
@@ -112,8 +106,8 @@ if(ENABLE_DEVELOPER_BUILD AND UNIX)
     # PARALLEL_WORKERS env variable as -w workers command line argument
     add_test(NAME ${TARGET_NAME}-parallel
             COMMAND
-                ${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/scripts/run_gtest_parallel_manual_threads.sh
-                ${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/gtest-parallel/gtest-parallel
+                ${PROJECT_SOURCE_DIR}/scripts/run_gtest_parallel_manual_threads.sh
+                ${PROJECT_SOURCE_DIR}/thirdparty/gtest-parallel/gtest-parallel
                 $<TARGET_FILE_DIR:${TARGET_NAME}>/${TARGET_NAME}
             WORKING_DIRECTORY ${EXECUTABLE_OUTPUT_PATH} )
             set_tests_properties(${TARGET_NAME}-parallel PROPERTIES

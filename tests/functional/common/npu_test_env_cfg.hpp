@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "base/ov_behavior_test_utils.hpp"
 #include "common/utils.hpp"
+#include "shared_test_classes/base/ov_behavior_test_utils.hpp"
 #include "vpux/utils/IE/private_properties.hpp"
 
 #include <gtest/gtest.h>

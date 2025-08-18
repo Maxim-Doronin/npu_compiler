@@ -4,15 +4,15 @@
 //
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @mainModule attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @SHAVE_ACT
   IE.ExecutorResource 1 of @SHAVE_NN
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
-  IE.MemoryResource 524288000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
+  IE.MemoryResource 524288000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @race_condition_dma_f16_f16 inputsInfo : {
     DataInfo "input_0" : tensor<1x16x16x16xf16, {order = #NHWC}>
   } outputsInfo : {

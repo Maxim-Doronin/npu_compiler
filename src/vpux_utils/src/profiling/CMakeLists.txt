@@ -17,7 +17,7 @@ endif()
 
 vpux_add_flatc_target(npu_profiling_schema
     SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema"
-    DST_DIR "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/profiling/generated"
+    DST_DIR "${PROJECT_BINARY_DIR}/profiling/generated"
     ARGS "--gen-object-api" "--reflect-names")
 set_target_properties(npu_profiling_schema PROPERTIES FOLDER "src")
 
@@ -60,7 +60,6 @@ ov_link_system_libraries(${TARGET_NAME}
     PRIVATE
         flatbuffers
         npu_elf
-        npu_mlir_compiler_schema
         npu_profiling_schema
 )
 

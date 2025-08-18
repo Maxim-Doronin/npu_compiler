@@ -43,8 +43,8 @@ const std::vector<double> epsilon = {0.0001};
 std::vector<ov::AnyMap> additionalConfig = {{}};
 
 const auto groupNormalizationParams =
-        testing::Combine(::testing::ValuesIn(netPrecisions), ::testing::Values(ov::element::undefined),
-                         ::testing::Values(ov::element::undefined),
+        testing::Combine(::testing::ValuesIn(netPrecisions), ::testing::Values(ov::element::dynamic),
+                         ::testing::Values(ov::element::dynamic),
                          ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(staticInputShapes)),
                          ::testing::ValuesIn(numGroups), ::testing::ValuesIn(epsilon), ::testing::Values(DEVICE_NPU),
                          ::testing::ValuesIn(additionalConfig));
