@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -24,7 +26,7 @@ mlir::LogicalResult vpux::IE::ShapeCastOp::inferReturnTypeComponents(
     }
 
     const auto outShape = parseIntArrayAttr<int64_t>(shapeCast.getShape());
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getSource().getType());
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getInput().getType());
 
     VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
                       IE::ShapeCastOp::getOperationName());
@@ -35,10 +37,10 @@ mlir::LogicalResult vpux::IE::ShapeCastOp::inferReturnTypeComponents(
 
 mlir::OpFoldResult vpux::IE::ShapeCastOp::fold(FoldAdaptor adaptor) {
     auto operands = adaptor.getOperands();
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(getSource().getType());
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(getResult().getType());
-    if (getSource().getType() == getResult().getType()) {
-        return getSource();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
+    if (inputType == outputType) {
+        return getInput();
     }
 
     VPUX_THROW_UNLESS(!operands.empty(), "Wrong number of operands : {0}", operands.size());
@@ -67,7 +69,7 @@ public:
 
 mlir::LogicalResult FuseWithShapeCastOrAffineReshape::matchAndRewrite(IE::ShapeCastOp origOp,
                                                                       mlir::PatternRewriter& rewriter) const {
-    auto prevOp = origOp.getSource().getDefiningOp();
+    auto prevOp = origOp.getInput().getDefiningOp();
     if (!mlir::isa_and_nonnull<IE::ShapeCastOp, IE::AffineReshapeOp>(prevOp)) {
         return mlir::failure();
     }

@@ -19,11 +19,11 @@ mlir::LogicalResult D2SToTransposedConvVerifierBase::isBeneficialConversion(Logg
     return mlir::success();
 }
 
-std::unique_ptr<D2SToTransposedConvVerifierBase> createD2SToTransposedConvVerifier(VPU::ArchKind arch) {
+std::unique_ptr<D2SToTransposedConvVerifierBase> createD2SToTransposedConvVerifier(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return std::make_unique<IE::arch37xx::D2SToTransposedConvVerifier>();
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return std::make_unique<IE::arch40xx::D2SToTransposedConvVerifier>();
     default: {
         return std::make_unique<D2SToTransposedConvVerifierBase>();

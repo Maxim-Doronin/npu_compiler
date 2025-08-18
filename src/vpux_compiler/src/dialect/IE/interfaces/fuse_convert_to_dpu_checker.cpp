@@ -9,10 +9,10 @@
 namespace vpux {
 namespace IE {
 
-std::unique_ptr<FuseConvertToDPUCheckerBase> createFuseConvertToDPUChecker(VPU::ArchKind arch) {
+std::unique_ptr<FuseConvertToDPUCheckerBase> createFuseConvertToDPUChecker(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
-    case VPU::ArchKind::NPU40XX: {
+    case config::ArchKind::NPU37XX:
+    case config::ArchKind::NPU40XX: {
         return std::make_unique<IE::arch37xx::FuseConvertToDPUChecker>();
     }
     default: {
