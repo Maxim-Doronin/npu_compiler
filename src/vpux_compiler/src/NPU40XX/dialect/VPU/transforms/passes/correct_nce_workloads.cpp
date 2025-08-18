@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux::VPU::arch40xx {
 #define GEN_PASS_DECL_CORRECTNCEWORKLOADS
@@ -156,7 +157,7 @@ void CorrectNCEWorkloadsPass::safeRunOnFunc() {
     auto func = getOperation();
     WorkloadSplitter40XX splitter(func, _log);
 
-    const auto arch = getArch(func);
+    const auto arch = config::getArch(func);
     auto sparsityConstraint = VPU::getSparsityConstraint(arch);
     splitter.correctInvalidWorkload(sparsityConstraint);
 }

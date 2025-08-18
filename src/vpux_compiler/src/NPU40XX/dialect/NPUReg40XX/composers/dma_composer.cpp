@@ -37,7 +37,9 @@ uint64_t getTensorMode(mlir::Type type) {
 void setDMAConversionMode(DMARegister& initValues, mlir::Type inputType, uint64_t srcSize, mlir::Type outputType,
                           uint64_t dstSize) {
     uint64_t conversionCfg = 0;
-    if (inputType != outputType) {
+    auto isQuantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(inputType) &&
+                           mlir::dyn_cast<mlir::quant::QuantizedType>(outputType);
+    if (inputType != outputType && !isQuantizedType) {
         if (inputType.isF32() && outputType.isF16()) {
             conversionCfg = DMA_DATA_CONV_FP32_FP16;
         } else if (inputType.isF32() && outputType.isBF16()) {
@@ -289,7 +291,10 @@ DMARegister compose(VPUASM::NNDMAOp origOp, ELF::SymbolReferenceMap& symRefMap) 
 
         // DMA only does FP32 -> FP16/BF16 conversions,
         // Because of this, dstDimSize1 will always be half of the original value
-        if (inputType.getElementType() != outputType.getElementType() && transactionConfig.dstDimSizes[1]) {
+        auto isQuantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(inputType) &&
+                               mlir::dyn_cast<mlir::quant::QuantizedType>(outputType);
+        if (inputType.getElementType() != outputType.getElementType() && !isQuantizedType &&
+            transactionConfig.dstDimSizes[1]) {
             VPUX_THROW_UNLESS(elemInSize == elemOutSize * 2, "Element sizes in conversion are not supported");
             long newDstDimSize1 = ((transactionConfig.dstDimSizes[1] + 1) / 2) - 1;
             descriptor.write<Fields::dma_dim_size_dst_1>(newDstDimSize1);

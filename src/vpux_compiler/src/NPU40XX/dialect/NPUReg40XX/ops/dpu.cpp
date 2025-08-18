@@ -32,7 +32,7 @@ void DPUInvariantOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataS
     binDataSection.appendData(serializedInvariantDesc.data(), serializedInvariantDesc.size());
 }
 
-size_t DPUInvariantOp::getBinarySize(VPU::ArchKind) {
+size_t DPUInvariantOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuDPUInvariant);
 }
 
@@ -192,7 +192,7 @@ std::vector<ELF::RelocationInfo> DPUInvariantOp::getRelocationInfo(ELF::SymbolRe
     return relocs;
 }
 
-size_t DPUInvariantOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t DPUInvariantOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuDPUInvariant);
 }
 
@@ -207,7 +207,7 @@ void DPUVariantOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSec
     binDataSection.appendData(serializedVariantDesc.data(), serializedVariantDesc.size());
 }
 
-size_t DPUVariantOp::getBinarySize(VPU::ArchKind) {
+size_t DPUVariantOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuDPUVariant);
 }
 
@@ -270,7 +270,7 @@ std::vector<ELF::RelocationInfo> DPUVariantOp::getRelocationInfo(ELF::SymbolRefe
     return relocs;
 }
 
-size_t DPUVariantOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t DPUVariantOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuDPUVariant);
 }
 

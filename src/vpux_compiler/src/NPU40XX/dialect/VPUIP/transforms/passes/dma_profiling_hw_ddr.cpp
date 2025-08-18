@@ -7,7 +7,10 @@
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/logging.hpp"
@@ -78,8 +81,8 @@ private:
 class DMATaskProfilingHwDdrPass final :
         public VPUIP::arch40xx::impl::DMATaskProfilingHwDdrBase<DMATaskProfilingHwDdrPass> {
 public:
-    explicit DMATaskProfilingHwDdrPass(DMAProfilingMode dmaProfilingMode, Logger log)
-            : _dmaProfilingMode(dmaProfilingMode) {
+    explicit DMATaskProfilingHwDdrPass(const std::string& enableDMAProfiling, Logger log)
+            : DMATaskProfilingHwDdrBase({enableDMAProfiling}) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -87,7 +90,6 @@ private:
     void safeRunOnModule() final;
 
 private:
-    DMAProfilingMode _dmaProfilingMode;
     FirstDMAQueueTracker firstDMATracker;
     LastDMAQueueTracker lastDMATracker;
 
@@ -102,17 +104,16 @@ private:
 void DMATaskProfilingHwDdrPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     auto* ctx = moduleOp->getContext();
-    auto arch = VPU::getArch(moduleOp);
+    auto arch = config::getArch(moduleOp);
 
-    if (enableDMAProfiling.hasValue()) {
-        _dmaProfilingMode = getDMAProfilingMode(arch, enableDMAProfiling.getValue());
-    }
+    VPUX_THROW_UNLESS(enableDMAProfiling.hasValue(), "No option");
+    auto dmaProfilingMode = getDMAProfilingMode(arch, enableDMAProfiling);
 
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp funcOp;
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
 
-    switch (_dmaProfilingMode) {
+    switch (dmaProfilingMode) {
     case DMAProfilingMode::STATIC_HWP: {
         setupStaticProfiling(ctx, netInfo, funcOp);
         break;
@@ -348,7 +349,7 @@ VPURT::TaskOp DMATaskProfilingHwDdrPass::generateBufferCopyAfter(mlir::OpBuilder
 // createDMATaskProfilingHwDdrPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUIP::arch40xx::createDMATaskProfilingHwDdrPass(DMAProfilingMode dmaProfilingMode,
-                                                                                   Logger log) {
-    return std::make_unique<DMATaskProfilingHwDdrPass>(dmaProfilingMode, log);
+std::unique_ptr<mlir::Pass> vpux::VPUIP::arch40xx::createDMATaskProfilingHwDdrPass(
+        const std::string& enableDMAProfiling, Logger log) {
+    return std::make_unique<DMATaskProfilingHwDdrPass>(enableDMAProfiling, log);
 }

@@ -94,9 +94,9 @@ mlir::LogicalResult MovetoDMAGather::matchAndRewrite(VPU::GatherOp origOp, mlir:
     auto convertIndicesOp = rewriter.createOrFold<VPU::ConvertOp>(origOp->getLoc(), reshapeIndicesOp,
                                                                   mlir::TypeAttr::get(requiredType64));
 
-    auto gatherDMAOp =
-            rewriter.create<VPU::GatherDMAOp>(origOp.getLoc(), origOp.getInput(), convertIndicesOp, origOp.getAxis(),
-                                              origOp.getAxisValueAttr(), origOp.getBatchDims());
+    auto gatherDMAOp = rewriter.create<VPU::GatherDMAOp>(origOp.getLoc(), origOp.getInput(), convertIndicesOp,
+                                                         origOp.getAxis(), origOp.getAxisValueAttr(),
+                                                         origOp.getBatchDims(), /*multiClusterStrategy*/ nullptr);
 
     auto reshapeOutOp =
             reshapeOperand(gatherDMAOp.getOutput(), outputType.getShape(), takeOpLoc(origOp, "reshape_output"));

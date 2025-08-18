@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/workload_splitter_base.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
@@ -21,7 +22,7 @@ public:
     SmallVector<int64_t> getSupportedWorkLoadChannels(mlir::Operation* nceOp) const {
         auto func = nceOp->getParentOfType<mlir::func::FuncOp>();
         auto log = Logger::global();
-        const auto arch = VPU::getArch(func);
+        const auto arch = config::getArch(func);
         auto sparsityConstraint = VPU::getSparsityConstraint(arch);
         VPU::WorkloadSplitter40XX splitter(func, log);
 

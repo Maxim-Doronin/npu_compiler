@@ -27,14 +27,14 @@ void vpux::NPUReg40XX::NNrtConfigOp::serialize(elf::writer::BinaryDataSection<ui
                       sizeof(nn_public::VpuNNRTConfig), nnrtCfg.size());
 
     auto serializedDescriptor = nnrtCfg.getStorage();
-    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(VPU::ArchKind::NPU40XX));
+    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(config::ArchKind::NPU40XX));
 }
 
-size_t vpux::NPUReg40XX::NNrtConfigOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::NNrtConfigOp::getBinarySize(config::ArchKind) {
     return sizeof(npu40xx::nn_public::VpuNNRTConfig);
 }
 
-size_t vpux::NPUReg40XX::NNrtConfigOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::NNrtConfigOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuNNRTConfig);
 }
 

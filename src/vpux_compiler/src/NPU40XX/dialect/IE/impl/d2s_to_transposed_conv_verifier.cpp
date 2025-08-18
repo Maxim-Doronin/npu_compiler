@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/NPU40XX/dialect/IE/impl/d2s_to_transposed_conv_verifier.hpp"
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 
 #include <vpux/compiler/utils/error.hpp>

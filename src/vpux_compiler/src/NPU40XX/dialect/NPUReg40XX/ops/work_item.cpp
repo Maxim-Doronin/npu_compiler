@@ -20,14 +20,14 @@ void vpux::NPUReg40XX::WorkItemOp::serialize(elf::writer::BinaryDataSection<uint
 
     auto serializedDescriptor = workItemDesc.getStorage();
 
-    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(VPU::ArchKind::NPU40XX));
+    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(config::ArchKind::NPU40XX));
 }
 
-size_t vpux::NPUReg40XX::WorkItemOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::WorkItemOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuWorkItem);
 }
 
-size_t vpux::NPUReg40XX::WorkItemOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::WorkItemOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuWorkItem);
 }
 

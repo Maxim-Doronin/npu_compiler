@@ -31,14 +31,14 @@ void vpux::NPUReg40XX::MappedInferenceVersionOp::serialize(elf::writer::BinaryDa
     std::memcpy(MIVersionStruct.n_desc, desc, descSize);
 
     auto ptrCharTmp = reinterpret_cast<uint8_t*>(&MIVersionStruct);
-    binDataSection.appendData(ptrCharTmp, getBinarySize(VPU::ArchKind::NPU40XX));
+    binDataSection.appendData(ptrCharTmp, getBinarySize(config::ArchKind::NPU40XX));
 }
 
-size_t vpux::NPUReg40XX::MappedInferenceVersionOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::MappedInferenceVersionOp::getBinarySize(config::ArchKind) {
     return sizeof(MIVersionNote);
 }
 
-size_t vpux::NPUReg40XX::MappedInferenceVersionOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::MappedInferenceVersionOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(MIVersionNote);
 }
 

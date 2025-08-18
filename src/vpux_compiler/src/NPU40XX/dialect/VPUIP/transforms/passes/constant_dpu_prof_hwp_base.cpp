@@ -66,10 +66,10 @@ void ConstantDpuProfHwpBasePass::safeRunOnFunc() {
         }
         profDeclBuff.setByteOffsetAttr(vpux::getIntAttr(ctx, 0));
 
-        // Workaround: The dummy DPU task injected by add-dummy-dpu-task-for-sprlut will get the same workload_id
-        // as the next DPU task in the same NCEClusterTask. This is intentional and makes the dummy task write its
-        // profiling data in the buffer that's been allocated for the next task, with the next (non-dummy) DPU task
-        // overwriting the dummy task's profiling data.
+        // Workaround: The dummy DPU task injected by add-dummy-dpu-task-for-metadata-prefetch will get the same
+        // workload_id as the next DPU task in the same NCEClusterTask. This is intentional and makes the dummy task
+        // write its profiling data in the buffer that's been allocated for the next task, with the next (non-dummy) DPU
+        // task overwriting the dummy task's profiling data.
         // TODO: E#160727
         nceClusterTaskOp.walk([&](VPUIP::DPUTaskOp dpuTaskOp) {
             VPUX_THROW_UNLESS(dpuTaskOp.getWorkloadId().has_value(),

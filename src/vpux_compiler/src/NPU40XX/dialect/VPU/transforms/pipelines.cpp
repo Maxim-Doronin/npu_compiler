@@ -30,12 +30,14 @@ void vpux::VPU::arch40xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(VPU::createTileLSTMSequencePass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(true, log));
-    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false,
+                                             /*disablePassOnEntryFunctionForHostCompile=*/false, log));
 
     VPU::buildTilingPipeline(pm, VPU::TilingOptions(options), log);
 
     if (options.enableScfComputeOpsOutlining) {
         pm.addPass(VPU::createScfComputeOpsOutliningPass(log));
+        pm.addPass(VPU::createConvertDynamicToStaticKernelsPass(log));
     }
 
     pm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
@@ -55,6 +57,40 @@ void vpux::VPU::arch40xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
 void vpux::VPU::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
                                                  const VPU::arch40xx::DefaultHWOptions& options, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
+
+    /*
+        Memory reservation for CMX has to happen as early in VPU as possible. It is required because memory reservation
+        decreases usable CMX size which can result in different tiling decisions. If different passes see different
+        effective CMX size different failures which can be hard to diagnose can happen. Examples of such failures
+       include:
+        - Fail during compilation if additional memory was reserved after tiling but before scheduling since tiles
+        selected by tiling pipeline won't fit CMX anymore
+        - Memory corruption if additional memory is reserved after scheduler since additional memory will overlap
+        addresses allocated by the scheduler Currently there is no validation if memory is not reserved before the first
+        call to getTotalCMXSize.
+    */
+    if (options.enableCompressActivationSpill) {
+        pm.addPass(VPU::createCompressDmaReserveMemPass(log));
+    }
+
+    // Unconditional on NPU40xx due to DMA HWP scratch range requirement
+    pm.addPass(VPU::createDMATaskProfilingReserveMemPass(
+            options.enableProfiling ? options.enableDMAProfiling.getValue() : "false", log));
+
+    /*
+        Call this pass after all other memory reservation has already been done. This pass checks if there is 1KiB
+        of reserved memory at the end of CMX and extends it if some is missing. So to not waste CMX memory make sure
+        as much as possible is allocated in that 1KiB region. Exception to this rule is memory reserved for SW kernel IO
+        for such memory make sure to reserve it after this pass to allow data prefetching.
+    */
+    pm.addPass(VPU::createSWKernelDataPrefetchReserveMemPass(log));
+
+    // Make sure to run this after SWKernelDataPrefetchReserveMem which ensures we have enough
+    // memory at the end of CMX to allow SW kernel data prefetch.
+    // LNL Shave Kernel prefetch with profiling fails compiling. Track Number: E#169656
+    if (options.enableSWKernelInstructionPrefetch && !(options.enableProfiling && options.enableSWProfiling)) {
+        pm.addPass(VPU::createSWKernelInstructionPrefetchReserveMemForDummyKernelsPass(log));
+    }
 
     // TODO: E#140041 enable profiling with outlining
     if (options.enableConcatRepeatingBlockOutlining && !options.enableProfiling) {
@@ -84,8 +120,8 @@ void vpux::VPU::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createFuseClampPass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(options.enableOutputEnsurance, log));
-    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
-
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false,
+                                             /*disablePassOnEntryFunctionForHostCompile=*/false, log));
     if (options.enableWeightsSparsity) {
         VPU::buildWeightsSparsityPipeline(pm, VPU::WeightsSparsityOptions(options), log);
     }
@@ -113,7 +149,8 @@ void vpux::VPU::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPU::createAdjustMemorySpacePass(log));
     pm.addPass(VPU::createOptimizeSharedInputCopyForConcatPass(log));
-    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false,
+                                             options.disablePassOnEntryFunctionForHostCompile, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
     pm.addPass(VPU::createCMXConcatPass(log));
