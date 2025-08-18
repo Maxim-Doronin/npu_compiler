@@ -34,7 +34,7 @@ void checkCompilerOptions(const intel_npu::Config& config);
 std::tuple<StringRef, StringRef, StringRef> parseNextArg(StringRef options);
 
 template <typename T>
-std::unique_ptr<T> parseOnlyPublic(StringRef compilationModeParams, VPU::ArchKind arch, bool warnForPrivate,
+std::unique_ptr<T> parseOnlyPublic(StringRef compilationModeParams, config::ArchKind arch, bool warnForPrivate,
                                    LogLevel logLevel) {
     Logger log("options-parser", logLevel);
 
@@ -76,7 +76,7 @@ std::unique_ptr<T> parseOnlyPublic(StringRef compilationModeParams, VPU::ArchKin
 }
 
 template <typename T>
-std::unique_ptr<T> parseCompilationModeParams(StringRef compilationModeParams, VPU::ArchKind arch,
+std::unique_ptr<T> parseCompilationModeParams(StringRef compilationModeParams, config::ArchKind arch,
                                               bool warnForPrivate = false, LogLevel logLevel = LogLevel::None) {
     if (arePrivateOptionsEnabled()) {
         return T::createFromString(compilationModeParams, arch);

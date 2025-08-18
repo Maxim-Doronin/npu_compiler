@@ -81,7 +81,7 @@ void fillNNrtConfig(npu40xx::nn_public::VpuNNShaveRuntimeConfigs& shv_rt_configs
 
             shv_rt_configs.use_schedule_embedded_rt = true;
             shv_rt_configs.code_window_buffer_size =
-                    checked_cast<uint32_t>(actShaveRtOp.getBinarySize(VPU::ArchKind::UNKNOWN));
+                    checked_cast<uint32_t>(actShaveRtOp.getBinarySize(config::ArchKind::UNKNOWN));
             shv_rt_configs.runtime_entry = actShaveRtOp.getKernelEntry();
             shv_rt_configs.runtime_version = actShaveRtOp.getVersion();
         }

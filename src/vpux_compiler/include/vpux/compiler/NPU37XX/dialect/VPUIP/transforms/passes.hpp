@@ -22,6 +22,7 @@ std::unique_ptr<mlir::Pass> createAddSwKernelCacheHandlingOpsPass(Logger log = L
 std::unique_ptr<mlir::Pass> createUnrollDistributedOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollDepthToSpaceDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollSpaceToDepthDMAPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnrollPermuteDMAPass(Logger log = Logger::global());
 
 //
 // Optimize copies pipeline
@@ -71,14 +72,10 @@ struct DefaultHWOptions :
 
     BoolOption enableActivationSwizzling{*this, "enable-activation-swizzling",
                                          ::llvm::cl::desc("Enable activation swizzling"), ::llvm::cl::init(true)};
-
-    BoolOption enableSWKernelPrefetchingReserveMem{
-            *this, "enable-sw-kernel-prefetching-reserve-mem",
-            ::llvm::cl::desc("Reserve memory at the end of CMX for SW Kernel data prefetching"),
-            ::llvm::cl::init(true)};
 };
 
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
+void buildReferenceSWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
 
 //
 // Registration

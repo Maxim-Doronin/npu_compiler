@@ -7,7 +7,6 @@
 
 #include "vpux/compiler/NPU40XX/core/pipelines_options.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/utils/options.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
@@ -17,9 +16,6 @@ namespace arch40xx {
 //
 // Passes
 //
-
-std::unique_ptr<mlir::Pass> createMapBilinearInterpolateOnDPUPass(const bool interpolateAsSEOp = false,
-                                                                  Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createReduceNumTilesForSmallModelsPass(Logger log = Logger::global());
 
@@ -42,13 +38,9 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
                                          llvm::cl::desc("Enable swap-convert-with-sw-op pass"), llvm::cl::init(true)};
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
                                    llvm::cl::init(true)};
-
     BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
-                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
+                                    llvm::cl::desc("Enable runtime dequantization of asymmetrically quantized weights"),
                                     llvm::cl::init(true)};
-    BoolOption enableApplyDynamicBoundaryCorrection{*this, "enable-apply-dynamic-boundary-correction",
-                                                    llvm::cl::desc("Enable apply-dynamic-boundary-correction pass"),
-                                                    llvm::cl::init(false)};
     BoolOption enableReduceNumTilesForSmallModelsPass{*this, "reduce-num-tiles-for-small-models",
                                                       llvm::cl::desc("Enable reduce-num-tiles-for-small-models pass"),
                                                       llvm::cl::init(false)};
@@ -82,6 +74,8 @@ void buildLowPrecisionPipeline(mlir::OpPassManager& pm, const LowPrecisionOption
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const IE::arch40xx::DefaultHWOptions& options,
                             Logger log = Logger::global());
 
+void buildReferenceSWPipeline(mlir::OpPassManager& pm, const IE::arch40xx::DefaultHWOptions& options,
+                              Logger log = Logger::global());
 //
 // Registration
 //

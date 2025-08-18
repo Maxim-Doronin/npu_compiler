@@ -6,7 +6,6 @@
 #pragma once
 
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/ppe_factory.hpp"
 
 namespace vpux::VPU::arch37xx {

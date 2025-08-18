@@ -84,11 +84,14 @@ std::unique_ptr<mlir::Pass> createConvertVPUIP2VPUMI37XXPass(Logger log = Logger
 std::unique_ptr<mlir::Pass> createConvertVPUMI37XX2VPUASMPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertVPUMI37XX2ELFPass(Logger log = Logger::global());
 
-// NPUReg40XX ELF specific passes
+// NPU40XX ELF specific passes
 std::unique_ptr<mlir::Pass> createConvertVPUIP2VPUMI40XXPass(
         Logger log = Logger::global(), bool enableMemorySideCache = false,
         AllocateShaveStackFrames allocateShaveStackFrames = AllocateShaveStackFrames::DISABLED);
-std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(Logger log = Logger::global(), bool enablePWLM = false,
+
+std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(Logger log = Logger::global(),
+                                                              bool disableDmaSwFifo = false);
+std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(bool enablePWLM, Logger log = Logger::global(),
                                                               bool disableDmaSwFifo = false);
 
 std::unique_ptr<mlir::Pass> createConvertVPUIPDPU2NPUReg40XXPass(

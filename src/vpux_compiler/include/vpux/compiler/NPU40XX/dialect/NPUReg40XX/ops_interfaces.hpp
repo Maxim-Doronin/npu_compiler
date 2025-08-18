@@ -5,15 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
-
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/Operation.h>
-#include <mlir/IR/Value.h>
-
 #include <mlir/IR/OpDefinition.h>
 #include <mlir/IR/Operation.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 namespace vpux {
 namespace NPUReg40XX {

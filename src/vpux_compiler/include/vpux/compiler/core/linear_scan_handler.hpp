@@ -5,16 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/utils/linear_scan.hpp"
-
-#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/compiler/utils/partitioner.hpp"
 #include "vpux/utils/core/dense_map.hpp"
-#include "vpux/utils/core/string_ref.hpp"
-
-#include <mlir/IR/Value.h>
+#include "vpux/utils/core/mem_size.hpp"
 
 #include <llvm/ADT/DenseSet.h>
+#include <mlir/IR/Value.h>
 
 namespace vpux {
 

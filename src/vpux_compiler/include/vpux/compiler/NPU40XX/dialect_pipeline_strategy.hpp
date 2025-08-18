@@ -33,6 +33,11 @@ template <class OptionsType>
 std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XX(
         const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options);
 
+/// @brief This method creates a pipeline strategy for ReferenceSW compilation.
+template <class OptionsType>
+std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XXReferenceSW(
+        const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options);
+
 /// @brief This method creates a pipeline strategy for Monolithic WS compilation.
 template <class OptionsType>
 std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy40XXWS(

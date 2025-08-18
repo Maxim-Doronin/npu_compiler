@@ -57,7 +57,7 @@ public:
 
     static void loadElfData(mlir::ModuleOp module);
 
-    static vpux::SmallString getSwKernelArchString(VPU::ArchKind archKind);
+    static vpux::SmallString getSwKernelArchString(config::ArchKind archKind);
 
 private:
     std::vector<std::unique_ptr<uint8_t[]>> _elfPermStorage;

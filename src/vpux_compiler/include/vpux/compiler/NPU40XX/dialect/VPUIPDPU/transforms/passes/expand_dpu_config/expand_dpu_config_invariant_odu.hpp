@@ -5,8 +5,25 @@
 
 #pragma once
 
-#include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/core/attributes/strides.hpp"
+#include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/Types.h>
+
+#include <optional>
+
+namespace vpux {
+class NDTypeInterface;
+}
+namespace vpux::VPU {
+enum class MPEMode : uint64_t;
+}
+namespace vpux::VPUIP {
+enum class NCETaskType : uint64_t;
+}
 
 namespace vpux::VPUIPDPU::arch40xx::ODU {
 
@@ -46,7 +63,7 @@ mlir::LogicalResult configureDataReuse(const Logger& log, ODUConfig::DataReuse& 
 mlir::LogicalResult configurePermuteMode(const Logger& log, ODUConfig::PermuteData& config,
                                          const DimsOrder& outDimsOrder);
 mlir::LogicalResult configureSparsity(const Logger&, ODUConfig::Sparsity& config, bool outSparsityEnabled,
-                                      NDTypeInterface outActType);
+                                      int64_t sparseValue);
 mlir::LogicalResult configureSwizzleData(const Logger& log, ODUConfig::SwizzleData& config,
                                          std::optional<int64_t> outSwizzling);
 mlir::LogicalResult configureOutActivations(const Logger& log, ODUConfig::OutActivations& config,

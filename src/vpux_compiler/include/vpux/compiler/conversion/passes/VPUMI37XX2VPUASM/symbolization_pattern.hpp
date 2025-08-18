@@ -27,23 +27,7 @@ public:
 
     // E#69730: would be cleaner to type-check at template level if Op itself declares the OneResult interface
     llvm::SmallVector<mlir::FlatSymbolRefAttr> getSymbolicNames(OperationType op, size_t) override {
-        auto fullName = OperationType::getOperationName();
-
-        auto opName = fullName.drop_front(VPUMI37XX::VPUMI37XXDialect::getDialectNamespace().size() + 1);
-
-        mlir::Operation* base = op.getOperation();
-        VPUX_THROW_UNLESS(base->getResults().size() == 1,
-                          "Default symbolic converter only supports ops with exactly one result. For {0} got {1}",
-                          fullName, base->getResults().size());
-        auto indexType = mlir::dyn_cast<vpux::VPURegMapped::IndexType>(base->getResult(0).getType());
-
-        VPUX_THROW_UNLESS(indexType,
-                          " Can't use the generic symbolizer if for an Op that does not return IndexType {0}",
-                          fullName);
-
-        auto index = std::to_string(indexType.getValue());
-        auto symName = mlir::StringAttr::get(op.getContext(), opName + index);
-        return {mlir::FlatSymbolRefAttr::get(symName)};
+        return this->createSymbolicName(op);
     }
 
 protected:

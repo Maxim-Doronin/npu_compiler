@@ -6,10 +6,12 @@
 #pragma once
 
 #include "vpux/compiler/core/async_deps_info.hpp"
-#include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/core/linear_scan_handler.hpp"
 #include "vpux/compiler/core/mem_live_range_info.hpp"
+#include "vpux/compiler/utils/linear_scan.hpp"
 #include "vpux/compiler/utils/partitioner.hpp"
+
+#include <vpu_cost_model.h>
 
 namespace vpux {
 
@@ -328,8 +330,9 @@ public:
 public:
     FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::MemoryKind secondLvlMemKind, MemLiveRangeInfo& liveRangeInfo,
                             AsyncDepsInfo& depsInfo, Logger log, LinearScan<mlir::Value, LinearScanHandler>& scan,
-                            VPU::ArchKind arch, std::shared_ptr<VPUNN::VPUCostModel> costModel, int64_t nceClusterCount,
-                            int64_t dmaCount, bool enableScheduleStatistics, bool optimizeFragmentation);
+                            config::ArchKind arch, std::shared_ptr<VPUNN::VPUCostModel> costModel,
+                            int64_t nceClusterCount, int64_t dmaCount, bool enableScheduleStatistics,
+                            bool optimizeFragmentation);
 
 public:
     ScheduledOpInfoVec generateSchedule();
@@ -427,7 +430,7 @@ private:
     // allocator class
     LinearScan<mlir::Value, LinearScanHandler>& _scan;
     // architecture kind
-    VPU::ArchKind _archKind;
+    config::ArchKind _archKind;
     // VPUNN cost model
     std::shared_ptr<VPUNN::VPUCostModel> _costModel;
     // NCE cluster count

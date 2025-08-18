@@ -6,7 +6,6 @@
 #pragma once
 
 #include "vpux/compiler/core/attributes/dim.hpp"
-
 #include "vpux/utils/core/error.hpp"
 
 namespace vpux {

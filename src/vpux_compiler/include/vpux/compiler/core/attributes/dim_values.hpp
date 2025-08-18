@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include "vpux/compiler/core/attributes/dim.hpp"
-
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/small_vector.hpp"
@@ -113,6 +111,9 @@ public:
     }
     void insert(iterator pos, ValueType&& val) {
         _cont.insert(pos, std::move(val));
+    }
+    void insert(iterator pos, size_type count, const ValueType& val) {
+        _cont.insert(pos, count, val);
     }
 
     void erase(iterator pos) {
