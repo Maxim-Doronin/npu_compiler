@@ -3,18 +3,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/empty_node.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -22,6 +21,7 @@
 #include <mlir/IR/IRMapping.h>
 
 #include <openvino/op/convolution.hpp>
+#include <openvino/op/parameter.hpp>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTCONVOLUTIONINPUTSHAPE
@@ -272,7 +272,7 @@ mlir::LogicalResult ReshapeAddInput::matchAndRewrite(IE::AddOp origOp, mlir::Pat
 
         if (inputShape == getShape(origOp.getInput2()) && hasParallelAdds(origOp) &&
             mlir::isa_and_nonnull<IE::ViewLikeOpInterface>(*origOp->getUsers().begin()) &&
-            vpux::VPU::getArch(origOp) == vpux::VPU::ArchKind::NPU37XX) {
+            vpux::config::getArch(origOp) == vpux::config::ArchKind::NPU37XX) {
             isSameInput = false;
         } else {
             return matchFailed(_log, rewriter, origOp, "Not a valid addOp with same input");

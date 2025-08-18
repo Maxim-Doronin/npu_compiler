@@ -5,15 +5,12 @@
 
 #include <mlir/Transforms/DialectConversion.h>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/IE/utils/fake_quantize_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 namespace vpux::IE {
@@ -80,6 +77,13 @@ bool isOptimizableDynamicDequantizeOp(IE::DynamicDequantizeOp origOp) {
         return false;
     }
 
+    auto quantStorageType = uniformType.getStorageType();
+    if (quantStorageType.isInteger(CHAR_BIT)) {
+        auto quantCastOp = origOp.getInput().getDefiningOp<IE::QuantizeCastOp>();
+        if (quantCastOp == nullptr) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -317,7 +321,9 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
         return matchFailed(rewriter, origOp, "not a valid FC pattern");
     }
     auto fcOp = isValidPattern.value();
-
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    auto uniformType = mlir::cast<mlir::quant::UniformQuantizedType>(inputType.getElementType());
+    auto quantStorageType = uniformType.getStorageType();
     // reshape the scale
     const auto fcOutShape = getShape(fcOp.getOutput()).raw();
     const auto scaleSize = getShape(origOp.getScale()).totalSize();
@@ -326,6 +332,40 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
     auto scale = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "_reshape_scale"), origOp.getScale(), nullptr, false,
                                                 outShapeAttr)
                          .getOutput();
+
+    if (quantStorageType.isInteger(CHAR_BIT)) {
+        // Rescale scales by x16 and weights by /16 to scale down the I8 weights into I4 range to avoid overflow in the
+        // following MatMul/FullyConnected/Convolution. See details in #E161479
+
+        const auto rescaler = 0.0625;
+        const auto descaler = 16.f;  // 1/rescaler
+
+        auto quantCastOp = origOp.getInput().getDefiningOp<IE::QuantizeCastOp>();
+        auto quantTypeI8Rescaled = mlir::quant::UniformQuantizedType::get(
+                mlir::quant::QuantizationFlags::Signed, getSInt8Type(uniformType.getContext()),
+                uniformType.getExpressedType(), rescaler,
+                /*zp=*/0, /*min=*/uniformType.getStorageTypeMin(),
+                /*max=*/uniformType.getStorageTypeMax());
+        auto quantCastOpI8Rescaled =
+                rewriter.create<IE::QuantizeCastOp>(appendLoc(origOp->getLoc(), "_quant_cast_i8_with_rescaler"),
+                                                    quantCastOp.getInput(), quantTypeI8Rescaled);
+        rewriter.replaceOp(quantCastOp, quantCastOpI8Rescaled.getOutput());
+
+        const auto rescalerBaseType =
+                mlir::RankedTensorType::get({1}, mlir::Float16Type::get(uniformType.getContext()));
+        const auto rescalerBaseAttr =
+                Const::createConstContent(rescalerBaseType, ArrayRef(vpux::type::float16(descaler)));
+        const auto rescalerContentAttr = Const::ContentAttr::get(rescalerBaseAttr);
+        auto rescalerConstAttr = rescalerContentAttr.transform().get();
+        const auto rescalerType = mlir::cast<vpux::NDTypeInterface>(rescalerContentAttr.getType());
+        auto rescalerConstOp = rewriter.create<Const::DeclareOp>(appendLoc(origOp->getLoc(), "_rescaler"), rescalerType,
+                                                                 std::move(rescalerConstAttr));
+
+        auto multiplyWithRescaler =
+                rewriter.create<IE::MultiplyOp>(appendLoc(origOp->getLoc(), "_rescale_scaler"), scale, rescalerConstOp,
+                                                IE::AutoBroadcastType::NUMPY, nullptr, nullptr, nullptr, nullptr);
+        scale = multiplyWithRescaler;
+    }
 
     // insert a multiply post FC
     rewriter.setInsertionPointAfter(fcOp);

@@ -4,12 +4,15 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
@@ -395,7 +398,7 @@ mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpola
         // if it can be convert to CMX concat, the performance can be improved, but if not,
         // the extra convolution will decrease the performance, so here add the size check with output. input,
         // weights, and weights table to make it more accurate
-        const auto arch = VPU::getArch(origOp);
+        const auto arch = config::getArch(origOp);
         const auto weightTable = vpux::VPU::NCEInvariant::getWeightsTableSize(inputShape[Dims4D::Act::C]);
         int64_t outSize = type.getTotalAllocSize().count() / scaleH;
         int64_t inSize = outSize / scaleW;
