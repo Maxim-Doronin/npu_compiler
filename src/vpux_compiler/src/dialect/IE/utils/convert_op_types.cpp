@@ -4,9 +4,9 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/convert_op_types.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/utils/IE/locations.hpp"
+#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/BuiltinOps.h>

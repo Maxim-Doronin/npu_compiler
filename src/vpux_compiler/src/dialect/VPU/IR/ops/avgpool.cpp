@@ -3,13 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/empty_node.hpp"
-
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/range.hpp"
-
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;

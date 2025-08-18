@@ -4,12 +4,13 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/native_attributes/distribution_info.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/utils/core/optional.hpp"
 
-namespace vpux {
-namespace VPU {
-vpux::VPU::DistributionInfo vpux::VPU::DistributionInfo::getClassFromAttr(
-        vpux::VPU::DistributionInfoAttr distributionAttr) {
+using namespace vpux;
+
+VPU::DistributionInfo vpux::VPU::DistributionInfo::getClassFromAttr(vpux::VPU::DistributionInfoAttr distributionAttr) {
     if (distributionAttr == nullptr) {
         return {};
     }
@@ -47,7 +48,7 @@ vpux::VPU::DistributionInfo vpux::VPU::DistributionInfo::getClassFromAttr(
                                        memoryOffsets, equalMemoryAndComputeView);
 }
 
-vpux::VPU::DistributionInfoAttr vpux::VPU::DistributionInfo::getAttrFromClass(
+VPU::DistributionInfoAttr vpux::VPU::DistributionInfo::getAttrFromClass(
         mlir::MLIRContext* ctx, const vpux::VPU::DistributionInfo& distribution) {
     auto modeAttr = vpux::VPU::DistributionModeAttr::get(ctx, distribution.getDistributionMode());
     auto numClustersAttr = vpux::getIntAttr(ctx, distribution.getNumClusters());
@@ -85,5 +86,39 @@ vpux::VPU::DistributionInfoAttr vpux::VPU::DistributionInfo::getAttrFromClass(
                                                 computeShapesAttr, computeOffsetsAttr, memoryShapesAttr,
                                                 memoryOffsetsAttr, equalMemoryAndComputeViewAttr);
 }
-}  // namespace VPU
-}  // namespace vpux
+
+void VPU::DistributionInfo::printFormat(llvm::raw_ostream& stream) const {
+    printTo(stream, "\n#VPU.DistributedTensor<mode = {0}", VPU::stringifyDistributionMode(_distributionMode));
+    printTo(stream, ", num_tiles = ");
+    ListFormatProvider::format(_numTiles, stream, {});
+    printTo(stream, ", kernel = ");
+    ListFormatProvider::format(_kernel, stream, {});
+    printTo(stream, ", {0}", _pad.has_value() ? _pad : Padding{});
+    printTo(stream, ", strides = ");
+    ListFormatProvider::format(_strides, stream, {});
+    printTo(stream, ", num_clusters = {0}", _numClusters);
+    printTo(stream, ", alignment = ");
+    ListFormatProvider::format(_alignment, stream, {});
+    printTo(stream, ", _uniformDistributedSegments = {0}", _uniformDistributedSegments);
+    printTo(stream, ", compute_shapes = [");
+    for (const auto& it : _computeShapes) {
+        ListFormatProvider::format(it, stream, {});
+    }
+    printTo(stream, "]");
+    printTo(stream, ", compute_offsets = [");
+    for (const auto& it : _computeOffsets) {
+        ListFormatProvider::format(it, stream, {});
+    }
+    printTo(stream, "]");
+    printTo(stream, ", memory_shapes = [");
+    for (const auto& it : _memoryShapes) {
+        ListFormatProvider::format(it, stream, {});
+    }
+    printTo(stream, "]");
+    printTo(stream, ", memory_offsets = [");
+    for (const auto& it : _memoryOffsets) {
+        ListFormatProvider::format(it, stream, {});
+    }
+    printTo(stream, "]");
+    printTo(stream, ", _equalMemoryAndComputeView = {0}>", _equalMemoryAndComputeView);
+}

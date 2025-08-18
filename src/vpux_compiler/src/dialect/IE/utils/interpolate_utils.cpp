@@ -5,13 +5,13 @@
 
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/numeric.hpp"
-
-#include "vpux/compiler/utils/error.hpp"
 
 namespace vpux {
 namespace IE {

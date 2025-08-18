@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/utils/core/range.hpp"
 
 namespace vpux {
 namespace IE {
