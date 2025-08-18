@@ -196,7 +196,7 @@ def ELF_BinarySizeOpInterface : OpInterface<"BinarySizeOpInterface"> {
             // E#136377
             "Get the size in bytes of the serialized form of this object; it maybe not the same as sizeof for non-POD types",
             "size_t",
-            "getBinarySize", (ins "::vpux::VPU::ArchKind":$arch), [{}],
+            "getBinarySize", (ins "::vpux::config::ArchKind":$arch), [{}],
             /*defaultImplementation*/ [{
                 VPUX_THROW("Unexpected call to interface implementation.");
             }]
@@ -205,7 +205,7 @@ def ELF_BinarySizeOpInterface : OpInterface<"BinarySizeOpInterface"> {
         InterfaceMethod<
             "Get the size in bytes of the serialized form of this object, using a symbol reference map for faster look-up",
             "size_t",
-            "getBinarySizeCached", (ins "ELF::SymbolReferenceMap&":$symRefMap, "::vpux::VPU::ArchKind":$arch), [{}],
+            "getBinarySizeCached", (ins "ELF::SymbolReferenceMap&":$symRefMap, "::vpux::config::ArchKind":$arch), [{}],
             /*defaultImplementation*/ [{
                 return $_op.getBinarySize(arch);
             }]
@@ -214,7 +214,7 @@ def ELF_BinarySizeOpInterface : OpInterface<"BinarySizeOpInterface"> {
         InterfaceMethod<
             "Get the alignment requirements for the serialization of this op",
             "size_t",
-            "getAlignmentRequirements", (ins "::vpux::VPU::ArchKind":$arch), [{}],
+            "getAlignmentRequirements", (ins "::vpux::config::ArchKind":$arch), [{}],
             /*defaultImplementation*/ [{
                 return ELF::VPUX_NO_ALIGNMENT;
             }]

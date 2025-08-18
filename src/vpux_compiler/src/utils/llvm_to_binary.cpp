@@ -6,6 +6,7 @@
 #include "vpux/compiler/utils/llvm_to_binary.hpp"
 #include "shave_ld.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
@@ -21,22 +22,22 @@
 using namespace vpux;
 
 namespace {
-std::string getMoviToolsArchArgument(VPU::ArchKind arch) {
+std::string getMoviToolsArchArgument(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return "3720xx";
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return "4000xx";
     default:
         VPUX_THROW("Invalid ArchKind for MoviTools usage");
     }
 }
 
-std::string getMoviLDArchPath(VPU::ArchKind arch) {
+std::string getMoviLDArchPath(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return "37xxxx";
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return "40xxxx";
     default:
         VPUX_THROW("Invalid ArchKind for Movi LLD path resolution");
@@ -137,8 +138,8 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKern
     auto llvmFuncOp = moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(swKernelSymbol);
     VPUX_THROW_UNLESS(llvmFuncOp != nullptr, "llvmFuncOp should be valid");
 
-    const auto arch = VPU::getArch(moduleOp);
-    VPUX_THROW_UNLESS(arch != VPU::ArchKind::UNKNOWN, "Could not identify arch");
+    const auto arch = config::getArch(moduleOp);
+    VPUX_THROW_UNLESS(arch != config::ArchKind::UNKNOWN, "Could not identify arch");
 
     auto archArgument = getMoviToolsArchArgument(arch);
 
@@ -170,15 +171,17 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKern
     auto prgMCStr = std::string(mvToolsPathCompleteStr) + "/linux64/bin/moviCompile";
     llvm::StringRef prgMC = prgMCStr;
     std::string mcpuStr = std::string("-mcpu=") + archArgument;
-    llvm::SmallVector<llvm::StringRef> runArgsMC = {prgMC,           // Movicompile tool
-                                                    mcpuStr,         // CPU
-                                                    "-S",            // Only run preprocess and compilation steps
-                                                    "-o",            // Write output to:
-                                                    "sw_layer.s",    // file sw_layer.s
-                                                    "-x",            // Treat subsequent input files as having:
-                                                    "ir",            // type ir
-                                                    "-O3",           // optimize code
-                                                    "sw_layer.ll"};  // Output file
+    llvm::SmallVector<llvm::StringRef> runArgsMC = {prgMC,         // Movicompile tool
+                                                    mcpuStr,       // CPU
+                                                    "-S",          // Only run preprocess and compilation steps
+                                                    "-o",          // Write output to:
+                                                    "sw_layer.s",  // file sw_layer.s
+                                                    "-x",          // Treat subsequent input files as having:
+                                                    "ir",          // type ir
+                                                    "-O3",         // optimize code
+                                                    "-mllvm",      // Next option is for llvm
+                                                    "-enable-loop-flatten",  // Enable the loop flatten optimization
+                                                    "sw_layer.ll"};          // Input file
 
     const auto procErrMC = llvm::sys::ExecuteAndWait(prgMC, runArgsMC, /*Env=*/std::nullopt, redirects,
                                                      /*SecondsToWait*/ 100, /*MemoryLimit=*/0, &errMsg);

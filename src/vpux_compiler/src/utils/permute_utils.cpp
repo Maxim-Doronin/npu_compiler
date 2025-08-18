@@ -4,6 +4,9 @@
 //
 
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 
 using namespace vpux;
 
@@ -420,4 +423,19 @@ Dim vpux::inferDimAfterPermutation(Dim dim, DimsOrder srcOrder, DimsOrder dstOrd
     const auto srcMemDim = srcOrder.toMemDim(dim);
     const auto dstDimPos = DimsOrder::fromAffineMap(perm).dimPos(Dim(srcMemDim.ind()));
     return dstOrder.dimAt(dstDimPos);
+}
+
+bool vpux::isSuitableToAdjustMemPermuteShape(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                             mlir::AffineMap permuteMap) {
+    // Calculate merged dims, for cases mem_perm [0, 1, 3, 2], [0, 2, 1], [1, 0]
+    auto [mergedPermutation, mergedMemShape] = vpux::getMergedPermutationAndShape(inType, permuteMap);
+
+    if (outType.getDimsOrder() != DimsOrder::NCHW || inType.getDimsOrder() != DimsOrder::NCHW) {
+        return false;
+    }
+    if (mergedPermutation != SmallVector<uint32_t>{1, 0} && mergedPermutation != SmallVector<uint32_t>{0, 2, 1}) {
+        return false;
+    }
+
+    return true;
 }

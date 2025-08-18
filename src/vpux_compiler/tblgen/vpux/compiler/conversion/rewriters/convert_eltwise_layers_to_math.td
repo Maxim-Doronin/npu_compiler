@@ -6,7 +6,7 @@
 #ifndef VPUX_COMPILER_CONVERSION_REWRITERS_CONVERT_ELTWISE_LAYERS_TO_MATH
 #define VPUX_COMPILER_CONVERSION_REWRITERS_CONVERT_ELTWISE_LAYERS_TO_MATH
 
-include "vpux/compiler/dialect/IE/ops.td"
+include "vpux/compiler/dialect/IE/ops/arithmetic.td"
 include "mlir/Dialect/Math/IR/MathOps.td"
 
 include "mlir/IR/OpBase.td"

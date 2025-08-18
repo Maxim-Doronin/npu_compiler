@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/utils/quantization.hpp"
 
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
@@ -224,11 +225,14 @@ mlir::Type vpux::expandScalesAndZP(mlir::Type perAxisQType, ShapeRef padBefore, 
     return getPerAxisTypeElem(perAxisUniformQType, newScales, newZeroPoints);
 }
 
-mlir::Type vpux::tileScalesAndZP(mlir::Type perAxisQType, ShapeRef shape, ShapeRef offsets) {
+mlir::Type vpux::tileScalesAndZP(mlir::Type perAxisQType, ShapeRef shape, ShapeRef offsets, ShapeRef strides) {
     const auto perAxisUniformQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(perAxisQType);
     VPUX_THROW_UNLESS(perAxisUniformQType != nullptr, "perAxisQType should be a UniformQuantizedPerAxisType!");
 
     VPUX_THROW_UNLESS(offsets.size() == shape.size(), "Offsets '{0}' doesn't match shape '{1}'", offsets, shape);
+    VPUX_THROW_UNLESS(strides.empty() || strides.size() == shape.size(),
+                      "Strides '{0}' are not empty and do not match shape '{1}'", strides, shape);
+
     VPUX_THROW_UNLESS(shape.size() >= static_cast<size_t>(perAxisUniformQType.getQuantizedDimension()),
                       "Unsupported shape size {0}. Quantized dimension index {1}", shape.size(),
                       perAxisUniformQType.getQuantizedDimension());
@@ -248,15 +252,50 @@ mlir::Type vpux::tileScalesAndZP(mlir::Type perAxisQType, ShapeRef shape, ShapeR
         return perAxisUniformQType;
     }
 
-    const auto newScales = scales.slice(qSliceOffset, qSliceSize);
-    const auto newZeroPoints = zeroPoints.slice(qSliceOffset, qSliceSize);
+    auto getTiledElemType = [&](ArrayRef<double> tiledScale, ArrayRef<int64_t> tiledZp) -> mlir::Type {
+        if (const auto perAxisQuantileQType =
+                    mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(perAxisUniformQType)) {
+            return getPerAxisTypeElem(perAxisQuantileQType, tiledScale, tiledZp);
+        }
 
-    if (const auto perAxisQuantileQType =
-                mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(perAxisUniformQType)) {
-        return getPerAxisTypeElem(perAxisQuantileQType, newScales, newZeroPoints);
+        return getPerAxisTypeElem(perAxisUniformQType, tiledScale, tiledZp);
+    };
+
+    if (strides.empty() || strides[qDim] <= 1) {
+        return getTiledElemType(scales.slice(qSliceOffset, qSliceSize), zeroPoints.slice(qSliceOffset, qSliceSize));
     }
 
-    return getPerAxisTypeElem(perAxisUniformQType, newScales, newZeroPoints);
+    SmallVector<double> newScales;
+    SmallVector<int64_t> newZeroPoints;
+
+    for (auto offset = qSliceOffset; newScales.size() < qSliceSize; offset += strides[qDim]) {
+        newScales.push_back(scales[offset]);
+        newZeroPoints.push_back(zeroPoints[offset]);
+    }
+
+    return getTiledElemType(newScales, newZeroPoints);
+}
+
+mlir::Type vpux::tileScalesAndZP(mlir::Type perAxisQType, ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes) {
+    const auto perAxisUniformQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(perAxisQType);
+    VPUX_THROW_UNLESS(perAxisUniformQType != nullptr, "perAxisQType should be a UniformQuantizedPerAxisType!");
+
+    const auto inScales = perAxisUniformQType.getScales();
+    const auto inZeroes = perAxisUniformQType.getZeroPoints();
+
+    std::vector<double> newScales;
+    std::vector<int64_t> newZeroes;
+    auto nClusters = offsets.size();
+    int64_t length = inScales.size();
+
+    for (size_t k = 0; k < nClusters; k++) {
+        VPUX_THROW_UNLESS(offsets[k] + sizes[k] <= length, "Slice exceeds full type length: {0} + {1} > {2}",
+                          offsets[k], sizes[k], length);
+        newScales.insert(newScales.end(), inScales.begin() + offsets[k], inScales.begin() + offsets[k] + sizes[k]);
+        newZeroes.insert(newZeroes.end(), inZeroes.begin() + offsets[k], inZeroes.begin() + offsets[k] + sizes[k]);
+    }
+
+    return getPerAxisTypeElem(perAxisUniformQType, newScales, newZeroes);
 }
 
 mlir::Type vpux::changeAxis(mlir::Type perAxisQType, int32_t newAxis) {

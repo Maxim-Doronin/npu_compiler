@@ -6,7 +6,7 @@
 #ifndef VPUX_COMPILER_DIALECT_IE_REWRITERS_REORDER
 #define VPUX_COMPILER_DIALECT_IE_REWRITERS_REORDER
 
-include "vpux/compiler/dialect/IE/ops.td"
+include "vpux/compiler/dialect/IE/ops/data_movement.td"
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"

@@ -9,11 +9,11 @@
 
 namespace vpux {
 
-std::unique_ptr<ICodec> getBitCompactorCodec(VPU::ArchKind arch) {
+std::unique_ptr<ICodec> getBitCompactorCodec(config::ArchKind arch) {
     return std::make_unique<vpux::BitCompactorCodec>(arch);
 }
 
-std::unique_ptr<ICodec> makeCodec(const ICodec::CompressionAlgorithm algo, VPU::ArchKind arch) {
+std::unique_ptr<ICodec> makeCodec(const ICodec::CompressionAlgorithm algo, config::ArchKind arch) {
     switch (algo) {
     case ICodec::CompressionAlgorithm::BITCOMPACTOR_CODEC:
         return getBitCompactorCodec(arch);

@@ -4,4 +4,5 @@
 #
 
 add_vpux_dialect(NPUReg37XX)
+add_vpux_ops(NPUReg37XX GENERIC)
 add_vpux_type(NPUReg37XX)

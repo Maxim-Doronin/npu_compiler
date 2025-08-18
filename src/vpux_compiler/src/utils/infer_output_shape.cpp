@@ -4,9 +4,12 @@
 //
 
 #include "vpux/compiler/utils/infer_output_shape.hpp"
-
+#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/range.hpp"
 
@@ -23,9 +26,8 @@
 #include <mlir/Dialect/Arith/Utils/Utils.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/BuiltinTypes.h>
+
 #include <cstddef>
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
-#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 
 using namespace vpux;
 
@@ -407,6 +409,32 @@ ShapeInfo vpux::inferGroupConvolutionOutputShapeInfo(ShapeInfo& inShapeInfo, Sha
     return createShapeInfoFromPartialShape(op.get_output_partial_shape(0));
 }
 
+ShapeInfo vpux::inferTransposedConvBackpropOutputShapeInfo(
+        const ShapeInfo& inShapeInfo, const ShapeInfo& filterShapeInfo, ArrayRef<int64_t> windowStrides,
+        ArrayRef<int64_t> dataPaddingBelow, ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowDilations,
+        ArrayRef<int64_t> outputPadding) {
+    const auto inPartialShape = createPartialShapeFromShapeInfo(inShapeInfo);
+    const auto filterPartialShape = createPartialShapeFromShapeInfo(filterShapeInfo);
+
+    auto backpropFilter = to_std_vector(filterPartialShape);
+    backpropFilter[Dims4D::Filter::OC.ind()] = inPartialShape[Dims4D::Act::C.ind()];
+
+    auto ovOpShape = ov::op::v1::ConvolutionBackpropData(
+                             std::make_shared<ov::op::v0::Parameter>(ov::element::f32, inPartialShape),
+                             std::make_shared<ov::op::v0::Parameter>(ov::element::f32, backpropFilter),
+                             ov::Strides(windowStrides.begin(), windowStrides.end()),
+                             ov::CoordinateDiff(dataPaddingBelow.begin(), dataPaddingBelow.end()),
+                             ov::CoordinateDiff(dataPaddingAbove.begin(), dataPaddingAbove.end()),
+                             ov::Strides(windowDilations.begin(), windowDilations.end()), ov::op::PadType::EXPLICIT,
+                             ov::CoordinateDiff(outputPadding.begin(), outputPadding.end()))
+                             .get_output_partial_shape(0);
+
+    ovOpShape[Dims4D::Act::N.ind()] = inPartialShape[Dims4D::Act::N.ind()];
+    ovOpShape[Dims4D::Act::C.ind()] = filterPartialShape[Dims4D::Filter::OC.ind()];
+
+    return createShapeInfoFromPartialShape(ovOpShape);
+}
+
 //
 // Tensor Reifiers
 //
@@ -588,74 +616,64 @@ mlir::FailureOr<SmallVector<mlir::OpFoldResult>> vpux::reifyEltwiseTensors(mlir:
     return errorAt(loc, "Unsupported BroadcastType '{0}'", broadcastType);
 }
 
-namespace {
-
-// 3d: [batch, channels, columns] -> 1 spatial dimension
-// 4d: [batch, channels, rows, columns] -> 2 spatial dimensions
-// 5d: [batch, channels, depth, rows, columns] -> 3 spatial dimensions
-// Subtract 2 to exclude batch and channels.
-int64_t calculateMul(const int64_t dim, const ArrayRef<int64_t> strides) {
-    const int64_t spatialDim = dim - 2;
-    VPUX_THROW_UNLESS(spatialDim >= 0 && spatialDim < checked_cast<int64_t>(strides.size()),
-                      "Cannot get stride by index {0}", dim);
-    return strides[spatialDim];
-}
-
-int64_t calculateAddend(int64_t dim, const ArrayRef<int64_t> kernelSize, const ArrayRef<int64_t> strides,
-                        const ArrayRef<int64_t> padBegin, const ArrayRef<int64_t> padEnd) {
-    const int64_t spatialDim = dim - 2;
-    VPUX_THROW_UNLESS(spatialDim >= 0 && spatialDim < checked_cast<int64_t>(kernelSize.size()),
-                      "Cannot get kernel size by index {0}", dim);
-    VPUX_THROW_UNLESS(spatialDim >= 0 && spatialDim < checked_cast<int64_t>(strides.size()),
-                      "Cannot get stride by index {0}", dim);
-    VPUX_THROW_UNLESS(spatialDim >= 0 && spatialDim < checked_cast<int64_t>(padBegin.size()),
-                      "Cannot get pad begin by index {0}", dim);
-    VPUX_THROW_UNLESS(spatialDim >= 0 && spatialDim < checked_cast<int64_t>(padEnd.size()),
-                      "Cannot get pad end by index {0}", dim);
-    return kernelSize[spatialDim] - strides[spatialDim] - padBegin[spatialDim] - padEnd[spatialDim];
-}
-
-};  // namespace
-
 mlir::FailureOr<SmallVector<mlir::OpFoldResult>> vpux::reifyConvPoolTensors(
-        mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, ArrayRef<int64_t> kernelSize,
-        ArrayRef<int64_t> strides, ArrayRef<int64_t> padBegin, ArrayRef<int64_t> padEnd, mlir::Location loc) {
+        mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, mlir::Value kernel,
+        ArrayRef<int64_t> kernelSize, ArrayRef<int64_t> strides, ArrayRef<int64_t> padBegin, ArrayRef<int64_t> padEnd,
+        mlir::Location loc) {
     const auto inputShapedType = mlir::cast<mlir::ShapedType>(input.getType());
     const auto outputShapedType = mlir::cast<mlir::ShapedType>(output.getType());
 
+    VPUX_THROW_WHEN(inputShapedType.getRank() != 4 || outputShapedType.getRank() != 4,
+                    "reifyConvPoolTensors: Unsupported input or output rank: {0} , {1}", inputShapedType.getRank(),
+                    outputShapedType.getRank());
+
+    if (kernel != nullptr) {
+        const auto kernelShapedType = mlir::cast<mlir::ShapedType>(kernel.getType());
+        VPUX_THROW_WHEN(kernelShapedType.getRank() != 4, "reifyConvPoolTensors: Unsupported kernel rank: {0}",
+                        kernelShapedType.getRank());
+    }
+
+    auto makeIndex = [&](int64_t value) {
+        return builder.createOrFold<mlir::arith::ConstantIndexOp>(loc, value);
+    };
+
+    auto calculateDimSize = [&](mlir::Value inputDim, int64_t kernelDim, int64_t padBegin, int64_t padEnd,
+                                int64_t stride) {
+        // output = (input + padBegin + padEnd - kernelDim + stride) / stride
+        auto padConst = padBegin + padEnd - kernelDim + stride;
+        auto sum = builder.createOrFold<mlir::arith::AddIOp>(takeOpLoc(inputDim.getDefiningOp(), "_add"), inputDim,
+                                                             makeIndex(padConst));
+        return builder.createOrFold<mlir::arith::DivSIOp>(takeOpLoc(sum.getDefiningOp(), "_div"), sum,
+                                                          makeIndex(stride));
+    };
+
+    // Use generator functions based on index for each output dimension
+    auto computeShapeForDim = [&](int64_t idx) -> mlir::OpFoldResult {
+        auto dimLoc = appendLoc(loc, llvm::StringLiteral("_dim_{0}"), idx);
+        if (idx == Dims4D::Act::N.ind()) {
+            return reifyDim(builder, input, idx, dimLoc);
+        } else if (idx == Dims4D::Act::C.ind()) {
+            return kernel == nullptr ? reifyDim(builder, input, Dims4D::Act::C.ind(), dimLoc)
+                                     : reifyDim(builder, kernel, Dims4D::Filter::OC.ind(), dimLoc);
+        } else if (idx == Dims4D::Act::H.ind() || idx == Dims4D::Act::W.ind()) {
+            auto inputDim = reifyDim(builder, input, idx, dimLoc);
+            auto inputDimVal = inputDim.dyn_cast<mlir::Value>();
+            VPUX_THROW_WHEN(inputDimVal == nullptr, "Failed to reify input dimension {0} for input {1} at location {2}",
+                            idx, input, loc);
+            auto adjustedIdx = idx - 2;
+            return calculateDimSize(inputDimVal, kernelSize[adjustedIdx], padBegin[adjustedIdx], padEnd[adjustedIdx],
+                                    strides[adjustedIdx]);
+        } else {
+            VPUX_THROW("Unexpected dimension index {0}", idx);
+        }
+    };
+
     SmallVector<mlir::OpFoldResult> shapes;
     for (const auto dim : llvm::seq<int64_t>(0, outputShapedType.getRank())) {
-        if (!outputShapedType.isDynamicDim(dim)) {
-            // Static dim: Return IntegerAttr.
-            shapes.push_back(builder.getIndexAttr(inputShapedType.getDimSize(dim)));
+        if (outputShapedType.isDynamicDim(dim)) {
+            shapes.push_back(mlir::getValueOrCreateConstantIndexOp(builder, loc, computeShapeForDim(dim)));
         } else {
-            // Dynamic dim: Return Value.
-            // in_x = kernel_x + stride_x * (out_x - 1) - pad_begin_x - pad_end_x
-            // in_x = kernel_x + stride_x * out_x - stride_x - pad_begin_x - pad_end_x
-            // multiplier = stride_x
-            // addend = kernel_x - stride_x - pad_begin_x - pad_end_x
-            const auto inputMul = calculateMul(dim, strides);
-            const auto dimOp = builder.createOrFold<mlir::tensor::DimOp>(loc, input, dim);
-
-            const auto applyMul = [&](mlir::Value value) {
-                if (inputMul > 1) {
-                    mlir::Value constOp = builder.createOrFold<mlir::arith::ConstantIndexOp>(loc, inputMul);
-                    return builder.createOrFold<mlir::arith::DivSIOp>(loc, value, constOp);
-                }
-                return value;
-            };
-            const auto afterMul = applyMul(dimOp);
-
-            const auto addend = calculateAddend(dim, kernelSize, strides, padBegin, padEnd);
-            const auto applyAddend = [&](mlir::Value value) {
-                if (addend != 0) {
-                    mlir::Value constOp = builder.createOrFold<mlir::arith::ConstantIndexOp>(loc, addend);
-                    return builder.createOrFold<mlir::arith::SubIOp>(loc, value, constOp);
-                }
-                return value;
-            };
-            const auto afterAddend = applyAddend(afterMul);
-            shapes.push_back(getValueOrCreateConstantIndexOp(builder, loc, afterAddend));
+            shapes.push_back(builder.getIndexAttr(outputShapedType.getDimSize(dim)));
         }
     }
 

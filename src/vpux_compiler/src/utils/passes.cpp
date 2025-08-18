@@ -66,6 +66,21 @@ StringLiteral vpux::stringifyEnum(WeightsTableReuseMode val) {
     }
 }
 
+StringLiteral vpux::stringifyEnum(WorkloadManagementMode val) {
+    switch (val) {
+    case WorkloadManagementMode::PWLM_V0_LCA:
+        return "PWLM_V0_LCA";
+    case WorkloadManagementMode::PWLM_V1_BARRIER_FIFO:
+        return "PWLM_V1_BARRIER_FIFO";
+    case WorkloadManagementMode::PWLM_V2_PAGES:
+        return "PWLM_V2_PAGES";
+    case WorkloadManagementMode::FWLM_V1_PAGES:
+        return "FWLM_V1_PAGES";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 //
 // PatternBenefit
 //

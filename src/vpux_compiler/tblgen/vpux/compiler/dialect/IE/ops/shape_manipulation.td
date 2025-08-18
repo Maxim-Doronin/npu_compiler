@@ -111,22 +111,27 @@ def IE_ShapeCastOp :
     let summary = "ShapeCast layer";
 
     let arguments = (ins
-        AnyRankedTensor:$source,
+        AnyRankedTensor:$input,
         I64ArrayAttr:$shape
     );
 
     let results = (outs
-        AnyRankedTensor:$result
+        AnyRankedTensor:$output
     );
 
     let assemblyFormat = [{
         attr-dict
-        `inputs` `(` $source `:` type($source) `)`
+        `inputs` `(` $input `:` type($input) `)`
         `->` type(results)
     }];
 
     let hasCanonicalizer = 1;
     let hasFolder = 1;
+
+    let extraClassDeclaration = [{
+        // Note: to be compatible with existing code
+        mlir::Value getSource() { return getInput(); }
+    }] # baseExtraClassDeclaration;
 }
 
 def IE_ShapeOfOp :

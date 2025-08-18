@@ -21,13 +21,13 @@ bool vpux::VPU::isFifoPerShaveEngineEnabled(mlir::Operation* op) {
     return VPU::getConstraint<bool>(op, VPU::USE_DEDICATED_FIFO_PER_SHAVE_ENGINE);
 }
 
-bool vpux::VPU::hasSupportForFifoPerShaveEngine(VPU::ArchKind arch, bool enableWorkloadManagement) {
+bool vpux::VPU::hasSupportForFifoPerShaveEngine(config::ArchKind arch, bool enableWorkloadManagement) {
     if (!enableWorkloadManagement) {
         return false;
     }
 
     switch (arch) {
-    case VPU::ArchKind::NPU37XX: {
+    case config::ArchKind::NPU37XX: {
         return false;
     }
     default: {

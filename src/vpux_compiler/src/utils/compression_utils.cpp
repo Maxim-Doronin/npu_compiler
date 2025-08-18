@@ -7,6 +7,8 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"

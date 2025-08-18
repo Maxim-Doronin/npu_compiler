@@ -37,24 +37,6 @@ class VPU_EnumAttr <EnumAttrInfo enumInfo, string name = "", list <Trait> traits
 }
 
 //
-// ArchKind
-//
-
-def VPU_ArchKind :
-        VPU_I64EnumAttr<
-            "ArchKind",
-            "Represents VPU architecture generation",
-            [
-                I64EnumAttrCase<"UNKNOWN", 0>,
-                I64EnumAttrCase<"NPU37XX", 3>,
-                I64EnumAttrCase<"NPU40XX", 4>,
-            ]
-        > {
-}
-
-def VPU_ArchKindAttr : VPU_EnumAttr<VPU_ArchKind, "arch_kind">;
-
-//
 // MemoryKind
 //
 
@@ -114,29 +96,6 @@ def VPU_ExecutorKind :
 }
 
 def VPU_ExecutorKindAttr : VPU_EnumAttr<VPU_ExecutorKind, "executor_kind">;
-
-//
-// RevisionID
-//
-
-def VPU_RevisionID  :
-        VPU_I64EnumAttr<
-            "RevisionID",
-            "Revision ID",
-            [
-                I64EnumAttrCase<"REVISION_A0",  0>,
-                I64EnumAttrCase<"REVISION_A1",  1>,
-                I64EnumAttrCase<"REVISION_A3",  2>,
-                I64EnumAttrCase<"REVISION_B",   3>,
-                I64EnumAttrCase<"REVISION_C",   4>,
-                I64EnumAttrCase<"REVISION_D",   5>,
-                I64EnumAttrCase<"REVISION_K",   6>,
-                I64EnumAttrCase<"REVISION_NONE",   7>
-            ]
-        > {
-}
-
-def VPU_RevisionIDAttr : VPU_EnumAttr<VPU_RevisionID, "revision_id">;
 
 //
 // VFScenario
@@ -1196,5 +1155,19 @@ def VPU_BoundsRepresentation :
 }
 
 def VPU_BoundsRepresentationAttr : VPU_EnumAttr<VPU_BoundsRepresentation, "bounds_representation">;
+
+def VPU_WorkloadManagementStatus :
+        VPU_I64EnumAttr<
+            "WorkloadManagementStatus",
+            "Workload Management Status",
+            [
+                I64EnumAttrCase<"ENABLED",  0>,
+                I64EnumAttrCase<"DISABLED", 1>,
+                I64EnumAttrCase<"FAILED",   2>
+            ]
+        > {
+}
+
+def VPU_WorkloadManagementStatusAttr : VPU_EnumAttr<VPU_WorkloadManagementStatus, "WorkloadManagementStatus">;
 
 #endif
