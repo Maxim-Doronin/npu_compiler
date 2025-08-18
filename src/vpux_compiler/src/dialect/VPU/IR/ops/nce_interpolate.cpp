@@ -5,9 +5,10 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
@@ -16,10 +17,11 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_interpolate_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-
-#include "vpux/compiler/utils/empty_node.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_support.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <openvino/op/convolution.hpp>
+#include <openvino/op/parameter.hpp>
 
 using namespace vpux;
 
@@ -91,7 +93,7 @@ mlir::LogicalResult vpux::VPU::NCEInterpolateOp::verify() {
 }
 
 bool isNCEInterpolateSupported(vpux::NDTypeInterface inputType, vpux::NDTypeInterface outputType,
-                               IE::InterpolateAttr attr, VPU::ArchKind arch, bool checkLayout,
+                               IE::InterpolateAttr attr, config::ArchKind arch, bool checkLayout,
                                bool checkChannelAlignment, bool checkBatch, mlir::Operation* op, vpux::LogCb logCb) {
     // TODO E#71403: remove dimension check
     auto dimOver8K = [](ShapeRef shape) {
@@ -235,7 +237,7 @@ bool VPU::NCEInterpolateOp::isSupported(IE::InterpolateOp op, vpux::LogCb logCb,
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
-    return isNCEInterpolateSupported(inputType, outputType, op.getAttr(), VPU::getArch(op), checkChannelAlignment,
+    return isNCEInterpolateSupported(inputType, outputType, op.getAttr(), config::getArch(op), checkChannelAlignment,
                                      checkLayout, checkBatch, op, logCb);
 }
 
@@ -244,7 +246,7 @@ bool VPU::NCEInterpolateOp::isSupported(VPU::InterpolateOp op, vpux::LogCb logCb
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
-    return isNCEInterpolateSupported(inputType, outputType, op.getAttr(), VPU::getArch(op), checkChannelAlignment,
+    return isNCEInterpolateSupported(inputType, outputType, op.getAttr(), config::getArch(op), checkChannelAlignment,
                                      checkLayout, checkBatch, op, logCb);
 }
 
@@ -339,7 +341,7 @@ bool VPU::NCEInterpolateOp::isOperationSplitOverHeightCompatible(const vpux::Til
     auto tileOp = IE::getTileExecutor(moduleOp);
     const auto numTiles = tileOp.getCount();
 
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, false, VPU::getArch(nceOp.getOperation()));
+    return isSOHSupportedByDPU(inputType, inputShape, numTiles, false, config::getArch(nceOp.getOperation()));
 }
 
 bool VPU::NCEInterpolateOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset, ShapeRef axis) {
@@ -377,7 +379,7 @@ bool VPU::NCEInterpolateOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strate
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -468,7 +470,7 @@ bool vpux::VPU::NCEInterpolateOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }

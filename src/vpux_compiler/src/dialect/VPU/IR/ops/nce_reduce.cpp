@@ -4,13 +4,12 @@
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
-
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
 using namespace vpux;
@@ -82,7 +81,7 @@ bool vpux::VPU::NCEReduceOp::isSupported(mlir::Operation* op, LogCb logCb, bool 
     }
 
     if (checkLayout) {
-        if (!NCEInvariant::checkLayouts({inputType}, {outputType}, getArch(op), 1, logCb)) {
+        if (!NCEInvariant::checkLayouts({inputType}, {outputType}, config::getArch(op), 1, logCb)) {
             return false;
         }
     }
@@ -98,7 +97,7 @@ bool vpux::VPU::NCEReduceOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::NDTyp
 
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
-    auto arch = getArch(getOperation());
+    auto arch = config::getArch(getOperation());
     return vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffers).count() + reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -134,7 +133,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEReduceOp::getTilingStrategy(TilingMo
 //
 
 bool vpux::VPU::NCEReduceOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = VPU::getArch(getOperation());
+    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];

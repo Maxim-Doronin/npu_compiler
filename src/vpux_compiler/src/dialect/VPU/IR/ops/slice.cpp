@@ -41,7 +41,7 @@ mlir::LogicalResult vpux::VPU::SliceOp::inferReturnTypes(mlir::MLIRContext* ctx,
         return mlir::failure();
     }
 
-    const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(sliceOp.getSource().getType());
+    const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(sliceOp.getInput().getType());
     if (origType == nullptr) {
         return errorAt(loc, "VPU::SliceOp operand must have vpux::NDTypeInterface type");
     }
@@ -123,8 +123,8 @@ mlir::LogicalResult vpux::VPU::SliceOp::inferReturnTypes(mlir::MLIRContext* ctx,
 
 mlir::OpFoldResult VPU::SliceOp::fold(FoldAdaptor adaptor) {
     auto operands = adaptor.getOperands();
-    if (getSource().getType() == getResult().getType()) {
-        return getSource();
+    if (getInput().getType() == getOutput().getType()) {
+        return getInput();
     }
 
     if (const auto origContent = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
@@ -147,7 +147,7 @@ public:
     using OpRewritePattern::OpRewritePattern;
 
     mlir::LogicalResult matchAndRewrite(VPU::SliceOp origOp, mlir::PatternRewriter& rewriter) const final {
-        auto producerSliceOp = origOp.getSource().getDefiningOp<VPU::SliceOp>();
+        auto producerSliceOp = origOp.getInput().getDefiningOp<VPU::SliceOp>();
         if (producerSliceOp == nullptr) {
             return mlir::failure();
         }
@@ -160,8 +160,7 @@ public:
 
         const auto finalOffsetsAttr = getIntArrayAttr(getContext(), finalOffsets);
         const auto finalShapeAttr = origOp.getStaticSizes();
-        rewriter.replaceOpWithNewOp<VPU::SliceOp>(origOp, producerSliceOp.getSource(), finalOffsetsAttr,
-                                                  finalShapeAttr);
+        rewriter.replaceOpWithNewOp<VPU::SliceOp>(origOp, producerSliceOp.getInput(), finalOffsetsAttr, finalShapeAttr);
 
         return mlir::success();
     }
@@ -183,13 +182,13 @@ public:
     using OpRewritePattern::OpRewritePattern;
 
     mlir::LogicalResult matchAndRewrite(VPU::SliceOp sliceOp, mlir::PatternRewriter& rewriter) const final {
-        auto expandOp = sliceOp.getSource().getDefiningOp<VPU::ExpandOp>();
+        auto expandOp = sliceOp.getInput().getDefiningOp<VPU::ExpandOp>();
         if (expandOp == nullptr) {
             return mlir::failure();
         }
 
         const auto origInputShape = getShape(expandOp.getInput());
-        const auto origOutputShape = getShape(sliceOp.getResult());
+        const auto origOutputShape = getShape(sliceOp.getOutput());
         if (origInputShape != origOutputShape) {
             return mlir::failure();
         }

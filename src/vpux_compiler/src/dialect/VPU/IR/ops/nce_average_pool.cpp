@@ -5,6 +5,8 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -12,13 +14,12 @@
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
-#include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_support.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/empty_node.hpp"
 #include "vpux/compiler/utils/error.hpp"
-
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
@@ -36,7 +37,7 @@ bool vpux::VPU::NCEAveragePoolOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
     SmallVector<Byte> buffers = {input.getTotalAllocSize(), output.getTotalAllocSize()};
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -94,7 +95,7 @@ bool vpux::VPU::NCEAveragePoolOp::isSupported(IE::AvgPoolOp op, LogCb logCb, boo
     }
 
     if (checkLayout) {
-        const auto arch = getArch(op);
+        const auto arch = config::getArch(op);
         if (!NCEInvariant::checkLayouts(op->getOperandTypes(), op->getResultTypes(), arch, 1, logCb)) {
             return false;
         }
@@ -109,10 +110,10 @@ bool vpux::VPU::NCEAveragePoolOp::isSupported(IE::AvgPoolOp op, LogCb logCb, boo
 
 mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::verify() {
     const auto op = getOperation();
-    const auto arch = getArch(op);
+    const auto arch = config::getArch(op);
 
     // Skip checks if architecture is unknown since all of them depend on the architecture used
-    if (arch == VPU::ArchKind::UNKNOWN) {
+    if (arch == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 
@@ -220,7 +221,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEAveragePoolOp::getTilingStrategy(Til
 //
 
 bool vpux::VPU::NCEAveragePoolOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = VPU::getArch(getOperation());
+    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
@@ -276,7 +277,7 @@ bool VPU::NCEAveragePoolOp::isOperationSplitOverHeightCompatible(const vpux::Til
     auto tileOp = IE::getTileExecutor(moduleOp);
     const auto numTiles = tileOp.getCount();
 
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, true, VPU::getArch(nceOp.getOperation()));
+    return isSOHSupportedByDPU(inputType, inputShape, numTiles, true, config::getArch(nceOp.getOperation()));
 }
 
 bool VPU::NCEAveragePoolOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset, ShapeRef axis) {
