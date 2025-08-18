@@ -14,6 +14,9 @@ namespace vpux::VPUMI40XX {
 #define GEN_PASS_DEF_ADDMAPPEDINFERENCEVERSIONOP
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp.inc"
 }  // namespace vpux::VPUMI40XX
+
+using namespace vpux;
+
 namespace {
 // TODO: E111344
 class AddMappedInferenceVersionOpPass :

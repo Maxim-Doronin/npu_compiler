@@ -3,8 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
@@ -13,6 +16,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -21,6 +25,8 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
 
+#include <llvm/ADT/SmallVector.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/Support/LLVM.h>
@@ -34,6 +40,7 @@ namespace vpux::VPUIP {
 
 using namespace vpux;
 namespace {
+bool checkPattern(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAttr expandPadBegin);
 
 template <typename T = mlir::Operation*>
 T getTheOnlyUser(mlir::Operation* op) {
@@ -84,7 +91,7 @@ bool isSplitContinuousBufferType(VPUIP::DistributedBufferType distributedType) {
 }
 
 VPUIP::DistributedBufferType createDMADistributedTensorType(mlir::MLIRContext* ctx, vpux::NDTypeInterface operandType,
-                                                            mlir::IntegerAttr tileCount, VPU::ArchKind arch,
+                                                            mlir::IntegerAttr tileCount, config::ArchKind arch,
                                                             bool uniformDistributedSegments) {
     const auto distMode = VPU::DistributionModeAttr::get(ctx, VPU::DistributionMode::SEGMENTED);
     const auto numTiles = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1, tileCount.getInt(), 1});
@@ -213,8 +220,8 @@ bool checkPermuteWithCopyPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         VPUX_THROW_WHEN(dmaPortNum <= 0, "Invalid number of DMA ports; should be > 0, but actual value is {0}",
                         dmaPortNum);
 
-        auto dmaSubShapes = VPUIP::getPermuteDMASubInputShapes(VPU::getArch(swKernelOp), permuteInType, permuteOutType,
-                                                               memPerm, dmaPortNum, log);
+        auto dmaSubShapes = VPUIP::getPermuteDMASubInputShapes(config::getArch(swKernelOp), permuteInType,
+                                                               permuteOutType, memPerm, dmaPortNum, log);
         // If fuse Permute with next Distributed Copy Op and PermuteDMA need unroll to severl Sub DMA tasks,
         // Find a scenerior has regression. Need investigate the root cause and find a cost model for that.
         // For example: Shape size with 1x4420x1x2, mode is DUPLICATED.
@@ -375,70 +382,88 @@ bool checkExpandU8Pattern(VPUIP::ExpandOp expandOp, Logger log) {
     return isExpandOpWrapable(expandOp, log);
 }
 
-bool checkExpandFP16Pattern(VPUIP::ExpandOp expandOp, Logger log) {
-    log.trace("Got ExpandOpFP16 at {0}. Try to find fuse pattern.", expandOp->getLoc());
+bool checkLastChild(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAttr expandPadBegin) {
+    const auto expandInput = to_small_vector(expandInputShape);
+    const auto expandBegin = parseIntArrayAttr<int64_t>(expandPadBegin);
 
-    const auto isCopyOpWithOneUser = [&](mlir::Operation* op) -> bool {
-        if (!VPUIP::hasOneOrSameUser(op)) {
+    if (op == nullptr) {
+        return false;
+    }
+
+    if (auto subviewOp = mlir::dyn_cast<VPUIP::SubViewOp>(op)) {
+        if (subviewOp.getStaticStrides().has_value()) {
             return false;
         }
+        const auto staticOffsets = parseIntArrayAttr<int64_t>(subviewOp.getStaticOffsets());
+        const auto staticSizes = parseIntArrayAttr<int64_t>(subviewOp.getStaticSizes());
+        if (expandBegin[Dims4D::Act::C.ind()] != staticOffsets[Dims4D::Act::C.ind()] ||
+            staticSizes[Dims4D::Act::C.ind()] != expandInput[Dims4D::Act::C.ind()]) {
+            return false;
+        }
+    } else {
+        // In case there is no SubView operation, it is possible for the NCE op(s) to produce the channels unpadded
+        // directly
+        if (expandBegin[Dims4D::Act::C.ind()] != 0) {
+            return false;
+        }
+        const auto operandType = mlir::cast<NDTypeInterface>(op->getOperand(0).getType());
+        if (operandType.getShape()[Dims4D::Act::C] != expandInput[Dims4D::Act::C.ind()]) {
+            return false;
+        }
+    }
 
+    return true;
+}
+
+// ExpandOp aligns channels to multiples of 16 due to HW constraints
+// ExpandDMA copies only the actively used data; the expanded portion may contain uninitialized data
+// - For operations like Pooling or GroupConvolution, computations are performed per channel
+//   Thus, any data, including uninitialized memory, can serve as the expanded data without affecting outcomes
+// - However, for Convolution operations, the expanded channels are included in computations
+//   Therefore, filling these channels with abnormal data (e.g., null values) can adversely affect the results
+//
+// Illegal Pattern: "Expand -> NceExceptConv -> Convolution -> Subview"
+//   Dirty data impacts Convolution
+// Legal Pattern: "Expand -> NceExceptConv x N -> Subview"
+//   Multiple non-conv NCE operations between Expand and Subview are supported
+bool checkPattern(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAttr expandPadBegin) {
+    const auto isCopyOp = [&](mlir::Operation* op) -> bool {
         return mlir::isa_and_nonnull<VPUIP::CopyOp>(op);
     };
 
-    const auto isNceButNotConvOpWithOneUser = [&](mlir::Operation* op) -> bool {
-        if (!VPUIP::hasOneOrSameUser(op)) {
-            return false;
-        }
+    const auto isPermuteCastOp = [&](mlir::Operation* op) -> bool {
+        return mlir::isa_and_nonnull<VPUIP::PermuteCastOp>(op);
+    };
 
+    const auto isNceButNotConvOp = [&](mlir::Operation* op) -> bool {
         auto nceTask = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op);
         return nceTask != nullptr && nceTask.getTaskType() != VPUIP::NCETaskType::CONV;
     };
 
-    // ExpandOp aligns channels to multiples of 16 due to HW constraints
-    // ExpandDMA copies only the actively used data; the expanded portion may contain uninitialized data
-    // - For operations like Pooling or GroupConvolution, computations are performed per channel
-    //   Thus, any data, including uninitialized memory, can serve as the expanded data without affecting outcomes
-    // - However, for Convolution operations, the expanded channels are included in computations
-    //   Therefore, filling these channels with abnormal data (e.g., null values) can adversely affect the results
-    //
-    // Illegal Pattern: "Expand -> NceExceptConv -> Convolution -> Subview"
-    //   Dirty data impacts Convolution
-    // Legal Pattern: "Expand -> NceExceptConv x N -> Subview"
-    //   Multiple non-conv NCE operations between Expand and Subview are supported
+    auto returnFlag = true;
+    for (auto& child : op->getUses()) {
+        auto childOp = child.getOwner();
+        if (isCopyOp(childOp) || isNceButNotConvOp(childOp) || isPermuteCastOp(childOp)) {
+            returnFlag = returnFlag && checkPattern(childOp, expandInputShape, expandPadBegin);
+        } else {
+            returnFlag = returnFlag && checkLastChild(childOp, expandInputShape, expandPadBegin);
+        }
 
-    auto potentialCopyOrNceOperand = expandOp->getUses().begin();
-    while (isCopyOpWithOneUser(potentialCopyOrNceOperand->getOwner()) ||
-           isNceButNotConvOpWithOneUser(potentialCopyOrNceOperand->getOwner())) {
-        potentialCopyOrNceOperand = potentialCopyOrNceOperand->getOwner()->getUses().begin();
+        if (!returnFlag) {
+            return returnFlag;
+        }
     }
 
-    const auto expandInput = to_small_vector(getShape(expandOp.getInput()));
-    const auto expandBegin = parseIntArrayAttr<int64_t>(expandOp.getPadsBegin());
+    return returnFlag;
+}
 
-    if (potentialCopyOrNceOperand->getOwner() != nullptr) {
-        auto subviewOp = mlir::dyn_cast<VPUIP::SubViewOp>(potentialCopyOrNceOperand->getOwner());
-        if (subviewOp != nullptr) {
-            if (subviewOp.getStaticStrides().has_value()) {
-                return false;
-            }
-            const auto staticOffsets = parseIntArrayAttr<int64_t>(subviewOp.getStaticOffsets());
-            const auto staticSizes = parseIntArrayAttr<int64_t>(subviewOp.getStaticSizes());
-            if (expandBegin[Dims4D::Act::C.ind()] != staticOffsets[Dims4D::Act::C.ind()] ||
-                staticSizes[Dims4D::Act::C.ind()] != expandInput[Dims4D::Act::C.ind()]) {
-                return false;
-            }
-        } else {
-            // In case there is no SubView operation, it is possible for the NCE op(s) to produce the channels unpadded
-            // directly
-            if (expandBegin[Dims4D::Act::C.ind()] != 0) {
-                return false;
-            }
-            const auto operandType = mlir::cast<NDTypeInterface>(potentialCopyOrNceOperand->get().getType());
-            if (operandType.getShape()[Dims4D::Act::C] != expandInput[Dims4D::Act::C.ind()]) {
-                return false;
-            }
-        }
+bool checkExpandFP16Pattern(VPUIP::ExpandOp expandOp, Logger log) {
+    log.trace("Got ExpandOpFP16 at {0}. Try to find fuse pattern.", expandOp->getLoc());
+    auto shape = getShape(expandOp.getInput());
+    const auto expandPadBegin = expandOp.getPadsBegin();
+
+    if (!checkPattern(expandOp, shape, expandPadBegin)) {
+        return false;
     }
 
     return isExpandOpWrapable(expandOp, log);
@@ -1382,7 +1407,7 @@ mlir::LogicalResult WrapDepthToSpaceAsDistributedNNDMA::matchAndRewrite(VPUIP::S
     _log.trace("Found DepthToSpace at '{0}' with DistributedCopy pattern", swKernelOp->getLoc());
 
     auto ctx = swKernelOp.getContext();
-    auto arch = VPU::getArch(swKernelOp.getOperation());
+    auto arch = config::getArch(swKernelOp.getOperation());
 
     // Extract D2S attributes
     auto d2sAttrs = VPUIP::getDepthToSpaceSwKernelAttr(swKernelOp);

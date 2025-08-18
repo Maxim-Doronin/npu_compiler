@@ -24,11 +24,7 @@ using namespace vpux;
 namespace {
 class AddEnqueueDMAOps : public VPUMI40XX::impl::AddEnqueueDMAOpsBase<AddEnqueueDMAOps> {
 public:
-    explicit AddEnqueueDMAOps(const WorkloadManagementMode workloadManagementMode, Logger log)
-            : _workloadManagementMode(workloadManagementMode),
-              _dpuEnqueueDMACount(0),
-              _shvEnqueueDMACount(0),
-              _actShavePerTile(0) {
+    explicit AddEnqueueDMAOps(Logger log): _dpuEnqueueDMACount(0), _shvEnqueueDMACount(0), _actShavePerTile(0) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -44,7 +40,6 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    WorkloadManagementMode _workloadManagementMode;
     llvm::DenseMap<int, VPUMI40XX::NNDMAOp> _lastDmaTile0List0ByPage;
     llvm::DenseMap<mlir::Value, VPUMI40XX::NNDMAOp> _opFetchDMAMap;
     llvm::DenseMap<std::pair<mlir::Type, uint32_t>, mlir::Value> _regBufferCache;
@@ -324,9 +319,6 @@ void AddEnqueueDMAOps::createDMAToPushTaskInFIFO(mlir::OpBuilder& builder, VPURe
 }
 
 void AddEnqueueDMAOps::safeRunOnFunc() {
-    if (_workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-        return;
-    }
     auto netFunc = getOperation();
     auto mpi = VPUMI40XX::getMPI(netFunc);
     auto module = netFunc->getParentOfType<mlir::ModuleOp>();
@@ -419,7 +411,6 @@ void AddEnqueueDMAOps::safeRunOnFunc() {
 // createAddEnqueueDMAOps
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUMI40XX::createAddEnqueueDMAOps(WorkloadManagementMode workloadManagementMode,
-                                                                    Logger log) {
-    return std::make_unique<AddEnqueueDMAOps>(workloadManagementMode, log);
+std::unique_ptr<mlir::Pass> vpux::VPUMI40XX::createAddEnqueueDMAOps(Logger log) {
+    return std::make_unique<AddEnqueueDMAOps>(log);
 }

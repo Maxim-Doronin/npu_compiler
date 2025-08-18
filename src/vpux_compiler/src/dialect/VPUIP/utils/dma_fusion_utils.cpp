@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/dialect/VPUIP/utils/dma_fusion_utils.hpp"
-
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 

@@ -221,8 +221,27 @@ const std::unordered_map<VPURegMapped::TaskType, size_t> taskBinarySize40XX = {
 
 // TODO: E#121934 Add method for VPURegMapped TaskType to be able to directly return its binary size in an
 // arch-specific way
-size_t getTaskBinarySize(VPURegMapped::TaskType taskType, [[maybe_unused]] VPU::ArchKind arch) {
+size_t getTaskBinarySize(VPURegMapped::TaskType taskType, [[maybe_unused]] config::ArchKind arch) {
     return taskBinarySize40XX.at(taskType);
+}
+
+VPURegMapped::TaskType convertExecutorKindToExecutableTaskType(VPU::ExecutorKind kind) {
+    VPURegMapped::TaskType returnType;
+    switch (kind) {
+    case VPU::ExecutorKind::DMA_NN:
+        returnType = VPURegMapped::TaskType::DMA;
+        break;
+    case VPU::ExecutorKind::DPU:
+        returnType = VPURegMapped::TaskType::DPUVariant;
+        break;
+    case VPU::ExecutorKind::SHAVE_ACT:
+        returnType = VPURegMapped::TaskType::ActKernelInvocation;
+        break;
+    default:
+        VPUX_THROW("Unsupported executor kind {0}", kind);
+    }
+
+    return returnType;
 }
 
 }  // namespace VPUMI40XX

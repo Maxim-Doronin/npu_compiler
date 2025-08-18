@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -210,7 +211,7 @@ mlir::LogicalResult PerAxisTileDMARewriter::unrollPerAxisTile(VPUIP::PerAxisTile
         portIsAlreadyAssigned = false;
     }
 
-    const auto arch = VPU::getArch(perAxisTileDMAOp);
+    const auto arch = config::getArch(perAxisTileDMAOp);
     auto subInputShapes = VPUIP::getPerAxisTileDMASubShapes(arch, mergedShapes.first);
     auto subOutputShapes = VPUIP::getPerAxisTileDMASubShapes(arch, mergedShapes.second);
     VPUX_THROW_UNLESS(subInputShapes.size() == subOutputShapes.size(),

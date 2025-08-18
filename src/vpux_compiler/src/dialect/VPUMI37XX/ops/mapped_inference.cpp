@@ -7,6 +7,7 @@
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 

@@ -7,12 +7,15 @@
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
+#include "vpux/compiler/utils/platform_resources.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
@@ -611,40 +614,75 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
     vpurtTask->erase();
 }
 
-bool isStorageElementTableConstantOp(Const::DeclareOp constOp) {
-    auto elementType = mlir::cast<NDTypeInterface>(constOp.getType()).getElementType();
+std::optional<VPUIP::DistributedBufferType> getUniqueNCEInputTypeForPatchingSETable(Const::DeclareOp constOp) {
+    const auto elementType = mlir::cast<NDTypeInterface>(constOp.getType()).getElementType();
     if (!elementType.isInteger(32) || constOp.getResult().use_empty()) {
-        return false;
+        return std::nullopt;
     }
 
-    for (auto constUser : constOp.getResult().getUsers()) {
-        auto copyOp = mlir::dyn_cast<VPUIP::NNDMAOp>(constUser);
-        if (copyOp == nullptr) {
-            return false;
-        }
+    const auto extractNCEInputTypeFromCopyOp =
+            [](VPUIP::NNDMAOp copyOp) -> std::optional<VPUIP::DistributedBufferType> {
+        VPUIP::DistributedBufferType nceInputType = nullptr;
 
-        bool onlyCopyUser = true;
         for (auto copyUser : copyOp.getOutputBuff().getUsers()) {
             if (copyUser == copyOp) {
                 continue;
             }
-            onlyCopyUser = false;
 
             auto nceTask = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(copyUser);
             if (nceTask == nullptr) {
-                return false;
+                return std::nullopt;
             }
 
             if (nceTask.getInputStorageElementTable() != copyOp.getOutputBuff()) {
-                return false;
+                return std::nullopt;
+            }
+
+            auto currentNCEInputType = mlir::dyn_cast<VPUIP::DistributedBufferType>(nceTask.getInput().getType());
+            if (currentNCEInputType == nullptr) {
+                return std::nullopt;
+            }
+
+            if (nceInputType == nullptr) {
+                nceInputType = currentNCEInputType;
+            } else if (nceInputType != currentNCEInputType) {
+                VPUX_THROW("SE Table DMA for multi NCEs but these NCE input types are not unique, got {0} and {1}",
+                           nceInputType, currentNCEInputType);
             }
         }
-        if (onlyCopyUser) {
-            return false;
+
+        return nceInputType ? std::optional<VPUIP::DistributedBufferType>(nceInputType) : std::nullopt;
+    };
+
+    VPUIP::DistributedBufferType uniqueNCEInputType = nullptr;
+
+    for (const auto constUser : constOp.getResult().getUsers()) {
+        auto copyOp = mlir::dyn_cast<VPUIP::NNDMAOp>(constUser);
+        if (copyOp == nullptr) {
+            return std::nullopt;
+        }
+
+        const auto nceInputType = extractNCEInputTypeFromCopyOp(copyOp);
+        if (!nceInputType.has_value()) {
+            return std::nullopt;
+        }
+
+        if (uniqueNCEInputType == nullptr) {
+            uniqueNCEInputType = nceInputType.value();
+        } else if (uniqueNCEInputType != nceInputType.value()) {
+            const auto uniqueNCEInputDistAttr = uniqueNCEInputType.getDistribution();
+            const auto currNCEInputDistAttr = nceInputType.value().getDistribution();
+            // When the same SETable is shared among multiple NCE operations with different input quantization types
+            // compare memory shapes and offsets instead of complete types to ensure consistent distributed shapes
+            VPUX_THROW_UNLESS(
+                    uniqueNCEInputDistAttr.getMemoryShapes() == currNCEInputDistAttr.getMemoryShapes() &&
+                            uniqueNCEInputDistAttr.getMemoryOffsets() == currNCEInputDistAttr.getMemoryOffsets(),
+                    "SE Table Const for multi NCEs but these NCE per cluster Shape are not unique, got {0} and {1}",
+                    uniqueNCEInputType, nceInputType.value());
         }
     }
 
-    return true;
+    return uniqueNCEInputType ? std::optional<VPUIP::DistributedBufferType>(uniqueNCEInputType) : std::nullopt;
 }
 
 // SE pointers have the following format:
@@ -663,25 +701,84 @@ bool isStorageElementTableConstantOp(Const::DeclareOp constOp) {
 // BASE_PTR at Cluster 0:    0 0 0 0 0 0 0 0 0 0 0 0
 // BASE_PTR at Cluster 1:                        1 1 1 1 1 1 1 1 1 1 1 1
 // The third data "2" exists in two clusters on 40XX+
-mlir::Value patchSETableValue(mlir::Location loc, Const::DeclareOp constOp, const int64_t clusterId,
-                              mlir::OpBuilder& builder) {
-    auto seTableContent = constOp.getContent();
-    auto seTableSize = seTableContent.getType().getShape().totalSize();
+mlir::Value VPUIP::patchSETableValue(mlir::Location loc, Const::DeclareOp constOp,
+                                     VPUIP::DistributedBufferType nceInputDistType, const int64_t targetClusterId,
+                                     mlir::OpBuilder& builder) {
+    const auto seTableContent = constOp.getContent();
+    const auto seTableShape = seTableContent.getType().getShape();
+    const auto seTableSize = seTableShape.totalSize();
     auto seTableVals = to_small_vector(seTableContent.getValues<int32_t>());
     VPUX_THROW_UNLESS(seTableVals.size() == checked_cast<size_t>(seTableSize),
                       "Unable to correctly obtain the seTable values");
 
-    auto baseSEPointer = *std::min_element(seTableVals.begin(), seTableVals.end(), [&](const auto lhs, const auto rhs) {
-        if ((lhs & 0x1FF) != clusterId) {
-            return (rhs & 0x1FF) == clusterId || lhs < rhs;
-        }
-        return false;
-    });
+    const auto tileIndex = VPUIP::getTilingDimIndex(nceInputDistType);
+    VPUX_THROW_UNLESS(tileIndex.has_value(), "Failed to get tiling dim index for input distributed type: {0}",
+                      nceInputDistType);
+    const auto tileDim = Dim(tileIndex.value());
+    VPUX_THROW_UNLESS(tileDim == Dims4D::Act::H || tileDim == Dims4D::Act::W,
+                      "Invalid Tile dim, got {0}, expect tiling on H or W for SEP NCEClusterTask", tileDim);
 
-    for (int64_t index = 0; index < seTableSize; ++index) {
-        const int32_t basePtr = seTableVals[index] & 0x1FF;
-        if (clusterId != basePtr) {
-            seTableVals[index] = seTableVals[index] - baseSEPointer + clusterId;
+    const bool isTilingOnH = (tileDim == Dims4D::Act::H);
+    const int64_t seTableC = seTableShape[Dims4D::Act::C];
+    const int64_t seTableH = seTableShape[Dims4D::Act::H];
+    const int64_t seTableW = seTableShape[Dims4D::Act::W];
+    const int64_t lineCount = isTilingOnH ? seTableH : seTableW;
+    const auto tileStride = static_cast<Byte>(nceInputDistType.getStrides()[tileDim]);
+
+    const auto extractClusterId = [](int32_t seVal) -> int64_t {
+        return seVal & 0x1FF;
+    };
+
+    // Step 1: Find the smallest data ptr as baseSEPointer for each non-target cluster
+    llvm::SmallDenseMap<int64_t, int32_t> baseSEPointers;
+    for (const auto seVal : seTableVals) {
+        const int64_t nonTargetClusterId = extractClusterId(seVal);
+        if (nonTargetClusterId != targetClusterId) {
+            auto [it, inserted] = baseSEPointers.try_emplace(nonTargetClusterId, seVal);
+            if (!inserted && seVal < it->second) {
+                it->second = seVal;
+            }
+        }
+    }
+
+    // Step 2: Figure out the new start offset newSEPointerOffset for each non-target cluster
+    llvm::SmallDenseMap<int64_t, llvm::SmallDenseSet<int32_t>> clusterUniqueSeVals;
+    for (int64_t lineIdx = 0; lineIdx < lineCount; ++lineIdx) {
+        const int64_t firstElementIdx = isTilingOnH ? (lineIdx * seTableW * seTableC) : (lineIdx * seTableC);
+        if (firstElementIdx < seTableSize) {
+            const int32_t firstSeVal = seTableVals[firstElementIdx];
+            const int64_t nonTargetClusterId = extractClusterId(firstSeVal);
+            if (nonTargetClusterId != targetClusterId) {
+                clusterUniqueSeVals[nonTargetClusterId].insert(firstSeVal);
+            }
+        }
+    }
+
+    SmallVector<int64_t> sortedClusterIds;
+    for (const auto& [clusterId, _] : clusterUniqueSeVals) {
+        sortedClusterIds.push_back(clusterId);
+    }
+    llvm::sort(sortedClusterIds);
+
+    llvm::SmallDenseMap<int64_t, int64_t> newSEPointerOffsets;
+    int64_t cumulativeUniqueLines = 0;
+    for (const auto clusterId : sortedClusterIds) {
+        const int64_t offsetInBytes = (cumulativeUniqueLines * tileStride.count() >> 4)
+                                      << VPU::NCESparsity::BASE_PTR_SIZE;
+        newSEPointerOffsets[clusterId] = offsetInBytes;
+        cumulativeUniqueLines += clusterUniqueSeVals[clusterId].size();
+    }
+
+    // Step 3: Apply patch:
+    // patchedSEPointer = currSEPointer - baseSEPointer + newSEPointerOffset + targetClusterId
+    for (int64_t idx = 0; idx < seTableSize; ++idx) {
+        const int64_t currClusterId = extractClusterId(seTableVals[idx]);
+        if (currClusterId != targetClusterId) {
+            const auto baseIt = baseSEPointers.find(currClusterId);
+            const auto offsetIt = newSEPointerOffsets.find(currClusterId);
+            if (baseIt != baseSEPointers.end() && offsetIt != newSEPointerOffsets.end()) {
+                seTableVals[idx] = seTableVals[idx] - baseIt->second + offsetIt->second + targetClusterId;
+            }
         }
     }
 
@@ -843,11 +940,12 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
             // The reason for that is because there is no overlap of values. Each depth is generated
             // separately for each cluster.
             const auto isSOK = distributionAttr != nullptr && VPU::isSegmentedOverC(distributionAttr);
-            bool requirePatching = isDataOverlapped && !isSOK && isStorageElementTableConstantOp(cst);
-            if (requirePatching) {
-                auto newCstOp = subviewOp.getDefiningOp<Const::DeclareOp>();
-                VPUX_THROW_WHEN(newCstOp == nullptr, "Cannot get the constant operation of SETable");
-                return patchSETableValue(loc, newCstOp, clusterId, builder);
+            if (isDataOverlapped && !isSOK) {
+                if (auto nceInputDistType = getUniqueNCEInputTypeForPatchingSETable(cst)) {
+                    auto newCstOp = subviewOp.getDefiningOp<Const::DeclareOp>();
+                    VPUX_THROW_WHEN(newCstOp == nullptr, "Cannot get the constant operation of SETable");
+                    return VPUIP::patchSETableValue(loc, newCstOp, nceInputDistType.value(), clusterId, builder);
+                }
             }
 
             return subviewOp;
@@ -996,7 +1094,9 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
 
     // This is the requirement for DMA load balancing pass. Technically it can works with any number of ports, but
     // now only 2 is supported
-    VPUX_THROW_WHEN(_dmaPortCount > 2, "Too much DMA ports");
+    auto maxDMAPorts = VPUX40XX_MAX_DMA_PORTS;
+
+    VPUX_THROW_WHEN(_dmaPortCount > maxDMAPorts, "Too many DMA ports");
     // Split one of DMAs to load balance on DMA ports if needed
     const bool isDmaSplitRequired = numClusters % _dmaPortCount != 0;
 

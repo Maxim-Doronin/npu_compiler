@@ -3,28 +3,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
-
-#include "vpux/compiler/core/control_edge_generator.hpp"
-#include "vpux/compiler/core/feasible_scheduler_utils.hpp"
-
 #include "vpux/compiler/core/allocation_info.hpp"
 #include "vpux/compiler/core/async_deps_info.hpp"
-#include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/core/control_edge_generator.hpp"
 #include "vpux/compiler/core/feasible_memory_scheduler_control_edges.hpp"
+#include "vpux/compiler/core/feasible_scheduler_utils.hpp"
 #include "vpux/compiler/core/linear_scan_handler.hpp"
 #include "vpux/compiler/core/mem_live_range_info.hpp"
 #include "vpux/compiler/core/reserved_memory_info.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/linear_scan.hpp"
-
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/error.hpp"
 

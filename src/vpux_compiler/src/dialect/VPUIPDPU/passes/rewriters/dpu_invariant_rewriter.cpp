@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/dpu_invariant_rewriter.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux::VPUIPDPU;
 
@@ -32,9 +33,11 @@ mlir::LogicalResult insertInvBlockArgs(VPUASM::DPUInvariantOp op, const Logger& 
                                        std::unordered_map<BlockArg, size_t>& invBlockArgsPos,
                                        ELF::SymbolReferenceMap& symRefMap) {
     // input activations
-    auto inputType = getBufferType(symRefMap.lookupSymbol(op.getInput()));
-    invBlock->addArgument(inputType, op.getLoc());
-    invBlockArgsPos[BlockArg::ACT_IN] = invBlock->getNumArguments() - 1;
+    if (op.getInput()) {
+        auto inputType = getBufferType(symRefMap.lookupSymbol(op.getInput().value()));
+        invBlock->addArgument(inputType, op.getLoc());
+        invBlockArgsPos[BlockArg::ACT_IN] = invBlock->getNumArguments() - 1;
+    }
 
     // input storage elements
     if (op.getInputStorageElementTable()) {
@@ -176,7 +179,7 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUASM::DPUInvariantOp
     auto dpuInvariantExpandIface = mlir::dyn_cast<VPUASM::DPUInvariantExpandOpInterface>(op.getOperation());
     if (dpuInvariantExpandIface == nullptr) {
         _log.error("Missing expand DPU invariant configuration interface for arch {0}",
-                   stringifyArchKind(VPU::getArch(op)).str());
+                   stringifyArchKind(config::getArch(op)).str());
         return mlir::failure();
     }
 

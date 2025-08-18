@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/VPUMI40XX/wlm_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 
 namespace vpux {
 namespace VPUMI40XX {
@@ -531,6 +533,38 @@ void logFetchOpsDetails(mlir::func::FuncOp netFunc, Logger log) {
             }
         }
     }
+}
+
+// Check if there are any Enqueue DMAs present in the schedule and gather data
+// about them
+// Map:
+// - key - HwQueueType - {taskType, tileIdx, listIdx}
+// - value - vector of {startTaskIndex, endTaskIndex, dmaOp}
+mlir::DenseMap<VPUMI40XX::HwQueueType, SmallVector<EnqDmaInfo>> getEnqueueDmaData(
+        VPUMI40XX::NNDMAOp firstDmaTile0List0Op, Logger log) {
+    mlir::DenseMap<VPUMI40XX::HwQueueType, SmallVector<EnqDmaInfo>> enqueueDmasPerHwQueue;
+
+    // Iterate over all DMAs on tile0 list 0 (Port 0, Channel DDR) and check for EnqueueDma attribute
+    auto dmaTile0List0Task = firstDmaTile0List0Op;
+    do {
+        auto enqueueDmaAttr = dmaTile0List0Task.getEnqueueDmaAttr();
+        if (enqueueDmaAttr.has_value()) {
+            auto taskType = VPUMI40XX::convertExecutorKindToExecutableTaskType(
+                    enqueueDmaAttr.value().getTargetExecutorKindAttr().getValue());
+            auto tileIdx = static_cast<uint32_t>(enqueueDmaAttr.value().getTileIdx().getValue().getSExtValue());
+            auto listIdx = static_cast<uint32_t>(enqueueDmaAttr.value().getListIdx().getValue().getSExtValue());
+            auto hwQueue = VPUMI40XX::HwQueueType{taskType, tileIdx, listIdx};
+
+            auto startTaskIdx = enqueueDmaAttr.value().getStartTaskIdx().getValue().getSExtValue();
+            auto endTaskIdx = enqueueDmaAttr.value().getEndTaskIdx().getValue().getSExtValue();
+            enqueueDmasPerHwQueue[hwQueue].push_back(EnqDmaInfo{startTaskIdx, endTaskIdx, dmaTile0List0Task});
+            log.trace("Found Enqueue DMA for task type {0} on tile {1}, list {2} with task index range {3} - {4}",
+                      taskType, tileIdx, listIdx, startTaskIdx, endTaskIdx);
+        }
+        dmaTile0List0Task = VPUMI40XX::getNextOp(dmaTile0List0Task);
+    } while (dmaTile0List0Task);
+
+    return enqueueDmasPerHwQueue;
 }
 
 }  // namespace VPUMI40XX

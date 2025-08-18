@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/format.hpp"
 
 using namespace vpux;

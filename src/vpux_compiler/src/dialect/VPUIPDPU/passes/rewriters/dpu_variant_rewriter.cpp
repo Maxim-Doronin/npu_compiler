@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/dpu_variant_rewriter.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux {
 namespace VPUIPDPU {
@@ -27,7 +28,7 @@ mlir::LogicalResult DPUVariantRewriter::matchAndRewrite(VPUASM::DPUVariantOp op,
     auto dpuVariantExpandIface = mlir::dyn_cast<VPUASM::DPUVariantExpandOpInterface>(op.getOperation());
     if (dpuVariantExpandIface == nullptr) {
         _log.error("Missing expand DPU variant configuration interface for arch {0}",
-                   stringifyArchKind(VPU::getArch(op)).str());
+                   stringifyArchKind(config::getArch(op)).str());
         return mlir::failure();
     }
 

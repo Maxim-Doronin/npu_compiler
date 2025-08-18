@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 using namespace vpux;
@@ -13,7 +14,7 @@ void ProcessOp(VPURT::TaskOp vpurtTask, VPUIP::UnrollDMAAnalysis::StorageType& l
     if (vpurtTask.getInnerTaskOpOfType<VPUIP::ExpandDMAOp>() != nullptr) {
         lookupArray[static_cast<size_t>(VPUIP::UnrollDMAAnalysisNeeded::UnrollExpandDMAPass)] = 1;
     } else if (vpurtTask.getInnerTaskOpOfType<VPUIP::PermuteDMAOp>() != nullptr) {
-        lookupArray[static_cast<size_t>(VPUIP::UnrollDMAAnalysisNeeded::UnrollPermuteToNNDMAPass)] = 1;
+        lookupArray[static_cast<size_t>(VPUIP::UnrollDMAAnalysisNeeded::UnrollPermuteDMAPass)] = 1;
     } else if (vpurtTask.getInnerTaskOpOfType<VPUIP::DepthToSpaceDMAOp>() != nullptr) {
         lookupArray[static_cast<size_t>(VPUIP::UnrollDMAAnalysisNeeded::UnrollDepthToSpaceDMAPass)] = 1;
     } else if (vpurtTask.getInnerTaskOpOfType<VPUIP::SpaceToDepthDMAOp>() != nullptr) {
@@ -22,6 +23,8 @@ void ProcessOp(VPURT::TaskOp vpurtTask, VPUIP::UnrollDMAAnalysis::StorageType& l
         lookupArray[static_cast<size_t>(VPUIP::UnrollDMAAnalysisNeeded::UnrollUpsamplingDMAPass)] = 1;
     } else if (vpurtTask.getInnerTaskOpOfType<VPUIP::PerAxisTileDMAOp>() != nullptr) {
         lookupArray[static_cast<size_t>(VPUIP::UnrollDMAAnalysisNeeded::UnrollPerAxisTileDMAPass)] = 1;
+    } else if (vpurtTask.getInnerTaskOpOfType<VPUIP::GatherDMAOp>() != nullptr) {
+        lookupArray[static_cast<size_t>(VPUIP::UnrollDMAAnalysisNeeded::UnrollGatherDMAPass)] = 1;
     }
 }
 }  // namespace

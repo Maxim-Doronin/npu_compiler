@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/wlm_utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -30,7 +31,7 @@ namespace {
 
 class RewriteFetchTaskToDma final : public mlir::OpRewritePattern<VPURegMapped::FetchTaskOp> {
 public:
-    RewriteFetchTaskToDma(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    RewriteFetchTaskToDma(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<VPURegMapped::FetchTaskOp>(ctx), _arch(arch), _log(log) {
         setDebugName("FetchTaskOpRewriter");
     }
@@ -39,16 +40,13 @@ public:
                                         mlir::PatternRewriter& rewriter) const final;
 
 private:
-#if defined(__clang__)
-    [[maybe_unused]] VPU::ArchKind _arch = VPU::ArchKind::UNKNOWN;
-#else
-    VPU::ArchKind _arch = VPU::ArchKind::UNKNOWN;
-#endif
+    config::ArchKind _arch = config::ArchKind::UNKNOWN;
     int64_t getTaskSize(VPURegMapped::TaskType taskType) const;
     Logger _log;
 };
 
 int64_t RewriteFetchTaskToDma::getTaskSize(VPURegMapped::TaskType taskType) const {
+    (void)_arch;
     switch (taskType) {
     case VPURegMapped::TaskType::DPUInvariant:
         return sizeof(npu40xx::nn_public::VpuDPUInvariant);
@@ -111,7 +109,7 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             nullptr,  // for now it's assumed that with WLM DMA's don't have a taskLocation
             primaryTaskView.getResult(), mlir::ValueRange({primaryTaskLocationsView.getResult()}),
             fetchTaskOp.getPreviousTask(),  // inherit the previous
-            mlir::ValueRange({}), mlir::ValueRange({}), 0,
+            fetchTaskOp.getWaitBarriers(), mlir::ValueRange({}), 0,
             0,                  // start_after, clean_after fields have no meaning with WLM
             true, true, false,  // is_out_of_order  and is_critical, enable_msc
             0,                  // port has no meaning
@@ -131,7 +129,7 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             fetchTaskOp.getLoc(), fetchTaskOp.getIndexType(),
             nullptr,  // for now it's assumed that with WLM DMA's don't have a taskLocation
             secondaryTaskView.getResult(), mlir::ValueRange({secondaryTaskLocationsView.getResult()}),
-            primaryDma.getResult(), mlir::ValueRange({}), mlir::ValueRange({}), 0,
+            primaryDma.getResult(), mlir::ValueRange({}), fetchTaskOp.getUpdateBarriers(), 0,
             0,                  // start_after, clean_after fields have no meaning with WLM
             true, true, false,  // is_out_of_order  and is_critical, enable_msc
             0,                  // port has no meaning
@@ -178,7 +176,7 @@ private:
 void UnrollFetchTaskOpsPass::safeRunOnFunc() {
     auto netFunc = getOperation();
     auto ctx = &getContext();
-    const auto arch = VPU::getArch(netFunc);
+    const auto arch = config::getArch(netFunc);
 
     // logFetchOpsDetails needs some data processing which can be avoided if correct log level is not set
     if (_log.isActive(LogLevel::Trace)) {

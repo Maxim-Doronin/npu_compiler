@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/shave.hpp"
 
@@ -200,7 +201,7 @@ void ResolveTaskLocationPass::createTaskLocationBuffers(VPURegMapped::TaskBuffer
 void ResolveTaskLocationPass::safeRunOnFunc() {
     auto funcOp = getOperation();
     VPUX_THROW_WHEN(VPU::isFifoPerShaveEngineEnabled(funcOp), "Dedicated Shave FIFOs for non-Wlm are not supported.");
-    const auto arch = VPU::getArch(funcOp);
+    const auto arch = config::getArch(funcOp);
 
     MetadataBuffersContainer metadataBuffers;
     MaxTileInfo maxTileInfo;
