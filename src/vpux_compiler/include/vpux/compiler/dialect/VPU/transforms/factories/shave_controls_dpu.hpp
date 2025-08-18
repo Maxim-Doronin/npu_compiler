@@ -10,9 +10,9 @@
 namespace vpux {
 namespace VPU {
 
-bool getShaveControlsDpu(VPU::ArchKind arch);
-size_t getDpuDebugDataSize(VPU::ArchKind /*arch*/);
-size_t getDPUInvariantDataSize(VPU::ArchKind arch);
-size_t getDPUVariantDataSize(VPU::ArchKind arch);
+bool getShaveControlsDpu(config::ArchKind arch);
+size_t getDpuDebugDataSize(config::ArchKind /*arch*/);
+size_t getDPUInvariantDataSize(config::ArchKind arch);
+size_t getDPUVariantDataSize(config::ArchKind arch);
 }  // namespace VPU
 }  // namespace vpux

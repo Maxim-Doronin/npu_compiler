@@ -17,7 +17,7 @@ namespace vpux::VPU {
  */
 class CostModelConfig {
 private:
-    static std::map<ArchKind, std::unique_ptr<ICostModelFactory>>& _getFactories();
+    static std::map<config::ArchKind, std::unique_ptr<ICostModelFactory>>& _getFactories();
 
     static std::mutex& _getCostModelFactoryMutex() {
         static std::mutex mtx;
@@ -30,7 +30,7 @@ private:
      * @param arch Architecture kind
      * @return const ICostModelFactory&
      */
-    static const ICostModelFactory& getFactory(ArchKind arch);
+    static const ICostModelFactory& getFactory(config::ArchKind arch);
 
 public:
     /**
@@ -38,7 +38,7 @@ public:
      *
      * @param arch Architecture kind
      */
-    static void setFactory(ArchKind arch);
+    static void setFactory(config::ArchKind arch);
 
     /**
      * @brief Create a cost model for the specified architecture
@@ -46,7 +46,7 @@ public:
      * @param arch Architecture kind
      * @return std::shared_ptr<VPUNN::VPUCostModel>
      */
-    static std::shared_ptr<VPUNN::VPUCostModel> createCostModel(ArchKind arch) {
+    static std::shared_ptr<VPUNN::VPUCostModel> createCostModel(config::ArchKind arch) {
         return getFactory(arch).createCostModel();
     }
 
@@ -56,7 +56,7 @@ public:
      * @param arch Architecture kind
      * @return std::shared_ptr<VPUNN::VPULayerCostModel>
      */
-    static std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel(ArchKind arch) {
+    static std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel(config::ArchKind arch) {
         return getFactory(arch).createLayerCostModel();
     }
 };

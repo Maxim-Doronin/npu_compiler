@@ -9,6 +9,7 @@
 #include "vpux/compiler/core/attributes/strided_shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attr_interfaces.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/mem_size.hpp"
@@ -23,6 +24,7 @@
 namespace vpux {
 namespace IE {
 class InterpolateCoordModeAttr;
+class InterpolateNearestModeAttr;
 class PadModeAttr;
 }  // namespace IE
 namespace VPU {
@@ -50,13 +52,6 @@ namespace VPU {
 // This one represents a CMX_NN memory space with fragmentation consideration
 constexpr StringLiteral CMX_NN_FragmentationAware = "CMX_NN_FragmentationAware";
 
-//
-// Run-time resources
-//
-
-StringLiteral getMemoryDerateAttrName();
-StringLiteral getMemoryBandwidthAttrName();
-
 /**
  * @brief Get DPU frequency
  *
@@ -72,7 +67,7 @@ StringLiteral getMemoryBandwidthAttrName();
  * @note Values returned by this function are tight to definitions provided by
  * vpucostmodel.
  */
-unsigned int getDpuFrequency(vpux::VPU::ArchKind arch, vpux::VPU::RevisionID rev);
+unsigned int getDpuFrequency(vpux::config::ArchKind arch, vpux::config::RevisionID rev);
 
 /**
  * @brief Get maximal DMA bandwidth for a given architecture
@@ -95,11 +90,11 @@ double getDmaBandwidthGBps(mlir::ModuleOp module);
  *
  * See getDmaBandwidthGBps(mlir::ModuleOp module)
  */
-double getDmaBandwidthGBps(ArchKind arch);
+double getDmaBandwidthGBps(config::ArchKind arch);
 
-uint32_t getMaxArchDPUClusterNum(ArchKind arch);
+uint32_t getMaxArchDPUClusterNum(config::ArchKind arch);
 uint32_t getMaxArchDPUClusterNum(mlir::Operation* op);
-uint32_t getMaxDMAPorts(ArchKind arch);
+uint32_t getMaxDMAPorts(config::ArchKind arch);
 
 /**
  * @brief return DMA bandwidth
@@ -108,7 +103,7 @@ uint32_t getMaxDMAPorts(ArchKind arch);
  * @param revision - platform revision ID
  * @return DMA bandwidth in bytes per DPU clock cycle
  */
-double getDMABandwidth(ArchKind arch, VPU::RevisionID rev);
+double getDMABandwidth(config::ArchKind arch, config::RevisionID rev);
 
 /**
  * @brief NCE troughput
@@ -123,24 +118,6 @@ Byte getTotalCMXSize(mlir::ModuleOp module);
 Byte getTotalCMXFragmentationAwareSize(mlir::Operation* op);
 Byte getTotalCMXFragmentationAwareSize(mlir::ModuleOp module);
 Byte getTotalCMXVFPipelineFragmentationAwareSize(mlir::Operation* op);
-
-//
-// ArchKind
-//
-
-void setArch(mlir::ModuleOp module, ArchKind kind, int numOfDPUGroups, std::optional<int> numOfDMAPorts = std::nullopt,
-             std::optional<vpux::Byte> availableCMXMemory = std::nullopt, bool allowCustomValues = false);
-
-ArchKind getArch(mlir::Operation* op);
-bool isArchVPUX3XXX(VPU::ArchKind arch);
-
-//
-// RevisionID
-//
-
-void setRevisionID(mlir::ModuleOp module, RevisionID revisionID);
-bool hasRevisionID(mlir::ModuleOp module);
-RevisionID getRevisionID(mlir::Operation* op);
 
 //
 // PaddingAttr

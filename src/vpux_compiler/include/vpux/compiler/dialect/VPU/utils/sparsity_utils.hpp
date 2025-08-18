@@ -5,14 +5,19 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/sparsity_constraint.hpp"
 #include "vpux/compiler/utils/options.hpp"
+#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/Types.h>
 
 #include <string>
+
+namespace vpux::config {
+enum class ArchKind : uint64_t;
+}
 
 namespace vpux {
 namespace VPU {
@@ -49,7 +54,7 @@ enum SparsityRemovalFlag {
 
 SparsityRemovalFlag shouldRemoveOutputSparsity(mlir::Operation* op);
 
-bool isSEOnlyWithoutSMSupported(VPU::ArchKind arch);
+bool isSEOnlyWithoutSMSupported(config::ArchKind arch);
 
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> getUpdatedSliceOffsetsAndShapesForSETable(
         int64_t seDepth, mlir::ArrayAttr seSizeAttr, ArrayRef<int64_t> sliceOffsets, ArrayRef<int64_t> sliceSizes);

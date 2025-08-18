@@ -5,17 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/const/attributes/content.hpp"
-
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/enums.hpp"
-#include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/optional.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/Value.h>
 

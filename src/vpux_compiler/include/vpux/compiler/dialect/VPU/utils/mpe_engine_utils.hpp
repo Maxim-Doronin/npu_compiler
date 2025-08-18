@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+
 namespace vpux::VPU {
 /* @brief
  * Static class for generating MPEEngine attributes.
@@ -12,9 +14,9 @@ namespace vpux::VPU {
 class MPEEngineConfig {
 public:
     static MPEEngineAttr retrieveMPEEngineAttribute(mlir::Operation* operation) {
-        const auto arch = VPU::getArch(operation);
+        const auto arch = config::getArch(operation);
 
-        VPUX_THROW_WHEN(arch == VPU::ArchKind::UNKNOWN,
+        VPUX_THROW_WHEN(arch == config::ArchKind::UNKNOWN,
                         "An unknown architecture is associated to the provided operation");
 
         return MPEEngine37XXAttr::get(operation->getContext(),

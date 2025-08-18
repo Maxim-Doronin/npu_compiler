@@ -5,12 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
-#include "vpux/compiler/utils/logging.hpp"
-#include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 #include "vpux/utils/core/dense_map.hpp"
+
+#include <vpu_layer_cost_model.h>
 
 namespace vpux {
 namespace VPU {
@@ -143,7 +143,7 @@ private:
     int64_t _numDPUs = 0;                     // Number of DPUs per cluster
     int64_t _numShaveActs = 0;                // Number of ACT_SHVs per cluster
     int64_t _numDMAPorts = 1;                 // Number of the DMA ports
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     VPUNN::VPUDevice _vpuDeviceType;
     std::shared_ptr<VPUNN::VPULayerCostModel> _layerCostModel;
     mlir::func::FuncOp _func;
@@ -213,6 +213,6 @@ bool setSOKForRuntimeDequantConvolution(VPU::NCEOpInterface nceOp, LayerCostMode
 
 bool alignStrategyWithParentRuntimeDequant(VPU::ClusteredOpInterface clusteredOp, LayerCostModel& costModel);
 
-double getStrideDMACorrectionThresholdByArch([[maybe_unused]] VPU::ArchKind arch);
+double getStrideDMACorrectionThresholdByArch([[maybe_unused]] config::ArchKind arch);
 }  // namespace VPU
 }  // namespace vpux

@@ -6,20 +6,14 @@
 #pragma once
 
 #include "vpux/compiler/core/pipelines_options.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/options.hpp"
 #include "vpux/compiler/utils/passes.hpp"
-
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/string_ref.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
-#include <mlir/Dialect/Quant/QuantOps.h>
-#include <mlir/Dialect/SCF/IR/SCF.h>
-#include <mlir/Dialect/Tensor/IR/Tensor.h>
-#include <mlir/IR/BuiltinOps.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Pass/PassOptions.h>
@@ -27,6 +21,11 @@
 #include <functional>
 #include <memory>
 #include <optional>
+
+namespace vpux::VPU {
+enum class ActivationSparsityProfile : uint64_t;
+enum class WeightsSparsityHeuristic : uint64_t;
+}  // namespace vpux::VPU
 
 namespace vpux {
 namespace VPU {
@@ -278,16 +277,17 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
 
     // options setup and lit-tests
     template <class OtherOptions>
-    InitCompilerOptions(ArchKind archParam, config::CompilationMode compilationModeParam, const OtherOptions& options) {
-        arch = std::string(VPU::stringifyEnum(archParam));
+    InitCompilerOptions(config::ArchKind archParam, config::CompilationMode compilationModeParam,
+                        const OtherOptions& options) {
+        arch = std::string(config::stringifyEnum(archParam));
         compilationMode = std::string(config::stringifyEnum(compilationModeParam));
 
         this->matchAndCopyOptionValuesFrom(options);
     }
 
     // PSS tests
-    InitCompilerOptions(ArchKind archParam, config::CompilationMode compilationModeParam) {
-        arch = std::string(VPU::stringifyEnum(archParam));
+    InitCompilerOptions(config::ArchKind archParam, config::CompilationMode compilationModeParam) {
+        arch = std::string(config::stringifyEnum(archParam));
         compilationMode = std::string(config::stringifyEnum(compilationModeParam));
     }
 
@@ -325,6 +325,13 @@ private:
 std::unique_ptr<mlir::Pass> createInitResourcesPass();
 std::unique_ptr<mlir::Pass> createInitResourcesPass(const InitCompilerOptions& initCompilerOptions,
                                                     Logger log = Logger::global());
+
+std::unique_ptr<mlir::Pass> createDMATaskProfilingReserveMemPass(const std::string& enableDMAProfiling = "false",
+                                                                 Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createCompressDmaReserveMemPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSWKernelInstructionPrefetchReserveMemForDummyKernelsPass(
+        Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSWKernelDataPrefetchReserveMemPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createOptimizeSharedInputCopyForConcatPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCMXConcatPass(Logger log = Logger::global());
@@ -377,6 +384,7 @@ std::unique_ptr<mlir::Pass> createFuseNCEInterpolateConsumersPass(Logger log = L
 std::unique_ptr<mlir::Pass> createAddExplicitPaddingBeforeNCEPermutePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOutputPipelineTilingPass(bool enablePrefetchTiling = true,
                                                            Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSCFVerticalFusionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLegalizeDynamicShapeConcatForSWLayersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertConstArgsToMultiConstantsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConcatRepeatingBlocksOutliningPass(int64_t minSeqLength = 1,
@@ -392,11 +400,12 @@ void buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::InitCompilerO
 // Sparsity
 //
 
-std::unique_ptr<mlir::Pass> createSparsifyWeightsPass(
-        VPU::WeightsSparsityHeuristic heuristic = VPU::WeightsSparsityHeuristic::RATIO,
-        std::optional<double> manualThreshold = std::nullopt,
-        int64_t largeConstThreshold = (200_MB).to<vpux::Byte>().count(), int64_t computeOpThreshold = 350,
-        bool enableWeightSwizzling = true, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSparsifyWeightsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSparsifyWeightsPass(VPU::WeightsSparsityHeuristic heuristic,
+                                                      std::optional<double> manualThreshold = std::nullopt,
+                                                      int64_t largeConstThreshold = (200_MB).to<vpux::Byte>().count(),
+                                                      int64_t computeOpThreshold = 350,
+                                                      bool enableWeightSwizzling = true, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createRecomputeSparsityPtrsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseSparsityOpsPass(std::optional<bool> fuseSparsify = std::nullopt,
                                                       Logger log = Logger::global());
@@ -434,7 +443,9 @@ std::unique_ptr<mlir::Pass> createTilingStrategyAssignmentPass(bool enablePrefet
                                                                StringRef enableShaveDDRAccessOptimization = "true",
                                                                Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createApplyTilingPass(bool enableSCFTiling = false, Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createWrapVerticalFusionRegionPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWrapVerticalFusionRegionPass(
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveViewOpsToVerticalFusionPass(
         const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
         Logger log = Logger::global());
@@ -458,6 +469,7 @@ std::unique_ptr<mlir::Pass> createFuseClampPass(Logger log = Logger::global());
 
 // If optimizeOnlyOuterConcat is true, only optimize when concat dimension is the highest dimension
 std::unique_ptr<mlir::Pass> createOptimizeConcatPass(bool optimizeOnlyOuterConcat = false,
+                                                     bool disablePassOnEntryFunction = false,
                                                      Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createStrategyManagerImplPass(bool enablePrefetchTiling = true,
                                                           Logger log = Logger::global());
@@ -504,53 +516,12 @@ std::unique_ptr<mlir::Pass> createSetupMaxKernelSizePass(const InitCompilerOptio
                                                          Logger log = Logger::global());
 
 //
-// Channels Auto Padding
+// Target Independent Options
 //
 
-std::unique_ptr<mlir::Pass> createSetupChannelsAutoPaddingPass();
-std::unique_ptr<mlir::Pass> createSetupChannelsAutoPaddingPass(const InitCompilerOptions& initCompilerOptions,
-                                                               Logger log = Logger::global());
-
-//
-// Reduce Operation
-//
-
-std::unique_ptr<mlir::Pass> createSetupIsReduceSupportedPass();
-std::unique_ptr<mlir::Pass> createSetupIsReduceSupportedPass(const InitCompilerOptions& initCompilerOptions,
-                                                             Logger log = Logger::global());
-
-//
-// FP16 Compressed Convolution
-//
-
-std::unique_ptr<mlir::Pass> createSetupEnableFP16CompressedConvPass();
-std::unique_ptr<mlir::Pass> createSetupEnableFP16CompressedConvPass(const InitCompilerOptions& initCompilerOptions,
-                                                                    Logger log = Logger::global());
-
-//
-// VPUNN Pre-split
-//
-
-std::unique_ptr<mlir::Pass> createSetupEnableVPUNNPreSplitPass();
-std::unique_ptr<mlir::Pass> createSetupEnableVPUNNPreSplitPass(const InitCompilerOptions& initCompilerOptions,
-                                                               Logger log = Logger::global());
-
-//
-// Weights table reuse
-//
-
-std::unique_ptr<mlir::Pass> createSetupWeightsTableReuseModePass();
-std::unique_ptr<mlir::Pass> createSetupWeightsTableReuseModePass(const InitCompilerOptions& initCompilerOptions,
-                                                                 Logger log = Logger::global());
-
-//
-// SEPtrs Operations
-//
-
-std::unique_ptr<mlir::Pass> createSetupEnableSEPtrsOperationsPass();
-std::unique_ptr<mlir::Pass> createSetupEnableSEPtrsOperationsPass(const InitCompilerOptions& initCompilerOptions,
-                                                                  Logger log = Logger::global());
-
+std::unique_ptr<mlir::Pass> createSetTargetIndependentPassOptionsPass();
+std::unique_ptr<mlir::Pass> createSetTargetIndependentPassOptionsPass(const InitCompilerOptions& initCompilerOptions,
+                                                                      Logger log = Logger::global());
 //
 // Tiling related contraints
 //
@@ -570,23 +541,10 @@ std::unique_ptr<mlir::Pass> createQueryWSInfoPass(const Logger& log = Logger::gl
 std::unique_ptr<mlir::Pass> createIntroduceInitFunctionPass(const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createIntroduceInitFunctionPass(StringRef wsExtractionModeString,
                                                             const Logger& log = Logger::global());
+std::unique_ptr<mlir::Pass> createConcatInitInputsPass(const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createConcatInitResultsPass(const Logger& log = Logger::global());
-
-//
-// Adaptive Stripping
-//
-
-std::unique_ptr<mlir::Pass> createSetupEnableAdaptiveStrippingPass();
-std::unique_ptr<mlir::Pass> createSetupEnableAdaptiveStrippingPass(const InitCompilerOptions& initCompilerOptions,
-                                                                   Logger log = Logger::global());
-
-//
-// Extra StaticShape ops
-//
-
-std::unique_ptr<mlir::Pass> createSetupEnableExtraStaticShapeOpsPass();
-std::unique_ptr<mlir::Pass> createSetupEnableExtraStaticShapeOpsPass(const InitCompilerOptions& initCompilerOptions,
-                                                                     Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createConcatInitResultsPass(StringRef wsExtractionModeString,
+                                                        const Logger& log = Logger::global());
 
 //
 // DefaultHWOptions(for all devices)
@@ -642,6 +600,7 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
 
 std::unique_ptr<mlir::Pass> createScfComputeOpsOutliningPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFinalizeComputeFunctionBoundariesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createConvertDynamicToStaticKernelsPass(Logger log = Logger::global());
 
 //
 // Registration

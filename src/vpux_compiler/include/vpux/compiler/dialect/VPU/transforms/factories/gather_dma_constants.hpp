@@ -17,8 +17,8 @@ constexpr size_t DMA_MAX_INDICES_LIST_LENGTH =
 constexpr size_t GATHER_DMA_MAX_ELEMENT_SIZE = 4096;
 }  // namespace arch40xx
 
-size_t getGatherDMAMaxIndicesListLength(VPU::ArchKind arch);
-size_t getGatherDMAMaxElementSize(VPU::ArchKind arch);
+size_t getGatherDMAMaxIndicesListLength(config::ArchKind arch);
+size_t getGatherDMAMaxElementSize(config::ArchKind arch);
 
 }  // namespace VPU
 }  // namespace vpux

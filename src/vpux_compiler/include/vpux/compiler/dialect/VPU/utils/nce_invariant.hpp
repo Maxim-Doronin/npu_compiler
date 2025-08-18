@@ -5,10 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
-#include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
@@ -89,7 +88,7 @@ bool verifyPads(int64_t KY, int64_t KX, int64_t padTop, int64_t padBottom, int64
 // Common utility for AvgPool, MaxPool, Eltwise and DWConv
 //
 
-bool checkLayouts(mlir::TypeRange operandTypes, mlir::TypeRange resultTypes, const VPU::ArchKind& arch,
+bool checkLayouts(mlir::TypeRange operandTypes, mlir::TypeRange resultTypes, const config::ArchKind& arch,
                   const unsigned numInputOperands, LogCb logCb);
 
 mlir::LogicalResult isSupported(mlir::Operation* op, Logger log = Logger::global());
@@ -97,10 +96,10 @@ mlir::LogicalResult isSupported(mlir::Operation* op, Logger log = Logger::global
 //
 // Check if small kernel optimization is supported
 //
-bool doesWorkloadSupportSmallKernelOpt([[maybe_unused]] VPU::ArchKind arch, int64_t KX, int64_t SX,
+bool doesWorkloadSupportSmallKernelOpt([[maybe_unused]] config::ArchKind arch, int64_t KX, int64_t SX,
                                        ArrayRef<int64_t> workloadOutSz, bool isFp16Input, [[maybe_unused]] int64_t KY,
                                        [[maybe_unused]] int64_t padLeft);
-bool isSmallKernelOptimizationSupported(const VPU::ArchKind arch, mlir::Operation* op);
+bool isSmallKernelOptimizationSupported(const config::ArchKind arch, mlir::Operation* op);
 
 //
 // Verify kernel utils
@@ -117,7 +116,7 @@ mlir::LogicalResult verifyPoolCMX(mlir::Location loc, mlir::ModuleOp module, vpu
 // Check if given architecture supports Elementwise multiply operation
 //
 
-bool isEltwiseMultiplySubtractSupported(const VPU::ArchKind arch);
+bool isEltwiseMultiplySubtractSupported(const config::ArchKind arch);
 
 //
 // Check whether alignment is beneficial for the operation

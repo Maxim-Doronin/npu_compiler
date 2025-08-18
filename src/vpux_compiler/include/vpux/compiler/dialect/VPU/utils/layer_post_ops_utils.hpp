@@ -4,7 +4,7 @@
 //
 
 #include <mlir/IR/Operation.h>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #pragma once
 

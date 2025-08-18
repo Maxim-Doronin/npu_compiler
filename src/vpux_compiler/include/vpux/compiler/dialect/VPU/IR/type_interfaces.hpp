@@ -5,10 +5,11 @@
 
 #pragma once
 
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/attributes/strided_shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-
 #include "vpux/utils/core/small_vector.hpp"
 
 //

@@ -5,13 +5,20 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include <vpu_cost_model.h>
 #include <vpu_layer_cost_model.h>
 
+#include <mlir/Pass/AnalysisManager.h>
+
 #include <memory>
+
+namespace vpux::VPU {
+class NCEOpInterface;
+}  // namespace vpux::VPU
 
 namespace vpux {
 
@@ -40,7 +47,7 @@ public:
     // If the input analysis is empty, create a layer cost model instance and return it.
     // Otherwise, return the cached layer cost model instance.
     static std::shared_ptr<VPUNN::VPULayerCostModel> getOrCreateLayerCostModel(
-            std::optional<std::reference_wrapper<LayerCostModelAnalysis>> analysis, VPU::ArchKind arch,
+            std::optional<std::reference_wrapper<LayerCostModelAnalysis>> analysis, config::ArchKind arch,
             Logger log = Logger::global().nest("layer-cost-model-analysis"));
 
 private:
@@ -71,7 +78,7 @@ public:
     // If the input analysis is empty, create a cost model instance and return it.
     // Otherwise, return the cached cost model instance.
     static std::shared_ptr<VPUNN::VPUCostModel> getOrCreateCostModel(
-            std::optional<std::reference_wrapper<CostModelAnalysis>> analysis, VPU::ArchKind arch,
+            std::optional<std::reference_wrapper<CostModelAnalysis>> analysis, config::ArchKind arch,
             Logger log = Logger::global().nest("cost-model-analysis"));
 
 private:
@@ -98,22 +105,23 @@ void printLayerSplitInfo(const VPUNN::LayerSplitInfo& info, const Logger& log);
 VPU::MPEMode getMPEMode(VPUNN::ExecutionMode executionMode);
 
 float getWeightsSparsityRatio(mlir::Value weights);
-VPUNN::VPUDevice getVPUDeviceType(VPU::ArchKind archKind);
+VPUNN::VPUDevice getVPUDeviceType(config::ArchKind archKind);
 bool isVPUNNSupportedElementType(mlir::Type type);
 std::optional<VPUNN::DataType> getVPUNNElementType(mlir::Type type);
 VPUNN::Layout getVPUNNLayout(vpux::DimsOrder vpuxLayout);
 VPUNN::VPUTensor getVPUTensor(ShapeRef shape, mlir::Type elemType, vpux::DimsOrder layout = vpux::DimsOrder::NHWC);
 VPUNN::ExecutionMode getExecutionMode(VPU::MPEMode mpeMode);
 VPUNN::VPULayerStrategy getVPULayerStrategy(VPU::MultiClusterStrategy mcStrategy, size_t nDPUs, size_t nTiles,
-                                            ArchKind arch, size_t nSHVs = 1, bool prefetching = false,
+                                            config::ArchKind arch, size_t nSHVs = 1, bool prefetching = false,
                                             VPU::DistributionMode distributionMode = DistributionMode::NONE,
                                             mlir::Operation* op = nullptr);
 VPUNN::DPULayer getDPULayer(const VPUIP::WorkloadCostParams& params);
 std::vector<VPUNN::DPULayer> getPerClusterDPULayers(VPU::NCEOpInterface nceOp, const VPUIP::WorkloadCostParams& params,
                                                     Logger log);
 VPUNN::DPUWorkload getDPUWorkload(const VPUIP::WorkloadCostParams& tileParams, const VPUIP::WorkloadTile& wl);
-VPUIP::WorkloadCostParams getWorkloadCostParam(VPU::NCEOpInterface nceOp, VPU::ArchKind arch, int64_t numDPU,
+VPUIP::WorkloadCostParams getWorkloadCostParam(VPU::NCEOpInterface nceOp, config::ArchKind arch, int64_t numDPU,
                                                int64_t numTiles = 1);
+vpux::VPU::ICostModelUtilsInterface* getICostModelUtilsInterface(mlir::MLIRContext* ctx);
 
 }  // namespace VPU
 }  // namespace vpux

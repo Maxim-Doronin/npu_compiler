@@ -5,8 +5,11 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/core/tiling.hpp"
+
+namespace vpux::VPUIP {
+class SwKernelOp;
+}
 
 namespace vpux::VPU {
 

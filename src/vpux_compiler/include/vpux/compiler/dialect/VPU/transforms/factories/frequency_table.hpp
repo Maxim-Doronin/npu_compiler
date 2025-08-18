@@ -13,7 +13,7 @@ namespace VPU {
 
 using FrequencyTableCb = VPU::FrequencyTable (*)();
 
-FrequencyTableCb getFrequencyTable(VPU::ArchKind arch);
+FrequencyTableCb getFrequencyTable(config::ArchKind arch);
 
 }  // namespace VPU
 }  // namespace vpux

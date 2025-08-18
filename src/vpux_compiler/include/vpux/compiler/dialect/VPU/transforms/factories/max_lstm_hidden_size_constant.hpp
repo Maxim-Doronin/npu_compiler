@@ -5,13 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 namespace vpux {
 namespace VPU {
 
-int64_t getMaxLstmSequenceHiddenSizeConstant(VPU::ArchKind arch);
-int64_t getMaxLstmCellHiddenSizeConstant(VPU::ArchKind arch);
+int64_t getMaxLstmSequenceHiddenSizeConstant(config::ArchKind arch);
+int64_t getMaxLstmCellHiddenSizeConstant(config::ArchKind arch);
 
 }  // namespace VPU
 }  // namespace vpux

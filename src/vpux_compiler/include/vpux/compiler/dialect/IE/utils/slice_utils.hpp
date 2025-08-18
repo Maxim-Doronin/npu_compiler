@@ -5,7 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 
 namespace vpux {
 namespace IE {

@@ -6,10 +6,10 @@
 #pragma once
 
 #include <vpux/compiler/utils/passes.hpp>
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/utils/options.hpp"
+#include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/error.hpp"
 
 namespace vpux {
@@ -28,14 +28,43 @@ T getConstraint(mlir::Operation* op, StringRef attrName) {
 
     auto attrValue = pipelineOptionOp.lookupSymbol<config::OptionOp>(attrName);
     VPUX_THROW_WHEN(attrValue == nullptr, "Failed to find config.OptionOp attribute: {0}", attrName);
-    if (auto intAttr = mlir::dyn_cast<mlir::IntegerAttr>(attrValue.getOptionValue())) {
+    if constexpr (std::is_same_v<T, size_t> || std::is_same_v<T, int64_t>) {
+        auto intAttr = mlir::dyn_cast<mlir::IntegerAttr>(attrValue.getOptionValue());
+        VPUX_THROW_WHEN(intAttr == nullptr, "Failed to fetch attr: {0}", attrName);
+        // E-174296: Possible loss of accuracy and Conversion of int64_t to unsigned
         return static_cast<T>(intAttr.getValue().getSExtValue());
-    } else if (auto floatAttr = mlir::dyn_cast<mlir::FloatAttr>(attrValue.getOptionValue())) {
-        return static_cast<T>(floatAttr.getValueAsDouble());
-    } else if (auto boolAttr = mlir::dyn_cast<mlir::BoolAttr>(attrValue.getOptionValue())) {
-        return static_cast<T>(boolAttr.getValue());
+    } else if constexpr (std::is_same_v<T, double>) {
+        auto floatAttr = mlir::dyn_cast<mlir::FloatAttr>(attrValue.getOptionValue());
+        VPUX_THROW_WHEN(floatAttr == nullptr, "Failed to fetch attr: {0}", attrName);
+        return floatAttr.getValueAsDouble();
+    } else if constexpr (std::is_same_v<T, bool>) {
+        auto boolAttr = mlir::dyn_cast<mlir::BoolAttr>(attrValue.getOptionValue());
+        VPUX_THROW_WHEN(boolAttr == nullptr, "Failed to fetch attr: {0}", attrName);
+        return boolAttr.getValue();
+    } else {
+        // To have T in error message
+        static_assert(!sizeof(T), "Unsupported type for constraint");
     }
-    VPUX_THROW("Unsupported type for constraint {0}", attrName);
+}
+
+std::optional<bool> tryGetBoolPassOption(mlir::ModuleOp module, StringRef attrName);
+
+template <class T>
+mlir::Attribute getAttributeFromOption(mlir::MLIRContext* ctx, mlir::Pass::Option<T>& optionValue) {
+    if constexpr (std::is_same_v<T, bool>) {
+        return mlir::BoolAttr::get(ctx, optionValue.getValue());
+    } else if constexpr (std::is_same_v<T, int64_t>) {
+        return mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), optionValue.getValue());
+    } else if constexpr (std::is_same_v<T, std::string>) {
+        return mlir::StringAttr::get(ctx, optionValue.getValue());
+    } else if constexpr (std::is_same_v<T, double>) {
+        return mlir::FloatAttr::get(mlir::FloatType::getF64(ctx), optionValue.getValue());
+    } else if constexpr (std::is_same_v<T, vpux::WeightsTableReuseMode>) {
+        return mlir::IntegerAttr::get(getUInt64Type(ctx), static_cast<size_t>(optionValue.getValue()));
+    } else {
+        // To have T in error message
+        static_assert(!sizeof(T), "Unsupported option type for attribute conversion");
+    }
 }
 
 }  // namespace VPU
