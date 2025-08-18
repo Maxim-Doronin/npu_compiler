@@ -5,11 +5,17 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
-
 #include <mlir/Dialect/Async/IR/Async.h>
 #include <mlir/IR/Types.h>
 #include <mlir/IR/Value.h>
+
+namespace vpux::VPU {
+enum class ExecutorKind : uint64_t;
+}
+
+namespace vpux::VPUIP {
+class DMATypeOpInterface;
+}  // namespace vpux::VPUIP
 
 namespace vpux {
 

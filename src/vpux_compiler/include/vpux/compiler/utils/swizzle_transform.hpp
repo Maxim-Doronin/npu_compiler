@@ -23,7 +23,7 @@ const uint32_t MAX_SWIZZLE_KEY{5};
 
 class AddressTransform {
 public:
-    AddressTransform(uint32_t staggerBits, VPU::ArchKind archKind)
+    AddressTransform(uint32_t staggerBits, config::ArchKind archKind)
             : _staggerAddressBits{staggerBits}, _archKind{archKind} {
         setStaggerBits(staggerBits);
     }
@@ -43,13 +43,13 @@ private:
     uint32_t _staggerAddressMask{};
     uint32_t _shift{};
     uint32_t _log2RamCutDataWidth{LOG2_RAM_CUT_DATA_WIDTH};
-    VPU::ArchKind _archKind{};
+    config::ArchKind _archKind{};
     uint32_t _ramCutAddressMask{RAM_CUT_ADDRESS_MASK};
 };
 
 class BufferSwizzleTransform {
 public:
-    BufferSwizzleTransform(uint32_t swizzleKey = 5, VPU::ArchKind archKind = VPU::ArchKind::NPU37XX);
+    BufferSwizzleTransform(uint32_t swizzleKey = 5, config::ArchKind archKind = config::ArchKind::NPU37XX);
     uint32_t getSwizzlePatternStride();
 
     template <typename OutT>

@@ -6,11 +6,10 @@
 #pragma once
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/numeric.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -20,6 +19,10 @@
 
 #include <cstdint>
 #include <tuple>
+
+namespace vpux::VPU {
+enum class EltwiseType : uint64_t;
+}  // namespace vpux::VPU
 
 namespace vpux {
 
@@ -45,7 +48,9 @@ mlir::Type normalizeQuantStorageType(mlir::quant::QuantizedType qType);
 
 mlir::Type expandScalesAndZP(mlir::Type perAxisQType, ShapeRef padBefore, ShapeRef padAfter);
 
-mlir::Type tileScalesAndZP(mlir::Type perAxisQType, ShapeRef shape, ShapeRef offsets);
+mlir::Type tileScalesAndZP(mlir::Type perAxisQType, ShapeRef shape, ShapeRef offsets, ShapeRef strides = Shape());
+
+mlir::Type tileScalesAndZP(mlir::Type perAxisQType, ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes);
 
 mlir::Type changeAxis(mlir::Type perAxisQType, int32_t axis);
 

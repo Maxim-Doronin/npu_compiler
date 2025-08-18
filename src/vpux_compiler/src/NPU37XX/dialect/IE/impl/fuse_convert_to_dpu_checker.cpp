@@ -4,6 +4,9 @@
 //
 
 #include "vpux/compiler/NPU37XX/dialect/IE/impl/fuse_convert_to_dpu_checker.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 using namespace vpux::IE::arch37xx;
 

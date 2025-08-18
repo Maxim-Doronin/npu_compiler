@@ -30,6 +30,6 @@ public:
 // createPipelineRegistry
 //
 
-std::unique_ptr<IPipelineRegistry> createPipelineRegistry(VPU::ArchKind archKind);
+std::unique_ptr<IPipelineRegistry> createPipelineRegistry(config::ArchKind archKind);
 
 }  // namespace vpux

@@ -39,11 +39,6 @@ public:
         VPUX_THROW("Not implemented!");
     }
 
-    // E#160424: refactor ReferenceSW pipeline similarly to the rest
-    virtual void buildReferenceSWPipeline(mlir::OpPassManager&, Logger) {
-        VPUX_THROW("Not implemented!");
-    }
-
     virtual ~IDialectPipelineStrategy() = default;
 };
 

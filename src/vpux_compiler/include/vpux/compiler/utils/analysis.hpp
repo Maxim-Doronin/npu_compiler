@@ -9,7 +9,9 @@
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/Value.h>
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+namespace vpux::VPUIP {
+class LayerOpInterface;
+}
 
 namespace vpux {
 
@@ -18,6 +20,12 @@ namespace vpux {
 //
 
 mlir::Operation* getFirstUser(mlir::Value output);
+
+//
+// hasOneUniqueUser
+//
+
+bool hasOneUniqueUser(mlir::Operation* op);
 
 //
 // isBufAllocOp

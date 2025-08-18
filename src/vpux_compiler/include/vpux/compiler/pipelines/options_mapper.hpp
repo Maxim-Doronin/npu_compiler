@@ -16,7 +16,7 @@
 
 namespace vpux {
 
-VPU::ArchKind getArchKind(const intel_npu::Config& config);
+config::ArchKind getArchKind(const intel_npu::Config& config);
 config::CompilationMode getCompilationMode(const intel_npu::Config& config);
 std::optional<int> getRevisionID(const intel_npu::Config& config);
 std::optional<int> getNumberOfDPUGroups(const intel_npu::Config& config);

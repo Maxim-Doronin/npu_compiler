@@ -5,12 +5,9 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-
 #include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/range.hpp"
 
 namespace vpux {
 
@@ -187,6 +184,13 @@ ShapeInfo inferGroupConvolutionOutputShapeInfo(ShapeInfo& inShapeInfo, ShapeInfo
                                                ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowDilations,
                                                std::optional<int64_t> maybeGroups, bool hasOutputPadding);
 
+ShapeInfo inferTransposedConvBackpropOutputShapeInfo(const ShapeInfo& inShapeInfo, const ShapeInfo& filterShapeInfo,
+                                                     ArrayRef<int64_t> windowStrides,
+                                                     ArrayRef<int64_t> dataPaddingBelow,
+                                                     ArrayRef<int64_t> dataPaddingAbove,
+                                                     ArrayRef<int64_t> windowDilations,
+                                                     ArrayRef<int64_t> outputPadding);
+
 //
 // Tensor Reifiers
 //
@@ -210,11 +214,12 @@ mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyMatMulTensors(mlir::OpBuil
 
 /**
  * @brief Reify tensors for convolution or pooling operations. Currently, it supports only convolution with dilation
- * equal to 1 and pooling.
+ * equal to 1 and pooling. kernel size is passed along with tensor for maxpool operations
  *
  * @param builder - builder to create new operations
  * @param input - input tensor
  * @param output - output tensor
+ * @param kernel - kernel tensor
  * @param kernelSize - kernel size
  * @param strides - strides
  * @param padBegin - padding begin
@@ -223,7 +228,8 @@ mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyMatMulTensors(mlir::OpBuil
  * @return reified shapes for output tensor
  */
 mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyConvPoolTensors(mlir::OpBuilder& builder, mlir::Value input,
-                                                                      mlir::Value output, ArrayRef<int64_t> kernelSize,
+                                                                      mlir::Value output, mlir::Value kernel,
+                                                                      ArrayRef<int64_t> kernelSize,
                                                                       ArrayRef<int64_t> strides,
                                                                       ArrayRef<int64_t> padBegin,
                                                                       ArrayRef<int64_t> padEnd, mlir::Location loc);

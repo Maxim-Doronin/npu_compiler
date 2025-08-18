@@ -10,6 +10,8 @@
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux_headers/platform.hpp"
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+
 using namespace vpux;
 
 namespace llvm {
@@ -56,7 +58,7 @@ size_t lcm(size_t a, size_t b);
 //
 // Platform Information
 //
-elf::platform::ArchKind mapVpuArchKindToElfArchKind(const VPU::ArchKind& archKind);
+elf::platform::ArchKind mapVpuArchKindToElfArchKind(const config::ArchKind& archKind);
 
 ArrayRef<uint8_t> getKernelELF(mlir::Operation* operation, StringRef kernelPath, ArrayRef<StringRef> sectionNames = {});
 ArrayRef<uint8_t> getDataAndSizeOfElfSection(ArrayRef<uint8_t> elfBlob, ArrayRef<StringRef> possibleSecNames);

@@ -190,8 +190,6 @@ protected:
 private:
     static void setupOptionsCommon(ArchSpecificOptionsType& options) {
         overwriteIfUnset(options.enableProfiling, false);
-        // E#162617 Enable locations verification for monolithic mode
-        overwriteIfUnset(options.locationsVerificationMode, "off");
         // E#127228 Introduce IE.Swizzle operation
         overwriteIfUnset(options.enableWeightsSwizzling, false);
         // E#127235 Introduce IE.Sparsify operation
@@ -220,12 +218,6 @@ private:
     static void setupOptionsCommon(ArchSpecificOptionsType& options) {
         overwriteIfUnset(options.enableAdjustPrecisionPipeline, false);
         overwriteIfUnset(options.enableConvertWeightsToU8I4, false);
-        // E#162617 Enable locations verification for monolithic mode
-        overwriteIfUnset(options.locationsVerificationMode, "off");
-        // E#165632 Disable all kinds of outlining passes for now.
-        overwriteIfUnset(options.enableVerticalFusionOutlining, false);
-        overwriteIfUnset(options.enableConcatRepeatingBlockOutlining, false);
-        overwriteIfUnset(options.enableEntireMainContentOutlining, false);
     }
 };
 

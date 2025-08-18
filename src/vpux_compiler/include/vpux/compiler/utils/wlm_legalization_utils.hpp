@@ -16,6 +16,12 @@ namespace vpux {
 
 using TaskQueue = std::map<VPURT::TaskQueueType, SmallVector<uint32_t>>;
 enum class MinMaxOption { Min, Max };
+enum class Type : int { Dummy = 0, Real = 1 };
+
+// IndexType is used to represent an entry in _barrierAddConsumerProducerMap
+// size_t represents index of barrier/DMA and Type represents the type of index i.e. Dummy or Real
+// We need to store both as we need to know the true index in barrierInfo to be able to add/remove dependencies
+using IndexType = std::pair<size_t, Type>;
 
 template <typename T>
 bool compareVPURTOpPosition(const T& lhs, const T& rhs, const BarrierInfo& barrierInfo, bool useIROrder = false) {
@@ -68,5 +74,12 @@ VPURT::DeclareVirtualBarrierOp createNewBarrier(mlir::OpBuilder& builder, Barrie
 void addElementsToSet(BarrierInfo::TaskSet& targetSet, const BarrierInfo::TaskSet& sourceSet);
 bool lastTaskInGroupHasMandatoryUpdateBarrier(const ExecutionGroup& executionGroup, BarrierInfo& barrierInfo);
 bool inSameTaskBlock(size_t task1, size_t task2, const BlockRange& blockRange);
+
+size_t getIndexOfTask(IndexType indexType, ArrayRef<VPURT::TaskOp> dummyDMAs, BarrierInfo& barrierInfo);
+size_t getIndexOfBarrier(IndexType indexType, ArrayRef<VPURT::DeclareVirtualBarrierOp> dummyBarriers,
+                         BarrierInfo& barrierInfo);
+VPURT::TaskOp createFetchDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                             mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                             VPUIP::FetchDMAAttr fetchDMAAttr, llvm::StringLiteral opName = "fetch_dma");
 
 }  // namespace vpux

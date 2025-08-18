@@ -5,10 +5,14 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/init.hpp"
+#include "vpux/utils/IE/hash.hpp"
+#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/Support/Timing.h>
@@ -31,19 +35,22 @@
 #include <ov_ops/rms.hpp>
 #include <ov_ops/rotary_positional_embeddings.hpp>
 
-// Utils
-#include "vpux/compiler/utils/range_bound.hpp"
-#include "vpux/utils/IE/hash.hpp"
-
 namespace vpux {
 namespace IE {
+
+struct ImportNetworkConfig {
+    bool sharedConstants = false;
+    bool enableProfiling = false;
+    DummyOpMode stubLayers = DummyOpMode::DISABLED;
+    bool dynamicShapeToStatic = false;
+    bool enableWeightsSeparationPath = false;
+};
 
 // TODO Get rid of this function (importNetwork), move logic to compiler.cpp
 mlir::OwningOpRef<mlir::ModuleOp> importNetwork(mlir::MLIRContext* ctx, const std::shared_ptr<ov::Model>& model,
                                                 const std::vector<std::shared_ptr<const ov::Node>>& originalParameters,
                                                 const std::vector<std::shared_ptr<const ov::Node>>& originalResults,
-                                                bool sharedConstants, mlir::TimingScope& rootTiming,
-                                                bool enableProfiling, DummyOpMode stubLayers, bool dynamicShapeToStatic,
+                                                mlir::TimingScope& rootTiming, const ImportNetworkConfig& importCfg,
                                                 Logger log = Logger::global());
 
 std::vector<std::shared_ptr<const ov::Node>> buildOVParams(const std::shared_ptr<const ov::Model>& model);
@@ -52,7 +59,8 @@ std::vector<std::shared_ptr<const ov::Node>> buildOVResults(const std::shared_pt
 // TODO Move to separate file NGraphPasses
 class NGraphPasses final {
 public:
-    static void runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, mlir::TimingScope& rootTiming);
+    static void runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, mlir::TimingScope& rootTiming,
+                                bool enableWeightsSeparationPath = false);
 };
 
 class NGraphImporter final {

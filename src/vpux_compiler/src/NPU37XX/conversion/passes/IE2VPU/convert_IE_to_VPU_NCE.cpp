@@ -5,6 +5,8 @@
 
 #include "vpux/compiler/conversion/passes/IE2VPU/convert_IE_to_VPU_NCE.hpp"
 #include "vpux/compiler/NPU37XX/conversion/passes/IE2VPU/convert_IE_to_VPU_NCE.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sep_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/setup_pipeline_options_utils.hpp"
 
 #include <mlir/Dialect/Linalg/IR/Linalg.h>
 #include <mlir/Dialect/Math/IR/Math.h>
@@ -15,14 +17,19 @@
 #include "vpux/compiler/NPU37XX/conversion.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/mpe_engine_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_matmul_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 
 namespace vpux::arch37xx {
@@ -408,7 +415,7 @@ void ConvertIEToVPUNCEPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
     mlir::ConversionTarget target(ctx);
 
@@ -436,9 +443,12 @@ void ConvertIEToVPUNCEPass::safeRunOnFunc() {
                                                            /*checkChannelAlignment=*/true);
     });
     target.addDynamicallyLegalOp<IE::GroupConvolutionOp>([&](IE::GroupConvolutionOp op) {
+        if (VPU::isDilatedGroupConv(op)) {
+            return true;
+        }
+
         return !VPU::NCEDepthConvolutionOp::isSupported(op, logCb, /*checkLayout=*/true,
-                                                        /*checkChannelAlignment=*/true) ||
-               VPU::isDilatedGroupConv(op);
+                                                        /*checkChannelAlignment=*/true);
     });
     target.addDynamicallyLegalOp<IE::MaxPoolOp>([&](IE::MaxPoolOp op) {
         return !VPU::NCEMaxPoolOp::isSupported(op, logCb, /*checkLayout=*/true,

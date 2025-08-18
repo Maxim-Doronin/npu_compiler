@@ -5,13 +5,15 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/types.hpp"
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
-
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/IR/native_attributes/distribution_info.hpp"
+#include "vpux/compiler/dialect/VPU/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 
@@ -84,4 +86,7 @@ std::optional<IE::PermuteCastOp> tryToFindPermuteCastOp(mlir::Location loc, mlir
                                                         ShapeRef outShape, mlir::PatternRewriter& rewriter);
 
 Dim inferDimAfterPermutation(Dim dim, DimsOrder srcOrder, DimsOrder dstOrder, mlir::AffineMap perm);
+
+bool isSuitableToAdjustMemPermuteShape(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                       mlir::AffineMap memPerm);
 }  // namespace vpux

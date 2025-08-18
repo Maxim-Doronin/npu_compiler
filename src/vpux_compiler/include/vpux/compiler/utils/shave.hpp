@@ -5,14 +5,12 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/utils/core/string_ref.hpp"
+
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/Value.h>
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 
@@ -24,6 +22,6 @@ int64_t getShaveQueueIdEncoding(int64_t numTiles, int64_t tileIndex, int64_t lis
 namespace VPU {
 constexpr StringRef USE_DEDICATED_FIFO_PER_SHAVE_ENGINE = "VPU.UseDedicatedFifoPerShaveEngine";
 bool isFifoPerShaveEngineEnabled(mlir::Operation* op);
-bool hasSupportForFifoPerShaveEngine(VPU::ArchKind arch, bool enableWorkloadManagement);
+bool hasSupportForFifoPerShaveEngine(config::ArchKind arch, bool enableWorkloadManagement);
 }  // namespace VPU
 }  // namespace vpux

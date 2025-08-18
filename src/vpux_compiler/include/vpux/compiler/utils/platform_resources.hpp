@@ -25,6 +25,9 @@ constexpr Byte VPUX40XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE = Byte(
 constexpr int VPUX37XX_MAX_DPU_GROUPS = 2;
 constexpr int VPUX40XX_MAX_DPU_GROUPS = 6;
 
+constexpr int VPUX37XX_MAX_SHAVES_PER_TILE = 2;
+constexpr int VPUX40XX_MAX_SHAVES_PER_TILE = 2;
+
 constexpr int VPUX37XX_MAX_DMA_PORTS = 2;
 constexpr int VPUX40XX_MAX_DMA_PORTS = 2;
 

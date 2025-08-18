@@ -10,6 +10,6 @@
 
 namespace vpux {
 
-vpux::VPU::ArchKind parseArchKind(int argc, char* argv[], StringRef helpHeader = "");
+vpux::config::ArchKind parseArchKind(int argc, char* argv[], StringRef helpHeader = "");
 
 }  // namespace vpux

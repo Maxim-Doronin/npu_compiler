@@ -65,6 +65,12 @@ void vpux::arch37xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm, Logger
     pm.addPass(ELFNPU37XX::createUpdateELFSectionFlagsPass(log));
 }
 
+void vpux::arch37xx::buildLowerIE2VPUPipelineReferenceSW(mlir::OpPassManager& pm, Logger log) {
+    const auto grc = getDefaultGreedyRewriteConfig();
+    pm.addPass(createConvertLayers2VPUPass(log));
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+}
+
 //
 // registerConversionPipelines
 //
@@ -75,6 +81,11 @@ void vpux::arch37xx::registerConversionPipeline() {
                                          vpux::arch37xx::buildLowerIE2VPUPipeline(pm);
                                      });
 
+    mlir::PassPipelineRegistration<>("lower-IE-to-VPU-referense-sw",
+                                     "Performs full lowering from the IE Dialect to VPU Dialect",
+                                     [](mlir::OpPassManager& pm) {
+                                         vpux::arch37xx::buildLowerIE2VPUPipelineReferenceSW(pm);
+                                     });
     mlir::PassPipelineRegistration<vpux::DefaultHWOptions37XX>(
             "lower-VPU-to-VPUIP",
             "Performs full lowering from the VPU Dialect to VPUIP Dialect, SW operations are converted to SWKernelOp",

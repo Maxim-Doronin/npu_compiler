@@ -13,7 +13,7 @@
 namespace vpux {
 class BitCompactorCodec final : public ICodec {
 public:
-    BitCompactorCodec(VPU::ArchKind arch_kind);
+    BitCompactorCodec(config::ArchKind arch_kind);
     bool supportsFP16compression() const override;
     mlir::FailureOr<std::vector<uint8_t>> compress(std::vector<uint8_t>& data, const CompressionMode mode,
                                                    const Logger& _log) const override;

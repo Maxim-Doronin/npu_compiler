@@ -3,10 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <limits>
-
+#include <vpux/compiler/dialect/config/IR/attributes.hpp>
 #include <vpux/compiler/utils/types.hpp>
 #include <vpux/utils/core/mem_size.hpp>
+
+#include <limits>
 
 namespace vpux::VPUIP::DMA {
 
@@ -212,6 +213,6 @@ private:
     }
 };
 
-const EngineLimits& getEngineLimits(VPU::ArchKind arch);
+const EngineLimits& getEngineLimits(config::ArchKind arch);
 
 }  // namespace vpux::VPUIP::DMA
