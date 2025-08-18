@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 
 using namespace vpux;
 
@@ -18,8 +19,9 @@ mlir::LogicalResult vpux::IE::ExpOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = mlir::cast<mlir::ShapedType>(exp.getInput().getType());
-    inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
+    const auto inType = mlir::cast<mlir::RankedTensorType>(exp.getInput().getType());
+    const auto outDesc = vpux::getTensorAttr(inType);
+    inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), outDesc);
 
     return mlir::success();
 }

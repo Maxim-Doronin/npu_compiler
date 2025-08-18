@@ -3,17 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/Support/LogicalResult.h>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/empty_node.hpp"
-
-#include "vpux/compiler/utils/error.hpp"
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/range.hpp"
-
 #include "vpux/compiler/utils/infer_output_shape.hpp"
+
+#include <mlir/Support/LogicalResult.h>
 
 using namespace vpux;
 

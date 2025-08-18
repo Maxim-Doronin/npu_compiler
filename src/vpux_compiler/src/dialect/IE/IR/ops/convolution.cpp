@@ -3,9 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -255,14 +259,13 @@ mlir::LogicalResult vpux::IE::ConvolutionOp::reifyResultShapes(mlir::OpBuilder& 
         return errorAt(getLoc(), "Dilation is not supported for reifyResultShapes");
     }
 
-    const auto kernelShape = mlir::cast<vpux::NDTypeInterface>(getFilter().getType()).getShape();
-    SmallVector<int64_t> kernelSize{kernelShape[Dims4D::Filter::KY], kernelShape[Dims4D::Filter::KX]};
-
     const auto strides = parseIntArrayAttr<int64_t>(getStridesAttr());
     const auto padBegin = parseIntArrayAttr<int64_t>(getPadsBeginAttr());
     const auto padEnd = parseIntArrayAttr<int64_t>(getPadsEndAttr());
-    auto outShape =
-            reifyConvPoolTensors(builder, getInput(), getOutput(), kernelSize, strides, padBegin, padEnd, getLoc());
+    auto kernelShape = mlir::cast<vpux::NDTypeInterface>(getFilter().getType()).getShape();
+    SmallVector<int64_t> kernelSize{kernelShape[Dims4D::Filter::KY], kernelShape[Dims4D::Filter::KX]};
+    auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), getFilter(), kernelSize, strides, padBegin,
+                                         padEnd, getLoc());
 
     if (mlir::failed(outShape)) {
         return outShape;
