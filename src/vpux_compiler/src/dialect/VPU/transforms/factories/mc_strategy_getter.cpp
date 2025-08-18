@@ -9,12 +9,12 @@
 
 using namespace vpux::VPU;
 
-std::unique_ptr<StrategyGetterBase> vpux::VPU::createMCStrategyGetter(ArchKind arch, int64_t numClusters) {
+std::unique_ptr<StrategyGetterBase> vpux::VPU::createMCStrategyGetter(config::ArchKind arch, int64_t numClusters) {
     if (numClusters == 1) {
         return std::make_unique<StrategyGetterBase>();
     }
     switch (arch) {
-    case VPU::ArchKind::NPU37XX: {
+    case config::ArchKind::NPU37XX: {
         return std::make_unique<arch37xx::StrategyGetter>();
     }
     default: {

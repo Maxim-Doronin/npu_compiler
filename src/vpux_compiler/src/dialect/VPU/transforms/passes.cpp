@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 namespace vpux::VPU {
 

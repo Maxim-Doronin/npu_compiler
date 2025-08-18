@@ -11,9 +11,9 @@
 
 using namespace vpux;
 
-VPU::FrequencyTableCb VPU::getFrequencyTable(VPU::ArchKind arch) {
+VPU::FrequencyTableCb VPU::getFrequencyTable(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU40XX: {
+    case config::ArchKind::NPU40XX: {
         return VPU::arch40xx::getFrequencyTable;
     }
     default: {

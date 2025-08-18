@@ -3,11 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/net/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -16,6 +17,7 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Value.h>
+
 #include <cstdint>
 
 namespace vpux::VPU {
@@ -58,7 +60,7 @@ std::string getUniqueConcatenatedNameOfInitResults(ArrayRef<VPU::ConstArg> args,
         const size_t hash = Const::ContentAttr::getTransformationHash(arg.transformations);
         hashCode = llvm::hash_combine(hashCode, hash);
     }
-    return formatv("out_{0}_{1}_hash_{2}_concat", Const::OPENVINO_CONST_PREFIX, initPart, hashCode);
+    return formatv("{0}{1}_hash_{2}_concat", vpux::VPU::INIT_OUTPUT_PREFIX, initPart, hashCode);
 }
 
 // Returns a new ranked tensor without the tensor encoding.
@@ -74,6 +76,11 @@ public:
         Base::initLogger(log, Base::getArgumentName());
     }
 
+    explicit ConcatInitResults(StringRef wsExtractionModeString, const Logger& log) {
+        Base::initLogger(log, Base::getArgumentName());
+        wsExtractionMode = wsExtractionModeString.str();
+    }
+
 private:
     mlir::LogicalResult initialize(mlir::MLIRContext*) final;
     mlir::LogicalResult deferredInitialize(mlir::ModuleOp moduleOp);
@@ -86,6 +93,8 @@ private:
     size_t updateTopLevelMain(mlir::func::FuncOp mainFunc, const DerivedWeightsSeparationInfo& info);
     void updateNetworkInfoForMain(net::NetworkInfoOp netInfo, mlir::func::FuncOp mainFunc, size_t newInputsOffset,
                                   const DerivedWeightsSeparationInfo& info);
+
+    void updateWrapperMain(mlir::func::FuncOp wrapperFunc, const DerivedWeightsSeparationInfo& info);
 
     const VPU::WeightsSeparationInfo& getSlicingInfo() {
         const auto& info = getCachedAnalysis<VPU::WeightsSeparationInfo>();
@@ -194,6 +203,60 @@ void ConcatInitResults::updateNetworkInfoForMain(net::NetworkInfoOp netInfo, mli
     }
 }
 
+void ConcatInitResults::updateWrapperMain(mlir::func::FuncOp wrapperFunc, const DerivedWeightsSeparationInfo& info) {
+    // entry-point is a wrapper function: when dealing with init() call,
+    // update it as init; otherwise, update as main.
+    struct {
+        mlir::func::CallOp initCall = nullptr;
+        mlir::func::FuncOp initFunc = nullptr;
+        mlir::func::CallOp mainCall = nullptr;
+        mlir::func::FuncOp mainFunc = nullptr;
+    } curr;  // current call-site information inside wrapper_main
+    wrapperFunc.walk([&](mlir::func::CallOp callOp) {
+        auto funcOp = getCalledFunction(callOp);
+        if (funcOp.getSymName().starts_with("init")) {  // definitely init
+            assert(curr.initCall == nullptr && "More than 1 init calls found!");
+            curr.initCall = callOp;
+            curr.initFunc = funcOp;
+        } else {
+            assert(curr.mainCall == nullptr && "More than 1 main calls found!");
+            curr.mainCall = callOp;
+            curr.mainFunc = funcOp;
+        }
+    });
+    if (bool emptyInitCase = (curr.initCall == nullptr); emptyInitCase) {
+        // nothing to do because there's no init and thus main doesn't need to
+        // be updated.
+        return;
+    }
+
+    updateInit(curr.initFunc);
+    std::ignore = updateTopLevelMain(curr.mainFunc, info);
+
+    // once functions are updated, fix the call-sites
+    OpBuilderLogger builderLog(_log.nest());
+    mlir::OpBuilder builder(wrapperFunc, &builderLog);
+
+    // new init call
+    builder.setInsertionPoint(curr.initCall);
+    auto newInitCall = builder.create<mlir::func::CallOp>(curr.initCall.getLoc(), getCalledFunction(curr.initCall),
+                                                          curr.initCall.getOperands());
+
+    // new main call
+    builder.setInsertionPoint(curr.mainCall);
+    auto newMainCallOperands = to_small_vector(curr.mainCall->getOperands() | filtered([&](mlir::Value x) {
+                                                   return x.getDefiningOp() != curr.initCall;
+                                               }));
+    newMainCallOperands.push_back(newInitCall.getResult(0));  // Note: guaranteed single result
+    auto newMainCall = builder.create<mlir::func::CallOp>(curr.mainCall.getLoc(), getCalledFunction(curr.mainCall),
+                                                          newMainCallOperands);
+
+    // replace
+    curr.mainCall.replaceAllUsesWith(newMainCall.getResults());
+    curr.mainCall.erase();
+    curr.initCall.erase();
+}
+
 void ConcatInitResults::safeRunOnModule() {
     auto moduleOp = getOperation();
     if (mlir::failed(deferredInitialize(moduleOp))) {
@@ -238,6 +301,10 @@ void ConcatInitResults::safeRunOnModule() {
         updateNetworkInfoForMain(netInfo, entryPointFunc, offset, info);
         break;
     }
+    case Mode::GenerateAll: {
+        updateWrapperMain(entryPointFunc, info);
+        break;
+    }
     default:
         VPUX_THROW("Invalid mode encountered");
     }
@@ -251,6 +318,8 @@ mlir::LogicalResult ConcatInitResults::initialize(mlir::MLIRContext*) {
             _mode = Mode::GenerateMain;
         } else if (modeString == "gen-init") {
             _mode = Mode::GenerateInit;
+        } else if (modeString == "gen-all") {
+            _mode = Mode::GenerateAll;
         } else {
             return mlir::failure();
         }
@@ -279,8 +348,11 @@ mlir::LogicalResult ConcatInitResults::deferredInitialize(mlir::ModuleOp moduleO
         break;
     }
     case Mode::GenerateAll: {
-        moduleOp->emitError(formatv("{0} mode is not supported", wsExtractionMode.getValue()));
-        return mlir::failure();
+        if (limitSpecified) {
+            moduleOp->emitError(formatv("{0} is not supported in monolithic mode", memoryLimit.getArgStr()));
+            return mlir::failure();
+        }
+        [[fallthrough]];
     }
     case Mode::GenerateMain: {
         if (initPartSpecified) {
@@ -303,4 +375,9 @@ mlir::LogicalResult ConcatInitResults::deferredInitialize(mlir::ModuleOp moduleO
 
 std::unique_ptr<mlir::Pass> vpux::VPU::createConcatInitResultsPass(const Logger& log) {
     return std::make_unique<ConcatInitResults>(log);
+}
+
+std::unique_ptr<mlir::Pass> vpux::VPU::createConcatInitResultsPass(StringRef wsExtractionModeString,
+                                                                   const Logger& log) {
+    return std::make_unique<ConcatInitResults>(wsExtractionModeString, log);
 }

@@ -125,8 +125,8 @@ mlir::Value createWeightsConstantImpl(vpux::NDTypeInterface inputType, SmallVect
     return weightsConstOp.getOutput();
 }
 
-mlir::Value convertOpToConv(mlir::Operation* origOp, mlir::Value weights, mlir::Value sparseInput, VPU::ArchKind arch,
-                            mlir::PatternRewriter& rewriter) {
+mlir::Value convertOpToConv(mlir::Operation* origOp, mlir::Value weights, mlir::Value sparseInput,
+                            config::ArchKind arch, mlir::PatternRewriter& rewriter) {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     const auto OC = outputType.getShape()[Dims4D::Act::C];
     const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
@@ -171,7 +171,7 @@ mlir::Value convertOpToConv(mlir::Operation* origOp, mlir::Value weights, mlir::
 
 class InterpolateToNCE final : public mlir::OpRewritePattern<VPU::InterpolateOp> {
 public:
-    InterpolateToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    InterpolateToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<VPU::InterpolateOp>(ctx), _arch(arch), _log(log) {
         setDebugName("InterpolateToNCE");
     }
@@ -185,7 +185,7 @@ private:
     mlir::Value createWeightsConstant(VPU::InterpolateOp origOp, mlir::PatternRewriter& rewriter,
                                       ArrayRef<int64_t> kernelSize) const;
 
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -225,7 +225,7 @@ mlir::Value InterpolateToNCE::createSparseInput(VPU::InterpolateOp origOp, mlir:
     auto seAttr = mlir::cast<vpux::VPU::SEAttr>(seInterpolateAttr);
 
     // Create the StorageElementTable operation
-    auto arch = VPU::getArch(origOp);
+    auto arch = config::getArch(origOp);
     auto sparsityConstraint = VPU::getSparsityConstraint(arch);
     const int64_t seSize = VPU::getSESize(inputShape[Dims4D::Act::C], sparsityConstraint);
     const int64_t seDepth = inputShape[Dims4D::Act::C] / seSize;
@@ -329,7 +329,7 @@ mlir::LogicalResult InterpolateToNCE::matchAndRewrite(VPU::InterpolateOp origOp,
 
 class TransposedConvolutionToNCE final : public mlir::OpRewritePattern<VPU::TransposedConvolutionOp> {
 public:
-    TransposedConvolutionToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    TransposedConvolutionToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<VPU::TransposedConvolutionOp>(ctx), _arch(arch), _log(log) {
         setDebugName("TransposedConvolutionToNCE");
     }
@@ -343,7 +343,7 @@ private:
                                                   const int64_t factorH, const int64_t factorW) const;
     mlir::Value createSparseInput(VPU::TransposedConvolutionOp origOp, mlir::PatternRewriter& rewriter) const;
 
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -425,7 +425,7 @@ mlir::Value TransposedConvolutionToNCE::createSparseInput(VPU::TransposedConvolu
     auto seAttr = mlir::cast<vpux::VPU::SEAttr>(seUpsamplingAttr);
 
     // Create the StorageElementTable operation
-    auto arch = VPU::getArch(origOp);
+    auto arch = config::getArch(origOp);
     auto sparsityConstraint = VPU::getSparsityConstraint(arch);
     const int64_t seSize = VPU::getSESize(inputShape[Dims4D::Act::C], sparsityConstraint);
     const int64_t seDepth = inputShape[Dims4D::Act::C] / seSize;
@@ -549,7 +549,7 @@ mlir::LogicalResult TransposedConvolutionToNCE::matchAndRewrite(VPU::TransposedC
 
 class DilatedConvolutionToNCE final : public mlir::OpRewritePattern<VPU::GroupConvolutionOp> {
 public:
-    DilatedConvolutionToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    DilatedConvolutionToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<VPU::GroupConvolutionOp>(ctx), _arch(arch), _log(log) {
         setDebugName("DilatedConvolutionToNCE");
     }
@@ -562,7 +562,7 @@ private:
     mlir::Value createSparseInput(Logger log, VPU::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter,
                                   const int64_t row, const int64_t column) const;
 
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -616,7 +616,7 @@ mlir::Value DilatedConvolutionToNCE::createSparseInput(Logger log, VPU::GroupCon
     auto seAttr = mlir::cast<VPU::SEAttr>(seDilatedConvAttr);
 
     // Create the StorageElementTable operation
-    const auto arch = VPU::getArch(origOp);
+    const auto arch = config::getArch(origOp);
     const auto sparsityConstraint = VPU::getSparsityConstraint(arch);
 
     // Depthwise limitation WL min size is 16, here we only set this minimum value by default, and later the actual
@@ -731,12 +731,15 @@ mlir::LogicalResult DilatedConvolutionToNCE::matchAndRewrite(VPU::GroupConvoluti
     int64_t offsetX = 0;
     int64_t offsetY = 0;
 
+    auto origType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
     auto subConvLog = innerLog.nest();
     for (auto y : irange(subConvCountY)) {
         for (auto x : irange(subConvCountX)) {
             // Get offset for concat.
-            outputOffsets.emplace_back(SmallVector<int64_t>{0, 0, offsetY, offsetX});
-            outputStrides.emplace_back(SmallVector<int64_t>{1, 1, dilateY, dilateX});
+            const auto crtOffsets = SmallVector<int64_t>{0, 0, offsetY, offsetX};
+            const auto crtStrides = SmallVector<int64_t>{1, 1, dilateY, dilateX};
+            outputOffsets.emplace_back(crtOffsets);
+            outputStrides.emplace_back(crtStrides);
 
             // Create sub-convolution.
             auto sparseInput = createSparseInput(subConvLog, origOp, rewriter, x, y);
@@ -746,10 +749,19 @@ mlir::LogicalResult DilatedConvolutionToNCE::matchAndRewrite(VPU::GroupConvoluti
                     weightsTable, strides, padAttr, ppeAttr, rawFilterShape,
                     /* multiClusterStrategyAttr = */ nullptr, origOp.getOutputPaddingAttr(),
                     origOp.getInputPaddingAttr());
-            auto originalLayout = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType()).getDimsOrder();
-
             auto convType = mlir::cast<vpux::NDTypeInterface>(nceDepthConvolutionOp.getResult().getType());
-            nceDepthConvolutionOp.getResult().setType(convType.changeDimsOrder(originalLayout));
+            auto tileElemType = origType.getElementType();
+            if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(tileElemType)) {
+                tileElemType =
+                        vpux::tileScalesAndZP(perAxisQType, convType.getShape(), Shape(crtOffsets), Shape(crtStrides));
+            }
+
+            convType = convType.changeDimsOrder(origType.getDimsOrder()).changeElemType(tileElemType);
+
+            rewriter.modifyOpInPlace(nceDepthConvolutionOp, [&] {
+                nceDepthConvolutionOp.getResult().setType(convType);
+            });
+
             subConvolutions.emplace_back(nceDepthConvolutionOp.getResult());
 
             offsetX += 1;
@@ -771,7 +783,7 @@ mlir::LogicalResult DilatedConvolutionToNCE::matchAndRewrite(VPU::GroupConvoluti
 
 class PadToNCE final : public mlir::OpRewritePattern<VPU::PadOp> {
 public:
-    PadToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    PadToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<VPU::PadOp>(ctx), _arch(arch), _log(log) {
         setDebugName("PadToNCE");
     }
@@ -787,7 +799,7 @@ private:
                                       ArrayRef<int64_t> kernelSize) const;
     mlir::Value convertPadToConv(VPU::PadOp origOp, mlir::Value sparseInput, mlir::PatternRewriter& rewriter) const;
 
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -841,7 +853,7 @@ mlir::Value PadToNCE::createSparseInput(VPU::PadOp origOp, mlir::PatternRewriter
     auto seAttr = mlir::cast<vpux::VPU::SEAttr>(sePaddingAttr);
 
     // Create the StorageElementTable operation
-    auto arch = VPU::getArch(origOp);
+    auto arch = config::getArch(origOp);
     auto sparsityConstraint = VPU::getSparsityConstraint(arch);
     const int64_t seSize = VPU::getSESize(inputShape[Dims4D::Act::C], sparsityConstraint);
     const int64_t seDepth = inputShape[Dims4D::Act::C] / seSize;
@@ -918,7 +930,7 @@ mlir::LogicalResult PadToNCE::matchAndRewrite(VPU::PadOp origOp, mlir::PatternRe
 
 class RollToNCE final : public mlir::OpRewritePattern<VPU::RollOp> {
 public:
-    RollToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    RollToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<VPU::RollOp>(ctx), _arch(arch), _log(log) {
         setDebugName("RollToNCE");
     }
@@ -932,7 +944,7 @@ private:
     mlir::Value createSparseInput(VPU::RollOp origOp, SmallVector<int64_t> axes, SmallVector<int64_t> shift,
                                   mlir::PatternRewriter& rewriter) const;
 
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -1060,7 +1072,7 @@ void LowerOpsToSENCEPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());

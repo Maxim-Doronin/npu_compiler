@@ -4,9 +4,12 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_INITRESOURCES
@@ -37,7 +40,7 @@ private:
     void initializeFromOptions();
 
 private:
-    VPU::ArchKind _arch = VPU::ArchKind::UNKNOWN;
+    config::ArchKind _arch = config::ArchKind::UNKNOWN;
     config::CompilationMode _compilationMode = config::CompilationMode::DefaultHW;
     std::optional<int> _revisionID;
     int _numOfDPUGroups = 1;
@@ -65,7 +68,7 @@ mlir::LogicalResult InitResourcesPass::initializeOptions(
 }
 
 void InitResourcesPass::initializeFromOptions() {
-    auto archStr = VPU::symbolizeEnum<VPU::ArchKind>(archOpt.getValue());
+    auto archStr = config::symbolizeEnum<config::ArchKind>(archOpt.getValue());
     VPUX_THROW_UNLESS(archStr.has_value(), "Unknown VPU architecture : '{0}'", archOpt.getValue());
     _arch = archStr.value();
 
@@ -77,7 +80,7 @@ void InitResourcesPass::initializeFromOptions() {
         _revisionID = revisionIDOpt.getValue();
     }
 
-    _numOfDPUGroups = getMaxArchDPUClusterNum(_arch);
+    _numOfDPUGroups = vpux::VPU::getMaxArchDPUClusterNum(_arch);
     if (numberOfDPUGroupsOpt.hasValue()) {
         _numOfDPUGroups = numberOfDPUGroupsOpt.getValue();
     }
@@ -99,7 +102,7 @@ void InitResourcesPass::safeRunOnModule() {
     auto module = getOperation();
 
     _log.trace("Set VPU architecture to {0}", _arch);
-    VPU::setArch(module, _arch, _numOfDPUGroups, _numOfDMAPorts, _availableCMXMemory, _allowCustomValues);
+    config::setArch(module, _arch, _numOfDPUGroups, _numOfDMAPorts, _availableCMXMemory, _allowCustomValues);
 
     VPUX_THROW_WHEN(!_allowCustomValues && config::hasCompilationMode(module),
                     "CompilationMode is already defined, probably you run '--init-compiler' twice");
@@ -108,29 +111,29 @@ void InitResourcesPass::safeRunOnModule() {
         config::setCompilationMode(module, _compilationMode);
     }
 
-    VPUX_THROW_WHEN(!_allowCustomValues && VPU::hasRevisionID(module),
+    VPUX_THROW_WHEN(!_allowCustomValues && config::hasRevisionID(module),
                     "RevisionID is already defined, probably you run '--init-compiler' twice");
-    if (!VPU::hasRevisionID(module)) {
+    if (!config::hasRevisionID(module)) {
         if (_revisionID.has_value()) {
             int revisionIDValue = _revisionID.value();
-            std::optional<VPU::RevisionID> revID = VPU::symbolizeRevisionID(revisionIDValue);
+            std::optional<config::RevisionID> revID = config::symbolizeRevisionID(revisionIDValue);
             if (revID.has_value()) {
                 _log.trace("Set RevisionID to {0}", revisionIDValue);
-                VPU::setRevisionID(module, revID.value());
+                config::setRevisionID(module, revID.value());
             } else {
                 _log.trace("Set RevisionID to REVISION_NONE");
-                VPU::setRevisionID(module, VPU::RevisionID::REVISION_NONE);
+                config::setRevisionID(module, config::RevisionID::REVISION_NONE);
             }
         } else {
             _log.trace("Set RevisionID to REVISION_NONE");
-            VPU::setRevisionID(module, VPU::RevisionID::REVISION_NONE);
+            config::setRevisionID(module, config::RevisionID::REVISION_NONE);
         }
     }
 
     auto nceCluster = IE::getTileExecutor(module);
     if (!nceCluster.hasProcessorFrequency()) {
-        auto revisionID = VPU::getRevisionID(module);
-        auto freqMHz = getDpuFrequency(_arch, revisionID);
+        auto revisionID = config::getRevisionID(module);
+        auto freqMHz = vpux::VPU::getDpuFrequency(_arch, revisionID);
         _log.trace("Set DpuFrequency to {0}", freqMHz);
         nceCluster.setProcessorFrequency(getFPAttr(module.getContext(), freqMHz));
     }

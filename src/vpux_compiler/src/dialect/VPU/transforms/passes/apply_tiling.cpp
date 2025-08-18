@@ -63,7 +63,7 @@ mlir::LogicalResult ApplyTiling::matchAndRewrite(VPU::TilingBuilderOpInterface o
 
     _log.nest().trace("Applying tiling for op {0} at {1}, tiles: {2}", op->getName(), op->getLoc(), strategy);
 
-    auto tilingContext = VPU::createTilingContext(op, strategy, _enableSCFTiling);
+    auto tilingContext = VPU::createTilingContext(op, _enableSCFTiling);
     auto tilingResult = tilingContext.applyTiling(rewriter, _log);
 
     return tilingResult;

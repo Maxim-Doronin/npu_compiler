@@ -11,9 +11,9 @@
 
 using namespace vpux;
 
-VPU::SparsityConstraint VPU::getSparsityConstraint(VPU::ArchKind arch) {
+VPU::SparsityConstraint VPU::getSparsityConstraint(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX: {
+    case config::ArchKind::NPU37XX: {
         return VPU::arch37xx::SparsityConstraint{};
     }
     default: {

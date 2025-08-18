@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/utils/net/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/dense_map.hpp"
 
@@ -276,9 +277,10 @@ mlir::LogicalResult EliminateSameSiblingConcat::matchAndRewrite(VPU::ConcatOp or
 
 class OptimizeConcatPass final : public VPU::impl::OptimizeConcatBase<OptimizeConcatPass> {
 public:
-    explicit OptimizeConcatPass(bool optimizeOnlyOuterConcat, Logger log) {
+    explicit OptimizeConcatPass(bool optimizeOnlyOuterConcat, bool disablePassOnEntryFunction, Logger log) {
         Base::initLogger(log, Base::getArgumentName());
         _optimizeOnlyOuterConcat = optimizeOnlyOuterConcat;
+        _disablePassOnEntryFunction = disablePassOnEntryFunction;
     }
 
 private:
@@ -286,6 +288,7 @@ private:
             StringRef options, llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)> errorHandler) final;
     void safeRunOnFunc() final;
     bool _optimizeOnlyOuterConcat = false;
+    bool _disablePassOnEntryFunction = false;
 };
 
 mlir::LogicalResult OptimizeConcatPass::initializeOptions(
@@ -297,12 +300,24 @@ mlir::LogicalResult OptimizeConcatPass::initializeOptions(
         _log.trace("Overloading optimizeOnlyOuterConcat with an MLIR variable {0}", optimizeOnlyOuterConcat.getValue());
         _optimizeOnlyOuterConcat = optimizeOnlyOuterConcat.getValue();
     }
+
+    if (disablePassOnEntryFunction.hasValue()) {
+        _log.trace("Overloading disablePassOnEntryFunction with an MLIR variable {0}",
+                   disablePassOnEntryFunction.getValue());
+        _disablePassOnEntryFunction = disablePassOnEntryFunction.getValue();
+    }
     return mlir::success();
 }
 
 void OptimizeConcatPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
+
+    auto entryPointFunc = vpux::net::findEntryPointFunc(func, _log);
+    if (_disablePassOnEntryFunction && (func == entryPointFunc)) {
+        _log.trace("Skipping function {0} in HostCompile mode", func.getName());
+        return;
+    }
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<EliminateConcat>(&ctx, _log, _optimizeOnlyOuterConcat);
@@ -320,6 +335,7 @@ void OptimizeConcatPass::safeRunOnFunc() {
 // createOptimizeConcatPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPU::createOptimizeConcatPass(bool optimizeOnlyOuterConcat, Logger log) {
-    return std::make_unique<OptimizeConcatPass>(optimizeOnlyOuterConcat, log);
+std::unique_ptr<mlir::Pass> vpux::VPU::createOptimizeConcatPass(bool optimizeOnlyOuterConcat,
+                                                                bool disablePassOnEntryFunction, Logger log) {
+    return std::make_unique<OptimizeConcatPass>(optimizeOnlyOuterConcat, disablePassOnEntryFunction, log);
 }

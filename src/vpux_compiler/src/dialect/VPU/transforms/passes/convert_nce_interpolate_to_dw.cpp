@@ -23,6 +23,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_interpolate_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -55,7 +56,7 @@ namespace {
        - more than 3 (experimental number) tiles on C are needed for SEP DW.Conv to have per cluster workloads with
          channels in DEPTHWISE_WORKLOAD_SIZES that also meet L1aOpt workload reqs.
 */
-bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, VPU::ArchKind arch, Logger log) {
+bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, config::ArchKind arch, Logger log) {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto numChannels = outputType.getShape()[Dims4D::Act::C];
     const auto inputType = mlir::cast<VPU::SparseTensorType>(origOp.getInput().getType());
@@ -313,13 +314,13 @@ private:
     void safeRunOnFunc() final;
     void convertToDWConv(VPU::NCEInterpolateOp origOp, VPU::GroupSparseTensorOp groupSparseOp,
                          VPU::StorageElementTableOp storageElementTable, Const::DeclareOp origWeights,
-                         VPU::ArchKind arch) const;
+                         config::ArchKind arch) const;
 };
 
 void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp,
                                                     VPU::GroupSparseTensorOp groupSparseOp,
                                                     VPU::StorageElementTableOp storageElementTable,
-                                                    Const::DeclareOp origWeights, VPU::ArchKind arch) const {
+                                                    Const::DeclareOp origWeights, config::ArchKind arch) const {
     auto nestedLog = _log.nest();
     mlir::OpBuilder builder(origOp);
     auto data = groupSparseOp.getData();
@@ -360,7 +361,7 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
 
 void ConvertNCEInterpolateToDWPass::safeRunOnFunc() {
     auto func = getOperation();
-    const auto arch = VPU::getArch(func);
+    const auto arch = config::getArch(func);
     SmallVector<VPU::NCEInterpolateOp> interpsToErase{};
 
     func.walk([&](VPU::NCEInterpolateOp interpOp) {

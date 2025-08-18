@@ -11,11 +11,12 @@
 #include "vpux/compiler/dialect/VPU/IR/se_attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_interpolate_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -33,7 +34,7 @@ namespace {
 
 bool doesFitIntoCMX(mlir::Operation* op, NDTypeInterface inputType, NDTypeInterface outputType, int64_t seTableH,
                     int64_t seTableW) {
-    auto arch = VPU::getArch(op);
+    auto arch = config::getArch(op);
     auto sparsityConstraint = VPU::getSparsityConstraint(arch);
     const auto inShape = inputType.getShape();
     const auto inputC = inShape[Dims4D::Act::C];

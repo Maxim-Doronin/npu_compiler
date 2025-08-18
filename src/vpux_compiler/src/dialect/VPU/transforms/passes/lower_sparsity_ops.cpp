@@ -18,6 +18,7 @@
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/core/dialect.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -309,7 +310,7 @@ mlir::LogicalResult rewriteSparsityOpWithConv(mlir::PatternRewriter& rewriter, m
 
     const auto maybeRequantizedOutputType = outputType;
 
-    const auto arch = VPU::getArch(origOp);
+    const auto arch = config::getArch(origOp);
     auto alignment = vpux::VPU::NCEInvariant::getAlignment(inputType.getElementType());
     bool needAlignment = !vpux::VPU::NCEInvariant::isAligned(inputType, alignment, logCb);
     if (needAlignment) {
@@ -509,6 +510,7 @@ void LowerSparsityOpsPass::safeRunOnFunc() {
     mlir::ConversionTarget target(ctx);
     target.addIllegalOp<VPU::DesparsifyOp>();
     target.addIllegalOp<VPU::SparsifyOp>();
+    target.addLegalDialect<Core::CoreDialect>();
     target.addLegalDialect<Const::ConstDialect>();
     target.addLegalDialect<VPU::VPUDialect>();
     target.addLegalDialect<mlir::linalg::LinalgDialect>();

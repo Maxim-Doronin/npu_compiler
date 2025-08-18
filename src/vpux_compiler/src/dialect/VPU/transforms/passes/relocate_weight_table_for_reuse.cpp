@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
@@ -41,13 +43,9 @@ std::tuple<SmallVector<int64_t>, SmallVector<uint32_t>> getOffsetsAndWeightsPtrs
     return {offsets, weightsPtrPerCluster};
 }
 
-std::tuple<SmallVector<int64_t>, SmallVector<uint32_t>> getOffsetsAndWeightsPtrsForMatMul(
-        VPU::DistributedTensorType distrType, bool isDistrType) {
-    if (!isDistrType) {
-        return {SmallVector<int64_t>(1, 0), SmallVector<uint32_t>(1, 0)};
-    }
+std::tuple<SmallVector<int64_t>, SmallVector<uint32_t>> getOffsetsAndWeightsPtrsForMatMul(vpux::NDTypeInterface type) {
     SmallVector<int64_t> offsets;
-    const auto shape = distrType.getShape();
+    auto shape = type.getShape();
     for (auto group : irange(shape[DimsGroups5D::Filter::G])) {
         offsets.push_back(group * shape[DimsGroups5D::Filter::OC]);
     }
@@ -110,7 +108,7 @@ void RelocateWeightTableForReusePass::safeRunOnFunc() {
 
         auto isMatMul = mlir::isa<VPU::NCEMatMulOp>(nceOp);
         auto [offsets, weightsPtrPerCluster] =
-                isMatMul ? getOffsetsAndWeightsPtrsForMatMul(weightTableDistrType, isDistrType)
+                isMatMul ? getOffsetsAndWeightsPtrsForMatMul(weightTableType)
                          : getOffsetsAndWeightsPtrsForConv(weightTableDistrType, isDistrType);
 
         auto originalOC = 0;

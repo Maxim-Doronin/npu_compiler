@@ -4,17 +4,16 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/sparsity_strategy.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
 
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
@@ -116,7 +115,7 @@ void SparsifyWeightsPass::safeRunOnFunc() {
         // with weights sparsity both weights and sparsity map will need to be aligned
         // increasing fragmentation likelihood with small aligned constants
         // avoid increasing size more than 4X
-        minWeightsSize = getAddressAlignmentForSwizzling(vpux::SWIZZLING_KEY_5, VPU::getArch(func)) / 4;
+        minWeightsSize = getAddressAlignmentForSwizzling(vpux::SWIZZLING_KEY_5, config::getArch(func)) / 4;
 
         // experimental number for small ops which do not suffer from fragmentation
         smallOpThreshold = 2560;
@@ -375,6 +374,12 @@ void SparsifyWeightsPass::safeRunOnFunc() {
 //
 // createSparsifyWeightsPass
 //
+
+std::unique_ptr<mlir::Pass> vpux::VPU::createSparsifyWeightsPass(Logger log) {
+    return std::make_unique<SparsifyWeightsPass>(VPU::WeightsSparsityHeuristic::RATIO, /*manualThreshold=*/std::nullopt,
+                                                 /*largeConstThreshold=*/(200_MB).to<vpux::Byte>().count(),
+                                                 /*computeOpThreshold=*/350, /*enableWeightSwizzling=*/true, log);
+}
 
 std::unique_ptr<mlir::Pass> vpux::VPU::createSparsifyWeightsPass(VPU::WeightsSparsityHeuristic heuristic,
                                                                  std::optional<double> manualThreshold,
