@@ -4,17 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reify_shape.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/error.hpp"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Index/IR/IndexOps.h"
+#include <mlir/Dialect/Bufferization/IR/Bufferization.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_POPULATEDYNAMICDIMENSIONSHW

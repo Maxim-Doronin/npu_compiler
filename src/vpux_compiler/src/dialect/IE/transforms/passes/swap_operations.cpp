@@ -4,7 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
@@ -633,11 +637,6 @@ mlir::LogicalResult SwapAffineReshapeFakeQuantize::matchAndRewrite(IE::FakeQuant
             fakeQuantizeOp->getLoc(), affineReshapeOp.getInput(), fakeQuantizeOp.getInputLow(),
             fakeQuantizeOp.getInputHigh(), fakeQuantizeOp.getOutputLow(), fakeQuantizeOp.getOutputHigh(),
             fakeQuantizeOp.getLevelsAttr(), fakeQuantizeOp.getLowFpTypeAttr(), fakeQuantizeOp.getAutoBroadcastAttr());
-    // Similar to GeLU, FakeQuantizeOp::inferReturnTypeComponents also doesn't forward layout info
-    // so need to set manually
-    auto dimsOrder = DimsOrder::fromValue(newFakeQuantizeOp.getInput());
-    auto newOutType = mlir::cast<NDTypeInterface>(newFakeQuantizeOp.getOutput().getType()).changeDimsOrder(dimsOrder);
-    newFakeQuantizeOp->getResult(0).setType(newOutType);
 
     auto newAffineReshapeOp = rewriter.create<IE::AffineReshapeOp>(
             affineReshapeOp.getLoc(), newFakeQuantizeOp.getOutput(), affineReshapeOp.getDimMappingAttr(),

@@ -3,10 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
@@ -118,7 +121,38 @@ mlir::LogicalResult PropagateSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir
         }
 
         return llvm::all_of(concatOp.getInputs(), [&](mlir::Value input) {
-            return getShape(input) == getShape(input2);
+            // The experiment indicates that performance is highly influenced by the size of Concat input. For small
+            // sizes of the Concat input this rewrite will fragment to much the tensors resulting into a large number of
+            // small tasks of which scheduling cost will overcome the vertical fusion benefits. The empirical threshold
+            // for Concat input size indicated by experiments is 1 MB
+            constexpr Byte MIN_CONCAT_INPUT_SIZE = 1_MB;
+            const Byte inputSize = getTotalSize(input);
+            if (inputSize < MIN_CONCAT_INPUT_SIZE) {
+                return false;
+            }
+            auto inputShape = getShape(input);
+            auto addInput2Shape = getShape(input2);
+            int64_t inputShapeRank = inputShape.size();
+            int64_t addInput2ShapeRank = addInput2Shape.size();
+            // Check if Add input operands has equal shapes or broadcastable shapes
+            if (inputShapeRank != addInput2ShapeRank) {
+                int64_t maxRank = std::max(inputShapeRank, addInput2ShapeRank);
+                // Iterate through the dimensions in reverse order
+                for (int64_t i = 0; i < maxRank; ++i) {
+                    int64_t inputDimIdx = inputShapeRank - 1 - i;
+                    int64_t addInput2DimIdx = addInput2ShapeRank - 1 - i;
+                    // Get dimension value and if the index is outside the range consider the dimension as equal to 1
+                    int64_t inputDim = (inputDimIdx < 0) ? 1 : inputShape[Dim(inputDimIdx)];
+                    int64_t addInput2Dim = (addInput2DimIdx < 0) ? 1 : addInput2Shape[Dim(addInput2DimIdx)];
+                    // The dimensions must be equal
+                    if (inputDim != addInput2Dim) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            // Check that the shapes are equal
+            return inputShape == addInput2Shape;
         });
     };
     if (maybeAddOp != nullptr && !isValidAddOp(maybeAddOp, concatOp)) {

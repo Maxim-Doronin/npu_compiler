@@ -4,17 +4,22 @@
 //
 
 #include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
-#include <mlir/Support/LLVM.h>
-#include <optional>
-#include <tuple>
-#include <utility>
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/utils/core/error.hpp"
+
+#include <mlir/Support/LLVM.h>
+
+#include <optional>
+#include <tuple>
+#include <utility>
 
 namespace vpux {
 namespace IE {

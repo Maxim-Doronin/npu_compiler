@@ -3,18 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/fuse_convert_to_dpu_checker.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinTypes.h>
-#include "vpux/compiler/dialect/IE/interfaces/fuse_convert_to_dpu_checker.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_RUNF16TOF32CONVERTONDPU
@@ -53,7 +53,7 @@ void RunF16ToF32ConvertOnDPUPass::fuseWithParentDPUOp(IE::ConvertOp convert, mli
 
 void RunF16ToF32ConvertOnDPUPass::safeRunOnFunc() {
     auto func = getOperation();
-    auto parentCheck = IE::createFuseConvertToDPUChecker(VPU::getArch(func));
+    auto parentCheck = IE::createFuseConvertToDPUChecker(config::getArch(func));
 
     auto nestedLog = _log.nest();
     SmallVector<IE::ConvertOp> f16Tof32Converts = {};

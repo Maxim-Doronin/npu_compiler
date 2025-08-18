@@ -4,11 +4,9 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
-#include "vpux/compiler/utils/logging.hpp"
-#include "vpux/utils/core/format.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_OPTIMIZEREORDERSACROSSFUNCTIONCALLS
