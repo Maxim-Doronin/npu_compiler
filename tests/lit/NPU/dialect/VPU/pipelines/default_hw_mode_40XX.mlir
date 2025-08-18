@@ -9,7 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @Convolution
-module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @Convolution attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x3x62x62xf16>
     } outputsInfo : {
@@ -109,6 +109,13 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compi
 
 // CHECK-LABEL: @SoftMax
 module @SoftMax {
+    // CHECK-DAG: {{  }}IE.TileResource
+    // CHECK-DAG: {{      }}module @DummySWKernelsForInstructionPrefetchReservedMemory
+    // CHECK-NEXT: {{        }}IE.MemoryResource 8 bytes of @CMX_NN offset 1473528
+    // CHECK-DAG: {{      }}module @SWKernelPrefetchingReservedMemory
+    // CHECK-NEXT: {{        }}IE.MemoryResource 512 bytes of @CMX_NN offset 1473536
+    // CHECK-DAG: {{      }}module @DmaProfilingReservedMemory
+    // CHECK-NEXT: {{        }}IE.MemoryResource 512 bytes of @CMX_NN offset 1474048
     net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<1x1000xf16>
     } outputsInfo : {
@@ -590,13 +597,13 @@ module @VerticalFusionOutlining {
 module @AdjustMemorySpaceAndOptimizeSharedInputCopyForConcat1T {
   IE.TileResource 1 of @NCE at 1.850000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" tensorNames = ["input"] : tensor<1x3x128x128xf32>
   } outputsInfo : {
@@ -692,13 +699,13 @@ module @AdjustMemorySpaceAndOptimizeSharedInputCopyForConcat1T {
 module @AdjustMemorySpaceAndOptimizeSharedInputCopyForConcat2T {
   IE.TileResource 2 of @NCE at 1.850000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" tensorNames = ["input"] : tensor<1x3x128x128xf32>
   } outputsInfo : {
@@ -777,4 +784,41 @@ module @AdjustMemorySpaceAndOptimizeSharedInputCopyForConcat2T {
         // CHECK:       return {{%.+}} : tensor<1x32x128x128xf32>
 
   }
+}
+
+// -----
+
+// CHECK-LABEL: @SoftMax
+module @SoftMax {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "input" : tensor<3x3x16x8xf16>
+    } outputsInfo : {
+        DataInfo "output" : tensor<8x16x3x3xf16>
+    }
+
+    // CHECK: func.func @main([[ARG0:%.+]]: tensor<3x3x16x8xf16>) -> tensor<8x16x3x3xf16>
+    func.func @main(%arg0: tensor<3x3x16x8xf16>) -> tensor<8x16x3x3xf16> {
+        %2088 = VPU.MemPermute(%arg0) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d3, d2, d0, d1)>} : tensor<3x3x16x8xf16> -> tensor<8x16x3x3xf16>
+        return %2088 : tensor<8x16x3x3xf16>
+    }
+
+    // CHECK:       [[IN:%.+]] = VPU.Copy([[ARG0]]) {out_mem_space = @CMX_NN} : tensor<3x3x16x8xf16>
+    // CHECK-SAME:       -> !VPU.DistributedTensor<3x3x16x8xf16, #NCHW, @CMX_NN,
+    // CHECK-SAME:       {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:  compute_shapes = [[3, 3, 3, 8], [3, 3, 3, 8], [3, 3, 3, 8], [3, 3, 3, 8], [3, 3, 2, 8], [3, 3, 2, 8]],
+    // CHECK-SAME{LITERAL}:  compute_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]],
+    // CHECK-SAME{LITERAL}:  memory_shapes = [[3, 3, 3, 8], [3, 3, 3, 8], [3, 3, 3, 8], [3, 3, 3, 8], [3, 3, 2, 8], [3, 3, 2, 8]],
+    // CHECK-SAME{LITERAL}:  memory_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]]}>
+
+    // CHECK:       [[MEM_PERMUTE:%.+]] = VPU.MemPermute([[IN]])
+    // CHECK-SAME:      dst_order = #NCHW, mem_perm = #map
+
+    // CHECK:       [[OUT:%.+]] = VPU.Copy([[MEM_PERMUTE]]) : !VPU.DistributedTensor<8x16x3x3xf16, #NCHW, @CMX_NN,
+    // CHECK-SAME:       {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:  compute_shapes = [[8, 3, 3, 3], [8, 3, 3, 3], [8, 3, 3, 3], [8, 3, 3, 3], [8, 2, 3, 3], [8, 2, 3, 3]],
+    // CHECK-SAME{LITERAL}:  compute_offsets = [[0, 0, 0, 0], [0, 3, 0, 0], [0, 6, 0, 0], [0, 9, 0, 0], [0, 12, 0, 0], [0, 14, 0, 0]],
+    // CHECK-SAME{LITERAL}:  memory_shapes = [[8, 3, 3, 3], [8, 3, 3, 3], [8, 3, 3, 3], [8, 3, 3, 3], [8, 2, 3, 3], [8, 2, 3, 3]],
+    // CHECK-SAME{LITERAL}:  memory_offsets = [[0, 0, 0, 0], [0, 3, 0, 0], [0, 6, 0, 0], [0, 9, 0, 0], [0, 12, 0, 0], [0, 14, 0, 0]]}> -> tensor<8x16x3x3xf16>
+
+    // CHECK:       return [[OUT]] : tensor<8x16x3x3xf16>
 }

@@ -1509,7 +1509,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 ]>
 
 // CHECK-LABEL: @SOK_ODUPermute
-module @SOK_ODUPermute attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @SOK_ODUPermute attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
 
 net.NetworkInfo
     entryPoint : @main

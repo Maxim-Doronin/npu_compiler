@@ -21,7 +21,7 @@ module @AddCycleCostForDistributedBuffers attributes {config.compilationMode = #
       IE.ExecutorResource 2 of @SHAVE_ACT
       IE.ExecutorResource 1 of @SHAVE_NN
       IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
-      IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+      IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
   }
   IE.ExecutorResource 2 of @DMA_NN
 

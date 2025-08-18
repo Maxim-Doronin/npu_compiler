@@ -599,3 +599,41 @@ func.func @ExtractFlatSlice() -> !OutType {
     // CHECK:       return [[NEW_SOURCE]]
     // CHECK-NOT:   VPUIP.ExtractFlatSlice
 }
+
+// -----
+
+// CHECK: func.func @ReinterpretCast([[ARG0:%.+]]: memref<8xi8, @DDR>, [[ARG1:%.+]]: memref<8xi8, @DDR>)
+// CHECK-SAME: -> memref<8xi8, @DDR>
+func.func @ReinterpretCast(%arg0: memref<8xi8, @DDR>, %arg1: memref<8xi8, @DDR>)
+        -> memref<8xi8, @DDR> {
+    %in = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<8xi8, @DDR>
+    %out = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<8xi8, @DDR>
+
+    %cast_in = Core.ReinterpretCast(%in) : memref<8xi8, @DDR> -> memref<4x1x1x1xf16, @DDR>
+    %tmp = VPURT.DeclareBuffer <DDR> <0> -> memref<4x1x1x1xf16, @DDR>
+    %copy = VPUIP.NNDMA {port = 0 : i64}
+        inputs(%cast_in : memref<4x1x1x1xf16, @DDR>) outputs(%tmp : memref<4x1x1x1xf16, @DDR>)
+        -> memref<4x1x1x1xf16, @DDR>
+
+    %cast_out = Core.ReinterpretCast(%copy) : memref<4x1x1x1xf16, @DDR> -> memref<8xi8, @DDR>
+    %res = VPUIP.NNDMA {port = 0 : i64}
+        inputs(%cast_out : memref<8xi8, @DDR>) outputs(%out : memref<8xi8, @DDR>)
+        -> memref<8xi8, @DDR>
+
+    return %arg1 : memref<8xi8, @DDR>
+
+    // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<4x1x1x1xf16, @DDR>
+    // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<8xi8, @DDR>
+
+    // CHECK: [[TMP:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<4x1x1x1xf16, @DDR>
+    // CHECK: [[COPY:%.+]] = VPUIP.NNDMA
+    // CHECK-SAME: inputs([[IN]]
+    // CHECK-SAME: outputs([[TMP]]
+
+    // CHECK: [[CAST_BUF:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<8xi8, @DDR>
+    // CHECK: [[RES:%.+]] = VPUIP.NNDMA
+    // CHECK-SAME: inputs([[CAST_BUF]]
+    // CHECK-SAME: outputs([[OUT]]
+
+    // CHECK: return [[ARG1]]
+}

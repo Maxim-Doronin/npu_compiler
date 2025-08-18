@@ -9,7 +9,7 @@
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitSwConvOverOC
@@ -46,7 +46,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitSwMaxPoolOverH
@@ -81,7 +81,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitSoftMaxWithSoK
@@ -102,7 +102,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitSoftMaxOverW
@@ -123,7 +123,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @InterpSplitOverC
@@ -157,7 +157,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @InterpSplitOverHW
@@ -190,7 +190,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @InterpSplitOverCNoCommonFactor
@@ -221,7 +221,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitPReluOverW
@@ -245,7 +245,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitLeakyReluOverW
@@ -268,7 +268,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @GenericTiling
@@ -322,7 +322,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @NoTileWithSOH
@@ -367,7 +367,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @TileWithSOH
@@ -410,7 +410,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @NoTileWithSOK
@@ -456,7 +456,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @LargeConstPipeliningSOKFor
@@ -502,7 +502,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitNCEEltwise
@@ -534,7 +534,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @NoPrefetchingForEltwise
@@ -583,7 +583,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitAveragePoolOverW
@@ -609,7 +609,7 @@ module @executors {
 module @executors {
     IE.TileResource 1 of @NCE {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL:   func.func @MVN1NormalizeSplit
@@ -635,7 +635,7 @@ module @executors {
 module @executors {
     IE.TileResource 4 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL:   func.func @MVN1NormalizeSplitOverH
@@ -656,7 +656,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @ClampSplitOverW
@@ -677,7 +677,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @ReLUSplitOverW
@@ -700,7 +700,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @LogSplitOverW
@@ -721,7 +721,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @AbsSplitOverW
@@ -742,7 +742,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitFloorModEltwiseSw
@@ -762,7 +762,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitModEltwiseSw
@@ -782,7 +782,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitPowerEltwiseSw
@@ -803,7 +803,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitLogicalOrEltwiseSw
@@ -824,7 +824,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitLogicalXorEltwiseSw
@@ -845,7 +845,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitEqualEltwiseSw
@@ -866,7 +866,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitNotEqualEltwiseSw
@@ -887,7 +887,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitLessEltwiseSw
@@ -908,7 +908,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitLessEqualEltwiseSw
@@ -929,7 +929,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitGreaterEltwiseSw
@@ -950,7 +950,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitGreaterEqualEltwiseSw
@@ -973,7 +973,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitErfOverW
@@ -994,7 +994,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitFloorOverW
@@ -1017,7 +1017,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @TanSplitOverW
@@ -1038,7 +1038,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SwishSplitOverW
@@ -1059,7 +1059,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @HSigmoidSplitOverW
@@ -1080,7 +1080,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitNegativeActivationSw
@@ -1101,7 +1101,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitCeilingActivationSw
@@ -1122,7 +1122,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitSignActivationSw
@@ -1143,7 +1143,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitSelectEltwiseSw
@@ -1164,7 +1164,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitAddEltwiseSw
@@ -1185,7 +1185,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitRoundActivationSw
@@ -1206,7 +1206,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitGeluActivationSw
@@ -1227,7 +1227,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitTopK
@@ -1250,7 +1250,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitStridedSliceOverW
@@ -1271,7 +1271,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: @SplitLogicalNotEltwiseSw
@@ -1297,7 +1297,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @PrefetchTilingWithParentConsidered
@@ -1342,7 +1342,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitDequantizeWithSoH
@@ -1373,7 +1373,7 @@ module @executors {
 module @executors {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitPReluOverH
@@ -1403,7 +1403,7 @@ module @executors {
 module @executors {
     IE.TileResource 4 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 // CHECK-LABEL: @NCEMatMulSOGAndPipelined
   func.func @NCEMatMulSOGAndPipelined(%arg0: tensor<1x32x4x32xf16, {order = #NHWC}>) ->  tensor<32x1x1408x1x1xf16, {order = #GNHWC}>{
@@ -1437,7 +1437,7 @@ module @executors {
 module @executors {
     IE.TileResource 4 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
     // CHECK-LABEL: func.func @SplitConvWithLargeFilter

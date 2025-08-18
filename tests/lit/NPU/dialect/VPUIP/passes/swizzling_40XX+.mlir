@@ -9,7 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1470000 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1470000 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -172,7 +172,7 @@ func.func @DoNotSwizzleDueToAlignmentMemIncrease(%in : memref<1x16x149x150xf16, 
 !OutputStub_CMX = memref<1x16x148x148xf16, #NHWC, [@CMX_NN, 0]>
 
 IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1470000 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1470000 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -289,7 +289,7 @@ func.func @SetSwizzlingForConstantButNotActivationDueToCmxSizeLimit(%input : !In
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1470000 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1470000 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -486,7 +486,7 @@ func.func @CannotSwizzledDueToMultiUserWhichCannotSwizzled(%arg0 : memref<1x256x
 }>
 
 IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1470000 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1470000 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 

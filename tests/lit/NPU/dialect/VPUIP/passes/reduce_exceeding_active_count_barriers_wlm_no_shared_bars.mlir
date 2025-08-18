@@ -10,7 +10,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
+module {
     module @VPU.SW {
     func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE }
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}

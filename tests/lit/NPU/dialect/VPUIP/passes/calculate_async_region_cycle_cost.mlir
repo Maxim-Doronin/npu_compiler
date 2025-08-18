@@ -21,10 +21,10 @@ module @AddCycleCostForSWMultiCluster attributes {config.compilationMode = #conf
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @SHAVE_NN
         IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
     IE.ExecutorResource 2 of @DMA_NN
-    IE.MemoryResource 524288000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+    IE.MemoryResource 524288000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64}
     module @VPU.SW {
         func.func private @builtin_MVN(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i1, i1, f64) attributes {VPU.kernel_code = "mvn1.cpp", VPU.kernel_entry = "mvn1"}
         func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
@@ -78,7 +78,7 @@ module @AddCycleCostForSWSingleCluster {
     IE.TileResource 1 of @NCE at 1.300000e+03 MHz {
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @SHAVE_NN
-        IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 1 of @DPU
     }
     IE.ExecutorResource 1 of @DMA_NN
