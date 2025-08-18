@@ -6,7 +6,7 @@
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --barrier-computation-VPUMI40XX %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 6 of @NCE at 6.000000e+02 MHz
 net.NetworkInfo entryPoint : @main inputsInfo :  {
@@ -488,7 +488,7 @@ func.func @main(%arg0: memref<1x1x2x1000xf16>, %arg1: memref<1x1x2x1000xf16>) ->
 
 // -----
 
-module @Test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 6 of @NCE at 6.000000e+02 MHz
 net.NetworkInfo entryPoint : @main inputsInfo :  {
@@ -530,7 +530,7 @@ func.func @main(%arg0: memref<1x1x2x1000xf16>, %arg1: memref<1x1x2x1000xf16>) ->
 
 // -----
 
-module @TestCleanAfterSettingInCaseMultUpdBars attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @TestCleanAfterSettingInCaseMultUpdBars attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 6 of @NCE at 6.000000e+02 MHz
 net.NetworkInfo entryPoint : @main inputsInfo :  {

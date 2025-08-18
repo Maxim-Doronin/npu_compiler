@@ -3,19 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <benchmark/benchmark.h>
+#include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Parser/Parser.h>
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/const/dialect.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/content.hpp"
-#include "vpux/compiler/init.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/utils/core/array_ref.hpp"
+#include <benchmark/benchmark.h>
 
 namespace llvm {
 template <>

@@ -13,13 +13,17 @@
 #include <mlir/Parser/Parser.h>
 #include <mlir/Pass/PassManager.h>
 
-#include "common/utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/ppe_factory.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/init.hpp"
 
 using namespace vpux;
 
@@ -237,14 +241,31 @@ protected:
                                             nullptr);
     }
 
-    IE::ReduceMeanOp createReduceMean(mlir::Type inElemType, mlir::Type outElemType) {
+    IE::ReduceMeanOp createReduceMean(mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int64_t> axes,
+                                      ArrayRef<int64_t> inputPadding) {
         mlir::OpBuilder builder(&_ctx);
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
+        const auto axesAttr = getIntArrayAttr(&_ctx, axes);
+        const auto inputPaddingAttr = inputPadding.empty() ? nullptr : getIntArrayAttr(&_ctx, inputPadding);
 
-        return builder.create<IE::ReduceMeanOp>(_loc, outType, input.getResult(), nullptr, nullptr, nullptr, nullptr,
-                                                nullptr);
+        return builder.create<IE::ReduceMeanOp>(_loc, outType, input.getResult(), /*axes=*/nullptr, axesAttr,
+                                                /*keep_dims=*/nullptr, /*output_padding=*/nullptr, inputPaddingAttr);
+    }
+
+    VPU::NCEReduceOp createNCEReduce(mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int64_t> axes,
+                                     VPU::ReduceType reduceType, ArrayRef<int64_t> inputPadding) {
+        mlir::OpBuilder builder(&_ctx);
+        auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
+                                                           ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
+        const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
+        const auto axesAttr = getIntArrayAttr(&_ctx, axes);
+        const auto typeAttr = VPU::ReduceTypeAttr::get(&_ctx, reduceType);
+        const auto inputPaddingAttr = inputPadding.empty() ? nullptr : getIntArrayAttr(&_ctx, inputPadding);
+        return builder.create<VPU::NCEReduceOp>(_loc, outType, input.getResult(), axesAttr, /*ppe=*/nullptr, typeAttr,
+                                                /*multiClusterStrategy=*/nullptr, /*output_padding=*/nullptr,
+                                                inputPaddingAttr);
     }
 
     VPU::NCEInterpolateOp createNCEInterpolate(mlir::Type inElemType, mlir::Type weightsElemType,

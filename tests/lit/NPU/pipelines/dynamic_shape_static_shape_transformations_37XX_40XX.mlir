@@ -28,9 +28,9 @@ func.func @DynamicConvAddTranpose(%arg0: !BoundedInType) -> !BoundedTransposeTyp
         : !BoundedOutType -> !BoundedTransposeType
     return %transpose : !BoundedTransposeType
 
-    // CHECK-DAG:   [[DIM_1:%.+]] = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
     // CHECK-DAG:   [[DIM_16:%.+]] = const.Declare tensor<1xsi64> = dense<16> : tensor<1xsi64>
     // CHECK-DAG:   [[DIM_4:%.+]] = const.Declare tensor<1xsi64> = dense<4> : tensor<1xsi64>
+    // CHECK-DAG:   [[DIM_1:%.+]] = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
 
     // CHECK:       [[DYN_EXPAND:%.+]] = IE.DynamicExpand([[IN]])
     // CHECK-SAME:       : tensor<1x512x4x?xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 4, 320]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x512x4x320xf32>

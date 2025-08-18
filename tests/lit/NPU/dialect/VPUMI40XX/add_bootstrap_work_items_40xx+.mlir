@@ -61,7 +61,7 @@ module {
 module {
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @DmaAndVarint inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
@@ -114,7 +114,7 @@ module {
 
 // -----
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @single_hswish inputsInfo : {
@@ -171,7 +171,7 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 
 // -----
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @single_hswish_shave_idx1 inputsInfo : {
@@ -216,9 +216,9 @@ module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
   }
 
   // CHECK: VPURegMapped.Enqueue
-  // CHECK-SAME: <0:0:0> -> <0:0:1>
-  // CHECK-SAME: taskType = #VPURegMapped.task_type<DMA>
-  // CHECK: VPURegMapped.Enqueue
   // CHECK-SAME: <0:1:0> -> <0:1:0>
   // CHECK-SAME: taskType = #VPURegMapped.task_type<ActKernelInvocation>
+  // CHECK: VPURegMapped.Enqueue
+  // CHECK-SAME: <0:0:0> -> <0:0:1>
+  // CHECK-SAME: taskType = #VPURegMapped.task_type<DMA>
 }

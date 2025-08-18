@@ -15,6 +15,8 @@ module @CopyInputOutput {
     DataInfo "output" : tensor<1x3x60x60xf16>
   }
 
+  // CHECK: builtin.module @ReservedMemory
+
   func.func private @main_part1(%arg0: tensor<1x3x60x60xf16>) -> tensor<1x3x60x60xf16> {
     %0 = VPU.Copy(%arg0) : tensor<1x3x60x60xf16> -> tensor<1x3x60x60xf16>
     return %0 : tensor<1x3x60x60xf16>
@@ -24,10 +26,10 @@ module @CopyInputOutput {
     %0 = call @main_part1(%arg0) : (tensor<1x3x60x60xf16>) -> tensor<1x3x60x60xf16>
     return %0 : tensor<1x3x60x60xf16>
   }
-  // CHECK:  module [[MODULE0:@.+]] attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+  // CHECK:  module [[MODULE0:@.+]] attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<HostCompile>, config.revisionID = #config.revision_id<REVISION_NONE>} {
   // CHECK:    func.func private [[FUNC0:@.+]]([[_:%.+]]: memref<1x3x60x60xf16, @DDR>, [[_:%.+]]: memref<1x3x60x60xf16, @DDR>)
   // CHECK-SAME:        -> memref<1x3x60x60xf16, @DDR> attributes {inliner_dispatch = #VPUIP.VPUIPInlinerDispatch} {
-  // CHECK-COUNT-1: VPURT.Task  
+  // CHECK-COUNT-1: VPURT.Task
   // CHECK-NOT: VPU.Copy
 
   // CHECK:  func.func @main([[ARG0:%.+]]: memref<1x3x60x60xf16>, [[ARG1:%.+]]: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> {
@@ -55,7 +57,9 @@ module @StaticEltwiseNHWC {
         DataInfo "output" : tensor<1x16x720x1000xf16>
     }
 
-    // CHECK:  module [[MODULE0:@.+]] attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+    // CHECK: builtin.module @ReservedMemory
+
+    // CHECK:  module [[MODULE0:@.+]] attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<HostCompile>, config.revisionID = #config.revision_id<REVISION_NONE>} {
     // CHECK:    func.func private [[FUNC0:@.+]]([[_:%.+]]: memref<1x90x1000x16xf16, @DDR>, [[_:%.+]]: memref<1x90x1000x16xf16, @DDR>, [[_:%.+]]: memref<1x90x1000x16xf16, @DDR>) -> memref<1x90x1000x16xf16, @DDR> attributes {inliner_dispatch = #VPUIP.VPUIPInlinerDispatch} {
     // CHECK-COUNT-25: VPURT.Task
     // CHECK-NOT: IE.Add

@@ -14,7 +14,7 @@ module @test attributes {config.compilationMode = #config.compilation_mode<Defau
       }
     }
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }

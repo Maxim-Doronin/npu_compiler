@@ -8,11 +8,7 @@
 // REQUIRES: arch-NPU40XX
 
 // CHECK-LABEL: @Gather
-module @Gather attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
-    // CHECK-DAG: {{  }}IE.TileResource
-    // CHECK-DAG: {{      }}module @DmaProfilingReservedMemory
-    // CHECK-NEXT: {{        }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN
-
+module @Gather attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     VPURT.SW.Runtime
       entryPoint: @VPU.SW::@runtime
       stack_configuration: [4096, 4096, 4096, 4096]

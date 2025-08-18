@@ -10,7 +10,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #loc0 = loc(unknown)
 #loc2 = loc("profiling_result")
-module @age_gender attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @age_gender attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096] loc(#loc0)
   module @VPU.SW {
     func.func private @builtin_MemPermute(memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"} loc(#loc0)
@@ -26,10 +26,10 @@ module @age_gender attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compil
     IE.ExecutorResource 1 of @DPU  loc(#loc0)
     IE.ExecutorResource 2 of @SHAVE_ACT  loc(#loc0)
     IE.ExecutorResource 1 of @SHAVE_NN  loc(#loc0)
-    IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64} loc(#loc0)
+    IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64} loc(#loc0)
   } loc(#loc0)
   IE.ExecutorResource 2 of @DMA_NN  loc(#loc0)
-  IE.MemoryResource 524288000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64} loc(#loc0)
+  IE.MemoryResource 524288000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64} loc(#loc0)
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x3x62x62xf32> loc(#loc0)
   } outputsInfo : {

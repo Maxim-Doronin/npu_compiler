@@ -9,7 +9,7 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @SoftMax
-module @SoftMax attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     // CHECK-DAG: {{  }}IE.TileResource
 
     VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
@@ -87,7 +87,7 @@ module @SoftMax attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilati
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
 // CHECK-LABEL: @TwoFunctions
-module @TwoFunctions attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     // CHECK-DAG: {{  }}IE.TileResource
 
     VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
@@ -271,7 +271,7 @@ module @TwoFunctions attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.comp
 // -----
 
 // CHECK-LABEL: TestCopy
-module @TestCopy attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @TestCopy attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_213" : tensor<2x4x20x20xf16>
     DataInfo "vpu_shape_Parameter_213" : tensor<4xsi32>
