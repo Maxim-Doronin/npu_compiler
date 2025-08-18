@@ -275,6 +275,44 @@ func.func @OptimizeSliceConcat(%arg0: tensor<1x1024x32x32xf16, {order = #NHWC}>)
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @NotOptimizeSliceConcatWithTwoUsers
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x1024x32x32xf16, {order = #NHWC}
+func.func @NotOptimizeSliceConcatWithTwoUsers(%arg0: tensor<1x1024x32x32xf16, {order = #NHWC}>)
+                            -> (tensor<1x512x32x32xf16, {order = #NHWC}>, tensor<1x511x16x64xf16, {order = #NHWC}>) {
+    %WEIGHTS = const.Declare tensor<512x1024x3x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<512x1024x3x3xf16>, [#const.Reorder<#NHWC>]
+    %CST_0 = const.Declare tensor<1x1x32x32xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<1x1x32x32xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
+    %WEIGHTS2 = const.Declare tensor<512x512x3x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<512x512x3x3xf16>, [#const.Reorder<#NHWC>]
+    %CONV = IE.Convolution(%arg0, %WEIGHTS) {
+                dilations = [1, 1],
+                pads_begin = [1, 1], pads_end = [1, 1],
+                strides = [1, 1]
+            } : tensor<1x1024x32x32xf16, {order = #NHWC}>, tensor<512x1024x3x3xf16, {order = #NHWC}> -> tensor<1x512x32x32xf16, {order = #NHWC}>
+    %SLICE = IE.Slice %CONV [0, 0, 0, 0] [1, 511, 32, 32] : tensor<1x512x32x32xf16, {order = #NHWC}> to tensor<1x511x32x32xf16, {order = #NHWC}>
+    %CONCAT = IE.Concat(%SLICE, %CST_0) {
+                static_offsets = [[0, 0, 0, 0], [0, 511, 0, 0]]} : tensor<1x511x32x32xf16, {order = #NHWC}>, tensor<1x1x32x32xf16, {order = #NHWC}> -> tensor<1x512x32x32xf16, {order = #NHWC}>
+    %RESHAPE = IE.AffineReshape(%SLICE) {
+                dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 511, 16, 64] } : tensor<1x511x32x32xf16, {order = #NHWC}> -> tensor<1x511x16x64xf16, {order = #NHWC}>
+
+    return %CONCAT, %RESHAPE : tensor<1x512x32x32xf16, {order = #NHWC}>, tensor<1x511x16x64xf16, {order = #NHWC}>
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<512x1024x3x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<512x1024x3x3xf16>, [#const.Reorder<#NHWC>]
+    // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<1x1x32x32xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<1x1x32x32xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
+    // CHECK:   [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]]) {
+    // CHECK-SAME:                  dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]
+    // CHECK:   [[SLICE:%.+]] = IE.Slice [[CONV]] [0, 0, 0, 0] [1, 511, 32, 32] : tensor<1x512x32x32xf16, {order = #NHWC}> to tensor<1x511x32x32xf16, {order = #NHWC}>
+
+    // CHECK:   [[CONCAT:%.+]] = IE.Concat([[SLICE]], [[CST_0]]) {
+    // CHECK-SAME{LITERAL}:                  static_offsets = [[0, 0, 0, 0], [0, 511, 0, 0]]} : tensor<1x511x32x32xf16, {order = #NHWC}>, tensor<1x1x32x32xf16, {order = #NHWC}> -> tensor<1x512x32x32xf16, {order = #NHWC}>
+    // CHECK:   [[RESHAPE:%.+]] = IE.AffineReshape([[SLICE]]) {
+    // CHECK-SAME{LITERAL}:                  dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 511, 16, 64]} : tensor<1x511x32x32xf16, {order = #NHWC}> -> tensor<1x511x16x64xf16, {order = #NHWC}>
+
+    // CHECK:   return [[CONCAT]], [[RESHAPE]] : tensor<1x512x32x32xf16, {order = #NHWC}>, tensor<1x511x16x64xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
 // CHECK-LABEL: @NotOptimizeSliceConcatIfNotLowestDim
 func.func @NotOptimizeSliceConcatIfNotLowestDim(%arg0: tensor<1x1024x32x32xf16, {order = #NHWC}>) -> tensor<1x512x32x32xf16, {order = #NHWC}> {
     %WEIGHTS = const.Declare tensor<512x1024x3x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<512x1024x3x3xf16>, [#const.Reorder<#NHWC>]

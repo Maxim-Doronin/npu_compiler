@@ -11,7 +11,7 @@
 // expected-error@+1 {{Failed to get FuncType: 'main1'}}
 // expected-error@+2 {{Failed to serialize '@OneDMAWithoutAttributes::@main1'}}
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @StaticEltwiseNHWC attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
   config.PipelineOptions @Options {
     config.Option @VPU.EnableExtraStaticShapeOps : true
     config.Option @VPU.EnableAdaptiveStripping : false
@@ -37,20 +37,20 @@ module @StaticEltwiseNHWC attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.re
   }
   IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input1" : tensor<1x16x720x1000xf16>
     DataInfo "input2" : tensor<1x16x720x1000xf16>
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x720x1000xf16>
   }
-  module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.PipelineOptions @Options {
     config.Option @VPU.EnableExtraStaticShapeOps : true
     config.Option @VPU.EnableAdaptiveStripping : false
@@ -76,7 +76,7 @@ module @StaticEltwiseNHWC attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.re
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main1 inputsInfo : {
     DataInfo "input_0" : tensor<1x90x1000x16xf16>
   } outputsInfo : {
@@ -84,7 +84,7 @@ module @StaticEltwiseNHWC attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.re
   }
   IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
     builtin.module @ReservedMemory {
@@ -92,7 +92,7 @@ module @StaticEltwiseNHWC attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.re
         IE.MemoryResource 512 bytes of @CMX_NN offset 0
       }
     }
-  }  
+  }
   func.func @main1() {
     ELF.Main @ELFMain {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(1) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {

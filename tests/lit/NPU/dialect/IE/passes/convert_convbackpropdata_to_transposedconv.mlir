@@ -396,3 +396,21 @@ func.func @Convert3DConvBackpropDataWithNonConstFilterToTransposedConv(%input0: 
 
     // CHECK:       return [[OUTPUT]]
 }
+
+// -----
+
+// CHECK-LABEL: @ConvertGroupConvBackpropDataWithNonConstFilterToGroupTransposedConv
+// CHECK-SAME:    ([[ARG0:%.+]]: tensor<1x128x32x32xf16>, [[ARG1:%.+]]: tensor<128x1x1x4x4xf16>)
+func.func @ConvertGroupConvBackpropDataWithNonConstFilterToGroupTransposedConv(%arg0: tensor<1x128x32x32xf16>, %arg1: tensor<128x1x1x4x4xf16>) -> tensor<1x128x64x64xf16> {
+    %0 = IE.GroupConvolutionBackpropData(%arg0, %arg1) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x128x32x32xf16>, tensor<128x1x1x4x4xf16> -> tensor<1x128x64x64xf16>
+    return %0 : tensor<1x128x64x64xf16>
+
+    // CHECK-NOT:   IE.GroupConvolutionBackpropData
+    // CHECK:       [[REVERSE:%.+]] = IE.Reverse([[ARG1]]) {axis_value = [3, 4], mode = #IE.reverse_mode<INDEX>} : tensor<128x1x1x4x4xf16> -> tensor<128x1x1x4x4xf16>
+    // CHECK:       [[OUTPUT:%.+]] = IE.GroupTransposedConvolution([[ARG0]], [[REVERSE]]) {
+    // CHECK-SAME:      dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x128x32x32xf16>, tensor<128x1x1x4x4xf16> -> tensor<1x128x64x64xf16>
+
+    // CHECK:       return [[OUTPUT]]
+
+}

@@ -233,6 +233,61 @@ func.func @MergeMatMulForDQPatternWithDequantize(%arg0: tensor<1x1x256xf16>, %ar
 
 !qElemType = !quant.uniform<i4:f16, 1.000000e+00>
 
+// CHECK-LABEL: @MergeMatMulForDQPatternWithDequantizeAndInputIsShared
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x1x256xf16>,
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<2x2560x128xsi4>
+func.func @MergeMatMulForDQPatternWithDequantizeAndInputIsShared(%arg0: tensor<1x1x256xf16>, %arg1: tensor<2x2560x128xsi4>)
+-> (tensor<1x2x1x2560xf16>, tensor<1x128xf16>) {
+    %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [0], [1]], shape_value = [1, 256]} : tensor<1x1x256xf16> -> tensor<1x256xf16>
+    %1 = IE.QuantizeCast(%arg1) {dstElemType = !qElemType} : tensor<2x2560x128xsi4> -> tensor<2x2560x128x!qElemType>
+
+    %2 = IE.Slice %1 [0, 0, 0] [1, 2560, 128] : tensor<2x2560x128x!qElemType> to tensor<1x2560x128x!qElemType>
+    %3 = IE.Slice %1 [1, 0, 0] [1, 2560, 128] : tensor<2x2560x128x!qElemType> to tensor<1x2560x128x!qElemType>
+    %4 = IE.Dequantize(%2) {dstElemType = f16} : tensor<1x2560x128x!qElemType> -> tensor<1x2560x128xf16>
+    %5 = IE.Dequantize(%3) {dstElemType = f16} : tensor<1x2560x128x!qElemType> -> tensor<1x2560x128xf16>
+    %6 = IE.Reshape(%4) {shape_value = [2560, 128]} : tensor<1x2560x128xf16> -> tensor<2560x128xf16>
+    %7 = IE.Reshape(%5) {shape_value = [2560, 128]} : tensor<1x2560x128xf16> -> tensor<2560x128xf16>
+
+    %8 = IE.Slice %0 [0, 0] [1, 128] : tensor<1x256xf16> to tensor<1x128xf16>
+    %9 = IE.Slice %0 [0, 128] [1, 128] : tensor<1x256xf16> to tensor<1x128xf16>
+
+    %10 = IE.FullyConnected(%8, %6) : tensor<1x128xf16>, tensor<2560x128xf16> -> tensor<1x2560xf16>
+    %11 = IE.FullyConnected(%9, %7) : tensor<1x128xf16>, tensor<2560x128xf16> -> tensor<1x2560xf16>
+
+    %12 = IE.Reshape(%10) {shape_value = [1, 1, 1, 2560]} : tensor<1x2560xf16> -> tensor<1x1x1x2560xf16>
+    %13 = IE.Reshape(%11) {shape_value = [1, 1, 1, 2560]} : tensor<1x2560xf16> -> tensor<1x1x1x2560xf16>
+
+    %14 = IE.Concat(%12, %13) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16> -> tensor<1x2x1x2560xf16>
+
+    %15 = IE.Slice %0 [0, 0] [1, 128] : tensor<1x256xf16> to tensor<1x128xf16>
+
+    return %14, %15 : tensor<1x2x1x2560xf16>, tensor<1x128xf16>
+
+    // CHECK:       [[SOURCE:%.+]] = IE.AffineReshape([[INPUT_0]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [1]], shape_value = [1, 256]} : tensor<1x1x256xf16> -> tensor<1x256xf16>
+    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[SOURCE]]) {shape_value = [2, 128]} : tensor<1x256xf16> -> tensor<2x128xf16>
+
+    // CHECK:       [[WEIGHTS:%.+]] = IE.QuantizeCast([[INPUT_1]]) {dstElemType = !qElemType} : tensor<2x2560x128xsi4> -> tensor<2x2560x128x!qElemType>
+    // CHECK:       [[WEIGHTS_DQ:%.+]] = IE.Dequantize([[WEIGHTS]]) {dstElemType = f16} : tensor<2x2560x128x!qElemType> -> tensor<2x2560x128xf16>
+    // CHECK:       [[WEIGHTS_RESHAPE:%.+]] = IE.AffineReshape([[WEIGHTS_DQ]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [1]], shape_value = [5120, 128]} : tensor<2x2560x128xf16> -> tensor<5120x128xf16>
+
+    // CHECK:       [[MATMUL:%.+]] = IE.FullyConnected([[RESHAPE]], [[WEIGHTS_RESHAPE]]) : tensor<2x128xf16>, tensor<5120x128xf16> -> tensor<2x5120xf16>
+
+    // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[MATMUL]] [0, 0] [1, 2560] : tensor<2x5120xf16> to tensor<1x2560xf16>
+    // CHECK:       [[RESHAPE_0:%.+]] = IE.Reshape([[SLICE_0]]) {shape_value = [1, 1, 1, 2560]} : tensor<1x2560xf16> -> tensor<1x1x1x2560xf16>
+    // CHECK:       [[SLICE_1:%.+]] = IE.Slice [[MATMUL]] [1, 2560] [1, 2560] : tensor<2x5120xf16> to tensor<1x2560xf16>
+    // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[SLICE_1]]) {shape_value = [1, 1, 1, 2560]} : tensor<1x2560xf16> -> tensor<1x1x1x2560xf16>
+
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[RESHAPE_0]], [[RESHAPE_1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x2560xf16>, tensor<1x1x1x2560xf16> -> tensor<1x2x1x2560xf16>
+    // CHECK:       [[OUT_SLICE:%.+]] = IE.Slice [[SOURCE]] [0, 0] [1, 128] : tensor<1x256xf16> to tensor<1x128xf16>
+    // CHECK:       return [[CONCAT]], [[OUT_SLICE]] : tensor<1x2x1x2560xf16>, tensor<1x128xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<i4:f16, 1.000000e+00>
+
 // CHECK-LABEL: @MergeMatMulForDQPatternWithDequantizeAndRegroup
 // CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x1x1536xf16>,
 // CHECK-SAME:      [[INPUT_1:%.+]]: tensor<12x2560x128xsi4>

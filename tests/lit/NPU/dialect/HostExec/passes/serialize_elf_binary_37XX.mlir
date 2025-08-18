@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 // CHECK-LABEL: @OneInputOneOutput
-module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<HostCompile>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<HostCompile>, config.revisionID = #config.revision_id<REVISION_NONE>} {
   config.PipelineOptions @Options {
     config.Option @VPU.FP16CompressedConv : false
     config.Option @VPU.ReduceSupported : false
@@ -20,19 +20,19 @@ module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config
   }
   IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
     IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @SHAVE_NN
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 2 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x3x60x60xf16>
   } outputsInfo : {
     DataInfo "output" : tensor<1x3x60x60xf16>
   }
-  module @module0 attributes {VPU.arch = #VPU.arch_kind<NPU37XX>} {
+  module @module0 attributes {config.arch = #config.arch_kind<NPU37XX>} {
     net.NetworkInfo {inferenceTiming = 2282 : i64} entryPoint : @dma_copy inputsInfo : {
       DataInfo "input" : tensor<1x3x60x60xf16>
     } outputsInfo : {
@@ -66,7 +66,7 @@ module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config
         VPUMI37XX.MappedInferenceVersion(7 _ 0 _ 4)
       }
       %12 = ELFNPU37XX.CreateSection secType(VPU_SHT_PLATFORM_INFO) secFlags("SHF_NONE") {secAddrAlign = 8 : i64, secInfo = 0 : i64, secName = ".meta.PlatformInfo"} -> !ELFNPU37XX.Section {
-        VPUMI37XX.PlatformInfo {archKind = #VPU.arch_kind<NPU37XX>}
+        VPUMI37XX.PlatformInfo {archKind = #config.arch_kind<NPU37XX>}
       }
       %13 = ELFNPU37XX.Symbol %5 name("sym_dmaSection0") : !ELFNPU37XX.Section
       %14 = ELFNPU37XX.Symbol %6 name("sym_barrierSection") : !ELFNPU37XX.Section
@@ -137,7 +137,7 @@ module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config
     }
     IE.TileResource {activity_factor = 0.000000e+00 : f64} 2 of @NCE at 1.300000e+03 MHz {
       IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
-      IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+      IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
       IE.ExecutorResource 2 of @SHAVE_ACT
       IE.ExecutorResource 1 of @SHAVE_NN
       IE.ExecutorResource 1 of @DPU
@@ -153,7 +153,7 @@ module @OneInputOneOutput attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config
       config.Option @VPU.MaxKernelSize : 11
     }
     IE.ExecutorResource 2 of @DMA_NN
-    IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+    IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64}
   }
   func.func @main(%arg0: memref<1x3x60x60xf16, @DDR>, %arg1: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> {
     %alloc = memref.alloc() : memref<1x3x60x60xf16, @DDR>

@@ -2630,3 +2630,113 @@ func.func @NotOptReorderWithGroupConvForPerChannelPostOp(%arg0: tensor<1x32x1152
 
     // CHECK:        [[IN_REORDER:%.+]] = IE.Reorder([[INPUT0]])
 }
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0053023436490227194:122>
+!qElemType1 = !quant.uniform<u8:f16, 0.010899822384703392:128>
+
+// CHECK-LABEL: @ReorderAddQuantCastSlice
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x2x1x1024xf16>
+func.func @ReorderAddQuantCastSlice(%arg0: tensor<1x2x1x1024xf16>) -> (tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>) {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x2x1x1024xf16> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    %1 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x2x1x1024xf16> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    %2 = IE.Add(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x2x1x1024xf16, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType1, {order = #NHWC}>
+    %3 = IE.QuantizeCast(%2) {dstElemType = !qElemType} : tensor<1x2x1x1024x!qElemType1, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType, {order = #NHWC}>
+    %4 = IE.Slice %3 [0, 0, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType, {order = #NHWC}> to tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    %5 = IE.Slice %3 [0, 1, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType, {order = #NHWC}> to tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    return %4, %5 : tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+
+    // CHECK: [[LAYOUTCAST_0:%.+]] = IE.LayoutCast([[INPUT]]) {dst_order = #NHWC} : tensor<1x2x1x1024xf16> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    // CHECK: [[LAYOUTCAST_1:%.+]] = IE.LayoutCast([[INPUT]]) {dst_order = #NHWC} : tensor<1x2x1x1024xf16> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    // CHECK: [[ADD:%.+]] = IE.Add([[LAYOUTCAST_0]], [[LAYOUTCAST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x2x1x1024xf16, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType1, {order = #NHWC}>
+    // CHECK: [[LAYOUTCAST_2:%.+]] = IE.LayoutCast([[ADD]]) {dst_order = #NCHW} : tensor<1x2x1x1024x!qElemType1, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType1>
+    // CHECK: [[QUANTIZECAST:%.+]] = IE.QuantizeCast([[LAYOUTCAST_2]]) {dstElemType = !qElemType} : tensor<1x2x1x1024x!qElemType1> -> tensor<1x2x1x1024x!qElemType>
+    // CHECK: [[SLICE_0:%.+]] = IE.Slice [[QUANTIZECAST]] [0, 0, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType> to tensor<1x1x1x1024x!qElemType>
+    // CHECK: [[REORDER_0:%.+]] = IE.Reorder([[SLICE_0]]) {dstOrder = #NHWC} : tensor<1x1x1x1024x!qElemType> -> tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    // CHECK: [[SLICE_1:%.+]] = IE.Slice [[QUANTIZECAST]] [0, 1, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType> to tensor<1x1x1x1024x!qElemType>
+    // CHECK: [[REORDER_1:%.+]] = IE.Reorder([[SLICE_1]]) {dstOrder = #NHWC} : tensor<1x1x1x1024x!qElemType> -> tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    // CHECK: return [[REORDER_0]], [[REORDER_1]] : tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0053023436490227194:122>
+
+// CHECK-LABEL: @ReorderSameInputsAddSlice
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x2x1x1024xf16>
+func.func @ReorderSameInputsAddSlice(%arg0: tensor<1x2x1x1024xf16>) -> (tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>) {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x2x1x1024xf16> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    %1 = IE.Add(%0, %0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x2x1x1024xf16, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType, {order = #NHWC}>
+    %2 = IE.Slice %1 [0, 0, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType, {order = #NHWC}> to tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    %3 = IE.Slice %1 [0, 1, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType, {order = #NHWC}> to tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    return %2, %3 : tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+
+    // CHECK: [[LAYOUTCAST_0:%.+]] = IE.LayoutCast([[INPUT]]) {dst_order = #NHWC} : tensor<1x2x1x1024xf16> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    // CHECK: [[ADD:%.+]] = IE.Add([[LAYOUTCAST_0]], [[LAYOUTCAST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x2x1x1024xf16, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType, {order = #NHWC}>
+    // CHECK: [[LAYOUTCAST_1:%.+]] = IE.LayoutCast([[ADD]]) {dst_order = #NCHW} : tensor<1x2x1x1024x!qElemType, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType>
+    // CHECK: [[SLICE_0:%.+]] = IE.Slice [[LAYOUTCAST_1]] [0, 0, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType> to tensor<1x1x1x1024x!qElemType>
+    // CHECK: [[REORDER_0:%.+]] = IE.Reorder([[SLICE_0]]) {dstOrder = #NHWC} : tensor<1x1x1x1024x!qElemType> -> tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    // CHECK: [[SLICE_1:%.+]] = IE.Slice [[LAYOUTCAST_1]] [0, 1, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType> to tensor<1x1x1x1024x!qElemType>
+    // CHECK: [[REORDER_1:%.+]] = IE.Reorder([[SLICE_1]]) {dstOrder = #NHWC} : tensor<1x1x1x1024x!qElemType> -> tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    // CHECK: return [[REORDER_0]], [[REORDER_1]] : tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0053023436490227194:122>
+
+// CHECK-LABEL: @NotOptReorderAddSliceDueToBranch
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x2x1x1024xf16>
+func.func @NotOptReorderAddSliceDueToBranch(%arg0: tensor<1x2x1x1024xf16>) -> (tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}>) {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x2x1x1024xf16> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    %1 = IE.Add(%0, %0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x2x1x1024xf16, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}> -> tensor<1x2x1x1024x!qElemType, {order = #NHWC}>
+    %2 = IE.Slice %1 [0, 0, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType, {order = #NHWC}> to tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    %3 = IE.Slice %1 [0, 1, 0, 0] [1, 1, 1, 1024] : tensor<1x2x1x1024x!qElemType, {order = #NHWC}> to tensor<1x1x1x1024x!qElemType, {order = #NHWC}>
+    %4 = IE.Add(%0, %0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x2x1x1024xf16, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}> -> tensor<1x2x1x1024xf16, {order = #NHWC}>
+    return %2, %3, %4 : tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x1x1x1024x!qElemType, {order = #NHWC}>, tensor<1x2x1x1024xf16, {order = #NHWC}>
+
+    // CHECK: IE.Reorder([[INPUT]])
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0053023436490227194:122>
+
+// CHECK-LABEL: @NotOptReorderAddSliceDueToNonTrivialReorder
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x16x1x1024xf16>
+func.func @NotOptReorderAddSliceDueToNonTrivialReorder(%arg0: tensor<1x16x1x1024xf16>) -> (tensor<1x8x1x1024x!qElemType, {order = #NHWC}>, tensor<1x8x1x1024x!qElemType, {order = #NHWC}>) {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x16x1x1024xf16> -> tensor<1x16x1x1024xf16, {order = #NHWC}>
+    %1 = IE.Add(%0, %0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x1x1024xf16, {order = #NHWC}>, tensor<1x16x1x1024xf16, {order = #NHWC}> -> tensor<1x16x1x1024x!qElemType, {order = #NHWC}>
+    %2 = IE.Slice %1 [0, 0, 0, 0] [1, 8, 1, 1024] : tensor<1x16x1x1024x!qElemType, {order = #NHWC}> to tensor<1x8x1x1024x!qElemType, {order = #NHWC}>
+    %3 = IE.Slice %1 [0, 8, 0, 0] [1, 8, 1, 1024] : tensor<1x16x1x1024x!qElemType, {order = #NHWC}> to tensor<1x8x1x1024x!qElemType, {order = #NHWC}>
+    return %2, %3 : tensor<1x8x1x1024x!qElemType, {order = #NHWC}>, tensor<1x8x1x1024x!qElemType, {order = #NHWC}>
+
+    // CHECK: IE.Reorder([[INPUT]])
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0053023436490227194:122>
+
+// CHECK-LABEL: @NotOptReorderAddSliceDueToWorseSlice
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x1024x1x2xf16>
+func.func @NotOptReorderAddSliceDueToWorseSlice(%arg0: tensor<1x1024x1x2xf16>) -> (tensor<1x1024x1x1x!qElemType, {order = #NHWC}>, tensor<1x1024x1x1x!qElemType, {order = #NHWC}>) {
+    %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x1024x1x2xf16> -> tensor<1x1024x1x2xf16, {order = #NHWC}>
+    %1 = IE.Add(%0, %0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x1024x1x2xf16, {order = #NHWC}>, tensor<1x1024x1x2xf16, {order = #NHWC}> -> tensor<1x1024x1x2x!qElemType, {order = #NHWC}>
+    %2 = IE.Slice %1 [0, 0, 0, 0] [1, 1024, 1, 1] : tensor<1x1024x1x2x!qElemType, {order = #NHWC}> to tensor<1x1024x1x1x!qElemType, {order = #NHWC}>
+    %3 = IE.Slice %1 [0, 0, 0, 1] [1, 1024, 1, 1] : tensor<1x1024x1x2x!qElemType, {order = #NHWC}> to tensor<1x1024x1x1x!qElemType, {order = #NHWC}>
+    return %2, %3 : tensor<1x1024x1x1x!qElemType, {order = #NHWC}>, tensor<1x1024x1x1x!qElemType, {order = #NHWC}>
+
+    // CHECK: IE.Reorder([[INPUT]])
+}

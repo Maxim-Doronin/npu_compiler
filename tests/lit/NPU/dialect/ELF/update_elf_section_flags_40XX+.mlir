@@ -7,7 +7,7 @@
 // RUN: vpux-opt --vpu-arch=%arch% --update-ELF-section-flags %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
 
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096]
   module @VPU.SW {

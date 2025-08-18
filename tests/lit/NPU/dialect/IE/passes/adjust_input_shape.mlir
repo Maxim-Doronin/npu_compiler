@@ -1417,3 +1417,53 @@ func.func @AdjustInputShapeWithMinimalDimChange(%arg0: tensor<1x4x1600x2560xf16,
     // CHECK:       [[EXPAND_OUTPUT:%.+]] = IE.Expand([[CAST_OUTPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]} : tensor<1x4x1600x2560xf16, {order = #NHWC}> -> tensor<1x16x1600x2560xf16, {order = #NHWC}>
     // CHECK:       return [[EXPAND_OUTPUT]]
 }
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+// CHECK-LABEL: @AdjustInputShapeForMemPermuteWithDimN
+// CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<4x75x16x64xf16>
+func.func @AdjustInputShapeForMemPermuteWithDimN(%arg0: tensor<4x75x16x64xf16>) -> tensor<4x16x64x75xf16> {
+    %0 = IE.MemPermute(%arg0) {dstElemType = f16, dst_order = #NCHW, mem_perm = #NHWC} :
+        tensor<4x75x16x64xf16> -> tensor<4x16x64x75xf16>
+
+    return %0 : tensor<4x16x64x75xf16>
+
+    // CHECK:   [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 4, 75, 1024]} inputs([[INPUT]] : tensor<4x75x16x64xf16>)
+    // CHECK-SAME:      -> tensor<1x4x75x1024xf16>
+    // CHECK:   [[MEM_PERMUTE:%.+]] = IE.MemPermute([[SHAPECAST_IN]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x4x75x1024xf16>
+    // CHECK-SAME:      -> tensor<1x4x1024x75xf16>
+    // CHECK:   [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [4, 16, 64, 75]} inputs([[MEM_PERMUTE]] : tensor<1x4x1024x75xf16>)
+    // CHECK-SAME:      -> tensor<4x16x64x75xf16>
+
+    // CHECK:   return [[SHAPECAST_OUT]] : tensor<4x16x64x75xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128}>
+!qElemType1 = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128, 0.567:128, 0.567:128, 0.567:128}>
+
+// CHECK-LABEL: @NotExpandGroupConvToShapeCastForAxisQuantizedType
+// CHECK-SAME:        [[INPUT:%arg0]]: tensor<1x3x32x32x!qElemType>
+func.func @NotExpandGroupConvToShapeCastForAxisQuantizedType(%arg0: tensor<1x3x32x32x!qElemType>) -> tensor<1x6x32x32x!qElemType1> {
+    %filters = const.Declare tensor<6x1x1x1xf32> = dense<1.0> : tensor<1x1x1x1xf32>, [#const.Broadcast<0 : i64, 6 : i64>]
+    %bias = const.Declare tensor<1x6x1x1xf32> = dense<0.0> : tensor<1x1x1x1xf32>, [#const.Broadcast<1 : i64, 6 : i64>]
+    %0 = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 3, 0, 0]} : tensor<1x3x32x32x!qElemType> -> tensor<1x6x32x32x!qElemType1>
+    %1 = IE.GroupConvolution(%0, %filters, %bias) {dilations = [1, 1], groups = 6 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x6x32x32x!qElemType1>, tensor<6x1x1x1xf32>, tensor<1x6x1x1xf32> -> tensor<1x6x32x32x!qElemType1>
+    return %1 : tensor<1x6x32x32x!qElemType1>
+
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x6x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1x1xf32>, [#const.Broadcast<1 : i64, 6 : i64>]
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<6x1x1x1xf32> = dense<1.000000e+00> : tensor<1x1x1x1xf32>, [#const.Broadcast<0 : i64, 6 : i64>]
+
+    // CHECK-NOT:   IE.ShapeCast
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 3, 0, 0]} : tensor<1x3x32x32x!qElemType> -> tensor<1x6x32x32x!qElemType1>
+    // CHECK:       [[GROUP_CONV:%.+]] = IE.GroupConvolution([[EXPAND]], [[FILTER]], [[BIAS]])
+    // CHECK-SAME:      dilations = [1, 1], groups = 6 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
+    // CHECK-SAME:          -> tensor<1x6x32x32x!qElemType1>
+
+    // CHECK:       return [[GROUP_CONV]]
+}

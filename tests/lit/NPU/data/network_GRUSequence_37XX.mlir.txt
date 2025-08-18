@@ -6,7 +6,7 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #loc = loc(unknown)
 #loc1 = loc("profiling_result")
-module @dumpsubgraph attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @dumpsubgraph attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096] loc(#loc)
   module @VPU.SW {
     func.func private @cache_flush_invalidate() attributes {VPU.task_type = @CACHE_FLUSH_INVALIDATE} loc(#loc)
@@ -22,13 +22,13 @@ module @dumpsubgraph attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.comp
       } loc(#loc)
     } loc(#loc)
     IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware loc(#loc)
-    IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64} loc(#loc)
+    IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64} loc(#loc)
     IE.ExecutorResource 2 of @SHAVE_ACT loc(#loc)
     IE.ExecutorResource 1 of @SHAVE_NN loc(#loc)
     IE.ExecutorResource 1 of @DPU loc(#loc)
   } loc(#loc)
   IE.ExecutorResource 2 of @DMA_NN loc(#loc)
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64} loc(#loc)
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64} loc(#loc)
   net.NetworkInfo {inferenceTiming = 27805 : i64} entryPoint : @main inputsInfo : {
     DataInfo "Parameter_214" : tensor<1x768xf32> loc(#loc)
   } outputsInfo : {

@@ -3,37 +3,33 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUMI40XX-to-VPUASM="workload-management-enable=true" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
-  IE.ExecutorResource 1 of @DMA_NN
-  IE.TileResource 1 of @NCE at 6.000000e+02 MHz
-  net.NetworkInfo entryPoint : @twoDma inputsInfo : {
-    DataInfo "input_0" : tensor<1x16x16x16xf16>
-  } outputsInfo : {
-    DataInfo "output_0" : tensor<1x16x16x16xf16>
-    DataInfo "output_1" : tensor<1x16x16x16xf16>
-  }
-  func.func @twoDma() {
-    %11 = VPUMI40XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
-    %12 = VPUMI40XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
-    %19 = VPUMI40XX.Bootstrap inputs(%11 : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    %20 = VPUMI40XX.Bootstrap inputs(%12 : <0:0:1>) -> !VPURegMapped.Index<0:0:1>
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
-    VPUMI40XX.OpRanges
-  }
+net.NetworkInfo entryPoint : @twoDma inputsInfo : {
+  DataInfo "input_0" : tensor<1x16x16x16xf16>
+} outputsInfo : {
+  DataInfo "output_0" : tensor<1x16x16x16xf16>
+  DataInfo "output_1" : tensor<1x16x16x16xf16>
+}
+func.func @twoDma() {
+  %11 = VPUMI40XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
+  %12 = VPUMI40XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
+  %19 = VPUMI40XX.Bootstrap inputs(%11 : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
+  %20 = VPUMI40XX.Bootstrap inputs(%12 : <0:0:1>) -> !VPURegMapped.Index<0:0:1>
+  ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+  VPUMI40XX.OpRanges
 }
 
-//CHECK: VPUASM.Bootstrap @Bootstrap_0_0 {barrier_id = 0 : ui32}
-//CHECK: VPUASM.Bootstrap @Bootstrap_0_1 {barrier_id = 1 : ui32}
+//CHECK: VPUASM.Bootstrap @Bootstrap_0_0_0 {barrier_id = 0 : ui32}
+//CHECK: VPUASM.Bootstrap @Bootstrap_0_0_1 {barrier_id = 1 : ui32}
 
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @Convolution attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
       module @DmaProfilingReservedMemory {
@@ -41,13 +37,13 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compi
       }
     }
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
@@ -76,7 +72,7 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compi
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @Convolution attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   IE.TileResource 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
       module @DmaProfilingReservedMemory {
@@ -84,13 +80,13 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compi
       }
     }
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
@@ -160,26 +156,26 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compi
   }
 }
 
-//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0 idx(!VPURegMapped.Index<0:0:0>) workItemIdx(!VPURegMapped.Index<0:0:0>)
+//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_0 idx(!VPURegMapped.Index<0:0:0>) workItemIdx(!VPURegMapped.Index<0:0:0>)
 //CHECK-SAME: work_item_count = 2 : ui32
-//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_1 idx(!VPURegMapped.Index<0:0:1>)
-//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_2 idx(!VPURegMapped.Index<0:0:2>)
-//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_3 idx(!VPURegMapped.Index<0:0:3>)
-//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_4 idx(!VPURegMapped.Index<0:0:4>)
+//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_1 idx(!VPURegMapped.Index<0:0:1>)
+//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_2 idx(!VPURegMapped.Index<0:0:2>)
+//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_3 idx(!VPURegMapped.Index<0:0:3>)
+//CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_4 idx(!VPURegMapped.Index<0:0:4>)
 //CHECK: VPUASM.WorkItem @[[Enqueue0:.*]] idx(!VPURegMapped.Index<0:0:0>) real_task_index(!VPURegMapped.Index<0:0:0>) next_workitem_idx(!VPURegMapped.Index<0:0:1>) task_type(<DPUVariant>) first_task(@program.metadata.cmx::@DeclareTaskBuffer_DPUVariant_0_0_0) task_count(1)
 //CHECK: VPUASM.WorkItem @[[Enqueue1:.*]] idx(!VPURegMapped.Index<0:0:1>) real_task_index(!VPURegMapped.Index<0:0:1>) task_type(<DPUVariant>) first_task(@program.metadata.cmx::@DeclareTaskBuffer_DPUVariant_0_0_1) task_count(1)
 
-//CHECK: VPUASM.Bootstrap @Bootstrap_0_0 {barrier_id = 0 : ui32}
-//CHECK: VPUASM.Bootstrap @Bootstrap_0_1 {barrier_id = 1 : ui32}
-//CHECK: VPUASM.Bootstrap @Bootstrap_0_2 {barrier_id = 2 : ui32}
-//CHECK: VPUASM.Bootstrap @Bootstrap_0_3 {barrier_id = 3 : ui32}
-//CHECK: VPUASM.Bootstrap @Bootstrap_0_4 {barrier_id = 4 : ui32}
+//CHECK: VPUASM.Bootstrap @Bootstrap_0_0_0 {barrier_id = 0 : ui32}
+//CHECK: VPUASM.Bootstrap @Bootstrap_0_0_1 {barrier_id = 1 : ui32}
+//CHECK: VPUASM.Bootstrap @Bootstrap_0_0_2 {barrier_id = 2 : ui32}
+//CHECK: VPUASM.Bootstrap @Bootstrap_0_0_3 {barrier_id = 3 : ui32}
+//CHECK: VPUASM.Bootstrap @Bootstrap_0_0_4 {barrier_id = 4 : ui32}
 
 //CHECK{LITERAL}: VPUASM.MappedInference @MappedInference : dmas([[@task.dma.0.0::@NNDMA_0_0_0, @task.dma.0.1::@NNDMA_0_1_0]])
 //CHECK-SAME: managedMappedInference(@program.mapped_inference::@MappedInference_managed)
 //CHECK{LITERAL}: VPUASM.ManagedMappedInference @MappedInference_managed
 //CHECK-SAME: workItems(@program.workItem::@[[Enqueue0]])
-//CHECK-SAME: bootstrapBarriers(@program.bootstrap::@Bootstrap_0_0)
+//CHECK-SAME: bootstrapBarriers(@program.bootstrap::@Bootstrap_0_0_0)
 //CHECK-SAME: nnrtConfig(@program.nnrt_config::@MappedInference_nnrtConfigManaged)
 //CHECK-SAME: actshv_used = 0
 //CHECK-SAME: dma_from_cmx_used = 1
@@ -191,9 +187,10 @@ module @Convolution attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compi
 //CHECK: VPUASM.nnrtConfig {isActKernelInvocations} @MappedInference_nnrtConfigManaged
 
 // -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @BarrierProgramming attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>} {
+module @BarrierProgramming attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>} {
   config.PipelineOptions @Options {
     config.Option @VPU.FP16CompressedConv : false
     config.Option @VPU.ReduceSupported : false
@@ -210,13 +207,13 @@ module @BarrierProgramming attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, confi
       }
     }
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x16x16x16xf16>
   } outputsInfo : {
