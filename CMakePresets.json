@@ -92,7 +92,7 @@
 
         {
             "name": "vpuxDeveloper",
-            "description": "Default configuration preset for VPUX Compiler development. Enables VPUX compiler and generic OV tests, and disables plugin specific builds. Also, enables IMD backend",
+            "description": "Default configuration preset for VPUX Compiler development. Enables VPUX compiler and generic OV tests, and disables plugin specific builds.",
             "inherits": ["BuildOptimization", "EnableTests", "Disabler"],
             "binaryDir": "${sourceDir}/build-x86_64/Debug",
             "displayName": "vpuxDeveloper",
@@ -111,7 +111,6 @@
                 "CMAKE_EXPORT_COMPILE_COMMANDS" : true,
 
                 "ENABLE_DEVELOPER_BUILD": true,
-                "ENABLE_IMD_BACKEND": true,
 
                 "ENABLE_VPUX_DOCS": false,
                 "ENABLE_NPU_MICRO_BENCHMARKS": true
@@ -119,7 +118,7 @@
         },
         {
             "name": "vpuxRelWithDebInfoDeveloper",
-            "description": "Release with debug info configuration preset for VPUX Compiler development. Enables VPUX compiler and generic OV tests, and disables plugin specific builds. Also, enables IMD backend",
+            "description": "Release with debug info configuration preset for VPUX Compiler development. Enables VPUX compiler and generic OV tests, and disables plugin specific builds.",
             "inherits": ["BuildOptimization", "EnableTests", "Disabler"],
             "binaryDir": "${sourceDir}/build-x86_64/RelWithDebInfo",
             "displayName": "vpuxRelWithDebInfoDeveloper",
@@ -138,7 +137,6 @@
                 "CMAKE_EXPORT_COMPILE_COMMANDS" : true,
 
                 "ENABLE_DEVELOPER_BUILD": true,
-                "ENABLE_IMD_BACKEND": true,
 
                 "ENABLE_VPUX_DOCS": false,
                 "ENABLE_NPU_MICRO_BENCHMARKS": true
@@ -289,7 +287,6 @@
                 "ENABLE_INTEL_NPU_PROTOPIPE": false,
 
                 "ENABLE_PRIVATE_TESTS": false,
-                "ENABLE_DIRECTML": false,
                 "ENABLE_NPU_LSP_SERVER": false
             }
         },
@@ -346,7 +343,6 @@
                 "ENABLE_INTEL_NPU_PROTOPIPE": false,
 
                 "ENABLE_PRIVATE_TESTS": false,
-                "ENABLE_DIRECTML": false,
                 "ENABLE_NPU_LSP_SERVER": false
             }
         },
@@ -394,22 +390,6 @@
                 "SINGLE_IMAGE_TEST_CONFIG": "public_models_3720.json",
                 "SINGLE_IMAGE_TEST_TOOLS": "compile_tool;NetTest-CalcRef;NetTest-Validate",
                 "VPUX_PLUGIN_HOME": "${sourceDir}"
-            }
-        },
-        {
-            "name": "Simulator",
-            "hidden": true,
-            "environment": {
-                "IE_NPU_USE_IMD_BACKEND": "1",
-                "IE_NPU_IMD_LAUNCH_MODE": "VPUX_IMD_SIMULATOR"
-            }
-        },
-        {
-            "name": "Silicon",
-            "hidden": true,
-            "environment": {
-                "IE_NPU_USE_IMD_BACKEND": "1",
-                "IE_NPU_IMD_LAUNCH_MODE": "VPUX_IMD_MOVI_DEBUG"
             }
         },
         {
