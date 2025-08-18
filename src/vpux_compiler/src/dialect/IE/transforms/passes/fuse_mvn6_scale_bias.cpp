@@ -4,9 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -61,7 +63,7 @@ private:
             buffSizes.push_back(Byte(actSize));
         }
 
-        const auto arch = VPU::getArch(origOp);
+        const auto arch = config::getArch(origOp);
         auto totalAvailCMXSize = vpux::VPU::getTotalCMXSize(origOp).count();
         auto neededCMXSize = vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffSizes).count();
         if (neededCMXSize >= totalAvailCMXSize) {

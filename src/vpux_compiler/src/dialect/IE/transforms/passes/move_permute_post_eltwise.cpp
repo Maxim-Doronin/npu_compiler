@@ -3,15 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_MOVEPERMUTEPOSTELTWISE

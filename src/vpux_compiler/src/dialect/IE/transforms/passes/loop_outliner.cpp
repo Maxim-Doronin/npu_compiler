@@ -4,15 +4,12 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/control_flow.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/range.hpp"
 

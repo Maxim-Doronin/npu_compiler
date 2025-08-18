@@ -3,21 +3,24 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/factors.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
+
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Support/LLVM.h"
-
-#include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/factors.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_HANDLEELTWISEWITHSMALLHEIGHT
