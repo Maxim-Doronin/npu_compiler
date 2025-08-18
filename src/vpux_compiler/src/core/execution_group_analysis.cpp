@@ -5,10 +5,12 @@
 //
 
 #include "vpux/compiler/core/execution_group_analysis.hpp"
-#include <mlir/Pass/AnalysisManager.h>
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+
+#include <mlir/Pass/AnalysisManager.h>
+
 namespace vpux {
 
 ExecutionGroupAnalysis::ExecutionGroupAnalysis(mlir::func::FuncOp func)

@@ -108,8 +108,22 @@ void OptimizeMemRefCopiesPass::safeRunOnFunc() {
             return;
         }
 
-        allocOp.getResult().replaceAllUsesWith(dst);
+        SmallVector<mlir::memref::SubViewOp> subviewOps;
+        for (auto user : allocOp->getUsers()) {
+            if (auto subviewOp = mlir::dyn_cast<mlir::memref::SubViewOp>(user)) {
+                subviewOps.push_back(subviewOp);
+            }
+        }
+        for (auto subviewOp : subviewOps) {
+            builder.setInsertionPointAfter(subviewOp);
+            auto newSubview =
+                    builder.create<mlir::memref::SubViewOp>(subviewOp.getLoc(), dst, subviewOp.getMixedOffsets(),
+                                                            subviewOp.getMixedSizes(), subviewOp.getMixedStrides());
+            subviewOp.getResult().replaceAllUsesWith(newSubview.getResult());
+            subviewOp.erase();
+        }
 
+        allocOp.getResult().replaceAllUsesWith(dst);
         copyOp.erase();
         if (allocOp->use_empty()) {
             allocOp.erase();

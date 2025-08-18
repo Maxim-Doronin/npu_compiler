@@ -4,14 +4,12 @@
 //
 
 #include "vpux/compiler/core/feasible_memory_scheduler_control_edges.hpp"
-
-#include "vpux/compiler/utils/analysis.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
-
+#include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/core/feasible_scheduler_utils.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-
-#include "vpux/utils/core/range.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 using namespace vpux;
 

@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/schedule_analysis_utils.hpp"
+#include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/utils/profiling/reports/ted.hpp"
 

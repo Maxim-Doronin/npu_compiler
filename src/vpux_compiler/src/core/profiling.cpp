@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/IR/Visitors.h>
-//
-
 #include "vpux/compiler/core/profiling.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+
+#include <mlir/IR/Visitors.h>
 
 using namespace vpux;
 
@@ -52,12 +53,12 @@ VPUIP::M2IProfilingMetadataAttr vpux::getM2IProfilingMetaAttr(mlir::MLIRContext*
     return VPUIP::M2IProfilingMetadataAttr::get(ctx, getIntAttr(ctx, bufferId), getIntAttr(ctx, bufferOffset));
 }
 
-DMAProfilingMode vpux::getDMAProfilingMode(VPU::ArchKind arch, const std::string& optionValue) {
+DMAProfilingMode vpux::getDMAProfilingMode(config::ArchKind arch, const std::string& optionValue) {
     if (optionValue == "false") {
-        return arch == VPU::ArchKind::NPU40XX ? DMAProfilingMode::SCRATCH : DMAProfilingMode::DISABLED;
+        return arch == config::ArchKind::NPU40XX ? DMAProfilingMode::SCRATCH : DMAProfilingMode::DISABLED;
     }
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         if (optionValue == "true") {
             return DMAProfilingMode::SW;
         } else {
@@ -136,7 +137,7 @@ bool vpux::isDmaHwpUsedInVPURT(mlir::func::FuncOp& func) {
 }
 
 bool vpux::isDmaHwpUsedInVPURT(mlir::ModuleOp& module) {
-    if (vpux::VPU::getArch(module) < vpux::VPU::ArchKind::NPU40XX) {
+    if (vpux::config::getArch(module) < vpux::config::ArchKind::NPU40XX) {
         return false;
     }
     net::NetworkInfoOp netInfo;

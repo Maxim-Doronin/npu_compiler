@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
 #include "vpux/compiler/dialect/HostExec/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
@@ -35,7 +36,7 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    mlir::func::FuncOp serialize(vpux::Core::NestedCallOp callOp, mlir::func::FuncOp funcOp, VPU::ArchKind& arch);
+    mlir::func::FuncOp serialize(vpux::Core::NestedCallOp callOp, mlir::func::FuncOp funcOp, config::ArchKind& arch);
     Logger _log;
 };
 
@@ -65,8 +66,8 @@ mlir::FunctionType constructFunctionType(mlir::ModuleOp moduleOp, net::NetworkIn
     return mlir::FunctionType::get(moduleOp.getContext(), funcArgs, outArgs);
 }
 
-void getBinaryBuffer(mlir::ModuleOp moduleOp, VPU::ArchKind& arch, std::vector<uint8_t>& binaryBuffer) {
-    if (arch == VPU::ArchKind::NPU37XX) {
+void getBinaryBuffer(mlir::ModuleOp moduleOp, config::ArchKind& arch, std::vector<uint8_t>& binaryBuffer) {
+    if (arch == config::ArchKind::NPU37XX) {
         binaryBuffer = vpux::ELFNPU37XX::exportToELF(moduleOp);
     } else {
         binaryBuffer = vpux::ELF::exportToELF(moduleOp);
@@ -74,7 +75,7 @@ void getBinaryBuffer(mlir::ModuleOp moduleOp, VPU::ArchKind& arch, std::vector<u
 }
 
 mlir::func::FuncOp SerializeELFToBinaryPass::serialize(vpux::Core::NestedCallOp callOp, mlir::func::FuncOp funcOp,
-                                                       VPU::ArchKind& arch) {
+                                                       config::ArchKind& arch) {
     auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
     if (moduleOp == nullptr) {
         _log.error("Expected the func op: '{0}' nested in a module operation", funcOp.getName());
@@ -135,7 +136,7 @@ void SerializeELFToBinaryPass::safeRunOnFunc() {
     }
 
     mlir::OpBuilder builder(parentModuleOp);
-    auto arch = VPU::getArch(func);
+    auto arch = config::getArch(func);
     llvm::DenseSet<mlir::Operation*> serializedOps;
 
     func.walk([&](vpux::Core::NestedCallOp callOp) {

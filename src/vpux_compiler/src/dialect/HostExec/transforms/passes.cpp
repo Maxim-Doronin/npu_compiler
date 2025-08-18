@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 namespace vpux::HostExec {
 

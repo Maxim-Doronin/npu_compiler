@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/metadata.hpp"
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -371,7 +372,7 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
 
     // Copy arch_name and throw if it doesn't fit into the buffer.
     // arch_name must not be truncated to ensure proper operation of the ELF loader.
-    copy_str(metadata.mIdentification.arch_name, VPU::stringifyArchKind(VPU::getArch(module)).str(), true);
+    copy_str(metadata.mIdentification.arch_name, config::stringifyArchKind(config::getArch(module)).str(), true);
     // Copy blob_name and throw if it doesn't fit into the buffer.
     // blob_name must not be truncated to ensure proper operation of the driver.
     copy_str(metadata.mIdentification.blob_name, module.getName().value_or("network").str(), true);
@@ -384,8 +385,8 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
 
     metadata.mProfilingOutputs.resize(profilingOutputsInfo.size());
 
-    const auto architecture = VPU::getArch(module);
-    if (architecture >= VPU::ArchKind::NPU40XX) {
+    const auto architecture = config::getArch(module);
+    if (architecture >= config::ArchKind::NPU40XX) {
         auto ioBindings = VPUASM::IOBindingsOp::getFromModule(module);
         auto inputDeclarations =
                 to_small_vector(ioBindings.getInputDeclarations().front().getOps<VPUASM::DeclareBufferOp>());

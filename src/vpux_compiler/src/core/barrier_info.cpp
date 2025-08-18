@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/shave.hpp"
@@ -1638,6 +1639,14 @@ std::optional<size_t> vpux::BarrierInfo::getPreviousBlockSyncPoint(size_t taskIn
     return _syncTasksIds[blockInd - 1];
 }
 
+std::optional<size_t> vpux::BarrierInfo::getNextBlockSyncPoint(size_t taskInd) const {
+    auto blockInd = getControlGraphBlockIndex(taskInd);
+    if (blockInd + 1 >= _syncTasksIds.size()) {
+        return std::nullopt;
+    }
+    return _syncTasksIds[blockInd + 1];
+}
+
 void vpux::BarrierInfo::splitBarriersWithExceedingVariantCount(size_t availableSlots, size_t maxSlotsSum,
                                                                size_t maxAvailableSlots) {
     bool maxSlotsSumLimitEnabled = (maxSlotsSum < maxAvailableSlots);
@@ -2755,7 +2764,7 @@ void vpux::BarrierInfo::initializeTaskQueueTypeMap(const mlir::DenseSet<vpux::VP
         switch (execKind) {
         case VPU::ExecutorKind::DMA_NN: {
             const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
-            auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(VPU::getArch(module));
+            auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(config::getArch(module));
             for (auto dmaPortIdx : irange(dmaPortNum)) {
                 for (auto dmaChannel : dmaChannels) {
                     taskQueueType.id = getDMAQueueIdEncoding(dmaPortIdx, dmaChannel);

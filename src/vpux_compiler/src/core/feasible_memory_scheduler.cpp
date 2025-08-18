@@ -4,19 +4,14 @@
 //
 
 #include "vpux/compiler/core/feasible_memory_scheduler.hpp"
-
+#include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/utils/async_dialect_utils.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
-#include "vpux/compiler/utils/strings.hpp"
-
-#include "vpux/utils/core/range.hpp"
 
 using namespace vpux;
 using operationIdxType = FeasibleMemoryScheduler::operationIdxType;
@@ -39,8 +34,8 @@ using operationIdxType = FeasibleMemoryScheduler::operationIdxType;
 
 FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::MemoryKind secondLvlMemKind,
                                                  MemLiveRangeInfo& liveRangeInfo, AsyncDepsInfo& depsInfo, Logger log,
-                                                 LinearScan<mlir::Value, LinearScanHandler>& scan, VPU::ArchKind arch,
-                                                 std::shared_ptr<VPUNN::VPUCostModel> costModel,
+                                                 LinearScan<mlir::Value, LinearScanHandler>& scan,
+                                                 config::ArchKind arch, std::shared_ptr<VPUNN::VPUCostModel> costModel,
                                                  int64_t nceClusterCount, int64_t dmaCount,
                                                  bool enableScheduleStatistics, bool optimizeFragmentation)
         : _log(log),
