@@ -5,13 +5,14 @@
 
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
-#include "vpux/compiler/dialect/config/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
@@ -19,7 +20,7 @@
 using namespace vpux;
 
 bool vpux::VPU::hasVPUNNPreSplit(mlir::Operation* op) {
-    return VPU::getConstraint(op, VPU::VPUNN_PRE_SPLIT);
+    return VPU::getConstraint<bool>(op, VPU::VPUNN_PRE_SPLIT);
 }
 
 ///@brief Validate vpunn cost. If cost is not the defined error code then return it
@@ -139,11 +140,11 @@ float vpux::VPU::getWeightsSparsityRatio(mlir::Value weights) {
     return weightsSparsityRatio;
 }
 
-VPUNN::VPUDevice vpux::VPU::getVPUDeviceType(VPU::ArchKind archKind) {
+VPUNN::VPUDevice vpux::VPU::getVPUDeviceType(config::ArchKind archKind) {
     switch (archKind) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUNN::VPUDevice::VPU_2_7;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return VPUNN::VPUDevice::VPU_4_0;
     default:
         VPUX_THROW("Unsupported VPU arch type: '{0}'", archKind);
@@ -184,6 +185,13 @@ std::optional<VPUNN::DataType> vpux::VPU::getVPUNNElementType(mlir::Type type) {
     } else if (type.isUnsignedInteger(CHAR_BIT * sizeof(int8_t))) {
         return VPUNN::DataType::UINT8;
     } else if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
+        auto storageType = qType.getStorageType();
+        if (storageType.isFloat8E5M2()) {
+            return VPUNN::DataType::BF8;
+        } else if (storageType.isFloat8E4M3FN()) {
+            return VPUNN::DataType::HF8;
+        }
+
         if (qType.getStorageTypeIntegralWidth() == 8) {
             return qType.isSigned() ? VPUNN::DataType::INT8 : VPUNN::DataType::UINT8;
         } else if (qType.getStorageTypeIntegralWidth() == 4) {
@@ -283,8 +291,8 @@ VPUNN::ExecutionMode vpux::VPU::getExecutionMode(VPU::MPEMode mpeMode) {
  * SOK_NO_BROADCAST is only utilized when the VPUNN cost is invalid for SOK to avoid performance regressions
  */
 inline VPUNN::VPUTilingStrategy getSOKLayerStrategy(vpux::VPU::DistributionMode distributionMode,
-                                                    vpux::VPU::ArchKind arch) {
-    if (distributionMode == vpux::VPU::DistributionMode::SEGMENTED && arch > vpux::VPU::ArchKind::NPU40XX) {
+                                                    vpux::config::ArchKind arch) {
+    if (distributionMode == vpux::VPU::DistributionMode::SEGMENTED && arch > vpux::config::ArchKind::NPU40XX) {
         return VPUNN::VPUTilingStrategy::SOK_NO_BROADCAST;
     }
     return VPUNN::VPUTilingStrategy::SOK;
@@ -298,7 +306,7 @@ inline VPUNN::VPUTilingStrategy getSOKLayerStrategy(vpux::VPU::DistributionMode 
  * @param distributionMode the tensor distribution mode
  */
 VPUNN::VPULayerStrategy vpux::VPU::getVPULayerStrategy(VPU::MultiClusterStrategy strategy, size_t nDPUs, size_t nTiles,
-                                                       ArchKind arch, size_t nSHVs, bool prefetching,
+                                                       config::ArchKind arch, size_t nSHVs, bool prefetching,
                                                        DistributionMode distributionMode, mlir::Operation* op) {
     VPUNN::VPULayerStrategy VPUNNStrategy;
     VPUNNStrategy.nDPUs = static_cast<unsigned int>(nDPUs);
@@ -669,7 +677,7 @@ VPUNN::DPUWorkload vpux::VPU::getDPUWorkload(const VPUIP::WorkloadCostParams& ti
 
     auto getISIStrategy = [&](VPU::MultiClusterStrategy layerStrategy) {
         if (layerStrategy == VPU::MultiClusterStrategy::HKSwitch) {
-            if (tileParams.arch >= VPU::ArchKind::NPU40XX) {
+            if (tileParams.arch >= config::ArchKind::NPU40XX) {
                 layerStrategy = VPU::MultiClusterStrategy::SplitOverHeightOverlapped;
             } else {
                 layerStrategy = VPU::MultiClusterStrategy::SplitOverHeight;
@@ -716,8 +724,8 @@ VPUNN::DPUWorkload vpux::VPU::getDPUWorkload(const VPUIP::WorkloadCostParams& ti
     return vpunnDPUWorkload;
 }
 
-VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nceOp, VPU::ArchKind arch, int64_t numDPU,
-                                                          int64_t numTiles) {
+VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nceOp, config::ArchKind arch,
+                                                          int64_t numDPU, int64_t numTiles) {
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     const auto inElemType = inputType.getElementType();
@@ -870,7 +878,7 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
 }
 
 vpux::VPU::LayerCostModelAnalysis::LayerCostModelAnalysis(mlir::ModuleOp module) {
-    auto arch = VPU::getArch(module);
+    auto arch = config::getArch(module);
     _layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
 }
 
@@ -887,7 +895,7 @@ void vpux::VPU::LayerCostModelAnalysis::invalidate() {
 }
 
 std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(
-        std::optional<std::reference_wrapper<vpux::VPU::LayerCostModelAnalysis>> analysis, VPU::ArchKind arch,
+        std::optional<std::reference_wrapper<vpux::VPU::LayerCostModelAnalysis>> analysis, config::ArchKind arch,
         Logger log) {
     if (analysis.has_value()) {
         log.trace("Load preserved layer cost model");
@@ -898,7 +906,7 @@ std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::get
 }
 
 vpux::VPU::CostModelAnalysis::CostModelAnalysis(mlir::ModuleOp module) {
-    auto arch = VPU::getArch(module);
+    auto arch = config::getArch(module);
     _costModel = VPU::CostModelConfig::createCostModel(arch);
 }
 
@@ -915,11 +923,21 @@ void vpux::VPU::CostModelAnalysis::invalidate() {
 }
 
 std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelAnalysis::getOrCreateCostModel(
-        std::optional<std::reference_wrapper<vpux::VPU::CostModelAnalysis>> analysis, VPU::ArchKind arch, Logger log) {
+        std::optional<std::reference_wrapper<vpux::VPU::CostModelAnalysis>> analysis, config::ArchKind arch,
+        Logger log) {
     if (analysis.has_value()) {
         log.trace("Load preserved cost model");
         return analysis.value().get().getVPUNNCostModel();
     }
     log.warning("Create new cost model instance");
     return VPU::CostModelConfig::createCostModel(arch);
+}
+
+vpux::VPU::ICostModelUtilsInterface* vpux::VPU::getICostModelUtilsInterface(mlir::MLIRContext* ctx) {
+    auto* dialect = ctx->getOrLoadDialect<vpux::VPU::VPUDialect>();
+    assert(dialect != nullptr && "VPU Dialect must be present in the context");
+
+    auto iface = dialect->getRegisteredInterface<vpux::VPU::ICostModelUtilsInterface>();
+    assert(iface != nullptr && "The requested interface must be registered in the context");
+    return iface;
 }

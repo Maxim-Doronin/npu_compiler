@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/performance_metrics.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/frequency_table.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/utils/profiling/parser/freq.hpp"
 
@@ -62,11 +63,11 @@ SmallVector<SmallVector<uint64_t>> getBWTicks(mlir::ModuleOp module) {
     }
 
     // Get corresponding dpu freq (MHz) from vpunn to parse inferenceTimebyDPUCycle
-    const auto arch = VPU::getArch(module);
-    size_t dpuBaseFreq = VPU::getDpuFrequency(arch, VPU::getRevisionID(module));
+    const auto arch = config::getArch(module);
+    size_t dpuBaseFreq = VPU::getDpuFrequency(arch, config::getRevisionID(module));
     // Convert inference ticks by getProfClk
-    auto profClk = arch >= VPU::ArchKind::NPU40XX ? profiling::ProfClk40XX::PROF_CLK_DEFAULT_VALUE_MHZ
-                                                  : profiling::ProfClk37XX::PROF_CLK_DEFAULT_VALUE_MHZ;
+    auto profClk = arch >= config::ArchKind::NPU40XX ? profiling::ProfClk40XX::PROF_CLK_DEFAULT_VALUE_MHZ
+                                                     : profiling::ProfClk37XX::PROF_CLK_DEFAULT_VALUE_MHZ;
     auto freqTable = VPU::getFrequencyTable(arch);
     auto freqBase = freqTable().base;
     auto freqStep = freqTable().step;
@@ -88,11 +89,11 @@ SmallVector<SmallVector<uint64_t>> getBWTicks(mlir::ModuleOp module) {
 double getActivityFactor(VPU::ExecutorKind execKind, mlir::ModuleOp module, IE::ComputeResourceOpInterface res) {
     // 0.5 is a recommanded default value for AF by VPUNN team
     double activityFactor = 0.5;
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     if (execKind == VPU::ExecutorKind::NCE || execKind == VPU::ExecutorKind::SHAVE_NN) {
         switch (arch) {
-        case VPU::ArchKind::NPU37XX:
-        case VPU::ArchKind::NPU40XX:
+        case config::ArchKind::NPU37XX:
+        case config::ArchKind::NPU40XX:
             // Here we must get AF from NCE res (a TileResourceOp) as the AF attribute is attached to tile op
             if (execKind == VPU::ExecutorKind::NCE) {
                 auto NCERes = mlir::cast<IE::TileResourceOp>(res.getOperation());

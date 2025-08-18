@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_general_algorithm.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 using namespace vpux;
 using namespace VPU;
@@ -29,4 +30,11 @@ mlir::LogicalResult TilingGeneralAlgorithm::applyTiling(mlir::Operation* operati
     }
     operation->removeAttr(tilingStrategy);
     return VPU::applyTileStrategy(tilingBuilder, tiles.value(), builder, log);
+}
+
+mlir::FailureOr<SmallVector<mlir::Operation*>> TilingGeneralAlgorithm::applyVerticalFusion(mlir::Operation*,
+                                                                                           mlir::RewriterBase&,
+                                                                                           Logger) {
+    // TODO E-172818 move VF general algorithm here
+    return mlir::failure();
 }

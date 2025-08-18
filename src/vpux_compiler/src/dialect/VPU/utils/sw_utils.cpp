@@ -647,6 +647,39 @@ SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::ClusteredOpInterfa
     return getActivationTensorNumTiles(clusteredOp, numClustersAvailableForCompilation, strategy);
 }
 
+SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::MemPermuteOp mempermuteOp,
+                                                         int64_t numClustersAvailableForCompilation,
+                                                         VPU::MultiClusterStrategy strategy) {
+    SmallVector<int64_t> outputTensorNumTiles;
+    if (strategy == VPU::MultiClusterStrategy::Clustering) {
+        outputTensorNumTiles = {1, 1, 1, 1};
+    } else if (strategy == VPU::MultiClusterStrategy::SplitOverKernel) {
+        outputTensorNumTiles = {1, numClustersAvailableForCompilation, 1, 1};
+    } else if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
+        outputTensorNumTiles = {1, 1, numClustersAvailableForCompilation, 1};
+    } else {
+        VPUX_THROW("{0} is an invalid multi-cluster strategy, unable to determine the number of tiles for mempermute ",
+                   strategy);
+    }
+
+    // back infer for input tensor num tiles before permutation
+    // outLogicDim -(map)-> outMemDim -(reversed Perm)-> inMemDim -(map)-> inLogicDim
+    const auto memPerm = mempermuteOp.getMemPerm();
+    const auto perm = DimsOrder::fromAffineMap(memPerm);
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(mempermuteOp.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(mempermuteOp.getOutput().getType());
+    const auto inOrder = inType.getDimsOrder();
+    const auto outOrder = outType.getDimsOrder();
+    SmallVector<int64_t> inputTensorNumTiles(outputTensorNumTiles.size(), 1);
+    for (size_t outLogicInd = 0; outLogicInd < outputTensorNumTiles.size(); ++outLogicInd) {
+        const auto outMemDim = outOrder.dimAt(outLogicInd);
+        const auto inMemDim = perm.dimAt(outMemDim.ind());
+        const auto inLogicDim = inOrder.dimAt(inMemDim.ind());
+        inputTensorNumTiles[inLogicDim.ind()] = outputTensorNumTiles[outLogicInd];
+    }
+    return inputTensorNumTiles;
+}
+
 SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::InterpolateOp interpolateOp,
                                                          int64_t numClustersAvailableForCompilation,
                                                          VPU::MultiClusterStrategy strategy, mlir::Value operand) {
@@ -1267,6 +1300,9 @@ SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::ClusteredOpInterfa
                 return getSWInputTensorNumTiles(op, numClustersAvailableForCompilation, strategy);
             })
             .Case<VPU::MatMulOp>([&](VPU::MatMulOp op) {
+                return getSWInputTensorNumTiles(op, numClustersAvailableForCompilation, strategy);
+            })
+            .Case<VPU::MemPermuteOp>([&](VPU::MemPermuteOp op) {
                 return getSWInputTensorNumTiles(op, numClustersAvailableForCompilation, strategy);
             })
             .Case<VPU::LSTMGatesOp>([&](VPU::LSTMGatesOp lstmGatesOp) {

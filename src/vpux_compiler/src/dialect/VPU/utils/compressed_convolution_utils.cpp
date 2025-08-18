@@ -11,5 +11,5 @@
 using namespace vpux;
 
 bool VPU::hasFP16CompressedConv(mlir::Operation* op) {
-    return VPU::getConstraint(op, FP16_COMPRESSED_CONV);
+    return VPU::getConstraint<bool>(op, FP16_COMPRESSED_CONV);
 }

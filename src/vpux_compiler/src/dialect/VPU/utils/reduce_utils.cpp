@@ -8,6 +8,7 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 
@@ -51,7 +52,8 @@ bool fitIntoCMXReduce(mlir::Operation* operation, llvm::ArrayRef<vpux::NDTypeInt
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(operation).count()
                                                           : getTotalCMXFragmentationAwareSize(operation).count();
 
-    return calculateAlignedBuffersMemoryRequirement(getArch(operation), buffersSize).count() + reservedMem.count() <=
+    return calculateAlignedBuffersMemoryRequirement(config::getArch(operation), buffersSize).count() +
+                   reservedMem.count() <=
            totalAvailableCMXSize;
 }
 

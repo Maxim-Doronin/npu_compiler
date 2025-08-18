@@ -14,29 +14,6 @@
 
 using namespace vpux;
 
-bool hasEnableExtraStaticShapeOpOption(mlir::ModuleOp module, StringRef option) {
-    auto pipelineOptionOp = module.lookupSymbol<config::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS);
-    if (pipelineOptionOp == nullptr) {
-        auto logger = vpux::Logger::global();
-        logger.trace("Failed to find PipelineOptions to fetch extra shape bound option");
-        return false;
-    }
-
-    auto attrValue = pipelineOptionOp.lookupSymbol<config::OptionOp>(option);
-    if (attrValue == nullptr) {
-        auto logger = vpux::Logger::global();
-        logger.trace("Failed to find config.OptionOp to fetch extra shape bound option");
-        return false;
-    }
-    auto boolAttr = mlir::dyn_cast<mlir::BoolAttr>(attrValue.getOptionValue());
-    if (boolAttr == nullptr) {
-        auto logger = vpux::Logger::global();
-        logger.trace("Failed to cast config.OptionOp to BoolAttr");
-        return false;
-    }
-    return boolAttr.getValue();
-}
-
 bool VPU::hasEnableExtraStaticShapeOps(mlir::ModuleOp module) {
-    return hasEnableExtraStaticShapeOpOption(module, ENABLE_EXTRA_STATIC_SHAPE_OPS);
+    return VPU::tryGetBoolPassOption(module, ENABLE_EXTRA_STATIC_SHAPE_OPS).value_or(false);
 }

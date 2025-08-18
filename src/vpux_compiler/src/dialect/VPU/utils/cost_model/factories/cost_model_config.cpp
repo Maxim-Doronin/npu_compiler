@@ -7,6 +7,7 @@
 #include "vpux/compiler/NPU37XX/dialect/VPU/utils/cost_model_factory.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPU/utils/cost_model_factory.hpp"
 
+using namespace vpux::config;
 namespace vpux::VPU {
 
 std::map<ArchKind, std::unique_ptr<ICostModelFactory>>& CostModelConfig::_getFactories() {

@@ -5,11 +5,14 @@
 
 #include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
@@ -48,6 +51,13 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
     auto siblingsOpsAnalysis = SiblingOpsAnalysis(op);
     auto offset = ShapeRef(outputTile.offsets);
     if (!offset.empty()) {
+        // Tiling has impact if:
+        // - For NCE ops: the height axis is actually being tiled (i.e., more than 1 tile along H)
+        // - For non-NCE ops: always assume tiling has impact
+        auto tilingHasImpact = mlir::isa<VPU::NCEOpInterface>(op) ? (outputTile.axis[Dims4D::Act::H] > 1) : true;
+        if (!tilingHasImpact) {
+            return isSOHCompatible;
+        }
         const auto numClusters = vpux::VPU::getOptimalNumClusters(clusteredOp, outputShape,
                                                                   clusteredOp.getMultiClusterStrategy().value());
         {
@@ -110,7 +120,7 @@ bool VPU::isOperationSplitOverWidthCompatible(mlir::Operation* op, ShapeRef outp
     const auto numTiles = getNumTiles(op);
     const auto minimumOutputWidthForSOW = numTiles;
 
-    const auto arch = VPU::getArch(clusteredOp);
+    const auto arch = config::getArch(clusteredOp);
     if (outputShape == ShapeRef()) {
         outputShape = getShape(clusteredOp->getResult(0));
     }
@@ -125,7 +135,7 @@ bool VPU::isOperationSplitOverWidthCompatible(mlir::Operation* op, ShapeRef outp
     };
 
     auto isSOWCompatible = widthCompatibleCheck(outputShape);
-    if (arch >= VPU::ArchKind::NPU40XX) {
+    if (arch >= config::ArchKind::NPU40XX) {
         // For NPU40XX+, W segmented output needs to have explicit halo regions defined.
         // Thus the applicability of SOW on the current operation is tightly dependent
         // if the consumer operations can be SOW themselves.
@@ -315,7 +325,7 @@ bool VPU::doesLayerFitIntoCMX(mlir::Operation* op, VPU::MultiClusterStrategy str
     auto totalAvailableCMXSize =
             reservedMem.count() == 0 ? getTotalCMXSize(op).count() : getTotalCMXFragmentationAwareSize(op).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(op), buffersSize).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(op), buffersSize).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }

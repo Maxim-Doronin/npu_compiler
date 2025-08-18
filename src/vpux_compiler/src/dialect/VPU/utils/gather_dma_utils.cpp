@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/gather_dma_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux::VPU {
 
@@ -18,7 +19,7 @@ bool isLegalConvertToGatherDMA(VPU::GatherOp op, bool isElementTile, bool isIndi
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
     const auto indicesType = mlir::cast<vpux::NDTypeInterface>(op.getIndices().getType());
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto arch = VPU::getArch(op);
+    auto arch = config::getArch(op);
 
     if (!op.getAxisValue().has_value()) {
         return false;

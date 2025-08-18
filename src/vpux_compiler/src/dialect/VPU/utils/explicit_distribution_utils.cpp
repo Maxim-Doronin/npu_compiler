@@ -4,12 +4,14 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
-#include <optional>
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
 #include "vpux/utils/core/error.hpp"
+#include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/range.hpp"
+
+#include <optional>
 
 using namespace vpux;
 

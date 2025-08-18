@@ -4,12 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
-
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/utils/core/numeric.hpp"
 
 using namespace vpux;
 using namespace VPU;
@@ -50,7 +49,7 @@ bool vpux::VPU::isNCEEltwiseSupported(mlir::Operation* op, vpux::NDTypeInterface
         return false;
     }
 
-    auto arch = getArch(op);
+    auto arch = config::getArch(op);
     if (checkChannelAlignment) {
         auto iface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op);
         auto outputAlignment = iface != nullptr ? iface.getOutputChannelAlignment()

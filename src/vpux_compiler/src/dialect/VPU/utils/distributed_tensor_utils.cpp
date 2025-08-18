@@ -4,10 +4,9 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
-#include <llvm/ADT/TypeSwitch.h>
-#include <mlir/IR/Operation.h>
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
@@ -18,11 +17,16 @@
 #include "vpux/compiler/dialect/VPU/utils/overlap_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/dilated_utils.hpp"
+#include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/range.hpp"
+
+#include <llvm/ADT/TypeSwitch.h>
+#include <mlir/IR/Operation.h>
 
 using namespace vpux;
 using namespace VPU;
@@ -323,7 +327,7 @@ bool vpux::VPU::isSOCSegmentedNCEOp(mlir::Operation* op) {
     return mlir::isa<VPU::NCEPermuteOp>(op) ||
            (mlir::isa<VPU::NCEDepthConvolutionOp, VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp>(op) &&
             isSOCSegmentedOp(parentOp)) ||
-           (getArch(op) > VPU::ArchKind::NPU40XX && mlir::isa<VPU::NCEEltwiseOp>(op));
+           (config::getArch(op) > config::ArchKind::NPU40XX && mlir::isa<VPU::NCEEltwiseOp>(op));
 }
 
 bool vpux::VPU::inputProducersCompatible(mlir::Operation* op, mlir::DenseSet<mlir::Operation*> handledUsers) {
@@ -380,7 +384,7 @@ bool vpux::VPU::isSegmentedInputCompatible(mlir::Operation* op, mlir::DenseSet<m
     }
 
     // For NCEEltwiseOp, only support SEG IN SEG OUT
-    if (getArch(op) > VPU::ArchKind::NPU40XX && mlir::isa<VPU::NCEEltwiseOp>(op)) {
+    if (config::getArch(op) > config::ArchKind::NPU40XX && mlir::isa<VPU::NCEEltwiseOp>(op)) {
         return true;
     }
 
@@ -418,7 +422,7 @@ bool vpux::VPU::isSegmentedInputCompatible(mlir::Operation* op, mlir::DenseSet<m
         // check siblings
         handledUsers.insert(op);
         for (auto* user : input.getUsers()) {
-            if (handledUsers.contains(user)) {
+            if (handledUsers.contains(user) || mlir::isa<mlir::func::ReturnOp>(user)) {
                 continue;
             }
 
@@ -518,7 +522,7 @@ bool vpux::VPU::isSOKSegmentedOutputCompatible(mlir::Operation* op) {
 
     // force SEG -> DWConv -> SEG or SEG|DUP -> DWConv -> SEG|DUP to avoid accuracy issue
     if (mlir::isa<VPU::NCEDepthConvolutionOp, NCEMaxPoolOp, NCEAveragePoolOp>(op)) {
-        if (VPU::getArch(op) >= VPU::ArchKind::NPU40XX) {
+        if (config::getArch(op) >= config::ArchKind::NPU40XX) {
             auto dstOrder = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getDimsOrder();
             // Here we have two cases to choose SOC as default for Depthwise ops:
             //   1. The output consumer is compatible with SEGMENTED mode
@@ -644,10 +648,10 @@ SmallVector<int64_t> vpux::VPU::getActivationTensorNumTiles(VPU::ClusteredOpInte
     }
 }
 
-bool vpux::VPU::isDWOpAndNeedsAlign(ArchKind arch, VPUIP::NCETaskType nceTaskType) {
+bool vpux::VPU::isDWOpAndNeedsAlign(config::ArchKind arch, VPUIP::NCETaskType nceTaskType) {
     bool isDWOp = nceTaskType == VPUIP::NCETaskType::DWCONV || nceTaskType == VPUIP::NCETaskType::MAXPOOL ||
                   nceTaskType == VPUIP::NCETaskType::AVEPOOL;
-    return (arch == VPU::ArchKind::NPU37XX) && isDWOp;
+    return (arch == config::ArchKind::NPU37XX) && isDWOp;
 }
 
 bool vpux::VPU::isEltwiseOpAndNeedsAlign(VPU::ClusteredOpInterface clusteredOp) {
@@ -972,14 +976,14 @@ std::optional<SmallVector<int64_t>> vpux::VPU::getActivationTensorAlignment(VPU:
     } else if (strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
                strategy == VPU::MultiClusterStrategy::HKSwitch) {
         auto operation = clusteredOp.getOperation();
-        auto arch = getArch(operation);
+        auto arch = config::getArch(operation);
 
-        if (arch >= VPU::ArchKind::NPU40XX) {
+        if (arch >= config::ArchKind::NPU40XX) {
             return std::nullopt;
         }
 
         if (mlir::isa<VPU::NCEConvolutionOp, VPU::NCEInterpolateOp>(operation) ||
-            ((arch == VPU::ArchKind::NPU37XX) &&
+            ((arch == config::ArchKind::NPU37XX) &&
              mlir::isa<VPU::NCEDepthConvolutionOp, VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp,
                        VPU::NCECompressConvolutionOp>(operation)) ||
             isEltwiseOpAndNeedsAlign(clusteredOp)) {
@@ -1223,88 +1227,91 @@ DistributionMode vpux::VPU::getActivationTensorDistributionMode(VPU::ClusteredOp
             strategy != VPU::MultiClusterStrategy::SplitOverHeight && strategy != VPU::MultiClusterStrategy::HKSwitch) {
             return false;
         }
-
         auto op = clusteredOp.getOperation();
-
         // Note: disable concat as it is a complex topic
-        // As concatOp has a special cmx-concat pattern check, thus the spilling may still exist even to assign
-        // DUPLICATED
+        // As concatOp has a special cmx-concat pattern check, thus the spilling may still
+        // exist even to assign DUPLICATED
         if (mlir::isa<VPU::ConcatOp>(op)) {
             return false;
         }
-
-        // For NCECompressConvolutionOp, the activation (without expansion) must have a channel size of
-        // VPU_COMPRESSED_INPUT_CHANNEL_NUM (4). Otherwise, duplicated inputs with workload offsets cannot correctly
-        // access the activation data for each cluster, leading to accuracy issues
+        // For NCECompressConvolutionOp, the activation (without expansion) must have a
+        // channel size of VPU_COMPRESSED_INPUT_CHANNEL_NUM (4). Otherwise, duplicated
+        // inputs with workload offsets cannot correctly access the activation data for
+        // each cluster, leading to accuracy issues
         if (auto compressConv = mlir::dyn_cast<VPU::NCECompressConvolutionOp>(op)) {
             auto origChannelVal = static_cast<int64_t>(std::log2(compressConv.getCmSpPattern() + 1));
             if (origChannelVal != VPU::NCEInvariant::VPU_COMPRESSED_INPUT_CHANNEL_NUM) {
                 return false;
             }
         }
-
-        // For sw ops, current solution is dependent on workload offsets adjust so not support sw ops
-        // Todo: refer to ticket E#118242: use per cluster unrolling to solve it
+        // For sw ops, current solution is dependent on workload offsets adjust so not
+        // support sw ops Todo: refer to ticket E#118242: use per cluster unrolling to
+        // solve it
         if (mlir::isa<VPU::SWOpInterface>(op)) {
             return false;
         }
-
-        llvm::SmallVector<bool> eltwiseInputsCompatible = {false, false};
+        auto eltwiseOp = mlir::dyn_cast<VPU::NCEEltwiseOp>(op);
+        if (eltwiseOp != nullptr && eltwiseOp.getIsInplace().value_or(false)) {
+            // E135492: Accuracy issue with duplicated input for SOH-like inplace
+            // eltwise
+            // TODO remove this check after the issue is fixed
+            Logger::global().trace("Select OVERLAPPED mode for the activation of SOH-like strategies for ELTWISE op");
+            return false;
+        }
+        llvm::SmallVector<bool> areAllOperandsDuplicateLikeMode;
         for (auto operand : op->getOperands() | indexed) {
+            if (mlir::isa_and_nonnull<mlir::BlockArgument>(operand.value())) {
+                areAllOperandsDuplicateLikeMode.push_back(false);
+                continue;
+            }
             auto producerOp = operand.value().getDefiningOp();
             // Skip cast ops
-            while (auto producerCastOp = mlir::dyn_cast_or_null<VPU::DistributedCastOpInterface>(producerOp)) {
-                if (VPU::hasRestrictedTilingDim(producerCastOp)) {
-                    break;
+            while (producerOp && mlir::isa_and_nonnull<VPU::DistributedCastOpInterface>(producerOp)) {
+                if (auto producerCastOp = mlir::dyn_cast<VPU::DistributedCastOpInterface>(producerOp)) {
+                    if (VPU::hasRestrictedTilingDim(producerCastOp)) {
+                        break;
+                    }
                 }
                 if (hasMultiBranches(producerOp)) {
                     break;
                 }
                 producerOp = producerOp->getOperand(0).getDefiningOp();
             }
-            if (producerOp == nullptr) {
-                return false;
+            if (!producerOp || mlir::isa_and_nonnull<Const::DeclareOp>(producerOp)) {
+                continue;
+            }
+            if (mlir::isa<VPU::ConcatOp>(producerOp) || !mlir::isa<VPU::ClusteredOpInterface>(producerOp)) {
+                areAllOperandsDuplicateLikeMode.push_back(false);
+                continue;
             }
 
-            if (mlir::isa<VPU::ConcatOp>(producerOp) || (!mlir::isa<VPU::ClusteredOpInterface>(producerOp))) {
-                return false;
-            }
-
-            if (mlir::isa<VPU::ClusteredOpInterface>(producerOp)) {
-                auto clusteredProducer = mlir::cast<VPU::ClusteredOpInterface>(producerOp);
-                const auto producerStrategy = clusteredProducer.getMultiClusterStrategy();
-                if (!producerStrategy.has_value()) {
-                    return false;
-                }
+            auto clusteredProducer = mlir::cast<VPU::ClusteredOpInterface>(producerOp);
+            const auto producerStrategy = clusteredProducer.getMultiClusterStrategy();
+            if (!producerStrategy.has_value()) {
+                areAllOperandsDuplicateLikeMode.push_back(false);
+            } else {
                 auto mode = VPU::getOutputTensorDistributionMode(clusteredProducer, producerStrategy.value(), nullptr);
-                if (!VPU::bitEnumContainsAny(mode, DistributionMode::DUPLICATED) &&
-                    !VPU::bitEnumContainsAny(mode, DistributionMode::MULTICASTED)) {
-                    return false;
+                if (VPU::bitEnumContainsAny(mode, DistributionMode::DUPLICATED) ||
+                    VPU::bitEnumContainsAny(mode, DistributionMode::MULTICASTED)) {
+                    areAllOperandsDuplicateLikeMode.push_back(true);
+                } else {
+                    areAllOperandsDuplicateLikeMode.push_back(false);
                 }
             }
-            auto eltwiseOp = mlir::dyn_cast<VPU::NCEEltwiseOp>(op);
-            if (eltwiseOp == nullptr) {
-                Logger::global().trace("Select DUPLICATED mode for the activation of SOH-like strategys");
-                return true;
-            }
-            if (eltwiseOp.getIsInplace().value_or(false)) {
-                // E135492: Accuracy issue with duplicated input for SOH-like inplace eltwise
-                // TODO remove this check after the issue is fixed
-                Logger::global().trace(
-                        "Select SEGMENTED mode for the activation of SOH-like strategies for ELTWISE op");
-                return false;
-            }
-
-            eltwiseInputsCompatible[operand.index()] = true;
         }
-
-        if (std::all_of(eltwiseInputsCompatible.begin(), eltwiseInputsCompatible.end(), [](auto val) {
+        // For eltwise Op, all inputs need to have distribution mode compatible with DUPLICATED mode
+        if (mlir::isa<VPU::NCEEltwiseOp>(op)) {
+            return std::all_of(areAllOperandsDuplicateLikeMode.begin(), areAllOperandsDuplicateLikeMode.end(),
+                               [](auto val) {
+                                   return val;
+                               });
+        }
+        if (std::any_of(areAllOperandsDuplicateLikeMode.begin(), areAllOperandsDuplicateLikeMode.end(), [](auto val) {
                 return val;
             })) {
-            Logger::global().trace("Select DUPLICATED mode for the activation of SOH-like strategys");
+            Logger::global().trace("Select DUPLICATED mode for the activation of SOH-like strategies");
             return true;
         }
-
         return false;
     };
 
@@ -1316,7 +1323,7 @@ DistributionMode vpux::VPU::getActivationTensorDistributionMode(VPU::ClusteredOp
                strategy == VPU::MultiClusterStrategy::HKSwitch) {
         // TODO: be more explicit ahead of time wrt MultiClusterStrategy for 40XX.
         // E#71926 to track this.
-        if (VPU::isArchVPUX3XXX(VPU::getArch(clusteredOp))) {
+        if (config::isArchVPUX3XXX(config::getArch(clusteredOp))) {
             return DistributionMode::SEGMENTED;
         }
         return isDuplicatedModeForSOHLikeStrategy() ? DistributionMode::DUPLICATED : DistributionMode::OVERLAPPED;
@@ -1332,6 +1339,21 @@ DistributionMode vpux::VPU::getActivationTensorDistributionMode(VPU::ClusteredOp
     } else if (strategy == VPU::MultiClusterStrategy::SplitOverGroup) {
         return DistributionMode::SEGMENTED;
     } else {
+        VPUX_THROW("{0} is an invalid multi-cluster strategy, unable to determine the distribution mode for the "
+                   "activation tensor",
+                   strategy);
+    }
+}
+
+DistributionMode vpux::VPU::getActivationTensorDistributionMode(VPU::GatherDMAOp op, VPU::MultiClusterStrategy strategy,
+                                                                mlir::Value operand) {
+    const auto isIndicesTensor = operand == op.getIndices();
+
+    switch (strategy) {
+    case VPU::MultiClusterStrategy::SplitOverWidth:
+    case VPU::MultiClusterStrategy::SplitOverHeight:
+        return isIndicesTensor ? DistributionMode::DUPLICATED : DistributionMode::SEGMENTED;
+    default:
         VPUX_THROW("{0} is an invalid multi-cluster strategy, unable to determine the distribution mode for the "
                    "activation tensor",
                    strategy);
@@ -1362,7 +1384,8 @@ DistributionMode vpux::VPU::getOutputTensorDistributionMode(VPU::ClusteredOpInte
         strategy == VPU::MultiClusterStrategy::SplitOverWidth) {
         // TODO: be more explicit ahead of time wrt MultiClusterStrategy for 40XX.
         // E#71926 to track this.
-        if (VPU::isArchVPUX3XXX(VPU::getArch(clusteredOp)) || mlir::isa<SWOpInterface>(clusteredOp.getOperation())) {
+        if (config::isArchVPUX3XXX(config::getArch(clusteredOp)) ||
+            mlir::isa<SWOpInterface, GatherDMAOp>(clusteredOp.getOperation())) {
             return DistributionMode::SEGMENTED;
         }
         return DistributionMode::OVERLAPPED;
@@ -1428,8 +1451,8 @@ int64_t vpux::VPU::getSOHPerClusterHeightAlignment(int64_t inputWidth, bool isIn
 }
 
 int64_t vpux::VPU::getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse,
-                                                VPU::ArchKind arch) {
-    if (!VPU::isArchVPUX3XXX(arch)) {
+                                                config::ArchKind arch) {
+    if (!config::isArchVPUX3XXX(arch)) {
         return 1;
     }
 
@@ -1453,7 +1476,7 @@ int64_t vpux::VPU::getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t nu
 }
 
 bool vpux::VPU::isSOHSupportedByDPU(vpux::NDTypeInterface inputType, ShapeRef inputShape, int64_t numClusters, bool,
-                                    ArchKind arch) {
+                                    config::ArchKind arch) {
     // Layers with 5D input shapes does not support SOH
     if (inputShape.size() == DimsGroups5D::Act::numDims) {
         return false;
@@ -1475,7 +1498,7 @@ bool vpux::VPU::isSOHSupportedByDPU(vpux::NDTypeInterface inputType, ShapeRef in
     // On VPUX40XX, SOH doesn't have the rules above
     // Actually the input tile shapes are completely back-inferred by output tile shapes which are following
     // uniformDistributedSegments method
-    if (arch >= VPU::ArchKind::NPU40XX) {
+    if (arch >= config::ArchKind::NPU40XX) {
         return true;
     }
 
@@ -1500,7 +1523,7 @@ bool vpux::VPU::isSOHSupportedByDPU(vpux::NDTypeInterface inputType, ShapeRef in
 
 bool vpux::VPU::isSOGSupportedByDPU([[maybe_unused]] vpux::NDTypeInterface inputType,
                                     [[maybe_unused]] ShapeRef inputShape, [[maybe_unused]] int64_t numClusters,
-                                    [[maybe_unused]] bool DWTypeOp, [[maybe_unused]] ArchKind arch) {
+                                    [[maybe_unused]] bool DWTypeOp, [[maybe_unused]] config::ArchKind arch) {
     return true;
 }
 
@@ -1687,6 +1710,10 @@ VPU::DistributedTensorType vpux::VPU::createDistributedTensorType(
                                                    numClusters, alignment, uniformDistributedSegments,
                                                    overlapParams.getKernel(), padAttr, overlapParams.getStride());
             })
+            .Case<VPU::GatherDMAOp>([&](VPU::GatherDMAOp gatherDMAOp) {
+                return createDistributedTensorType(gatherDMAOp, inputType, distributionMode, numTiles, numClusters,
+                                                   alignment, uniformDistributedSegments);
+            })
             .Default([clusteredOp](mlir::Operation*) -> DistributedTensorType {
                 VPUX_THROW("unsupported operation for createDistributedTensorType: {0}", clusteredOp);
             });
@@ -1849,6 +1876,23 @@ DistributedTensorType vpux::VPU::createDistributedTensorType(
                                                 VPU::Padding::getClassFromAttr(pad), stride)));
 }
 
+DistributedTensorType vpux::VPU::createDistributedTensorType(
+        VPU::GatherDMAOp gatherDMAOp, vpux::NDTypeInterface inputType, DistributionMode distributionMode,
+        ArrayRef<int64_t> numTiles, int64_t optimalNumberOfClusters, ArrayRef<int64_t> alignment,
+        const bool uniformDistributedSegments) {
+    auto* ctx = gatherDMAOp->getContext();
+    const auto memSpace = vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(MemoryKind::CMX_NN));
+
+    const auto order = mlir::AffineMapAttr::get(inputType.getDimsOrder().toAffineMap(ctx));
+    auto elemType = inputType.getElementType();
+
+    return DistributedTensorType::get(
+            ctx, inputType.getShape().raw(), elemType, order, memSpace,
+            VPU::DistributionInfo::getAttrFromClass(
+                    ctx, createDistributionInfo(gatherDMAOp, distributionMode, numTiles, optimalNumberOfClusters,
+                                                alignment, uniformDistributedSegments)));
+}
+
 vpux::VPU::CopyOp vpux::VPU::createDistributedCopyIn(mlir::PatternRewriter& rewriter,
                                                      VPU::ClusteredOpInterface clusteredOp, mlir::Value input,
                                                      vpux::NDTypeInterface inputTensorDistributedTensorType) {
@@ -1990,13 +2034,16 @@ VPU::DistributedTypeInterface vpux::VPU::getDistributedActivationTypeFromOp(
         VPU::ClusteredOpInterface clusteredOp, mlir::Value operand, vpux::NDTypeInterface inputType,
         int64_t numClusters, VPU::MultiClusterStrategy customStrategy, ArrayRef<int64_t> customAlignment,
         vpux::NDTypeInterface tiledOutputType, const vpux::TileInfo& tileInfo) {
-    auto activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, customStrategy);
-    auto activationTensorNumTiles = getActivationTensorNumTiles(clusteredOp, numClusters, customStrategy, inputType);
+    DistributionMode activationTensorDistributionMode;
+    SmallVector<int64_t> activationTensorNumTiles;
     if (mlir::isa<VPU::SWOpInterface>(clusteredOp.getOperation())) {
         activationTensorDistributionMode =
                 getSWInputTensorDistributionMode(clusteredOp, customStrategy, operand, inputType);
         activationTensorNumTiles =
                 getSWInputTensorNumTiles(clusteredOp, numClusters, customStrategy, operand, inputType);
+    } else {
+        activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, customStrategy);
+        activationTensorNumTiles = getActivationTensorNumTiles(clusteredOp, numClusters, customStrategy, inputType);
     }
 
     auto actualOutputType = tiledOutputType != nullptr
@@ -2717,6 +2764,24 @@ VPU::DistributionInfo vpux::VPU::createDistributionInfo(
     return {};
 }
 
+VPU::DistributionInfo vpux::VPU::createDistributionInfo(VPU::GatherDMAOp gatherDMAOp, DistributionMode distributionMode,
+                                                        ArrayRef<int64_t> numTiles, int64_t optimalNumberOfClusters,
+                                                        ArrayRef<int64_t> alignment, bool uniformDistributedSegments) {
+    VPUX_THROW_UNLESS(mlir::isa_and_nonnull<VPU::GatherDMAOp>(gatherDMAOp), "Op {0} is not a view like op",
+                      gatherDMAOp->getName());
+
+    if (distributionMode == DistributionMode::DUPLICATED) {
+        return DistributionInfo(distributionMode, {}, {}, {}, {}, optimalNumberOfClusters, alignment,
+                                uniformDistributedSegments, {}, {}, {}, {}, {});
+    } else if (VPU::bitEnumContainsAny(distributionMode, VPU::DistributionMode::SEGMENTED)) {
+        return DistributionInfo(distributionMode, numTiles, {}, {}, {}, optimalNumberOfClusters, alignment,
+                                uniformDistributedSegments, {}, {}, {}, {}, {});
+    }
+    VPUX_THROW("Unsupported distribution mode {0} for op {1}", VPU::stringifyDistributionMode(distributionMode),
+               gatherDMAOp);
+    return {};
+}
+
 TensorDistributionMap vpux::VPU::getActivationDistributionAttrFromOp(
         VPU::ClusteredOpInterface clusteredOp, mlir::Value operand, vpux::NDTypeInterface inputType,
         int64_t numClusters, SiblingOpsAnalysis& siblingsAnalysis, vpux::NDTypeInterface tiledOutputType,
@@ -2739,6 +2804,9 @@ TensorDistributionMap vpux::VPU::getActivationDistributionAttrFromOp(
                 getSWInputTensorDistributionMode(clusteredOp, customStrategy, operand, inputType);
         activationTensorNumTiles =
                 getSWInputTensorNumTiles(clusteredOp, numClusters, customStrategy, operand, inputType);
+    } else if (auto gatherOp = mlir::dyn_cast_or_null<VPU::GatherDMAOp>(clusteredOp.getOperation())) {
+        activationTensorDistributionMode = getActivationTensorDistributionMode(gatherOp, customStrategy, operand);
+        activationTensorNumTiles = getActivationTensorNumTiles(clusteredOp, numClusters, customStrategy, inputType);
     } else {
         activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, customStrategy);
         activationTensorNumTiles = getActivationTensorNumTiles(clusteredOp, numClusters, customStrategy, inputType);
@@ -2974,6 +3042,10 @@ VPU::DistributionInfo vpux::VPU::createDistributionInfo(VPU::ClusteredOpInterfac
                 return createDistributionInfo(concatOp.getOperation(), distributionMode, numTiles, numClusters,
                                               alignment, uniformDistributedSegments, overlapParams.getKernel(),
                                               overlapParams.getPads(), overlapParams.getStride());
+            })
+            .Case<VPU::GatherDMAOp>([&](VPU::GatherDMAOp gatherOp) {
+                return createDistributionInfo(gatherOp, distributionMode, numTiles, numClusters, alignment,
+                                              uniformDistributedSegments);
             })
             .Default([clusteredOp](mlir::Operation*) -> DistributionInfo {
                 VPUX_THROW("unsupported operation for createDistributedTensor: {0}", clusteredOp);

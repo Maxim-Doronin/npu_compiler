@@ -4,15 +4,15 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
-
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/VPU/IR/types.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes_properties_conversion.hpp"
 #include "vpux/compiler/utils/types.hpp"
-
 #include "vpux/utils/core/enums.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -123,7 +123,6 @@ int32_t vpux::VPU::NCESparsity::getWeightPtrStep(mlir::Value weights) {
 
 std::vector<int32_t> vpux::VPU::NCESparsity::getExpandedWeightsTable(ArrayRef<int32_t> weightsTableVector, int64_t OC) {
     using vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
-    using vpux::VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC;
     auto expandedWTVec = weightsTableVector.vec();
 
     for (auto oc = OC; oc < VPU_CHANNEL_ALIGNMENT; oc++) {
