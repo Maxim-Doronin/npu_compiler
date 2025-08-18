@@ -3,14 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <utility>
-
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <utility>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_DECOMPOSELSTMCELL

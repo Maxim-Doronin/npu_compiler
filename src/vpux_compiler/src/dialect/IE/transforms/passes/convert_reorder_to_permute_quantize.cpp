@@ -3,12 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -45,9 +44,9 @@ mlir::LogicalResult FusePermuteRewrite::matchAndRewrite(IE::ReorderOp origOp, ml
     const auto outOrder = DimsOrder::fromValue(origOp.getOutput());
     auto curInput = origOp.getInput();
     const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
-    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, outType)) {
-        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp
+    const auto origMemPerm = vpux::getPermutationFromOrders(inOrder, outOrder, origOp->getContext());
+    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, origMemPerm) && outOrder == DimsOrder::NHWC) {
+        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp for input
         const auto inMemPerm = vpux::getPermutationFromOrders(inOrder, DimsOrder::NCHW, origOp->getContext());
         auto inPermuteCastOp =
                 rewriter.create<IE::PermuteCastOp>(appendLoc(origOp->getLoc(), "PermuteCast"), origOp.getInput(),
@@ -122,8 +121,11 @@ bool hasQuantizedAvgPoolUserToPropagate(IE::ReorderOp reorder) {
 bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, Logger log) const {
     auto inType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
     const auto outType = mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
-    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, outType)) {
-        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp
+    const auto inOrder = inType.getDimsOrder();
+    const auto outOrder = outType.getDimsOrder();
+    const auto origMemPerm = vpux::getPermutationFromOrders(inOrder, outOrder, reorder->getContext());
+    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, origMemPerm) && outOrder == DimsOrder::NHWC) {
+        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp for input
         inType = inType.changeDimsOrder(DimsOrder::NCHW);
     }
 

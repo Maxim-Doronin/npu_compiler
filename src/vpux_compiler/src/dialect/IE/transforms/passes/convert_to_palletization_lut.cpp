@@ -4,10 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/factories/convert_to_palletization_lut_strategy_getter.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTTOPALLETIZATIONLUT

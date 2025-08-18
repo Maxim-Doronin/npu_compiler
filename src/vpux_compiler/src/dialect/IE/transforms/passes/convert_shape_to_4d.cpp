@@ -4,33 +4,31 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/bitwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/comparison.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/logical.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-
-#include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/range.hpp"
-
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/IRMapping.h>
-#include <mlir/Transforms/DialectConversion.h>
-
-#include <algorithm>
-#include <numeric>
-#include <utility>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTSHAPETO4D
@@ -48,11 +46,12 @@ using MergeMapItem = SmallVector<int64_t>;
 using MergeMap = SmallVector<MergeMapItem>;
 
 bool isTrivialDim(int64_t dim) {
-    // Note: Dynamic dims are marked by negative values.
+    // Note: Dynamic dims are marked by `mlir::ShapedType::kDynamic`.
     return dim == 1;
 }
 
-void alignShapeToReferenceShapeSize(size_t refSize, SmallVector<int64_t>& shape, bool extendOnH) {
+template <typename ShapeType>
+void alignShapeToReferenceShapeSize(size_t refSize, ShapeType& shape, bool extendOnH) {
     VPUX_THROW_UNLESS(refSize >= shape.size(), "The reference shape size({0}) < shape size({1})", refSize,
                       shape.size());
     const size_t diff = refSize - shape.size();
@@ -62,7 +61,7 @@ void alignShapeToReferenceShapeSize(size_t refSize, SmallVector<int64_t>& shape,
                               "Extend on H does not support reference shape size({0}) and shape size({1})", refSize,
                               shape.size());
             if (diff == 2) {
-                shape.insert(shape.end(), 1, 1);
+                shape.push_back(1);
             }
             shape.insert(shape.begin() + 2, 1, 1);
         } else {
@@ -71,37 +70,55 @@ void alignShapeToReferenceShapeSize(size_t refSize, SmallVector<int64_t>& shape,
     }
 }
 
-int64_t getBalancedDimIndexFromShape(SmallVector<int64_t> shape) {
-    int64_t dimH = 1;
-    int64_t dimW = 1;
-    int64_t dimIndex = 0;
-    while (!shape.empty()) {
-        if (dimW < dimH) {
-            dimW *= shape.back();
-            shape.pop_back();
+template <typename ShapeType1, typename ShapeType2>
+void alignShapes(ShapeType1& smallShape, ShapeType2& largeShape, bool autoBroadcast) {
+    if (autoBroadcast) {
+        alignShapeToReferenceShapeSize(largeShape.size(), smallShape, false);
+    } else {
+        if (smallShape.size() == 1 && smallShape[Dim(0)] == largeShape[Dim(1)]) {
+            // Some operations need to map their channels first. e.g. PRelu
+            smallShape.insert(smallShape.begin(), 1);
+            smallShape.append(largeShape.size() - 2, 1);
         } else {
-            dimH *= shape.front();
-            shape.erase(shape.begin());
-            dimIndex++;
+            alignShapeToReferenceShapeSize(largeShape.size(), smallShape, false);
         }
     }
-    return dimIndex;
 }
 
-SmallVector<int64_t> alignShapeWithDimMap(ArrayRef<int64_t> originShape, const MergeMap& mapper) {
-    SmallVector<int64_t> retNewShape;
+int64_t getBalancedDimIndex(ShapeRef shape) {
+    int64_t dimH = 1;
+    int64_t dimW = 1;
+    size_t front = 0;
+    size_t back = shape.size();
+
+    while (front < back) {
+        if (dimW < dimH) {
+            --back;
+            dimW *= shape[Dim(back)];
+        } else {
+            dimH *= shape[Dim(front)];
+            ++front;
+        }
+    }
+    return front;
+}
+
+template <typename ShapeType>
+auto alignShapeWithDimMap(const ShapeType& originShape, const MergeMap& mapper) {
+    auto retNewShape = makeShape(originShape, 0, 1);
     for (const auto& dims : mapper) {
-        int64_t dimSize = 1;
+        typename ShapeType::ValueType dimSize = 1;
         for (auto i : dims) {
-            dimSize *= originShape[i];
+            dimSize *= originShape[Dim(i)];
         }
         retNewShape.push_back(dimSize);
     }
     return retNewShape;
 }
 
-SmallVector<int64_t> alignShapeTo4D(ArrayRef<int64_t> originShape, const MergeMap& mapper, bool extendOnH) {
-    auto newShape = extendOnH ? SmallVector<int64_t>(originShape) : alignShapeWithDimMap(originShape, mapper);
+template <typename ShapeType>
+auto alignShapeTo4D(const ShapeType& originShape, const MergeMap& mapper, bool extendOnH) {
+    auto newShape = extendOnH ? copyShape(originShape) : alignShapeWithDimMap(originShape, mapper);
     alignShapeToReferenceShapeSize(TARGET_TENSOR_DIM, newShape, extendOnH);
     return newShape;
 }
@@ -114,7 +131,7 @@ MergeMap getTrivialMap(size_t size) {
     return mapper;
 }
 
-MergeMap getDimMapWithFirstGreater1DimAsC(SmallVector<int64_t> shape) {
+MergeMap getDimMapWithFirstGreater1DimAsC(Shape shape) {
     const int64_t maxDim = checked_cast<int64_t>(shape.size());
     // Try to convert great than 4D shape to 3D.
     // In this way, to promise
@@ -142,35 +159,36 @@ MergeMap getDimMapWithFirstGreater1DimAsC(SmallVector<int64_t> shape) {
 
     shape.erase(shape.begin(), shape.begin() + nextDimCIndex);
     // Convert shape to 2D, and make the value of 2 Dims close to each other
-    const auto splitDimIndex = getBalancedDimIndexFromShape(std::move(shape)) + nextDimCIndex;
+    const auto splitDimIndex = getBalancedDimIndex(shape) + nextDimCIndex;
     retMapper.push_back(irange(nextDimCIndex, splitDimIndex));
     retMapper.push_back(irange(splitDimIndex, maxDim));
     return retMapper;
 }
 
-MergeMap getDimMapGeneric(ArrayRef<int64_t> shape) {
+MergeMap getDimMapGeneric(ShapeRef shape) {
     MergeMap dimMapper;
     if (shape.size() > TARGET_TENSOR_DIM) {
-        return getDimMapWithFirstGreater1DimAsC(to_small_vector(shape));
+        return getDimMapWithFirstGreater1DimAsC(Shape(shape));
     }
     return getTrivialMap(shape.size());
 }
 
-MergeMap getDimMergeMapWith2Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> input2) {
-    auto shapeSize1 = std::accumulate(input1.begin(), input1.end(), (int64_t)1, std::multiplies<int64_t>());
-    auto shapeSize2 = std::accumulate(input2.begin(), input2.end(), (int64_t)1, std::multiplies<int64_t>());
+MergeMap getDimMergeMapWith2Inputs(ShapeRef input1, ShapeRef input2) {
+    const auto shapeSize1 = input1.totalSize();
+    const auto shapeSize2 = input2.totalSize();
     // Find the origin input and broadcast shape
     //  The large size shape is the origin input
     //  The small size shape is the shape that needs to be broadcast in some planes
     auto maxShape = (shapeSize1 > shapeSize2) ? input1 : input2;
     auto planeShape = (shapeSize1 > shapeSize2) ? input2 : input1;
 
-    auto getMergeMap = [](ArrayRef<int64_t> fullShape, ArrayRef<int64_t> planeShape, auto condition) {
+    auto getMergeMap = [](ShapeRef fullShape, ShapeRef planeShape, auto condition) {
         MergeMap dimMap;
         SmallVector<int64_t> inputDimsTmp;
         for (size_t i = 0; i < fullShape.size(); i++) {
-            auto compareVal = condition(i, fullShape);
-            if (compareVal == planeShape[i]) {
+            const auto d = Dim(i);
+            auto compareVal = condition(d, fullShape);
+            if (compareVal == planeShape[d]) {
                 inputDimsTmp.push_back(i);
             } else {
                 if (inputDimsTmp.size() > 1) {
@@ -185,10 +203,10 @@ MergeMap getDimMergeMapWith2Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
         return dimMap;
     };
 
-    auto sameDimCondition = [](size_t i, ArrayRef<int64_t> shape) {
-        return shape[i];
+    auto sameDimCondition = [](Dim d, ShapeRef shape) {
+        return shape[d];
     };
-    auto planeDimCondition = [](size_t, ArrayRef<int64_t>) {
+    auto planeDimCondition = [](Dim, ShapeRef) {
         return 1;
     };
 
@@ -204,7 +222,7 @@ MergeMap getDimMergeMapWith2Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
     //       Dim(0, 1) 4x3 and Dim(2, 3, 4) 13x13x2 can merge together.
     //      Inputs: tensor<1x2x3x4x5x6xf16>, tensor<1x2x1x4x5x1xf16>
     //       Dim(0, 1) 1x2,  Dim(2) 3, Dim(3, 4) 4x5 and Dim(5) 6 can merge together.
-    auto calculateMergeMap = [&](ArrayRef<int64_t> fullShape, ArrayRef<int64_t> planeShape) {
+    auto calculateMergeMap = [&](ShapeRef fullShape, ShapeRef planeShape) {
         auto mergeInSameDims = getMergeMap(fullShape, planeShape, sameDimCondition);
         auto mergeInPlaneDims = getMergeMap(fullShape, planeShape, planeDimCondition);
         MergeMap dimsCanMerge;
@@ -243,10 +261,11 @@ MergeMap getDimMergeMapWith2Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
         return dimsCanMerge;
     };
 
-    auto getSubShape = [](ArrayRef<int64_t> shape, ArrayRef<int64_t> map) {
-        SmallVector<int64_t> retShape;
-        for (auto& dims : map) {
-            retShape.push_back(shape[dims]);
+    auto getSubShape = [](ShapeRef shape, ArrayRef<int64_t> map) {
+        Shape retShape;
+        retShape.reserve(map.size());
+        for (auto& dim : map) {
+            retShape.push_back(shape[Dim(dim)]);
         }
         return retShape;
     };
@@ -266,9 +285,9 @@ MergeMap getDimMergeMapWith2Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
         dimsCanMerge = calculateMergeMap(maxShape, planeShape);
     }
 
-    auto isAllOne = [](const MergeMapItem& item, ArrayRef<int64_t> planeShape) {
+    auto isAllOne = [](const MergeMapItem& item, ShapeRef planeShape) {
         return std::all_of(item.begin(), item.end(), [&](int64_t dim) {
-            return planeShape[dim] == 1;
+            return planeShape[Dim(dim)] == 1;
         });
     };
     switch (dimsCanMerge.size()) {
@@ -278,7 +297,7 @@ MergeMap getDimMergeMapWith2Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
     }
     case 2: {
         auto expandMapTo3D = [&](auto mapIt) {
-            auto newReshapeDim = getBalancedDimIndexFromShape(getSubShape(maxShape, *mapIt));
+            auto newReshapeDim = getBalancedDimIndex(getSubShape(maxShape, *mapIt));
             SmallVector<int64_t> dimTmp(mapIt->begin(), mapIt->begin() + newReshapeDim);
             mapIt->erase(mapIt->begin(), mapIt->begin() + newReshapeDim);
             dimsCanMerge.insert(mapIt, dimTmp);
@@ -321,7 +340,7 @@ MergeMap getDimMergeMapWith2Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
     return dimsCanMerge;
 }
 
-MergeMap getDimMergeMapWith3Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> inputLow, ArrayRef<int64_t> outLow) {
+MergeMap getDimMergeMapWith3Inputs(ShapeRef input1, ShapeRef inputLow, ShapeRef outLow) {
     // Handle 3 input shapes
     //  input:   AxBxCxDxF
     //  in_low:  1xBx1x1x1
@@ -336,7 +355,7 @@ MergeMap getDimMergeMapWith3Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
         return dim > 1;
     };
 
-    auto getDimIdx = [&](ArrayRef<int64_t> dims) -> int64_t {
+    auto getDimIdx = [&](ShapeRef dims) -> int64_t {
         auto firstMoreThanOneIt = std::find_if(dims.begin(), dims.end(), moreThanOnePredicate);
         VPUX_THROW_WHEN(firstMoreThanOneIt == dims.end(), "The shape size is 1, should not enter this case.");
         return std::distance(dims.begin(), firstMoreThanOneIt);
@@ -374,7 +393,7 @@ MergeMap getDimMergeMapWith3Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
     MergeMapItem item;
     for (int64_t dimIdx = 0; dimIdx < checked_cast<int64_t>(newShape.size()); dimIdx++) {
         item.append(mergeMapTmp[dimIdx]);
-        if (newShape[dimIdx] > 1) {
+        if (newShape[Dim(dimIdx)] > 1) {
             mergeMapRet.push_back(item);
             item.clear();
         }
@@ -388,49 +407,64 @@ MergeMap getDimMergeMapWith3Inputs(ArrayRef<int64_t> input1, ArrayRef<int64_t> i
 }
 
 MergeMap extendInputShapeTo4D(IE::FakeQuantizeOp origOp) {
-    auto inputLowScaleShape = to_small_vector(getShape(origOp.getInputLow()));
-    auto outputLowScaleShape = to_small_vector(getShape(origOp.getOutputLow()));
-    const auto inputShape = to_small_vector(getShape(origOp.getInput()));
-    const auto ref1ElemShape = SmallVector<int64_t>(inputShape.size(), 1);
+    auto inputLowShape = Shape(getShape(origOp.getInputLow()));
+    auto outputLowShape = Shape(getShape(origOp.getOutputLow()));
 
-    alignShapeToReferenceShapeSize(inputShape.size(), inputLowScaleShape, false);
-    alignShapeToReferenceShapeSize(inputShape.size(), outputLowScaleShape, false);
+    const auto inputShape = callOnShapeOf(origOp.getInput().getType(), [](const auto& shape) {
+        return reifyShape(shape);
+    });
+    const auto ref1ElemShape = makeShape(inputShape, inputShape.size(), 1);
 
-    if (inputLowScaleShape == outputLowScaleShape) {
-        return getDimMergeMapWith2Inputs(inputShape, inputLowScaleShape);
+    alignShapeToReferenceShapeSize(inputShape.size(), inputLowShape, false);
+    alignShapeToReferenceShapeSize(inputShape.size(), outputLowShape, false);
+
+    if (inputLowShape == outputLowShape) {
+        return getDimMergeMapWith2Inputs(inputShape, inputLowShape);
     }
-    if (ref1ElemShape == inputLowScaleShape) {
-        return getDimMergeMapWith2Inputs(inputShape, outputLowScaleShape);
+    if (ref1ElemShape == inputLowShape) {
+        return getDimMergeMapWith2Inputs(inputShape, outputLowShape);
     }
-    if (ref1ElemShape == outputLowScaleShape) {
-        return getDimMergeMapWith2Inputs(inputShape, inputLowScaleShape);
+    if (ref1ElemShape == outputLowShape) {
+        return getDimMergeMapWith2Inputs(inputShape, inputLowShape);
     }
-    return getDimMergeMapWith3Inputs(inputShape, inputLowScaleShape, outputLowScaleShape);
+    return getDimMergeMapWith3Inputs(inputShape, inputLowShape, outputLowShape);
+}
+
+template <typename ShapeType>
+mlir::Value createReshape(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input,
+                          const ShapeType& outputShape) {
+    const auto ctx = builder.getContext();
+    if constexpr (isStaticShape<ShapeType>) {
+        return builder.createOrFold<IE::ReshapeOp>(loc, input, /*shape=*/nullptr, /*special_zero=*/false,
+                                                   getIntArrayAttr(ctx, outputShape.raw()));
+    } else {
+        return IE::createDynamicReshape(builder, loc, input, shapeCast<BoundedShape>(outputShape));
+    }
 }
 
 mlir::Value reshapeInputWithMergeMap(mlir::PatternRewriter& rewriter, mlir::Location loc, size_t referenceShapeSize,
                                      mlir::Value origInput, const MergeMap& map, bool extendOnH) {
-    auto inShape = to_small_vector(getShape(origInput));
+    return callOnShapeOf(origInput.getType(), [&](const auto& shape) {
+        auto outShape = copyShape(shape);
+        // Note: ensure the rank of the current shape is aligned to the "reference"
+        // shape (the shape that was used to calculate the merge map). this
+        // guarantees we don't have buffer overflows due to mege map using indices
+        // outside of current shape's rank.
+        alignShapeToReferenceShapeSize(referenceShapeSize, outShape, extendOnH);
 
-    // Note: ensure the rank of the current shape is aligned to the "reference"
-    // shape (the shape that was used to calculate the merge map). this
-    // guarantees we don't have buffer overflows due to mege map using indices
-    // outside of current shape's rank.
-    alignShapeToReferenceShapeSize(referenceShapeSize, inShape, extendOnH);
-
-    auto constInputShape = alignShapeTo4D(inShape, map, extendOnH);
-    const auto constInputShapeAttr = getIntArrayAttr(rewriter.getContext(), constInputShape);
-
-    return rewriter.createOrFold<IE::ReshapeOp>(loc, origInput, nullptr, false, constInputShapeAttr);
+        auto constInputShape = alignShapeTo4D(outShape, map, extendOnH);
+        return createReshape(rewriter, loc, origInput, constInputShape);
+    });
 }
 
-void tryAndConvert2NCEShape(SmallVector<int64_t>& shape1, SmallVector<int64_t>& shape2, MergeMap& map) {
+template <typename ShapeType1, typename ShapeType2>
+void tryAndConvert2NCEShape(ShapeType1& shape1, ShapeType2& shape2, MergeMap& map) {
     // 4D Multiply shape 1x1x1xM need convert Shape to 1xMx1x1
     //
     // TODO:
     // This logic is a litte same as AdaptShapesForScaleShiftPass.
     // May combine them into 1 pass and abandon the AdaptShapesForScaleShiftPass
-    const auto nonTrivialDimPredicate = [](const int64_t dim) -> bool {
+    const auto nonTrivialDimPredicate = [](const auto dim) -> bool {
         return dim > 1;
     };
     const auto nonTrivialShape1Dims = std::count_if(shape1.begin(), shape1.end(), nonTrivialDimPredicate);
@@ -440,26 +474,24 @@ void tryAndConvert2NCEShape(SmallVector<int64_t>& shape1, SmallVector<int64_t>& 
         (nonTrivialShape1Dims == 0 && nonTrivialShape2Dims == 0)) {
         return;
     }
-    auto findFirstNonTrivialIndex = [&](auto shape) {
+
+    auto findFirstNonTrivialDim = [&](const auto& shape) {
         const auto firstIt = std::find_if(shape.begin(), shape.end(), nonTrivialDimPredicate);
-        return std::distance(shape.begin(), firstIt);
+        return Dim(std::distance(shape.begin(), firstIt));
     };
-    int64_t firstNonTrivialIndex;
     // Find the first non-trivial index from 2 input shapes
-    firstNonTrivialIndex = (findFirstNonTrivialIndex(shape1) <= findFirstNonTrivialIndex(shape2))
-                                   ? findFirstNonTrivialIndex(shape1)
-                                   : findFirstNonTrivialIndex(shape2);
+    const auto firstNonTrivialDim = std::min(findFirstNonTrivialDim(shape1), findFirstNonTrivialDim(shape2));
 
     // Already at DimC
-    if (firstNonTrivialIndex == 1) {
+    if (firstNonTrivialDim.ind() == 1) {
         return;
     }
     if (map.size() < 4) {
         map.insert(map.begin(), 4 - map.size(), {});
     }
-    std::swap(shape1[1], shape1[firstNonTrivialIndex]);
-    std::swap(shape2[1], shape2[firstNonTrivialIndex]);
-    std::swap(map[1], map[firstNonTrivialIndex]);
+    std::swap(shape1[Dim(1)], shape1[firstNonTrivialDim]);
+    std::swap(shape2[Dim(1)], shape2[firstNonTrivialDim]);
+    std::swap(map[1], map[firstNonTrivialDim.ind()]);
 }
 
 // Merge all adjacent axis and non-axis dimensions
@@ -566,6 +598,15 @@ std::optional<std::pair<SmallVector<int64_t>, SmallVector<int64_t>>> getAdjusted
         }
 
         if (newInshape.size() == TARGET_TENSOR_DIM) {
+            return std::pair{std::move(newInshape), std::move(newRepeats)};
+        }
+
+        if (origInRank == DimsGroups5D::Act::numDims && origOutRank == DimsGroups5D::Act::numDims &&
+            repeatRank == DimsGroups5D::Act::numDims) {
+            return std::nullopt;
+        }
+
+        if (newInshape.size() == DimsGroups5D::Act::numDims && newRepeats.size() == DimsGroups5D::Act::numDims) {
             return std::pair{std::move(newInshape), std::move(newRepeats)};
         }
     }
@@ -740,37 +781,42 @@ mlir::LogicalResult GenericConverter<ConcreteOp>::convertWith2Inputs(ConcreteOp 
         extendOnH = false;
     }
 
-    // Align dims
-    if (shapeOneVector.size() != shapeTwoVector.size()) {
-        extendOnH = false;
-        auto maxSize = std::max(shapeOneVector.size(), shapeTwoVector.size());
-        auto& smallShape = (shapeOneVector.size() > shapeTwoVector.size()) ? shapeTwoVector : shapeOneVector;
-        auto& bigShape = (shapeOneVector.size() > shapeTwoVector.size()) ? shapeOneVector : shapeTwoVector;
-        SmallVector<int64_t> expanedShape(maxSize, 1);
-        if (origOp->hasAttr("auto_broadcast")) {
-            alignShapeToReferenceShapeSize(bigShape.size(), smallShape, false);
-        } else {
-            // Some operations need to map their channels first. e.g. PRelu
-            if ((smallShape.size() == 1) && (smallShape[0] == bigShape[1])) {
-                expanedShape[1] = smallShape[0];
-                smallShape.swap(expanedShape);
-            } else {
-                alignShapeToReferenceShapeSize(bigShape.size(), smallShape, false);
+    const auto [newIn1, newIn2, dimsCanMerge] = callOnShapeOf(input1.getType(), [&](const auto& inShapeRef1) {
+        return callOnShapeOf(input2.getType(), [&](const auto& inShapeRef2) {
+            auto inShape1 = copyShape(inShapeRef1);
+            auto inShape2 = copyShape(inShapeRef2);
+
+            // Align dims
+            if (inShape1.size() != inShape2.size()) {
+                extendOnH = false;
+                const auto autoBroadcast = origOp->hasAttr("auto_broadcast");
+                if (inShape1.size() < inShape2.size()) {
+                    alignShapes(inShape1, inShape2, autoBroadcast);
+                } else {
+                    alignShapes(inShape2, inShape1, autoBroadcast);
+                }
             }
-        }
-    }
 
-    auto dimsCanMerge = getDimMergeMapWith2Inputs(shapeOneVector, shapeTwoVector);
-    auto newInputShape1 = alignShapeTo4D(shapeOneVector, dimsCanMerge, extendOnH);
-    auto newInputShape2 = alignShapeTo4D(shapeTwoVector, dimsCanMerge, extendOnH);
+            auto dimsCanMerge = getDimMergeMapWith2Inputs(reifyShape(inShape1), reifyShape(inShape2));
+            auto newInShape1 = alignShapeTo4D(inShape1, dimsCanMerge, extendOnH);
+            auto newInShape2 = alignShapeTo4D(inShape2, dimsCanMerge, extendOnH);
 
-    if (std::is_same<IE::MultiplyOp, ConcreteOp>::value) {
-        tryAndConvert2NCEShape(newInputShape1, newInputShape2, dimsCanMerge);
-    }
-    auto newIn1 = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_lhs"), operands[0], nullptr, false,
-                                                       getIntArrayAttr(this->getContext(), newInputShape1));
-    auto newIn2 = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_rhs"), operands[1], nullptr, false,
-                                                       getIntArrayAttr(this->getContext(), newInputShape2));
+            if constexpr (std::is_same_v<IE::MultiplyOp, ConcreteOp>) {
+                tryAndConvert2NCEShape(newInShape1, newInShape2, dimsCanMerge);
+            }
+
+            auto newIn1 = operands[0];
+            auto newIn2 = operands[1];
+            if (newInShape1 != inShapeRef1) {
+                newIn1 = createReshape(rewriter, takeOpLoc(origOp, "reshape_lhs"), newIn1, newInShape1);
+            }
+            if (newInShape2 != inShapeRef2) {
+                newIn2 = createReshape(rewriter, takeOpLoc(origOp, "reshape_rhs"), newIn2, newInShape2);
+            }
+
+            return std::make_tuple(newIn1, newIn2, std::move(dimsCanMerge));
+        });
+    });
 
     SmallVector<mlir::Value> newOperands;
     newOperands.push_back(newIn1);
@@ -780,19 +826,27 @@ mlir::LogicalResult GenericConverter<ConcreteOp>::convertWith2Inputs(ConcreteOp 
 
     auto* newOp = rewriter.clone(*origOp, mapper);
     SmallVector<mlir::Value> newResults;
+    newResults.reserve(newOp->getResults().size());
+
     for (auto result : newOp->getResults()) {
-        auto resultNDI = mlir::cast<vpux::NDTypeInterface>(result.getType());
-        auto resultShape = to_small_vector(resultNDI.getShape());
-        result.setType(resultNDI.changeShape(ShapeRef(alignShapeTo4D(resultShape, dimsCanMerge, extendOnH))));
-        const auto outputShapeAttr = getIntArrayAttr(rewriter.getContext(), resultShape);
-        auto resultReshapeOp = rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(origOp, StringLiteral("reshape_out_{0}"), newResults.size()), result, nullptr, false,
-                outputShapeAttr);
-        if (result == resultReshapeOp) {
-            newResults.push_back(result);
-        } else {
-            newResults.push_back(resultReshapeOp.template getDefiningOp<IE::ReshapeOp>().getOutput());
-        }
+        const auto resultType = mlir::cast<vpux::NDTypeInterface>(result.getType());
+        auto resultReshapeOp = callOnShapeOf(
+                resultType,
+                [&](const auto& shape, const MergeMap& dimsCanMerge) {
+                    auto newOutShape = alignShapeTo4D(copyShape(shape), dimsCanMerge, extendOnH);
+                    result.setType(resultType.changeTypeComponents(
+                            TypeComponents()
+                                    .setShapeWithRepresentation(std::move(newOutShape))
+                                    .setDimsOrder(DimsOrder::fromNumDims(TARGET_TENSOR_DIM))));
+
+                    return createReshape(rewriter,
+                                         takeOpLoc(origOp, StringLiteral("reshape_out_{0}"), newResults.size()), result,
+                                         shape);
+                },
+                dimsCanMerge);
+
+        const auto newResult = resultReshapeOp == result ? result : resultReshapeOp.getDefiningOp()->getResult(0);
+        newResults.push_back(newResult);
     }
 
     rewriter.replaceOp(origOp, newResults);
@@ -840,13 +894,13 @@ mlir::LogicalResult FakeQuantizeConverter::matchAndRewrite(IE::FakeQuantizeOp or
             takeOpLoc(origOp, "fq_in"), inputReshape, inputLow, inputHigh, outputLow, outputHigh,
             origOp.getLevelsAttr(), origOp.getLowFpTypeAttr(), origOp.getAutoBroadcastAttr());
 
-    const auto outputShapeAttr = getIntArrayAttr(getContext(), getShape(origOp.getOutput()));
-    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newFakeQuantizeOp.getOutput(), nullptr, false,
-                                                                 outputShapeAttr);
-    extendOpLoc(outReshape, "reshape_out");
+    auto outReshape = callOnShapeOf(origOp.getOutput().getType(), [&](const auto& shape) {
+        return createReshape(rewriter, takeOpLoc(origOp, "reshape_out"), newFakeQuantizeOp.getOutput(), shape);
+    });
+
+    rewriter.replaceOp(origOp, outReshape);
 
     _log.trace("[{0}] Replaced with 'IE::FakeQuantize'", getDebugName());
-
     return mlir::success();
 }
 
@@ -882,7 +936,7 @@ mlir::LogicalResult TopKOpConverter::matchAndRewrite(IE::TopKOp origOp, OpAdapto
     }
 
     // Deduce the new TopK aix from map table
-    const auto inShape = to_small_vector(getShape(origOp.getInput()));
+    const auto inShape = getShape(origOp.getInput());
 
     MergeMap mergeMap;
     SmallVector<int64_t> tempMap;
@@ -902,7 +956,7 @@ mlir::LogicalResult TopKOpConverter::matchAndRewrite(IE::TopKOp origOp, OpAdapto
 
     const auto newAxisAttr = getIntAttr(origOp->getContext(), newAxis);
 
-    const auto newInShapeAttr = getIntArrayAttr(this->getContext(), alignShapeTo4D(inShape, mergeMap, false));
+    const auto newInShapeAttr = getIntArrayAttr(this->getContext(), alignShapeTo4D(inShape, mergeMap, false).raw());
     const auto newInReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
                                                                    nullptr, false, newInShapeAttr);
 
@@ -1923,27 +1977,6 @@ mlir::LogicalResult LSTMSequenceConverter::matchAndRewrite(IE::LSTMSequenceOp or
                                                            mlir::ConversionPatternRewriter& rewriter) const {
     const auto ctx = rewriter.getContext();
 
-    auto createDynamicReshape = [&](mlir::Value value, ShapeRef newShape, std::string_view suffix) -> mlir::Value {
-        const auto valueShape = getShape(value);
-        auto newInputDataShape = to_small_vector(valueShape);
-
-        auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(value.getType());
-        VPUX_THROW_UNLESS(boundedType != nullptr, "Expected to get BoundedTensorType at {0}", value.getLoc());
-        auto newInputDataBounds = boundedType.getBounds();
-
-        const auto newInputDataShapeAttr = getIntArrayAttr(ctx, newInputDataShape);
-        const auto newInputDataBoundsAttr = getIntArrayAttr(ctx, newInputDataBounds);
-
-        const auto newInputDataShapeRank = checked_cast<int64_t>(newShape.size());
-        const auto dataType = mlir::RankedTensorType::get({newInputDataShapeRank}, getSInt32Type(ctx));
-        auto newInputDataShapeValues = IE::replaceDynamicDimsWithValue<int32_t>(to_small_vector(newShape), -1);
-
-        const auto shapeTensor =
-                Const::createConst(rewriter, value.getLoc(), dataType, ArrayRef(newInputDataShapeValues));
-        return rewriter.createOrFold<IE::DynamicReshapeOp>(appendLoc(value.getLoc(), suffix), value, shapeTensor,
-                                                           newInputDataShapeAttr, newInputDataBoundsAttr);
-    };
-
     auto reshapeValue = [&](mlir::Value value, ShapeRef newShape, const std::string& suffix) -> mlir::Value {
         const auto valueShape = getShape(value);
         if (valueShape == newShape) {
@@ -1951,7 +1984,11 @@ mlir::LogicalResult LSTMSequenceConverter::matchAndRewrite(IE::LSTMSequenceOp or
         }
 
         if (valueShape.isDynamic()) {
-            return createDynamicReshape(value, newShape, suffix);
+            const auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(value.getType());
+            VPUX_THROW_WHEN(boundedType == nullptr, "Expected to get BoundedTensorType at {0}", value.getLoc());
+
+            return IE::createDynamicReshape(rewriter, appendLoc(value.getLoc(), suffix), value,
+                                            boundedType.getDynamicShape());
         } else {
             return rewriter.createOrFold<IE::ReshapeOp>(appendLoc(value.getLoc(), suffix), value, nullptr, false,
                                                         getIntArrayAttr(ctx, newShape));
@@ -3192,6 +3229,64 @@ mlir::LogicalResult ReverseConverter::matchAndRewrite(IE::ReverseOp origOp, OpAd
 }
 
 //
+// NormalizeL2Converter
+//
+
+class NormalizeL2Converter final : public mlir::OpConversionPattern<IE::NormalizeL2Op> {
+    using OpAdaptor = typename mlir::OpConversionPattern<IE::NormalizeL2Op>::OpAdaptor;
+
+public:
+    NormalizeL2Converter(mlir::TypeConverter& typeConverter, mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpConversionPattern<IE::NormalizeL2Op>(typeConverter, ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::NormalizeL2Op origOp, OpAdaptor newArgs,
+                                        mlir::ConversionPatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult NormalizeL2Converter::matchAndRewrite(IE::NormalizeL2Op origOp, OpAdaptor,
+                                                          mlir::ConversionPatternRewriter& rewriter) const {
+    _log.trace("Process Operation '{0}' at '{1}", origOp->getName(), origOp->getLoc());
+
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
+    auto newShape = to_small_vector(inType.getShape());
+    auto newAxes = parseIntArrayAttr<int64_t>(origOp.getAxesValue().value());
+    auto inRank = newShape.size();
+
+    if (inRank > TARGET_TENSOR_DIM) {
+        std::tie(newShape, newAxes) = getMergedShapeAndAxes(newShape, newAxes);
+        inRank = newShape.size();
+    }
+
+    if (inRank < TARGET_TENSOR_DIM) {
+        const int64_t newDims = TARGET_TENSOR_DIM - inRank;
+        newShape.insert(newShape.begin(), newDims, 1);
+        for (auto& axis : newAxes) {
+            axis += newDims;
+        }
+    }
+
+    const auto newShapeAttr = getIntArrayAttr(origOp->getContext(), newShape);
+    const auto axisValueAttr = getIntArrayAttr(origOp->getContext(), newAxes);
+    const auto outShapeAttr = getIntArrayAttr(origOp->getContext(), getShape(origOp.getResult()));
+
+    const auto inReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getOperand(0),
+                                                                nullptr, false, newShapeAttr);
+
+    auto newNormalizeOp = rewriter.create<IE::NormalizeL2Op>(
+            origOp->getLoc(), inReshape, /*axes*/ nullptr, axisValueAttr, origOp.getEpsAttr(), origOp.getEpsModeAttr());
+
+    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newNormalizeOp.getResult(), nullptr, false,
+                                                                 outShapeAttr);
+    extendOpLoc(outReshape, "reshape_out");
+    return mlir::success();
+}
+
+//
 // safeRunOnFunc
 //
 
@@ -3199,6 +3294,7 @@ auto buildReshapeMaterializer(StringRef locSuffix) {
     const auto reshapeFunc = [=](mlir::OpBuilder& builder, mlir::RankedTensorType dstType, mlir::ValueRange inputs,
                                  mlir::Location loc) -> mlir::Value {
         VPUX_THROW_UNLESS(inputs.size() == 1, "Got wrong number of inputs : {0}", inputs.size());
+        const auto newLoc = appendLoc(loc, locSuffix);
 
         // TODO: E#-171827 It might be beneficial to use AffineReshape for all cases, as it has well defined semantics
         // for per-axis quantized types and layout information propagation.
@@ -3207,8 +3303,10 @@ auto buildReshapeMaterializer(StringRef locSuffix) {
         const auto outShapeAttr = builder.getI64ArrayAttr(dstType.getShape());
 
         if (!isPerAxisQuantized) {
-            return builder.createOrFold<IE::ReshapeOp>(appendLoc(loc, locSuffix), inputs.front(), nullptr, false,
-                                                       outShapeAttr);
+            if (const auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(dstType)) {
+                return IE::createDynamicReshape(builder, newLoc, inputs.front(), boundedType.getDynamicShape());
+            }
+            return builder.createOrFold<IE::ReshapeOp>(newLoc, inputs.front(), nullptr, false, outShapeAttr);
         }
 
         // If we have a per-axis quantized type, we need to use AffineReshapeOp because it can properly handle the axis
@@ -3238,8 +3336,7 @@ auto buildReshapeMaterializer(StringRef locSuffix) {
         }
 
         const auto dimMappingAttr = getIntArrayOfArray(dstType.getContext(), dimMapping);
-        return builder.createOrFold<IE::AffineReshapeOp>(appendLoc(loc, locSuffix), inputs.front(), dimMappingAttr,
-                                                         outShapeAttr);
+        return builder.createOrFold<IE::AffineReshapeOp>(newLoc, inputs.front(), dimMappingAttr, outShapeAttr);
     };
     return reshapeFunc;
 }
@@ -3250,9 +3347,26 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
 
     mlir::TypeConverter typeConverter;
     typeConverter.addConversion([](vpux::NDTypeInterface type) {
-        SmallVector<int64_t> shape = to_small_vector(type.getShape());
-        auto dimMapper = getDimMapGeneric(shape);
-        return type.changeShape(ShapeRef(alignShapeTo4D(shape, dimMapper, false)));
+        return callOnShapeOf(type, [&](const auto& shape) {
+            const auto dimMapper = getDimMapGeneric(reifyShape(shape));
+            auto newShape = alignShapeTo4D(shape, dimMapper, false);
+            if (shape == newShape) {
+                return type;
+            }
+
+            auto elemType = type.getElementType();
+            if (const auto qElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
+                VPUX_THROW_UNLESS(newShape.size() >= shape.size(), "Unexpected rank reduction: {0} -> {1}", shape,
+                                  newShape);
+                const auto rankDiff = newShape.size() - shape.size();
+                elemType = changeAxis(qElemType, qElemType.getQuantizedDimension() + rankDiff);
+            }
+
+            return type.changeTypeComponents(TypeComponents()
+                                                     .setShapeWithRepresentation(std::move(newShape))
+                                                     .setElementType(elemType)
+                                                     .setDimsOrder(DimsOrder::fromNumDims(TARGET_TENSOR_DIM)));
+        });
     });
     typeConverter.addSourceMaterialization(buildReshapeMaterializer("source"));
     typeConverter.addTargetMaterialization(buildReshapeMaterializer("target"));
@@ -3261,12 +3375,14 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
     mlir::TypeConverter scaleShiftTypeConverter;
     // TODO: #143748 consider change ConvertScaleShiftToDWPass
     scaleShiftTypeConverter.addConversion([](vpux::NDTypeInterface type) {
-        SmallVector<int64_t> shape = to_small_vector(type.getShape());
-        if (shape.size() == 3 && shape[0] == 1 && shape[1] > 1) {
-            return type.changeShape(Shape{shape[0], shape[1], 1, shape[2]});
+        const auto shape = type.getShape();
+        if (shape.size() == 3 && shape[Dim(0)] == 1 && shape[Dim(1)] > 1) {
+            auto newShape = copyShape(shape);
+            newShape.insert(newShape.begin() + 2, 1);  // 1xHxW -> 1xHx1xW
+            return type.changeShape(newShape);
         }
-        auto dimMapper = getDimMapGeneric(shape);
-        return type.changeShape(ShapeRef(alignShapeTo4D(shape, dimMapper, false)));
+        auto dimMapper = getDimMapGeneric(reifyShape(shape));
+        return type.changeShape(alignShapeTo4D(shape, dimMapper, false));
     });
     scaleShiftTypeConverter.addSourceMaterialization(buildReshapeMaterializer("scale_shift_source"));
     scaleShiftTypeConverter.addTargetMaterialization(buildReshapeMaterializer("scale_shift_target"));
@@ -3487,6 +3603,18 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
         return mergedShape.size() > TARGET_TENSOR_DIM;
     };
 
+    auto isLegalNormalizeL2Op = [&](IE::NormalizeL2Op op) {
+        const auto inShape = mlir::cast<vpux::NDTypeInterface>(op.getOperand(0).getType()).getShape();
+        const auto outShape = mlir::cast<vpux::NDTypeInterface>(op.getResult().getType()).getShape();
+        if (inShape.size() == TARGET_TENSOR_DIM && outShape.size() == TARGET_TENSOR_DIM) {
+            return true;
+        }
+
+        const auto axes = parseIntArrayAttr<int64_t>(op.getAxesValueAttr());
+        const auto mergedInputShape = getMergedShapeAndAxes(to_small_vector(inShape), axes).first;
+        return mergedInputShape.size() > TARGET_TENSOR_DIM;
+    };
+
     mlir::ConversionTarget target(ctx);
     target.addLegalDialect<Const::ConstDialect>();
     target.addLegalDialect<IE::IEDialect>();
@@ -3591,6 +3719,7 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<IE::QuantizeOp>(isLegalQuantOp);
     target.addDynamicallyLegalOp<IE::DequantizeOp>(isLegalQuantOp);
     target.addDynamicallyLegalOp<IE::QuantizeCastOp>(isLegalQuantOp);
+    target.addDynamicallyLegalOp<IE::NormalizeL2Op>(isLegalNormalizeL2Op);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<InterleavedDimsRewriter>(&ctx, _log);
@@ -3692,6 +3821,7 @@ void ConvertShapeTo4DPass::safeRunOnFunc() {
     patterns.add<SplitConverter>(typeConverter, &ctx, _log);
     patterns.add<RollConverter>(typeConverter, &ctx, _log);
     patterns.add<ReverseConverter>(typeConverter, &ctx, _log);
+    patterns.add<NormalizeL2Converter>(typeConverter, &ctx, _log);
 
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
