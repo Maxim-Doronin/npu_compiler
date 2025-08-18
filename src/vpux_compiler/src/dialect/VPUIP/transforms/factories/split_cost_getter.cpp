@@ -10,8 +10,8 @@
 
 using namespace vpux;
 
-VPUIP::SplitCostCb VPUIP::getSplitCostCb(VPU::ArchKind arch) {
-    if (arch >= VPU::ArchKind::NPU37XX) {
+VPUIP::SplitCostCb VPUIP::getSplitCostCb(config::ArchKind arch) {
+    if (arch >= config::ArchKind::NPU37XX) {
         return VPUIP::arch37xx::computeSplitCost;
     }
     VPUX_THROW("Unexpected architecture {0}", arch);

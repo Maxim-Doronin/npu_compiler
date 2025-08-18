@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 #include "vpux/utils/profiling/common.hpp"
@@ -84,7 +85,7 @@ void DPUProfilingPass::safeRunOnModule() {
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
     net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
     unsigned profilingWorkloadSize = VPUIP::getProfWorkloadSize(module);

@@ -4,9 +4,14 @@
 //
 
 #include "vpux/compiler/core/aliases_info.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 namespace vpux::VPUIP {
@@ -226,7 +231,7 @@ mlir::LogicalResult ConvertVPUIPCopyToSWCopy::matchAndRewrite(VPUIP::CopyOp orig
     }
 
     // Create SWKernelOp type Copy
-    VPUIP::createRuntimeKernelDefinition(module, _log.nest(), VPU::getArch(origOp));
+    VPUIP::createRuntimeKernelDefinition(module, _log.nest(), config::getArch(origOp));
 
     const int64_t tileIndex = 0;
     vpux::VPUIP::KernelInfo kernelInfo(SmallVector<mlir::Attribute>{inBitOffsets, outBitOffsets}, SmallString("copy"),
@@ -237,7 +242,8 @@ mlir::LogicalResult ConvertVPUIPCopyToSWCopy::matchAndRewrite(VPUIP::CopyOp orig
     auto swKernelOp = rewriter.create<VPUIP::SwKernelOp>(location, operandsBuff, outputsBuff, builtInFunction,
                                                          getIntAttr(ctx, tileIndex));
 
-    vpux::VPUIP::initSwKernel(swKernelOp, operandsBuff, outputsBuff, kernelInfo.args, _log.nest());
+    vpux::VPUIP::initSwKernel(swKernelOp, operandsBuff, outputsBuff, kernelInfo.args, _log.nest(),
+                              /*swKernelRunOp=*/nullptr);
 
     _log.trace("Replace origin op {0} with new outputs from SW Kernel Copy", location);
     rewriter.replaceOp(origOp, swKernelOp);

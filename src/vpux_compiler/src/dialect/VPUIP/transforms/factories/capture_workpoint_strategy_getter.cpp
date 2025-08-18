@@ -10,9 +10,9 @@ using namespace vpux;
 
 namespace vpux::VPUIP {
 
-std::unique_ptr<ICaptureWorkpointStrategy> createCaptureWorkpointStrategy(VPU::ArchKind arch) {
+std::unique_ptr<ICaptureWorkpointStrategy> createCaptureWorkpointStrategy(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return std::make_unique<VPUIP::arch37xx::CaptureWorkpointStrategy>();
     default:
         return std::make_unique<VPUIP::ICaptureWorkpointStrategy>();

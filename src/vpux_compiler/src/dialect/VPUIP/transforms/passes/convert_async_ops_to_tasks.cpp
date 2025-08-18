@@ -4,8 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -194,6 +197,7 @@ void ConvertAsyncOpsToTasksPass::safeRunOnFunc() {
     typeConverter.addSourceMaterialization(dummyConverter<mlir::async::ValueType>);
 
     mlir::ConversionTarget target(ctx);
+    target.addLegalDialect<Core::CoreDialect>();
     target.addLegalDialect<Const::ConstDialect>();
     target.addLegalDialect<VPUIP::VPUIPDialect>();
     target.addLegalDialect<VPURT::VPURTDialect>();

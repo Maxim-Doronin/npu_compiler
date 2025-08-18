@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -262,23 +263,6 @@ bool ParallelCopiesRewriter::isCopyFusable(VPUIP::CopyOp copyOp, Logger& log) co
     return true;
 }
 
-bool arePositionsConsecutive(const std::set<uint32_t>& positions) {
-    if (positions.size() < 2) {
-        return false;
-    }
-
-    auto it = positions.begin();
-    auto prev = *it;
-    ++it;
-    for (; it != positions.end(); ++it) {
-        if (*it != prev + 1) {
-            return false;
-        }
-        prev = *it;
-    }
-    return true;
-}
-
 void ParallelCopiesRewriter::insertUserPosition(VPUIP::NCEClusterTaskOp nceConvUserOp,
                                                 std::set<uint32_t>& positions) const {
     uint32_t userOpPos = std::numeric_limits<uint32_t>::max();
@@ -393,6 +377,34 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
             }
         }
         return false;
+    };
+
+    auto arch = config::getArch(originCopyOp);
+    auto arePositionsConsecutive = [&](const std::set<uint32_t>& positions) -> bool {
+        if (positions.size() < 2) {
+            return false;
+        }
+
+        size_t countConsecutive = 0;
+        auto it = positions.begin();
+        auto prev = *it;
+
+        for (++it; it != positions.end(); ++it) {
+            if (*it == prev + 1) {
+                ++countConsecutive;
+            }
+            prev = *it;
+        }
+
+        double consecutiveRatio = static_cast<double>(countConsecutive) / (positions.size() - 1);
+        // If at least 90% of the positions are consecutive, we consider it as a valid case for optimization
+        // It's a workaround for E#172473, where we have a case with multi-dim tiling
+        // and we want to avoid unnecessary spillings in the case.
+        // This workaround will be removed by another solution on E#172578
+        //
+        // For VPUX3XXX, we need to be more strict and require 100% consecutive positions.
+        // Otherwise, we will have regressions due to increased dpu cost. More details in E#174330.
+        return isArchVPUX3XXX(arch) ? consecutiveRatio >= 1.0 : consecutiveRatio >= 0.9;
     };
 
     auto checkSiblingCopies = [&](mlir::Operation* targetOp) -> bool {

@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/allocate_buffers.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 
@@ -154,7 +155,7 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
             }
 
             if (mlir::isa<VPUIP::ShapeCastOp, VPUIP::GenericReshapeOp>(origOp)) {
-                const auto arch = VPU::getArch(origOp.getOperation());
+                const auto arch = config::getArch(origOp.getOperation());
                 return VPUIP::isDistributedCompatibleAfterShapeChangeForViewOps<VPUIP::DistributedBufferType>(
                         distributedType, viewOpOutputShape, viewOpOutputType.getDimsOrder(), arch);
             }
@@ -238,7 +239,7 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
 
     auto getDistributionForViewOpOutput = [&]() -> VPU::DistributionInfoAttr {
         auto ctx = origOp->getContext();
-        const auto arch = VPU::getArch(origOp.getOperation());
+        const auto arch = config::getArch(origOp.getOperation());
         const auto mode = distributedType.getDistribution().getMode().getValue();
         const auto origDistribution = distributedType.getDistribution();
 

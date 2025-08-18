@@ -8,6 +8,7 @@
 
 #include "vpux/compiler/core/async_deps_info.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/utils/core/dense_map.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_MOVEWAITRESULTTOASYNCBLOCKARGS

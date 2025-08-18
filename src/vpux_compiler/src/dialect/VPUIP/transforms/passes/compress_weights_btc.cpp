@@ -9,8 +9,8 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/codec_factory.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -47,7 +47,8 @@ private:
 
 class NNDMAOpConverter final : public mlir::OpRewritePattern<VPUIP::NNDMAOp> {
 public:
-    NNDMAOpConverter(mlir::MLIRContext* ctx, const ICodec::CompressionAlgorithm& algo, VPU::ArchKind arch, Logger log)
+    NNDMAOpConverter(mlir::MLIRContext* ctx, const ICodec::CompressionAlgorithm& algo, config::ArchKind arch,
+                     Logger log)
             : mlir::OpRewritePattern<VPUIP::NNDMAOp>(ctx), _log(log), _codec(vpux::makeCodec(algo, arch)) {
     }
 
@@ -219,7 +220,7 @@ mlir::LogicalResult NNDMAOpConverter::matchAndRewrite(VPUIP::NNDMAOp origOp, mli
 void CompressWeightsBTCPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     const auto algo = ICodec::CompressionAlgorithm::BITCOMPACTOR_CODEC;
 
     _log.trace("VPUIP CompressWeightsBTCPass");

@@ -5,6 +5,9 @@
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_BATCHMATMULTOMATMUL

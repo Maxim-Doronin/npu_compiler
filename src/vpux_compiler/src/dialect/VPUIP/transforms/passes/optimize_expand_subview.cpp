@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 
 #include "vpux/compiler/utils/allocate_buffers.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_OPTIMIZEEXPANDSUBVIEW

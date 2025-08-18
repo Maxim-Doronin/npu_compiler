@@ -481,14 +481,9 @@ mlir::LogicalResult CopyOpSequence::matchAndRewrite(VPUIP::CopyOp copyOp, mlir::
                 nestedLogger.trace("CopyOpSequence: current CopyOp is non-distributed");
                 // Check ViewLikeOp without output_buff
                 const auto isViewLikeOpWithoutOutputBuff = [&](mlir::Operation* op) -> bool {
-                    if (mlir::isa<VPUIP::DistributedCastOp, VPUIP::NonDistributedCastOp, VPUIP::SubViewOp,
-                                  VPUIP::PermuteCastOp, VPUIP::QuantizeCastOp, VPUIP::GenericReshapeOp,
-                                  VPUIP::ShapeCastOp, VPUIP::StubOp, VPUIP::ViewOp, VPUIP::ExtractFlatSliceOp,
-                                  VPUIP::WorkloadCastOp>(op)) {
-                        return true;
-                    }
-
-                    return false;
+                    return mlir::isa<VPUIP::DistributedCastOp, VPUIP::NonDistributedCastOp, VPUIP::SubViewOp,
+                                     VPUIP::PermuteCastOp, VPUIP::QuantizeCastOp, VPUIP::GenericReshapeOp,
+                                     VPUIP::ShapeCastOp, VPUIP::StubOp, VPUIP::ViewOp, VPUIP::ExtractFlatSliceOp>(op);
                 };
 
                 mlir::Value parentCopyOpInputBuff;

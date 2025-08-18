@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/factories/capture_workpoint_strategy_getter.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 #include "vpux/utils/profiling/common.hpp"
@@ -39,7 +40,7 @@ private:
 void CaptureWorkpointPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     auto archSpecificStrategy = VPUIP::createCaptureWorkpointStrategy(arch);
 
     net::NetworkInfoOp netInfo;

@@ -4,14 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/utils/factors.hpp"
-
 #include "vpux/utils/core/numeric.hpp"
 
-#include <numeric>
 #include <set>
 
 using namespace vpux;

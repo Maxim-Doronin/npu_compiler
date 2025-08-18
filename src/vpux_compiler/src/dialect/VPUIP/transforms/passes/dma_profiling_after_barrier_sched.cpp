@@ -11,9 +11,9 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/dma.hpp"
-#include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/profiling/common.hpp"
 
 namespace vpux::VPUIP {
@@ -33,13 +33,8 @@ namespace {
 class DMATaskProfilingAfterBarrierSchedPass final :
         public VPUIP::impl::DMATaskProfilingAfterBarrierSchedBase<DMATaskProfilingAfterBarrierSchedPass> {
 public:
-    explicit DMATaskProfilingAfterBarrierSchedPass(DMAProfilingMode dmaProfilingMode, Logger log)
-            : _profilingMode(dmaProfilingMode),
-              _timerType(),
-              _Cmx0MemKind(),
-              _timestampSize(),
-              _profOutputId(),
-              _hwAddr() {
+    explicit DMATaskProfilingAfterBarrierSchedPass(Logger log)
+            : _timerType(), _Cmx0MemKind(), _timestampSize(), _profOutputId(), _hwAddr() {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -48,7 +43,7 @@ private:
 
     mlir::Operation* getDmaTask(VPURT::TaskOp taskOp);
     int64_t getDMAPortValue(VPURT::TaskOp taskOp);
-    uint32_t getHwProfAddress(VPU::ArchKind arch);
+    uint32_t getHwProfAddress(config::ArchKind arch);
     VPURT::TaskOp createProfTask(mlir::OpBuilder& builder, mlir::ValueRange updateBarriers,
                                  mlir::ValueRange waitBarriers, int64_t port, size_t address, mlir::Location loc,
                                  bool isOutOfOrder, VPUIP::DmaProfilingMetadataAttr profMetadata);
@@ -56,7 +51,6 @@ private:
     void createCmx2DdrProfDma(mlir::OpBuilder& builder, mlir::ValueRange updateBarriers, int64_t port,
                               size_t srcCmxAddr, size_t dstDdrAddr, size_t sizeBytes);
 
-    DMAProfilingMode _profilingMode;
     mlir::Type _timerType;
     IndexedSymbolAttr _Cmx0MemKind;
     int64_t _timestampSize;
@@ -64,9 +58,9 @@ private:
     uint32_t _hwAddr;
 };
 
-uint32_t DMATaskProfilingAfterBarrierSchedPass::getHwProfAddress(VPU::ArchKind arch) {
+uint32_t DMATaskProfilingAfterBarrierSchedPass::getHwProfAddress(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUIP::HW_TIMER_ABSOLUTE_ADDR_37XX;
     default:
         VPUX_THROW("Unsuported architecture");
@@ -135,19 +129,13 @@ void DMATaskProfilingAfterBarrierSchedPass::createCmx2DdrProfDma(mlir::OpBuilder
 void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
-    if (enableDMAProfiling.hasValue()) {
-        _profilingMode = getDMAProfilingMode(arch, enableDMAProfiling.getValue());
-    }
-
-    if (_profilingMode != DMAProfilingMode::SW) {
-        return;
-    }
+    VPUX_THROW_UNLESS(arch == config::ArchKind::NPU37XX, "Unsupported platform");
 
     const auto isOutOfOrderOptimizationApplicable =
-            (arch == VPU::ArchKind::NPU37XX);  // For 37XX PROFBEGIN and profiled DMA may be proceeded by different
-                                               // channels, which allow such DMAs issued  out of order
+            (arch == config::ArchKind::NPU37XX);  // For 37XX PROFBEGIN and profiled DMA may be proceeded by different
+                                                  // channels, which allow such DMAs issued out of order
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp func;
     net::NetworkInfoOp::getFromModule(module, netInfo, func);
@@ -324,7 +312,6 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
 // createDMATaskProfilingAfterBarrierSchedPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUIP::createDMATaskProfilingAfterBarrierSchedPass(DMAProfilingMode dmaProfilingMode,
-                                                                                     Logger log) {
-    return std::make_unique<DMATaskProfilingAfterBarrierSchedPass>(dmaProfilingMode, log);
+std::unique_ptr<mlir::Pass> vpux::VPUIP::createDMATaskProfilingAfterBarrierSchedPass(Logger log) {
+    return std::make_unique<DMATaskProfilingAfterBarrierSchedPass>(log);
 }

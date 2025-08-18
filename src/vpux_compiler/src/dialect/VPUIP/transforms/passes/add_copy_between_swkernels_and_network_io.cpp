@@ -5,11 +5,13 @@
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 
@@ -516,6 +518,11 @@ private:
 
 void AddCopyBetweenSWKernelsAndNetworkIOPass::safeRunOnModule() {
     auto moduleOp = getOperation();
+
+    if (moduleOp.getOps<net::NetworkInfoOp>().empty()) {
+        return;
+    }
+
     mlir::func::FuncOp mainFuncOp;
     net::NetworkInfoOp netInfo;
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);

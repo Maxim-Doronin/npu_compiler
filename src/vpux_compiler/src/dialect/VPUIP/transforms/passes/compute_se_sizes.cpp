@@ -4,9 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
-#include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -141,7 +143,7 @@ void ComputeSESizesPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto arch = VPU::getArch(func);
+    auto arch = config::getArch(func);
     auto constraint = VPU::getSparsityConstraint(arch);
 
     // Set the storage element size attributes only for the input operand in case the sparse data is concatenated
